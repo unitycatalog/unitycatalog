@@ -2976,7 +2976,7 @@ components:
         - file_modification_timestamp
     DeltaCommitResponse:
       type: object
-      description: The response for the commit action
+      description: The response for the Delta commit action
     DeltaGetCommits:
       type: object
       properties:

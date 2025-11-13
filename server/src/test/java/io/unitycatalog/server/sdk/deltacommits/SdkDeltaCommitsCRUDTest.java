@@ -71,21 +71,26 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
             TestUtils.TABLE_NAME, TableType.MANAGED, Optional.empty(), tableOperations);
   }
 
+  private DeltaMetadata deltaMetadataWithTableId(String tableId) {
+    Map<String, String> propertiesWithTableId = Map.of("ucTableId", tableId);
+    return new DeltaMetadata()
+        .properties(new DeltaCommitMetadataProperties().properties(propertiesWithTableId));
+  }
+
   private DeltaCommit createCommitObject(String tableId, Long version, String tableUri) {
+    String fileName = version == null ? "file_null" : "file" + version;
+    long timestamp = version == null ? 1700000000L : 1700000000L + version;
     return new DeltaCommit()
         .tableId(tableId)
         .tableUri(tableUri)
         .commitInfo(
             new DeltaCommitInfo()
                 .version(version)
-                .fileName("file" + version)
+                .fileName(fileName)
                 .fileSize(100L)
-                .timestamp(1700000000L + version)
-                .fileModificationTimestamp(1700000000L + version))
-        .metadata(
-            new DeltaMetadata()
-                .properties(
-                    new DeltaCommitMetadataProperties().properties(Map.of("ucTableId", tableId))));
+                .timestamp(timestamp)
+                .fileModificationTimestamp(timestamp))
+        .metadata(deltaMetadataWithTableId(tableId));
   }
 
   private DeltaCommit createBackfillOnlyCommitObject(
@@ -150,9 +155,12 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         ErrorCode.INVALID_ARGUMENT,
         "Commit version must be the next version after the latest commit");
 
+    // Commit without metadata is fine
     DeltaCommit commit2 =
-        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
+            .metadata(null);
     deltaCommitsApi.commit(commit2);
+    // Then we can commit 3
     deltaCommitsApi.commit(commit3);
 
     // Commit the old version 1 again, and it would fail
@@ -169,8 +177,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Add a new commit (version 4) and backfill up to version 1 in the same request
     DeltaCommit commit4 =
-        createCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation());
-    commit4.setLatestBackfilledVersion(1L);
+        createCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation())
+            .latestBackfilledVersion(1L);
     deltaCommitsApi.commit(commit4);
     // Verify we now have 3 commits (versions 2, 3, 4)
     commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
@@ -192,7 +200,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(commitDAOs.size()).isEqualTo(1);
     checkCommitDAO(commitDAOs.get(0), commit4);
-    assertThat(commitDAOs.get(0).getIsBackfilledLatestCommit()).isTrue();
+    assertThat(commitDAOs.get(0).isBackfilledLatestCommit()).isTrue();
 
     // Verify commits are cleaned up upon table deletion
     DeltaCommit commit5 =
@@ -208,7 +216,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   private void checkCommitInvalidParameter(
-      long version, Consumer<DeltaCommit> modify, String containsErrorMessage) {
+      Long version, Consumer<DeltaCommit> modify, String containsErrorMessage) {
     DeltaCommit commit =
         createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation());
     modify.accept(commit);
@@ -229,6 +237,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     checkCommitInvalidParameter(1L, c -> c.setTableUri(null), "table_uri");
     checkCommitInvalidParameter(1L, c -> c.setTableUri(""), "table_uri");
     checkCommitInvalidParameter(-1L, c -> {}, "version");
+    checkCommitInvalidParameter(null, c -> {}, "version");
     checkCommitInvalidParameter(0L, c -> {}, "version");
     checkCommitInvalidParameter(
         1L,
@@ -236,23 +245,38 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         "Either commit_info or latest_backfilled_version must be defined");
     checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setFileName(null), "file_name");
     checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setFileName(""), "file_name");
+    checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setFileSize(null), "file_size");
     checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setFileSize(-100L), "file_size");
     checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setFileSize(0L), "file_size");
+    checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setTimestamp(null), "timestamp");
     checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setTimestamp(-1L), "timestamp");
     checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setTimestamp(0L), "timestamp");
+    checkCommitInvalidParameter(
+        1L,
+        c -> c.getCommitInfo().setFileModificationTimestamp(null),
+        "file_modification_timestamp");
+    checkCommitInvalidParameter(
+        1L, c -> c.getCommitInfo().setFileModificationTimestamp(0L), "file_modification_timestamp");
+    checkCommitInvalidParameter(
+        1L,
+        c -> c.getCommitInfo().setFileModificationTimestamp(-1L),
+        "file_modification_timestamp");
 
-    // Create a commit with metadata but without ucTableId in properties
+    // Commit with metadata but without properties
+    DeltaMetadata metadata2 = new DeltaMetadata().description("description");
+    checkCommitInvalidParameter(
+        1L, c -> c.setMetadata(metadata2), "commit does not contain ucTableId in the properties.");
+
+    // Commit with metadata but without ucTableId in properties
     Map<String, String> properties1 = Map.of("customProperty", "customValue");
     DeltaMetadata metadata1 =
         new DeltaMetadata().properties(new DeltaCommitMetadataProperties().properties(properties1));
     checkCommitInvalidParameter(1L, c -> c.setMetadata(metadata1), "ucTableId");
-    // Create a commit with metadata but with wrong ucTableId
-    Map<String, String> propertiesWithZeroTableId = Map.of("ucTableId", ZERO_UUID);
-    DeltaMetadata metadataWithZeroTableId =
-        new DeltaMetadata()
-            .properties(new DeltaCommitMetadataProperties().properties(propertiesWithZeroTableId));
+    // Commit with metadata but with wrong ucTableId
     checkCommitInvalidParameter(
-        1L, c -> c.setMetadata(metadataWithZeroTableId), "does not match the properties ucTableId");
+        1L,
+        c -> c.setMetadata(deltaMetadataWithTableId(ZERO_UUID)),
+        "does not match the properties ucTableId");
 
     // Commit version 1 successfully
     DeltaCommit commit1 =
@@ -277,6 +301,24 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(commit2.getTableUri()).contains("file:///");
     commit2.setTableUri(commit2.getTableUri().replace("file:///", "file:/"));
     deltaCommitsApi.commit(commit2);
+
+    // Commit to external table is not supported
+    String tablePath = "/tmp/" + UUID.randomUUID();
+    TableInfo tableInfoExternal =
+        createTestingTable(
+            TestUtils.TABLE_NAME + "_external",
+            TableType.EXTERNAL,
+            Optional.of(tablePath),
+            tableOperations);
+    checkCommitInvalidParameter(
+        1L,
+        c ->
+            c.tableId(tableInfoExternal.getTableId())
+                .metadata(deltaMetadataWithTableId(tableInfoExternal.getTableId())),
+        "Only managed tables are supported for Delta commits");
+
+    // Commit to non-Delta table is not supported either. But we can not create a managed table
+    // with non-Delta format at all.
   }
 
   @Test
@@ -284,6 +326,15 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     TableInfo tableInfo =
         createTestingTable(
             "test_backfill_versions", TableType.MANAGED, Optional.empty(), tableOperations);
+
+    // Backfill when there's no commit
+    assertApiException(
+        () ->
+            deltaCommitsApi.commit(
+                createBackfillOnlyCommitObject(
+                    tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())),
+        ErrorCode.INVALID_ARGUMENT,
+        "Field can not be null: commit_info in onboarding commit");
 
     // Create 5 commits
     ArrayList<DeltaCommit> commits = new ArrayList<>();
@@ -298,10 +349,18 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     List<DeltaCommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(commitDAOs.size()).isEqualTo(5);
 
+    // Backfill with metadata should fail
+    DeltaCommit backfillCommit2WithMetadata =
+        createBackfillOnlyCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
+            .metadata(commits.get(0).getMetadata());
+    assertApiException(
+        () -> deltaCommitsApi.commit(backfillCommit2WithMetadata),
+        ErrorCode.INVALID_ARGUMENT,
+        "metadata shouldn't be set for backfill only commit");
+
     // Backfill up to version 2 (should keep versions 3, 4, 5)
-    DeltaCommit backfillCommit =
-        createBackfillOnlyCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
-    deltaCommitsApi.commit(backfillCommit);
+    deltaCommitsApi.commit(
+        createBackfillOnlyCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation()));
 
     commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(commitDAOs.size()).isEqualTo(3);
@@ -310,31 +369,56 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     checkCommitDAO(commitDAOs.get(2), commits.get(2));
 
     // Try to backfill beyond the latest version
-    DeltaCommit backfillCommit2 =
-        createBackfillOnlyCommitObject(tableInfo.getTableId(), 9L, tableInfo.getStorageLocation());
     assertApiException(
-        () -> deltaCommitsApi.commit(backfillCommit2),
+        () ->
+            deltaCommitsApi.commit(
+                createBackfillOnlyCommitObject(
+                    tableInfo.getTableId(), 9L, tableInfo.getStorageLocation())),
         ErrorCode.INVALID_ARGUMENT,
         "Should not backfill version 9 while the last version committed is 5");
 
+    // Try to backfill beyond the latest version while commiting new version
+    DeltaCommit commit6WithBackfill =
+        createCommitObject(tableInfo.getTableId(), 6L, tableInfo.getStorageLocation())
+            .latestBackfilledVersion(9L);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit6WithBackfill),
+        ErrorCode.INVALID_ARGUMENT,
+        "Latest backfilled version 9 cannot be greater than the last commit version = 5");
+    commit6WithBackfill.setLatestBackfilledVersion(6L);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit6WithBackfill),
+        ErrorCode.INVALID_ARGUMENT,
+        "Latest backfilled version 6 cannot be greater than the last commit version = 5");
+
     // Backfill up to version 4 (should keep only version 5)
-    backfillCommit =
-        createBackfillOnlyCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation());
-    deltaCommitsApi.commit(backfillCommit);
+    deltaCommitsApi.commit(
+        createBackfillOnlyCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation()));
 
     commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(commitDAOs.size()).isEqualTo(1);
     checkCommitDAO(commitDAOs.get(0), commits.get(4));
 
     // Backfill up to version 5 (the latest)
-    backfillCommit =
-        createBackfillOnlyCommitObject(tableInfo.getTableId(), 5L, tableInfo.getStorageLocation());
-    deltaCommitsApi.commit(backfillCommit);
+    deltaCommitsApi.commit(
+        createBackfillOnlyCommitObject(tableInfo.getTableId(), 5L, tableInfo.getStorageLocation()));
 
     commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(commitDAOs.size()).isEqualTo(1);
     checkCommitDAO(commitDAOs.get(0), commits.get(4));
-    assertThat(commitDAOs.get(0).getIsBackfilledLatestCommit()).isTrue();
+    assertThat(commitDAOs.get(0).isBackfilledLatestCommit()).isTrue();
+
+    // Commit v6. Now we have [v5(backfilled), v6] in DB.
+    DeltaCommit commit6 =
+        createCommitObject(tableInfo.getTableId(), 6L, tableInfo.getStorageLocation());
+    commits.add(commit6);
+    deltaCommitsApi.commit(commit6);
+    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
+    assertThat(commitDAOs.size()).isEqualTo(2);
+    checkCommitDAO(commitDAOs.get(0), commits.get(5));
+    assertThat(commitDAOs.get(0).isBackfilledLatestCommit()).isFalse();
+    checkCommitDAO(commitDAOs.get(1), commits.get(4));
+    assertThat(commitDAOs.get(1).isBackfilledLatestCommit()).isTrue();
   }
 
   @Test
@@ -343,41 +427,58 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         createTestingTable(
             "test_commit_limit", TableType.MANAGED, Optional.empty(), tableOperations);
 
-    // MAX_NUM_COMMITS_PER_TABLE is 50, so we'll try to add 51 commits
-    // First add 50 commits - should succeed
-    for (long i = 1; i <= 50; i++) {
+    // MAX_NUM_COMMITS_PER_TABLE is 10, so we'll try to add 10 commits
+    // First add 10 commits - should succeed
+    for (long i = 1; i <= 10; i++) {
       DeltaCommit commit =
           createCommitObject(tableInfo.getTableId(), i, tableInfo.getStorageLocation());
       deltaCommitsApi.commit(commit);
     }
 
-    // Try to add the 51st commit - should fail
-    DeltaCommit commit51 =
-        createCommitObject(tableInfo.getTableId(), 51L, tableInfo.getStorageLocation());
+    // Then try to add the 11th commit - should fail
+    DeltaCommit commit11 =
+        createCommitObject(tableInfo.getTableId(), 11L, tableInfo.getStorageLocation());
     assertApiException(
-        () -> deltaCommitsApi.commit(commit51),
+        () -> deltaCommitsApi.commit(commit11),
         ErrorCode.RESOURCE_EXHAUSTED,
         "Max number of commits per table reached");
 
-    // Backfill the first 30 commits
+    // Backfill the first 6 commits
     DeltaCommit backfillCommit =
-        createBackfillOnlyCommitObject(tableInfo.getTableId(), 30L, tableInfo.getStorageLocation());
+        createBackfillOnlyCommitObject(tableInfo.getTableId(), 6L, tableInfo.getStorageLocation());
     deltaCommitsApi.commit(backfillCommit);
 
-    // Verify we now have 20 commits (31-50)
+    // Verify we now have 4 commits (7~10)
     List<DeltaCommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(20);
+    assertThat(commitDAOs.size()).isEqualTo(4);
 
     // Now we should be able to add more commits
-    for (long i = 51; i <= 60; i++) {
+    for (long i = 11; i <= 14; i++) {
       DeltaCommit commit =
           createCommitObject(tableInfo.getTableId(), i, tableInfo.getStorageLocation());
       deltaCommitsApi.commit(commit);
     }
 
-    // Verify we now have 30 commits (31-60)
+    // Verify we now have 8 commits (7~14)
     commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(30);
+    assertThat(commitDAOs.size()).isEqualTo(8);
+
+    // Backfill all commits again
+    DeltaCommit backfillCommit2 =
+        createBackfillOnlyCommitObject(tableInfo.getTableId(), 14L, tableInfo.getStorageLocation());
+    deltaCommitsApi.commit(backfillCommit2);
+
+    // Verify we now have 1 commit marked as backfilled
+    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
+    assertThat(commitDAOs.size()).isEqualTo(1);
+    assertThat(commitDAOs.get(0).isBackfilledLatestCommit()).isTrue();
+
+    // Now we should be able to add another 10 commits
+    for (long i = 15; i <= 24; i++) {
+      DeltaCommit commit =
+          createCommitObject(tableInfo.getTableId(), i, tableInfo.getStorageLocation());
+      deltaCommitsApi.commit(commit);
+    }
   }
 
   @Test
@@ -387,7 +488,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     String fullTableName =
         tableInfo.getCatalogName() + "." + tableInfo.getSchemaName() + "." + tableInfo.getName();
 
-    // Create a commit with metadata properties
+    // Commit with metadata properties
     Map<String, String> properties = new HashMap<>();
     properties.put("ucTableId", tableInfo.getTableId());
     properties.put("customProperty", "customValue");
@@ -445,7 +546,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertEquals("new_column_1", updatedTable.getColumns().get(0).getName());
     assertEquals("new_column_2", updatedTable.getColumns().get(1).getName());
 
-    // Create a commit with all metadata fields
+    // Commit with all metadata fields
     properties = new HashMap<>();
     properties.put("ucTableId", tableInfo.getTableId());
     properties.put("customProperty", "customValueNew");
@@ -482,7 +583,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertEquals("test_column_new", updatedTable.getColumns().get(0).getName());
     assertEquals("Test column comment new", updatedTable.getColumns().get(0).getComment());
 
-    // Create a commit with empty metadata (no properties, description, or schema)
+    // Commit with empty metadata (no properties, description, or schema)
     checkCommitInvalidParameter(
         5L,
         c -> c.setMetadata(new DeltaMetadata()),

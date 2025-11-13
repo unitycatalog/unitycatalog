@@ -33,23 +33,51 @@ import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Repository for managing coordinated commits for managed Delta tables in Unity Catalog. */
+/**
+ * Repository for managing Delta commits for managed Delta tables in Unity Catalog.
+ *
+ * <p>The database table 'uc_delta_commits' has commits of all managed tables until the commits are
+ * backfilled. However, there's a special case that in order to record the last commit even after
+ * it's backfilled, UC does not delete the last commit but instead only mark it as
+ * is_backfilled_latest_commit=true. So it's guaranteed that there would be at least one record (the
+ * last commit) once the table is onboarded.
+ *
+ * <p>For example, consider the following sequence of commit operations:
+ *
+ * <ol>
+ *   <li>commit(v1). Then database has [v1]
+ *   <li>commit(v2). Then database has [v1, v2]
+ *   <li>commit(v3). Then database has [v1, v2, v3]
+ *   <li>backfill(v1). Then database has [v2, v3]. Any version <= v1 is removed.
+ *   <li>commit(v4) & backfill(v3). Then database has [v4]. Any version <= v3 is removed.
+ *   <li>commit (v5). Then database has [v4, v5]
+ *   <li>backfill(v5). Then database has [v5(is_backfilled_latest_commit=true)]. v4 is removed. But
+ *       v5 has to be kept as the last record in database.
+ *   <li>commit(v6). Then database has [v5(is_backfilled_latest_commit=true), v6]
+ * </ol>
+ */
 public class DeltaCommitRepository {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(DeltaCommitRepository.class);
 
   /**
-   * The maximum number of commits allowed per table before backfilling is required. TODO: turn this
-   * into a configurable server property.
-   */
-  private static final int MAX_NUM_COMMITS_PER_TABLE = 50;
-
-  /**
-   * The batch size limit for delete operations. Set larger than MAX_NUM_COMMITS_PER_TABLE to handle
-   * cases where tables exceed the maximum allowed commits. TODO: turn this into a configurable
+   * The maximum number of unbackfilled commits allowed per table before backfilling is required. In
+   * real life unbackfilled commits per table should remain 1 or 2 almost all the time as the client
+   * should implement proactive backfilling right after committing a version. This limit exist as a
+   * safety measure just in case there's a problem in client implementation, or the table is being
+   * committed heavily by different clients in rare cases. TODO: turn this into a configurable
    * server property.
    */
-  private static final int NUM_COMMITS_PER_BATCH = 100;
+  private static final int MAX_NUM_COMMITS_PER_TABLE = 10;
+
+  /**
+   * The batch size limit for commit delete and select operations. This limit is set to be larger
+   * than MAX_NUM_COMMITS_PER_TABLE so that it should never hit this limit at all. But it serves the
+   * purpose of another safety measure to avoid a huge query execution IF both the server and client
+   * are not implemented correct and commits per table grow unbounded. TODO: turn this into a
+   * configurable server property.
+   */
+  private static final int NUM_COMMITS_PER_BATCH = 20;
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
@@ -59,7 +87,24 @@ public class DeltaCommitRepository {
     this.serverProperties = serverProperties;
   }
 
-  /** Commits a new version to a managed Delta table with coordinated commit semantics. */
+  /**
+   * Commits a new version to a managed Delta table with coordinated commit semantics.
+   *
+   * <p>This method handles three types of commit operations:
+   *
+   * <ul>
+   *   <li><b>Onboarding commit:</b> The first commit sent to Unity Catalog for this table
+   *   <li><b>Normal commit:</b> A new version commit with optional backfill notification
+   *   <li><b>Backfill-only commit:</b> No new version, only reports backfilled versions
+   * </ul>
+   *
+   * <p>The method validates the commit, ensures the table is a managed Delta table, and performs
+   * the appropriate commit operation within a transaction.
+   *
+   * @param commit the commit request containing version info, metadata, and backfill information
+   * @throws BaseException if the commit is invalid, table is not found, or commit limits are
+   *     exceeded
+   */
   public void postCommit(DeltaCommit commit) {
     serverProperties.checkManagedTableEnabled();
     validateCommit(commit);
@@ -76,9 +121,9 @@ public class DeltaCommitRepository {
           if (firstAndLastCommits.isEmpty()) {
             handleOnboardingCommit(session, tableId, tableInfoDAO, commit);
           } else {
-            DeltaCommitDAO firstCommit = firstAndLastCommits.get(0);
-            DeltaCommitDAO lastCommit = firstAndLastCommits.get(1);
-            assert firstCommit.getCommitVersion() <= lastCommit.getCommitVersion();
+            DeltaCommitDAO firstCommitDAO = firstAndLastCommits.get(0);
+            DeltaCommitDAO lastCommitDAO = firstAndLastCommits.get(1);
+            assert firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion();
             if (commit.getCommitInfo() == null) {
               // This is already checked in validateCommit()
               assert commit.getLatestBackfilledVersion() != null;
@@ -86,10 +131,11 @@ public class DeltaCommitRepository {
                   session,
                   tableId,
                   commit.getLatestBackfilledVersion(),
-                  firstCommit.getCommitVersion(),
-                  lastCommit.getCommitVersion());
+                  firstCommitDAO.getCommitVersion(),
+                  lastCommitDAO.getCommitVersion());
             } else {
-              handleNormalCommit(session, tableId, tableInfoDAO, commit, firstCommit, lastCommit);
+              handleNormalCommit(
+                  session, tableId, tableInfoDAO, commit, firstCommitDAO, lastCommitDAO);
             }
           }
           return null;
@@ -99,11 +145,20 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Handle an onboarding commit which is the very first commit sent to UC, and it's commiting a
-   * version. This commit does not do backfill because there is no version prior to this commit.
-   * This may be the first ever commit of the table since creation, or that the previous commits
-   * were just FS commits. In any way, the table will use UC as commit coordinator starting from
-   * this commit.
+   * Handles an onboarding commit, which is the very first commit sent to Unity Catalog for a table.
+   *
+   * <p>An onboarding commit must include commit information (version, timestamp, file details) but
+   * does not perform backfilling since there are no prior Unity Catalog-managed versions. This may
+   * be the first commit since table creation, or the table may have had previous filesystem-only
+   * commits. After this commit, Unity Catalog becomes the commit coordinator for the table.
+   *
+   * <p>The method saves the commit and optionally updates table metadata if provided.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table being committed to
+   * @param tableInfoDAO the table information data access object
+   * @param commit the commit request containing version info and optional metadata
+   * @throws BaseException if the commit info is null
    */
   private static void handleOnboardingCommit(
       Session session, UUID tableId, TableInfoDAO tableInfoDAO, DeltaCommit commit) {
@@ -118,8 +173,18 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Handles a commit request that only performs backfilling without adding a new commit. This
-   * validates the backfill version and delegates to the backfill logic.
+   * Handles a commit request that only performs backfilling without adding a new commit version.
+   *
+   * <p>This method is called when a commit request has no commit info but specifies a backfilled
+   * version. It validates that the backfilled version is not greater than the last committed
+   * version, then delegates to the backfill logic to remove old commits from the repository.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @param latestBackfilledVersion the version up to which backfilling has already been performed
+   * @param firstCommitVersion the version number of the first commit currently in the database
+   * @param lastCommitVersion the version number of the last commit currently in the database
+   * @throws BaseException if the backfilled version is greater than the last commit version
    */
   private static void handleBackfillOnlyCommit(
       Session session,
@@ -144,19 +209,43 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Handle a normal commit which is commiting a version, and it's not the first version sent to UC.
-   * Optionally in the same commit it may also report backfilled version and/or update metadata.
+   * Handles a normal commit operation that adds a new version to the table.
+   *
+   * <p>A normal commit is any commit after the initial onboarding commit. It must include commit
+   * info and may optionally:
+   *
+   * <ul>
+   *   <li>Report backfilled versions to trigger cleanup of old commits
+   *   <li>Update table metadata (schema, properties, description)
+   * </ul>
+   *
+   * <p>The method validates that:
+   *
+   * <ul>
+   *   <li>The new version is greater than the current version
+   *   <li>The new version is exactly the next version (no gaps)
+   *   <li>The backfilled version (if provided) is valid
+   *   <li>Adding the new commit won't exceed the maximum commits per table limit
+   * </ul>
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @param tableInfoDAO the table information data access object
+   * @param commit the commit request containing version info, optional backfill, and metadata
+   * @param firstCommitDAO the first commit already in the database
+   * @param lastCommitDAO the last commit already in the database
+   * @throws BaseException if the commit version is invalid, already exists, or violates constraints
    */
   private static void handleNormalCommit(
       Session session,
       UUID tableId,
       TableInfoDAO tableInfoDAO,
       DeltaCommit commit,
-      DeltaCommitDAO firstCommit,
-      DeltaCommitDAO lastCommit) {
+      DeltaCommitDAO firstCommitDAO,
+      DeltaCommitDAO lastCommitDAO) {
     DeltaCommitInfo commitInfo = Objects.requireNonNull(commit.getCommitInfo());
-    long firstCommitVersion = firstCommit.getCommitVersion();
-    long lastCommitVersion = lastCommit.getCommitVersion();
+    long firstCommitVersion = firstCommitDAO.getCommitVersion();
+    long lastCommitVersion = lastCommitDAO.getCommitVersion();
     long newCommitVersion = commitInfo.getVersion();
     if (newCommitVersion <= lastCommitVersion) {
       throw new BaseException(
@@ -181,9 +270,8 @@ public class DeltaCommitRepository {
               "Latest backfilled version %d cannot be greater than the last commit version = %d",
               latestBackfilledVersion.get(), lastCommitVersion));
     }
-    long effectiveBackfilledVersion =
-        getEffectiveBackfilledVersion(tableId, latestBackfilledVersion, firstCommit, lastCommit);
-    checkCommitLimit(tableId, effectiveBackfilledVersion, newCommitVersion);
+    checkCommitLimit(
+        tableId, newCommitVersion, latestBackfilledVersion, firstCommitDAO, lastCommitDAO);
     saveCommit(session, tableId, commitInfo);
     Optional.ofNullable(commit.getMetadata())
         .ifPresent(metadata -> updateTableMetadata(session, tableId, tableInfoDAO, metadata));
@@ -210,51 +298,72 @@ public class DeltaCommitRepository {
    *   <li>If the first commit is marked as backfilled, use its version
    *   <li>Otherwise, nothing is backfilled yet (returns firstCommitVersion - 1)
    * </ul>
+   *
+   * @param tableId the unique identifier of the table (used for logging)
+   * @param latestBackfilledVersion optional backfilled version specified in the commit request
+   * @param firstCommitDAO the first commit currently in the database with the lowest version
+   * @param lastCommitDAO the last commit currently in the database with the highest version
+   * @return the effective backfilled version after the commit operation completes
    */
   private static long getEffectiveBackfilledVersion(
       UUID tableId,
       Optional<Long> latestBackfilledVersion,
-      DeltaCommitDAO firstCommit,
-      DeltaCommitDAO lastCommit) {
-    if (lastCommit.getIsBackfilledLatestCommit()) {
+      DeltaCommitDAO firstCommitDAO,
+      DeltaCommitDAO lastCommitDAO) {
+    if (lastCommitDAO.isBackfilledLatestCommit()) {
       // There should only be ONE commit if the last one is marked as backfilled which is the
       // special case.
-      if (!Objects.equals(firstCommit.getCommitVersion(), lastCommit.getCommitVersion())) {
+      if (firstCommitDAO.getCommitVersion() != lastCommitDAO.getCommitVersion()) {
         // This means a bug in this implementation, but recoverable.
         LOGGER.error(
             "Table: {}. Latest commit is marked backfilled but there are {} commits.",
             tableId,
-            lastCommit.getCommitVersion() - firstCommit.getCommitVersion() + 1);
+            lastCommitDAO.getCommitVersion() - firstCommitDAO.getCommitVersion() + 1);
       }
       // In this case:
       // 1. If the request wants to commit a newer version, it cannot possibly backfill the same
       // newer version in the same request. So the last backfilled version remains the same.
       // 2. If by any means the request still wants to report backfilled version in this request,
       // it must be <= lastCommit. So it's the same result.
-      return lastCommit.getCommitVersion();
+      return lastCommitDAO.getCommitVersion();
     } else if (latestBackfilledVersion
-        .filter(x -> x >= firstCommit.getCommitVersion())
+        .filter(x -> x >= firstCommitDAO.getCommitVersion())
         .isPresent()) {
       // The commit request reports a valid backfilled version. We'll take that.
       return latestBackfilledVersion.get();
-    } else if (firstCommit.getIsBackfilledLatestCommit()) {
+    } else if (firstCommitDAO.isBackfilledLatestCommit()) {
       // The firstCommit is already backfilled. It remains only because it was the only commit
       // left when being backfilled.
-      return firstCommit.getCommitVersion();
+      return firstCommitDAO.getCommitVersion();
     } else {
       // Otherwise, nothing in [first, last] is/will be backfilled.
-      return firstCommit.getCommitVersion() - 1L;
+      return firstCommitDAO.getCommitVersion() - 1L;
     }
   }
 
   /**
    * Validates that adding the new commit will not exceed the maximum number of commits allowed per
    * table after the commit (and backfill if any) is finished.
+   *
+   * @param tableId the unique identifier of the table
+   * @param newCommitVersion the version number of the new commit being added
+   * @param latestBackfilledVersion optional backfilled version specified in the commit request
+   * @param firstCommitDAO the first commit currently in the database with the lowest version
+   * @param lastCommitDAO the last commit currently in the database with the highest version
+   * @throws BaseException if the commit would exceed the maximum commits per table limit
    */
   private static void checkCommitLimit(
-      UUID tableId, long effectiveBackfilledVersion, long newCommitVersion) {
-    long expectedFirstCommitAfterBackfill = effectiveBackfilledVersion + 1L;
-    long expectedCommitCountPostCommit = newCommitVersion - expectedFirstCommitAfterBackfill + 1L;
+      UUID tableId,
+      long newCommitVersion,
+      Optional<Long> latestBackfilledVersion,
+      DeltaCommitDAO firstCommitDAO,
+      DeltaCommitDAO lastCommitDAO) {
+    long effectiveBackfilledVersion =
+        getEffectiveBackfilledVersion(
+            tableId, latestBackfilledVersion, firstCommitDAO, lastCommitDAO);
+    long expectedFirstCommitVersionAfterBackfill = effectiveBackfilledVersion + 1L;
+    long expectedCommitCountPostCommit =
+        newCommitVersion - expectedFirstCommitVersionAfterBackfill + 1L;
     if (expectedCommitCountPostCommit > MAX_NUM_COMMITS_PER_TABLE) {
       throw new BaseException(
           ErrorCode.RESOURCE_EXHAUSTED, "Max number of commits per table reached: " + tableId);
@@ -271,6 +380,16 @@ public class DeltaCommitRepository {
    *
    * <p>This method performs deletions in batches and retries up to 5 times if not all commits are
    * deleted, logging errors for investigation.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @param latestBackfilledVersion the version up to which backfilling should be performed
+   * @param firstCommitVersion the version number of the first commit currently in the database with
+   *     the lowest version number
+   * @param lastCommitVersion the version number of the last commit currently in the database with
+   *     the highest version number
+   * @param newCommitVersion optional new commit version being added (empty for backfill-only
+   *     requests)
    */
   private static void backfillCommits(
       Session session,
@@ -320,12 +439,33 @@ public class DeltaCommitRepository {
     }
   }
 
+  /**
+   * Persists a new commit record to the database.
+   *
+   * <p>Converts the commit info into a data access object and saves it to the commit repository.
+   * This record includes the version number, timestamp, and file metadata for the commit.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @param commitInfo the commit information containing version, timestamp, and file details
+   */
   private static void saveCommit(Session session, UUID tableId, DeltaCommitInfo commitInfo) {
     DeltaCommitDAO deltaCommitDAO = DeltaCommitDAO.from(tableId, commitInfo);
     session.persist(deltaCommitDAO);
   }
 
-  /** Deletes commits up to and including the specified version. */
+  /**
+   * Deletes commits up to and including the specified version.
+   *
+   * <p>This method executes a batch delete operation limited by {@code NUM_COMMITS_PER_BATCH}. If
+   * more commits need to be deleted than the batch size, this method should be called multiple
+   * times.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @param upToCommitVersion the version number up to which commits should be deleted (inclusive)
+   * @return the number of commits actually deleted in this batch
+   */
   private static int deleteCommitsUpTo(Session session, UUID tableId, long upToCommitVersion) {
     NativeQuery<?> query =
         session.createNativeQuery(
@@ -336,7 +476,17 @@ public class DeltaCommitRepository {
     return query.executeUpdate();
   }
 
-  /** Deletes commits for the specified table. */
+  /**
+   * Deletes commits for the specified table in a single batch.
+   *
+   * <p>Unlike {@link #deleteCommitsUpTo(Session, UUID, long)}, this method deletes any commits for
+   * the table without version filtering. The operation is limited by {@code NUM_COMMITS_PER_BATCH}.
+   * Used primarily during table deletion to purge all commit history.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @return the number of commits actually deleted in this batch
+   */
   private static int deleteCommits(Session session, UUID tableId) {
     NativeQuery<?> query =
         session.createNativeQuery(
@@ -349,6 +499,10 @@ public class DeltaCommitRepository {
   /**
    * Marks a specific commit as the latest backfilled commit. This is used when a backfill-only
    * request backfills up to and including the last existing commit, which must be preserved.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @param commitVersion the version number of the commit to mark as backfilled
    */
   private static void markCommitAsLatestBackfilled(
       Session session, UUID tableId, long commitVersion) {
@@ -362,9 +516,29 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Returns the first and last commits as a list like: [firstCommit, lastCommit]. If there's no
-   * commit for this table, it returns an empty list. If there's only one commit for this table, it
-   * returns that only commit twice: [onlyCommit, onlyCommit].
+   * Retrieves the first and last commits in database for a table ordered by version number.
+   *
+   * <p>The first commit is the commit in database with the lowest version number.
+   *
+   * <p>The last commit is the commit in database with the highest version number.
+   *
+   * <p>They may or may not be marked as backfilled already. But this function never count any of
+   * the commits that are deleted by backfillCommits() since they are no longer in database.
+   *
+   * <p>Uses a UNION ALL query to efficiently fetch both boundary commits in a single database
+   * operation. The results are sorted to ensure consistent ordering.
+   *
+   * <p>Return value interpretation:
+   *
+   * <ul>
+   *   <li>Empty list: no commits exist for this table
+   *   <li>List with two identical commits: only one commit exists (returned twice for consistency)
+   *   <li>List with two different commits: [firstCommit, lastCommit] by version number
+   * </ul>
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @return a list containing the first and last commits, empty if no commits exist
    */
   private List<DeltaCommitDAO> getFirstAndLastCommits(Session session, UUID tableId) {
     // Use native SQL to get the first and last commits since HQL doesn't support UNION ALL.
@@ -395,6 +569,11 @@ public class DeltaCommitRepository {
    * </ul>
    *
    * <p>The table's updated_at and updated_by fields are also refreshed.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @param tableInfoDAO the table information data access object to update
+   * @param metadata the metadata containing properties, schema, and/or description updates
    */
   private static void updateTableMetadata(
       Session session, UUID tableId, TableInfoDAO tableInfoDAO, DeltaMetadata metadata) {
@@ -430,6 +609,25 @@ public class DeltaCommitRepository {
     session.merge(tableInfoDAO);
   }
 
+  /**
+   * Validates the structure and content of a commit request.
+   *
+   * <p>This method performs comprehensive validation including:
+   *
+   * <ul>
+   *   <li>Table ID and URI must be non-null and non-empty
+   *   <li>If commit info is present: validates version, timestamp, file name, file size, and file
+   *       modification timestamp are positive/non-empty
+   *   <li>If metadata is present: ensures at least one of description, properties, or schema is set
+   *   <li>If metadata properties are present: validates that ucTableId matches the commit's table
+   *       ID
+   *   <li>If commit info is absent: ensures this is a valid backfill-only commit with backfilled
+   *       version set
+   * </ul>
+   *
+   * @param commit the commit request to validate
+   * @throws BaseException if any validation rule is violated
+   */
   private static void validateCommit(DeltaCommit commit) {
     // Validate the commit object
     ValidationUtils.checkArgument(
@@ -516,21 +714,46 @@ public class DeltaCommitRepository {
     }
   }
 
+  /**
+   * Validates that a table is eligible for Delta commits.
+   *
+   * <p>For a table to support Delta commits, it must:
+   *
+   * <ul>
+   *   <li>Be a managed table (not external)
+   *   <li>Use the Delta data source format
+   *   <li>Have a valid URI/URL defined
+   * </ul>
+   *
+   * @param tableInfoDAO the table information data access object to validate
+   * @throws BaseException if the table doesn't meet requirements for Delta commits
+   */
   private static void validateTable(TableInfoDAO tableInfoDAO) {
     ValidationUtils.checkArgument(
         tableInfoDAO.getType() != null
             && tableInfoDAO.getType().equals(TableType.MANAGED.toString()),
-        "Only managed tables are supported for coordinated commits");
+        "Only managed tables are supported for Delta commits");
     ValidationUtils.checkArgument(
         tableInfoDAO.getDataSourceFormat() != null
             && tableInfoDAO.getDataSourceFormat().equals(DataSourceFormat.DELTA.toString()),
-        "Only delta tables are supported for coordinated commits");
+        "Only delta tables are supported for Delta commits");
     if (tableInfoDAO.getUrl() == null) {
       throw new BaseException(
           ErrorCode.DATA_LOSS, "Managed table doesn't have a URI: " + tableInfoDAO.getId());
     }
   }
 
+  /**
+   * Validates that a table is eligible for the commit and that the commit's table URI matches.
+   *
+   * <p>This method first validates the table meets all requirements for Delta commits, then ensures
+   * the table URI specified in the commit request matches the table's registered URI. URIs are
+   * standardized before comparison to handle format variations.
+   *
+   * @param commit the commit request containing the table URI
+   * @param tableInfoDAO the table information data access object
+   * @throws BaseException if validation fails or URIs don't match
+   */
   private static void validateTableForCommit(DeltaCommit commit, TableInfoDAO tableInfoDAO) {
     validateTable(tableInfoDAO);
     ValidationUtils.checkArgument(
@@ -544,6 +767,13 @@ public class DeltaCommitRepository {
   /**
    * Permanently deletes all commits associated with a table. This method is called when a table is
    * being deleted.
+   *
+   * <p>The method performs batch deletions with retries to handle tables that may have accumulated
+   * more commits than the normal limit. It logs errors if the deletion exceeds expected thresholds
+   * or fails to complete.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table whose commits should be deleted
    */
   public void permanentlyDeleteTableCommits(Session session, UUID tableId) {
     // In case some tables got more commits than allowed, we still want to purge the commits
