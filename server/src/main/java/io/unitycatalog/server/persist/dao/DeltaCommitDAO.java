@@ -1,6 +1,6 @@
 package io.unitycatalog.server.persist.dao;
 
-import io.unitycatalog.server.model.CommitInfo;
+import io.unitycatalog.server.model.DeltaCommitInfo;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -17,7 +17,7 @@ import org.hibernate.annotations.UuidGenerator;
 
 @Entity
 @Table(
-    name = "uc_commits",
+    name = "uc_delta_commits",
     uniqueConstraints = {@UniqueConstraint(columnNames = {"table_id", "commit_version"})})
 // Lombok
 @Getter
@@ -54,7 +54,7 @@ public class DeltaCommitDAO {
   @Column(name = "is_backfilled_latest_commit", nullable = false)
   private Boolean isBackfilledLatestCommit;
 
-  public static DeltaCommitDAO from(UUID tableId, CommitInfo commitInfo) {
+  public static DeltaCommitDAO from(UUID tableId, DeltaCommitInfo commitInfo) {
     return DeltaCommitDAO.builder()
         .tableId(tableId)
         .commitVersion(commitInfo.getVersion())

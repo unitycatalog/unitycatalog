@@ -103,7 +103,7 @@ public class SparkCredentialRenewalTest {
     // Every 100 seconds produce a row, because we don't want to produce massive small files.
     long rowCount = DURATION_SECONDS / 100 + (DURATION_SECONDS % 100 == 0 ? 0 : 1);
 
-    // Generate data for the delta source table.
+    // Generate data for the Delta source table.
     sql("INSERT INTO %s SELECT id, id FROM range(0, %s)", SRC_TABLE, rowCount);
 
     // Read from the Delta source table, mapping each partition to a separate task, and finally

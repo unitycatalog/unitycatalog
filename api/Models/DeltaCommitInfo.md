@@ -1,4 +1,4 @@
-# CommitInfo
+# DeltaCommitInfo
 ## Properties
 
 | Name | Type | Description | Notes |

@@ -170,13 +170,13 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     String location = String.format("s3://%s%s/fs", BUCKET_NAME, dataDir.getCanonicalPath());
     Path locPath = new Path(location);
 
-    // Create the external delta table in catalog.
+    // Create the external Delta table in catalog.
     sql("CREATE TABLE %s (id INT) USING delta LOCATION '%s'", TABLE_NAME, location);
 
     // Insert 1 row into the table.
     sql("INSERT INTO %s VALUES (1)", TABLE_NAME);
 
-    // Generate a table level hadoop configuration, with setting the delta table's all properties.
+    // Generate a table level hadoop configuration, with setting the Delta table's all properties.
     SerializableConfiguration serialConf =
         new SerializableConfiguration(
             DeltaTable.forName(session, TABLE_NAME).deltaLog().newDeltaHadoopConf());
