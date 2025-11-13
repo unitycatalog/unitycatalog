@@ -3,8 +3,8 @@ package io.unitycatalog.spark.auth;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.auth.oauth2.AccessToken;
 import com.google.cloud.hadoop.util.AccessTokenProvider;
-import com.google.cloud.hadoop.util.AccessTokenProvider.AccessToken;
 import io.delta.tables.DeltaTable;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
@@ -19,7 +19,9 @@ import io.unitycatalog.spark.UCSingleCatalog;
 import io.unitycatalog.spark.utils.Clock;
 import java.io.File;
 import java.net.URI;
+import java.sql.Date;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -54,7 +56,6 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
   private static final String TABLE_NAME = String.format("%s.%s.demo", CATALOG_NAME, SCHEMA_NAME);
   private static final String BUCKET_NAME = "test-bucket";
   private static final String GCS_SCHEME = "gs:";
-  private static final String GCS_TEST_TOKEN_PREFIX = "testing-renew://";
   // Default interval for credential renewal is 30 seconds. (issue a new credential every 30 seconds
   // for tests)
   private static final long DEFAULT_INTERVAL_MILLIS = 30_000L;
@@ -73,16 +74,16 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
   }
 
   /**
-   * Use the `testing-renew` prefix so the server emits clock-synchronized OAuth tokens. The clock
-   * name is embedded so server and Spark reference the same ManualClock instance. Bucket assignment
-   * ensures only the targeted test bucket receives these test-specific tokens.
+   * Configure the server to use the test-specific credential generator that issues time-bucketed
+   * tokens aligned with the manual clock. This matches the AWS renewal test approach.
    */
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.put("gcs.bucketPath.0", "gs://" + BUCKET_NAME);
+    serverProperties.put("gcs.jsonKeyFilePath.0", "");
     serverProperties.put(
-        "gcs.jsonKeyFilePath.0", GCS_TEST_TOKEN_PREFIX + CLOCK_NAME + "/" + BUCKET_NAME);
+        "gcs.credentialsGenerator.0", TestingRenewalCredentialsGenerator.class.getName());
   }
 
   /**
@@ -278,7 +279,8 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
       }
 
       AccessTokenProvider provider = accessProvider();
-      AccessToken token = provider.getAccessToken();
+      com.google.cloud.hadoop.util.AccessTokenProvider.AccessToken token =
+          provider.getAccessToken();
       assertThat(token).isNotNull();
       assertThat(token.getToken()).isNotNull();
       observedTokens.add(token.getToken());
@@ -318,6 +320,55 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
           throw new RuntimeException("Failed to initialize GCS token provider", e);
         }
       }
+    }
+  }
+
+  /**
+   * Returns a fixed, non-expiring access token for simple integration tests. This allows validating
+   * plumbing and downscoping without exercising refresh logic or service-account IO.
+   */
+  public static class StaticTestingCredentialsGenerator
+      implements io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor
+          .GcpCredentialsGenerator {
+    private final AccessToken staticToken;
+
+    public StaticTestingCredentialsGenerator() {
+      this.staticToken =
+          AccessToken.newBuilder()
+              .setTokenValue("testing://static-token")
+              .setExpirationTime(Date.from(Instant.ofEpochMilli(Long.MAX_VALUE)))
+              .build();
+    }
+
+    @Override
+    public AccessToken generate(
+        io.unitycatalog.server.service.credential.CredentialContext context) {
+      return staticToken;
+    }
+  }
+
+  /**
+   * Issues short-lived tokens whose expiration aligns with the shared manual clock. Each token
+   * encodes the active renewal window and bucket so tests can assert rotation frequency. This
+   * generator is dynamically loaded by the Unity Catalog server and serves credential generation
+   * requests from client REST API calls.
+   */
+  public static class TestingRenewalCredentialsGenerator
+      implements io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor
+          .GcpCredentialsGenerator {
+
+    @Override
+    public AccessToken generate(
+        io.unitycatalog.server.service.credential.CredentialContext context) {
+      long currentMillis = testClock().now().toEpochMilli();
+      long windowStart = currentMillis / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;
+      Instant expiration = Instant.ofEpochMilli(windowStart + DEFAULT_INTERVAL_MILLIS);
+      String tokenValue =
+          String.format("testing-renew://%s#%d", context.getStorageBase(), windowStart);
+      return AccessToken.newBuilder()
+          .setTokenValue(tokenValue)
+          .setExpirationTime(Date.from(expiration))
+          .build();
     }
   }
 }

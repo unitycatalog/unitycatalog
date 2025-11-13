@@ -114,14 +114,16 @@ public class CloudCredentialVendorTest {
 
   @Test
   public void testGenerateGcpTemporaryCredentials() {
-    // Test mode used
+    // Test mode using a custom generator (StaticTestingCredentialsGenerator from the test suite)
     when(serverProperties.getGcsConfigurations())
         .thenReturn(
             Map.of(
                 "gs://uctest",
                 GcsStorageConfig.builder()
                     .bucketPath("gs://uctest")
-                    .jsonKeyFilePath("testing://test")
+                    .jsonKeyFilePath("")
+                    .credentialsGenerator(
+                        "io.unitycatalog.spark.auth.GcsCredentialRenewalTest$StaticTestingCredentialsGenerator")
                     .build()));
     GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
@@ -130,7 +132,7 @@ public class CloudCredentialVendorTest {
             "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.UPDATE));
     assertThat(gcpTemporaryCredentials.getGcpOauthToken().getOauthToken()).isNotNull();
 
-    // Use default creds
+    // Use default creds (should fail without real GCP credentials)
     when(serverProperties.getGcsConfigurations())
         .thenReturn(
             Map.of(
