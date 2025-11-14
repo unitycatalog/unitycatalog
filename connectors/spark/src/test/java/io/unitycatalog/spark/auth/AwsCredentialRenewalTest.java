@@ -170,13 +170,13 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     String location = String.format("s3://%s%s/fs", BUCKET_NAME, dataDir.getCanonicalPath());
     Path locPath = new Path(location);
 
-    // Create the external delta table in catalog.
+    // Create the external Delta table in catalog.
     sql("CREATE TABLE %s (id INT) USING delta LOCATION '%s'", TABLE_NAME, location);
 
     // Insert 1 row into the table.
     sql("INSERT INTO %s VALUES (1)", TABLE_NAME);
 
-    // Generate a table level hadoop configuration, with setting the delta table's all properties.
+    // Generate a table level hadoop configuration, with setting the Delta table's all properties.
     SerializableConfiguration serialConf =
         new SerializableConfiguration(
             DeltaTable.forName(session, TABLE_NAME).deltaLog().newDeltaHadoopConf());
@@ -212,7 +212,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
                     assertThat(fs.renewalCount()).isEqualTo(refreshIndex);
 
                     // Advance the clock to trigger the renewal.
-                    testClock().advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
+                    testClock().sleep(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
 
                     // Post-check after the credential renewal.
                     fs.getFileStatus(locPath);
@@ -257,7 +257,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
             (MapPartitionsFunction<Row, Integer>)
                 input -> {
                   // Advance the clock to trigger the credential renewal.
-                  testClock().advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
+                  testClock().sleep(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
                   return Iterators.transform(input, row -> row.getInt(0));
                 },
             Encoders.INT())

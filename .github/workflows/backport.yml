@@ -1,19 +1,61 @@
+# How to use the Backport Action:
+#
+# Pre-merge: Add Labels
+# ----------------------
+# Before merging your PR, add backport labels in the format:
+#   - backport branch-0.3
+#   - backport branch-0.2
+#   - etc.
+# You can add multiple labels to backport to multiple branches.
+#
+# Post-merge: Automatic or Manual Trigger
+# ----------------------------------------
+# Automatic (recommended):
+#   - Once the PR is merged, the action runs automatically
+#   - Creates backport PRs for all branches specified in the labels
+#   - Each backport commit is signed-off with the original author's credentials
+#
+# Manual trigger (if needed):
+#   - Comment /backport on the merged PR
+#   - The action will process all backport labels on the PR
+#   - Useful if the automatic trigger failed or if you add labels after merging
+#
+# Result:
+#   - New PRs are created with title: [Backport {branch}] {original title}
+#   - Branches are named: backport-{pr-number}-to-{target-branch}
+#   - All commits include proper sign-off from the original author
+
 name: Backport merged pull request
 
 on:
   pull_request_target:
     types: [closed]
+  issue_comment:
+    types: [created]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write  # so it can comment
+  pull-requests: write  # so it can create pull requests
 
 jobs:
   backport:
     runs-on: ubuntu-latest
     name: Backport PR
-    # Only run if the PR was merged (not just closed)
-    if: github.event.pull_request.merged == true
+    # Only run when pull request is merged
+    # or when a comment starting with `/backport` is created by someone other than the
+    # https://github.com/backport-action bot user (user id: 97796249). Note that if you use your
+    # own PAT as `github_token`, that you should replace this id with yours.
+    # https://github.com/korthout/backport-action for more details.
+    if: >
+      (
+        github.event_name == 'pull_request_target' &&
+        github.event.pull_request.merged
+      ) || (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        github.event.comment.user.id != 97796249 &&
+        startsWith(github.event.comment.body, '/backport')
+      )
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

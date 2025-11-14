@@ -1,8 +1,8 @@
 package io.unitycatalog.spark.auth;
 
-import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME;
-import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_ACCOUNT_IS_HNS_ENABLED;
-import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
+import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME;
+import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_ACCOUNT_IS_HNS_ENABLED;
+import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
 
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
@@ -104,6 +104,21 @@ public class CredPropsUtil {
 
     @Override
     protected GcsPropsBuilder self() {
+      return this;
+    }
+  }
+
+  private static class AbfsPropsBuilder extends PropsBuilder<AbfsPropsBuilder> {
+
+    AbfsPropsBuilder() {
+      set(FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, "SAS");
+      set(FS_AZURE_ACCOUNT_IS_HNS_ENABLED, "true");
+      set("fs.abfs.impl.disable.cache", "true");
+      set("fs.abfss.impl.disable.cache", "true");
+    }
+
+    @Override
+    protected AbfsPropsBuilder self() {
       return this;
     }
   }
@@ -226,15 +241,57 @@ public class CredPropsUtil {
         .build();
   }
 
-  private static Map<String, String> abfsProps(TemporaryCredentials tempCreds) {
-    AzureUserDelegationSAS sas = tempCreds.getAzureUserDelegationSas();
-    return ImmutableMap.<String, String>builder()
-        .put(FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, "SAS")
-        .put(FS_AZURE_ACCOUNT_IS_HNS_ENABLED, "true")
-        .put(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName())
-        .put(AbfsVendedTokenProvider.ACCESS_TOKEN_KEY, sas.getSasToken())
-        .put("fs.abfs.impl.disable.cache", "true")
-        .put("fs.abfss.impl.disable.cache", "true")
+  private static Map<String, String> abfsFixedCredProps(TemporaryCredentials tempCreds) {
+    AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
+    return new AbfsPropsBuilder()
+        .set(AbfsVendedTokenProvider.ACCESS_TOKEN_KEY, azureSas.getSasToken())
+        .build();
+  }
+
+  private static AbfsPropsBuilder abfsTempCredPropsBuilder(
+      String uri,
+      String token,
+      TemporaryCredentials tempCreds) {
+    AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
+    AbfsPropsBuilder builder = new AbfsPropsBuilder()
+        .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName())
+        .uri(uri)
+        .token(token)
+        .uid(UUID.randomUUID().toString())
+        .set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
+
+    // For the static credential case, nullable expiration time is possible.
+    if (tempCreds.getExpirationTime() != null) {
+      builder.set(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
+          String.valueOf(tempCreds.getExpirationTime()));
+    }
+
+    return builder;
+  }
+
+  private static Map<String, String> abfsTableTempCredProps(
+      String uri,
+      String token,
+      String tableId,
+      TableOperation tableOp,
+      TemporaryCredentials tempCreds) {
+    return abfsTempCredPropsBuilder(uri, token, tempCreds)
+        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
+        .tableId(tableId)
+        .tableOperation(tableOp)
+        .build();
+  }
+
+  private static Map<String, String> abfsPathTempCredProps(
+      String uri,
+      String token,
+      String path,
+      PathOperation pathOp,
+      TemporaryCredentials tempCreds) {
+    return abfsTempCredPropsBuilder(uri, token, tempCreds)
+        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
+        .path(path)
+        .pathOperation(pathOp)
         .build();
   }
 
@@ -261,7 +318,11 @@ public class CredPropsUtil {
         }
       case "abfss":
       case "abfs":
-        return abfsProps(tempCreds);
+        if (renewCredEnabled) {
+          return abfsTableTempCredProps(uri, token, tableId, tableOp, tempCreds);
+        } else {
+          return abfsFixedCredProps(tempCreds);
+        }
       default:
         return ImmutableMap.of();
     }
@@ -290,7 +351,11 @@ public class CredPropsUtil {
         }
       case "abfss":
       case "abfs":
-        return abfsProps(tempCreds);
+        if (renewCredEnabled) {
+          return abfsPathTempCredProps(uri, token, path, pathOp, tempCreds);
+        } else {
+          return abfsFixedCredProps(tempCreds);
+        }
       default:
         return ImmutableMap.of();
     }
