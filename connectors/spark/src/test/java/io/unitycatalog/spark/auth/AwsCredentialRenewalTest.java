@@ -212,7 +212,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
                     assertThat(fs.renewalCount()).isEqualTo(refreshIndex);
 
                     // Advance the clock to trigger the renewal.
-                    testClock().advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
+                    testClock().sleep(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
 
                     // Post-check after the credential renewal.
                     fs.getFileStatus(locPath);
@@ -257,7 +257,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
             (MapPartitionsFunction<Row, Integer>)
                 input -> {
                   // Advance the clock to trigger the credential renewal.
-                  testClock().advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
+                  testClock().sleep(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
                   return Iterators.transform(input, row -> row.getInt(0));
                 },
             Encoders.INT())
