@@ -37,13 +37,13 @@ public class DeltaCommitDAO {
   private UUID tableId;
 
   @Column(name = "commit_version", nullable = false)
-  private Long commitVersion;
+  private long commitVersion;
 
   @Column(name = "commit_filename", nullable = false)
   private String commitFilename;
 
   @Column(name = "commit_filesize", nullable = false)
-  private Long commitFilesize;
+  private long commitFilesize;
 
   @Column(name = "commit_file_modification_timestamp", nullable = false)
   private Date commitFileModificationTimestamp;
@@ -52,7 +52,7 @@ public class DeltaCommitDAO {
   private Date commitTimestamp;
 
   @Column(name = "is_backfilled_latest_commit", nullable = false)
-  private Boolean isBackfilledLatestCommit;
+  private boolean isBackfilledLatestCommit;
 
   public static DeltaCommitDAO from(UUID tableId, DeltaCommitInfo commitInfo) {
     return DeltaCommitDAO.builder()

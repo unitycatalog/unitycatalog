@@ -116,6 +116,17 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
       TableType tableType,
       Optional<String> storageLocation,
       TableOperations tableOperations) {
+    return createTestingTable(
+        tableName, tableType, storageLocation, DataSourceFormat.DELTA, tableOperations);
+  }
+
+  @SneakyThrows
+  public static TableInfo createTestingTable(
+      String tableName,
+      TableType tableType,
+      Optional<String> storageLocation,
+      DataSourceFormat dataSourceFormat,
+      TableOperations tableOperations) {
     if (tableType == TableType.MANAGED) {
       assert storageLocation.isEmpty();
     } else {
@@ -132,7 +143,7 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
             .comment(TestUtils.COMMENT)
             .storageLocation(storageLocation.orElse(null))
             .tableType(tableType)
-            .dataSourceFormat(DataSourceFormat.DELTA);
+            .dataSourceFormat(dataSourceFormat);
 
     return tableOperations.createTable(createTableRequest);
   }
