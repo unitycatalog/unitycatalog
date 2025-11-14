@@ -253,7 +253,7 @@ public class TableCli {
           info.getStorageLocation(), info.getColumns(), temporaryCredentials);
     } catch (Exception e) {
       throw new CliException(
-          "Failed to write sample data to delta table " + info.getStorageLocation(), e);
+          "Failed to write sample data to Delta table " + info.getStorageLocation(), e);
     }
     return EMPTY;
   }
