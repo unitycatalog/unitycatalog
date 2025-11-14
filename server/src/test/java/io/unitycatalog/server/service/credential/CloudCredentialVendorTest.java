@@ -12,6 +12,8 @@ import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
+import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
+import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialsGenerator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.Set;
@@ -113,9 +115,16 @@ public class CloudCredentialVendorTest {
 
   @Test
   public void testGenerateGcpTemporaryCredentials() {
-    // Test mode used
+    // Test mode using a static generator supplied by the test suite
     when(serverProperties.getGcsConfigurations())
-        .thenReturn(Map.of("gs://uctest", "testing://test"));
+        .thenReturn(
+            Map.of(
+                "gs://uctest",
+                GcsStorageConfig.builder()
+                    .bucketPath("gs://uctest")
+                    .jsonKeyFilePath("")
+                    .credentialsGenerator(StaticTestingCredentialsGenerator.class.getName())
+                    .build()));
     GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
     TemporaryCredentials gcpTemporaryCredentials =
@@ -123,8 +132,10 @@ public class CloudCredentialVendorTest {
             "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.UPDATE));
     assertThat(gcpTemporaryCredentials.getGcpOauthToken().getOauthToken()).isNotNull();
 
-    // Use default creds
-    when(serverProperties.getGcsConfigurations()).thenReturn(Map.of("gs://uctest", ""));
+    // Use default creds (expected to fail without real GCP credentials)
+    when(serverProperties.getGcsConfigurations())
+        .thenReturn(
+            Map.of("gs://uctest", GcsStorageConfig.builder().bucketPath("gs://uctest").build()));
     gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
     assertThatThrownBy(
