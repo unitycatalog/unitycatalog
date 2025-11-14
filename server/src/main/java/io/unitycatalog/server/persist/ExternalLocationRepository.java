@@ -77,8 +77,9 @@ public class ExternalLocationRepository {
                 ErrorCode.INVALID_ARGUMENT,
                 "External location URL '"
                     + createExternalLocation.getUrl()
-                    + "' overlaps with existing external location, "
-                    + "make sure no other external location can contain or be contained in the new external location'");
+                    + "' overlaps with existing external location,"
+                    + " make sure no other external location can contain or"
+                    + " be contained in the new external location'");
           }
 
           CredentialDAO credentialDAO =
