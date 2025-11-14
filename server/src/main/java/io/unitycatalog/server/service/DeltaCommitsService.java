@@ -18,7 +18,7 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 
 /**
- * REST API service for coordinated commits to Delta tables in Unity Catalog.
+ * REST API service for Delta commits to Delta tables in Unity Catalog.
  */
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class DeltaCommitsService extends AuthorizedService {
