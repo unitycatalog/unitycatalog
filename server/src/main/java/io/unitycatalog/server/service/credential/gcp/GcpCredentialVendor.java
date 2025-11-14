@@ -15,6 +15,8 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.net.URI;
+import java.time.Instant;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +27,8 @@ public class GcpCredentialVendor {
 
   public static final List<String> INITIAL_SCOPES =
       List.of("https://www.googleapis.com/auth/cloud-platform");
+  private static final String TESTING_TOKEN_PREFIX = "testing://";
+  private static final long FAR_FUTURE_EXPIRATION_EPOCH_MILLIS = 253370790000000L;
 
   private final Map<String, GcsStorageConfig> gcsConfigurations;
   private final Map<String, GcpCredentialsGenerator> credentialGenerators =
@@ -60,6 +64,8 @@ public class GcpCredentialVendor {
     String jsonKeyFilePath = storageConfig != null ? storageConfig.getJsonKeyFilePath() : null;
     if (jsonKeyFilePath != null && jsonKeyFilePath.isEmpty()) {
       jsonKeyFilePath = null;
+    } else if (jsonKeyFilePath != null && jsonKeyFilePath.startsWith(TESTING_TOKEN_PREFIX)) {
+      return new TestingCredentialsGenerator(jsonKeyFilePath);
     }
 
     return new ServiceAccountCredentialsGenerator(jsonKeyFilePath);
@@ -142,6 +148,24 @@ public class GcpCredentialVendor {
       } catch (IOException e) {
         throw new BaseException(ErrorCode.FAILED_PRECONDITION, "GCS credentials not found.", e);
       }
+    }
+  }
+
+  private static final class TestingCredentialsGenerator implements GcpCredentialsGenerator {
+    private final AccessToken staticToken;
+
+    private TestingCredentialsGenerator(String tokenValue) {
+      Instant expirationInstant = Instant.ofEpochMilli(FAR_FUTURE_EXPIRATION_EPOCH_MILLIS);
+      this.staticToken =
+          AccessToken.newBuilder()
+              .setTokenValue(tokenValue)
+              .setExpirationTime(Date.from(expirationInstant))
+              .build();
+    }
+
+    @Override
+    public AccessToken generate(CredentialContext context) {
+      return staticToken;
     }
   }
 }

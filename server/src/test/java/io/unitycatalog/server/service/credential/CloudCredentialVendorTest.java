@@ -132,6 +132,24 @@ public class CloudCredentialVendorTest {
             "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.UPDATE));
     assertThat(gcpTemporaryCredentials.getGcpOauthToken().getOauthToken()).isNotNull();
 
+    // Testing shortcut using the legacy json key sentinel.
+    final String testingSentinel = "testing://sentinel";
+    when(serverProperties.getGcsConfigurations())
+        .thenReturn(
+            Map.of(
+                "gs://uctest",
+                GcsStorageConfig.builder()
+                    .bucketPath("gs://uctest")
+                    .jsonKeyFilePath(testingSentinel)
+                    .build()));
+    gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
+    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
+    TemporaryCredentials testingSentinelCredentials =
+        credentialsOperations.vendCredential(
+            "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.SELECT));
+    assertThat(testingSentinelCredentials.getGcpOauthToken().getOauthToken())
+        .isEqualTo(testingSentinel);
+
     // Use default creds (expected to fail without real GCP credentials)
     when(serverProperties.getGcsConfigurations())
         .thenReturn(
