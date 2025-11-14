@@ -12,6 +12,7 @@ public class TestOAuth {
   @Test
   public void testOAuth() {
     String serverUrl = System.getenv("UC_URI");
+    String token = System.getenv("UC_TOKEN");
     String oauthUri = System.getenv("OAUTH_URI");
     String oauthClientId = System.getenv("OAUTH_CLIENT_ID");
     String oauthClientSecret = System.getenv("OAUTH_CLIENT_SECRET");
@@ -26,7 +27,7 @@ public class TestOAuth {
         .config("spark.sql.shuffle.partitions", "1")
         .config("spark.sql.catalog.main", UCSingleCatalog.class.getName())
         .config("spark.sql.catalog.main.uri", serverUrl)
-        //        .config("spark.sql.catalog.main.token", oauthUri)
+        .config("spark.sql.catalog.main.token", token)
         .config("spark.sql.catalog.main.warehouse", "main")
         .config("spark.sql.catalog.main.renewCredential.enabled", "true")
         .config("spark.sql.catalog.main.oauth2-server-uri", oauthUri)
