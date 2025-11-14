@@ -14,6 +14,7 @@ import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
 import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialsGenerator;
+import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.Set;
@@ -141,6 +142,7 @@ public class CloudCredentialVendorTest {
                 GcsStorageConfig.builder()
                     .bucketPath("gs://uctest")
                     .jsonKeyFilePath(testingSentinel)
+                    .credentialsGenerator(TestingCredentialsGenerator.class.getName())
                     .build()));
     gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
@@ -161,5 +163,18 @@ public class CloudCredentialVendorTest {
                 credentialsOperations.vendCredential(
                     "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.UPDATE)))
         .isInstanceOf(BaseException.class);
+  }
+
+  @Test
+  public void testMissingGcpBucketConfigurationFails() {
+    when(serverProperties.getGcsConfigurations()).thenReturn(Map.of());
+    GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
+    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
+    assertThatThrownBy(
+            () ->
+                credentialsOperations.vendCredential(
+                    "gs://missing/abc", Set.of(CredentialContext.Privilege.UPDATE)))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Unknown GCS storage configuration");
   }
 }

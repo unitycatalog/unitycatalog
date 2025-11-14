@@ -15,8 +15,6 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.net.URI;
-import java.time.Instant;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,9 +25,6 @@ public class GcpCredentialVendor {
 
   public static final List<String> INITIAL_SCOPES =
       List.of("https://www.googleapis.com/auth/cloud-platform");
-  private static final String TESTING_TOKEN_PREFIX = "testing://";
-
-  private static final long TESTING_TOKEN_EXPIRATION_MILLIS = 253370790000000L;
   private final Map<String, GcsStorageConfig> gcsConfigurations;
   private final Map<String, GcpCredentialsGenerator> credentialGenerators =
       new ConcurrentHashMap<>();
@@ -42,30 +37,39 @@ public class GcpCredentialVendor {
     String storageBase = credentialContext.getStorageBase();
     GcsStorageConfig storageConfig = gcsConfigurations.get(storageBase);
 
+    if (storageConfig == null) {
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          format("Unknown GCS storage configuration for %s.", storageBase));
+    }
+
     GcpCredentialsGenerator generator =
         credentialGenerators.computeIfAbsent(storageBase, key -> createGenerator(storageConfig));
     return generator.generate(credentialContext);
   }
 
   private GcpCredentialsGenerator createGenerator(GcsStorageConfig storageConfig) {
-    if (storageConfig != null) {
-      String generatorClass = storageConfig.getCredentialsGenerator();
-      if (generatorClass != null && !generatorClass.isEmpty()) {
+    String generatorClass = storageConfig.getCredentialsGenerator();
+    if (generatorClass != null && !generatorClass.isEmpty()) {
+      try {
+        Class<? extends GcpCredentialsGenerator> generatorType =
+            Class.forName(generatorClass).asSubclass(GcpCredentialsGenerator.class);
         try {
-          return (GcpCredentialsGenerator)
-              Class.forName(generatorClass).getDeclaredConstructor().newInstance();
-        } catch (Exception e) {
-          throw new RuntimeException(
-              "Unable to instantiate GCS credentials generator " + generatorClass, e);
+          return generatorType
+              .getDeclaredConstructor(GcsStorageConfig.class)
+              .newInstance(storageConfig);
+        } catch (NoSuchMethodException e) {
+          return generatorType.getDeclaredConstructor().newInstance();
         }
+      } catch (Exception e) {
+        throw new RuntimeException(
+            "Unable to instantiate GCS credentials generator " + generatorClass, e);
       }
     }
 
-    String jsonKeyFilePath = storageConfig != null ? storageConfig.getJsonKeyFilePath() : null;
+    String jsonKeyFilePath = storageConfig.getJsonKeyFilePath();
     if (jsonKeyFilePath != null && jsonKeyFilePath.isEmpty()) {
       jsonKeyFilePath = null;
-    } else if (jsonKeyFilePath != null && jsonKeyFilePath.startsWith(TESTING_TOKEN_PREFIX)) {
-      return new TestingCredentialsGenerator(jsonKeyFilePath);
     }
 
     return new ServiceAccountCredentialsGenerator(jsonKeyFilePath);
@@ -148,24 +152,6 @@ public class GcpCredentialVendor {
       } catch (IOException e) {
         throw new BaseException(ErrorCode.FAILED_PRECONDITION, "GCS credentials not found.", e);
       }
-    }
-  }
-
-  private static final class TestingCredentialsGenerator implements GcpCredentialsGenerator {
-    private final AccessToken staticToken;
-
-    private TestingCredentialsGenerator(String tokenValue) {
-      Instant expirationInstant = Instant.ofEpochMilli(TESTING_TOKEN_EXPIRATION_MILLIS);
-      this.staticToken =
-          AccessToken.newBuilder()
-              .setTokenValue(tokenValue)
-              .setExpirationTime(Date.from(expirationInstant))
-              .build();
-    }
-
-    @Override
-    public AccessToken generate(CredentialContext context) {
-      return staticToken;
     }
   }
 }

@@ -17,7 +17,6 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.put("gcs.bucketPath.0", "gs://" + BUCKET_NAME);
-    serverProperties.put("gcs.jsonKeyFilePath.0", "");
     serverProperties.put("gcs.credentialsGenerator.0", CREDENTIALS_GENERATOR_CLASS);
   }
 
@@ -28,8 +27,7 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
 
   @Override
   protected Map<String, String> catalogExtraProps() {
-    return Map.of(
-        "fs.gs.impl", GcsCredFileSystem.class.getName(), "fs.gs.impl.disable.cache", "true");
+    return Map.of("fs.gs.impl", GcsCredFileSystem.class.getName());
   }
 
   public static class GcsCredGenerator extends TimeBasedCredGenerator<AccessToken>
@@ -56,8 +54,7 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
       assertThat(clazz).isEqualTo(GcsVendedTokenProvider.class.getName());
 
       try {
-        AccessTokenProvider provider =
-            (AccessTokenProvider) Class.forName(clazz).getDeclaredConstructor().newInstance();
+        AccessTokenProvider provider = new GcsVendedTokenProvider();
         provider.setConf(getConf());
         return provider;
       } catch (Exception e) {
