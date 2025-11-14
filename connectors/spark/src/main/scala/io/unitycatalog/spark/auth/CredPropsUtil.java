@@ -10,7 +10,6 @@ import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.spark.GcsVendedTokenProvider;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.util.Map;
 import java.util.UUID;
@@ -95,6 +94,20 @@ public class CredPropsUtil {
     }
   }
 
+  private static class GcsPropsBuilder extends PropsBuilder<GcsPropsBuilder> {
+
+    GcsPropsBuilder() {
+      // Common properties for GCS.
+      set("fs.gs.create.items.conflict.check.enable", "true");
+      set("fs.gs.impl.disable.cache", "true");
+    }
+
+    @Override
+    protected GcsPropsBuilder self() {
+      return this;
+    }
+  }
+
   private static Map<String, String> s3FixedCredProps(TemporaryCredentials tempCreds) {
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     return new S3PropsBuilder()
@@ -153,16 +166,63 @@ public class CredPropsUtil {
         .build();
   }
 
-  private static Map<String, String> gsProps(TemporaryCredentials tempCreds) {
+  private static Map<String, String> gsFixedCredProps(TemporaryCredentials tempCreds) {
     GcpOauthToken gcpOauthToken = tempCreds.getGcpOauthToken();
-    return ImmutableMap.<String, String>builder()
-        .put(GcsVendedTokenProvider.ACCESS_TOKEN_KEY, gcpOauthToken.getOauthToken())
-        .put(GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY,
-            String.valueOf(tempCreds.getExpirationTime()))
-        .put("fs.gs.create.items.conflict.check.enable", "false")
-        .put("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
-        .put("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName())
-        .put("fs.gs.impl.disable.cache", "true")
+    Long expirationTime = tempCreds.getExpirationTime() == null
+        ? Long.MAX_VALUE
+        : tempCreds.getExpirationTime();
+    return new GcsPropsBuilder()
+        .set(GcsVendedTokenProvider.ACCESS_TOKEN_KEY, gcpOauthToken.getOauthToken())
+        .set(GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY,
+            String.valueOf(expirationTime))
+        .build();
+  }
+
+  private static GcsPropsBuilder gcsTempCredPropsBuilder(
+      String uri,
+      String token,
+      TemporaryCredentials tempCreds) {
+    GcpOauthToken gcpToken = tempCreds.getGcpOauthToken();
+    GcsPropsBuilder builder = new GcsPropsBuilder()
+        .set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
+        .set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName())
+        .uri(uri)
+        .token(token)
+        .uid(UUID.randomUUID().toString())
+        .set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
+
+    // For the static credential case, nullable expiration time is possible.
+    if (tempCreds.getExpirationTime() != null) {
+      builder.set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
+          String.valueOf(tempCreds.getExpirationTime()));
+    }
+
+    return builder;
+  }
+
+  private static Map<String, String> gsTableTempCredProps(
+      String uri,
+      String token,
+      String tableId,
+      TableOperation tableOp,
+      TemporaryCredentials tempCreds) {
+    return gcsTempCredPropsBuilder(uri, token, tempCreds)
+        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
+        .tableId(tableId)
+        .tableOperation(tableOp)
+        .build();
+  }
+
+  private static Map<String, String> gsPathTempCredProps(
+      String uri,
+      String token,
+      String path,
+      PathOperation pathOp,
+      TemporaryCredentials tempCreds) {
+    return gcsTempCredPropsBuilder(uri, token, tempCreds)
+        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
+        .path(path)
+        .pathOperation(pathOp)
         .build();
   }
 
@@ -194,7 +254,11 @@ public class CredPropsUtil {
           return s3FixedCredProps(tempCreds);
         }
       case "gs":
-        return gsProps(tempCreds);
+        if (renewCredEnabled) {
+          return gsTableTempCredProps(uri, token, tableId, tableOp, tempCreds);
+        } else {
+          return gsFixedCredProps(tempCreds);
+        }
       case "abfss":
       case "abfs":
         return abfsProps(tempCreds);
@@ -219,7 +283,11 @@ public class CredPropsUtil {
           return s3FixedCredProps(tempCreds);
         }
       case "gs":
-        return gsProps(tempCreds);
+        if (renewCredEnabled) {
+          return gsPathTempCredProps(uri, token, path, pathOp, tempCreds);
+        } else {
+          return gsFixedCredProps(tempCreds);
+        }
       case "abfss":
       case "abfs":
         return abfsProps(tempCreds);
