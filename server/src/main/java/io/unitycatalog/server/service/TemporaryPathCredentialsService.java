@@ -28,7 +28,8 @@ public class TemporaryPathCredentialsService {
   }
 
   @Post("")
-  @AuthorizeExpression("#authorizeAny(#principal, #external_location, OWNER, EXTERNAL_USE_LOCATION)")
+  @AuthorizeExpression(
+      "#authorizeAny(#principal, #external_location, OWNER, EXTERNAL_USE_LOCATION)")
   public HttpResponse generateTemporaryPathCredential(
       @AuthorizeKey(value = EXTERNAL_LOCATION, key = "url")
           GenerateTemporaryPathCredential generateTemporaryPathCredential) {

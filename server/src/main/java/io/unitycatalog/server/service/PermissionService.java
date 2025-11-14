@@ -313,20 +313,19 @@ public class PermissionService {
 
   private UUID getResourceId(SecurableType securableType, String name) {
 
-    String resourceId =
-        switch (securableType) {
-          case METASTORE -> metastoreRepository.getMetastoreId().toString();
-          case CATALOG -> catalogRepository.getCatalog(name).getId();
-          case SCHEMA -> schemaRepository.getSchema(name).getSchemaId();
-          case TABLE -> tableRepository.getTable(name).getTableId();
-          case FUNCTION -> functionRepository.getFunction(name).getFunctionId();
-          case VOLUME -> volumeRepository.getVolume(name).getVolumeId();
-          case REGISTERED_MODEL -> modelRepository.getRegisteredModel(name).getId();
-          case EXTERNAL_LOCATION ->
-              externalLocationRepository.getExternalLocation(name).getExternalLocationId();
-          default ->
-              throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
-        };
+    String resourceId = switch (securableType) {
+      case METASTORE -> metastoreRepository.getMetastoreId().toString();
+      case CATALOG -> catalogRepository.getCatalog(name).getId();
+      case SCHEMA -> schemaRepository.getSchema(name).getSchemaId();
+      case TABLE -> tableRepository.getTable(name).getTableId();
+      case FUNCTION -> functionRepository.getFunction(name).getFunctionId();
+      case VOLUME -> volumeRepository.getVolume(name).getVolumeId();
+      case REGISTERED_MODEL -> modelRepository.getRegisteredModel(name).getId();
+      case EXTERNAL_LOCATION ->
+          externalLocationRepository.getExternalLocation(name).getExternalLocationId();
+      default ->
+          throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
+    };
 
     return UUID.fromString(Objects.requireNonNull(resourceId));
   }
