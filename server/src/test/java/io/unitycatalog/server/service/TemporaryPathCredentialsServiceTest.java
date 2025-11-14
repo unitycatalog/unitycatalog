@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
@@ -11,19 +12,23 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.auth.AuthToken;
-import io.unitycatalog.client.model.CreateCatalog;
-import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.CreateCredentialRequest;
+import io.unitycatalog.client.model.CreateExternalLocation;
+import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
-import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.base.credential.CredentialOperations;
+import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
-import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.sdk.externallocation.SdkExternalLocationOperations;
+import io.unitycatalog.server.sdk.storagecredential.SdkCredentialOperations;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.security.SecurityConfiguration;
@@ -39,210 +44,77 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.TestInstantiationException;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public class TemporaryPathCredentialsServiceTest extends BaseCRUDTestWithMockCredentials {
   private static final String ENDPOINT = "/api/2.1/unity-catalog/temporary-path-credentials";
-  private static final String TEST_CATALOG = "test_catalog";
-  private static final String TEST_SCHEMA = "test_schema";
   private static final String ROOT_PATH = "s3://test-bucket0";
-  private static final String ACCESS_DENIED_CATALOG = "access_denied_catalog";
-  private static final String ACCESS_DENIED_SCHEMA = "access_denied_schema";
+  private static final String CREDENTIAL_NAME = "test_credential";
+  private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
+  private static final String EXTERNAL_LOCATION_NAME = "test_ext_location";
+  private static final String EXTERNAL_LOCATION_URL = ROOT_PATH + "/external";
 
   private static final String ADMIN_USER = "admin";
-  private static final String SCHEMA_USER = "schema_user@test.com";
-  private static final String CATALOG_USER = "catalog_user@test.com";
+  private static final String AUTHORIZED_USER = "authorized@test.com";
+  private static final String DENIED_USER = "denied@test.com";
   protected SecurityConfiguration securityConfiguration;
   protected SecurityContext securityContext;
   private WebClient client;
-  private SchemaOperations schemaOperations;
-  private CatalogOperations catalogOperations;
+  private ExternalLocationOperations externalLocationOperations;
+  private CredentialOperations credentialOperations;
 
   private static Stream<Arguments> createPermissionsTestCases() {
     return Stream.of(
-        // Table path - admin user has OWNER privilege, should succeed for all operations
+        // metastore OWNER can have access to the external location because he is the owner of it
         Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
-            ADMIN_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_READ),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
-            ADMIN_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_READ_WRITE),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
+            EXTERNAL_LOCATION_URL + "/table",
             ADMIN_USER,
             HttpStatus.OK,
             PathOperation.PATH_CREATE_TABLE),
         Arguments.of(
-            ROOT_PATH + "/" + ACCESS_DENIED_CATALOG + "/" + ACCESS_DENIED_SCHEMA + "/table",
-            ADMIN_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_CREATE_TABLE),
-
-        // Schema path - schema user has USE_SCHEMA privilege, should succeed for CREATE_TABLE
+            EXTERNAL_LOCATION_URL + "/table", ADMIN_USER, HttpStatus.OK, PathOperation.PATH_READ),
         Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
-            SCHEMA_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_CREATE_TABLE),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/",
-            SCHEMA_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_CREATE_TABLE),
-
-        // Schema path - schema user is not OWNER, should fail for READ/READ_WRITE
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/",
-            SCHEMA_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/",
-            SCHEMA_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ_WRITE),
-
-        // Schema path - schema user lacks USE_SCHEMA privilege on ACCESS_DENIED_SCHEMA, should fail
-        // for CREATE_TABLE
-        Arguments.of(
-            ROOT_PATH + "/" + ACCESS_DENIED_CATALOG + "/" + ACCESS_DENIED_SCHEMA + "/table",
-            SCHEMA_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_CREATE_TABLE),
-
-        // Schema path - catalog user lacks USE_SCHEMA privilege, should fail for CREATE_TABLE
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
-            CATALOG_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_CREATE_TABLE),
-
-        // Catalog path - catalog user has USE_CATALOG privilege, should succeed for CREATE_TABLE
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG,
-            CATALOG_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_CREATE_TABLE),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG,
-            CATALOG_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG,
-            CATALOG_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ_WRITE),
-
-        // Catalog path - catalog user lacks USE_SCHEMA privilege on ACCESS_DENIED_SCHEMA, should
-        // fail for CREATE_TABLE
-        Arguments.of(
-            ROOT_PATH + "/" + ACCESS_DENIED_CATALOG + "/" + ACCESS_DENIED_SCHEMA + "/table",
-            CATALOG_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_CREATE_TABLE),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + ACCESS_DENIED_SCHEMA + "/table",
-            CATALOG_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_CREATE_TABLE),
-
-        // Schema path - schema user lacks USE_SCHEMA privilege, should fail for CREATE_TABLE
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + ACCESS_DENIED_SCHEMA + "/table",
-            SCHEMA_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_CREATE_TABLE),
-
-        // Catalog path - schema user has USE_CATALOG privilege, should succeed for CREATE_TABLE
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG,
-            SCHEMA_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_CREATE_TABLE),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG,
-            SCHEMA_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG,
-            SCHEMA_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ_WRITE),
-
-        // Base path (no catalog/schema) - only ADMIN should succeed
-        Arguments.of(ROOT_PATH, ADMIN_USER, HttpStatus.OK, PathOperation.PATH_CREATE_TABLE),
-        Arguments.of(ROOT_PATH, SCHEMA_USER, HttpStatus.FORBIDDEN, PathOperation.PATH_CREATE_TABLE),
-        Arguments.of(
-            ROOT_PATH, CATALOG_USER, HttpStatus.FORBIDDEN, PathOperation.PATH_CREATE_TABLE),
-
-        // Test all operations for ADMIN on ACCESS_DENIED_CATALOG (metastore owner access)
-        Arguments.of(
-            ROOT_PATH + "/" + ACCESS_DENIED_CATALOG + "/" + ACCESS_DENIED_SCHEMA + "/table",
-            ADMIN_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_READ),
-        Arguments.of(
-            ROOT_PATH + "/" + ACCESS_DENIED_CATALOG + "/" + ACCESS_DENIED_SCHEMA + "/table",
+            EXTERNAL_LOCATION_URL + "/table",
             ADMIN_USER,
             HttpStatus.OK,
             PathOperation.PATH_READ_WRITE),
 
-        // SCHEMA_USER should fail on PATH_READ/PATH_READ_WRITE on their schema
+        // user with EXTERNAL_USE_LOCATION privilege can access the external location
         Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
-            SCHEMA_USER,
+            EXTERNAL_LOCATION_URL + "/table",
+            AUTHORIZED_USER,
+            HttpStatus.OK,
+            PathOperation.PATH_CREATE_TABLE),
+        Arguments.of(
+            EXTERNAL_LOCATION_URL + "/table",
+            AUTHORIZED_USER,
+            HttpStatus.OK,
+            PathOperation.PATH_READ),
+        Arguments.of(
+            EXTERNAL_LOCATION_URL + "/table",
+            AUTHORIZED_USER,
+            HttpStatus.OK,
+            PathOperation.PATH_READ_WRITE),
+
+        // user without EXTERNAL_USE_LOCATION privilege cannot access the external location
+        Arguments.of(
+            EXTERNAL_LOCATION_URL + "/table",
+            DENIED_USER,
+            HttpStatus.FORBIDDEN,
+            PathOperation.PATH_CREATE_TABLE),
+        Arguments.of(
+            EXTERNAL_LOCATION_URL + "/table",
+            DENIED_USER,
             HttpStatus.FORBIDDEN,
             PathOperation.PATH_READ),
         Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
-            SCHEMA_USER,
+            EXTERNAL_LOCATION_URL + "/table",
+            DENIED_USER,
             HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ_WRITE),
-
-        // CATALOG_USER should fail on PATH_READ and PATH_READ_WRITE on catalog-level path
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG,
-            CATALOG_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ),
-        Arguments.of(
-            ROOT_PATH + "/" + TEST_CATALOG,
-            CATALOG_USER,
-            HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ_WRITE),
-
-        // Test with gcp
-        Arguments.of(
-            "gs://test-bucket0/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
-            SCHEMA_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_CREATE_TABLE),
-
-        // Test with abfs
-        Arguments.of(
-            "abfs://test-container@test-bucket0.dfs.core.windows.net/"
-                + TEST_CATALOG
-                + "/"
-                + TEST_SCHEMA
-                + "/table",
-            SCHEMA_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_CREATE_TABLE),
-
-        // Test with local path format
-        Arguments.of(
-            "file:/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
-            SCHEMA_USER,
-            HttpStatus.OK,
-            PathOperation.PATH_CREATE_TABLE));
+            PathOperation.PATH_READ_WRITE));
   }
 
   private static RequestHeaders createHeaders() {
@@ -266,27 +138,33 @@ public class TemporaryPathCredentialsServiceTest extends BaseCRUDTestWithMockCre
 
     switchUser(ADMIN_USER);
 
-    catalogOperations = createCatalogOperations(serverConfig);
-    schemaOperations = createSchemaOperations(serverConfig);
+    credentialOperations = createCredentialOperations(serverConfig);
+    externalLocationOperations = createExternalLocationOperations(serverConfig);
 
-    getOrCreateUser(SCHEMA_USER);
-    getOrCreateUser(CATALOG_USER);
+    getOrCreateUser(AUTHORIZED_USER);
+    getOrCreateUser(DENIED_USER);
 
-    catalogOperations.createCatalog(new CreateCatalog().name(ACCESS_DENIED_CATALOG));
-    schemaOperations.createSchema(
-        new CreateSchema().name(ACCESS_DENIED_SCHEMA).catalogName(ACCESS_DENIED_CATALOG));
-
-    catalogOperations.createCatalog(new CreateCatalog().name(TEST_CATALOG));
-    schemaOperations.createSchema(new CreateSchema().name(TEST_SCHEMA).catalogName(TEST_CATALOG));
+    credentialOperations.createCredential(
+        new CreateCredentialRequest()
+            .name(CREDENTIAL_NAME)
+            .purpose(CredentialPurpose.STORAGE)
+            .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN)));
+    externalLocationOperations.createExternalLocation(
+        new CreateExternalLocation()
+            .name(EXTERNAL_LOCATION_NAME)
+            .url(EXTERNAL_LOCATION_URL)
+            .credentialName(CREDENTIAL_NAME));
 
     grantPermissionViaApi(
-        SCHEMA_USER, TEST_CATALOG + "." + TEST_SCHEMA, "schema", Privileges.USE_SCHEMA);
-    grantPermissionViaApi(SCHEMA_USER, TEST_CATALOG, "catalog", Privileges.USE_CATALOG);
-    grantPermissionViaApi(CATALOG_USER, TEST_CATALOG, "catalog", Privileges.USE_CATALOG);
+        AUTHORIZED_USER,
+        EXTERNAL_LOCATION_NAME,
+        EXTERNAL_LOCATION,
+        Privileges.EXTERNAL_USE_LOCATION);
+  }
 
-    // Create another schema under TEST_CATALOG that users don't have explicit access to
-    schemaOperations.createSchema(
-        new CreateSchema().name(ACCESS_DENIED_SCHEMA).catalogName(TEST_CATALOG));
+  @Override
+  protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
+    return null;
   }
 
   @AfterEach
@@ -309,12 +187,12 @@ public class TemporaryPathCredentialsServiceTest extends BaseCRUDTestWithMockCre
     serverProperties.setProperty("server.authorization", "enable");
   }
 
-  protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
-    return new SdkCatalogOperations(TestUtils.createApiClient(serverConfig));
+  protected CredentialOperations createCredentialOperations(ServerConfig serverConfig) {
+    return new SdkCredentialOperations(TestUtils.createApiClient(serverConfig));
   }
 
-  protected SchemaOperations createSchemaOperations(ServerConfig serverConfig) {
-    return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
+  protected ExternalLocationOperations createExternalLocationOperations(ServerConfig serverConfig) {
+    return new SdkExternalLocationOperations(TestUtils.createApiClient(serverConfig));
   }
 
   @ParameterizedTest
@@ -342,7 +220,7 @@ public class TemporaryPathCredentialsServiceTest extends BaseCRUDTestWithMockCre
   }
 
   private void grantPermissionViaApi(
-      String principal, String fullName, String resourceType, Privileges addedPrivilege) {
+      String principal, String fullName, SecurableType resourceType, Privileges addedPrivilege) {
     String requestBody =
         String.format(
             "{\"changes\":[{\"principal\":\"%s\",\"add\":[\"%s\"]}]}",
@@ -350,11 +228,16 @@ public class TemporaryPathCredentialsServiceTest extends BaseCRUDTestWithMockCre
     RequestHeaders headers =
         RequestHeaders.builder()
             .method(HttpMethod.PATCH)
-            .path(String.format("/api/2.1/unity-catalog/permissions/%s/%s", resourceType, fullName))
+            .path(
+                String.format(
+                    "/api/2.1/unity-catalog/permissions/%s/%s", resourceType.getValue(), fullName))
             .contentType(MediaType.JSON)
             .build();
 
-    client.execute(headers, requestBody).aggregate().join();
+    AggregatedHttpResponse response = client.execute(headers, requestBody).aggregate().join();
+    if (response.status() != HttpStatus.OK) {
+        throw new TestInstantiationException("Error setting up permission: " + response.contentUtf8());
+    }
   }
 
   private void getOrCreateUser(String email) {

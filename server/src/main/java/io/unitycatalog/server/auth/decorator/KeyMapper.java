@@ -1,6 +1,7 @@
 package io.unitycatalog.server.auth.decorator;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.FUNCTION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
@@ -9,6 +10,7 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.ExternalLocationInfo;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.model.SchemaInfo;
@@ -16,6 +18,7 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.ExternalLocationRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.ModelRepository;
@@ -36,6 +39,7 @@ public class KeyMapper {
   private final FunctionRepository functionRepository;
   private final ModelRepository modelRepository;
   private final MetastoreRepository metastoreRepository;
+  private final ExternalLocationRepository externalLocationRepository;
 
   public KeyMapper(Repositories repositories) {
     this.catalogRepository = repositories.getCatalogRepository();
@@ -45,6 +49,7 @@ public class KeyMapper {
     this.functionRepository = repositories.getFunctionRepository();
     this.modelRepository = repositories.getModelRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
+    this.externalLocationRepository = repositories.getExternalLocationRepository();
   }
 
   public Map<SecurableType, Object> mapResourceKeys(Map<SecurableType, Object> resourceKeys) {
@@ -208,6 +213,17 @@ public class KeyMapper {
 
     if (resourceKeys.containsKey(METASTORE)) {
       resourceIds.put(METASTORE, metastoreRepository.getMetastoreId());
+    }
+
+    if (resourceKeys.containsKey(EXTERNAL_LOCATION)) {
+      String externalLocation = (String) resourceKeys.get(EXTERNAL_LOCATION);
+      // if the name contains a `/` then it's assumed to be the location path
+      ExternalLocationInfo externalLocationInfo =
+          externalLocation.contains("/")
+              ? externalLocationRepository.getExternalLocationByUrl(externalLocation)
+              : externalLocationRepository.getExternalLocation(externalLocation);
+      resourceIds.put(
+          EXTERNAL_LOCATION, UUID.fromString(externalLocationInfo.getExternalLocationId()));
     }
 
     return resourceIds;

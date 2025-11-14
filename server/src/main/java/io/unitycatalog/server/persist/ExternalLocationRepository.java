@@ -26,10 +26,10 @@ import org.slf4j.LoggerFactory;
 
 public class ExternalLocationRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(ExternalLocationRepository.class);
-  private final Repositories repositories;
-  private final SessionFactory sessionFactory;
   private static final PagedListingHelper<ExternalLocationDAO> LISTING_HELPER =
       new PagedListingHelper<>(ExternalLocationDAO.class);
+  private final Repositories repositories;
+  private final SessionFactory sessionFactory;
 
   public ExternalLocationRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.repositories = repositories;
@@ -70,6 +70,11 @@ public class ExternalLocationRepository {
                 "External location already exists: " + createExternalLocation.getName());
           }
 
+          if (getExternalLocationDAOMatchingUrl(session, createExternalLocation.getUrl()) != null) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "Cannot create external location inside another");
+          }
+
           CredentialDAO credentialDAO =
               validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
           UUID externalLocationId = UUID.randomUUID();
@@ -89,7 +94,7 @@ public class ExternalLocationRepository {
           return externalLocationDAO;
         },
         "Failed to add external location",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public ExternalLocationInfo getExternalLocation(String name) {
@@ -104,7 +109,23 @@ public class ExternalLocationRepository {
           return externalLocationDAO.toExternalLocationInfo();
         },
         "Failed to get external location",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
+  }
+
+  public ExternalLocationInfo getExternalLocationByUrl(String url) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          ExternalLocationDAO externalLocationDAO = getExternalLocationDAOMatchingUrl(session, url);
+          if (externalLocationDAO == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "External location not found for URL: " + url);
+          }
+          LOGGER.info("External location retrieved by URL: {}", externalLocationDAO.getName());
+          return externalLocationDAO.toExternalLocationInfo();
+        },
+        "Failed to get external location by URL",
+        /* readOnly= */ true);
   }
 
   protected ExternalLocationDAO getExternalLocationDAO(Session session, String name) {
@@ -116,14 +137,24 @@ public class ExternalLocationRepository {
     return query.uniqueResult();
   }
 
+  protected ExternalLocationDAO getExternalLocationDAOMatchingUrl(Session session, String url) {
+    Query<ExternalLocationDAO> query =
+        session.createQuery(
+            "FROM ExternalLocationDAO WHERE :value LIKE CONCAT(url, '%') ORDER BY LENGTH(url) DESC",
+            ExternalLocationDAO.class);
+    // remove trailing slash from the url if present
+    query.setParameter("value", url.endsWith("/") ? url.substring(0, url.length() - 1) : url);
+    query.setMaxResults(1);
+    return query.uniqueResult();
+  }
+
   public ListExternalLocationsResponse listExternalLocations(
       Optional<Integer> maxResults, Optional<String> pageToken) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           List<ExternalLocationDAO> daoList =
-              LISTING_HELPER.listEntity(
-                  session, maxResults, pageToken, /* parentEntityId = */ null);
+              LISTING_HELPER.listEntity(session, maxResults, pageToken, /* parentEntityId= */ null);
           String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
           List<ExternalLocationInfo> results = new ArrayList<>();
           for (ExternalLocationDAO dao : daoList) {
@@ -134,7 +165,7 @@ public class ExternalLocationRepository {
               .nextPageToken(nextPageToken);
         },
         "Failed to list external locations",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public ExternalLocationInfo updateExternalLocation(
@@ -179,7 +210,7 @@ public class ExternalLocationRepository {
           return existingLocation.toExternalLocationInfo();
         },
         "Failed to update external location",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public ExternalLocationDAO deleteExternalLocation(String name) {
@@ -195,6 +226,6 @@ public class ExternalLocationRepository {
           return existingLocation;
         },
         "Failed to delete external location",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 }
