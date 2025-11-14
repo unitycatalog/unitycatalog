@@ -9,7 +9,9 @@ import java.net.http.HttpRequest
 import org.apache.spark.internal.Logging
 
 import java.net.URLEncoder.encode
+import java.nio.charset.StandardCharsets
 import java.nio.charset.StandardCharsets.UTF_8
+import java.util.Base64
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -19,8 +21,8 @@ class OAuth2Exception(message: String, cause: Throwable) extends RuntimeExceptio
 
 class OAuth2CredentialExchangeProvider(
     oauth2ServerUri: String,
-    credential: String,
-    setToken: String => Unit)
+    oauth2ClientId: String,
+    oauth2ClientSecret: String)
     extends Logging {
 
   private val mapper = new ObjectMapper().registerModule(DefaultScalaModule)
@@ -31,8 +33,9 @@ class OAuth2CredentialExchangeProvider(
     .setPort(oauth2Url.getPort)
     .setScheme(oauth2Url.getScheme)
     .setBasePath(oauth2Url.getPath)
+  private var accessToken: String = null
 
-  private val (clientId, clientSecret) = getClientIdAndSecret(credential)
+  private val (clientId, clientSecret) = (oauth2ClientId, oauth2ClientSecret)
 
   {
     // Initial token fetch on start up. If it fails we will throw and not
@@ -60,19 +63,23 @@ class OAuth2CredentialExchangeProvider(
     (parts(0), parts(1))
   }
 
-  private def exchangeCredentialsForAccessToken(): Long = {
+  def exchangeCredentialsForAccessToken(): Long = {
     val requestParameters =
       Map(
         "grant_type" -> "client_credentials",
         "scope" -> "all-apis",
-        "client_id" -> clientId,
-        "client_secret" -> clientSecret
       )
 
+    logInfo(s"clientId: $clientId ---> clientSecret: $clientSecret")
+    logInfo(s"oauth2ServerUri: $oauth2ServerUri")
     val exchangeRequest = HttpRequest
       .newBuilder()
       .uri(URI.create(oauth2ServerUri))
       .header("Content-Type", "application/x-www-form-urlencoded")
+      .header(
+        "Authorization",
+        "Basic " + Base64.getEncoder.encodeToString(s"$clientId:$clientSecret".getBytes(StandardCharsets.UTF_8))
+      )
       .POST(HttpRequest.BodyPublishers.ofString(mapToUrlEncoded(requestParameters)))
       .build()
 
@@ -81,13 +88,15 @@ class OAuth2CredentialExchangeProvider(
       case response if response.statusCode() == 200 =>
         val body = response.body()
 
-        logDebug(s"OAuth2 response body: $body")
+        logInfo(s"OAuth2 response body: $body")
         val bodyJson: Map[String, Any] = mapper.readValue(body, classOf[Map[String, Any]])
 
         val token = bodyJson.get("access_token") match {
           case Some(t: String) => t
           case _ => throw new OAuth2Exception("Failed to parse access_token from OAuth2 response.")
         }
+
+        System.out.println("===> " + token)
 
         val expiresInSeconds = bodyJson.get("expires_in") match {
           case Some(e: Int) => e
@@ -96,7 +105,7 @@ class OAuth2CredentialExchangeProvider(
         }
 
         // We got a new token and expiration, update the caller.
-        setToken(token)
+        accessToken = token
 
         // Return when the token expires
         System.currentTimeMillis + expiresInSeconds * 1000L
@@ -106,6 +115,10 @@ class OAuth2CredentialExchangeProvider(
           s"Failed to obtain access token, status code: ${response.statusCode()}, body: ${response.body()}"
         )
     }
+  }
+
+  def getAccessToken: String = {
+    accessToken
   }
 
   private def MAX_REFRESH_WINDOW_MILLIS = 300000L // 5 minutes

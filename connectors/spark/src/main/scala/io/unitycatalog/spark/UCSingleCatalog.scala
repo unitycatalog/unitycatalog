@@ -50,15 +50,21 @@ class UCSingleCatalog
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
-    val oauth2ServerUri = options.get("oauth2-server-uri")
-    val credential = options.get("credential")
-    if (oauth2ServerUri != null && oauth2ServerUri.nonEmpty && credential != null && credential.nonEmpty) {
+    val oauth2ServerUri = options.get("oauthUri")
+    val oauth2ClientId = options.get("oauthClientId")
+    val oauth2ClientSecret = options.get("oauthClientSecret")
+    if (oauth2ServerUri != null && oauth2ServerUri.nonEmpty &&
+      oauth2ClientId != null && oauth2ClientId.nonEmpty &&
+      oauth2ClientSecret != null && oauth2ClientSecret.nonEmpty) {
       logInfo("Configuring OAuth2 credential exchange.")
       try {
-        oauth2Provider = new OAuth2CredentialExchangeProvider(oauth2ServerUri, credential, t => token = t)
+        oauth2Provider = new OAuth2CredentialExchangeProvider(
+          oauth2ServerUri, oauth2ClientId, oauth2ClientSecret)
+        oauth2Provider.exchangeCredentialsForAccessToken()
+        token = oauth2Provider.getAccessToken
       } catch {
         case e: OAuth2Exception =>
-          logError(e.getMessage)
+          logError(e.getMessage, e)
       }
     } else {
       token = options.get("token")

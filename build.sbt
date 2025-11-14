@@ -21,8 +21,8 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.16"
 
-lazy val deltaVersion = "4.0.0"
-lazy val sparkVersion = "4.0.0"
+lazy val deltaVersion = "4.0.1-SNAPSHOT"
+lazy val sparkVersion = "4.0.2-SNAPSHOT"
 lazy val hadoopVersion = "3.4.0"
 
 // Library versions
@@ -661,7 +661,7 @@ lazy val integrationTests = (project in file("integration-tests"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, pythonClient, server, cli, spark, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, spark, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
