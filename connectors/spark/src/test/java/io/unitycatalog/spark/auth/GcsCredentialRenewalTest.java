@@ -324,30 +324,6 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
   }
 
   /**
-   * Returns a fixed, non-expiring access token for simple integration tests. This allows validating
-   * plumbing and downscoping without exercising refresh logic or service-account IO.
-   */
-  public static class StaticTestingCredentialsGenerator
-      implements io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor
-          .GcpCredentialsGenerator {
-    private final AccessToken staticToken;
-
-    public StaticTestingCredentialsGenerator() {
-      this.staticToken =
-          AccessToken.newBuilder()
-              .setTokenValue("testing://static-token")
-              .setExpirationTime(Date.from(Instant.ofEpochMilli(Long.MAX_VALUE)))
-              .build();
-    }
-
-    @Override
-    public AccessToken generate(
-        io.unitycatalog.server.service.credential.CredentialContext context) {
-      return staticToken;
-    }
-  }
-
-  /**
    * Issues short-lived tokens whose expiration aligns with the shared manual clock. Each token
    * encodes the active renewal window and bucket so tests can assert rotation frequency. This
    * generator is dynamically loaded by the Unity Catalog server and serves credential generation

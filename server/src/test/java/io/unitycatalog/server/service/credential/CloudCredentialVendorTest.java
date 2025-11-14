@@ -123,7 +123,7 @@ public class CloudCredentialVendorTest {
                     .bucketPath("gs://uctest")
                     .jsonKeyFilePath("")
                     .credentialsGenerator(
-                        "io.unitycatalog.spark.auth.GcsCredentialRenewalTest$StaticTestingCredentialsGenerator")
+                        "io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialsGenerator")
                     .build()));
     GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
