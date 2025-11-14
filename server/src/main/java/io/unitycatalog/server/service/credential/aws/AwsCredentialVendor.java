@@ -19,10 +19,10 @@ public class AwsCredentialVendor {
 
   private CredentialsGenerator createCredentialsGenerator(S3StorageConfig config) {
     // Dynamically load and initialize the generator if it's intentionally configured.
-    if (config.getCredentialGenerator() != null) {
+    if (config.getCredentialsGenerator() != null) {
       try {
         return (CredentialsGenerator)
-            Class.forName(config.getCredentialGenerator()).getDeclaredConstructor().newInstance();
+            Class.forName(config.getCredentialsGenerator()).getDeclaredConstructor().newInstance();
       } catch (Exception e) {
         throw new RuntimeException(e);
       }

@@ -82,7 +82,7 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
-              .credentialGenerator(credentialsGenerator)
+              .credentialsGenerator(credentialsGenerator)
               .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;
@@ -112,11 +112,12 @@ public class ServerProperties {
 
     int i = 0;
     while (true) {
-      String storageAccountName = properties.getProperty("adls.storageAccountName." + i);
-      String tenantId = properties.getProperty("adls.tenantId." + i);
-      String clientId = properties.getProperty("adls.clientId." + i);
-      String clientSecret = properties.getProperty("adls.clientSecret." + i);
-      String testMode = properties.getProperty("adls.testMode." + i);
+      String storageAccountName = getProperty("adls.storageAccountName." + i);
+      String tenantId = getProperty("adls.tenantId." + i);
+      String clientId = getProperty("adls.clientId." + i);
+      String clientSecret = getProperty("adls.clientSecret." + i);
+      String testMode = getProperty("adls.testMode." + i);
+      String credentialsGenerator = getProperty("adls.credentialsGenerator." + i);
       if (storageAccountName == null
           || tenantId == null
           || clientId == null
@@ -131,6 +132,7 @@ public class ServerProperties {
               .clientId(clientId)
               .clientSecret(clientSecret)
               .testMode(testMode != null && testMode.equalsIgnoreCase("true"))
+              .credentialsGenerator(credentialsGenerator)
               .build());
       i++;
     }
