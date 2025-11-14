@@ -181,11 +181,19 @@ public class CredPropsUtil {
         .build();
   }
 
+  private static final long TESTING_TOKEN_EXPIRATION_MILLIS = 253370790000000L;
+
   private static Map<String, String> gsFixedCredProps(TemporaryCredentials tempCreds) {
     GcpOauthToken gcpOauthToken = tempCreds.getGcpOauthToken();
-    Long expirationTime = tempCreds.getExpirationTime() == null
-        ? Long.MAX_VALUE
-        : tempCreds.getExpirationTime();
+    Long expirationTime = tempCreds.getExpirationTime();
+    if (expirationTime == null) {
+      String tokenValue = gcpOauthToken != null ? gcpOauthToken.getOauthToken() : null;
+      if (tokenValue != null && tokenValue.startsWith("testing://")) {
+        expirationTime = TESTING_TOKEN_EXPIRATION_MILLIS;
+      } else {
+        expirationTime = Long.MAX_VALUE;
+      }
+    }
     return new GcsPropsBuilder()
         .set(GcsVendedTokenProvider.ACCESS_TOKEN_KEY, gcpOauthToken.getOauthToken())
         .set(GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY,
