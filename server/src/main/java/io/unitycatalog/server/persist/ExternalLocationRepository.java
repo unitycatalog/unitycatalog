@@ -79,7 +79,7 @@ public class ExternalLocationRepository {
                     + createExternalLocation.getUrl()
                     + "' overlaps with existing external location,"
                     + " make sure no other external location can contain or"
-                    + " be contained in the new external location'");
+                    + " be contained in the new external location");
           }
 
           CredentialDAO credentialDAO =
