@@ -44,7 +44,6 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.extension.TestInstantiationException;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -236,7 +235,7 @@ public class TemporaryPathCredentialsServiceTest extends BaseCRUDTestWithMockCre
 
     AggregatedHttpResponse response = client.execute(headers, requestBody).aggregate().join();
     if (response.status() != HttpStatus.OK) {
-        throw new TestInstantiationException("Error setting up permission: " + response.contentUtf8());
+      throw new IllegalStateException("Error setting up permission: " + response.contentUtf8());
     }
   }
 

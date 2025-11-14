@@ -70,9 +70,15 @@ public class ExternalLocationRepository {
                 "External location already exists: " + createExternalLocation.getName());
           }
 
-          if (getExternalLocationDAOMatchingUrl(session, createExternalLocation.getUrl()) != null) {
+          if (getExternalLocationDAOContainingUrl(session, createExternalLocation.getUrl()) != null
+              && getExternalLocationDAOContainedInUrl(session, createExternalLocation.getUrl())
+                  != null) {
             throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT, "Cannot create external location inside another");
+                ErrorCode.INVALID_ARGUMENT,
+                "External location URL '"
+                    + createExternalLocation.getUrl()
+                    + "' overlaps with existing external location, "
+                    + "make sure no other external location can contain or be contained in the new external location'");
           }
 
           CredentialDAO credentialDAO =
@@ -112,11 +118,12 @@ public class ExternalLocationRepository {
         /* readOnly= */ true);
   }
 
-  public ExternalLocationInfo getExternalLocationByUrl(String url) {
+  public ExternalLocationInfo getExternalLocationContainingUrl(String url) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          ExternalLocationDAO externalLocationDAO = getExternalLocationDAOMatchingUrl(session, url);
+          ExternalLocationDAO externalLocationDAO =
+              getExternalLocationDAOContainingUrl(session, url);
           if (externalLocationDAO == null) {
             throw new BaseException(
                 ErrorCode.NOT_FOUND, "External location not found for URL: " + url);
@@ -137,10 +144,21 @@ public class ExternalLocationRepository {
     return query.uniqueResult();
   }
 
-  protected ExternalLocationDAO getExternalLocationDAOMatchingUrl(Session session, String url) {
+  protected ExternalLocationDAO getExternalLocationDAOContainingUrl(Session session, String url) {
     Query<ExternalLocationDAO> query =
         session.createQuery(
             "FROM ExternalLocationDAO WHERE :value LIKE CONCAT(url, '%') ORDER BY LENGTH(url) DESC",
+            ExternalLocationDAO.class);
+    // remove trailing slash from the url if present
+    query.setParameter("value", url.endsWith("/") ? url.substring(0, url.length() - 1) : url);
+    query.setMaxResults(1);
+    return query.uniqueResult();
+  }
+
+  protected ExternalLocationDAO getExternalLocationDAOContainedInUrl(Session session, String url) {
+    Query<ExternalLocationDAO> query =
+        session.createQuery(
+            "FROM ExternalLocationDAO WHERE url LIKE CONCAT(:value, '%') ORDER BY LENGTH(url) ASC",
             ExternalLocationDAO.class);
     // remove trailing slash from the url if present
     query.setParameter("value", url.endsWith("/") ? url.substring(0, url.length() - 1) : url);

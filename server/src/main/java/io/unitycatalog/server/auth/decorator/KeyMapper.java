@@ -220,7 +220,7 @@ public class KeyMapper {
       // if the name contains a `/` then it's assumed to be the location path
       ExternalLocationInfo externalLocationInfo =
           externalLocation.contains("/")
-              ? externalLocationRepository.getExternalLocationByUrl(externalLocation)
+              ? externalLocationRepository.getExternalLocationContainingUrl(externalLocation)
               : externalLocationRepository.getExternalLocation(externalLocation);
       resourceIds.put(
           EXTERNAL_LOCATION, UUID.fromString(externalLocationInfo.getExternalLocationId()));
