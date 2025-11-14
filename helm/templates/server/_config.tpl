@@ -33,7 +33,9 @@ adls.clientSecret.{{ $index }}=${ADLS_CLIENT_SECRET_{{ $index }}}
 
 {{- range $index, $config := .Values.storage.credentials.gcs }}
 gcs.bucketPath.{{ $index }}={{ $config.bucketPath }}
+{{- if $config.credentialsSecretName }}
 gcs.jsonKeyFilePath.{{ $index }}=/etc/conf/gcs-credentials-{{ $index }}.json
+{{- end }}
 {{- end }}
 {{- end }}
 
