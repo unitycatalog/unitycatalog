@@ -55,10 +55,12 @@ class UCSingleCatalog
     if (oauth2ServerUri != null && oauth2ServerUri.nonEmpty && credential != null && credential.nonEmpty) {
       logInfo("Configuring OAuth2 credential exchange.")
       try {
-        oauth2Provider = new OAuth2CredentialExchangeProvider(oauth2ServerUri, credential, t => token = t)
+        oauth2Provider = new OAuth2CredentialExchangeProvider(oauth2ServerUri, credential)
+        oauth2Provider.exchangeCredentialsForAccessToken()
+        token = oauth2Provider.getAccessToken
       } catch {
         case e: OAuth2Exception =>
-          logError(e.getMessage)
+          logError(e.getMessage, e)
       }
     } else {
       token = options.get("token")
