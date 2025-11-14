@@ -29,8 +29,7 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
   @Override
   protected Map<String, String> catalogExtraProps() {
     return Map.of(
-        "fs.gs.impl", GcsCredFileSystem.class.getName(),
-        "fs.gs.impl.disable.cache", "true");
+        "fs.gs.impl", GcsCredFileSystem.class.getName(), "fs.gs.impl.disable.cache", "true");
   }
 
   public static class GcsCredGenerator extends TimeBasedCredGenerator<AccessToken>
