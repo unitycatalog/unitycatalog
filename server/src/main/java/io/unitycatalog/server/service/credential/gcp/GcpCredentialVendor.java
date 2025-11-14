@@ -28,7 +28,6 @@ public class GcpCredentialVendor {
   public static final List<String> INITIAL_SCOPES =
       List.of("https://www.googleapis.com/auth/cloud-platform");
   private static final String TESTING_TOKEN_PREFIX = "testing://";
-  private static final long FAR_FUTURE_EXPIRATION_EPOCH_MILLIS = 253370790000000L;
 
   private final Map<String, GcsStorageConfig> gcsConfigurations;
   private final Map<String, GcpCredentialsGenerator> credentialGenerators =
@@ -155,7 +154,7 @@ public class GcpCredentialVendor {
     private final AccessToken staticToken;
 
     private TestingCredentialsGenerator(String tokenValue) {
-      Instant expirationInstant = Instant.ofEpochMilli(FAR_FUTURE_EXPIRATION_EPOCH_MILLIS);
+      Instant expirationInstant = Instant.ofEpochMilli(Long.MAX_VALUE);
       this.staticToken =
           AccessToken.newBuilder()
               .setTokenValue(tokenValue)
