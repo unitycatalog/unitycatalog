@@ -152,6 +152,23 @@ public class CloudCredentialVendorTest {
     assertThat(testingSentinelCredentials.getGcpOauthToken().getOauthToken())
         .isEqualTo(testingSentinel);
 
+    // Testing generator fallback when no json key is provided.
+    when(serverProperties.getGcsConfigurations())
+        .thenReturn(
+            Map.of(
+                "gs://uctest",
+                GcsStorageConfig.builder()
+                    .bucketPath("gs://uctest")
+                    .credentialsGenerator(TestingCredentialsGenerator.class.getName())
+                    .build()));
+    gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
+    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
+    TemporaryCredentials synthesizedTokenCredentials =
+        credentialsOperations.vendCredential(
+            "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.SELECT));
+    assertThat(synthesizedTokenCredentials.getGcpOauthToken().getOauthToken())
+        .isEqualTo("testing://gs://uctest");
+
     // Use default creds (expected to fail without real GCP credentials)
     when(serverProperties.getGcsConfigurations())
         .thenReturn(
