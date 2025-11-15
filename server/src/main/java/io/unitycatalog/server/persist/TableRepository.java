@@ -186,6 +186,8 @@ public class TableRepository {
           String schemaName = createTable.getSchemaName();
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+          String storageLocation =
+              FileOperations.toStandardizedURIString(createTable.getStorageLocation());
 
           // Check if table already exists
           TableInfoDAO existingTable =
@@ -210,7 +212,7 @@ public class TableRepository {
             StagingTableDAO stagingTableDAO =
                 repositories
                     .getStagingTableRepository()
-                    .commitStagingTable(session, callerId, createTable.getStorageLocation());
+                    .commitStagingTable(session, callerId, storageLocation);
             tableID = stagingTableDAO.getId().toString();
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
@@ -238,8 +240,7 @@ public class TableRepository {
                   .createdBy(callerId)
                   .updatedAt(createTime)
                   .updatedBy(callerId)
-                  .storageLocation(
-                      FileOperations.toStandardizedURIString(createTable.getStorageLocation()))
+                  .storageLocation(storageLocation)
                   .tableId(tableID);
 
           TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);

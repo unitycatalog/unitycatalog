@@ -241,6 +241,9 @@ public class FileOperations {
    * </pre>
    */
   public static String toStandardizedURIString(String inputPath) {
+    if (inputPath == null) {
+      return null;
+    }
     // Check if the path is already a URI with a valid scheme
     URI uri;
     try {
