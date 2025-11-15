@@ -111,7 +111,7 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
-              .credentialGenerator(credentialsGenerator)
+              .credentialsGenerator(credentialsGenerator)
               .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;
@@ -146,6 +146,7 @@ public class ServerProperties {
       String clientId = getProperty("adls.clientId." + i);
       String clientSecret = getProperty("adls.clientSecret." + i);
       String testMode = getProperty("adls.testMode." + i);
+      String credentialsGenerator = getProperty("adls.credentialsGenerator." + i);
       if (storageAccountName == null
           || tenantId == null
           || clientId == null
@@ -160,6 +161,7 @@ public class ServerProperties {
               .clientId(clientId)
               .clientSecret(clientSecret)
               .testMode(testMode != null && testMode.equalsIgnoreCase("true"))
+              .credentialsGenerator(credentialsGenerator)
               .build());
       i++;
     }
