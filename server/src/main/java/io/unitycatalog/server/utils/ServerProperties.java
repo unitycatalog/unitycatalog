@@ -4,6 +4,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
+import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -120,16 +121,23 @@ public class ServerProperties {
     return s3BucketConfigMap;
   }
 
-  public Map<String, String> getGcsConfigurations() {
-    Map<String, String> gcsConfigMap = new HashMap<>();
+  public Map<String, GcsStorageConfig> getGcsConfigurations() {
+    Map<String, GcsStorageConfig> gcsConfigMap = new HashMap<>();
     int i = 0;
     while (true) {
       String bucketPath = getProperty("gcs.bucketPath." + i);
-      String jsonKeyFilePath = getProperty("gcs.jsonKeyFilePath." + i);
-      if (bucketPath == null || jsonKeyFilePath == null) {
+      if (bucketPath == null) {
         break;
       }
-      gcsConfigMap.put(bucketPath, jsonKeyFilePath);
+      String jsonKeyFilePath = getProperty("gcs.jsonKeyFilePath." + i);
+      String credentialsGenerator = getProperty("gcs.credentialsGenerator." + i);
+      gcsConfigMap.put(
+          bucketPath,
+          GcsStorageConfig.builder()
+              .bucketPath(bucketPath)
+              .jsonKeyFilePath(jsonKeyFilePath)
+              .credentialsGenerator(credentialsGenerator)
+              .build());
       i++;
     }
 
