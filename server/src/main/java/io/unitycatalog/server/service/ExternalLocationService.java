@@ -63,7 +63,7 @@ public class ExternalLocationService extends AuthorizedService {
   }
 
   @Patch("/{name}")
-  @AuthorizeExpression("#authorize(#principal, #externalLocation, OWNER)")
+  @AuthorizeExpression("#authorize(#principal, #external_location, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateExternalLocation(
       @Param("name") String name, UpdateExternalLocation updateRequest) {
