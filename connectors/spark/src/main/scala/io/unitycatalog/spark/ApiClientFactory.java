@@ -16,8 +16,8 @@ public class ApiClientFactory {
     // base path from given `url` but still preserving path suffix.
     // Expected input for `url` is URL with no "/api/2.1/unity-catalog" in the path.
     String basePath = url.getPath() + BASE_PATH;
-    RetryingApiClient apiClient = (RetryingApiClient) new RetryingApiClient(clientConf, Clock.systemClock())
-        .setHost(url.getHost())
+    RetryingApiClient apiClient = new RetryingApiClient(clientConf, Clock.systemClock());
+    apiClient.setHost(url.getHost())
         .setPort(url.getPort())
         .setScheme(url.getScheme())
         .setBasePath(basePath);
