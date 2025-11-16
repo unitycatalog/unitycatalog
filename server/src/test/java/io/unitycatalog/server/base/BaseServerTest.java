@@ -4,6 +4,7 @@ import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Properties;
 import org.hibernate.Session;
@@ -22,7 +23,9 @@ public abstract class BaseServerTest {
 
   protected void setUpProperties() {
     serverProperties = new Properties();
-    serverProperties.setProperty("server.env", "test");
+    serverProperties.setProperty(Property.SERVER_ENV.getKey(), "test");
+    // Enable managed table creation for tests
+    serverProperties.setProperty(Property.MANAGED_TABLE_ENABLED.getKey(), "true");
   }
 
   protected void setUpCredentialOperations() {}
@@ -70,6 +73,7 @@ public abstract class BaseServerTest {
       session.createMutationQuery("delete from VolumeInfoDAO").executeUpdate();
       session.createMutationQuery("delete from ColumnInfoDAO").executeUpdate();
       session.createMutationQuery("delete from TableInfoDAO").executeUpdate();
+      session.createMutationQuery("delete from StagingTableDAO").executeUpdate();
       session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
       session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
       session.createMutationQuery("delete from UserDAO").executeUpdate();

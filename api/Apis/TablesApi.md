@@ -17,7 +17,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 Create a staging table
 
-    Creates a new staging table instance. Staging tables are used during managed table creation. Creating a managed table requires performing two actions – initializing the table data in cloud storage and creating the named table entry in the catalog – and these should appear as an atomic operation to other operations on catalog tables. A staging table is used to allocate storage for the managed table, and the catalog_name.schema_name.name parameters provided in this request are used to initialize any required storage properties and determine the storage URL that should be used for the data contained by this table.  Temporary credentials can be obtained as though the staging table were a regular table to get access to the staging table’s storage. After the table’s data is initialized, the staging table is “promoted” to a managed table by creating a managed table with the same location as the staging table. This allows for the atomic creation of a managed table that already has full data written to its storage location. Note: the name provided must match the name used to initialize the staging table originally.  WARNING: This API is experimental and will change in future versions. 
+    Creates a new staging table instance. Staging tables are used during managed table creation. Creating a managed table requires performing two actions – initializing the table data in cloud storage and creating the named table entry in the catalog – and these should appear as an atomic operation to other operations on catalog tables. A staging table is used to allocate storage for the managed table, and the catalog_name.schema_name.name parameters provided in this request are used to initialize any required storage properties and determine the storage URL that should be used for the data contained by this table.  Temporary credentials can be obtained as though the staging table were a regular table to get access to the staging table’s storage. After the table’s data is initialized, the staging table is “promoted” to a managed table by creating a managed table with the same location as the staging table. This allows for the atomic creation of a managed table that already has full data written to its storage location. Note: the name provided must match the name used to initialize the staging table originally.  WARNING: This API is experimental and may change in future versions. 
 
 ### Parameters
 
@@ -94,7 +94,7 @@ No authorization required
 
 <a name="getTable"></a>
 # **getTable**
-> TableInfo getTable(full\_name)
+> TableInfo getTable(full\_name, read\_streaming\_table\_as\_managed, read\_materialized\_view\_as\_managed)
 
 Get a table
 
@@ -105,6 +105,8 @@ Get a table
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **full\_name** | **String**| Full name of the table. | [default to null] |
+| **read\_streaming\_table\_as\_managed** | **Boolean**| Whether to read Streaming Tables as Managed tables.  | [optional] [default to true] |
+| **read\_materialized\_view\_as\_managed** | **Boolean**| Whether to read Materialized Views as Managed tables.  | [optional] [default to true] |
 
 ### Return type
 

@@ -10,10 +10,21 @@ import de.vandermeer.asciitable.AsciiTable;
 import de.vandermeer.asciitable.CWC_FixedWidth;
 import de.vandermeer.asciitable.CWC_LongestLine;
 import de.vandermeer.skb.interfaces.transformers.textformat.TextAlignment;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.FunctionParameterInfo;
+import io.unitycatalog.client.model.FunctionParameterInfos;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -163,9 +174,12 @@ public class CliUtils {
                   put(
                       CREATE,
                       new CliOptions(
+                          List.of(CliParams.FULL_NAME, CliParams.COLUMNS),
                           List.of(
-                              CliParams.FULL_NAME, CliParams.COLUMNS, CliParams.STORAGE_LOCATION),
-                          List.of(CliParams.DATA_SOURCE_FORMAT, CliParams.PROPERTIES)));
+                              CliParams.DATA_SOURCE_FORMAT,
+                              CliParams.PROPERTIES,
+                              CliParams.STORAGE_LOCATION,
+                              CliParams.TABLE_TYPE)));
                   put(
                       LIST,
                       new CliOptions(

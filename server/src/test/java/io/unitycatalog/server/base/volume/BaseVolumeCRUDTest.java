@@ -1,11 +1,28 @@
 package io.unitycatalog.server.base.volume;
 
-import static io.unitycatalog.server.utils.TestUtils.*;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.COMMON_ENTITY_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NEW_COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NEW_NAME;
+import static io.unitycatalog.server.utils.TestUtils.VOLUME_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.VOLUME_NAME;
+import static io.unitycatalog.server.utils.TestUtils.VOLUME_NEW_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.VOLUME_NEW_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateVolumeRequestContent;
+import io.unitycatalog.client.model.SchemaInfo;
+import io.unitycatalog.client.model.UpdateSchema;
+import io.unitycatalog.client.model.UpdateVolumeRequestContent;
+import io.unitycatalog.client.model.VolumeInfo;
+import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
@@ -56,7 +73,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     assertThat(volumeInfo.getVolumeType()).isEqualTo(createVolumeRequest.getVolumeType());
     assertThat(volumeInfo.getStorageLocation())
         .isEqualTo(
-            FileOperations.convertRelativePathToURI(createVolumeRequest.getStorageLocation()));
+            FileOperations.toStandardizedURIString(createVolumeRequest.getStorageLocation()));
     assertThat(volumeInfo.getFullName()).isEqualTo(volumeFullName);
     assertThat(volumeInfo.getCreatedAt()).isNotNull();
   }
@@ -168,8 +185,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
 
     VolumeInfo managedVolumeInfo = volumeOperations.getVolume(VOLUME_FULL_NAME);
     assertThat(managedVolumeInfo.getVolumeType()).isEqualTo(VolumeType.MANAGED);
-    assertThat(managedVolumeInfo.getStorageLocation())
-        .isEqualTo(FileOperations.convertRelativePathToURI("/tmp/managed_volume"));
+    assertThat(managedVolumeInfo.getStorageLocation()).isEqualTo("file:///tmp/managed_volume");
     assertThat(managedVolumeInfo.getFullName()).isEqualTo(VOLUME_FULL_NAME);
     assertThat(managedVolumeInfo.getName()).isEqualTo(VOLUME_NAME);
     assertThat(managedVolumeInfo.getCatalogName()).isEqualTo(CATALOG_NAME);

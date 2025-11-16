@@ -2,6 +2,7 @@ package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.spark.auth.GcsVendedTokenProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 

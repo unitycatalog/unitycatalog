@@ -26,7 +26,27 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
-import io.unitycatalog.server.service.*;
+import io.unitycatalog.server.service.AuthDecorator;
+import io.unitycatalog.server.service.AuthService;
+import io.unitycatalog.server.service.CatalogService;
+import io.unitycatalog.server.service.CredentialService;
+import io.unitycatalog.server.service.DeltaCommitsService;
+import io.unitycatalog.server.service.ExternalLocationService;
+import io.unitycatalog.server.service.FunctionService;
+import io.unitycatalog.server.service.IcebergRestCatalogService;
+import io.unitycatalog.server.service.MetastoreService;
+import io.unitycatalog.server.service.ModelService;
+import io.unitycatalog.server.service.PermissionService;
+import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.Scim2SelfService;
+import io.unitycatalog.server.service.Scim2UserService;
+import io.unitycatalog.server.service.StagingTableService;
+import io.unitycatalog.server.service.TableService;
+import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
+import io.unitycatalog.server.service.TemporaryPathCredentialsService;
+import io.unitycatalog.server.service.TemporaryTableCredentialsService;
+import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
+import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -160,11 +180,13 @@ public class UnityCatalogServer {
     SchemaService schemaService = new SchemaService(authorizer, repositories);
     VolumeService volumeService = new VolumeService(authorizer, repositories);
     TableService tableService = new TableService(authorizer, repositories);
+    StagingTableService stagingTableService = new StagingTableService(authorizer, repositories);
     FunctionService functionService = new FunctionService(authorizer, repositories);
     ModelService modelService = new ModelService(authorizer, repositories);
     CredentialService credentialService = new CredentialService(authorizer, repositories);
     ExternalLocationService externalLocationService =
         new ExternalLocationService(authorizer, repositories);
+    DeltaCommitsService deltaCommitsService = new DeltaCommitsService(authorizer, repositories);
     MetastoreService metastoreService = new MetastoreService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
@@ -206,6 +228,8 @@ public class UnityCatalogServer {
         .annotatedService(BASE_PATH + "schemas", schemaService, requestConverterFunction)
         .annotatedService(BASE_PATH + "volumes", volumeService, requestConverterFunction)
         .annotatedService(BASE_PATH + "tables", tableService, requestConverterFunction)
+        .annotatedService(
+            BASE_PATH + "staging-tables", stagingTableService, requestConverterFunction)
         .annotatedService(BASE_PATH + "functions", functionService, requestConverterFunction)
         .annotatedService(BASE_PATH + "models", modelService, requestConverterFunction)
         .annotatedService(BASE_PATH, metastoreService, requestConverterFunction)
@@ -226,6 +250,8 @@ public class UnityCatalogServer {
             temporaryPathCredentialsService,
             requestConverterFunction)
         .annotatedService(BASE_PATH + "credentials", credentialService, requestConverterFunction)
+        .annotatedService(
+            BASE_PATH + "delta/preview/commits", deltaCommitsService, requestConverterFunction)
         .annotatedService(
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
     addIcebergApiServices(

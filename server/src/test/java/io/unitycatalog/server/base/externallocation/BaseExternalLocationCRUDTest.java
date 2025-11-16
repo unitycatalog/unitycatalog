@@ -6,7 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.CreateCredentialRequest;
+import io.unitycatalog.client.model.CreateExternalLocation;
+import io.unitycatalog.client.model.CredentialInfo;
+import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.ExternalLocationInfo;
+import io.unitycatalog.client.model.UpdateExternalLocation;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.credential.CredentialOperations;

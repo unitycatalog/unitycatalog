@@ -1,7 +1,13 @@
 package io.unitycatalog.server.base.model;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.CreateModelVersion;
+import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.FinalizeModelVersion;
+import io.unitycatalog.client.model.ModelVersionInfo;
+import io.unitycatalog.client.model.RegisteredModelInfo;
+import io.unitycatalog.client.model.UpdateModelVersion;
+import io.unitycatalog.client.model.UpdateRegisteredModel;
 import java.util.List;
 import java.util.Optional;
 
