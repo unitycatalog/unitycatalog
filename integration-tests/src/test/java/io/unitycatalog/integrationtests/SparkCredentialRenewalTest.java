@@ -70,8 +70,8 @@ public class SparkCredentialRenewalTest {
             .appName("test-credential-renewal-in-long-running-job")
             .master("local[1]") // Make it single-threaded explicitly.
             .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-            .config("spark.hadoop.fs.abfss.impl",
-                "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem")
+            .config(
+                "spark.hadoop.fs.abfss.impl", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
             .config(
                 "spark.sql.catalog.spark_catalog",

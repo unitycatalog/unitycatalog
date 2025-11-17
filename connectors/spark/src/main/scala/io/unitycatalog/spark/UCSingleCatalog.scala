@@ -109,6 +109,7 @@ class UCSingleCatalog
     } else if (hasLocationClause) {
       val location = properties.get(TableCatalog.PROP_LOCATION)
       assert(location != null)
+      System.out.println("====> location: " + location)
       val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
         new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
       val newProps = new util.HashMap[String, String]

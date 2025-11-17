@@ -11,6 +11,8 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.UCHadoopConf;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import org.sparkproject.guava.base.Preconditions;
@@ -253,12 +255,14 @@ public class CredPropsUtil {
       String token,
       TemporaryCredentials tempCreds) {
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
+    String sasToken = escapeXML(azureSas.getSasToken());
+    System.out.println("====> sasToken: " + sasToken);
     AbfsPropsBuilder builder = new AbfsPropsBuilder()
         .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName())
         .uri(uri)
         .token(token)
         .uid(UUID.randomUUID().toString())
-        .set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
+        .set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, sasToken);
 
     // For the static credential case, nullable expiration time is possible.
     if (tempCreds.getExpirationTime() != null) {
@@ -267,6 +271,15 @@ public class CredPropsUtil {
     }
 
     return builder;
+  }
+
+  private static String escapeXML(String sasToken) {
+    String decodedToken = URLDecoder.decode(sasToken, StandardCharsets.UTF_8);
+    return decodedToken.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&apos;");
   }
 
   private static Map<String, String> abfsTableTempCredProps(
