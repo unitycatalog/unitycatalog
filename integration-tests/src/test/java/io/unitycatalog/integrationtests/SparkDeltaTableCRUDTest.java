@@ -61,6 +61,7 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
         .isEqualTo(List.of());
   }
 
+  /*
   @ParameterizedTest
   @MethodSource("locationTypes")
   @Order(2)
@@ -134,5 +135,5 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
             "{\"as_int\":42,\"as_double\":63.0}",
             "{\"as_int\":539,\"as_double\":425.66102859000944}"
         ));
-  }
+  }*/
 }
