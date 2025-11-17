@@ -45,6 +45,11 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
             .appName("test")
             .master("local[*]")
             .config("spark.sql.shuffle.partitions", "4")
+            /*
+            By default, Delta tables do not store schema in the catalog.
+            We have to enable this setting to change it.
+             */
+            .config("spark.databricks.delta.catalog.update.enabled", "true")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
     for (String catalog : catalogs) {
       String catalogConf = "spark.sql.catalog." + catalog;
