@@ -18,6 +18,9 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
     super.setUpProperties();
     serverProperties.put("gcs.bucketPath.0", "gs://" + BUCKET_NAME);
     serverProperties.put("gcs.credentialsGenerator.0", CREDENTIALS_GENERATOR_CLASS);
+    // Note: gcs.jsonKeyFilePath.0 is intentionally omitted because we're using a custom
+    // credentialsGenerator for testing. The generator is loaded first and jsonKeyFilePath
+    // is only used as a fallback for ServiceAccountCredentialsGenerator.
   }
 
   @Override
@@ -27,6 +30,8 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
 
   @Override
   protected Map<String, String> catalogExtraProps() {
+    // Override fs.gs.impl to use our testing filesystem that tracks credential renewals
+    // Note: fs.gs.impl.disable.cache is already set by CredPropsUtil.GcsPropsBuilder
     return Map.of("fs.gs.impl", GcsCredFileSystem.class.getName());
   }
 
@@ -53,13 +58,11 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
       String clazz = getConf().get("fs.gs.auth.access.token.provider");
       assertThat(clazz).isEqualTo(GcsVendedTokenProvider.class.getName());
 
-      try {
-        AccessTokenProvider provider = new GcsVendedTokenProvider();
-        provider.setConf(getConf());
-        return provider;
-      } catch (Exception e) {
-        throw new RuntimeException("Failed to initialize GCS token provider", e);
-      }
+      // The setConf() call will validate the Hadoop configuration, failing fast if
+      // any required properties (UC URI, token, credentials UID) are missing.
+      AccessTokenProvider provider = new GcsVendedTokenProvider();
+      provider.setConf(getConf());
+      return provider;
     }
 
     @Override
@@ -67,6 +70,7 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
       AccessTokenProvider.AccessToken token = provider.getAccessToken();
       assertThat(token).isNotNull();
       assertThat(token.getToken())
+          .as("OAuth token should contain timestamp %d", ts)
           .isEqualTo(String.format("testing-renew://gs://%s#%d", BUCKET_NAME, ts));
     }
   }
