@@ -3,6 +3,7 @@ package io.unitycatalog.server.service;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -10,6 +11,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.DeltaCommit;
+import io.unitycatalog.server.model.DeltaGetCommits;
 import io.unitycatalog.server.persist.DeltaCommitRepository;
 import io.unitycatalog.server.persist.Repositories;
 import lombok.SneakyThrows;
@@ -45,5 +47,16 @@ public class DeltaCommitsService extends AuthorizedService {
     return HttpResponse.of(HttpStatus.OK);
   }
 
-  // TODO: implement GET
+  @Get("")
+  @AuthorizeExpression("""
+        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+        #authorizeAny(#principal, #table, OWNER, SELECT)
+      """)
+  @AuthorizeKey(METASTORE)
+  public HttpResponse getCommits(
+    @AuthorizeKeys({@AuthorizeKey(value = TABLE, key = "table_id")})
+    DeltaGetCommits rpc) {
+    return HttpResponse.ofJson(deltaCommitRepository.getCommits(rpc));
+  }
 }
