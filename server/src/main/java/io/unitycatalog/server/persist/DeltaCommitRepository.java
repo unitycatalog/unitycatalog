@@ -7,6 +7,8 @@ import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.DeltaCommit;
 import io.unitycatalog.server.model.DeltaCommitInfo;
 import io.unitycatalog.server.model.DeltaCommitMetadataProperties;
+import io.unitycatalog.server.model.DeltaGetCommits;
+import io.unitycatalog.server.model.DeltaGetCommitsResponse;
 import io.unitycatalog.server.model.DeltaMetadata;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
@@ -26,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
@@ -48,8 +51,8 @@ import org.slf4j.LoggerFactory;
  *   <li>commit(v1). Then database has [v1]
  *   <li>commit(v2). Then database has [v1, v2]
  *   <li>commit(v3). Then database has [v1, v2, v3]
- *   <li>backfill(v1). Then database has [v2, v3]. Any version <= v1 is removed.
- *   <li>commit(v4) & backfill(v3). Then database has [v4]. Any version <= v3 is removed.
+ *   <li>backfill(v1). Then database has [v2, v3]. Any version &lt;= v1 is removed.
+ *   <li>commit(v4) and backfill(v3). Then database has [v4]. Any version &lt;= v3 is removed.
  *   <li>commit (v5). Then database has [v4, v5]
  *   <li>backfill(v5). Then database has [v5(is_backfilled_latest_commit=true)]. v4 is removed. But
  *       v5 has to be kept as the last record in database.
@@ -85,6 +88,117 @@ public class DeltaCommitRepository {
   public DeltaCommitRepository(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
+  }
+
+  /**
+   * Retrieves all commits for a table in descending order by version up to NUM_COMMITS_PER_BATCH.
+   */
+  private List<DeltaCommitDAO> getAllCommitDAOsDesc(UUID tableId) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
+          }
+          validateTable(tableInfoDAO);
+
+          Query<DeltaCommitDAO> query =
+              session.createQuery(
+                  "FROM DeltaCommitDAO WHERE tableId = :tableId ORDER BY commitVersion DESC",
+                  DeltaCommitDAO.class);
+          query.setParameter("tableId", tableId);
+          query.setMaxResults(NUM_COMMITS_PER_BATCH);
+          return query.list();
+        },
+        "Failed to get latest commits",
+        /* readOnly= */ true);
+  }
+
+  /**
+   * Retrieves commits for a managed Delta table within a specified version range.
+   *
+   * <p>This method returns commits that fall within the requested version range [startVersion,
+   * endVersion]. The response includes both the list of commits and the latest table version.
+   *
+   * <p><b>Pagination:</b> Results may be further reduced to MAX_NUM_COMMITS_PER_TABLE commits per
+   * request if they exceed. Earlier (lower version) commits in the version range of [startVersion,
+   * endVersion] will be kept and later (higher version) commits in the version range will be
+   * trimmed in order to keep the result within the limit.
+   *
+   * <p><b>Backfilled commits:</b> When commits are backfilled (persisted to file storage), they are
+   * removed from the database. If the latest commit is marked as backfilled, this method returns an
+   * empty commit list but still returns the correct latestTableVersion.
+   *
+   * <p><b>Empty table behavior:</b> If the table has no commits yet, returns latestTableVersion=-1
+   * with an empty commit list.
+   *
+   * <p>The returned commits are ordered by version in descending order (newest first).
+   */
+  public DeltaGetCommitsResponse getCommits(DeltaGetCommits rpc) {
+    serverProperties.checkManagedTableEnabled();
+
+    ValidationUtils.checkArgument(rpc.getTableId() != null, "Field can not be null: table_id");
+    ValidationUtils.checkArgument(
+        rpc.getStartVersion() != null, "Field can not be null: start_version");
+    UUID tableId = UUID.fromString(rpc.getTableId());
+    long startVersion = rpc.getStartVersion();
+    Optional<Long> endVersion = Optional.ofNullable(rpc.getEndVersion());
+    ValidationUtils.checkArgument(startVersion >= 0, "Field must be >=0: start_version");
+    ValidationUtils.checkArgument(
+        endVersion.filter(x -> x < startVersion).isEmpty(),
+        "end_version must be >=start_version if set");
+
+    List<DeltaCommitDAO> allCommitDAOsDesc = getAllCommitDAOsDesc(tableId);
+    int commitCount = allCommitDAOsDesc.size();
+    if (commitCount > MAX_NUM_COMMITS_PER_TABLE) {
+      // This should never occur. But this is recoverable and not fatal.
+      LOGGER.error(
+          "Table {} has {} commits, which exceeds the limit of {}.",
+          tableId,
+          commitCount,
+          MAX_NUM_COMMITS_PER_TABLE);
+    }
+    if (commitCount == 0) {
+      // No commit exist yet. Not even any backfilled one. That means the table has never sent any
+      // commit coordinated by UC.
+      return new DeltaGetCommitsResponse().latestTableVersion(-1L);
+    }
+
+    // In case there's only one commit in database, firstCommitDAO and lastCommitDAO will be the
+    // same object.
+    DeltaCommitDAO firstCommitDAO = allCommitDAOsDesc.get(allCommitDAOsDesc.size() - 1);
+    DeltaCommitDAO lastCommitDAO = allCommitDAOsDesc.get(0);
+    assert firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion();
+    if (lastCommitDAO.isBackfilledLatestCommit()) {
+      // The last commit is already backfilled. Just return an empty list. No need to return any
+      // actual commits.
+      return new DeltaGetCommitsResponse().latestTableVersion(lastCommitDAO.getCommitVersion());
+    }
+
+    // The last version to return if endVersion is not set. It's limited by pagination limit.
+    // In normal cases the pagination limitation should not happen at all since the limit is the
+    // same limit that a table can have as many unbackfilled commits as possible. But it is
+    // implemented this way just in case.
+    long paginatedEndVersionInclusive =
+        Math.max(startVersion, firstCommitDAO.getCommitVersion()) + MAX_NUM_COMMITS_PER_TABLE - 1;
+    // The actual last version to return
+    long effectiveEndVersionInclusive =
+        Math.min(endVersion.orElse(Long.MAX_VALUE), paginatedEndVersionInclusive);
+
+    // Filter result and return
+    List<DeltaCommitInfo> commits =
+        allCommitDAOsDesc.stream()
+            .filter(
+                c ->
+                    !c.isBackfilledLatestCommit()
+                        && c.getCommitVersion() >= startVersion
+                        && c.getCommitVersion() <= effectiveEndVersionInclusive)
+            .map(DeltaCommitDAO::toCommitInfo)
+            .collect(Collectors.toList());
+    return new DeltaGetCommitsResponse()
+        .commits(commits)
+        .latestTableVersion(lastCommitDAO.getCommitVersion());
   }
 
   /**
@@ -681,23 +795,25 @@ public class DeltaCommitRepository {
               ErrorCode.INVALID_ARGUMENT,
               "At least one of description, properties, or schema must be set in commit.metadata");
         }
-        Optional<String> propertiesTableIdOpt = propertiesOpt.map(p -> p.get("ucTableId"));
-        if (propertiesTableIdOpt.isEmpty()) {
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT, "commit does not contain ucTableId in the properties.");
-        }
-        if (!propertiesTableIdOpt.get().equals(commit.getTableId())) {
-          // This is to ensure that the Delta table's log on the file system has the table id stored
-          // as a property. An extra check to ensure that the filesystem-based information and the
-          // catalog-based information is in sync. for example, if some buggy connector accidentally
-          // updated table A on the file system, but send the commit to table B in UC, then this
-          // check will catch it as table A's properties in the log will have a different id than
-          // the table B's id in UC.
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT,
-              String.format(
-                  "the table being committed (%s) does not match the properties ucTableId(%s).",
-                  commit.getTableId(), propertiesTableIdOpt.get()));
+        if (propertiesOpt.isPresent()) {
+          Optional<String> propertiesTableIdOpt = propertiesOpt.map(p -> p.get("ucTableId"));
+          if (propertiesTableIdOpt.isEmpty()) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "commit does not contain ucTableId in the properties.");
+          }
+          if (!propertiesTableIdOpt.get().equals(commit.getTableId())) {
+            // This is to ensure that the Delta table's log on the file system has the table id
+            // stored as a property. An extra check to ensure that the filesystem-based information
+            // and the catalog-based information is in sync. for example, if some buggy connector
+            // accidentally updated table A on the file system, but send the commit to table B in
+            // UC, then this check will catch it as table A's properties in the log will have a
+            // different id than the table B's id in UC.
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                String.format(
+                    "the table being committed (%s) does not match the properties ucTableId(%s).",
+                    commit.getTableId(), propertiesTableIdOpt.get()));
+          }
         }
       }
     } else {
