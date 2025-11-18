@@ -2,12 +2,13 @@ package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.spark.auth.GcsVendedTokenProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
 public class GCSCredentialTestFileSystem extends CredentialTestFileSystem {
   @Override
-  void checkCredentials(Path f) {
+  protected void checkCredentials(Path f) {
     Configuration conf = getConf();
     String host = f.toUri().getHost();
     if (credentialCheckEnabled) {
@@ -26,7 +27,7 @@ public class GCSCredentialTestFileSystem extends CredentialTestFileSystem {
   }
 
   @Override
-  String scheme() {
+  protected String scheme() {
     return "gs:";
   }
 }

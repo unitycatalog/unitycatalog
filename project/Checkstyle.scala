@@ -1,0 +1,92 @@
+/*
+ * Copyright (2024) The Delta Lake Project Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import com.etsy.sbt.checkstyle.CheckstylePlugin.autoImport._
+import sbt._
+import sbt.Keys._
+
+object Checkstyle {
+  /*
+   ****************************
+   * Java checkstyle settings *
+   ****************************
+   */
+
+  // Define a custom SBT task key for compiling Java code style checks
+  private lazy val compileJavastyle = taskKey[Unit]("compileJavastyle")
+
+  // Define a custom SBT task key for testing Java code style checks
+  private lazy val testJavastyle = taskKey[Unit]("testJavastyle")
+
+  /**
+   * Returns a sequence of SBT settings to enable Java Checkstyle for a module.
+   */
+  def javaCheckstyleSettings(checkstyleFile: String): Def.SettingsDefinition = {
+    // Can be run explicitly via: build/sbt $module/checkstyle
+    // Will automatically be run during compilation (e.g. build/sbt compile)
+    // and during tests (e.g. build/sbt test)
+    Seq(
+      checkstyleConfigLocation := CheckstyleConfigLocation.File(checkstyleFile),
+      // if we keep the Error severity, `build/sbt` will throw an error and immediately stop at
+      // the `checkstyle` phase (if error) -> never execute the `check-report` phase of
+      // `checkstyle-report.xml` and `checkstyle-test-report.xml`. We need to ignore and throw
+      // error if exists when checking *report.xml.
+      checkstyleSeverityLevel := CheckstyleSeverityLevel.Ignore,
+
+      compileJavastyle := {
+        (Compile / checkstyle).value
+        javaCheckstyle(streams.value.log, checkstyleOutputFile.value)
+      },
+      // Make compile task depend on compileJavastyle so style is checked automatically.
+      (Compile / compile) := ((Compile / compile) dependsOn compileJavastyle).value,
+
+      testJavastyle := {
+        (Test / checkstyle).value
+        javaCheckstyle(streams.value.log, (Compile / target).value / "checkstyle-test-report.xml")
+      },
+      // Make test and compile tasks depend on testJavastyle so style is checked automatically.
+      (Test / compile) := ((Test / compile) dependsOn (Test / testJavastyle)).value,
+      (Test / test) := ((Test / test) dependsOn (Test / testJavastyle)).value
+    )
+  }
+
+  /**
+   * Parse the checkstyle XML report and log errors. Fail the SBT task if there are any checkstyle
+   * violations.
+   */
+  private def javaCheckstyle(log: Logger, reportFile: File): Unit = {
+    val report = scala.xml.XML.loadFile(reportFile)
+
+    val errors = (report \\ "file").flatMap { fileNode =>
+      val file = fileNode.attribute("name").get.head.text
+      (fileNode \ "error").map { error =>
+        val line = error.attribute("line").get.head.text
+        val message = error.attribute("message").get.head.text
+        (file, line, message)
+      }
+    }
+
+    if (errors.nonEmpty) {
+      var errorMsg = "Found checkstyle errors"
+      errors.foreach { case (file, line, message) =>
+        val lineError = s"File: $file, Line: $line, Message: $message"
+        log.error(lineError)
+        errorMsg += ("\n" + lineError)
+      }
+      sys.error(errorMsg + "\n")
+    }
+  }
+}
