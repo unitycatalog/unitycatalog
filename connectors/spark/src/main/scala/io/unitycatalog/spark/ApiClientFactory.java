@@ -14,19 +14,10 @@ public class ApiClientFactory {
         .setScheme(url.getScheme());
 
     // Add Spark and Delta versions to User-Agent
-    try {
-      String sparkVersion = getSparkVersion();
-      String deltaVersion = getDeltaVersion();
-
-      if (deltaVersion != null) {
-        apiClient.setClientVersion("Spark", sparkVersion, "Delta", deltaVersion);
-      } else {
-        apiClient.setClientVersion("Spark", sparkVersion);
-      }
-    } catch (Exception e) {
-      // If we can't get versions, continue without them
-      // This shouldn't fail the client creation
-    }
+    // Always set Spark and Delta, even if we can't get the versions
+    String sparkVersion = getSparkVersion();
+    String deltaVersion = getDeltaVersion();
+    apiClient.setClientVersion("Spark", sparkVersion, "Delta", deltaVersion);
 
     if (token != null && !token.isEmpty()) {
       apiClient = apiClient.setRequestInterceptor(

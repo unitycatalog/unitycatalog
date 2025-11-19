@@ -13,60 +13,41 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class ApiClientFactoryTest {
 
   @Test
-  public void testUserAgentContainsSparkVersion() throws Exception {
+  public void testUserAgentContainsSparkAndDelta() throws Exception {
     URI uri = new URI("http://localhost:8080");
     ApiClient client = ApiClientFactory.createApiClient(uri, null);
 
     String userAgent = client.getUserAgent();
-    System.out.println("User-Agent: " + userAgent);
 
     // Verify the user agent contains the base Unity Catalog client
     assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
 
-    // Verify the user agent contains Spark version
-    assertThat(userAgent).contains("Spark/");
+    // Verify the user agent contains Spark (required)
+    assertThat(userAgent).contains("Spark");
 
-    // Extract and verify Spark version is not empty
-    String[] parts = userAgent.split(" ");
+    // Verify the user agent contains Delta (required)
+    assertThat(userAgent).contains("Delta");
+
+    // Extract and verify Spark version (version may be empty but Spark must be present)
     boolean foundSpark = false;
+    String[] parts = userAgent.split(" ");
     for (String part : parts) {
-      if (part.startsWith("Spark/")) {
-        String version = part.substring("Spark/".length());
-        assertThat(version).isNotEmpty();
+      if (part.startsWith("Spark")) {
         foundSpark = true;
-        System.out.println("Found Spark version: " + version);
         break;
       }
     }
-    assertThat(foundSpark).isTrue();
-  }
+    assertThat(foundSpark).as("Spark must be present in User-Agent").isTrue();
 
-  @Test
-  public void testUserAgentMayContainDeltaVersion() throws Exception {
-    URI uri = new URI("http://localhost:8080");
-    ApiClient client = ApiClientFactory.createApiClient(uri, null);
-
-    String userAgent = client.getUserAgent();
-    System.out.println("User-Agent: " + userAgent);
-
-    // Delta version is optional (depends on classpath)
-    // If Delta is available, verify the version is present
-    if (userAgent.contains("Delta/")) {
-      String[] parts = userAgent.split(" ");
-      boolean foundDelta = false;
-      for (String part : parts) {
-        if (part.startsWith("Delta/")) {
-          String version = part.substring("Delta/".length());
-          assertThat(version).isNotEmpty();
-          foundDelta = true;
-          System.out.println("Found Delta version: " + version);
-          break;
-        }
+    // Extract and verify Delta (version may be empty but Delta must be present)
+    boolean foundDelta = false;
+    for (String part : parts) {
+      if (part.startsWith("Delta")) {
+        foundDelta = true;
+        break;
       }
-      assertThat(foundDelta).isTrue();
-    } else {
-      System.out.println("Delta not available in classpath (expected in some environments)");
     }
+    assertThat(foundDelta).as("Delta must be present in User-Agent").isTrue();
   }
 
   @Test
@@ -76,11 +57,13 @@ public class ApiClientFactoryTest {
     ApiClient client = ApiClientFactory.createApiClient(uri, token);
 
     String userAgent = client.getUserAgent();
-    System.out.println("User-Agent with token: " + userAgent);
 
     // Verify user agent is set correctly even with authentication
     assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
-    assertThat(userAgent).contains("Spark/");
+
+    // Verify both Spark and Delta are present
+    assertThat(userAgent).contains("Spark");
+    assertThat(userAgent).contains("Delta");
 
     // Verify that the token is not part of the user agent
     assertThat(userAgent).doesNotContain(token);
@@ -92,25 +75,27 @@ public class ApiClientFactoryTest {
     ApiClient client = ApiClientFactory.createApiClient(uri, null);
 
     String userAgent = client.getUserAgent();
-    System.out.println("User-Agent format check: " + userAgent);
 
     // Verify the format follows RFC 7231: product/version [product/version ...]
     String[] parts = userAgent.split(" ");
-    assertThat(parts.length).isGreaterThanOrEqualTo(2); // At least UC client and Spark
+    assertThat(parts.length).isGreaterThanOrEqualTo(3); // UC client, Spark, and Delta
 
     // First part should be UnityCatalog-Java-Client/version
     assertThat(parts[0]).matches("UnityCatalog-Java-Client/.*");
 
-    // At least one more part should be Spark/version
-    boolean hasSparkVersion = false;
+    // Verify Spark and Delta are present
+    boolean hasSparkOrVersion = false;
+    boolean hasDeltaOrVersion = false;
     for (int i = 1; i < parts.length; i++) {
-      if (parts[i].startsWith("Spark/")) {
-        assertThat(parts[i]).matches("Spark/.*");
-        hasSparkVersion = true;
-        break;
+      if (parts[i].startsWith("Spark")) {
+        hasSparkOrVersion = true;
+      }
+      if (parts[i].startsWith("Delta")) {
+        hasDeltaOrVersion = true;
       }
     }
-    assertThat(hasSparkVersion).isTrue();
+    assertThat(hasSparkOrVersion).isTrue();
+    assertThat(hasDeltaOrVersion).isTrue();
   }
 
   @Test
@@ -121,8 +106,9 @@ public class ApiClientFactoryTest {
     // Verify the client is configured with the correct URI components
     assertThat(client.getBaseUri()).contains("https://example.com:8443");
 
-    // Verify user agent is still set
+    // Verify user agent is still set with Spark and Delta
     assertThat(client.getUserAgent()).startsWith("UnityCatalog-Java-Client/");
+    assertThat(client.getUserAgent()).contains("Spark");
+    assertThat(client.getUserAgent()).contains("Delta");
   }
 }
-

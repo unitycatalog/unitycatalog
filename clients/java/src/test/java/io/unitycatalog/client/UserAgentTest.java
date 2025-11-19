@@ -23,8 +23,6 @@ public class UserAgentTest {
         String userAgent = client.getUserAgent();
         assertThat(userAgent).isNotNull();
         assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
-        
-        System.out.println("Default User-Agent: " + userAgent);
     }
     
     @Test
@@ -39,8 +37,6 @@ public class UserAgentTest {
         // Verify that the custom User-Agent is set
         String userAgent = client.getUserAgent();
         assertThat(userAgent).isEqualTo(customUserAgent);
-        
-        System.out.println("Custom User-Agent: " + userAgent);
     }
     
     @Test
@@ -83,8 +79,6 @@ public class UserAgentTest {
         String userAgent = client.getUserAgent();
         assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
         assertThat(userAgent).contains("MyApp/1.0.0");
-        
-        System.out.println("User-Agent with client info: " + userAgent);
     }
     
     @Test
@@ -100,8 +94,6 @@ public class UserAgentTest {
         assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
         assertThat(userAgent).contains("MyApp");
         assertThat(userAgent).doesNotContain("MyApp/");
-        
-        System.out.println("User-Agent with client name only: " + userAgent);
     }
     
     @Test
@@ -129,8 +121,6 @@ public class UserAgentTest {
         assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
         assertThat(userAgent).contains("MyApp/1.0.0");
         assertThat(userAgent).contains("MyWrapper/2.5.1");
-        
-        System.out.println("User-Agent with multiple clients: " + userAgent);
     }
     
     @Test
@@ -149,8 +139,6 @@ public class UserAgentTest {
         assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
         assertThat(userAgent).contains("MyWrapper/2.5.1");
         assertThat(userAgent).doesNotContain("MyApp"); // Previous client is replaced
-        
-        System.out.println("User-Agent after override: " + userAgent);
     }
     
     @Test
@@ -213,8 +201,6 @@ public class UserAgentTest {
         assertThat(userAgent).contains("MyApp/1.0.0");
         assertThat(userAgent).contains("MyTool ");  // No version slash
         assertThat(userAgent).contains("MyWrapper/2.5.1");
-        
-        System.out.println("User-Agent with mixed versions: " + userAgent);
     }
 }
 
