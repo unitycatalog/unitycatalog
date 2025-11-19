@@ -5,19 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 
 import io.unitycatalog.client.ApiException;
-<<<<<<< HEAD
-import io.unitycatalog.client.model.*;
-import io.unitycatalog.server.base.BaseCRUDTest;
-import io.unitycatalog.server.base.ServerConfig;
-import io.unitycatalog.server.base.schema.SchemaOperations;
-=======
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateSchema;
->>>>>>> fc76ab52 (Refactor BaseTableCRUDTest to split the testing table preparation into a new base class (#1153))
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.TestUtils;
