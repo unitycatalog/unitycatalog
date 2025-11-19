@@ -26,9 +26,6 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
-<<<<<<< HEAD
-import io.unitycatalog.server.service.*;
-=======
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.CatalogService;
@@ -50,7 +47,6 @@ import io.unitycatalog.server.service.TemporaryPathCredentialsService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
->>>>>>> 82d4b4e9 (Add basic support of Delta commits for managed tables (#1166))
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
