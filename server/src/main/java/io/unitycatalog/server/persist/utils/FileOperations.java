@@ -136,10 +136,10 @@ public class FileOperations {
   private URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
     String bucketName = parsedUri.getHost();
     String path = parsedUri.getPath().substring(1); // Remove leading '/'
-    String accessKey = serverProperties.getProperty("aws.s3.accessKey");
-    String secretKey = serverProperties.getProperty("aws.s3.secretKey");
-    String sessionToken = serverProperties.getProperty("aws.s3.sessionToken");
-    String region = serverProperties.getProperty("aws.region");
+    String accessKey = serverProperties.get(Property.AWS_S3_ACCESS_KEY);
+    String secretKey = serverProperties.get(Property.AWS_S3_SECRET_KEY);
+    String sessionToken = serverProperties.get(Property.AWS_S3_SESSION_TOKEN);
+    String region = serverProperties.get(Property.AWS_REGION);
 
     BasicSessionCredentials sessionCredentials =
         new BasicSessionCredentials(accessKey, secretKey, sessionToken);
@@ -270,7 +270,7 @@ public class FileOperations {
 
   private String getManagedTablesStorageRoot() {
     // Use local tmp directory as default storage root
-    return serverProperties.getProperty("storage-root.tables", "file:///tmp/ucroot");
+    return serverProperties.get(Property.TABLE_STORAGE_ROOT);
   }
 
   /**

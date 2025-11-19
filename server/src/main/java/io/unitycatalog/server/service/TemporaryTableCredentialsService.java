@@ -11,7 +11,6 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.server.model.SecurableType;
-import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
@@ -23,6 +22,7 @@ import lombok.SneakyThrows;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
@@ -55,9 +55,9 @@ public class TemporaryTableCredentialsService {
     authorizeForOperation(generateTemporaryTableCredential);
 
     String tableId = generateTemporaryTableCredential.getTableId();
-    TableInfo tableInfo = tableRepository.getTableById(tableId);
-    return HttpResponse.ofJson(cloudCredentialVendor
-        .vendCredential(tableInfo.getStorageLocation(),
+    String storageLocation = tableRepository.getStorageLocationForTableOrStagingTable(
+        UUID.fromString(tableId));
+    return HttpResponse.ofJson(cloudCredentialVendor.vendCredential(storageLocation,
             tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
   }
 

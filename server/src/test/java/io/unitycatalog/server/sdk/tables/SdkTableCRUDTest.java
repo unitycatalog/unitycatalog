@@ -11,10 +11,13 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTest;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.UUID;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 
 public class SdkTableCRUDTest extends BaseTableCRUDTest {
@@ -53,9 +56,14 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
    */
   private TablesApi localTablesApi;
 
+  private StagingTableDAO getStagingTable(String tableId) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      return session.get(StagingTableDAO.class, UUID.fromString(tableId));
+    }
+  }
+
   @Test
   public void testListTablesWithNoNextPageTokenShouldReturnNull() throws Exception {
-    createCommonResources();
     TableInfo testingTable =
         createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION, tableOperations);
     ListTablesResponse resp =
@@ -72,7 +80,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
   @Test
   public void testListTablesWithNextPageTokenShouldReturnNextPageToken() throws Exception {
-    createCommonResources();
     List<TableInfo> testingTables = createMultipleTestingTables(11);
     ListTablesResponse resp =
         localTablesApi.listTables(
@@ -96,7 +103,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
    */
   @Test
   public void testStagingTableCreationAndManagedTableFromStagingLocation() throws Exception {
-    createCommonResources();
     String stagingTableName = "staging_test_table";
 
     // Step 1: Create a staging table
@@ -119,15 +125,95 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(stagingTableInfo.getStagingLocation())
         .isEqualTo("file:///tmp/ucroot/tables/" + stagingTableInfo.getId());
 
-    // Following steps: Create a managed table using the staging location
-    // TODO: This is not implemented yet.
+    // Step 2: Create a managed table using the staging location
+    CreateTable createTableRequest =
+        new CreateTable()
+            .name(stagingTableName)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(columns)
+            .tableType(TableType.MANAGED)
+            .dataSourceFormat(DataSourceFormat.DELTA)
+            .storageLocation(stagingTableInfo.getStagingLocation())
+            .comment("Table created from staging location");
+
+    TableInfo tableInfo = localTablesApi.createTable(createTableRequest);
+
+    // Verify the table was created successfully
+    assertThat(tableInfo).isNotNull();
+    assertThat(tableInfo.getName()).isEqualTo(stagingTableName);
+    assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
+    assertThat(tableInfo.getStorageLocation()).isEqualTo(stagingTableInfo.getStagingLocation());
+    assertThat(tableInfo.getTableId()).isEqualTo(stagingTableInfo.getId());
+
+    // Also verify that the staging table has been commited
+    StagingTableDAO commitedStagingTableDAO = getStagingTable(tableInfo.getTableId());
+    assertThat(commitedStagingTableDAO).isNotNull();
+    assertThat(commitedStagingTableDAO.getStagingLocation()).isNotNull();
+    assertThat(commitedStagingTableDAO.getStagingLocation())
+        .isEqualTo("file:///tmp/ucroot/tables/" + stagingTableInfo.getId());
+    assertThat(commitedStagingTableDAO.isStageCommitted()).isEqualTo(true);
+
+    // Clean up
+    tableOperations.deleteTable(
+        TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + stagingTableName);
+
+    // Step 4: Try to create another table using the same (now committed) staging location
+    String secondTableName = "second_table_same_staging";
+    CreateTable secondCreateTableRequest =
+        new CreateTable()
+            .name(secondTableName)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(columns)
+            .tableType(TableType.MANAGED)
+            .dataSourceFormat(DataSourceFormat.DELTA)
+            .storageLocation(stagingTableInfo.getStagingLocation())
+            .comment("Second table from same staging location - should fail");
+
+    // This should fail with FAILED_PRECONDITION (already committed)
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> localTablesApi.createTable(secondCreateTableRequest))
+        .satisfies(
+            ex ->
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.FAILED_PRECONDITION.getHttpStatus().code()))
+        .withMessageContaining("already committed");
+  }
+
+  /**
+   * Test that attempting to create a managed table from a non-existent staging location fails with
+   * NOT_FOUND error.
+   */
+  @Test
+  public void testManagedTableCreationFromNonExistentStagingLocationShouldFail() throws Exception {
+    // Use a fake staging location that doesn't exist
+    String fakeLocationUuid = "00000000-0000-0000-0000-000000000000";
+    String fakeStagingLocation = "file:///tmp/ucroot/tables/" + fakeLocationUuid;
+
+    CreateTable createTableRequest =
+        new CreateTable()
+            .name("table_from_nonexistent_staging")
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(columns)
+            .tableType(TableType.MANAGED)
+            .dataSourceFormat(DataSourceFormat.DELTA)
+            .storageLocation(fakeStagingLocation)
+            .comment("Table from non-existent staging location - should fail");
+
+    // This should fail with NOT_FOUND
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> localTablesApi.createTable(createTableRequest))
+        .satisfies(
+            ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.NOT_FOUND.getHttpStatus().code()))
+        .withMessageContaining("not found");
   }
 
   /** Test that attempting to create a duplicate staging table fails with ALREADY_EXISTS error. */
   @Test
   public void testDuplicateStagingTableCreationShouldFail() throws Exception {
-    createCommonResources();
-
     // Create an external table
     String externalTableName = "duplicate_table";
     CreateTable createTableRequest =
@@ -184,8 +270,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
    */
   @Test
   public void testMultipleStagingTableCreation() throws Exception {
-    createCommonResources();
-
     String stagingTable1 = "staging_table_1";
     String stagingTable2 = "staging_table_2";
 
@@ -213,8 +297,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   /** Test that staging table creation fails when the schema doesn't exist. */
   @Test
   public void testStagingTableCreationWithNonExistentSchemaShouldFail() throws Exception {
-    createCommonResources();
-
     CreateStagingTable createStagingTableRequest =
         new CreateStagingTable()
             .catalogName(TestUtils.CATALOG_NAME)
