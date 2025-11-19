@@ -258,47 +258,6 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
   }
 
-  // TODO: move this test to ManagedTableReadWriteTest.java once it's created
-  @Test
-  public void testCreateManagedParquetTable() throws IOException {
-    session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
-    String location = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
-    assertThatThrownBy(
-            () -> {
-              sql(
-                  "CREATE TABLE %s(name STRING) USING parquet TBLPROPERTIES(__FAKE_PATH__='%s')",
-                  fullTableName, location);
-            })
-        .hasMessageContaining("not support managed table");
-  }
-
-  // TODO: move this test to ManagedTableReadWriteTest.java once it's created
-  @Test
-  public void testCreateManagedDeltaTable() throws IOException {
-    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
-
-    String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    String location1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    assertThatThrownBy(
-            () -> {
-              sql(
-                  "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                  fullTableName1, location1);
-            })
-        .hasMessageContaining("not support managed table");
-
-    String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    String location2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
-    assertThatThrownBy(
-            () -> {
-              sql(
-                  "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                  fullTableName2, location2);
-            })
-        .hasMessageContaining("not support managed table");
-  }
-
   // TODO: move this into BaseTableReadWriteTest
   @Test
   public void hyphenInTableName() throws ApiException, IOException {
