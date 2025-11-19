@@ -10,9 +10,6 @@ import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.schema.CliSchemaOperations;
 import io.unitycatalog.client.ApiException;
-<<<<<<< HEAD:examples/cli/src/test/java/io/unitycatalog/cli/table/CliExternalTableCreationTest.java
-import io.unitycatalog.client.model.*;
-=======
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -21,7 +18,6 @@ import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
->>>>>>> 72ddfe72 (Add CLI support for MANAGED tables with CLI tests (#1136)):examples/cli/src/test/java/io/unitycatalog/cli/table/CliTableCreationTest.java
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;

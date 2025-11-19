@@ -16,12 +16,6 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-<<<<<<< HEAD
-import io.unitycatalog.client.model.*;
-import java.net.URI;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-=======
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
@@ -32,7 +26,6 @@ import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
->>>>>>> 72ddfe72 (Add CLI support for MANAGED tables with CLI tests (#1136))
 import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONException;
