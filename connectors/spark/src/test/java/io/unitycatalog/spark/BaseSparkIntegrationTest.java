@@ -18,6 +18,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.Optional;
 import org.apache.spark.sql.SparkSession;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
 public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
@@ -25,6 +26,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   protected static final String SPARK_CATALOG = "spark_catalog";
 
   private SchemaOperations schemaOperations;
+  // Each test would create this session. It will be closed automatically.
+  protected SparkSession session;
 
   private void createCommonResources() throws ApiException {
     // Common setup operations such as creating a catalog and schema
@@ -68,8 +71,9 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   @Override
   public void setUp() {
     super.setUp();
+    // Some Delta Spark functionalities needs testing mode to be turned on so that we can test.
+    System.setProperty("spark.testing", "true");
     schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
-    cleanUp();
     try {
       createCommonResources();
     } catch (ApiException e) {
@@ -113,10 +117,19 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return new SdkCatalogOperations(createApiClient(serverConfig));
   }
 
+  @AfterEach
   @Override
   public void cleanUp() {
     try {
       catalogOperations.deleteCatalog(SPARK_CATALOG, Optional.of(true));
+    } catch (Exception e) {
+      // Ignore
+    }
+    try {
+      if (session != null) {
+        session.close();
+        session = null;
+      }
     } catch (Exception e) {
       // Ignore
     }
