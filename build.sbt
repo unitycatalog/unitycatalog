@@ -298,6 +298,7 @@ lazy val server = (project in file("server"))
   // Server and control models are added as provided to avoid them being added as maven dependencies
   // This is because the server and control models are included in the server jar
   .dependsOn(serverModels % "provided", controlModels % "provided")
+  .dependsOn(controlApi % "test->compile")
   .enablePlugins(CheckstylePlugin)
   .settings (
     name := s"$artifactNamePrefix-server",
@@ -312,6 +313,8 @@ lazy val server = (project in file("server"))
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "org.apache.commons" % "commons-lang3" % "3.19.0",
+
       // Netty dependencies
       "io.netty" % "netty-all" % "4.1.111.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,

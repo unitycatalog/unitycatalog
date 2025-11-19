@@ -5,6 +5,7 @@ import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.nio.file.Path;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -20,7 +21,7 @@ public abstract class BaseAccessControlCRUDTest extends BaseCRUDTest {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-    serverProperties.setProperty("server.authorization", "enable");
+    serverProperties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
   }
 
   @BeforeEach
