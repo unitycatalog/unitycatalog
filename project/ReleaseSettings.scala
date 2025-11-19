@@ -53,8 +53,8 @@ object ReleaseSettings {
     pgpPassphrase := sys.env.get("PGP_PASSPHRASE").map(_.toArray),
     sonatypeProfileName := "io.unitycatalog",
     credentials += Credentials(
-      "Sonatype Nexus Repository Manager",
-      "central.sonatype.com",
+      "OSSRH Staging API Service",
+      "ossrh-staging-api.central.sonatype.com",
       sys.env.getOrElse("SONATYPE_USERNAME", ""),
       sys.env.getOrElse("SONATYPE_PASSWORD", "")
     ),
