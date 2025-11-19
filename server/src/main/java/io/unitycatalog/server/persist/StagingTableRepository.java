@@ -16,11 +16,8 @@ import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class StagingTableRepository {
-  private static final Logger LOGGER = LoggerFactory.getLogger(StagingTableRepository.class);
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
   private final ServerProperties serverProperties;
@@ -32,15 +29,6 @@ public class StagingTableRepository {
     this.serverProperties = serverProperties;
   }
 
-  private StagingTableDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
-    String hql = "FROM StagingTableDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
-    Query<StagingTableDAO> query = session.createQuery(hql, StagingTableDAO.class);
-    query.setParameter("schemaId", schemaId);
-    query.setParameter("name", name);
-    LOGGER.debug("Finding staging table by schemaId: {} and name: {}", schemaId, name);
-    return query.uniqueResult(); // Returns null if no result is found
-  }
-
   private StagingTableDAO findByStagingLocation(Session session, String stagingLocation) {
     String hql = "FROM StagingTableDAO t WHERE t.stagingLocation = :stagingLocation";
     Query<StagingTableDAO> query = session.createQuery(hql, StagingTableDAO.class);
@@ -50,18 +38,15 @@ public class StagingTableRepository {
 
   private void validateIfAlreadyExists(
       Session session, UUID schemaId, String tableName, String stagingLocation) {
-    // check if staging table or table by the same name already exists
-    // Also ensure that no staging table exists at the same location
-    StagingTableDAO existingStagingTable = findBySchemaIdAndName(session, schemaId, tableName);
-    if (existingStagingTable != null) {
-      throw new BaseException(
-          ErrorCode.ALREADY_EXISTS, "Staging table already exists: " + tableName);
-    }
+    // Check if table by the same name already exists. It's OK if a staging table with the same name
+    // already exist.
     TableInfoDAO existingTable =
         repositories.getTableRepository().findBySchemaIdAndName(session, schemaId, tableName);
     if (existingTable != null) {
       throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + tableName);
     }
+    // Also ensure that no staging table exists at the same location. This is almost impossible as
+    // the generated path contains a newly generated random UUID. But still check for it anyway.
     StagingTableDAO existingStagingTableAtLocation =
         findByStagingLocation(session, stagingLocation);
     if (existingStagingTableAtLocation != null) {
@@ -88,8 +73,8 @@ public class StagingTableRepository {
    * @param createStagingTable the request containing catalog name, schema name, and table name
    * @return StagingTableInfo containing the created staging table details including the staging
    *     location
-   * @throws BaseException with ErrorCode.ALREADY_EXISTS if a staging table or regular table with
-   *     the same name already exists in the schema
+   * @throws BaseException with ErrorCode.ALREADY_EXISTS if a regular table with the same name
+   *     already exists in the schema
    * @throws BaseException with ErrorCode.NOT_FOUND if the specified catalog or schema does not
    *     exist
    */
