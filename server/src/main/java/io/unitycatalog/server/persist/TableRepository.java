@@ -2,17 +2,12 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-<<<<<<< HEAD
-import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
-=======
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
->>>>>>> f10952fd (Support managed table creation (#1135))
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
@@ -25,16 +20,12 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
-<<<<<<< HEAD
-import java.util.*;
-=======
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
->>>>>>> f10952fd (Support managed table creation (#1135))
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
@@ -221,27 +212,16 @@ public class TableRepository {
                     .getStagingTableRepository()
                     .commitStagingTable(session, callerId, createTable.getStorageLocation());
             tableID = stagingTableDAO.getId().toString();
-          } else {
-            throw new BaseException(
-<<<<<<< HEAD
-                ErrorCode.INVALID_ARGUMENT, "MANAGED table creation is not supported yet.");
-          }
-          if (TableType.STREAMING_TABLE.equals(tableInfo.getTableType())) {
+          } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
-          }
-          if (TableType.MATERIALIZED_VIEW.equals(tableInfo.getTableType())) {
+          } else if (tableType == TableType.MATERIALIZED_VIEW) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "MATERIALIZED VIEW creation is not supported yet.");
-          }
-          // only external table creation is supported at this time
-          if (tableInfo.getStorageLocation() == null) {
+          } else {
             throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT, "Storage location is required for external table");
-=======
                 ErrorCode.INVALID_ARGUMENT,
                 "Unrecognized table type " + createTable.getTableType());
->>>>>>> f10952fd (Support managed table creation (#1135))
           }
           TableInfo tableInfo =
               new TableInfo()
