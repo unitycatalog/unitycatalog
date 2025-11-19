@@ -16,6 +16,7 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
@@ -65,7 +66,11 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   @Test
   public void testListTablesWithNoNextPageTokenShouldReturnNull() throws Exception {
     TableInfo testingTable =
-        createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION, tableOperations);
+        createTestingTable(
+            TestUtils.TABLE_NAME,
+            TableType.EXTERNAL,
+            Optional.of(TestUtils.STORAGE_LOCATION),
+            tableOperations);
     ListTablesResponse resp =
         localTablesApi.listTables(
             testingTable.getCatalogName(), testingTable.getSchemaName(), 100, null);
@@ -125,7 +130,27 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(stagingTableInfo.getStagingLocation())
         .isEqualTo("file:///tmp/ucroot/tables/" + stagingTableInfo.getId());
 
-    // Step 2: Create a managed table using the staging location
+    // Step 2: Create a managed table that's not DELTA
+    CreateTable createTableRequestNotDelta =
+        new CreateTable()
+            .name(stagingTableName)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(columns)
+            .tableType(TableType.MANAGED)
+            .dataSourceFormat(DataSourceFormat.PARQUET)
+            .storageLocation(stagingTableInfo.getStagingLocation())
+            .comment("Table created from staging location");
+    // This should fail with INVALID_ARGUMENT
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> localTablesApi.createTable(createTableRequestNotDelta))
+        .satisfies(
+            ex ->
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
+        .withMessageContaining("Managed table creation is only supported for Delta format");
+
+    // Step 3: Create a managed table using the staging location
     CreateTable createTableRequest =
         new CreateTable()
             .name(stagingTableName)
@@ -183,25 +208,35 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   }
 
   /**
-   * Test that attempting to create a managed table from a non-existent staging location fails with
-   * NOT_FOUND error.
+   * Test that attempting to create a managed table from a location different from what's returned
+   * from server.
    */
   @Test
-  public void testManagedTableCreationFromNonExistentStagingLocationShouldFail() throws Exception {
-    // Use a fake staging location that doesn't exist
+  public void testManagedTableCreationFromAlternatedStagingLocation() throws Exception {
+    String stagingTableName = "staging_test_table";
+    // Step 1: Create a staging table
+    CreateStagingTable createStagingTableRequest =
+        new CreateStagingTable()
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .name(stagingTableName);
+    StagingTableInfo stagingTableInfo =
+        localTablesApi.createStagingTable(createStagingTableRequest);
+    String stagingLocation = stagingTableInfo.getStagingLocation();
+
+    // Step 2: Create a table using a fake staging location that doesn't exist. It should fail.
     String fakeLocationUuid = "00000000-0000-0000-0000-000000000000";
     String fakeStagingLocation = "file:///tmp/ucroot/tables/" + fakeLocationUuid;
 
     CreateTable createTableRequest =
         new CreateTable()
-            .name("table_from_nonexistent_staging")
+            .name(stagingTableName)
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
             .columns(columns)
             .tableType(TableType.MANAGED)
             .dataSourceFormat(DataSourceFormat.DELTA)
-            .storageLocation(fakeStagingLocation)
-            .comment("Table from non-existent staging location - should fail");
+            .storageLocation(fakeStagingLocation);
 
     // This should fail with NOT_FOUND
     assertThatExceptionOfType(ApiException.class)
@@ -209,6 +244,19 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         .satisfies(
             ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.NOT_FOUND.getHttpStatus().code()))
         .withMessageContaining("not found");
+
+    // Step 3: Create a table using the correct storage location but with only a single slash like
+    // file:/tmp/... It's not exactly the same storage location returned but this is the behavior
+    // of Delta Spark and should be tolerated.
+    assertThat(stagingLocation).contains("file:///");
+    String stagingLocationSingleSlash = stagingLocation.replace("file:///", "file:/");
+    assertThat(stagingLocationSingleSlash).doesNotContain("file:///");
+    createTableRequest.setStorageLocation(stagingLocationSingleSlash);
+
+    TableInfo tableInfo = localTablesApi.createTable(createTableRequest);
+    assertThat(tableInfo).isNotNull();
+    assertThat(tableInfo.getStorageLocation()).contains("file:///");
+    assertThat(tableInfo.getStorageLocation()).isEqualTo(stagingLocation);
   }
 
   /** Test that attempting to create a duplicate staging table fails with ALREADY_EXISTS error. */
