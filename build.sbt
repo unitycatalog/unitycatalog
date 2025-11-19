@@ -21,7 +21,7 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.16"
 
-lazy val deltaVersion = "4.0.1-SNAPSHOT"
+lazy val deltaVersion = "4.0.2-SNAPSHOT"
 lazy val sparkVersion = "4.0.2-SNAPSHOT"
 lazy val hadoopVersion = "3.4.0"
 
