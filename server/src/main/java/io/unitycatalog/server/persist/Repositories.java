@@ -17,6 +17,7 @@ public class Repositories {
   private final CatalogRepository catalogRepository;
   private final SchemaRepository schemaRepository;
   private final TableRepository tableRepository;
+  private final StagingTableRepository stagingTableRepository;
   private final VolumeRepository volumeRepository;
   private final UserRepository userRepository;
   private final MetastoreRepository metastoreRepository;
@@ -32,6 +33,8 @@ public class Repositories {
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
     this.tableRepository = new TableRepository(this, sessionFactory);
+    this.stagingTableRepository =
+        new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);
     this.userRepository = new UserRepository(this, sessionFactory);
     this.metastoreRepository = new MetastoreRepository(this, sessionFactory);

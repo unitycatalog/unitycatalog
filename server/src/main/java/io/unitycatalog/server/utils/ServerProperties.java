@@ -1,5 +1,7 @@
 package io.unitycatalog.server.utils;
 
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import java.io.IOException;
@@ -178,5 +180,19 @@ public class ServerProperties {
   public boolean isAuthorizationEnabled() {
     String authorization = getProperty("server.authorization", "disable");
     return authorization.equalsIgnoreCase("enable");
+  }
+
+  /**
+   * Check if experimental MANAGED table feature is enabled. This method throws BaseException with
+   * ErrorCode.INVALID_ARGUMENT if it's disabled.
+   */
+  public void checkManagedTableEnabled() {
+    String managedTableEnabled = getProperty("server.managed-table.enabled", "false");
+    if (!managedTableEnabled.equalsIgnoreCase("true")) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "MANAGED table is an experimental feature and is currently disabled. "
+              + "To enable it, set 'server.managed-table.enabled=true' in server.properties");
+    }
   }
 }

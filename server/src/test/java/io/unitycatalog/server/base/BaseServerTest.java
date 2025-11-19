@@ -23,6 +23,9 @@ public abstract class BaseServerTest {
   protected void setUpProperties() {
     serverProperties = new Properties();
     serverProperties.setProperty("server.env", "test");
+    serverProperties.setProperty("storageRoot", "file:///tmp");
+    // Enable managed table creation for tests
+    serverProperties.setProperty("server.managed-table.enabled", "true");
   }
 
   protected void setUpCredentialOperations() {}
@@ -70,6 +73,7 @@ public abstract class BaseServerTest {
       session.createMutationQuery("delete from VolumeInfoDAO").executeUpdate();
       session.createMutationQuery("delete from ColumnInfoDAO").executeUpdate();
       session.createMutationQuery("delete from TableInfoDAO").executeUpdate();
+      session.createMutationQuery("delete from StagingTableDAO").executeUpdate();
       session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
       session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
       session.createMutationQuery("delete from UserDAO").executeUpdate();
