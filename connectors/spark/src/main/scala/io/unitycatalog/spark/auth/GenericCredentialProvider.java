@@ -10,6 +10,7 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.ApiClientConf;
 import io.unitycatalog.spark.ApiClientFactory;
 import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.spark.token.UCTokenProvider;
 import io.unitycatalog.spark.utils.Clock;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
@@ -33,7 +34,7 @@ public abstract class GenericCredentialProvider {
   private Clock clock;
   private long renewalLeadTimeMillis;
   private URI ucUri;
-  private String ucToken;
+  private UCTokenProvider ucTokenProvider;
   private String credUid;
   private boolean credCacheEnabled;
 
@@ -56,10 +57,8 @@ public abstract class GenericCredentialProvider {
         "'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI_KEY);
     this.ucUri = URI.create(ucUriStr);
 
-    String ucTokenStr = conf.get(UCHadoopConf.UC_TOKEN_KEY);
-    Preconditions.checkNotNull(ucTokenStr,
-        "'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN_KEY);
-    this.ucToken = conf.get(UCHadoopConf.UC_TOKEN_KEY);
+    // Initialize the UCTokenProvider.
+    this.ucTokenProvider = UCTokenProvider.create(conf);
 
     this.credUid = conf.get(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
     Preconditions.checkState(credUid != null && !credUid.isEmpty(),
@@ -100,7 +99,7 @@ public abstract class GenericCredentialProvider {
         if (tempCredApi == null) {
           ApiClientConf clientConf = UCHadoopConf.getApiClientConf(conf);
           tempCredApi = new TemporaryCredentialsApi(
-              ApiClientFactory.createApiClient(clientConf, ucUri, ucToken));
+              ApiClientFactory.createApiClient(clientConf, ucUri, ucTokenProvider));
         }
       }
     }

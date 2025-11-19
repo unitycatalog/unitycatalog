@@ -41,8 +41,12 @@ public class UCHadoopConf {
   // custom configuration keys (e.g., AWS, ABFS, or GCS credentials) propagate correctly into Hadoop
   // FileSystems such as S3AFileSystem or AbfsFileSystem, the keys must include the "fs." prefix.
   // See also: https://github.com/unitycatalog/unitycatalog/issues/1112.
+  public static final String FS_UC_PREFIX = "fs.unitycatalog.";
   public static final String UC_URI_KEY = "fs.unitycatalog.uri";
   public static final String UC_TOKEN_KEY = "fs.unitycatalog.token";
+  public static final String UC_OAUTH_URI = "fs.unitycatalog.oauthUri";
+  public static final String UC_OAUTH_CLIENT_ID = "fs.unitycatalog.oauthClientId";
+  public static final String UC_OAUTH_CLIENT_SECRET = "fs.unitycatalog.oauthClientSecret";
 
   // Key representing the remaining time before expiration, used to trigger credentials renewal in
   // advance.
