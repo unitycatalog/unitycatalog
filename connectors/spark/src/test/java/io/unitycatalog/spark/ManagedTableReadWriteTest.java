@@ -12,7 +12,6 @@ import java.net.URISyntaxException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,7 +19,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -32,6 +30,8 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
   /**
    * This function provides a set of test parameters that cloud-aware tests should run for this
    * class.
+   *
+   * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled)
    */
   protected static Stream<Arguments> cloudParameters() {
     // Right now this test suite only support testing with s3. In the future we'll expand this
@@ -48,34 +48,28 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
   public void testCreateManagedTableErrors() throws IOException {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    assertThatThrownBy(
-            () ->
-                session.sql(
-                    String.format("CREATE TABLE %s(name STRING) USING parquet", fullTableName)))
+    assertThatThrownBy(() -> sql("CREATE TABLE %s(name STRING) USING parquet", fullTableName))
         .hasMessageContaining("not support non-Delta managed table");
     assertThatThrownBy(
             () ->
-                session.sql(
-                    String.format(
-                        "CREATE TABLE %s(name STRING) USING delta "
-                            + "TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'disabled')",
-                        fullTableName)))
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta "
+                        + "TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'disabled')",
+                    fullTableName))
         .hasMessageContaining("delta.feature.catalogOwned-preview=disabled");
     assertThatThrownBy(
             () ->
-                session.sql(
-                    String.format(
-                        "CREATE TABLE %s(name STRING) USING delta "
-                            + "TBLPROPERTIES ('ucTableId' = 'some_id')",
-                        fullTableName)))
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta "
+                        + "TBLPROPERTIES ('ucTableId' = 'some_id')",
+                    fullTableName))
         .hasMessageContaining("ucTableId");
     assertThatThrownBy(
             () ->
-                session.sql(
-                    String.format(
-                        "CREATE TABLE %s(name STRING) USING delta "
-                            + "TBLPROPERTIES ('is_managed_location' = 'false')",
-                        fullTableName)))
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta "
+                        + "TBLPROPERTIES ('is_managed_location' = 'false')",
+                    fullTableName))
         .hasMessageContaining("is_managed_location");
   }
 
@@ -98,20 +92,17 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
                   : "";
 
           if (ctas) {
-            session.sql(
-                String.format(
-                    "CREATE TABLE %s USING delta %s AS SELECT 'a' AS name",
-                    fullTableName, propertyClause));
+            sql(
+                "CREATE TABLE %s USING delta %s AS SELECT 'a' AS name",
+                fullTableName, propertyClause);
           } else {
-            session.sql(
-                String.format(
-                    "CREATE TABLE %s(name STRING) USING delta %s", fullTableName, propertyClause));
+            sql("CREATE TABLE %s(name STRING) USING delta %s", fullTableName, propertyClause);
           }
-          session.sql("INSERT INTO " + fullTableName + " SELECT 'b'");
+          sql("INSERT INTO " + fullTableName + " SELECT 'b'");
 
-          Row[] rows = (Row[]) session.sql("DESC EXTENDED " + fullTableName).collect();
+          List<Row> rows = sql("DESC EXTENDED " + fullTableName);
           Map<String, String> describeResult =
-              Arrays.stream(rows)
+              rows.stream()
                   .collect(Collectors.toMap(row -> row.getString(0), row -> row.getString(1)));
 
           // Make sure the table created is managed and catalogOwned
@@ -147,33 +138,21 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
 
   @Override
   protected String setupDeltaTable(
-      String catalogName, String tableName, List<String> partitionColumns, SparkSession session)
+      String cloudScheme, String catalogName, String tableName, List<String> partitionColumns)
       throws IOException, ApiException {
+    // For now, we only support testing one cloud, which is the one configured by
+    // managedStorageCloudScheme(). Tests are only supposed to call this function with the correct
+    // cloud scheme.
+    assert cloudScheme.equals(managedStorageCloudScheme());
     String partitionClause;
     if (partitionColumns.isEmpty()) {
       partitionClause = "";
     } else {
       partitionClause = String.format(" PARTITIONED BY (%s)", String.join(", ", partitionColumns));
     }
-    session.sql(
-        String.format(
-            "CREATE TABLE %s.%s.%s(i INT, s STRING) USING delta %s",
-            catalogName, SCHEMA_NAME, tableName, partitionClause));
+    sql(
+        "CREATE TABLE %s.%s.%s(i INT, s STRING) USING delta %s",
+        catalogName, SCHEMA_NAME, tableName, partitionClause);
     return String.join(".", catalogName, SCHEMA_NAME, tableName);
-  }
-
-  @Override
-  protected String setupDeltaTableForCloud(
-      String scheme,
-      String catalogName,
-      String tableName,
-      List<String> partitionColumns,
-      SparkSession session)
-      throws IOException, ApiException {
-    // For now, we only support testing one cloud, which is the one configured by
-    // managedStorageCloudScheme(). Tests are only supposed to call this function with the correct
-    // cloud scheme.
-    assert scheme.equals(managedStorageCloudScheme());
-    return setupDeltaTable(catalogName, tableName, partitionColumns, session);
   }
 }
