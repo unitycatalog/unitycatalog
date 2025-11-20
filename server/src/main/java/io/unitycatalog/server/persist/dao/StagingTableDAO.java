@@ -21,7 +21,6 @@ import lombok.experimental.SuperBuilder;
 @Table(
     name = "uc_staging_tables",
     indexes = {
-      @Index(name = "idx_name", columnList = "name"),
       @Index(name = "idx_staging_location", columnList = "staging_location"),
     })
 // Lombok annotations
