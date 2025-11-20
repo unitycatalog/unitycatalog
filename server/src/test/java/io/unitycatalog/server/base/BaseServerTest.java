@@ -1,16 +1,13 @@
 package io.unitycatalog.server.base;
 
 import io.unitycatalog.server.UnityCatalogServer;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Properties;
 import lombok.SneakyThrows;
 import org.hibernate.Session;
@@ -18,6 +15,7 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.io.TempDir;
 
 public abstract class BaseServerTest {
 
@@ -28,7 +26,7 @@ public abstract class BaseServerTest {
   protected static CloudCredentialVendor cloudCredentialVendor;
 
   // All test data should be written under this directory. It will be cleaned up.
-  protected Path testDirectoryRoot;
+  @TempDir protected Path testDirectoryRoot;
   // The storage root URL for managed tables to be set in server properties.
   protected String tableStorageRoot;
 
@@ -81,12 +79,6 @@ public abstract class BaseServerTest {
       System.out.println("Running tests on localhost..");
       // start the server on a random port
       int port = TestUtils.getRandomPort();
-      testDirectoryRoot =
-          Paths.get(
-                  System.getProperty("java.io.tmpdir"),
-                  "BaseServerTest" + System.currentTimeMillis())
-              .toAbsolutePath()
-              .normalize();
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
@@ -125,21 +117,6 @@ public abstract class BaseServerTest {
       session.close();
 
       unityCatalogServer.stop();
-      if (testDirectoryRoot != null && Files.isDirectory(testDirectoryRoot)) {
-        // Just make sure it doesn't wipe out root dir
-        if (testDirectoryRoot.getNameCount() < 2) {
-          throw new RuntimeException(
-              "Test directory root path is too short: "
-                  + testDirectoryRoot
-                  + ". Refusing to delete.");
-        }
-        try {
-          FileOperations.deleteLocalDirectory(testDirectoryRoot);
-        } catch (IOException e) {
-          // Ignore
-        }
-        testDirectoryRoot = null;
-      }
     }
   }
 }

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.List;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.junit.jupiter.api.Test;
@@ -15,15 +16,15 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   public void testCreateSchema() {
     session = createSparkSessionWithCatalogs(CATALOG_NAME, SPARK_CATALOG);
     session.catalog().setCurrentCatalog(CATALOG_NAME);
-    session.sql("CREATE DATABASE my_test_database;");
+    sql("CREATE DATABASE my_test_database;");
     assertThat(session.catalog().databaseExists("my_test_database")).isTrue();
-    session.sql(String.format("DROP DATABASE %s.my_test_database;", CATALOG_NAME));
+    sql("DROP DATABASE %s.my_test_database;", CATALOG_NAME);
     assertThat(session.catalog().databaseExists("my_test_database")).isFalse();
 
     session.catalog().setCurrentCatalog(SPARK_CATALOG);
-    session.sql("CREATE DATABASE my_test_database;");
+    sql("CREATE DATABASE my_test_database;");
     assertThat(session.catalog().databaseExists("my_test_database")).isTrue();
-    session.sql(String.format("DROP DATABASE %s.my_test_database;", SPARK_CATALOG));
+    sql("DROP DATABASE %s.my_test_database;", SPARK_CATALOG);
     assertThat(session.catalog().databaseExists("my_test_database")).isFalse();
   }
 
@@ -41,9 +42,9 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   @Test
   public void testListSchema() {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG);
-    Row row = session.sql("SHOW SCHEMAS").collectAsList().get(0);
+    Row row = sql("SHOW SCHEMAS").get(0);
     assertThat(row.getString(0)).isEqualTo(SCHEMA_NAME);
-    assertThatThrownBy(() -> session.sql("SHOW SCHEMAS IN a.b.c").collect())
+    assertThatThrownBy(() -> sql("SHOW SCHEMAS IN a.b.c"))
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessageContaining("Multi-layer namespace is not supported in Unity Catalog");
   }
@@ -52,14 +53,14 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   public void testLoadSchema() {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
-    Row[] rows = (Row[]) session.sql("DESC SCHEMA " + SCHEMA_NAME).collect();
+    List<Row> rows = sql("DESC SCHEMA %s", SCHEMA_NAME);
     assertThat(rows).hasSize(2);
-    assertThat(rows[0].getString(0)).isEqualTo("Catalog Name");
-    assertThat(rows[0].getString(1)).isEqualTo(SPARK_CATALOG);
-    assertThat(rows[1].getString(0)).isEqualTo("Namespace Name");
-    assertThat(rows[1].getString(1)).isEqualTo(SCHEMA_NAME);
+    assertThat(rows.get(0).getString(0)).isEqualTo("Catalog Name");
+    assertThat(rows.get(0).getString(1)).isEqualTo(SPARK_CATALOG);
+    assertThat(rows.get(1).getString(0)).isEqualTo("Namespace Name");
+    assertThat(rows.get(1).getString(1)).isEqualTo(SCHEMA_NAME);
 
-    assertThatThrownBy(() -> session.sql("DESC NAMESPACE NonExist").collect())
+    assertThatThrownBy(() -> sql("DESC NAMESPACE NonExist"))
         .isInstanceOf(NoSuchNamespaceException.class);
   }
 }

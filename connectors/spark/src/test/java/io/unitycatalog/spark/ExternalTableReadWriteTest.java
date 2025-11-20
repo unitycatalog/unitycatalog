@@ -30,6 +30,7 @@ import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -41,7 +42,8 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
   private static final String PARQUET_TABLE = "test_parquet";
   private static final String ANOTHER_DELTA_TABLE = "test_delta_another";
 
-  private File dataDir;
+  @TempDir private File dataDir;
+
   // CredentialTestFileSystem provides two test buckets test-bucket0 and test-bucket1.
   // Tests in this class wants to use them alternating. So this variable will be changing between
   // 0 and 1 to construct the bucket name.
@@ -52,6 +54,8 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
   /**
    * This function provides a set of test parameters that cloud-aware tests should run for this
    * class.
+   *
+   * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled)
    */
   protected static Stream<Arguments> cloudParameters() {
     return Stream.of(
@@ -80,7 +84,7 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
             .config(catalogConf + "." + OptionsUtil.WAREHOUSE, CATALOG_NAME);
     session = builder.getOrCreate();
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
-    testTableReadWrite("spark_catalog." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
+    testTableReadWrite("spark_catalog." + SCHEMA_NAME + "." + PARQUET_TABLE);
     assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(false);
   }
 
@@ -89,11 +93,10 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG);
     // Spark only allow `spark_catalog` to return built-in file source tables.
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
-    testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
+    testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE);
 
-    setupExternalParquetTable(PARQUET_TABLE_PARTITIONED, Arrays.asList("s"));
-    testTableReadWrite(
-        SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE_PARTITIONED, session);
+    setupExternalParquetTable(PARQUET_TABLE_PARTITIONED, List.of("s"));
+    testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE_PARTITIONED);
   }
 
   @Test
@@ -103,22 +106,16 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
 
     String path1 = new File(dataDir, "test_delta_path1").getCanonicalPath();
     String tableName1 = String.format("delta.`%s`", path1);
-    session.sql(String.format("CREATE TABLE %s(i INT) USING delta", tableName1));
-    assertThat(session.sql("SELECT * FROM " + tableName1).collectAsList()).isEmpty();
-    session.sql("INSERT INTO " + tableName1 + " SELECT 1");
-    assertThat(session.sql("SELECT * FROM " + tableName1).collectAsList())
-        .first()
-        .extracting(row -> row.get(0))
-        .isEqualTo(1);
+    sql("CREATE TABLE %s(i INT) USING delta", tableName1);
+    assertThat(sql("SELECT * FROM %s", tableName1)).isEmpty();
+    sql("INSERT INTO %s SELECT 1", tableName1);
+    validateRows(sql("SELECT * FROM %s", tableName1), 1);
 
     // Test CTAS
     String path2 = new File(dataDir, "test_delta_path2").getCanonicalPath();
     String tableName2 = String.format("delta.`%s`", path2);
-    session.sql(String.format("CREATE TABLE %s USING delta AS SELECT 1 AS i", tableName2));
-    assertThat(session.sql("SELECT * FROM " + tableName2).collectAsList())
-        .first()
-        .extracting(row -> row.get(0))
-        .isEqualTo(1);
+    sql("CREATE TABLE %s USING delta AS SELECT 1 AS i", tableName2);
+    validateRows(sql("SELECT * FROM %s", tableName2), 1);
   }
 
   @ParameterizedTest
@@ -130,20 +127,15 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
     setupExternalParquetTable(PARQUET_TABLE, loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
-    testTableReadWrite(t1, session);
+    testTableReadWrite(t1);
 
     String loc2 =
         scheme + "://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
     setupExternalParquetTable(ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
     String t2 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
-    testTableReadWrite(t2, session);
+    testTableReadWrite(t2);
 
-    Row row =
-        session
-            .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
-            .collectAsList()
-            .get(0);
-    assertThat(row.getInt(0)).isEqualTo(1);
+    validateRows(sql("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2), 1);
   }
 
   @ParameterizedTest
@@ -153,29 +145,24 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    setupDeltaTableLocation(session, loc1, new ArrayList<>(0));
+    setupDeltaTableLocation(loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    session.sql(String.format("CREATE TABLE %s USING delta LOCATION '%s'", t1, loc1));
-    testTableReadWrite(t1, session);
+    sql("CREATE TABLE %s USING delta LOCATION '%s'", t1, loc1);
+    testTableReadWrite(t1);
 
     String loc2 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
-    setupDeltaTableLocation(session, loc2, new ArrayList<>(0));
+    setupDeltaTableLocation(loc2, new ArrayList<>(0));
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    session.sql(String.format("CREATE TABLE %s USING delta LOCATION '%s'", t2, loc2));
-    testTableReadWrite(t2, session);
+    sql("CREATE TABLE %s USING delta LOCATION '%s'", t2, loc2);
+    testTableReadWrite(t2);
 
-    Row row =
-        session
-            .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
-            .collectAsList()
-            .get(0);
-    assertThat(row.getInt(0)).isEqualTo(1);
+    validateRows(sql("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2), 1);
 
     // Path that does not exist
     String loc3 =
         scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
     String t3 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
-    session.sql(String.format("CREATE TABLE %s(i INT) USING delta LOCATION '%s'", t3, loc3));
+    sql("CREATE TABLE %s(i INT) USING delta LOCATION '%s'", t3, loc3);
     List<Row> rows = session.table(t3).collectAsList();
     assertThat(rows).isEmpty();
   }
@@ -193,13 +180,6 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
         SPARK_CATALOG, tableName, DataSourceFormat.PARQUET, location, partitionColumns, false);
   }
 
-  @Override
-  protected String setupDeltaTable(
-      String catalogName, String tableName, List<String> partitionColumns, SparkSession session)
-      throws IOException, ApiException {
-    return setupDeltaTableForCloud("file", catalogName, tableName, partitionColumns, session);
-  }
-
   @Test
   public void testCreateExternalParquetTable() throws IOException {
 
@@ -210,23 +190,21 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
       String fullTableName = testCatalog + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
       String fullTableName2 = testCatalog + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
 
-      session.sql(
+      sql(
           "CREATE TABLE "
               + fullTableName
               + " USING parquet LOCATION '"
               + path
               + "' as SELECT 1, 2, 3");
-      assertThat(session.sql("SELECT * FROM " + fullTableName).collectAsList()).hasSize(1);
+      assertThat(sql("SELECT * FROM %s", fullTableName)).hasSize(1);
       String path2 = generateTableLocation(testCatalog, ANOTHER_PARQUET_TABLE);
-      session
-          .sql(
-              "CREATE TABLE "
-                  + fullTableName2
-                  + "(i INT, s STRING) USING PARQUET LOCATION '"
-                  + path2
-                  + "'")
-          .collect();
-      testTableReadWrite(fullTableName2, session);
+      sql(
+          "CREATE TABLE "
+              + fullTableName2
+              + "(i INT, s STRING) USING PARQUET LOCATION '"
+              + path2
+              + "'");
+      testTableReadWrite(fullTableName2);
     }
   }
 
@@ -235,12 +213,11 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String path1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     String path2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
-    session.sql(String.format("CREATE TABLE delta.`%s`(name STRING) USING delta", path1));
-    session.sql(String.format("CREATE TABLE delta.`%s`(name STRING) USING delta", path2));
+    sql("CREATE TABLE delta.`%s`(name STRING) USING delta", path1);
+    sql("CREATE TABLE delta.`%s`(name STRING) USING delta", path2);
 
     String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    session.sql(
-        "CREATE TABLE " + fullTableName1 + "(name STRING) USING delta LOCATION '" + path1 + "'");
+    sql("CREATE TABLE %s(name STRING) USING delta LOCATION '%s'", fullTableName1, path1);
     assertThat(session.catalog().tableExists(fullTableName1)).isTrue();
     TableInfo tableInfo1 = tableOperations.getTable(fullTableName1);
     // By default, Delta tables do not store schema in the catalog.
@@ -251,8 +228,7 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     assertThat(schema1.apply(0).dataType()).isEqualTo(DataTypes.StringType);
 
     String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    session.sql(
-        "CREATE TABLE " + fullTableName2 + "(name STRING) USING delta LOCATION '" + path2 + "'");
+    sql("CREATE TABLE %s(name STRING) USING delta LOCATION '%s'", fullTableName2, path2);
     assertThat(session.catalog().tableExists(fullTableName2)).isTrue();
     TableInfo tableInfo2 = tableOperations.getTable(fullTableName2);
     // By default, Delta tables do not store schema in the catalog.
@@ -270,15 +246,14 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     String fullTableName1 = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     assertThatThrownBy(
             () -> {
-              session.sql(
-                  "CREATE EXTERNAL TABLE " + fullTableName1 + "(name STRING) USING parquet");
+              sql("CREATE EXTERNAL TABLE %s(name STRING) USING parquet", fullTableName1);
             })
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
 
     String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     assertThatThrownBy(
             () -> {
-              session.sql("CREATE EXTERNAL TABLE " + fullTableName2 + "(name STRING) USING delta");
+              sql("CREATE EXTERNAL TABLE %s(name STRING) USING delta", fullTableName2);
             })
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
   }
@@ -291,10 +266,9 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     String location = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
     assertThatThrownBy(
             () -> {
-              session.sql(
-                  String.format(
-                      "CREATE TABLE %s(name STRING) USING parquet TBLPROPERTIES(__FAKE_PATH__='%s')",
-                      fullTableName, location));
+              sql(
+                  "CREATE TABLE %s(name STRING) USING parquet TBLPROPERTIES(__FAKE_PATH__='%s')",
+                  fullTableName, location);
             })
         .hasMessageContaining("not support managed table");
   }
@@ -308,10 +282,9 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     String location1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     assertThatThrownBy(
             () -> {
-              session.sql(
-                  String.format(
-                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                      fullTableName1, location1));
+              sql(
+                  "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
+                  fullTableName1, location1);
             })
         .hasMessageContaining("not support managed table");
 
@@ -319,10 +292,9 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     String location2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
     assertThatThrownBy(
             () -> {
-              session.sql(
-                  String.format(
-                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                      fullTableName2, location2));
+              sql(
+                  "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
+                  fullTableName2, location2);
             })
         .hasMessageContaining("not support managed table");
   }
@@ -331,8 +303,7 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
 
-  private void setupDeltaTableLocation(
-      SparkSession session, String location, List<String> partitionColumns) {
+  private void setupDeltaTableLocation(String location, List<String> partitionColumns) {
     // The Delta path can't be empty, need to initialize before read.
     String partitionClause;
     if (partitionColumns.isEmpty()) {
@@ -343,9 +314,7 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     // Temporarily disable the credential check when setting up the external Delta location which
     // does not involve Unity Catalog at all.
     CredentialTestFileSystem.credentialCheckEnabled = false;
-    session.sql(
-        String.format(
-            "CREATE TABLE delta.`%s`(i INT, s STRING) USING delta %s", location, partitionClause));
+    sql("CREATE TABLE delta.`%s`(i INT, s STRING) USING delta %s", location, partitionClause);
     CredentialTestFileSystem.credentialCheckEnabled = true;
   }
 
@@ -360,16 +329,12 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
   }
 
   @Override
-  protected String setupDeltaTableForCloud(
-      String scheme,
-      String catalogName,
-      String tableName,
-      List<String> partitionColumns,
-      SparkSession session)
+  protected String setupDeltaTable(
+      String cloudScheme, String catalogName, String tableName, List<String> partitionColumns)
       throws IOException, ApiException {
-    String cloudPrefix = scheme.equals("file") ? "" : testBucket(scheme);
+    String cloudPrefix = cloudScheme.equals("file") ? "" : testBucket(cloudScheme);
     String location = cloudPrefix + generateTableLocation(catalogName, tableName);
-    setupDeltaTableLocation(session, location, partitionColumns);
+    setupDeltaTableLocation(location, partitionColumns);
     setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
     return String.join(".", catalogName, SCHEMA_NAME, tableName);
   }
@@ -436,15 +401,12 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
   public void setUp() {
     super.setUp();
     tableOperations = new SdkTableOperations(createApiClient(serverConfig));
-    dataDir = testDirectoryRoot.resolve("spark_test").toFile();
   }
 
   @AfterEach
   @Override
   public void cleanUp() {
-    super.cleanUp();
-    // Its parent testDirectoryRoot has been cleaned up by super.cleanUp()
-    dataDir = null;
     UCSingleCatalog.LOAD_DELTA_CATALOG().set(true);
+    super.cleanUp();
   }
 }

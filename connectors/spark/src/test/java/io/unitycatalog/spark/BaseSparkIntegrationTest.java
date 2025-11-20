@@ -16,7 +16,9 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
+import java.util.List;
 import java.util.Optional;
+import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,11 +69,17 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return builder.getOrCreate();
   }
 
+  protected List<Row> sql(String statement, Object... args) {
+    return session.sql(String.format(statement, args)).collectAsList();
+  }
+
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
     // Some Delta Spark functionalities needs testing mode to be turned on so that we can test.
+    // Specifically the file CreateDeltaTableCommand.scala in Delta checks for Utils.isTesting
+    // before allowing catalog owned table creation.
     System.setProperty("spark.testing", "true");
     schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
     try {
