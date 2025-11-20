@@ -111,7 +111,10 @@ public class UnityCatalogServer {
           new GcpCredentialVendor(unityCatalogServerBuilder.serverProperties);
       CloudCredentialVendor cloudCredentialVendor =
           new CloudCredentialVendor(
-              awsCredentialVendor, azureCredentialVendor, gcpCredentialVendor);
+              awsCredentialVendor,
+              azureCredentialVendor,
+              gcpCredentialVendor,
+              unityCatalogServerBuilder.serverProperties);
       unityCatalogServerBuilder.credentialOperations(cloudCredentialVendor);
     }
   }

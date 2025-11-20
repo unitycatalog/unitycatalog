@@ -129,6 +129,7 @@ public class CredPropsUtil {
         .set("fs.s3a.access.key", awsCred.getAccessKeyId())
         .set("fs.s3a.secret.key", awsCred.getSecretAccessKey())
         .set("fs.s3a.session.token", awsCred.getSessionToken())
+        .set("fs.s3a.endpoint", tempCreds.getEndpointUrl())
         .build();
   }
 

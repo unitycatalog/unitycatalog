@@ -14,6 +14,7 @@ public class UCHadoopConf {
   public static final String S3A_INIT_ACCESS_KEY = "fs.s3a.init.access.key";
   public static final String S3A_INIT_SECRET_KEY = "fs.s3a.init.secret.key";
   public static final String S3A_INIT_SESSION_TOKEN = "fs.s3a.init.session.token";
+  public static final String S3A_INIT_ENDPOINT_URL = "fs.s3a.init.endpoint";
   // Expired time in milliseconds.
   public static final String S3A_INIT_CRED_EXPIRED_TIME = "fs.s3a.init.credential.expired.time";
 

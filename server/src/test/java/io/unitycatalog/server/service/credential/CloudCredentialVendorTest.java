@@ -1,13 +1,14 @@
 package io.unitycatalog.server.service.credential;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.service.credential.aws.CredentialsGenerator;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -23,11 +24,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import software.amazon.awssdk.services.sts.model.Credentials;
 import software.amazon.awssdk.services.sts.model.StsException;
 
 @ExtendWith(MockitoExtension.class)
 public class CloudCredentialVendorTest {
   @Mock ServerProperties serverProperties;
+  @Mock CredentialsGenerator.StsCredentialsGenerator stsCredentialsGenerator;
   CloudCredentialVendor credentialsOperations;
 
   @Test
@@ -48,7 +51,9 @@ public class CloudCredentialVendorTest {
                     .sessionToken(SESSION_TOKEN)
                     .build()));
     AwsCredentialVendor awsCredentialVendor = new AwsCredentialVendor(serverProperties);
-    credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
+    credentialsOperations =
+        new CloudCredentialVendor(
+            awsCredentialVendor, null, null, serverProperties);
     TemporaryCredentials s3TemporaryCredentials =
         credentialsOperations.vendCredential(
             "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT));
@@ -71,12 +76,55 @@ public class CloudCredentialVendorTest {
                     .awsRoleArn(ROLE_ARN)
                     .build()));
     awsCredentialVendor = new AwsCredentialVendor(serverProperties);
-    credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
+    credentialsOperations =
+        new CloudCredentialVendor(
+            awsCredentialVendor, null, null, serverProperties);
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(
                     "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT)))
         .isInstanceOf(StsException.class);
+  }
+
+  @Test
+  public void testGenerateS3TemporaryCredentialsWithEndpointUrl() {
+      final String ACCESS_KEY = "accessKey";
+      final String SECRET_KEY = "secretKey";
+      final String SESSION_TOKEN = "sessionToken";
+      final String S3_REGION = "us-west-2";
+      final String ENDPOINT_URL = "http://localhost";
+      when(serverProperties.getS3Configurations())
+              .thenReturn(
+                      Map.of(
+                              "s3://storageBase",
+                              S3StorageConfig.builder()
+                                      .accessKey(ACCESS_KEY)
+                                      .secretKey(SECRET_KEY)
+                                      .region(S3_REGION)
+                                      .endpointUrl(ENDPOINT_URL)
+                                      .build()));
+      when(stsCredentialsGenerator.generate(any()))
+              .thenReturn(Credentials
+                      .builder()
+                      .accessKeyId(ACCESS_KEY)
+                      .secretAccessKey(SECRET_KEY)
+                      .sessionToken(SESSION_TOKEN)
+                      .build());
+      AwsCredentialVendor awsCredentialVendor = new MockedAwsCredentialVendor(serverProperties);
+      credentialsOperations =
+              new CloudCredentialVendor(
+                      awsCredentialVendor, null, null, serverProperties);
+      TemporaryCredentials s3TemporaryCredentials =
+              credentialsOperations.vendCredential(
+                      "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT));
+      assertThat(s3TemporaryCredentials.getAwsTempCredentials())
+              .isEqualTo(
+                      new AwsCredentials()
+                              .accessKeyId(ACCESS_KEY)
+                              .secretAccessKey(SECRET_KEY)
+                              .sessionToken(SESSION_TOKEN));
+      assertThat(s3TemporaryCredentials.getEndpointUrl())
+              .isEqualTo(ENDPOINT_URL);
   }
 
   @Test
@@ -88,7 +136,9 @@ public class CloudCredentialVendorTest {
     when(serverProperties.getAdlsConfigurations())
         .thenReturn(Map.of("uctest", ADLSStorageConfig.builder().testMode(true).build()));
     AzureCredentialVendor azureCredentialVendor = new AzureCredentialVendor(serverProperties);
-    credentialsOperations = new CloudCredentialVendor(null, azureCredentialVendor, null);
+    credentialsOperations =
+        new CloudCredentialVendor(
+            null, azureCredentialVendor, null, serverProperties);
     TemporaryCredentials azureTemporaryCredentials =
         credentialsOperations.vendCredential(
             "abfss://test@uctest.dfs.core.windows.net", Set.of(CredentialContext.Privilege.UPDATE));
@@ -106,7 +156,9 @@ public class CloudCredentialVendorTest {
                     .clientSecret(CLIENT_SECRET)
                     .build()));
     azureCredentialVendor = new AzureCredentialVendor(serverProperties);
-    credentialsOperations = new CloudCredentialVendor(null, azureCredentialVendor, null);
+    credentialsOperations =
+        new CloudCredentialVendor(
+            null, azureCredentialVendor, null, serverProperties);
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(
@@ -127,7 +179,9 @@ public class CloudCredentialVendorTest {
                     .credentialsGenerator(StaticTestingCredentialsGenerator.class.getName())
                     .build()));
     GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
-    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
+    credentialsOperations =
+        new CloudCredentialVendor(
+            null, null, gcpCredentialVendor, serverProperties);
     TemporaryCredentials gcpTemporaryCredentials =
         credentialsOperations.vendCredential(
             "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.UPDATE));
@@ -157,7 +211,9 @@ public class CloudCredentialVendorTest {
         .thenReturn(
             Map.of("gs://uctest", GcsStorageConfig.builder().bucketPath("gs://uctest").build()));
     gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
-    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
+    credentialsOperations =
+        new CloudCredentialVendor(
+            null, null, gcpCredentialVendor, serverProperties);
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(
@@ -176,5 +232,17 @@ public class CloudCredentialVendorTest {
                     "gs://missing/abc", Set.of(CredentialContext.Privilege.UPDATE)))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("Unknown GCS storage configuration");
+  }
+
+  class MockedAwsCredentialVendor extends AwsCredentialVendor {
+
+      public MockedAwsCredentialVendor(ServerProperties serverProperties) {
+          super(serverProperties);
+      }
+
+      @Override
+      protected CredentialsGenerator createCredentialsGenerator(S3StorageConfig config) {
+          return stsCredentialsGenerator;
+      }
   }
 }

@@ -27,13 +27,15 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
       String secretKey = conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY);
       String sessionToken = conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN);
 
+      String endpoint = conf.get(UCHadoopConf.S3A_INIT_ENDPOINT_URL);
+
       long expiredTimeMillis = conf.getLong(
           UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
           Long.MAX_VALUE);
       Preconditions.checkState(expiredTimeMillis > 0, "Expired time %s must be greater than 0, " +
           "please check configure key '%s'", expiredTimeMillis, UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME);
 
-      return GenericCredential.forAws(accessKey, secretKey, sessionToken, expiredTimeMillis);
+      return GenericCredential.forAws(accessKey, secretKey, sessionToken, expiredTimeMillis, endpoint);
     } else {
       return null;
     }
