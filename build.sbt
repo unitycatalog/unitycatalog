@@ -115,6 +115,11 @@ enablePlugins(CoursierPlugin)
 
 useCoursier := true
 
+// Configure resolvers
+resolvers ++= Seq(
+  "Maven Central" at "https://repo1.maven.org/maven2/",
+)
+
 // enforce java code style
 def javafmtCheckSettings() = Seq(
   (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtAll)).value
