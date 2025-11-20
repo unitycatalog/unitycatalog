@@ -10,6 +10,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.*;
@@ -87,8 +88,10 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
     serverProperties.put("gcs.bucketPath.0", "gs://test-bucket0");
     serverProperties.put("gcs.jsonKeyFilePath.0", "testing://0");
+    serverProperties.put("gcs.credentialsGenerator.0", TestingCredentialsGenerator.class.getName());
     serverProperties.put("gcs.bucketPath.1", "gs://test-bucket1");
     serverProperties.put("gcs.jsonKeyFilePath.1", "testing://1");
+    serverProperties.put("gcs.credentialsGenerator.1", TestingCredentialsGenerator.class.getName());
 
     serverProperties.put("adls.storageAccountName.0", "test-bucket0");
     serverProperties.put("adls.tenantId.0", "tenantId0");
