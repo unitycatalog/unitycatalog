@@ -78,8 +78,8 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
     // Verify the UC Token validation error message.
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     assertThatThrownBy(() -> provider.initialize(conf))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN_KEY);
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Cannot determine UCTokenProvider from options", UCHadoopConf.UC_TOKEN_KEY);
 
     // Verify the UID validation error message.
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
