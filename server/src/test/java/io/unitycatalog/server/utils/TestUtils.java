@@ -76,7 +76,9 @@ public class TestUtils {
   public static void assertApiException(
       Executable executable, ErrorCode errorCode, String containsMessage) {
     ApiException ex = assertThrows(ApiException.class, executable);
-    assertThat(ex.getCode()).isEqualTo(errorCode.getHttpStatus().code());
+    // Check the message first. When tests fail due to mismatching error, the message can tell us
+    // more.
     assertThat(ex.getMessage()).contains(containsMessage);
+    assertThat(ex.getCode()).isEqualTo(errorCode.getHttpStatus().code());
   }
 }

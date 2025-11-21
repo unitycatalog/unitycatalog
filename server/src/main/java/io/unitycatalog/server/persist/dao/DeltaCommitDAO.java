@@ -1,6 +1,6 @@
 package io.unitycatalog.server.persist.dao;
 
-import io.unitycatalog.server.model.CommitInfo;
+import io.unitycatalog.server.model.DeltaCommitInfo;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -17,7 +17,7 @@ import org.hibernate.annotations.UuidGenerator;
 
 @Entity
 @Table(
-    name = "uc_commits",
+    name = "uc_delta_commits",
     uniqueConstraints = {@UniqueConstraint(columnNames = {"table_id", "commit_version"})})
 // Lombok
 @Getter
@@ -37,13 +37,13 @@ public class DeltaCommitDAO {
   private UUID tableId;
 
   @Column(name = "commit_version", nullable = false)
-  private Long commitVersion;
+  private long commitVersion;
 
   @Column(name = "commit_filename", nullable = false)
   private String commitFilename;
 
   @Column(name = "commit_filesize", nullable = false)
-  private Long commitFilesize;
+  private long commitFilesize;
 
   @Column(name = "commit_file_modification_timestamp", nullable = false)
   private Date commitFileModificationTimestamp;
@@ -52,9 +52,18 @@ public class DeltaCommitDAO {
   private Date commitTimestamp;
 
   @Column(name = "is_backfilled_latest_commit", nullable = false)
-  private Boolean isBackfilledLatestCommit;
+  private boolean isBackfilledLatestCommit;
 
-  public static DeltaCommitDAO from(UUID tableId, CommitInfo commitInfo) {
+  public DeltaCommitInfo toCommitInfo() {
+    return new DeltaCommitInfo()
+        .version(commitVersion)
+        .fileName(commitFilename)
+        .fileSize(commitFilesize)
+        .fileModificationTimestamp(commitFileModificationTimestamp.getTime())
+        .timestamp(commitTimestamp.getTime());
+  }
+
+  public static DeltaCommitDAO from(UUID tableId, DeltaCommitInfo commitInfo) {
     return DeltaCommitDAO.builder()
         .tableId(tableId)
         .commitVersion(commitInfo.getVersion())

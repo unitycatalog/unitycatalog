@@ -1,4 +1,4 @@
-# CommitMetadataProperties
+# DeltaCommitMetadataProperties
 ## Properties
 
 | Name | Type | Description | Notes |

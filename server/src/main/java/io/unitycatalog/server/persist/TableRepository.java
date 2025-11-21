@@ -371,6 +371,9 @@ public class TableRepository {
       } catch (Throwable e) {
         LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }
+      repositories
+          .getDeltaCommitRepository()
+          .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
