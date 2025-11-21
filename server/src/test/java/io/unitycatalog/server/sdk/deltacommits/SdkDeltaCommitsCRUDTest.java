@@ -122,8 +122,15 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
             .endVersion(endVersion.orElse(null)));
   }
 
-  // expectedCommits can either be a list of DeltaCommit, or a list of version numbers, or empty
-  // if it is not expected to return any commits.
+  /** Get all the commits of a table and verify that the response has the latest version as
+   * {@code expectedLatestTableVersion} and it contains all the {@code expectedCommits} in the
+   * exact order.
+   *
+   * @param expectedLatestTableVersion the expected latestTableVersion in {@code response}
+   * @param expectedCommits Can be either a list of {@code DeltaCommit}, or a list of Integer/Long
+   *                        representing the version numbers, or empty if it's not expected to
+   *                        return any commits.
+   */
   private void verifyDeltaCommits(long expectedLatestTableVersion, Object... expectedCommits)
       throws ApiException {
     DeltaGetCommitsResponse response =
@@ -131,6 +138,15 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     verifyDeltaGetCommitsResponse(response, expectedLatestTableVersion, expectedCommits);
   }
 
+  /** Verify that the {@code response} has the latest version as {@code expectedLatestTableVersion}
+   * and it contains all the {@code expectedCommits} in the exact order.
+   *
+   * @param response returned from {@code DeltaGetCommits} rpc
+   * @param expectedLatestTableVersion the expected latestTableVersion in {@code response}
+   * @param expectedCommits Can be either a list of {@code DeltaCommit}, or a list of Integer/Long
+   *                        representing the version numbers, or empty if it's not expected to
+   *                        return any commits.
+   */
   private void verifyDeltaGetCommitsResponse(
       DeltaGetCommitsResponse response,
       long expectedLatestTableVersion,
@@ -154,7 +170,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   @Test
   public void testBasicCoordinatedCommitsCRUD() throws ApiException {
     // Get commits on a table with no commits
-    verifyDeltaCommits(-1);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ -1);
 
     DeltaCommit commit1 =
         createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
@@ -207,15 +224,20 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // Try to get the commits with different start and end version range
     DeltaGetCommitsResponse response =
         getAllCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
-    verifyDeltaGetCommitsResponse(response, 3, commit3, commit2, commit1);
+    verifyDeltaGetCommitsResponse(
+        response,
+        /* expectedLatestTableVersion= */ 3,
+        /* expectedCommits= */ commit3, commit2, commit1);
 
     response =
         getAllCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 2L, Optional.empty());
-    verifyDeltaGetCommitsResponse(response, 3, commit3, commit2);
+    verifyDeltaGetCommitsResponse(
+        response, /* expectedLatestTableVersion= */ 3, /* expectedCommits= */ commit3, commit2);
 
     response =
         getAllCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 2L, Optional.of(2L));
-    verifyDeltaGetCommitsResponse(response, 3, commit2);
+    verifyDeltaGetCommitsResponse(
+        response, /* expectedLatestTableVersion= */ 3, /* expectedCommits= */ commit2);
 
     // Add a new commit (version 4) and backfill up to version 1 in the same request
     DeltaCommit commit4 =
@@ -223,20 +245,24 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
             .latestBackfilledVersion(1L);
     deltaCommitsApi.commit(commit4);
     // Verify we now have 3 commits (versions 2, 3, 4)
-    verifyDeltaCommits(4, commit4, commit3, commit2);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 4, /* expectedCommits= */ commit4, commit3, commit2);
 
     // It's OK to backfill again and nothing changes
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(1L));
-    verifyDeltaCommits(4, commit4, commit3, commit2);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 4, /* expectedCommits= */ commit4, commit3, commit2);
 
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(4L));
-    verifyDeltaCommits(4);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 4);
 
     // Commit one more version before deleting the table
     DeltaCommit commit5 =
         createCommitObject(tableInfo.getTableId(), 5L, tableInfo.getStorageLocation());
     deltaCommitsApi.commit(commit5);
-    verifyDeltaCommits(5, commit5);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 5, /* expectedCommits= */ commit5);
 
     // Verify commits are cleaned up upon table deletion
     tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
@@ -398,7 +424,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     }
 
     // Verify all 5 commits exist
-    verifyDeltaCommits(5, 5, 4, 3, 2, 1);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 5, /* expectedCommits= */ 5, 4, 3, 2, 1);
 
     // Backfill with metadata should fail
     DeltaCommit backfillCommit2WithMetadata =
@@ -413,7 +440,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(2L));
 
     // Verify versions 3, 4, 5 are present
-    verifyDeltaCommits(5, 5, 4, 3);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 5, /* expectedCommits= */ 5, 4, 3);
 
     // Try to backfill beyond the latest version
     assertApiException(
@@ -437,18 +465,21 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Backfill up to version 4 (should keep only version 5)
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(4L));
-    verifyDeltaCommits(5, 5);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 5, /* expectedCommits= */ 5);
 
     // Backfill up to version 5 (the latest)
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(5L));
     // The commit should be marked as backfilled, so no commits should be returned
-    verifyDeltaCommits(5);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 5);
 
     // Commit v6. Now we have [v5(backfilled), v6] in DB. Get commits only returns v6.
     DeltaCommit commit6 =
         createCommitObject(tableInfo.getTableId(), 6L, tableInfo.getStorageLocation());
     deltaCommitsApi.commit(commit6);
-    verifyDeltaCommits(6, 6);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 6, /* expectedCommits= */ 6);
   }
 
   @Test
@@ -462,7 +493,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     }
 
     // Verify we now have 10 commits (1~10)
-    verifyDeltaCommits(10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 10, /* expectedCommits= */ 10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
 
     // Then try to add the 11th commit - should fail
     DeltaCommit commit11 =
@@ -476,7 +508,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(6L));
 
     // Verify we now have 4 commits (7~10)
-    verifyDeltaCommits(10, 10, 9, 8, 7);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 10, /* expectedCommits= */ 10, 9, 8, 7);
 
     // Now we should be able to add more commits
     for (long i = 11; i <= 14; i++) {
@@ -486,13 +519,15 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     }
 
     // Verify we now have 8 commits (7~14)
-    verifyDeltaCommits(14, 14, 13, 12, 11, 10, 9, 8, 7);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 14, /* expectedCommits= */ 14, 13, 12, 11, 10, 9, 8, 7);
 
     // Backfill all commits again
     deltaCommitsApi.commit(createBackfillOnlyCommitObject(14L));
 
     // Verify there's no unbackfilled commits
-    verifyDeltaCommits(14);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 14);
 
     // Now we should be able to add another 10 commits
     for (long i = 15; i <= 24; i++) {
@@ -513,28 +548,33 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // Get commits with pagination: start_version=0, end_version=3
     DeltaGetCommitsResponse response =
         getAllCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.of(3L));
-    verifyDeltaGetCommitsResponse(response, 10, 3, 2, 1);
+    verifyDeltaGetCommitsResponse(
+        response, /* expectedLatestTableVersion= */ 10, /* expectedCommits= */ 3, 2, 1);
 
     // Get next page: start_version=4, end_version=7
     response =
         getAllCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 4L, Optional.of(7L));
-    verifyDeltaGetCommitsResponse(response, 10, 7, 6, 5, 4);
+    verifyDeltaGetCommitsResponse(
+        response, /* expectedLatestTableVersion= */ 10, /* expectedCommits= */ 7, 6, 5, 4);
 
     // Get last page: start_version=8, end_version=null
     response =
         getAllCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 8L, Optional.empty());
-    verifyDeltaGetCommitsResponse(response, 10, 10, 9, 8);
+    verifyDeltaGetCommitsResponse(
+        response, /* expectedLatestTableVersion= */ 10, /* expectedCommits= */ 10, 9, 8);
 
     // Get commits starting from a version that doesn't exist yet
     response =
         getAllCommits(
             tableInfo.getTableId(), tableInfo.getStorageLocation(), 11L, Optional.empty());
-    verifyDeltaGetCommitsResponse(response, 10);
+    verifyDeltaGetCommitsResponse(
+        response, /* expectedLatestTableVersion= */ 10);
 
     // Get commits with start_version = end_version
     response =
         getAllCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 3L, Optional.of(3L));
-    verifyDeltaGetCommitsResponse(response, 10, 3);
+    verifyDeltaGetCommitsResponse(
+        response, /* expectedLatestTableVersion= */ 10, /* expectedCommits= */ 3);
   }
 
   @Test
