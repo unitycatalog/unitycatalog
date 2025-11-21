@@ -68,6 +68,7 @@ the following parameters need to be set:
 - `s3.accessKey.i`: The AWS access key, an identifier of temp credentials.
 - `s3.secretKey.i`: The AWS secret key used to sign API requests to AWS.
 - `s3.sessionToken.i`: THE AWS session token, used to verify that the request is coming from a trusted source.
+- `s3.endpointUrl.i`: (Optional) The S3 endpoint URL. If not provided, the default AWS S3 endpoint will be used.
 
 You can configure multiple buckets by incrementing the index *i* in the above parameters. The starting index should
 be 0.

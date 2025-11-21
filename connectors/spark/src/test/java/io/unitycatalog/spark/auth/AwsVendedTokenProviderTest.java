@@ -2,6 +2,7 @@ package io.unitycatalog.spark.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AwsCredentials;
@@ -26,20 +27,6 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
   protected AwsVendedTokenProvider createTestProvider(
       Configuration conf, TemporaryCredentialsApi mockApi) {
     return new TestAwsVendedTokenProvider(conf, mockApi);
-  }
-
-  static class TestAwsVendedTokenProvider extends AwsVendedTokenProvider {
-    private final TemporaryCredentialsApi tempCredApi;
-
-    TestAwsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi tempCredApi) {
-      super(conf);
-      this.tempCredApi = tempCredApi;
-    }
-
-    @Override
-    protected TemporaryCredentialsApi temporaryCredentialsApi() {
-      return tempCredApi;
-    }
   }
 
   @Override
@@ -119,5 +106,47 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
     List<AwsCredentialsProvider> providers = list.getProviders();
     assertThat(providers).hasSize(1);
     assertThat(providers.get(0)).isInstanceOf(AwsVendedTokenProvider.class);
+  }
+
+  @Test
+  public void testCustomEndpointUrlCredentialsReviewWithInitialCredentials() {
+    Configuration conf = newTableBasedConf("unity-catalog-table");
+    String customEndpoint = "http://custom-endpoint-url";
+    conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    conf.set(UCHadoopConf.S3A_INIT_ENDPOINT_URL, customEndpoint);
+
+    // Create credentials with a custom endpoint URL
+    TemporaryCredentials cred0 = newTempCred("0", System.currentTimeMillis() + 10000L);
+    cred0.setEndpointUrl(customEndpoint);
+
+    // Set initial credentials
+    setInitialCred(conf, cred0);
+
+    // Create a mock API (won't be called since we're using initial credentials)
+    TemporaryCredentialsApi mockApi = mock(TemporaryCredentialsApi.class);
+
+    // Create the provider
+    AwsVendedTokenProvider provider = createTestProvider(conf, mockApi);
+
+    // Verify the credentials are correctly loaded
+    assertCred(provider, cred0);
+
+    // Verify the endpoint URL is preserved in the generic credential
+    GenericCredential genericCred = provider.accessCredentials();
+    assertThat(genericCred.temporaryCredentials().getEndpointUrl()).isEqualTo(customEndpoint);
+  }
+
+  static class TestAwsVendedTokenProvider extends AwsVendedTokenProvider {
+    private final TemporaryCredentialsApi tempCredApi;
+
+    TestAwsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi tempCredApi) {
+      super(conf);
+      this.tempCredApi = tempCredApi;
+    }
+
+    @Override
+    protected TemporaryCredentialsApi temporaryCredentialsApi() {
+      return tempCredApi;
+    }
   }
 }
