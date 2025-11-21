@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-client"
-version = "0.3.0.dev0"
+version = "0.3.1.dev0"
 description = "Official Python SDK for Unity Catalog"
 authors = [
     { name="Unity Catalog Developers", email="dev-feedback@unitycatalog.com" }
