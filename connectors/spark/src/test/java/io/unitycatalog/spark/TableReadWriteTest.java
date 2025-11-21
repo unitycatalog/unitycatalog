@@ -505,7 +505,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     try (SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG)) {
       String location = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
       String tbl = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-      session.sql(String.format("CREATE TABLE delta.`%s` (start_date DATE) USING delta", location));
       session.sql(
           String.format(
               "CREATE TABLE %s (start_date DATE) USING delta LOCATION '%s'", tbl, location));
