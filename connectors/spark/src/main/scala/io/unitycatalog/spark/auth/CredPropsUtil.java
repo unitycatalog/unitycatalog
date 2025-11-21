@@ -53,7 +53,7 @@ public class CredPropsUtil {
     }
 
     if (tempCreds.getEndpointUrl() != null && !tempCreds.getEndpointUrl().isEmpty()) {
-      builder.set("fs.s3a.endpoint", tempCreds.getEndpointUrl());
+      builder.set(UCHadoopConf.S3A_INIT_ENDPOINT_URL, tempCreds.getEndpointUrl());
     }
 
     return builder;

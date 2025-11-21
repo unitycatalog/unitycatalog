@@ -247,8 +247,6 @@ public class FileOperations {
     AmazonS3ClientBuilder s3ClientBuilder =
         AmazonS3ClientBuilder.standard()
             .withCredentials(new AWSStaticCredentialsProvider(sessionCredentials))
-            .withEndpointConfiguration(
-                new AwsClientBuilder.EndpointConfiguration(endpointUrl, region))
             .withRegion(region);
 
     if (endpointUrl != null && !endpointUrl.isEmpty()) {

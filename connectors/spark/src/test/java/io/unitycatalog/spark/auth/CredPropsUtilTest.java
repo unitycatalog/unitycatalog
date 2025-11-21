@@ -181,7 +181,7 @@ public class CredPropsUtilTest {
     assertThat(props).containsKey(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME);
 
     // Verify custom endpoint is set
-    assertThat(props).containsEntry("fs.s3a.endpoint", CUSTOM_ENDPOINT);
+    assertThat(props).containsEntry(UCHadoopConf.S3A_INIT_ENDPOINT_URL, CUSTOM_ENDPOINT);
 
     // Verify common S3 properties
     assertThat(props).containsEntry("fs.s3a.path.style.access", "true");
@@ -337,7 +337,7 @@ public class CredPropsUtilTest {
     assertThat(props).containsKey(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME);
 
     // Verify custom endpoint is set
-    assertThat(props).containsEntry("fs.s3a.endpoint", CUSTOM_ENDPOINT);
+    assertThat(props).containsEntry(UCHadoopConf.S3A_INIT_ENDPOINT_URL, CUSTOM_ENDPOINT);
 
     // Verify common S3 properties
     assertThat(props).containsEntry("fs.s3a.path.style.access", "true");
