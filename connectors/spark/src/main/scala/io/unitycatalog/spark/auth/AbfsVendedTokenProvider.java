@@ -19,14 +19,15 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
 
   @Override
   public GenericCredential initGenericCredential(Configuration conf) {
-    if (conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN) != null
-        && conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME) != null) {
+    if (conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN) != null) {
 
       String sasToken = conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN);
       Preconditions.checkNotNull(sasToken, "Azure SAS token not set, please check " +
           "'%s' in hadoop configuration", UCHadoopConf.AZURE_INIT_SAS_TOKEN);
 
-      long expiredTimeMillis = conf.getLong(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, 0L);
+      long expiredTimeMillis = conf.getLong(
+          UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
+          Long.MAX_VALUE);
       Preconditions.checkState(expiredTimeMillis > 0,
           "Azure SAS token expired time must be greater than 0, please check '%s' in hadoop " +
               "configuration", UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME);
