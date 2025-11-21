@@ -82,6 +82,9 @@ public class DeltaCommitRepository {
    */
   private static final int NUM_COMMITS_PER_BATCH = 20;
 
+  /** Key for identifying Unity Catalog table ID in Delta commits. */
+  public static final String UC_TABLE_ID_KEY = "catalogManaged.unityCatalog.tableId";
+
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
 
@@ -733,8 +736,8 @@ public class DeltaCommitRepository {
    *   <li>If commit info is present: validates version, timestamp, file name, file size, and file
    *       modification timestamp are positive/non-empty
    *   <li>If metadata is present: ensures at least one of description, properties, or schema is set
-   *   <li>If metadata properties are present: validates that ucTableId matches the commit's table
-   *       ID
+   *   <li>If metadata properties are present: validates that table ID property matches the commit's
+   *       table ID
    *   <li>If commit info is absent: ensures this is a valid backfill-only commit with backfilled
    *       version set
    * </ul>
@@ -796,10 +799,11 @@ public class DeltaCommitRepository {
               "At least one of description, properties, or schema must be set in commit.metadata");
         }
         if (propertiesOpt.isPresent()) {
-          Optional<String> propertiesTableIdOpt = propertiesOpt.map(p -> p.get("ucTableId"));
+          Optional<String> propertiesTableIdOpt = propertiesOpt.map(p -> p.get(UC_TABLE_ID_KEY));
           if (propertiesTableIdOpt.isEmpty()) {
             throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT, "commit does not contain ucTableId in the properties.");
+                ErrorCode.INVALID_ARGUMENT,
+                String.format("commit does not contain %s in the properties.", UC_TABLE_ID_KEY));
           }
           if (!propertiesTableIdOpt.get().equals(commit.getTableId())) {
             // This is to ensure that the Delta table's log on the file system has the table id
@@ -811,8 +815,8 @@ public class DeltaCommitRepository {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT,
                 String.format(
-                    "the table being committed (%s) does not match the properties ucTableId(%s).",
-                    commit.getTableId(), propertiesTableIdOpt.get()));
+                    "the table being committed (%s) does not match the properties %s(%s).",
+                    commit.getTableId(), UC_TABLE_ID_KEY, propertiesTableIdOpt.get()));
           }
         }
       }
