@@ -117,7 +117,6 @@ useCoursier := true
 
 // Configure resolvers
 resolvers ++= Seq(
-  "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
   "Maven Central" at "https://repo1.maven.org/maven2/",
 )
 
