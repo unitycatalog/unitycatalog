@@ -192,6 +192,9 @@ lazy val client = (project in file("target/clients/java"))
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    
+    // Add custom test sources from clients/java directory
+    Test / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "src" / "test" / "java"),
 
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
@@ -203,7 +206,8 @@ lazy val client = (project in file("target/clients/java"))
       "library" -> "native",
       "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true",
-      "openApiNullable" -> "false"),
+      "openApiNullable" -> "false",
+      "enumUnknownDefaultCase" -> "true"),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
