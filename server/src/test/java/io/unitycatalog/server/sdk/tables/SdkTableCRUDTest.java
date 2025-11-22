@@ -128,7 +128,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(stagingTableInfo.getId()).isNotNull();
     assertThat(stagingTableInfo.getStagingLocation()).isNotNull();
     assertThat(stagingTableInfo.getStagingLocation())
-        .isEqualTo("file:///tmp/ucroot/tables/" + stagingTableInfo.getId());
+        .isEqualTo(tableStorageRoot + "/tables/" + stagingTableInfo.getId());
 
     // Step 2: Create a managed table that's not DELTA
     CreateTable createTableRequestNotDelta =
@@ -177,7 +177,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(commitedStagingTableDAO).isNotNull();
     assertThat(commitedStagingTableDAO.getStagingLocation()).isNotNull();
     assertThat(commitedStagingTableDAO.getStagingLocation())
-        .isEqualTo("file:///tmp/ucroot/tables/" + stagingTableInfo.getId());
+        .isEqualTo(tableStorageRoot + "/tables/" + stagingTableInfo.getId());
     assertThat(commitedStagingTableDAO.isStageCommitted()).isEqualTo(true);
 
     // Clean up
@@ -226,7 +226,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
     // Step 2: Create a table using a fake staging location that doesn't exist. It should fail.
     String fakeLocationUuid = "00000000-0000-0000-0000-000000000000";
-    String fakeStagingLocation = "file:///tmp/ucroot/tables/" + fakeLocationUuid;
+    String fakeStagingLocation = tableStorageRoot + "/tables/" + fakeLocationUuid;
 
     CreateTable createTableRequest =
         new CreateTable()
