@@ -2,44 +2,24 @@ package io.unitycatalog.cli.delta;
 
 import static io.delta.kernel.internal.util.Utils.toCloseableIterator;
 
-import io.delta.kernel.DataWriteContext;
-import io.delta.kernel.Operation;
-import io.delta.kernel.Table;
-import io.delta.kernel.Transaction;
-import io.delta.kernel.TransactionBuilder;
-import io.delta.kernel.TransactionCommitResult;
+import io.delta.kernel.*;
 import io.delta.kernel.data.ColumnVector;
 import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.data.FilteredColumnarBatch;
 import io.delta.kernel.data.Row;
 import io.delta.kernel.defaults.internal.data.DefaultColumnarBatch;
 import io.delta.kernel.engine.Engine;
-import io.delta.kernel.types.ByteType;
-import io.delta.kernel.types.DataType;
-import io.delta.kernel.types.DoubleType;
-import io.delta.kernel.types.FloatType;
-import io.delta.kernel.types.IntegerType;
-import io.delta.kernel.types.LongType;
-import io.delta.kernel.types.ShortType;
-import io.delta.kernel.types.StringType;
-import io.delta.kernel.types.StructField;
-import io.delta.kernel.types.StructType;
+import io.delta.kernel.types.*;
 import io.delta.kernel.utils.CloseableIterable;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.DataFileStatus;
 import io.unitycatalog.cli.UnityCatalogCli;
-import io.unitycatalog.cli.utils.Constants;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.Random;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -56,13 +36,13 @@ public class DeltaKernelWriteUtils {
   private static final Random random = new Random();
 
   public static String writeSampleDataToDeltaTable(
-      String tablePath, List<ColumnInfo> columns, TemporaryCredentials temporaryCredentials) {
+      String tablePath, List<ColumnInfo> columns, TemporaryCredentials tempCredentials) {
     try {
       StructType schema = DeltaKernelUtils.getSchema(columns);
       URI tablePathUri = URI.create(tablePath);
-      Engine engine = DeltaKernelUtils.getEngine(tablePathUri, temporaryCredentials);
+      Engine engine = DeltaKernelUtils.getEngine(tablePathUri, tempCredentials);
       boolean createVsUpdate = true;
-      if (tablePathUri.getScheme().equals(Constants.URI_SCHEME_FILE)) {
+      if (tablePathUri.getScheme().equals("file")) {
         createVsUpdate = !(new File(tablePathUri).isDirectory());
       }
       writeSampleDataToExistingDeltaTable(
