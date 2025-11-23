@@ -153,7 +153,7 @@ public class CliTableCreationTest extends BaseServerTest {
     } else {
       assert tableType == TableType.MANAGED;
       assertThat(tableInfo.getStorageLocation())
-          .isEqualTo("file:///tmp/ucroot/tables/" + tableInfo.getTableId());
+          .isEqualTo(tableStorageRoot + "/tables/" + tableInfo.getTableId());
       assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
     }
     assertThat(tableOperations.getTable(TABLE_FULL_NAME).getTableId())
