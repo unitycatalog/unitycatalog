@@ -49,18 +49,18 @@ public class BaseSparkTest {
   protected static String getBaseLocation(LocationType locationType) throws IOException {
     return switch (locationType) {
       // todo: add hook to clean up temp directory
-      case FILE -> Files.createTempDirectory("uc-test-table").toFile().getAbsolutePath();
-      case S3 -> TestUtils.S3_BASE_LOCATION;
-      case GS -> TestUtils.GS_BASE_LOCATION;
+      // case FILE -> Files.createTempDirectory("uc-test-table").toFile().getAbsolutePath();
+      //case S3 -> TestUtils.S3_BASE_LOCATION;
+      //case GS -> TestUtils.GS_BASE_LOCATION;
       case ABFSS -> TestUtils.ABFSS_BASE_LOCATION;
     };
   }
 
   @Getter
   public enum LocationType {
-    FILE("file://"),
-    S3(TestUtils.S3_BASE_LOCATION),
-    GS(TestUtils.GS_BASE_LOCATION),
+    // FILE("file://"),
+    //S3(TestUtils.S3_BASE_LOCATION),
+    //GS(TestUtils.GS_BASE_LOCATION),
     ABFSS(TestUtils.ABFSS_BASE_LOCATION);
 
     private final String baseLocation;

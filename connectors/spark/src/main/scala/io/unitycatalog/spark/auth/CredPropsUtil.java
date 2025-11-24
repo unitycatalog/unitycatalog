@@ -75,6 +75,10 @@ public class CredPropsUtil {
     protected abstract T self();
 
     public Map<String, String> build() {
+      Map<String, String> map = builder.build();
+      for(Map.Entry<String, String> entry : map.entrySet()) {
+        System.out.println("===> builder: " + entry.getKey() + ": " + entry.getValue());
+      }
       return builder.build();
     }
   }
@@ -244,7 +248,8 @@ public class CredPropsUtil {
   private static Map<String, String> abfsFixedCredProps(TemporaryCredentials tempCreds) {
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     return new AbfsPropsBuilder()
-        .set(AbfsVendedTokenProvider.ACCESS_TOKEN_KEY, azureSas.getSasToken())
+        .set(AbfsFixedTokenProvider.ACCESS_TOKEN_KEY, azureSas.getSasToken())
+        .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsFixedTokenProvider.class.getName())
         .build();
   }
 
