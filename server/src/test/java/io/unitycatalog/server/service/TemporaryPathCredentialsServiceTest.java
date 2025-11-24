@@ -12,11 +12,13 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.auth.AuthToken;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.PathOperation;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -168,6 +170,12 @@ public class TemporaryPathCredentialsServiceTest extends BaseCRUDTestWithMockCre
 
   @AfterEach
   public void cleanUp() {
+    switchUser(ADMIN_USER);
+    deleteUser(AUTHORIZED_USER);
+    deleteUser(DENIED_USER);
+    deleteCredentials(CREDENTIAL_NAME);
+    deleteExternalLocation(EXTERNAL_LOCATION_NAME);
+
     System.clearProperty("server.authorization");
 
     SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
@@ -236,6 +244,36 @@ public class TemporaryPathCredentialsServiceTest extends BaseCRUDTestWithMockCre
     AggregatedHttpResponse response = client.execute(headers, requestBody).aggregate().join();
     if (response.status() != HttpStatus.OK) {
       throw new IllegalStateException("Error setting up permission: " + response.contentUtf8());
+    }
+  }
+
+  private void deleteExternalLocation(String externalLocationName) {
+    try {
+      externalLocationOperations.deleteExternalLocation(externalLocationName);
+    } catch (ApiException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private void deleteCredentials(String credentialName) {
+    try {
+      credentialOperations.deleteCredential(credentialName);
+    } catch (ApiException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private void deleteUser(String email) {
+    Repositories repositories =
+        new Repositories(
+            hibernateConfigurator.getSessionFactory(),
+            new io.unitycatalog.server.utils.ServerProperties(serverProperties));
+
+    try {
+      User user = repositories.getUserRepository().getUserByEmail(email);
+      repositories.getUserRepository().deleteUser(user.getId());
+    } catch (BaseException e) {
+      // User does not exist, nothing to delete
     }
   }
 
