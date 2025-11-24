@@ -169,7 +169,7 @@ public class EnumDeserializationTest {
         String jsonWithUnknownType = "{"
                 + "\"table_id\": \"test-table-123\","
                 + "\"name\": \"test_table\","
-                + "\"table_type\": \"MATERIALIZED_VIEW\","
+                + "\"table_type\": \"TEMPORARY_VIEW\","
                 + "\"catalog_name\": \"main\","
                 + "\"schema_name\": \"default\","
                 + "\"data_source_format\": \"ICEBERG\","
