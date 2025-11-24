@@ -28,7 +28,6 @@ import io.unitycatalog.server.sdk.storagecredential.SdkCredentialOperations;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
-import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
@@ -127,9 +126,7 @@ public class TemporaryPathCredentialsServiceTest extends SdkAccessControlBaseCRU
   protected void setUpCredentialOperations() {
     setupAwsCredentials();
 
-    cloudCredentialVendor =
-        new CloudCredentialVendor(
-            awsCredentialVendor, null, null, new ServerProperties(serverProperties));
+    cloudCredentialVendor = new CloudCredentialVendor(awsCredentialVendor, null, null);
   }
 
   private void setupAwsCredentials() {
