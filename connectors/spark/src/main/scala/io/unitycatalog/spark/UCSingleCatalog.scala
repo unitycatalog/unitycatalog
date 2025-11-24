@@ -32,12 +32,13 @@ class UCSingleCatalog
   with Logging {
 
   private[this] var uri: URI = null
-  private[this] var token: String = null
   private[this] var renewCredEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
+  private[this] var oauth2Provider: OAuth2CredentialExchangeProvider = null
 
   @volatile private var delegate: TableCatalog = null
+  @volatile private var token: String = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get(OptionsUtil.URI)
@@ -48,6 +49,26 @@ class UCSingleCatalog
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+
+    val oauth2ServerUri = options.get("oauthUri")
+    val oauth2ClientId = options.get("oauthClientId")
+    val oauth2ClientSecret = options.get("oauthClientSecret")
+    if (oauth2ServerUri != null && oauth2ServerUri.nonEmpty &&
+      oauth2ClientId != null && oauth2ClientId.nonEmpty &&
+      oauth2ClientSecret != null && oauth2ClientSecret.nonEmpty) {
+      logInfo("Configuring OAuth2 credential exchange.")
+      try {
+        oauth2Provider = new OAuth2CredentialExchangeProvider(
+          oauth2ServerUri, oauth2ClientId, oauth2ClientSecret)
+        oauth2Provider.exchangeCredentialsForAccessToken()
+        token = oauth2Provider.getAccessToken
+      } catch {
+        case e: OAuth2Exception =>
+          logError(e.getMessage, e)
+      }
+    } else {
+      token = options.get("token")
+    }
 
     apiClient = ApiClientFactory.createApiClient(new ApiClientConf(), uri, token)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
