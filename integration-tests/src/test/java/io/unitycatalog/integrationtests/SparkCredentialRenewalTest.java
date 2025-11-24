@@ -2,7 +2,7 @@ package io.unitycatalog.integrationtests;
 
 import static io.unitycatalog.integrationtests.TestUtils.AUTH_TOKEN;
 import static io.unitycatalog.integrationtests.TestUtils.CATALOG_NAME;
-import static io.unitycatalog.integrationtests.TestUtils.S3_BASE_LOCATION;
+import static io.unitycatalog.integrationtests.TestUtils.GS_BASE_LOCATION;
 import static io.unitycatalog.integrationtests.TestUtils.SERVER_URL;
 import static io.unitycatalog.integrationtests.TestUtils.envAsBoolean;
 import static io.unitycatalog.integrationtests.TestUtils.envAsLong;
@@ -37,7 +37,7 @@ import org.sparkproject.guava.collect.Iterators;
  * export CATALOG_URI=...
  * export CATALOG_AUTH_TOKEN=...
  * export CATALOG_NAME=...
- * export S3_BASE_LOCATION=...
+ * export GS_BASE_LOCATION=...
  * SBT_OPTS="-Xmx8G -XX:+UseG1GC" \
  * ./build/sbt \
  * "integrationTests/testOnly io.unitycatalog.integrationtests.SparkCredentialRenewalTest"
@@ -54,7 +54,7 @@ public class SparkCredentialRenewalTest {
   private static final long DURATION_SECONDS = envAsLong(PREFIX + "DURATION_SECONDS", 5600L);
 
   // Define the schema name and table name.
-  private static final String SCHEMA_NAME = randomName();
+  private static final String SCHEMA_NAME = "default";
   private static final String SRC_TABLE =
       String.format("%s.%s.src_%s", CATALOG_NAME, SCHEMA_NAME, randomName());
   private static final String DST_TABLE =
@@ -69,7 +69,9 @@ public class SparkCredentialRenewalTest {
         SparkSession.builder()
             .appName("test-credential-renewal-in-long-running-job")
             .master("local[1]") // Make it single-threaded explicitly.
-            .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+            .config(
+                "spark.hadoop.fs.AbstractFileSystem.gs.impl",
+                "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
             .config(
                 "spark.sql.catalog.spark_catalog",
@@ -81,13 +83,12 @@ public class SparkCredentialRenewalTest {
             .config(testCatalogKey + ".renewCredential.enabled", String.valueOf(RENEW_CRED_ENABLED))
             .getOrCreate();
 
-    sql("CREATE SCHEMA %s.%s", CATALOG_NAME, SCHEMA_NAME);
     sql(
         "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",
-        SRC_TABLE, S3_BASE_LOCATION, UUID.randomUUID());
+        SRC_TABLE, GS_BASE_LOCATION, UUID.randomUUID());
     sql(
         "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s'",
-        DST_TABLE, S3_BASE_LOCATION, UUID.randomUUID());
+        DST_TABLE, GS_BASE_LOCATION, UUID.randomUUID());
   }
 
   @AfterAll

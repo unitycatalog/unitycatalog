@@ -23,7 +23,7 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
     // is only used as a fallback for ServiceAccountCredentialsGenerator.
   }
 
-  @Override
+  @OverrideSparkCredentialRenewalTest
   protected String scheme() {
     return SCHEME;
   }
