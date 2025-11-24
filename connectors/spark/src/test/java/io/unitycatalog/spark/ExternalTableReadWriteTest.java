@@ -258,19 +258,19 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
   }
 
-    @Test
-    public void testExternalDeltaTableWithDateType() throws IOException {
-        String path1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-        String fullTableName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-        String create_table_stmt = String.format(
-                "CREATE TABLE %s (start_date DATE) USING delta LOCATION '%s'",
-                fullTableName, path1);
+  @Test
+  public void testExternalDeltaTableWithDateType() throws IOException {
+    String path1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String fullTableName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    String create_table_stmt = String.format(
+            "CREATE TABLE %s (start_date DATE) USING delta LOCATION '%s'",
+            fullTableName, path1);
 
-        try (SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG)) {
-            session.sql(create_table_stmt);
-            assertThat(session.catalog().tableExists(fullTableName)).isTrue();
-        }
+    try (SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG)) {
+      session.sql(create_table_stmt);
+      assertThat(session.catalog().tableExists(fullTableName)).isTrue();
     }
+  }
 
   // TODO: move this test to ManagedTableReadWriteTest.java once it's created
   @Test
