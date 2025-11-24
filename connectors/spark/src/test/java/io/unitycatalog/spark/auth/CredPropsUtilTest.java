@@ -43,15 +43,15 @@ public class CredPropsUtilTest {
     // Test fixed credentials (renewCredEnabled = false) without custom endpoint
     TemporaryCredentials tempCreds = createAwsCredentials(false, false);
 
-    Map<String, String> props = CredPropsUtil.createTableCredProps(
-        false, // renewCredEnabled
-        "s3",
-        TEST_URI,
-        TEST_TOKEN,
-        TEST_TABLE_ID,
-        TableOperation.READ,
-        tempCreds
-    );
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false, // renewCredEnabled
+            "s3",
+            TEST_URI,
+            TEST_TOKEN,
+            TEST_TABLE_ID,
+            TableOperation.READ,
+            tempCreds);
 
     // Verify basic S3 properties
     assertThat(props).containsEntry("fs.s3a.access.key", "test-access-key");
@@ -75,15 +75,15 @@ public class CredPropsUtilTest {
     // Test fixed credentials (renewCredEnabled = false) with custom endpoint
     TemporaryCredentials tempCreds = createAwsCredentials(true, false);
 
-    Map<String, String> props = CredPropsUtil.createTableCredProps(
-        false, // renewCredEnabled
-        "s3",
-        TEST_URI,
-        TEST_TOKEN,
-        TEST_TABLE_ID,
-        TableOperation.READ,
-        tempCreds
-    );
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false, // renewCredEnabled
+            "s3",
+            TEST_URI,
+            TEST_TOKEN,
+            TEST_TABLE_ID,
+            TableOperation.READ,
+            tempCreds);
 
     // Verify basic S3 properties
     assertThat(props).containsEntry("fs.s3a.access.key", "test-access-key");
@@ -102,19 +102,20 @@ public class CredPropsUtilTest {
     // Test temporary credentials (renewCredEnabled = true) without custom endpoint
     TemporaryCredentials tempCreds = createAwsCredentials(false, true);
 
-    Map<String, String> props = CredPropsUtil.createTableCredProps(
-        true, // renewCredEnabled
-        "s3",
-        TEST_URI,
-        TEST_TOKEN,
-        TEST_TABLE_ID,
-        TableOperation.READ,
-        tempCreds
-    );
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true, // renewCredEnabled
+            "s3",
+            TEST_URI,
+            TEST_TOKEN,
+            TEST_TABLE_ID,
+            TableOperation.READ,
+            tempCreds);
 
     // Verify credential provider is configured
-    assertThat(props).containsEntry(UCHadoopConf.S3A_CREDENTIALS_PROVIDER,
-        AwsVendedTokenProvider.class.getName());
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName());
 
     // Verify Unity Catalog configuration
     assertThat(props).containsEntry(UCHadoopConf.UC_URI_KEY, TEST_URI);
@@ -122,11 +123,12 @@ public class CredPropsUtilTest {
     assertThat(props).containsKey(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
 
     // Verify table-based credential configuration
-    assertThat(props).containsEntry(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
     assertThat(props).containsEntry(UCHadoopConf.UC_TABLE_ID_KEY, TEST_TABLE_ID);
-    assertThat(props).containsEntry(UCHadoopConf.UC_TABLE_OPERATION_KEY,
-        TableOperation.READ.getValue());
+    assertThat(props)
+        .containsEntry(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
 
     // Verify initial credentials
     assertThat(props).containsEntry(UCHadoopConf.S3A_INIT_ACCESS_KEY, "test-access-key");
@@ -148,19 +150,20 @@ public class CredPropsUtilTest {
     // Test temporary credentials (renewCredEnabled = true) with custom endpoint
     TemporaryCredentials tempCreds = createAwsCredentials(true, true);
 
-    Map<String, String> props = CredPropsUtil.createTableCredProps(
-        true, // renewCredEnabled
-        "s3",
-        TEST_URI,
-        TEST_TOKEN,
-        TEST_TABLE_ID,
-        TableOperation.READ,
-        tempCreds
-    );
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true, // renewCredEnabled
+            "s3",
+            TEST_URI,
+            TEST_TOKEN,
+            TEST_TABLE_ID,
+            TableOperation.READ,
+            tempCreds);
 
     // Verify credential provider is configured
-    assertThat(props).containsEntry(UCHadoopConf.S3A_CREDENTIALS_PROVIDER,
-        AwsVendedTokenProvider.class.getName());
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName());
 
     // Verify Unity Catalog configuration
     assertThat(props).containsEntry(UCHadoopConf.UC_URI_KEY, TEST_URI);
@@ -168,11 +171,12 @@ public class CredPropsUtilTest {
     assertThat(props).containsKey(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
 
     // Verify table-based credential configuration
-    assertThat(props).containsEntry(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
     assertThat(props).containsEntry(UCHadoopConf.UC_TABLE_ID_KEY, TEST_TABLE_ID);
-    assertThat(props).containsEntry(UCHadoopConf.UC_TABLE_OPERATION_KEY,
-        TableOperation.READ.getValue());
+    assertThat(props)
+        .containsEntry(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
 
     // Verify initial credentials
     assertThat(props).containsEntry(UCHadoopConf.S3A_INIT_ACCESS_KEY, "test-access-key");
@@ -194,15 +198,15 @@ public class CredPropsUtilTest {
     // Test fixed credentials (renewCredEnabled = false) without custom endpoint
     TemporaryCredentials tempCreds = createAwsCredentials(false, false);
 
-    Map<String, String> props = CredPropsUtil.createPathCredProps(
-        false, // renewCredEnabled
-        "s3",
-        TEST_URI,
-        TEST_TOKEN,
-        TEST_PATH,
-        PathOperation.PATH_READ,
-        tempCreds
-    );
+    Map<String, String> props =
+        CredPropsUtil.createPathCredProps(
+            false, // renewCredEnabled
+            "s3",
+            TEST_URI,
+            TEST_TOKEN,
+            TEST_PATH,
+            PathOperation.PATH_READ,
+            tempCreds);
 
     // Verify basic S3 properties
     assertThat(props).containsEntry("fs.s3a.access.key", "test-access-key");
@@ -226,15 +230,15 @@ public class CredPropsUtilTest {
     // Test fixed credentials (renewCredEnabled = false) with custom endpoint
     TemporaryCredentials tempCreds = createAwsCredentials(true, false);
 
-    Map<String, String> props = CredPropsUtil.createPathCredProps(
-        false, // renewCredEnabled
-        "s3",
-        TEST_URI,
-        TEST_TOKEN,
-        TEST_PATH,
-        PathOperation.PATH_READ,
-        tempCreds
-    );
+    Map<String, String> props =
+        CredPropsUtil.createPathCredProps(
+            false, // renewCredEnabled
+            "s3",
+            TEST_URI,
+            TEST_TOKEN,
+            TEST_PATH,
+            PathOperation.PATH_READ,
+            tempCreds);
 
     // Verify basic S3 properties
     assertThat(props).containsEntry("fs.s3a.access.key", "test-access-key");
@@ -258,19 +262,20 @@ public class CredPropsUtilTest {
     // Test temporary credentials (renewCredEnabled = true) without custom endpoint
     TemporaryCredentials tempCreds = createAwsCredentials(false, true);
 
-    Map<String, String> props = CredPropsUtil.createPathCredProps(
-        true, // renewCredEnabled
-        "s3",
-        TEST_URI,
-        TEST_TOKEN,
-        TEST_PATH,
-        PathOperation.PATH_READ,
-        tempCreds
-    );
+    Map<String, String> props =
+        CredPropsUtil.createPathCredProps(
+            true, // renewCredEnabled
+            "s3",
+            TEST_URI,
+            TEST_TOKEN,
+            TEST_PATH,
+            PathOperation.PATH_READ,
+            tempCreds);
 
     // Verify credential provider is configured
-    assertThat(props).containsEntry(UCHadoopConf.S3A_CREDENTIALS_PROVIDER,
-        AwsVendedTokenProvider.class.getName());
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName());
 
     // Verify Unity Catalog configuration
     assertThat(props).containsEntry(UCHadoopConf.UC_URI_KEY, TEST_URI);
@@ -278,11 +283,12 @@ public class CredPropsUtilTest {
     assertThat(props).containsKey(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
 
     // Verify path-based credential configuration
-    assertThat(props).containsEntry(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
     assertThat(props).containsEntry(UCHadoopConf.UC_PATH_KEY, TEST_PATH);
-    assertThat(props).containsEntry(UCHadoopConf.UC_PATH_OPERATION_KEY,
-        PathOperation.PATH_READ.getValue());
+    assertThat(props)
+        .containsEntry(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
 
     // Verify initial credentials
     assertThat(props).containsEntry(UCHadoopConf.S3A_INIT_ACCESS_KEY, "test-access-key");
@@ -304,19 +310,20 @@ public class CredPropsUtilTest {
     // Test temporary credentials (renewCredEnabled = true) with custom endpoint
     TemporaryCredentials tempCreds = createAwsCredentials(true, true);
 
-    Map<String, String> props = CredPropsUtil.createPathCredProps(
-        true, // renewCredEnabled
-        "s3",
-        TEST_URI,
-        TEST_TOKEN,
-        TEST_PATH,
-        PathOperation.PATH_READ,
-        tempCreds
-    );
+    Map<String, String> props =
+        CredPropsUtil.createPathCredProps(
+            true, // renewCredEnabled
+            "s3",
+            TEST_URI,
+            TEST_TOKEN,
+            TEST_PATH,
+            PathOperation.PATH_READ,
+            tempCreds);
 
     // Verify credential provider is configured
-    assertThat(props).containsEntry(UCHadoopConf.S3A_CREDENTIALS_PROVIDER,
-        AwsVendedTokenProvider.class.getName());
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName());
 
     // Verify Unity Catalog configuration
     assertThat(props).containsEntry(UCHadoopConf.UC_URI_KEY, TEST_URI);
@@ -324,11 +331,12 @@ public class CredPropsUtilTest {
     assertThat(props).containsKey(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
 
     // Verify path-based credential configuration
-    assertThat(props).containsEntry(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
     assertThat(props).containsEntry(UCHadoopConf.UC_PATH_KEY, TEST_PATH);
-    assertThat(props).containsEntry(UCHadoopConf.UC_PATH_OPERATION_KEY,
-        PathOperation.PATH_READ.getValue());
+    assertThat(props)
+        .containsEntry(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
 
     // Verify initial credentials
     assertThat(props).containsEntry(UCHadoopConf.S3A_INIT_ACCESS_KEY, "test-access-key");
@@ -345,4 +353,3 @@ public class CredPropsUtilTest {
     assertThat(props).containsEntry("fs.s3a.impl.disable.cache", "true");
   }
 }
-
