@@ -4,17 +4,23 @@
 
 package io.unitycatalog.client;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.ModelVersionStatus;
+import io.unitycatalog.client.model.Privilege;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableOperation;
+import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.VolumeInfo;
+import io.unitycatalog.client.model.VolumeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.io.IOException;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * Test to verify that enum deserialization handles unknown/arbitrary enum values gracefully
@@ -32,11 +38,10 @@ public class EnumDeserializationTest {
     }
 
     @Test
-    public void testVolumeTypeUnknownValueDeserialization() throws IOException {
+    public void testVolumeTypeUnknownValueDeserialization() {
         // Test that an unknown VolumeType value deserializes to UNKNOWN instead of throwing an exception
         // VolumeType only has MANAGED and EXTERNAL, so the generator will add an UNKNOWN value
         String unknownVolumeType = "\"NEW_FUTURE_TYPE\"";
-        
         assertThatCode(() -> {
             VolumeType volumeType = objectMapper.readValue(unknownVolumeType, VolumeType.class);
             assertThat(volumeType).isNotNull();
@@ -47,11 +52,10 @@ public class EnumDeserializationTest {
     }
 
     @Test
-    public void testDataSourceFormatUnknownValueDeserialization() throws IOException {
+    public void testDataSourceFormatUnknownValueDeserialization() {
         // Test that an unknown DataSourceFormat value deserializes to UNKNOWN
         // Using ICEBERG as an example of a format not in the current API spec
         String unknownFormat = "\"ICEBERG\"";
-        
         assertThatCode(() -> {
             DataSourceFormat format = objectMapper.readValue(unknownFormat, DataSourceFormat.class);
             assertThat(format).isNotNull();
@@ -61,11 +65,10 @@ public class EnumDeserializationTest {
     }
 
     @Test
-    public void testTableOperationUnknownValueDeserialization() throws IOException {
+    public void testTableOperationUnknownValueDeserialization() {
         // Test that an unknown TableOperation value deserializes gracefully
         // The generator adds UNKNOWN_DEFAULT_OPEN_API even though the spec has UNKNOWN_TABLE_OPERATION
         String unknownOperation = "\"DELETE\"";
-        
         assertThatCode(() -> {
             TableOperation operation = objectMapper.readValue(unknownOperation, TableOperation.class);
             assertThat(operation).isNotNull();
@@ -76,11 +79,10 @@ public class EnumDeserializationTest {
     }
 
     @Test
-    public void testModelVersionStatusUnknownValueDeserialization() throws IOException {
+    public void testModelVersionStatusUnknownValueDeserialization() {
         // Test that an unknown ModelVersionStatus value deserializes gracefully
         // The generator adds UNKNOWN_DEFAULT_OPEN_API even though the spec has MODEL_VERSION_STATUS_UNKNOWN
         String unknownStatus = "\"ARCHIVED\"";
-        
         assertThatCode(() -> {
             ModelVersionStatus status = objectMapper.readValue(unknownStatus, ModelVersionStatus.class);
             assertThat(status).isNotNull();
@@ -91,34 +93,33 @@ public class EnumDeserializationTest {
     }
 
     @Test
-    public void testVolumeTypeKnownValuesStillWork() throws IOException {
+    public void testVolumeTypeKnownValuesStillWork() throws Exception {
         // Verify that known enum values still deserialize correctly
         VolumeType managed = objectMapper.readValue("\"MANAGED\"", VolumeType.class);
         assertThat(managed).isEqualTo(VolumeType.MANAGED);
-        
+
         VolumeType external = objectMapper.readValue("\"EXTERNAL\"", VolumeType.class);
         assertThat(external).isEqualTo(VolumeType.EXTERNAL);
     }
 
     @Test
-    public void testDataSourceFormatKnownValuesStillWork() throws IOException {
+    public void testDataSourceFormatKnownValuesStillWork() throws Exception {
         // Verify that known DataSourceFormat values still deserialize correctly
         DataSourceFormat delta = objectMapper.readValue("\"DELTA\"", DataSourceFormat.class);
         assertThat(delta).isEqualTo(DataSourceFormat.DELTA);
-        
+
         DataSourceFormat parquet = objectMapper.readValue("\"PARQUET\"", DataSourceFormat.class);
         assertThat(parquet).isEqualTo(DataSourceFormat.PARQUET);
-        
+
         DataSourceFormat json = objectMapper.readValue("\"JSON\"", DataSourceFormat.class);
         assertThat(json).isEqualTo(DataSourceFormat.JSON);
     }
 
     @Test
-    public void testColumnTypeNameUnknownValueDeserialization() throws IOException {
+    public void testColumnTypeNameUnknownValueDeserialization() {
         // Test that an unknown ColumnTypeName value deserializes to UNKNOWN
         // Using BIGDECIMAL as an example type not in the current spec
         String unknownType = "\"BIGDECIMAL\"";
-        
         assertThatCode(() -> {
             ColumnTypeName typeName = objectMapper.readValue(unknownType, ColumnTypeName.class);
             assertThat(typeName).isNotNull();
@@ -128,10 +129,9 @@ public class EnumDeserializationTest {
     }
 
     @Test
-    public void testPrivilegeUnknownValueDeserialization() throws IOException {
+    public void testPrivilegeUnknownValueDeserialization() {
         // Test that an unknown Privilege value deserializes to UNKNOWN
         String unknownPrivilege = "\"DELETE TABLE\"";
-        
         assertThatCode(() -> {
             Privilege privilege = objectMapper.readValue(unknownPrivilege, Privilege.class);
             assertThat(privilege).isNotNull();
@@ -141,7 +141,7 @@ public class EnumDeserializationTest {
     }
 
     @Test
-    public void testVolumeInfoWithUnknownVolumeType() throws IOException {
+    public void testVolumeInfoWithUnknownVolumeType() {
         // Test that a VolumeInfo object with unknown volume_type deserializes correctly
         String jsonWithUnknownType = "{"
                 + "\"volume_id\": \"test-vol-123\","
@@ -164,7 +164,7 @@ public class EnumDeserializationTest {
     }
 
     @Test
-    public void testTableInfoWithUnknownTableType() throws IOException {
+    public void testTableInfoWithUnknownTableType() {
         // Test that a TableInfo object with unknown table_type deserializes correctly
         String jsonWithUnknownType = "{"
                 + "\"table_id\": \"test-table-123\","
