@@ -92,6 +92,7 @@ class UCSingleCatalog
       columns: Array[Column],
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     if (hasExternalClause && !hasLocationClause) {
@@ -103,14 +104,17 @@ class UCSingleCatalog
     // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
     if (!hasExternalClause && !hasLocationClause && !isPathTable) {
       // Check that caller shouldn't set some properties
-      List(UCSingleCatalog.UC_TABLE_ID_KEY, TableCatalog.PROP_IS_MANAGED_LOCATION)
+      List(UCTableProperties.UC_TABLE_ID_KEY, TableCatalog.PROP_IS_MANAGED_LOCATION)
         .filter(properties.containsKey(_))
         .foreach(p => throw new ApiException(s"Cannot specify property $p."))
-      // It's OK to set delta.feature.catalogOwned-preview if it matches exactly what we need
-      Option(properties.get(UCSingleCatalog.CATALOG_OWNED_KEY))
-        .filter(_ != UCSingleCatalog.CATALOG_OWNED_VALUE)
-        .foreach(v => throw new ApiException(
-          s"Cannot specify property ${UCSingleCatalog.CATALOG_OWNED_KEY}=$v."))
+      // Caller should not set this table property directly. But it's OK if it happens to set
+      // this property to the exactly value of what we need.
+      // This is because some document may have mentioned setting it to enable UC as commit
+      // coordinator. But we don't actually need that as we always set it automatically.
+      Option(properties.get(UCTableProperties.CATALOG_MANAGED_KEY))
+        .filter(_ != UCTableProperties.CATALOG_MANAGED_VALUE)
+        .foreach(_ => throw new ApiException(
+          s"Should not specify property ${UCTableProperties.CATALOG_MANAGED_KEY}."))
 
       // Get staging table location and table id from UC
       val createStagingTable = new CreateStagingTable()
@@ -124,8 +128,8 @@ class UCSingleCatalog
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
       newProps.put(TableCatalog.PROP_LOCATION, stagingTableInfo.getStagingLocation)
-      newProps.put(UCSingleCatalog.UC_TABLE_ID_KEY, stagingTableInfo.getId)
-      newProps.put(UCSingleCatalog.CATALOG_OWNED_KEY, UCSingleCatalog.CATALOG_OWNED_VALUE)
+      newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableInfo.getId)
+      newProps.put(UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_VALUE)
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
@@ -210,12 +214,6 @@ class UCSingleCatalog
 }
 
 object UCSingleCatalog {
-  // These properties are required to have UC as Delta commit coordinator
-  val UC_TABLE_ID_KEY = "ucTableId"
-  val CATALOG_OWNED_KEY = "delta.feature.catalogOwned-preview"
-  val CATALOG_OWNED_VALUE = "supported"
-
-
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
@@ -451,7 +449,9 @@ private class UCProxy(
   }
 
   override def dropTable(ident: Identifier): Boolean = {
-    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    checkUnsupportedNestedNamespace(ident.namespace())
+    val ret =
+      tablesApi.deleteTable(Seq(this.name, ident.namespace()(0), ident.name()).mkString("."))
     if (ret == 200) true else false
   }
 

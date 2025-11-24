@@ -56,7 +56,7 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
                     "CREATE TABLE %s(name STRING) USING delta "
                         + "TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'disabled')",
                     fullTableName))
-        .hasMessageContaining("delta.feature.catalogOwned-preview=disabled");
+        .hasMessageContaining("Should not specify property delta.feature.catalogOwned-preview");
     assertThatThrownBy(
             () ->
                 sql(
