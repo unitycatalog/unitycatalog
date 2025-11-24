@@ -186,6 +186,8 @@ public class TableRepository {
           String schemaName = createTable.getSchemaName();
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+          String storageLocation =
+              FileOperations.toStandardizedURIString(createTable.getStorageLocation());
 
           // Check if table already exists
           TableInfoDAO existingTable =
@@ -210,8 +212,14 @@ public class TableRepository {
             StagingTableDAO stagingTableDAO =
                 repositories
                     .getStagingTableRepository()
-                    .commitStagingTable(session, callerId, createTable.getStorageLocation());
+                    .commitStagingTable(session, callerId, storageLocation);
             tableID = stagingTableDAO.getId().toString();
+          } else if (tableType == TableType.STREAMING_TABLE) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
+          } else if (tableType == TableType.MATERIALIZED_VIEW) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "MATERIALIZED VIEW creation is not supported yet.");
           } else {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT,
@@ -232,8 +240,7 @@ public class TableRepository {
                   .createdBy(callerId)
                   .updatedAt(createTime)
                   .updatedBy(callerId)
-                  .storageLocation(
-                      FileOperations.toStandardizedURIString(createTable.getStorageLocation()))
+                  .storageLocation(storageLocation)
                   .tableId(tableID);
 
           TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);
@@ -364,6 +371,9 @@ public class TableRepository {
       } catch (Throwable e) {
         LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }
+      repositories
+          .getDeltaCommitRepository()
+          .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);

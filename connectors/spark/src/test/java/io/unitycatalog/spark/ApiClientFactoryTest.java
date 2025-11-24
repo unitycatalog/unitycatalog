@@ -1,21 +1,21 @@
 package io.unitycatalog.spark;
 
-import io.unitycatalog.client.ApiClient;
-import org.junit.jupiter.api.Test;
-
-import java.net.URI;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.ApiClient;
+import java.net.URI;
+import org.junit.jupiter.api.Test;
+
 /**
- * Test class for ApiClientFactory to verify User-Agent configuration.
+ * Test class for ApiClientFactory to verify User-Agent configuration and client setup.
  */
 public class ApiClientFactoryTest {
 
   @Test
   public void testUserAgentContainsSpark() throws Exception {
+    ApiClientConf clientConf = new ApiClientConf();
     URI uri = new URI("http://localhost:8080");
-    ApiClient client = ApiClientFactory.createApiClient(uri, null);
+    ApiClient client = ApiClientFactory.createApiClient(clientConf, uri, null);
 
     String userAgent = client.getUserAgent();
 
@@ -49,9 +49,10 @@ public class ApiClientFactoryTest {
 
   @Test
   public void testUserAgentWithToken() throws Exception {
+    ApiClientConf clientConf = new ApiClientConf();
     URI uri = new URI("http://localhost:8080");
     String token = "test-token-12345";
-    ApiClient client = ApiClientFactory.createApiClient(uri, token);
+    ApiClient client = ApiClientFactory.createApiClient(clientConf, uri, token);
 
     String userAgent = client.getUserAgent();
 
@@ -70,8 +71,9 @@ public class ApiClientFactoryTest {
 
   @Test
   public void testUserAgentFormat() throws Exception {
+    ApiClientConf clientConf = new ApiClientConf();
     URI uri = new URI("http://localhost:8080");
-    ApiClient client = ApiClientFactory.createApiClient(uri, null);
+    ApiClient client = ApiClientFactory.createApiClient(clientConf, uri, null);
 
     String userAgent = client.getUserAgent();
 
@@ -97,8 +99,9 @@ public class ApiClientFactoryTest {
 
   @Test
   public void testClientConfiguration() throws Exception {
+    ApiClientConf clientConf = new ApiClientConf();
     URI uri = new URI("https://example.com:8443");
-    ApiClient client = ApiClientFactory.createApiClient(uri, null);
+    ApiClient client = ApiClientFactory.createApiClient(clientConf, uri, null);
 
     // Verify the client is configured with the correct URI components
     assertThat(client.getBaseUri()).contains("https://example.com:8443");
@@ -107,5 +110,21 @@ public class ApiClientFactoryTest {
     assertThat(client.getUserAgent()).startsWith("UnityCatalog-Java-Client/");
     assertThat(client.getUserAgent()).contains("Spark");
     // Delta is optional
+  }
+
+  @Test
+  public void testApiClientBaseUri() {
+    ApiClientConf clientConf = new ApiClientConf();
+    String token = "";
+    URI uriNoSuffix = URI.create("https://localhost:8080");
+    ApiClient apiClientNoSuffix = ApiClientFactory.createApiClient(clientConf, uriNoSuffix, token);
+    assertThat(apiClientNoSuffix.getBaseUri())
+        .isEqualTo("https://localhost:8080/api/2.1/unity-catalog");
+
+    URI uriWithSuffix = URI.create("https://localhost:8080/path/to/uc/api");
+    ApiClient apiClientWithSuffix =
+        ApiClientFactory.createApiClient(clientConf, uriWithSuffix, token);
+    assertThat(apiClientWithSuffix.getBaseUri())
+        .isEqualTo("https://localhost:8080/path/to/uc/api/api/2.1/unity-catalog");
   }
 }

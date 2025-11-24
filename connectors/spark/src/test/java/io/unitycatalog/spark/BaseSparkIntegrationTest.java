@@ -13,10 +13,14 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
+import java.util.List;
 import java.util.Optional;
+import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
 public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
@@ -24,6 +28,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   protected static final String SPARK_CATALOG = "spark_catalog";
 
   private SchemaOperations schemaOperations;
+  // Each test would create this session. It will be closed automatically.
+  protected SparkSession session;
 
   private void createCommonResources() throws ApiException {
     // Common setup operations such as creating a catalog and schema
@@ -63,12 +69,19 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return builder.getOrCreate();
   }
 
+  protected List<Row> sql(String statement, Object... args) {
+    return session.sql(String.format(statement, args)).collectAsList();
+  }
+
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
+    // Some Delta Spark functionalities needs testing mode to be turned on so that we can test.
+    // Specifically the file CreateDeltaTableCommand.scala in Delta checks for Utils.isTesting
+    // before allowing catalog owned table creation.
+    System.setProperty("spark.testing", "true");
     schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
-    cleanUp();
     try {
       createCommonResources();
     } catch (ApiException e) {
@@ -90,8 +103,10 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
     serverProperties.put("gcs.bucketPath.0", "gs://test-bucket0");
     serverProperties.put("gcs.jsonKeyFilePath.0", "testing://0");
+    serverProperties.put("gcs.credentialsGenerator.0", TestingCredentialsGenerator.class.getName());
     serverProperties.put("gcs.bucketPath.1", "gs://test-bucket1");
     serverProperties.put("gcs.jsonKeyFilePath.1", "testing://1");
+    serverProperties.put("gcs.credentialsGenerator.1", TestingCredentialsGenerator.class.getName());
 
     serverProperties.put("adls.storageAccountName.0", "test-bucket0");
     serverProperties.put("adls.tenantId.0", "tenantId0");
@@ -110,10 +125,19 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return new SdkCatalogOperations(createApiClient(serverConfig));
   }
 
+  @AfterEach
   @Override
   public void cleanUp() {
     try {
       catalogOperations.deleteCatalog(SPARK_CATALOG, Optional.of(true));
+    } catch (Exception e) {
+      // Ignore
+    }
+    try {
+      if (session != null) {
+        session.close();
+        session = null;
+      }
     } catch (Exception e) {
       // Ignore
     }

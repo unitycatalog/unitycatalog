@@ -174,9 +174,12 @@ public class CliUtils {
                   put(
                       CREATE,
                       new CliOptions(
+                          List.of(CliParams.FULL_NAME, CliParams.COLUMNS),
                           List.of(
-                              CliParams.FULL_NAME, CliParams.COLUMNS, CliParams.STORAGE_LOCATION),
-                          List.of(CliParams.DATA_SOURCE_FORMAT, CliParams.PROPERTIES)));
+                              CliParams.DATA_SOURCE_FORMAT,
+                              CliParams.PROPERTIES,
+                              CliParams.STORAGE_LOCATION,
+                              CliParams.TABLE_TYPE)));
                   put(
                       LIST,
                       new CliOptions(

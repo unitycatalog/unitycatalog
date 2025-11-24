@@ -117,7 +117,6 @@ useCoursier := true
 
 // Configure resolvers
 resolvers ++= Seq(
-  "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
   "Maven Central" at "https://repo1.maven.org/maven2/",
 )
 
@@ -309,6 +308,7 @@ lazy val server = (project in file("server"))
   // Server and control models are added as provided to avoid them being added as maven dependencies
   // This is because the server and control models are included in the server jar
   .dependsOn(serverModels % "provided", controlModels % "provided")
+  .dependsOn(controlApi % "test->compile")
   .enablePlugins(CheckstylePlugin)
   .settings (
     name := s"$artifactNamePrefix-server",

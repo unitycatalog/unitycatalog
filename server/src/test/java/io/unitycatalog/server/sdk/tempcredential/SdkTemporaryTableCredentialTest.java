@@ -9,6 +9,7 @@ import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableOperation;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
@@ -20,8 +21,8 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
-import java.io.IOException;
 import java.net.URI;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -65,13 +66,14 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
   @ParameterizedTest
   @MethodSource("getArgumentsForParameterizedTests")
   public void testGenerateTemporaryCredentialsWhereConfIsProvided(
-      String scheme, boolean isConfiguredPath) throws ApiException, IOException {
+      String scheme, boolean isConfiguredPath) throws ApiException {
     createCatalogAndSchema();
     String url = getTestCloudPath(scheme, isConfiguredPath);
     URI uri = URI.create(url);
     String tableName = "testtable-" + uri.getScheme();
     TableInfo tableInfo =
-        BaseTableCRUDTest.createTestingTable(tableName, url + "/" + tableName, tableOperations);
+        BaseTableCRUDTest.createTestingTable(
+            tableName, TableType.EXTERNAL, Optional.of(url + "/" + tableName), tableOperations);
 
     GenerateTemporaryTableCredential generateTemporaryTableCredential =
         new GenerateTemporaryTableCredential()

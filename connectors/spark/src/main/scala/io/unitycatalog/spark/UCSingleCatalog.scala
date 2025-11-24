@@ -49,7 +49,7 @@ class UCSingleCatalog
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
-    apiClient = ApiClientFactory.createApiClient(uri, token)
+    apiClient = ApiClientFactory.createApiClient(new ApiClientConf(), uri, token)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     val proxy = new UCProxy(uri, token, renewCredEnabled, apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
@@ -217,7 +217,10 @@ private class UCProxy(
 
   override def loadTable(ident: Identifier): Table = {
     val t = try {
-      tablesApi.getTable(name + "." + ident.toString)
+      tablesApi.getTable(
+        name + "." + ident.toString,
+        /* readStreamingTableAsManaged = */ true,
+        /* readMaterializedViewAsManaged = */ true)
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchTableException(ident)

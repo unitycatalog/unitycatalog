@@ -1,10 +1,16 @@
 package io.unitycatalog.server.utils;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
   public static final String CATALOG_NAME = "uc_testcatalog";
@@ -65,5 +71,14 @@ public class TestUtils {
           request -> request.header("Authorization", "Bearer " + serverConfig.getAuthToken()));
     }
     return apiClient;
+  }
+
+  public static void assertApiException(
+      Executable executable, ErrorCode errorCode, String containsMessage) {
+    ApiException ex = assertThrows(ApiException.class, executable);
+    // Check the message first. When tests fail due to mismatching error, the message can tell us
+    // more.
+    assertThat(ex.getMessage()).contains(containsMessage);
+    assertThat(ex.getCode()).isEqualTo(errorCode.getHttpStatus().code());
   }
 }

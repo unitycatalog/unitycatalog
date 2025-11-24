@@ -14,6 +14,7 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.ByteArrayInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -115,7 +116,7 @@ public class FileOperations {
     }
   }
 
-  private static void deleteLocalDirectory(Path dirPath) throws IOException {
+  public static void deleteLocalDirectory(Path dirPath) throws IOException {
     if (Files.exists(dirPath)) {
       try (Stream<Path> walk = Files.walk(dirPath, FileVisitOption.FOLLOW_LINKS)) {
         walk.sorted(Comparator.reverseOrder())
@@ -129,7 +130,7 @@ public class FileOperations {
                 });
       }
     } else {
-      throw new IOException("Directory does not exist: " + dirPath);
+      throw new FileNotFoundException("Directory does not exist: " + dirPath);
     }
   }
 
@@ -241,6 +242,9 @@ public class FileOperations {
    * </pre>
    */
   public static String toStandardizedURIString(String inputPath) {
+    if (inputPath == null) {
+      return null;
+    }
     // Check if the path is already a URI with a valid scheme
     URI uri;
     try {
