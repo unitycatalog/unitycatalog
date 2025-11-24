@@ -158,6 +158,12 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     } catch (Exception e) {
       // Ignore
     }
+    try {
+      catalogOperations.deleteCatalog(SPARK_CATALOG, Optional.of(true));
+      // The other catalog uc_testcatalog is handled by BaseCRUDTest.cleanUp()
+    } catch (Exception e) {
+      // Ignore
+    }
     super.cleanUp();
   }
 }
