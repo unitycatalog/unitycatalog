@@ -190,7 +190,7 @@ public class TemporaryPathCredentialsServiceTest extends SdkAccessControlBaseCRU
 
   @ParameterizedTest
   @MethodSource("createPermissionsTestCases")
-  public void testGenerateTemporaryPathCredential2(
+  public void testGenerateTemporaryPathCredential(
       String url, String userEmail, HttpStatus expectedStatus, PathOperation operation) {
     // Arrange
     String requestBody =
