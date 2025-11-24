@@ -193,7 +193,8 @@ public class CloudCredentialVendorTest {
                     .credentialsGenerator(TestingCredentialsGenerator.class.getName())
                     .build()));
     gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
-    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
+    credentialsOperations =
+        new CloudCredentialVendor(null, null, gcpCredentialVendor, serverProperties);
     TemporaryCredentials testingSentinelCredentials =
         credentialsOperations.vendCredential(
             "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.SELECT));
@@ -218,7 +219,8 @@ public class CloudCredentialVendorTest {
   public void testMissingGcpBucketConfigurationFails() {
     when(serverProperties.getGcsConfigurations()).thenReturn(Map.of());
     GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
-    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
+    credentialsOperations =
+        new CloudCredentialVendor(null, null, gcpCredentialVendor, serverProperties);
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(
