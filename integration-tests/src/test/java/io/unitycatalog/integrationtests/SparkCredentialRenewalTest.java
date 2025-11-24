@@ -54,7 +54,7 @@ public class SparkCredentialRenewalTest {
   private static final long DURATION_SECONDS = envAsLong(PREFIX + "DURATION_SECONDS", 5600L);
 
   // Define the schema name and table name.
-  private static final String SCHEMA_NAME = randomName();
+  private static final String SCHEMA_NAME = "default";
   private static final String SRC_TABLE =
       String.format("%s.%s.src_%s", CATALOG_NAME, SCHEMA_NAME, randomName());
   private static final String DST_TABLE =
@@ -69,7 +69,8 @@ public class SparkCredentialRenewalTest {
         SparkSession.builder()
             .appName("test-credential-renewal-in-long-running-job")
             .master("local[1]") // Make it single-threaded explicitly.
-            .config("spark.hadoop.fs.AbstractFileSystem.gs.impl",
+            .config(
+                "spark.hadoop.fs.AbstractFileSystem.gs.impl",
                 "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
             .config(
@@ -82,7 +83,6 @@ public class SparkCredentialRenewalTest {
             .config(testCatalogKey + ".renewCredential.enabled", String.valueOf(RENEW_CRED_ENABLED))
             .getOrCreate();
 
-    sql("CREATE SCHEMA %s.%s", CATALOG_NAME, SCHEMA_NAME);
     sql(
         "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",
         SRC_TABLE, GS_BASE_LOCATION, UUID.randomUUID());
