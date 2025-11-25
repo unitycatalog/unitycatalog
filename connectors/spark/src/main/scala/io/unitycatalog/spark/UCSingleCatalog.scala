@@ -104,7 +104,8 @@ class UCSingleCatalog
     // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
     if (!hasExternalClause && !hasLocationClause && !isPathTable) {
       // Check that caller shouldn't set some properties
-      List(UCTableProperties.UC_TABLE_ID_KEY, TableCatalog.PROP_IS_MANAGED_LOCATION)
+      List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
+        TableCatalog.PROP_IS_MANAGED_LOCATION)
         .filter(properties.containsKey(_))
         .foreach(p => throw new ApiException(s"Cannot specify property $p."))
       // Caller should not set this table property directly. But it's OK if it happens to set
@@ -128,7 +129,9 @@ class UCSingleCatalog
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
       newProps.put(TableCatalog.PROP_LOCATION, stagingTableInfo.getStagingLocation)
+      // Sets both the new and old table ID property while it's being renamed.
       newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableInfo.getId)
+      newProps.put(UCTableProperties.UC_TABLE_ID_KEY_OLD, stagingTableInfo.getId)
       newProps.put(UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_VALUE)
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
