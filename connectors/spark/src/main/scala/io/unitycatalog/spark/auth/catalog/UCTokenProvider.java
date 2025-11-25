@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.token;
+package io.unitycatalog.spark.auth.catalog;
 
 import static org.sparkproject.guava.base.Preconditions.checkArgument;
 
@@ -7,6 +7,15 @@ import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 
+/**
+ * Interface for providing access tokens to authenticate with Unity Catalog.
+ *
+ * <p>Implementations include:
+ * <ul>
+ *   <li>{@link FixedUCTokenProvider} - uses a pre-configured static token</li>
+ *   <li>{@link OAuthUCTokenProvider} - obtains tokens via OAuth 2.0 client credentials flow</li>
+ * </ul>
+ */
 public interface UCTokenProvider {
   /**
    * Returns the access token for Unity Catalog authentication.

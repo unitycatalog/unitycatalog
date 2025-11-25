@@ -3,7 +3,7 @@ package io.unitycatalog.spark;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.spark.token.FixedUCTokenProvider;
+import io.unitycatalog.spark.auth.catalog.FixedUCTokenProvider;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 

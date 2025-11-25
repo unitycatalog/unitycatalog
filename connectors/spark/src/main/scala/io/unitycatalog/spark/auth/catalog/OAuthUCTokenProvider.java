@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.token;
+package io.unitycatalog.spark.auth.catalog;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -4,7 +4,7 @@ import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
 import io.unitycatalog.spark.auth.CredPropsUtil
-import io.unitycatalog.spark.token.UCTokenProvider
+import io.unitycatalog.spark.auth.catalog.UCTokenProvider
 import io.unitycatalog.spark.utils.OptionsUtil
 
 import java.net.URI

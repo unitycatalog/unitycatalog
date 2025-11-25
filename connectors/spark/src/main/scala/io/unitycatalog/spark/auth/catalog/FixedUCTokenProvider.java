@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.token;
+package io.unitycatalog.spark.auth.catalog;
 
 import io.unitycatalog.spark.UCHadoopConf;
 import java.util.Map;

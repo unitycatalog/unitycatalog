@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.token;
+package io.unitycatalog.spark.auth.catalog;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
