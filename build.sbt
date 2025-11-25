@@ -515,6 +515,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-aws" % "3.4.0" % Test,
       "io.delta" %% "delta-spark" % "3.2.1" % Test,
     ),
     dependencyOverrides ++= Seq(
