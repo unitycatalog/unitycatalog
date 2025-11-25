@@ -2,7 +2,6 @@ package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.common.utils.VersionUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import lombok.Getter;
