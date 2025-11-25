@@ -44,9 +44,9 @@ public class UCHadoopConf {
   public static final String FS_UC_PREFIX = "fs.unitycatalog.";
   public static final String UC_URI_KEY = "fs.unitycatalog.uri";
   public static final String UC_TOKEN_KEY = "fs.unitycatalog.token";
-  public static final String UC_OAUTH_URI = "fs.unitycatalog.oauthUri";
-  public static final String UC_OAUTH_CLIENT_ID = "fs.unitycatalog.oauthClientId";
-  public static final String UC_OAUTH_CLIENT_SECRET = "fs.unitycatalog.oauthClientSecret";
+  public static final String UC_OAUTH_URI = "fs.unitycatalog.oauth.uri";
+  public static final String UC_OAUTH_CLIENT_ID = "fs.unitycatalog.oauth.clientId";
+  public static final String UC_OAUTH_CLIENT_SECRET = "fs.unitycatalog.oauth.clientSecret";
 
   // Key representing the remaining time before expiration, used to trigger credentials renewal in
   // advance.

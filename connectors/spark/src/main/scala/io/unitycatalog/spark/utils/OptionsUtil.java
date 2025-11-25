@@ -9,9 +9,9 @@ public class OptionsUtil {
   public static final String URI = "uri";
   public static final String TOKEN = "token";
   public static final String WAREHOUSE = "warehouse";
-  public static final String OAUTH_URI = "oauthUri";
-  public static final String OAUTH_CLIENT_ID = "oauthClientId";
-  public static final String OAUTH_CLIENT_SECRET = "oauthClientSecret";
+  public static final String OAUTH_URI = "oauth.uri";
+  public static final String OAUTH_CLIENT_ID = "oauth.clientId";
+  public static final String OAUTH_CLIENT_SECRET = "oauth.clientSecret";
 
   public static final String RENEW_CREDENTIAL_ENABLED = "renewCredential.enabled";
   public static final boolean DEFAULT_RENEW_CREDENTIAL_ENABLED = false;
