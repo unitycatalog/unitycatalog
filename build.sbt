@@ -3,7 +3,7 @@ import Checkstyle._
 import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
-import sbt.{Attributed, file, util}
+import sbt.{Attributed, util}
 import sbt.Keys.*
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.*
@@ -125,38 +125,6 @@ def javafmtCheckSettings() = Seq(
   (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtAll)).value
 )
 
-lazy val common = (project in file("common"))
-  .enablePlugins(CheckstylePlugin)
-  .settings (
-    name := s"$artifactNamePrefix-common",
-    crossScalaVersions := Seq(scala213),
-    commonSettings,
-    scalaReleaseSettings,
-    javaOptions ++= Seq(
-      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
-    ),
-    javaCheckstyleSettings("dev/checkstyle-config.xml"),
-    Compile / compile / javacOptions ++= javacRelease11,
-    libraryDependencies ++= Seq(
-      // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
-      "org.assertj" % "assertj-core" % "3.26.3" % Test,
-    ),
-
-    Compile / sourceGenerators += Def.task {
-      val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "common" / "utils" /
-        "VersionUtils.java"
-      IO.write(file,
-        s"""package io.unitycatalog.common.utils;
-           |
-           |public class VersionUtils {
-           |  public static String VERSION = "${version.value}";
-           |}
-           |""".stripMargin)
-      Seq(file)
-    }
-  )
-
 lazy val controlApi = (project in file("target/control/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
@@ -202,7 +170,6 @@ lazy val controlApi = (project in file("target/control/java"))
   )
 
 lazy val client = (project in file("target/clients/java"))
-  .dependsOn(common)
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
@@ -251,6 +218,18 @@ lazy val client = (project in file("target/clients/java"))
         buildSbtFile.delete()
       }
     },
+    // Add VersionInfo in the same way like in server
+    Compile / sourceGenerators += Def.task {
+      val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "cli" / "utils" / "VersionUtils.java"
+      IO.write(file,
+        s"""package io.unitycatalog.cli.utils;
+          |
+          |public class VersionUtils {
+          |  public static String VERSION = "${version.value}";
+          |}
+          |""".stripMargin)
+      Seq(file)
+    }
   )
 
 lazy val prepareGeneration = taskKey[Unit]("Prepare the environment for OpenAPI code generation")
@@ -314,7 +293,6 @@ lazy val apiDocs = (project in file("api"))
 lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class from the test folder")
 
 lazy val server = (project in file("server"))
-  .dependsOn(common)
   .dependsOn(client % "test->test")
   // Server and control models are added as provided to avoid them being added as maven dependencies
   // This is because the server and control models are included in the server jar
@@ -406,6 +384,18 @@ lazy val server = (project in file("server"))
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
+
+    Compile / sourceGenerators += Def.task {
+      val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "server" / "utils" / "VersionUtils.java"
+      IO.write(file,
+        s"""package io.unitycatalog.server.utils;
+           |
+           |public class VersionUtils {
+           |  public static String VERSION = "${version.value}";
+           |}
+           |""".stripMargin)
+      Seq(file)
+    },
     populateTestDB := {
       val log = streams.value.log
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
@@ -560,7 +550,6 @@ lazy val serverShaded = (project in file("server-shaded"))
   )
 
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(common)
   .dependsOn(client)
   .enablePlugins(CheckstylePlugin)
   .settings(

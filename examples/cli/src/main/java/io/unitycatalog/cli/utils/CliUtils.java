@@ -15,7 +15,6 @@ import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.FunctionParameterInfo;
 import io.unitycatalog.client.model.FunctionParameterInfos;
-import io.unitycatalog.common.utils.VersionUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;

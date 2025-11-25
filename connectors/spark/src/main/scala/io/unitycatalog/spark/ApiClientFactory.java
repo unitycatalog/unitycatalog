@@ -1,7 +1,7 @@
 package io.unitycatalog.spark;
 
+import io.unitycatalog.cli.utils.VersionUtils;
 import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.common.utils.VersionUtils;
 import io.unitycatalog.spark.utils.Clock;
 import java.net.URI;
 import java.net.http.HttpRequest;

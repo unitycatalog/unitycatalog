@@ -2,8 +2,8 @@ package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.cli.utils.VersionUtils;
 import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.common.utils.VersionUtils;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.util.HashMap;

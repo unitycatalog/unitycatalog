@@ -1,7 +1,6 @@
 package io.unitycatalog.server.utils;
 
 import com.google.common.annotations.VisibleForTesting;
-import io.unitycatalog.common.utils.VersionUtils;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.cli.CommandLine;
