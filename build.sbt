@@ -16,7 +16,7 @@ val artifactNamePrefix = "unitycatalog"
 lazy val javacRelease11 = Seq("--release", "11")
 lazy val javacRelease17 = Seq("--release", "17")
 
-lazy val scala212 = "2.12.15"
+lazy val scala212 = "2.12.20"
 lazy val scala213 = "2.13.14"
 
 lazy val commonSettings = Seq(
