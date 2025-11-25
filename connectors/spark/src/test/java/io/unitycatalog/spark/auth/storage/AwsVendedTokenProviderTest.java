@@ -92,7 +92,7 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     assertThatThrownBy(() -> new AwsVendedTokenProvider(conf))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage("Cannot determine UC authentication configuration from options");
+        .hasMessageContaining("Cannot determine UC authentication configuration from options");
 
     // Verify the UID validation error message.
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");

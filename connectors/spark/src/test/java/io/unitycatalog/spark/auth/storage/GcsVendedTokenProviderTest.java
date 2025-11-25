@@ -89,7 +89,7 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     assertThatThrownBy(() -> provider.setConf(conf))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage("Cannot determine UC authentication configuration from options");
+        .hasMessageContaining("Cannot determine UC authentication configuration from options");
 
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
     assertThatThrownBy(() -> provider.setConf(conf))

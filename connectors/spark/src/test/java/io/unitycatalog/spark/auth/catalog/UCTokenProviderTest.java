@@ -46,7 +46,7 @@ public class UCTokenProviderTest {
     // Test with no valid config - should throw
     assertThatThrownBy(() -> UCTokenProvider.create(Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Cannot determine UCTokenProvider from options");
+        .hasMessageContaining("Cannot determine UC authentication configuration from options");
 
     // Test token takes precedence over OAuth when both are present
     Map<String, String> bothOptions = new HashMap<>();
@@ -91,7 +91,7 @@ public class UCTokenProviderTest {
     Configuration emptyConf = new Configuration();
     assertThatThrownBy(() -> UCTokenProvider.create(emptyConf))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Cannot determine UCTokenProvider from options");
+        .hasMessageContaining("Cannot determine UC authentication configuration from options");
 
     // Test token takes precedence over OAuth in Configuration
     Configuration bothConf = new Configuration();
