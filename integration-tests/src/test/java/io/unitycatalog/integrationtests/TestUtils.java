@@ -1,6 +1,8 @@
 package io.unitycatalog.integrationtests;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Stream;
 import org.apache.commons.lang3.RandomStringUtils;
 
 public class TestUtils {
@@ -17,11 +19,13 @@ public class TestUtils {
   public static final String OAUTH_CLIENT_SECRET = envAsString("CATALOG_OAUTH_CLIENT_SECRET", "");
 
   // Base locations.
-  public static final String S3_BASE_LOCATION = envAsString("S3_BASE_LOCATION", "");
-  public static final String GS_BASE_LOCATION = envAsString("GS_BASE_LOCATION", "");
-  public static final String ABFSS_BASE_LOCATION = envAsString("ABFSS_BASE_LOCATION", "");
+  public static final String S3_BASE_LOCATION = envAsString("S3_BASE_LOCATION", null);
+  public static final String GS_BASE_LOCATION = envAsString("GS_BASE_LOCATION", null);
+  public static final String ABFSS_BASE_LOCATION = envAsString("ABFSS_BASE_LOCATION", null);
   public static final List<String> BASE_LOCATIONS =
-      List.of(S3_BASE_LOCATION, GS_BASE_LOCATION, ABFSS_BASE_LOCATION);
+      Stream.of(S3_BASE_LOCATION, GS_BASE_LOCATION, ABFSS_BASE_LOCATION)
+          .filter(Objects::nonNull)
+          .toList();
 
   public static String envAsString(String key, String defaultValue) {
     return System.getenv().getOrDefault(key, defaultValue);
