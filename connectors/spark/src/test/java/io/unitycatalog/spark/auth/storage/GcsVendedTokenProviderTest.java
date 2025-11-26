@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.auth;
+package io.unitycatalog.spark.auth.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -88,8 +88,8 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
 
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     assertThatThrownBy(() -> provider.setConf(conf))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN_KEY);
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Cannot determine UC authentication configuration from options");
 
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
     assertThatThrownBy(() -> provider.setConf(conf))

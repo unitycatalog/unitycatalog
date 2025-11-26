@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.auth;
+package io.unitycatalog.spark.auth.storage;
 
 import io.unitycatalog.spark.UCHadoopConf;
 import org.apache.hadoop.conf.Configuration;

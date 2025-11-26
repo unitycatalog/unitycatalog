@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.auth;
+package io.unitycatalog.spark.auth.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;

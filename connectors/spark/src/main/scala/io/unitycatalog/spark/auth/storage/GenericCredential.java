@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.auth;
+package io.unitycatalog.spark.auth.storage;
 
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;

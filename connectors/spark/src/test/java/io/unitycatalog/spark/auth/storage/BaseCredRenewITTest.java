@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.auth;
+package io.unitycatalog.spark.auth.storage;
 
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
