@@ -19,6 +19,7 @@ import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import lombok.SneakyThrows;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.AfterEach;
@@ -129,19 +130,24 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return new SdkCatalogOperations(createApiClient(serverConfig));
   }
 
+  @SneakyThrows
   private void createTestCatalog(String catalogName) {
-    try {
-      catalogOperations.createCatalog(
-          new CreateCatalog().name(catalogName).comment("Created by BaseSparkIntegrationTest"));
-    } catch (ApiException e) {
-      throw new RuntimeException(e);
-    }
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(catalogName).comment("Created by BaseSparkIntegrationTest"));
     createdCatalogs.add(catalogName);
   }
 
   @AfterEach
   @Override
   public void cleanUp() {
+    try {
+      if (session != null) {
+        session.close();
+      }
+    } catch (Exception e) {
+      // Ignore
+    }
+    session = null;
     for (String catalogName : createdCatalogs) {
       try {
         catalogOperations.deleteCatalog(catalogName, Optional.of(true));
@@ -150,20 +156,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
       }
     }
     createdCatalogs.clear();
-    try {
-      if (session != null) {
-        session.close();
-        session = null;
-      }
-    } catch (Exception e) {
-      // Ignore
-    }
-    try {
-      catalogOperations.deleteCatalog(SPARK_CATALOG, Optional.of(true));
-      // The other catalog uc_testcatalog is handled by BaseCRUDTest.cleanUp()
-    } catch (Exception e) {
-      // Ignore
-    }
+    // The other catalog uc_testcatalog is deleted by BaseCRUDTest.cleanUp()
     super.cleanUp();
   }
 }

@@ -5,26 +5,32 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+/**
+ * This test suite exercise all tests in BaseTableReadWriteTest plus extra tests that are dedicated
+ * to managed tables.
+ *
+ * <p>Specifically the managed table creation logic has distinct behavior to test in this class: 1.
+ * Automatically allocate storage path by server 2. Automatically enables UC as Delta commit
+ * coordinator These behaviors are only relevant to managed tables.
+ *
+ * <p>This test needs to start server with a single managed root location on a single emulated cloud
+ * so it can not test all emulated clouds yet.
+ */
 public class DeltaManagedTableReadWriteTest extends BaseTableReadWriteTest {
   private static final String DELTA_TABLE = "test_delta";
 
@@ -59,30 +65,41 @@ public class DeltaManagedTableReadWriteTest extends BaseTableReadWriteTest {
     assertThatThrownBy(
             () ->
                 sql(
-                    "CREATE TABLE %s(name STRING) USING delta "
-                        + "TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'disabled')",
-                    fullTableName))
-        .hasMessageContaining("delta.feature.catalogOwned-preview=disabled");
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
+                    fullTableName, UCTableProperties.CATALOG_MANAGED_KEY))
+        .hasMessageContaining(
+            String.format("Should not specify property %s", UCTableProperties.CATALOG_MANAGED_KEY));
     assertThatThrownBy(
             () ->
                 sql(
-                    "CREATE TABLE %s(name STRING) USING delta "
-                        + "TBLPROPERTIES ('ucTableId' = 'some_id')",
-                    fullTableName))
-        .hasMessageContaining("ucTableId");
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
+                    fullTableName, UCTableProperties.CATALOG_MANAGED_KEY_NEW))
+        .hasMessageContaining(
+            String.format(
+                "Should not specify property %s", UCTableProperties.CATALOG_MANAGED_KEY_NEW));
     assertThatThrownBy(
             () ->
                 sql(
-                    "CREATE TABLE %s(name STRING) USING delta "
-                        + "TBLPROPERTIES ('is_managed_location' = 'false')",
-                    fullTableName))
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
+                    fullTableName, UCTableProperties.UC_TABLE_ID_KEY))
+        .hasMessageContaining(UCTableProperties.UC_TABLE_ID_KEY);
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
+                    fullTableName, UCTableProperties.UC_TABLE_ID_KEY_OLD))
+        .hasMessageContaining(UCTableProperties.UC_TABLE_ID_KEY_OLD);
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta " + "TBLPROPERTIES ('%s' = 'false')",
+                    fullTableName, TableCatalog.PROP_IS_MANAGED_LOCATION))
         .hasMessageContaining("is_managed_location");
   }
 
   @ParameterizedTest
   @MethodSource("cloudParameters")
-  public void testCreateManagedDeltaTable(String scheme, boolean renewCredEnabled)
-      throws IOException, URISyntaxException {
+  public void testCreateManagedDeltaTable(String scheme, boolean renewCredEnabled) {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     int counter = 0;
@@ -94,13 +111,17 @@ public class DeltaManagedTableReadWriteTest extends BaseTableReadWriteTest {
             counter++;
 
             SetupTableOptions options =
-                new SetupTableOptions().setCatalogName(catalogName).setTableName(tableName);
+                new SetupTableOptions()
+                    .setCatalogName(catalogName)
+                    .setTableName(tableName)
+                    .setCloudScheme(scheme);
             if (withPartition) {
               options.setPartitionColumn("i");
             }
             // Setting this table property isn't necessary, but we should not throw an error.
             if (withProperty) {
-              options.setTableProperty("delta.feature.catalogOwned-preview", "supported");
+              options.setTableProperty(
+                  UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_VALUE);
             }
 
             if (ctas) {
@@ -119,32 +140,31 @@ public class DeltaManagedTableReadWriteTest extends BaseTableReadWriteTest {
                     .filter(row -> !List.of("i", "s").contains(row.getString(0)))
                     .collect(Collectors.toMap(row -> row.getString(0), row -> row.getString(1)));
 
-            // Make sure the table created is managed and catalogOwned
+            // Make sure the table created is managed and catalogManaged
             assertThat(describeResult.get("Name")).isEqualTo(fullTableName);
             assertThat(describeResult.get("Type")).isEqualTo("MANAGED");
             assertThat(describeResult.get("Provider")).isEqualToIgnoringCase("delta");
             assertThat(describeResult.get("Is_managed_location")).isEqualTo("true");
             assertThat(describeResult).containsKey("Table Properties");
-            assertThat(describeResult.get("Table Properties"))
-                .contains("delta.feature.catalogOwned-preview=supported");
-            assertThat(describeResult.get("Table Properties")).contains("ucTableId=");
-
-            // Make sure the table has commit under /_delta_log/_staged_commits
-            assertThat(describeResult).containsKey("Location");
-            String location = describeResult.get("Location");
-            URI uri = new URI(location);
-            assertThat(uri.getScheme()).isEqualTo(scheme);
-            String path = uri.getPath();
-            String stagedCommitPath = path + "/_delta_log/_staged_commits";
-            try (DirectoryStream<Path> directoryStream =
-                Files.newDirectoryStream(Path.of(stagedCommitPath))) {
-              Set<String> jsonFiles =
-                  StreamSupport.stream(directoryStream.spliterator(), false)
-                      .map(Path::toString)
-                      .filter(s -> s.endsWith(".json"))
-                      .collect(Collectors.toSet());
-              assertThat(jsonFiles).hasSizeGreaterThanOrEqualTo(1);
-            }
+            // Check that it either has the old table ID key or the new one. Doesn't matter if it
+            // has both.
+            String tableProperties = describeResult.get("Table Properties");
+            Assertions.assertTrue(
+                tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY)
+                    || tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY_OLD));
+            // Check that it either has the old feature name or the new one. We don't care if it
+            // has both but Delta won't allow that.
+            Assertions.assertTrue(
+                tableProperties.contains(
+                        String.format(
+                            "%s=%s",
+                            UCTableProperties.CATALOG_MANAGED_KEY,
+                            UCTableProperties.CATALOG_MANAGED_VALUE))
+                    || tableProperties.contains(
+                        String.format(
+                            "%s=%s",
+                            UCTableProperties.CATALOG_MANAGED_KEY_NEW,
+                            UCTableProperties.CATALOG_MANAGED_VALUE)));
 
             // Check schema of table
             validateTableSchema(
@@ -155,6 +175,11 @@ public class DeltaManagedTableReadWriteTest extends BaseTableReadWriteTest {
         }
       }
     }
+  }
+
+  @Test
+  public void hyphenInTableName() {
+    testHyphenInTableNameBase(Optional.empty());
   }
 
   @Override

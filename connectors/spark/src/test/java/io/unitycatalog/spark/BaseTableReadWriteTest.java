@@ -7,9 +7,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -290,7 +291,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(tables1).hasSize(1);
     assertThat(tables1.get(0).getString(0)).isEqualTo(SCHEMA_NAME);
     assertThat(tables1.get(0).getString(1)).isEqualTo(TEST_TABLE);
-    List<Row> tables2 = sql("SHOW TABLES in %s.%s", SPARK_CATALOG, SCHEMA_NAME);
+    List<Row> tables2 = sql("SHOW TABLES in %s.%s", CATALOG_NAME, SCHEMA_NAME);
     assertThat(tables2).hasSize(1);
     assertThat(tables2.get(0).getString(0)).isEqualTo(SCHEMA_NAME);
     assertThat(tables2.get(0).getString(1)).isEqualTo(ANOTHER_TEST_TABLE);
@@ -323,19 +324,18 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, catalogName);
     sql("CREATE SCHEMA `%s`.`%s`", catalogName, schemaName);
     String fullTableName = String.format("%s.%s.%s", catalogName, schemaName, tableName);
+    String quotedFullTableName = quoteEntityName(fullTableName);
     String locationClause = location.map(l -> String.format("LOCATION '%s'", l)).orElse("");
-    sql(
-        "CREATE TABLE %s(i INT, s STRING) USING DELTA %s",
-        quoteEntityName(fullTableName), locationClause);
+    sql("CREATE TABLE %s(i INT, s STRING) USING DELTA %s", quotedFullTableName, locationClause);
 
-    testTableReadWrite(fullTableName);
+    testTableReadWrite(quotedFullTableName);
 
     List<Row> tables1 = sql("SHOW TABLES in `%s`.`%s`", catalogName, schemaName);
     assertThat(tables1).hasSize(1);
     assertThat(tables1.get(0).getString(0)).isEqualTo(quoteEntityName(schemaName));
     assertThat(tables1.get(0).getString(1)).isEqualTo(tableName);
 
-    sql("DROP TABLE %s", quoteEntityName(fullTableName));
+    sql("DROP TABLE %s", quotedFullTableName);
     List<Row> tables2 = sql("SHOW TABLES in `%s`.`%s`", catalogName, schemaName);
     assertThat(tables2).isEmpty();
   }
@@ -347,9 +347,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   protected void testTableReadWrite(String tableFullName) {
-    assertThat(sql("SELECT * FROM %s", quoteEntityName(tableFullName))).isEmpty();
-    sql("INSERT INTO %s SELECT 1, 'a'", quoteEntityName(tableFullName));
-    validateRows(sql("SELECT * FROM %s", quoteEntityName(tableFullName)), Pair.of(1, "a"));
+    assertThat(sql("SELECT * FROM %s", tableFullName)).isEmpty();
+    sql("INSERT INTO %s SELECT 1, 'a'", tableFullName);
+    validateRows(sql("SELECT * FROM %s", tableFullName), Pair.of(1, "a"));
   }
 
   protected void testTableReadWriteCreatedAsSelect(
