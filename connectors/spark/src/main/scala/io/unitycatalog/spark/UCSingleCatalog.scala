@@ -148,7 +148,7 @@ class UCSingleCatalog
         renewCredEnabled,
         CatalogUtils.stringToURI(stagingLocation).getScheme,
         uri.toString,
-        token,
+        ucTokenProvider,
         stagingTableId,
         TableOperation.READ_WRITE,
         temporaryCredentials,
@@ -457,9 +457,7 @@ private class UCProxy(
   }
 
   override def dropTable(ident: Identifier): Boolean = {
-    checkUnsupportedNestedNamespace(ident.namespace())
-    val ret =
-      tablesApi.deleteTable(Seq(this.name, ident.namespace()(0), ident.name()).mkString("."))
+    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
     if (ret == 200) true else false
   }
 
