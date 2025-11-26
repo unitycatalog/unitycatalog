@@ -1,4 +1,6 @@
-# 🚅 LiteLLM: Using Unity Catalog AI with the LiteLLM SDK
+---
+title: "🚅 LiteLLM: Using Unity Catalog AI with the LiteLLM SDK"
+---
 
 Integrate Unity Catalog AI with [LiteLLM](https://docs.litellm.ai/) to seamlessly use functions defined in Unity Catalog as tools in your LiteLLM LLM calls. This guide covers installation, client setup for interfacing with Unity Catalog, and examples for using your UC functions as callable tools within LiteLLM.
 
@@ -125,8 +127,7 @@ print(result)
 
 With your UC function defined as a JSON tool collection, you can directly use it within a LiteLLM Completion call. Note that LiteLLM leverages a standardized JSON tool format (compatible with OpenAI’s tool format) across supported LLMs.
 
-> [!NOTE] LiteLLM does not use tool objects internally. Instead, it leverages a JSON format that is passed directly to supported LLMs. For more details on supported
-> models and the function calling format, please visit the [LiteLLM documentation](https://docs.litellm.ai/).
+> [!NOTE] LiteLLM does not use tool objects internally. Instead, it leverages a JSON format that is passed directly to supported LLMs. For more details on supported models and the function calling format, please visit the [LiteLLM documentation](https://docs.litellm.ai/).
 
 Below is an example of setting up a LiteLLM completion call that includes your defined UC tools:
 

@@ -1,13 +1,15 @@
-# How to work with Models using the REST API
+---
+title: How to work with Models using the REST API
+---
 
 Use the `/models` endpoint to work with models.
 
-| Method | Description                           | Endpoint                     |
-| ------ | ------------------------------------- | ---------------------------- |
-| GET    | Retrieve a list of models             | /models                      |
-| GET    | Retrieve metadata of a specific model | /models/catalog.schema.model |
-| POST   | Create a new model                    | /models                      |
-| DELETE | Remove a model                        | /models/catalog.schema.model |
+| Method | Description | Endpoint |
+| --- | --- | --- |
+| GET | Retrieve a list of models | /models |
+| GET | Retrieve metadata of a specific model | /models/catalog.schema.model |
+| POST | Create a new model | /models |
+| DELETE | Remove a model | /models/catalog.schema.model |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 

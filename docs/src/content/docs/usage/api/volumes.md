@@ -1,14 +1,16 @@
-# How to work with Volumes using the REST API
+---
+title: How to work with Volumes using the REST API
+---
 
 Use the `/volumes` endpoint to work with volumes.
 
-| Method | Description                                               | Endpoint                       |
-| ------ | --------------------------------------------------------- | ------------------------------ |
-| GET    | Retrieve a list of volumes                                | /volumes                       |
-| GET    | Retrieve metadata of a specific volume                    | /volumes/catalog.schema.volume |
-| POST   | Create a new volume                                       | /volumes                       |
-| PATCH  | Partially update an existing volume, e.g. the description | /volumes/catalog.schema.volume |
-| DELETE | Remove a volume                                           | /volumes/catalog.schema.volume |
+| Method | Description | Endpoint |
+| --- | --- | --- |
+| GET | Retrieve a list of volumes | /volumes |
+| GET | Retrieve metadata of a specific volume | /volumes/catalog.schema.volume |
+| POST | Create a new volume | /volumes |
+| PATCH | Partially update an existing volume, e.g. the description | /volumes/catalog.schema.volume |
+| DELETE | Remove a volume | /volumes/catalog.schema.volume |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
@@ -34,9 +36,7 @@ response = requests.get(URL, headers=headers, params=params)
 response.json()
 ```
 
-This will return the 2 pre-loaded volumes when running on the default Unity Catalog local server:
-• json_files
-• txt_files
+This will return the 2 pre-loaded volumes when running on the default Unity Catalog local server: • json_files • txt_files
 
 ## How to get volume metadata
 

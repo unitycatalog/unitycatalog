@@ -1,4 +1,6 @@
-# Unity Catalog Integrations
+---
+title: Unity Catalog Integrations
+---
 
 Unity Catalog integrates with many other great tools. Below is a non-exhaustive list. See the respective sections for more detail.
 

@@ -1,13 +1,15 @@
-# How to work with Tables using the REST API
+---
+title: How to work with Tables using the REST API
+---
 
 Use the `/tables` endpoint to work with tables.
 
-| Method | Description                           | Endpoint                     |
-| ------ | ------------------------------------- | ---------------------------- |
-| GET    | Retrieve a list of tables             | /tables                      |
-| GET    | Retrieve metadata of a specific table | /tables/catalog.schema.table |
-| POST   | Create a new table                    | /tables                      |
-| DELETE | Remove a table                        | /tables/catalog.schema.table |
+| Method | Description | Endpoint |
+| --- | --- | --- |
+| GET | Retrieve a list of tables | /tables |
+| GET | Retrieve metadata of a specific table | /tables/catalog.schema.table |
+| POST | Create a new table | /tables |
+| DELETE | Remove a table | /tables/catalog.schema.table |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
@@ -33,11 +35,7 @@ response = requests.get(URL, headers=headers, params=params)
 response.json()
 ```
 
-This will return the 4 pre-loaded tables when running on the default Unity Catalog local server:
-• marksheet
-• marksheet_uniform
-• numbers
-• user_countries
+This will return the 4 pre-loaded tables when running on the default Unity Catalog local server: • marksheet • marksheet_uniform • numbers • user_countries
 
 ## How to get table metadata
 

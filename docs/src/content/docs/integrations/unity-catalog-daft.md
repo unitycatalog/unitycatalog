@@ -1,4 +1,6 @@
-# Unity Catalog Daft Integration
+---
+title: Unity Catalog Daft Integration
+---
 
 This page shows you how to use Unity Catalog with Daft.
 
@@ -31,9 +33,7 @@ bin/start-uc-server
 
 Use the `UnityCatalog` abstraction to point Daft to your UC server.
 
-This object requires an `endpoint` and a `token`. If you launched the UC server locally using the command above then
-you can use the values below. Otherwise, substitute the `endpoint` and `token` values with the corresponding values
-for your UC server.
+This object requires an `endpoint` and a `token`. If you launched the UC server locally using the command above then you can use the values below. Otherwise, substitute the `endpoint` and `token` values with the corresponding values for your UC server.
 
 ```python
 # point Daft to your UC server
@@ -106,8 +106,7 @@ as_int  as_double
 958     509.371273
 ```
 
-Any subsequent filter operations on the Daft `df` DataFrame object will be correctly optimized to take advantage of
-Delta Lake features.
+Any subsequent filter operations on the Daft `df` DataFrame object will be correctly optimized to take advantage of Delta Lake features.
 
 ```python
 > df = df.where(df["as_int"] > 500)
@@ -123,6 +122,4 @@ as_int   as_double
 958      509.371273
 ```
 
-Daft support for Unity Catalog is under rapid development. Refer to the
-[Daft documentation](https://www.getdaft.io/projects/docs/en/stable/integrations/unity_catalog/) for
-more information.
+Daft support for Unity Catalog is under rapid development. Refer to the [Daft documentation](https://www.getdaft.io/projects/docs/en/stable/integrations/unity_catalog/) for more information.

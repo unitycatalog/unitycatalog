@@ -1,14 +1,16 @@
-# How to work with Schemas using the REST API
+---
+title: How to work with Schemas using the REST API
+---
 
 Use the `/schemas` endpoint to work with schemas.
 
-| Method | Description                                               | Endpoint                |
-| ------ | --------------------------------------------------------- | ----------------------- |
-| GET    | Retrieve a list of schemas                                | /schemas                |
-| GET    | Retrieve metadata of a specific schema                    | /schemas/catalog.schema |
-| POST   | Create a new schema                                       | /schemas                |
-| PATCH  | Partially update an existing schema, e.g. the description | /schemas/catalog.schema |
-| DELETE | Remove a schema                                           | /schemas/catalog.schema |
+| Method | Description | Endpoint |
+| --- | --- | --- |
+| GET | Retrieve a list of schemas | /schemas |
+| GET | Retrieve metadata of a specific schema | /schemas/catalog.schema |
+| POST | Create a new schema | /schemas |
+| PATCH | Partially update an existing schema, e.g. the description | /schemas/catalog.schema |
+| DELETE | Remove a schema | /schemas/catalog.schema |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 

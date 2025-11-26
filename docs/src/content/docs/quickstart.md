@@ -1,4 +1,6 @@
-# Quickstart
+---
+title: Quickstart
+---
 
 This quickstart shows how to run Unity Catalog on localhost which is great for experimentation and testing.
 
@@ -10,12 +12,9 @@ Start by cloning the open source Unity Catalog GitHub repository:
 git clone git@github.com:unitycatalog/unitycatalog.git
 ```
 
-> To start Unity Catalog in Docker, refer to the [Docker
-> Compose docs](docker_compose.md).
+> To start Unity Catalog in Docker, refer to the [Docker Compose docs](docker_compose.md).
 
-To run Unity Catalog, you need **Java 17** installed on your machine.  You can
-always run the `java --version` command to verify that you have the right
-version of Java installed such as the following example output.
+To run Unity Catalog, you need **Java 17** installed on your machine. You can always run the `java --version` command to verify that you have the right version of Java installed such as the following example output.
 
 ```sh
 % java --version
@@ -24,11 +23,10 @@ OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
 OpenJDK 64-Bit Server VM Homebrew (build 17.0.12+0, mixed mode, sharing)
 ```
 
-Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server. Here is what you
-should see:
+Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server. Here is what you should see:
 
 ```console
-################################################################### 
+###################################################################
 #  _    _       _ _            _____      _        _              #
 # | |  | |     (_) |          / ____|    | |      | |             #
 # | |  | |_ __  _| |_ _   _  | |     __ _| |_ __ _| | ___   __ _  #
@@ -46,8 +44,7 @@ Well, that was pretty easy!
 
 Let’s create a new Terminal window and verify that the Unity Catalog server is running.
 
-Unity Catalog has a few built-in tables that are great for quick experimentation. Let’s look at all the tables that
-have a catalog name of “unity” and a schema name of “default” with the Unity Catalog CLI.
+Unity Catalog has a few built-in tables that are great for quick experimentation. Let’s look at all the tables that have a catalog name of “unity” and a schema name of “default” with the Unity Catalog CLI.
 
 ```sh
 bin/uc table list --catalog unity --schema default
@@ -135,8 +132,7 @@ bin/uc schema list --catalog unity
 └───────┴────────────┴───┴────────────────────────────────────┘
 ```
 
-You should see that there is a schema named `default`. To go deeper into the contents of this schema,
-you have to list different asset types separately. Let's start with tables.
+You should see that there is a schema named `default`. To go deeper into the contents of this schema, you have to list different asset types separately. Let's start with tables.
 
 ## Operate on Delta tables with the CLI
 
@@ -235,9 +231,7 @@ bin/uc table create --full_name unity.default.mytable \
 
 If you list the tables (e.g., `bin/uc table list --catalog unity --schema default`) again, you should see this new table.
 
-!!! note "mytable is an empty table"
-     Note, at this point, `unity.default.mytable` is an empty table; e.g. if you run
-    `bin/uc table read --full_name unity.default.mytable` there will be no rows.
+!!! note "mytable is an empty table" Note, at this point, `unity.default.mytable` is an empty table; e.g. if you run `bin/uc table read --full_name unity.default.mytable` there will be no rows.
 
 Next, append some randomly generated data to the table using `write`.
 
@@ -271,8 +265,7 @@ Delete the table to clean up:
 bin/uc table delete --full_name unity.default.mytable
 ```
 
-> Note, while you have deleted the table from Unity Catalog, the underlying file system may still have the files (i.e.,
-check the /tmp/uc/my_table/folder).  
+> Note, while you have deleted the table from Unity Catalog, the underlying file system may still have the files (i.e., check the /tmp/uc/my_table/folder).
 
 ## Interact with the Unity Catalog UI
 
@@ -280,8 +273,7 @@ check the /tmp/uc/my_table/folder).
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the Unity Catalog server (e.g., `./bin/start-uc-server`)
 
-!!! warning "Prerequisites"
-    The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
+!!! warning "Prerequisites" The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
 
 To start the UI locally, run the following commands to start `yarn`
 
@@ -293,10 +285,7 @@ yarn start
 
 ## Manage models in Unity Catalog using MLflow
 
-Unity Catalog supports the management and governance of ML models as securable assets. Starting with
-[MLflow 2.16.1](https://mlflow.org/releases/2.16.1), MLflow offers integrated support for using Unity Catalog as the
-backing resource for the MLflow model registry.  What this means is that with the MLflow client, you will be able to
-interact directly with your Unity Catalog service for the creation and access of registered models.
+Unity Catalog supports the management and governance of ML models as securable assets. Starting with [MLflow 2.16.1](https://mlflow.org/releases/2.16.1), MLflow offers integrated support for using Unity Catalog as the backing resource for the MLflow model registry. What this means is that with the MLflow client, you will be able to interact directly with your Unity Catalog service for the creation and access of registered models.
 
 ### Setup MLflow for usage with Unity Catalog
 
@@ -306,8 +295,7 @@ In your desired development environment, install MLflow 2.16.1 or higher:
 pip install mlflow
 ```
 
-The installation of MLflow includes the MLflow CLI tool, so you can start a local MLflow server with UI by running the
-command below in your terminal:
+The installation of MLflow includes the MLflow CLI tool, so you can start a local MLflow server with UI by running the command below in your terminal:
 
 ```sh
 mlflow ui
@@ -329,8 +317,7 @@ mlflow.set_tracking_uri("http://127.0.0.1:5000")
 mlflow.set_registry_uri("uc:http://127.0.0.1:8080")
 ```
 
-At this point, your MLflow environment is ready for use with the newly started MLflow tracking server and the
-Unity Catalog server acting as your model registry.
+At this point, your MLflow environment is ready for use with the newly started MLflow tracking server and the Unity Catalog server acting as your model registry.
 
 ### Train your model and register it into Unity Catalog
 
@@ -370,11 +357,9 @@ result["predicted_class"] = predictions
 result[:4]
 ```
 
-This code snippet will create a registered model `default.unity.iris` and log the trained model as model version 1. It
-then loads the model from the Unity Catalog server, and performs batch inference on the test set using the loaded model.
+This code snippet will create a registered model `default.unity.iris` and log the trained model as model version 1. It then loads the model from the Unity Catalog server, and performs batch inference on the test set using the loaded model.
 
-The results can be seen in the Unity Catalog UI at [http://localhost:3000,](http://localhost:3000) per the instructions
-in the [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui).
+The results can be seen in the Unity Catalog UI at [http://localhost:3000,](http://localhost:3000) per the instructions in the [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui).
 
 ![UC UI models](./assets/images/uc_ui_models.png)
 

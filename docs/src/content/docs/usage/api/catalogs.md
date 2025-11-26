@@ -1,14 +1,16 @@
-# How to work with Catalogs using the REST API
+---
+title: How to work with Catalogs using the REST API
+---
 
 Use the `/catalogs` endpoint to work with catalogs.
 
-| Method | Description                                                | Endpoint          |
-| ------ | ---------------------------------------------------------- | ----------------- |
-| GET    | Retrieve a list of catalogs                                | /catalogs         |
-| GET    | Retrieve metadata of a specific catalog                    | /catalogs/catalog |
-| POST   | Create a new catalog                                       | /catalogs         |
-| PATCH  | Partially update an existing catalog, e.g. the description | /catalogs/catalog |
-| DELETE | Remove a catalog                                           | /catalogs/catalog |
+| Method | Description | Endpoint |
+| --- | --- | --- |
+| GET | Retrieve a list of catalogs | /catalogs |
+| GET | Retrieve metadata of a specific catalog | /catalogs/catalog |
+| POST | Create a new catalog | /catalogs |
+| PATCH | Partially update an existing catalog, e.g. the description | /catalogs/catalog |
+| DELETE | Remove a catalog | /catalogs/catalog |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 

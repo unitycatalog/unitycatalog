@@ -1,4 +1,6 @@
-# Unity Catalog Spice OSS Integration
+---
+title: Unity Catalog Spice OSS Integration
+---
 
 Spice OSS is a unified SQL query interface and portable runtime to locally materialize, accelerate, and query datasets across databases, data warehouses, and data lakes.
 

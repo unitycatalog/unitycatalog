@@ -1,4 +1,6 @@
-# Delta Lake
+---
+title: Delta Lake
+---
 
 This page explains how you can work with Delta Lake tables in your Unity Catalog.
 
@@ -113,15 +115,14 @@ Use the `bin/uc table create ...` command to create a new Delta table in your Un
 This command has multiple parameters:
 
 | Parameter | Description |
-| --------- | ----------- |
+| --- | --- |
 | `full_name` | The full name of the table, which is a concatenation of the catalog name, schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`). |
 | `columns` | The columns of the table in SQL-like format "column_name column_data_type". Supported data types include `BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, DECIMAL`. Separate multiple columns with a comma (e.g., "`id INT, name STRING`"). |
-| `format`| [Optional] The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO, and TEXT. If not specified the default format is DELTA. |
+| `format` | [Optional] The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO, and TEXT. If not specified the default format is DELTA. |
 | `storage_location` | The storage location associated with the table. It is a mandatory field for EXTERNAL tables. |
 | `properties` | [Optional] The properties of the entity in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(") inside the properties string or just use single quotes(`''`) around the same. |
 
-Run the command below with the correct `path/to/storage` to create a new DELTA table with 2 columns: `some_numbers` and `some_letters`.
-You can get the storage location from the `STORAGE_LOCATION` field of your `bin/uc table get ...` call above.
+Run the command below with the correct `path/to/storage` to create a new DELTA table with 2 columns: `some_numbers` and `some_letters`. You can get the storage location from the `STORAGE_LOCATION` field of your `bin/uc table get ...` call above.
 
 ```sh
 bin/uc table create --full_name unity.default.test --columns "some_numbers INT, some_letters STRING, some_times TIMESTAMP" --storage_location file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/test

@@ -1,4 +1,6 @@
-# Unity Catalog PuppyGraph Integration
+---
+title: Unity Catalog PuppyGraph Integration
+---
 
 This document walks through how to use [PuppyGraph](https://www.puppygraph.com) to query data from Delta tables registered in Unity Catalog as a graph.
 
@@ -89,74 +91,75 @@ docker run -p 9081:8081 -p 8182:8182 -p 7687:7687 \
 
 Create the schema.json and replace `<host-name>` with your host ip address.
 
-```schema.json
+```json
+// schema.json
 {
-    "catalogs": [
-        {
-            "name": "puppygraph", 
-            "type": "deltalake", 
-            "metastore": {
-                "type": "unity", 
-                "host": "http://<host-name>:8081", 
-                "token": "no-use", 
-                "databricksCatalogName": "puppygraph"
-            }
-        }
-    ], 
-    "vertices": [
-        {
-            "label": "person", 
-            "attributes": [
-                { "type": "String", "name": "name" }, 
-                { "type": "Int"   , "name": "age"  }
-            ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "person", 
-                "metaFields": {"id": "id"}
-            }
-        }, 
-        {
-            "label": "software", 
-            "attributes": [
-                { "type": "String", "name": "name" }, 
-                { "type": "String", "name": "lang" }
-            ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "software", 
-                "metaFields": {"id": "id"}
-            }
-        }
-    ], 
-    "edges": [
-        {
-            "label": "knows",
-            "from": "person", 
-            "to": "person", 
-            "attributes": [ {"type": "Double", "name": "weight"} ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "knows",
-                "metaFields": {"from": "from_id", "id": "id", "to": "to_id"}
-            }
-        }, 
-        {
-            "label": "created", 
-            "from": "person", 
-            "to": "software", 
-            "attributes": [ {"type": "Double", "name": "weight"} ], 
-            "mappedTableSource": {
-                "catalog": "puppygraph", 
-                "schema": "modern", 
-                "table": "created", 
-                "metaFields": {"from": "from_id", "id": "id", "to": "to_id"}
-            }
-        }
-    ]
+  "catalogs": [
+    {
+      "name": "puppygraph",
+      "type": "deltalake",
+      "metastore": {
+        "type": "unity",
+        "host": "http://<host-name>:8081",
+        "token": "no-use",
+        "databricksCatalogName": "puppygraph"
+      }
+    }
+  ],
+  "vertices": [
+    {
+      "label": "person",
+      "attributes": [
+        { "type": "String", "name": "name" },
+        { "type": "Int", "name": "age" }
+      ],
+      "mappedTableSource": {
+        "catalog": "puppygraph",
+        "schema": "modern",
+        "table": "person",
+        "metaFields": { "id": "id" }
+      }
+    },
+    {
+      "label": "software",
+      "attributes": [
+        { "type": "String", "name": "name" },
+        { "type": "String", "name": "lang" }
+      ],
+      "mappedTableSource": {
+        "catalog": "puppygraph",
+        "schema": "modern",
+        "table": "software",
+        "metaFields": { "id": "id" }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "label": "knows",
+      "from": "person",
+      "to": "person",
+      "attributes": [{ "type": "Double", "name": "weight" }],
+      "mappedTableSource": {
+        "catalog": "puppygraph",
+        "schema": "modern",
+        "table": "knows",
+        "metaFields": { "from": "from_id", "id": "id", "to": "to_id" }
+      }
+    },
+    {
+      "label": "created",
+      "from": "person",
+      "to": "software",
+      "attributes": [{ "type": "Double", "name": "weight" }],
+      "mappedTableSource": {
+        "catalog": "puppygraph",
+        "schema": "modern",
+        "table": "created",
+        "metaFields": { "from": "from_id", "id": "id", "to": "to_id" }
+      }
+    }
+  ]
 }
 ```
 

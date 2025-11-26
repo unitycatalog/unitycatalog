@@ -1,4 +1,6 @@
-# Unity Catalog Trino Integration
+---
+title: Unity Catalog Trino Integration
+---
 
 ## Setting up REST Catalog with Trino
 

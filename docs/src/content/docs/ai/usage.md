@@ -1,4 +1,6 @@
-# Unity Catalog AI
+---
+title: Unity Catalog AI
+---
 
 Welcome to **Unity Catalog AI**, your comprehensive solution for integrating powerful AI functionalities with Unity Catalog. Whether you're a GenAI developer looking to enhance your applications or a Data Engineer seeking robust governance and access control, Unity Catalog AI bridges the gap between advanced AI tools and enterprise-grade data management.
 
@@ -95,4 +97,4 @@ Join our community to stay updated on the latest developments, share your experi
 
 ---
 
-*Empower your AI applications with the structured and secure capabilities of Unity Catalog AI.*
+_Empower your AI applications with the structured and secure capabilities of Unity Catalog AI._

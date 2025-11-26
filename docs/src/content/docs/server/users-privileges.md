@@ -1,4 +1,6 @@
-# Users and Privileges
+---
+title: Users and Privileges
+---
 
 This page explains how Unity Catalog defines users and privileges.
 

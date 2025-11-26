@@ -1,17 +1,16 @@
-# Unity Catalog XTable Integration
+---
+title: Unity Catalog XTable Integration
+---
 
 This document walks through the steps to register an Apache XTable™ (Incubating) synced Delta table in Unity Catalog.
 
-[Apache XTable](https://xtable.apache.org) provides cross-table omni-directional interoperability between Apache Hudi,
-Apache Iceberg, and Delta Lake.
+[Apache XTable](https://xtable.apache.org) provides cross-table omni-directional interoperability between Apache Hudi, Apache Iceberg, and Delta Lake.
 
 ## Pre-Requisites
 
-1. Source table(s) (Hudi/Iceberg) already written to external storage locations like S3/GCS/ADLS or local. In this
-    guide, we will use a S3 example.
+1. Source table(s) (Hudi/Iceberg) already written to external storage locations like S3/GCS/ADLS or local. In this guide, we will use a S3 example.
 1. Follow the XTable installation guide [here](https://xtable.apache.org/docs/setup)
-1. Clone the Unity Catalog repository from [here](https://github.com/unitycatalog/unitycatalog) and build the project
-    by following the steps outlined [here](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#prerequisites)
+1. Clone the Unity Catalog repository from [here](https://github.com/unitycatalog/unitycatalog) and build the project by following the steps outlined [here](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#prerequisites)
 
 To sync a source Hudi/Iceberg table using XTable use the following:
 
@@ -22,22 +21,20 @@ targetFormats:
 datasets:
     tableBasePath: s3://path/to/source/data
     tableName: table_name
-    partitionSpec: partitionpath:VALUE 
+    partitionSpec: partitionpath:VALUE
 ```
 
-Now, from your terminal under the cloned Apache XTable™ (Incubating) directory, run the sync process using the below
-command. This will generate the Delta Lake metadata.
+Now, from your terminal under the cloned Apache XTable™ (Incubating) directory, run the sync process using the below command. This will generate the Delta Lake metadata.
 
 ```sh
 java -jar xtable-utilities/target/incubator-xtable-utilities-0.1.0-SNAPSHOT-bundled.jar --datasetConfig my_config.yaml
 ```
 
-> **Note:** At this point, if you check your bucket path, you will be able to see _delta_log directory with the JSON log.
+> **Note:** At this point, if you check your bucket path, you will be able to see \_delta_log directory with the JSON log.
 
 ## Configure Server Property for using S3
 
-The server config file is at the location `etc/conf/server.properties`
-For enabling server to vend AWS temporary credentials to access S3 buckets, the following parameters need to be set:
+The server config file is at the location `etc/conf/server.properties` For enabling server to vend AWS temporary credentials to access S3 buckets, the following parameters need to be set:
 
 - `s3.bucketPath.i`: The S3 path of the bucket where the data is stored. Should be in the format `s3://<bucket-name>`.
 - `s3.accessKey.i`: The AWS access key, an identifier of temp credentials.

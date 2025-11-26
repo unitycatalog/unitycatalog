@@ -1,4 +1,6 @@
-# Client Guide
+---
+title: Client Guide
+---
 
 This guide provides detailed information about the Unity Catalog AI clients, including caveats, environment variables, public APIs, and examples to help you effectively utilize the Unity Catalog AI Core Library.
 
@@ -29,12 +31,7 @@ When using the `UnitycatalogFunctionClient` be aware of the following points:
 
 ### Using the UnityCatalog Functions Client
 
-**Warning**: Function execution for the UnityCatalog APIs involves executing code locally from the point of invocation of
-your GenAI application. For deterministic functions that you are authoring yourself, this does not pose a security concern.
-However, if you are writing an application that allows for code to be injected to the function from an LLM
-(a Python code execution function), there is a risk to the environment that you are running your agent from if the code being
-executed is unsafe (involving file system operations or accessing networks). If your use case involves such a function declaration that permits execution of arbitrary Python code, it is **highly advised** to run your Agent from an isolated environment
-with restricted permissions.
+**Warning**: Function execution for the UnityCatalog APIs involves executing code locally from the point of invocation of your GenAI application. For deterministic functions that you are authoring yourself, this does not pose a security concern. However, if you are writing an application that allows for code to be injected to the function from an LLM (a Python code execution function), there is a risk to the environment that you are running your agent from if the code being executed is unsafe (involving file system operations or accessing networks). If your use case involves such a function declaration that permits execution of arbitrary Python code, it is **highly advised** to run your Agent from an isolated environment with restricted permissions.
 
 #### Examples and Tutorials
 
@@ -105,8 +102,7 @@ Alternatively, these same APIs are available by accessing the `uc` property on t
 
 > Tip: Ensure that you have created a catalog and a schema before attempting to create functions.
 
-The `UnitycatalogFunctionClient` provides helper methods for creating both Catalogs and Schemas in Unity Catalog. For full
-API-based CRUD operations, you will need to use the `unitycatalog-client` package.
+The `UnitycatalogFunctionClient` provides helper methods for creating both Catalogs and Schemas in Unity Catalog. For full API-based CRUD operations, you will need to use the `unitycatalog-client` package.
 
 To create a Catalog, you can call the `create_catalog` method:
 
@@ -129,8 +125,7 @@ uc_client.uc.create_schema(
 )
 ```
 
-> NOTE: Similar to the `create_catalog` API, if a schema exists with the name that you specify, you will receive a warning
-and the existing schema's metadata will be returned.
+> NOTE: Similar to the `create_catalog` API, if a schema exists with the name that you specify, you will receive a warning and the existing schema's metadata will be returned.
 
 #### Creating Functions for tool use
 
@@ -165,8 +160,7 @@ my_function = await uc_client.create_python_function_async(
 )
 ```
 
-> Note: within a Python script, you will need to directly call `asyncio.run()` on your async API call
-in order to create an event loop. In a Jupyter Notebook environment, an event loop is provided for you.
+> Note: within a Python script, you will need to directly call `asyncio.run()` on your async API call in order to create an event loop. In a Jupyter Notebook environment, an event loop is provided for you.
 
 Alternatively, you can use the synchronous API:
 
@@ -220,8 +214,7 @@ This API in-lines the helper functions (`a` and `b`) into the primary function (
 
 #### Testing a function
 
-Before attempting to use the function within an Agent integration, you can validate that the function is behaving as
-intended by using the `execute_function` API. Unlike with the variants of the `create_python_function` API, there is **not** an async version of this API.
+Before attempting to use the function within an Agent integration, you can validate that the function is behaving as intended by using the `execute_function` API. Unlike with the variants of the `create_python_function` API, there is **not** an async version of this API.
 
 Testing with the synchronous API:
 
@@ -306,8 +299,7 @@ The `DatabricksFunctionClient` is a core component of the Unity Catalog AI Core 
 
 ### Dependencies and Environments
 
-In Databricks runtime version 17 and higher, the ability to specify dependencies within a function execution environment is supported. Earlier runtime
-versions do not support this feature and will error if the arguments `dependencies` or `environment` are submitted with a `create_python_function` or `create_wrapped_python_function` call.
+In Databricks runtime version 17 and higher, the ability to specify dependencies within a function execution environment is supported. Earlier runtime versions do not support this feature and will error if the arguments `dependencies` or `environment` are submitted with a `create_python_function` or `create_wrapped_python_function` call.
 
 To specify PyPI dependencies to include in your execution environment, you can see the minimum example below:
 
@@ -320,7 +312,7 @@ def dep_check(x: str) -> str:
 
     Args:
         x: An input string
-    
+
     Returns:
         A string that reports the dependency support for UC
     """
@@ -337,17 +329,16 @@ client.create_python_function(func=dep_check, catalog=CATALOG, schema=SCHEMA, re
 
 You can configure the behavior of function execution using the following environment variables:
 
-| Environment Variable                                                | Description                                                                                                                                                                     | Default Value |
-|---------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS`                        | Maximum number of attempts to retry refreshing the session client in case of token expiry.                                                               | 5           |
-| `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`             | Maximum number of rows when executing functions using serverless compute with `databricks-connect`.                                                                              | 100           |
+| Environment Variable | Description | Default Value |
+| --- | --- | --- |
+| `UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS` | Maximum number of attempts to retry refreshing the session client in case of token expiry. | 5 |
+| `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT` | Maximum number of rows when executing functions using serverless compute with `databricks-connect`. | 100 |
 
 ### Initialization
 
-In order to perform CRUD operations and to execute UC functions, you will need to instantiate an instance of the UC functions Client. This client interface
-is used not only for direct interface with functions, but also is the mechanism by which a function will be called as a tool by a GenAI application.
+In order to perform CRUD operations and to execute UC functions, you will need to instantiate an instance of the UC functions Client. This client interface is used not only for direct interface with functions, but also is the mechanism by which a function will be called as a tool by a GenAI application.
 
-``` python
+```python
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
@@ -368,9 +359,7 @@ client = DatabricksFunctionClient()
 
 ### Creating functions from a Python Callable
 
-The UC Functions Client's `create_python_function` API provides a high-level Python-native approach to creating a UC function.
-This API automates the conversion process between a Python function's definition and the required syntax of a SQL Body statement by
-parsing the contents of your function definition and extracting the relevant information.
+The UC Functions Client's `create_python_function` API provides a high-level Python-native approach to creating a UC function. This API automates the conversion process between a Python function's definition and the required syntax of a SQL Body statement by parsing the contents of your function definition and extracting the relevant information.
 
 #### Caveats of Python Callable function creation
 
@@ -384,7 +373,7 @@ parsing the contents of your function definition and extracting the relevant inf
 
 #### Example of a Valid Function
 
-``` python
+```python
 def your_function_name(param: str) -> str:
     """
     Converts the input string to uppercase.
@@ -413,7 +402,7 @@ The following function definition will not successfully be created as a UC funct
 - Missing type annotations for arguments and for the return value.
 - Missing docstring.
 
-``` python
+```python
 def invalid_func(a, b):
     return a + b
 
@@ -429,7 +418,7 @@ client.create_python_function(
 
 If you prefer to have full control over your function definition, the `create_function` API in the client allows you to submit your function definition as a [SQL Body statement](https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax).
 
-``` python
+```python
 sql_body = """
 CREATE FUNCTION your_catalog.your_schema.your_function_name(param STRING COMMENT 'A string to convert to uppercase.')
 RETURNS STRING
@@ -445,14 +434,9 @@ client.create_function(sql_function_body=sql_body)
 
 The general guidelines for function creation within UC apply to the SQL Body statement. There are no additional restrictions applied to this API.
 
-> Note: It is highly recommended to provide verbose and accurate `COMMENT` blocks to both the function and the parameters configured. This information is
-provided to LLMs that will be deciding on whether it is appropriate to call the defined tool. Detailed descriptions can reduce the chances of a tool call
-failing due to ambiguous references on how to use the tool.
+> Note: It is highly recommended to provide verbose and accurate `COMMENT` blocks to both the function and the parameters configured. This information is provided to LLMs that will be deciding on whether it is appropriate to call the defined tool. Detailed descriptions can reduce the chances of a tool call failing due to ambiguous references on how to use the tool.
 
-If you create a function without both a `COMMENT` block (the function description) and `COMMENT` entries for each parameter defined for your function,
-a warning will be issued upon creation. It is **highly advised** to correct your function definition and overwrite your function when you see this warning.
-Most LLM's will not be able to effectively use your defined function as a tool if the description is a placeholder or is lacking appropriate information
-that describes the purpose of and how to use your defined function as a tool.
+If you create a function without both a `COMMENT` block (the function description) and `COMMENT` entries for each parameter defined for your function, a warning will be issued upon creation. It is **highly advised** to correct your function definition and overwrite your function when you see this warning. Most LLM's will not be able to effectively use your defined function as a tool if the description is a placeholder or is lacking appropriate information that describes the purpose of and how to use your defined function as a tool.
 
 > Note: Specifying environment and dependency configurations on version of Databricks runtime prior to verison 17 will generate exceptions if the SQL body contains these statements.
 
@@ -460,7 +444,7 @@ that describes the purpose of and how to use your defined function as a tool.
 
 If you are on Databricks Runtime **17 or above**, you can specify external package dependencies when writing your SQL body, as follows:
 
-``` python
+```python
 sql_body = """
 CREATE FUNCTION my_catalog.my_schema.my_func()
 RETURNS STRING
@@ -478,7 +462,7 @@ $$
 
 You can retrieve the function definition from UC by using the `get_function` client API:
 
-``` python
+```python
 function_info = client.get_function("your_catalog.your_schema.your_function_name")
 ```
 
@@ -488,8 +472,7 @@ There are two primary ways of retrieving a function definition in native Python 
 
 ### Fetch a Python Callable directly
 
-The `get_function_as_callable` API is used to retrieve a recreated callable from a registered Unity Catalog Python function.
-The return type is directly usable:
+The `get_function_as_callable` API is used to retrieve a recreated callable from a registered Unity Catalog Python function. The return type is directly usable:
 
 ```python
 # Define a python callable
@@ -523,9 +506,7 @@ This API exposes 2 additional parameters:
 
 ### Fetch a Python Callable as a string
 
-The `get_function_source` API is used to retrieve a recreated python callable definition (as a string) from a registered Unity Catalog Python function.
-In order to use this API, the function that you are fetching **must be** an `EXTERNAL` (python function) type function. When called, the function's metadata will
-be retrieved and the structure of the original callable will be rebuilt and returned as a string.
+The `get_function_source` API is used to retrieve a recreated python callable definition (as a string) from a registered Unity Catalog Python function. In order to use this API, the function that you are fetching **must be** an `EXTERNAL` (python function) type function. When called, the function's metadata will be retrieved and the structure of the original callable will be rebuilt and returned as a string.
 
 For example:
 
@@ -556,8 +537,7 @@ The returned value from the `get_function_source` API will be the same as the or
 
 - `tuple` types will be cast to `list` due to the inability to express a Python `tuple` within Unity Catalog
 - The docstring of the original function will be stripped out. Unity Catalog persists the docstring information in the logged function and it is available in the return of the `get_function` API call if needed.
-- Collection types for open source Unity Catalog will only capture the outer type (i.e., `list` or `dict`) as inner collection type metadata is not preserved
-within the `FunctionInfo` object. In Databricks, full typing is supported for collecitons.
+- Collection types for open source Unity Catalog will only capture the outer type (i.e., `list` or `dict`) as inner collection type metadata is not preserved within the `FunctionInfo` object. In Databricks, full typing is supported for collecitons.
 
 The result of calling the `get_function_source` API on the `sample_python_func` registered function will be (when printed):
 
@@ -584,7 +564,7 @@ This API is useful for extracting already-registered functions that will be used
 
 You can list all functions that are defined within a given catalog and schema by using the `list_functions` client API:
 
-``` python
+```python
 functions = client.list_functions(catalog="your_catalog", schema="your_schema", max_results=10)
 ```
 
@@ -592,7 +572,7 @@ functions = client.list_functions(catalog="your_catalog", schema="your_schema", 
 
 A function can be deleted through the use of the `delete_function` client API:
 
-``` python
+```python
 client.delete_function("your_catalog.your_schema.your_function_name")
 ```
 
@@ -600,7 +580,7 @@ client.delete_function("your_catalog.your_schema.your_function_name")
 
 Executing a function directly using the client is done through the `execute_function` API:
 
-``` python
+```python
 result = client.execute_function(
     "your_catalog.your_schema.uppercase_function",
     parameters={"param": "hello world"}
@@ -611,8 +591,7 @@ print(result.value)  # Outputs: HELLO WORLD
 
 ### Client Execution Modes
 
-Functions are executed by specifying a fully qualified function name to the `execute_function` or `execute_function_async` APIs. Integration packages
-(Toolkit instances) will call this client API when a GenAI service indicates that a tool call is needed to fulfill a request.
+Functions are executed by specifying a fully qualified function name to the `execute_function` or `execute_function_async` APIs. Integration packages (Toolkit instances) will call this client API when a GenAI service indicates that a tool call is needed to fulfill a request.
 
 The manual mode of executing a function via the client API is:
 
@@ -633,8 +612,7 @@ There are two options for executing functions with the `UnitycatalogFunctionClie
 
 #### Sandbox Mode
 
-The `"sandbox"` option for callable execution allows for several enhanced security measures and system stability features that are not available
-in the within-main-process execution mode of `"local"`. It is the default configuration for instances of `UnitycatalogFunctionClient`.
+The `"sandbox"` option for callable execution allows for several enhanced security measures and system stability features that are not available in the within-main-process execution mode of `"local"`. It is the default configuration for instances of `UnitycatalogFunctionClient`.
 
 The sandbox mode offers:
 
@@ -645,16 +623,14 @@ The sandbox mode offers:
 
 These configurations can be controlled by setting the following environment variables (listed with their defaults):
 
-| Environment Variable          | Default Value | Description                                             |
-|-------------------------------|---------------|---------------------------------------------------------|
-| `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds)  | Maximum allowable CPU execution time                    |
-| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum allowable Virtual Memory allocation for process |
-| `EXECUTOR_TIMEOUT`            | 20 (seconds)  | Maximum Total wall clock time                           |
-| `EXECUTOR_DISALLOWED_MODULES` | (see below)   | A list of blocked library imports                       |
+| Environment Variable | Default Value | Description |
+| --- | --- | --- |
+| `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds) | Maximum allowable CPU execution time |
+| `EXECUTOR_MAX_MEMORY_LIMIT` | 100 (MB) | Maximum allowable Virtual Memory allocation for process |
+| `EXECUTOR_TIMEOUT` | 20 (seconds) | Maximum Total wall clock time |
+| `EXECUTOR_DISALLOWED_MODULES` | (see below) | A list of blocked library imports |
 
-Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
-the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
-than the wall clock execution time.
+Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration than the wall clock execution time.
 
 There are restrictions in which packages can be imported for use within a sandbox environment.
 
@@ -669,22 +645,17 @@ The following imports are not permitted:
 - `marshall`
 - `shutil`
 
-If you want to customize the allowed package imports, you can override the entire list by submitting a list of standard package names to the
-environment variable `EXECUTOR_DISALLOWED_MODULES` (must be a list[str]).
+If you want to customize the allowed package imports, you can override the entire list by submitting a list of standard package names to the environment variable `EXECUTOR_DISALLOWED_MODULES` (must be a list[str]).
 
 In addition, callables executed within the sandbox environment do not have access to the built-in file `open` command.
 
-If your function requires access to these modules or needs to have access to the local operating system's file store, use the `"local"` mode of
-execution instead.
+If your function requires access to these modules or needs to have access to the local operating system's file store, use the `"local"` mode of execution instead.
 
 #### Local Mode
 
-When creating an instance of a `UnitycatalogFunctionClient` you can specify the `execution_mode` as `"local"` to run your function in the main
-process in which you are calling the `execute_function` API.
+When creating an instance of a `UnitycatalogFunctionClient` you can specify the `execution_mode` as `"local"` to run your function in the main process in which you are calling the `execute_function` API.
 
-Local execution mode has no restrictions regarding allowable imports or the ability to access local file system directories and files, unlike the
-`"sandbox"` option. However, the sandbox mode is recommended in order to gain the stability benefits of isolated process execution, CPU and memory
-limits for callable execution, and the inability to use potentially dangerous libraries within function calls (i.e., `sys`, `shutil`, `marshall`, `subprocess`)
+Local execution mode has no restrictions regarding allowable imports or the ability to access local file system directories and files, unlike the `"sandbox"` option. However, the sandbox mode is recommended in order to gain the stability benefits of isolated process execution, CPU and memory limits for callable execution, and the inability to use potentially dangerous libraries within function calls (i.e., `sys`, `shutil`, `marshall`, `subprocess`)
 
 Read the notes above about security considerations for unknown code execution before calling this API.
 
@@ -709,8 +680,7 @@ uc_client = UnitycatalogFunctionClient(api_client=api_client, execution_mode="lo
 
 ### Databricks Function Client Execution Modes
 
-Functions are executed by specifying a fully qualified function name to the `execute_function` API. Integration packages
-(Toolkit instances) will call this client API when a GenAI service indicates that a tool call is needed to fulfill a request.
+Functions are executed by specifying a fully qualified function name to the `execute_function` API. Integration packages (Toolkit instances) will call this client API when a GenAI service indicates that a tool call is needed to fulfill a request.
 
 There are two options for executing functions with the `DatabricksFunctionClient`:
 
@@ -720,13 +690,9 @@ There are two options for executing functions with the `DatabricksFunctionClient
 client = DatabricksFunctionClient(execution_mode="serverless")
 ```
 
-The `"serverless"` option for callable execution allows for enhanced remote callable execution via a SQL Serverless endpoint, keeping your
-agent's process free from the burden or security risks associated with arbitrary code execution locally. This is the default configuration
-of the `DatabricksFunctionClient` and is highly recommended for production use cases.
+The `"serverless"` option for callable execution allows for enhanced remote callable execution via a SQL Serverless endpoint, keeping your agent's process free from the burden or security risks associated with arbitrary code execution locally. This is the default configuration of the `DatabricksFunctionClient` and is highly recommended for production use cases.
 
-When your agent requests a tool to be executed, a request will be made with the appropriate function name and the parameters to pass in order
-to successfully execute the function. This remote code execution helps to ensure that callables with excessive computational complexity will not
-impact the functionality of your agent or impact the VM that it is running within.
+When your agent requests a tool to be executed, a request will be made with the appropriate function name and the parameters to pass in order to successfully execute the function. This remote code execution helps to ensure that callables with excessive computational complexity will not impact the functionality of your agent or impact the VM that it is running within.
 
 #### Local Mode
 
@@ -734,9 +700,7 @@ impact the functionality of your agent or impact the VM that it is running withi
 client = DatabricksFunctionClient(execution_mode="local")
 ```
 
-To help simplify development, the `"local"` execution mode is available. This mode of operation allows the `DatabricksFunctionClient` to utilize
-a local subprocess to execute your tool calls without having to make a request to a SQL serverless endpoint. It can be benficial when debugging
-agents and their tool calls to have a local stack trace for debugging. However, there are some restrictions on the content of callables within this mode.
+To help simplify development, the `"local"` execution mode is available. This mode of operation allows the `DatabricksFunctionClient` to utilize a local subprocess to execute your tool calls without having to make a request to a SQL serverless endpoint. It can be benficial when debugging agents and their tool calls to have a local stack trace for debugging. However, there are some restrictions on the content of callables within this mode.
 
 The `"local"` mode offers:
 
@@ -746,21 +710,17 @@ The `"local"` mode offers:
 
 These configurations can be controlled by setting the following environment variables (listed with their defaults):
 
-| Environment Variable          | Default Value | Description                                             |
-|-------------------------------|---------------|---------------------------------------------------------|
-| `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds)  | Maximum allowable CPU execution time                    |
-| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum allowable Virtual Memory allocation for process |
-| `EXECUTOR_TIMEOUT`            | 20 (seconds)  | Maximum Total wall clock time                           |
+| Environment Variable | Default Value | Description |
+| --- | --- | --- |
+| `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds) | Maximum allowable CPU execution time |
+| `EXECUTOR_MAX_MEMORY_LIMIT` | 100 (MB) | Maximum allowable Virtual Memory allocation for process |
+| `EXECUTOR_TIMEOUT` | 20 (seconds) | Maximum Total wall clock time |
 
-Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
-the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
-than the wall clock execution time.
+Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration than the wall clock execution time.
 
 ## Execute a UC Python function locally
 
-A utility `load_function_from_string` is available in `unitycatalog.ai.core.utils.execution_utils.py`. This utility allows you to couple the functionality
-in the `get_function_source` API to create a locally-available python callable that can be direclty accessed, precisely as if it were originally defined
-within your current REPL.
+A utility `load_function_from_string` is available in `unitycatalog.ai.core.utils.execution_utils.py`. This utility allows you to couple the functionality in the `get_function_source` API to create a locally-available python callable that can be direclty accessed, precisely as if it were originally defined within your current REPL.
 
 ```python
 from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
@@ -807,7 +767,7 @@ def multiply_numbers_with_constant(a: int, b: int) -> int:
     Args:
         a: first number.
         b: second number.
-        
+
     Returns:
         int
     \"\"\"
@@ -820,7 +780,7 @@ scoped_namespace = {
     "__builtins__": __builtins__,
     "c": 42,
 }
-    
+
 load_function_from_string(func_str, register_function=True, namespace=scoped_namespace)
 
 scoped_ns = SimpleNamespace(**scoped_namespace)
@@ -841,7 +801,7 @@ If using defaults in your function signatures, ensure that the descriptions are 
 
 ### Create and Execute a Function
 
-``` python
+```python
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 # Initialize the client, connecting to serverless

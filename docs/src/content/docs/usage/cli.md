@@ -1,4 +1,6 @@
-# Unity Catalog CLI
+---
+title: Unity Catalog CLI
+---
 
 This page shows you how to use the Unity Catalog CLI.
 
@@ -94,9 +96,7 @@ bin/uc catalog create \
 
 1. `name`: The name of the catalog.
 2. `comment`: _\[Optional\]_ The description of the catalog.
-3. `properties`: _\[Optional\]_ The properties of the catalog in JSON format
-   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
-   properties string or just use single quotes(`''`) around the same.
+3. `properties`: _\[Optional\]_ The properties of the catalog in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
 Here's an example:
 
@@ -119,9 +119,7 @@ bin/uc catalog update \
 1. `name`: The name of the existing catalog.
 2. `new_name`: _\[Optional\]_ The new name of the catalog.
 3. `comment`: _\[Optional\]_ The new description of the catalog.
-4. `properties`: _\[Optional\]_ The new properties of the catalog in JSON format
-   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
-   properties string or just use single quotes(`''`) around the same.
+4. `properties`: _\[Optional\]_ The new properties of the catalog in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
 !!! note "At least one of the optional parameters must be specified."
 
@@ -189,9 +187,7 @@ bin/uc schema create \
 1. `catalog`: The name of the catalog.
 2. `name`: The name of the schema.
 3. `comment`: _\[Optional\]_ The description of the schema.
-4. `properties`: _\[Optional\]_ The properties of the schema in JSON format
-   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
-   properties string or just use single quotes(`''`) around the same.
+4. `properties`: _\[Optional\]_ The properties of the schema in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
 Here's an example:
 
@@ -218,9 +214,7 @@ bin/uc schema update \
 1. `full_name`: The full name of the existing schema. The full name is the concatenation of the catalog name and schema name separated by a dot (e.g., `catalog_name.schema_name`).
 2. `new_name`: _\[Optional\]_ The new name of the schema.
 3. `comment`: _\[Optional\]_ The new description of the schema.
-4. `properties`: _\[Optional\]_ The new properties of the schema in JSON format
-   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
-   properties string or just use single quotes(`''`) around the same.
+4. `properties`: _\[Optional\]_ The new properties of the schema in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
 !!! note "At least one of the optional parameters must be specified."
 
@@ -290,15 +284,11 @@ bin/uc table create \
   [--properties <properties>] # (5)
 ```
 
-1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
-   schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
-2. `columns`: The columns of the table in SQL-like format `"column_name column_data_type"`.
-   Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma
-   (e.g., `"id INT, name STRING"`).
+1. `full_name`: The full name of the table, which is a concatenation of the catalog name, schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
+2. `columns`: The columns of the table in SQL-like format `"column_name column_data_type"`. Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma (e.g., `"id INT, name STRING"`).
 3. `format`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,`CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
 4. `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
-5. `properties`: _\[Optional\]_ The properties of the table in JSON format
-   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
+5. `properties`: _\[Optional\]_ The properties of the table in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
 Here's an example to create an external DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with storage location `/path/to/storage`:
 
@@ -309,8 +299,7 @@ bin/uc table create \
   --storage_location "/path/to/storage"
 ```
 
-When running against UC server, the storage location can be a local path(absolute path) or an S3 path.
-When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
+When running against UC server, the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
 
 ### Read a Delta Table
 
@@ -322,8 +311,7 @@ bin/uc table read \
   [--max_results <max_results>] # (2)
 ```
 
-1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
-   schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
+1. `full_name`: The full name of the table, which is a concatenation of the catalog name, schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 2. `max_results`: _\[Optional\]_ The maximum number of rows to return.
 
 ### Write Sample Data to a Delta Table
@@ -335,8 +323,7 @@ bin/uc table write \
   --full_name <catalog>.<schema>.<table> # (1)
 ```
 
-1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
-   schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
+1. `full_name`: The full name of the table, which is a concatenation of the catalog name, schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 
 This is an experimental feature and only some primitive types are supported for writing sample data.
 
@@ -349,8 +336,7 @@ bin/uc table delete \
   --full_name <full_name> #(1)
 ```
 
-1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
-   schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
+1. `full_name`: The full name of the table, which is a concatenation of the catalog name, schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 
 ## Volume Management CLI Usage
 
@@ -382,8 +368,7 @@ bin/uc volume get \
   --full_name <full_name> # (1)
 ```
 
-1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
-   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name, schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
 
 ### Create a Volume
 
@@ -396,11 +381,8 @@ bin/uc volume create \
   [--comment <comment>] # (3)
 ```
 
-1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
-   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
-2. `storage_location`: The storage location associated with the volume. When running against UC OSS server,
-   the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, the
-   [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly. When running against Databricks Unity Catalog, the storage location for EXTERNAL volume can only be an S3 location which has been configured as an `external location` in your Databricks workspace.
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name, schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
+2. `storage_location`: The storage location associated with the volume. When running against UC OSS server, the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly. When running against Databricks Unity Catalog, the storage location for EXTERNAL volume can only be an S3 location which has been configured as an `external location` in your Databricks workspace.
 3. `comment`: _\[Optional\]_ The description of the volume.
 
 Here's an example that creates an external volume with full name `my_catalog.my_schema.my_volume` with storage location `/path/to/storage`:
@@ -422,8 +404,7 @@ bin/uc volume update \
   [--comment <comment>] # (3)
 ```
 
-1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
-   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name, schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
 2. `new_name`: _\[Optional\]_ The new name of the volume.
 3. `comment`: _\[Optional\]_ The new description of the volume.
 
@@ -448,8 +429,7 @@ bin/uc volume read \
   [--path <path>] # (2)
 ```
 
-1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
-   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name, schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
 2. `path`: _\[Optional\]_ The path relative to the volume root. If no path is provided, the volume root is read. If the final path is a directory, the contents of the directory are listed(`ls`). If the final path is a file, the contents of the file are displayed(`cat`).
 
 ### Write Sample Data to a Volume
@@ -461,8 +441,7 @@ bin/uc volume write \
   --full_name <full_name> # (1)
 ```
 
-1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
-   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name, schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
 
 This operation will write sample text data to a randomly generated file name(UUID) in the volume. This is an experimental feature.
 
@@ -475,8 +454,7 @@ bin/uc volume delete \
   --full_name <full_name> # (1)
 ```
 
-1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
-   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name, schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
 
 ## Function Management CLI Usage
 
@@ -508,8 +486,7 @@ bin/uc function get \
   --full_name <full_name> # (1)
 ```
 
-1. `full_name`: The full name of the function, which is a concatenation of the catalog name,
-   schema name, and function name separated by dots (e.g., `catalog_name.schema_name.function_name`).
+1. `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function name separated by dots (e.g., `catalog_name.schema_name.function_name`).
 
 ### Create a Function
 
@@ -525,14 +502,10 @@ bin/uc function create \
   [--language <language>] # 6)
 ```
 
-1. `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function
-   name separated by dots (e.g., `catalog_name.schema_name.function_name`).
-2. `input_params`: The input parameters to the function in SQL-like format `"param_name param_data_type"`.
-   Multiple input parameters should be separated by a comma (e.g., `"param1 INT, param2 STRING"`).
-3. `data_type`: The data type of the function. Either a type_name (for e.g. `INT`,`DOUBLE`, `BOOLEAN`, `DATE`), or
-   `TABLE_TYPE` if this is a table valued function.
-4. `def`: The definition of the function. The definition should be a valid SQL statement or a python routine with the
-   function logic and return statement.
+1. `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function name separated by dots (e.g., `catalog_name.schema_name.function_name`).
+2. `input_params`: The input parameters to the function in SQL-like format `"param_name param_data_type"`. Multiple input parameters should be separated by a comma (e.g., `"param1 INT, param2 STRING"`).
+3. `data_type`: The data type of the function. Either a type_name (for e.g. `INT`,`DOUBLE`, `BOOLEAN`, `DATE`), or `TABLE_TYPE` if this is a table valued function.
+4. `def`: The definition of the function. The definition should be a valid SQL statement or a python routine with the function logic and return statement.
 5. `comment`: _\[Optional\]_ The description of the function.
 6. `language`: _\[Optional\]_ The language of the function. If not specified, the default value is `PYTHON`.
 
@@ -560,8 +533,7 @@ bin/uc function call \
 1. `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function name separated by dots (e.g., `catalog_name.schema_name.function_name`).
 2. `input_params` : The value of input parameters to the function separated by a comma (e.g., `"param1,param2"`).
 
-This is an experimental feature and only supported for Python functions that take in primitive types as input
-parameters. It runs the functions using the Python engine script at `etc/data/function/python_engine.py`.
+This is an experimental feature and only supported for Python functions that take in primitive types as input parameters. It runs the functions using the Python engine script at `etc/data/function/python_engine.py`.
 
 Here's an example that invokes a Python sum function that takes two integer inputs:
 
@@ -580,15 +552,13 @@ bin/uc function delete \
   --full_name <full_name> # (1)
 ```
 
-1. `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function
-   name separated by dots (e.g., `catalog_name.schema_name.function_name`).
+1. `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function name separated by dots (e.g., `catalog_name.schema_name.function_name`).
 
 ## Registered model and model version management
 
 You can use Unity Catalog with MLflow to govern and access your ML and AI models. Read more
 
-Please refer to [MLflow documentation](https://mlflow.org/docs/latest/index.html) to learn how to use MLflow to create,
-register, update, use, and delete registered models and model versions.
+Please refer to [MLflow documentation](https://mlflow.org/docs/latest/index.html) to learn how to use MLflow to create, register, update, use, and delete registered models and model versions.
 
 You can list the registered models in your UC namespace using:
 
@@ -636,8 +606,7 @@ Read more in the [Models](models.md) documentatino.
 
 ## CLI Server Configuration
 
-By default, the CLI tool is configured to interact with a local reference server running at `http://localhost:8080`.
-The CLI can be configured to talk to Databricks Unity Catalog by one of the following methods:
+By default, the CLI tool is configured to interact with a local reference server running at `http://localhost:8080`. The CLI can be configured to talk to Databricks Unity Catalog by one of the following methods:
 
 - Include the following params in CLI commands:
   - `--server <server_url>`: The URL of the Unity Catalog server.
@@ -646,8 +615,7 @@ The CLI can be configured to talk to Databricks Unity Catalog by one of the foll
   - `server`: The URL of the Unity Catalog server.
   - `auth_token`: The PAT(Personal Authorization Token) token obtained from Databricks' Workspace.
 
-Each parameter can be configured either from the CLI or the configuration file, independently of each other.
-The CLI will prioritize the values provided from the CLI over the configuration file.
+Each parameter can be configured either from the CLI or the configuration file, independently of each other. The CLI will prioritize the values provided from the CLI over the configuration file.
 
 !!! feedback "Different look for users CLI commands"
 
@@ -655,8 +623,7 @@ The CLI will prioritize the values provided from the CLI over the configuration 
 
 ## Manage Users
 
-This section outlines the usage of the `bin/uc` script for managing users within UC.
-The script supports various operations such as creating, getting, updating, listing, and deleting users.
+This section outlines the usage of the `bin/uc` script for managing users within UC. The script supports various operations such as creating, getting, updating, listing, and deleting users.
 
 ### Create User
 
@@ -748,13 +715,11 @@ _Optional Params:_
 
 ## Metastore Management CLI Usage
 
-This section outlines the usage of the `bin/uc` script to handle operations related to the metastore of the
-UC OSS server.
+This section outlines the usage of the `bin/uc` script to handle operations related to the metastore of the UC OSS server.
 
 ### Get Metastore Information
 
-Gets information about the metastore hosted by this Unity Catalog service
-(currently the service hosts only one metastore)
+Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore)
 
 ```sh
 bin/uc metastore get

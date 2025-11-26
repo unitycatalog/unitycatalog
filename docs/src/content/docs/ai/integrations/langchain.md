@@ -1,4 +1,6 @@
-# 🦜🔗 Using Unity Catalog AI with LangChain
+---
+title: 🦜🔗 Using Unity Catalog AI with LangChain
+---
 
 Integrate Unity Catalog AI with [LangChain](https://python.langchain.com) to seamlessly use Unity Catalog (UC) functions as tools in agent applications. This guide covers installation, setup, and examples to help you get started.
 
@@ -54,7 +56,7 @@ client = UnitycatalogFunctionClient(api_client=api_client)
 
 Create an instance of the Unity Catalog Functions client
 
-``` python
+```python
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
@@ -64,7 +66,7 @@ client = DatabricksFunctionClient()
 
 Create a Python function within Unity Catalog
 
-``` python
+```python
 CATALOG = "your_catalog"
 SCHEMA = "your_schema"
 
@@ -97,7 +99,7 @@ client.create_python_function(
 
 Here we create an instance of our UC function as a toolkit, then verify that the tool is behaving properly by executing the function.
 
-``` python
+```python
 from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 
 # Create a UCFunctionToolkit that includes the UC function
@@ -114,7 +116,7 @@ print(result)  # Outputs: 2
 
 ### Using the tool in a LangChain Agent
 
-``` python
+```python
 from langchain.agents import AgentExecutor, create_tool_agent
 from langchain.llms import OpenAI
 from langchain.prompts import ChatPromptTemplate

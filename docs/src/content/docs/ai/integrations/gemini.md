@@ -1,4 +1,6 @@
-# Using Unity Catalog AI with the Gemini SDK
+---
+title: Using Unity Catalog AI with the Gemini SDK
+---
 
 You can use the Unity Catalog AI package with the Gemini SDK to utilize functions that are defined in Unity Catalog to be used as tools within Gemini LLM calls.
 
@@ -52,7 +54,7 @@ client = UnitycatalogFunctionClient(api_client=api_client)
 
 Create an instance of the Unity Catalog Functions client
 
-``` python
+```python
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
@@ -96,8 +98,7 @@ print(function_info)
 
 ### Create a UCFunctionToolkit instance
 
-Tool use through the [Google GenAI SDK](https://ai.google.dev/gemini-api/docs) allows you to connect external client-side tools and
-functions to provide [Gemini](https://ai.google.dev/gemini-api/docs/models/gemini-v2) with a greater range of capabilities to augment its ability to respond to user messages.
+Tool use through the [Google GenAI SDK](https://ai.google.dev/gemini-api/docs) allows you to connect external client-side tools and functions to provide [Gemini](https://ai.google.dev/gemini-api/docs/models/gemini-v2) with a greater range of capabilities to augment its ability to respond to user messages.
 
 To begin, we will need an instance of the tool function interface from the `unitycatalog.ai.gemini` toolkit.
 

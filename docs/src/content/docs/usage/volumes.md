@@ -1,4 +1,6 @@
-# Unity Catalog Volumes
+---
+title: Unity Catalog Volumes
+---
 
 Unity Catalog volumes are good for registering datasets that are non-tabular or not supported as Unity Catalog tables.
 
@@ -42,8 +44,7 @@ bin/uc volume read --full_name unity.default.json_files --path c.json
 
 ![UC Volume read file](../assets/images/uc_volume_read_file.png)
 
-Voilà! You have read the content of a file stored in a volume. We can also list the contents of any subdirectory.
-For example:
+Voilà! You have read the content of a file stored in a volume. We can also list the contents of any subdirectory. For example:
 
 ```sh
 bin/uc volume read --full_name unity.default.json_files --path dir1
@@ -51,7 +52,7 @@ bin/uc volume read --full_name unity.default.json_files --path dir1
 
 Now let's try creating a new external volume. First physically create a directory with some files in it.
 
-For example, create a directory `/tmp/my_volume` and put some files in it.  Then create the volume in UC.
+For example, create a directory `/tmp/my_volume` and put some files in it. Then create the volume in UC.
 
 ```sh
 bin/uc volume create --full_name unity.default.my_volume \

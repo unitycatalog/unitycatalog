@@ -1,13 +1,15 @@
-# How to work with Functions using the REST API
+---
+title: How to work with Functions using the REST API
+---
 
 Use the `/functions` endpoint to work with functions.
 
-| Method | Description                              | Endpoint                           |
-| ------ | ---------------------------------------- | ---------------------------------- |
-| GET    | Retrieve a list of functions             | /functions                         |
-| GET    | Retrieve metadata of a specific function | /functions/catalog.schema.function |
-| POST   | Create a new function                    | /functions                         |
-| DELETE | Remove a function                        | /functions/catalog.schema.function |
+| Method | Description | Endpoint |
+| --- | --- | --- |
+| GET | Retrieve a list of functions | /functions |
+| GET | Retrieve metadata of a specific function | /functions/catalog.schema.function |
+| POST | Create a new function | /functions |
+| DELETE | Remove a function | /functions/catalog.schema.function |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 

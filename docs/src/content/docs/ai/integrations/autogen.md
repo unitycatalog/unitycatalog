@@ -1,13 +1,12 @@
-# Using Unity Catalog AI with AutoGen
+---
+title: Using Unity Catalog AI with AutoGen
+---
 
 Integrate Unity Catalog AI with the [AutoGen SDK](https://github.com/microsoft/autogen) to utilize functions defined in Unity Catalog as tools in AutoGen Agent Application calls. This guide covers the installation, setup, caveats, environment variables, public APIs, and examples to help you get started.
 
 > **NOTE:** Ensure that the base Autogen package is installed with version `autogen-agentchat>=0.4.0`, as there has been a signficant series of API improvements made to autogen that are not backward compatible. This integration does not support the legacy APIs.
 >
-> **NOTE**: The official Microsoft AutoGen package has been renamed from `pyautogen` to `autogen-agentchat`.
-There are additional forked version of the AutoGen package that are not contributed by Microsoft and will not work with this integration.
-For further information, please see the [official clarification statement](https://github.com/microsoft/autogen/discussions/4217). The officially
-maintained repository can be viewed [here](https://github.com/microsoft/autogen).
+> **NOTE**: The official Microsoft AutoGen package has been renamed from `pyautogen` to `autogen-agentchat`. There are additional forked version of the AutoGen package that are not contributed by Microsoft and will not work with this integration. For further information, please see the [official clarification statement](https://github.com/microsoft/autogen/discussions/4217). The officially maintained repository can be viewed [here](https://github.com/microsoft/autogen).
 
 ---
 
@@ -115,8 +114,7 @@ function_info_get_temp = client.create_python_function(
 
 ### Create a Toolkit instance
 
-Create an instance of the toolkit to interface with the defined UC functions. This definition will be the bridge
-between UC functions and AutoGen's tool calling interface.
+Create an instance of the toolkit to interface with the defined UC functions. This definition will be the bridge between UC functions and AutoGen's tool calling interface.
 
 ```python
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit

@@ -1,4 +1,6 @@
-# Unity Catalog REST API Documentation
+---
+title: Unity Catalog REST API Documentation
+---
 
 This section provides detailed information on how to interact with the Unity Catalog programmatically using the REST API.
 
@@ -25,5 +27,4 @@ To begin using the Unity Catalog REST API, ensure you have the following:
 
 ## Feedback
 
-If you encounter any issues or have suggestions, please create an issue.
-We welcome contributions to the REST API functionality as PRs.
+If you encounter any issues or have suggestions, please create an issue. We welcome contributions to the REST API functionality as PRs.

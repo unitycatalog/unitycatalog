@@ -1,9 +1,10 @@
-# Unity Catalog DuckDB Integration
+---
+title: Unity Catalog DuckDB Integration
+---
 
 ## Operate on Delta tables with DuckDB
 
-To try operating on Delta tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/)
-(at least version 1.0).
+To try operating on Delta tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (at least version 1.0).
 
 Let's start DuckDB and install a couple of extensions. To start DuckDB, run the command `duckdb` in the terminal.
 
@@ -16,8 +17,7 @@ install delta;
 load delta;
 ```
 
-If you have installed these extensions before, you may have to run `update extensions` and restart DuckDB
-for the following steps to work.
+If you have installed these extensions before, you may have to run `update extensions` and restart DuckDB for the following steps to work.
 
 Now that we have DuckDB all set up, let's try connecting to UC by specifying a secret.
 
@@ -43,5 +43,4 @@ SHOW ALL TABLES;
 SELECT * from unity.default.numbers;
 ```
 
-You should see the tables listed and the contents of the `numbers` table printed.
-To quit DuckDB, run the command `Ctrl+D` or type `.exit` in the DuckDB shell.
+You should see the tables listed and the contents of the `numbers` table printed. To quit DuckDB, run the command `Ctrl+D` or type `.exit` in the DuckDB shell.

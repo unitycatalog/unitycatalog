@@ -1,24 +1,18 @@
-# Unity Catalog Apache Spark™ Integration
+---
+title: Unity Catalog Apache Spark™ Integration
+---
 
 This page explains how to create Unity Catalog tables with Apache Spark™.
 
-[Apache Spark](http://spark.apache.org) is a multi-language engine for executing data engineering, data science, and
-machine learning on single-node machines or clusters.
+[Apache Spark](http://spark.apache.org) is a multi-language engine for executing data engineering, data science, and machine learning on single-node machines or clusters.
 
-Integrating Apache Spark with Unity Catalog offers significant advantages over traditional catalog solutions.
-Unity Catalog provides unified governance across both data and AI assets, fine-grained access control down to the
-column level, automated data lineage tracking, and seamless interoperability with various lakehouse formats and
-compute engines. It enables centralized metadata management, simplified data discovery, and enhanced security. The
-credential vending capability of Unity Catalog is particularly noteworthy as it allows Apache Spark to securely access
-data stored in Unity Catalog through a controlled mechanism.
+Integrating Apache Spark with Unity Catalog offers significant advantages over traditional catalog solutions. Unity Catalog provides unified governance across both data and AI assets, fine-grained access control down to the column level, automated data lineage tracking, and seamless interoperability with various lakehouse formats and compute engines. It enables centralized metadata management, simplified data discovery, and enhanced security. The credential vending capability of Unity Catalog is particularly noteworthy as it allows Apache Spark to securely access data stored in Unity Catalog through a controlled mechanism.
 
 - Neatly organizing data in tables and volumes in the Unity Catalog hierarchy makes it a lot easier to write Spark code.
 - Make it easier to decouple business logic from file paths.
 - Provides easy access to different file formats without end users needing to know how the data is stored.
 
-!!! warning "Prerequisites"
-    For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and
-    Delta Lake 3.2.1.
+!!! warning "Prerequisites" For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
 
 ## Download and Configure Unity Catalog for Apache Spark
 
@@ -26,8 +20,7 @@ The following steps are required to download and configure Unity Catalog for Apa
 
 ### Download Apache Spark
 
-[Download](https://spark.apache.org/downloads.html) the latest version of Apache Spark >= 3.5.3 or using the following
-command.
+[Download](https://spark.apache.org/downloads.html) the latest version of Apache Spark >= 3.5.3 or using the following command.
 
 ```sh title="Download Apache Spark 3.5.3 using curl"
 curl -O https://archive.apache.org/dist/spark/spark-3.5.3/spark-3.5.3-bin-hadoop3.tgz
@@ -36,8 +29,7 @@ tar xzf spark-3.5.3-bin-hadoop3.tgz
 
 ### [Optional] Configure server properties for cloud storage
 
-To have Unity Catalog work with cloud object storage as the storage location for tables, configure the
-`etc/conf/server.properties` to add configuration:
+To have Unity Catalog work with cloud object storage as the storage location for tables, configure the `etc/conf/server.properties` to add configuration:
 
 === "AWS S3"
 
@@ -81,8 +73,7 @@ bin/start-uc-server
 
 ## Working with Unity Catalog Tables with Apache Spark and Delta Lake Locally
 
-Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-sql`) or PySpark shell (`bin/pyspark`)
-within the terminal of your Apache Spark 3.5.3 folder against your local UC.
+Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-sql`) or PySpark shell (`bin/pyspark`) within the terminal of your Apache Spark 3.5.3 folder against your local UC.
 
 You can run the code below to work with data stored in a Unity Catalog server.
 
@@ -112,9 +103,7 @@ You can run the code below to work with data stored in a Unity Catalog server.
         --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
-!!! tip "Tip"
-    Initially, this may take a few minutes to run to download the necessary dependencies. Afterwards, you can run some
-    quick commands to see your UC assets within Spark SQL shell.
+!!! tip "Tip" Initially, this may take a few minutes to run to download the necessary dependencies. Afterwards, you can run some quick commands to see your UC assets within Spark SQL shell.
 
 !!! warning "Configuring Spark session catalog"
 
@@ -141,8 +130,7 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
-If you would like to run this against cloud object storage, the following versions of the `bin/spark-sql` shell
-command.
+If you would like to run this against cloud object storage, the following versions of the `bin/spark-sql` shell command.
 
 === "AWS S3"
 
@@ -469,8 +457,7 @@ Drop Table
     spark.sql("SHOW TABLES IN default").show()
     ```
 
-!!! warning
-    Note, this action will only drop the table from UC, it will not remove the data from the file system
+!!! warning Note, this action will only drop the table from UC, it will not remove the data from the file system
 
 <!--
 ## Benefits of using Unity Catalog for Spark
