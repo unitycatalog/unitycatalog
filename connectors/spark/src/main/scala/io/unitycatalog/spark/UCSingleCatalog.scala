@@ -112,10 +112,13 @@ class UCSingleCatalog
       // this property to the exactly value of what we need.
       // This is because some document may have mentioned setting it to enable UC as commit
       // coordinator. But we don't actually need that as we always set it automatically.
-      Option(properties.get(UCTableProperties.CATALOG_MANAGED_KEY))
-        .filter(_ != UCTableProperties.CATALOG_MANAGED_VALUE)
-        .foreach(_ => throw new ApiException(
-          s"Should not specify property ${UCTableProperties.CATALOG_MANAGED_KEY}."))
+      List(UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_KEY_NEW)
+        .foreach(k => {
+          Option(properties.get(k))
+            .filter(_ != UCTableProperties.CATALOG_MANAGED_VALUE)
+            .foreach(_ => throw new ApiException(
+              s"Should not specify property $k."))
+        })
 
       // Get staging table location and table id from UC
       val createStagingTable = new CreateStagingTable()
@@ -132,6 +135,8 @@ class UCSingleCatalog
       // Sets both the new and old table ID property while it's being renamed.
       newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableInfo.getId)
       newProps.put(UCTableProperties.UC_TABLE_ID_KEY_OLD, stagingTableInfo.getId)
+      // Only set the existing feature name. When Delta renames it, Delta needs to handle it
+      // gracefully.
       newProps.put(UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_VALUE)
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.

@@ -12,4 +12,7 @@ public class UCTableProperties {
   // This table property should be set in order to enable Delta code to use UC as commit coordinator
   public static final String CATALOG_MANAGED_KEY = "delta.feature.catalogOwned-preview";
   public static final String CATALOG_MANAGED_VALUE = "supported";
+  // Eventually Delta will be changed to use this feature name instead. But before that is done, we
+  // can't set it yet.
+  public static final String CATALOG_MANAGED_KEY_NEW = "delta.feature.catalogManaged";
 }

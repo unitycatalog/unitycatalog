@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -52,6 +53,14 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
                     fullTableName, UCTableProperties.CATALOG_MANAGED_KEY))
         .hasMessageContaining(
             String.format("Should not specify property %s", UCTableProperties.CATALOG_MANAGED_KEY));
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
+                    fullTableName, UCTableProperties.CATALOG_MANAGED_KEY_NEW))
+        .hasMessageContaining(
+            String.format(
+                "Should not specify property %s", UCTableProperties.CATALOG_MANAGED_KEY_NEW));
     assertThatThrownBy(
             () ->
                 sql(
@@ -113,11 +122,25 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
           assertThat(describeResult.get("Provider")).isEqualToIgnoringCase("delta");
           assertThat(describeResult.get("Is_managed_location")).isEqualTo("true");
           assertThat(describeResult).containsKey("Table Properties");
+          // Check that it either has the old table ID key or the new one. Doesn't matter if it
+          // has both.
           String tableProperties = describeResult.get("Table Properties");
-          assertThat(tableProperties).contains(UCTableProperties.UC_TABLE_ID_KEY);
-          // When we switch to a newer version of Delta and the table property is renamed, this line
-          // may break. We'll need to come back and just change this line to expect a newer key.
-          assertThat(tableProperties).contains(UCTableProperties.CATALOG_MANAGED_KEY);
+          Assertions.assertTrue(
+              tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY)
+                  || tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY_OLD));
+          // Check that it either has the old feature name or the new one. We don't care if it
+          // has both but Delta won't allow that.
+          Assertions.assertTrue(
+              tableProperties.contains(
+                      String.format(
+                          "%s=%s",
+                          UCTableProperties.CATALOG_MANAGED_KEY,
+                          UCTableProperties.CATALOG_MANAGED_VALUE))
+                  || tableProperties.contains(
+                      String.format(
+                          "%s=%s",
+                          UCTableProperties.CATALOG_MANAGED_KEY_NEW,
+                          UCTableProperties.CATALOG_MANAGED_VALUE)));
         }
       }
     }
