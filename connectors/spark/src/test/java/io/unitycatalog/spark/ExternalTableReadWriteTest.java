@@ -61,6 +61,7 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
    */
   protected static Stream<Arguments> cloudParameters() {
     return Stream.of(
+        Arguments.of("file", false),
         Arguments.of("s3", false),
         Arguments.of("s3", true),
         Arguments.of("gs", false),
@@ -126,13 +127,13 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
       throws ApiException, IOException {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG);
 
-    String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
+    String loc1 = cloudPathPrefix(scheme) + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
     setupExternalParquetTable(PARQUET_TABLE, loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     testTableReadWrite(t1);
 
     String loc2 =
-        scheme + "://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
+        cloudPathPrefix(scheme) + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
     setupExternalParquetTable(ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
     String t2 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
     testTableReadWrite(t2);
@@ -146,13 +147,13 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
       throws IOException {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
-    String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String loc1 = cloudPathPrefix(scheme) + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupDeltaTableLocation(loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     sql("CREATE TABLE %s USING delta LOCATION '%s'", t1, loc1);
     testTableReadWrite(t1);
 
-    String loc2 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
+    String loc2 = cloudPathPrefix(scheme) + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
     setupDeltaTableLocation(loc2, new ArrayList<>(0));
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     sql("CREATE TABLE %s USING delta LOCATION '%s'", t2, loc2);
@@ -162,7 +163,7 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
 
     // Path that does not exist
     String loc3 =
-        scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
+        cloudPathPrefix(scheme) + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
     String t3 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
     sql("CREATE TABLE %s(i INT) USING delta LOCATION '%s'", t3, loc3);
     List<Row> rows = session.table(t3).collectAsList();
@@ -295,11 +296,15 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     return String.format("%s://test-bucket%d", scheme, bucketIndex);
   }
 
+  protected String cloudPathPrefix(String cloudScheme) {
+    return cloudScheme.equals("file") ? "" : testBucket(cloudScheme);
+  }
+
   @Override
   protected String setupDeltaTable(
       String cloudScheme, String catalogName, String tableName, List<String> partitionColumns)
       throws IOException, ApiException {
-    String cloudPrefix = cloudScheme.equals("file") ? "" : testBucket(cloudScheme);
+    String cloudPrefix = cloudPathPrefix(cloudScheme);
     String location = cloudPrefix + generateTableLocation(catalogName, tableName);
     setupDeltaTableLocation(location, partitionColumns);
     setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);

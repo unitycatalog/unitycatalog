@@ -9,13 +9,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
@@ -29,25 +27,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  * <p>This test needs to start server with a single managed root location on a single emulated cloud
  * so it can not test all emulated clouds yet.
  */
-public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
+public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
   private static final String DELTA_TABLE = "test_delta";
-
-  /**
-   * This function provides a set of test parameters that cloud-aware tests should run for this
-   * class.
-   *
-   * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled)
-   */
-  protected static Stream<Arguments> cloudParameters() {
-    // Right now this test suite only support testing with s3. In the future we'll expand this
-    // test to all supported clouds when UC supports setting up multiple managed storage locations.
-    return Stream.of(Arguments.of("s3", false), Arguments.of("s3", true));
-  }
-
-  @Override
-  protected String managedStorageCloudScheme() {
-    return "s3";
-  }
 
   @Test
   public void testCreateManagedTableErrors() {
