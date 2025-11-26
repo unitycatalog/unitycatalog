@@ -161,7 +161,6 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
-<<<<<<< HEAD
   def generateCredentialProps(
       scheme: String,
       temporaryCredentials: TemporaryCredentials): Map[String, String] = {
@@ -200,7 +199,7 @@ object UCSingleCatalog {
       Map.empty
     }
   }
-=======
+
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
     if (namespace.length > 1) {
       throw new ApiException("Nested namespaces are not supported: " + namespace.mkString("."))
@@ -230,7 +229,6 @@ object UCSingleCatalog {
     checkUnsupportedNestedNamespace(ident.namespace())
     Seq(catalogName, ident.namespace()(0), ident.name()).mkString(".")
   }
->>>>>>> 73f3de13 (Fix the name quote bug in UCSingleCatalog. (#1248))
 }
 
 // An internal proxy to talk to the UC client.
@@ -266,14 +264,7 @@ private class UCProxy(
 
   override def loadTable(ident: Identifier): Table = {
     val t = try {
-<<<<<<< HEAD
-      tablesApi.getTable(name + "." + ident.toString)
-=======
-      tablesApi.getTable(
-        UCSingleCatalog.fullTableNameForApi(this.name, ident),
-        /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true)
->>>>>>> 73f3de13 (Fix the name quote bug in UCSingleCatalog. (#1248))
+      tablesApi.getTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchTableException(ident)

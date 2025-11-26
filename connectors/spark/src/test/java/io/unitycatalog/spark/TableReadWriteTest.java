@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -297,7 +298,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertFalse(session.catalog().tableExists(fullName));
     assertThatThrownBy(() -> session.sql("DROP TABLE a.b.c.d").collect())
         .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Invalid table name");
+        .hasMessageContaining("Nested namespaces are not supported");
     session.stop();
   }
 
@@ -455,6 +456,40 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.close();
   }
 
+  @Test
+  public void hyphenInTableName() throws IOException {
+    String catalogName = "test-catalog-name";
+    String schemaName = "test-schema-name";
+    String tableName = "test-table-name";
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, catalogName);
+    session.sql(String.format("CREATE SCHEMA `%s`.`%s`", catalogName, schemaName));
+    String fullTableName = String.format("%s.%s.%s", catalogName, schemaName, tableName);
+    String location = generateTableLocation(catalogName, tableName);
+    session.sql(
+        String.format(
+            "CREATE TABLE %s(i INT, s STRING) USING DELTA LOCATION '%s'",
+            quoteEntityName(fullTableName), location));
+
+    testTableReadWrite(fullTableName, session);
+
+    List<Row> tables1 =
+        session
+            .sql(String.format("SHOW TABLES in `%s`.`%s`", catalogName, schemaName))
+            .collectAsList();
+    assertThat(tables1).hasSize(1);
+    assertThat(tables1.get(0).getString(0)).isEqualTo(quoteEntityName(schemaName));
+    assertThat(tables1.get(0).getString(1)).isEqualTo(tableName);
+
+    session.sql(String.format("DROP TABLE %s", quoteEntityName(fullTableName)));
+    List<Row> tables2 =
+        session
+            .sql(String.format("SHOW TABLES in `%s`.`%s`", catalogName, schemaName))
+            .collectAsList();
+    assertThat(tables2).isEmpty();
+
+    session.close();
+  }
+
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
@@ -489,11 +524,18 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   private void testTableReadWrite(String tableFullName, SparkSession session) {
-    assertThat(session.sql("SELECT * FROM " + tableFullName).collectAsList()).isEmpty();
-    session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a'");
-    Row row = session.sql("SELECT * FROM " + tableFullName).collectAsList().get(0);
+    assertThat(session.sql("SELECT * FROM " + quoteEntityName(tableFullName)).collectAsList())
+        .isEmpty();
+    session.sql("INSERT INTO " + quoteEntityName(tableFullName) + " SELECT 1, 'a'");
+    Row row = session.sql("SELECT * FROM " + quoteEntityName(tableFullName)).collectAsList().get(0);
     assertThat(row.getInt(0)).isEqualTo(1);
     assertThat(row.getString(1)).isEqualTo("a");
+  }
+
+  protected String quoteEntityName(String entityName) {
+    return Arrays.stream(entityName.split("\\."))
+        .map(x -> x.contains("-") ? String.format("`%s`", x) : x)
+        .collect(Collectors.joining("."));
   }
 
   private void setupTables(
