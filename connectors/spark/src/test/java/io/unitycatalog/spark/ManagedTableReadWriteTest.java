@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.spark.sql.Row;
@@ -144,6 +145,11 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
         }
       }
     }
+  }
+
+  @Test
+  public void hyphenInTableName() {
+    testHyphenInTableNameBase(Optional.empty());
   }
 
   @Override
