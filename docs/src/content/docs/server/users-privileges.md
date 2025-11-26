@@ -19,7 +19,7 @@ When you enable external authorization on a catalog, Unity Catalog automatically
 - creates an admin token
 - grants the admin account the metastore admin privileges for the server.
 
-Read the [Auth docs](auth.md) to learn how you can configure authentication and authorization.
+Read the [Auth docs](/server/auth) to learn how you can configure authentication and authorization.
 
 ## Default User Privileges
 

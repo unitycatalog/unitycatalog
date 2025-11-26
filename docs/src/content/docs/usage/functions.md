@@ -21,7 +21,7 @@ Let's look at how this works.
 
 We'll use a local Unity Catalog server to get started. The default local UC server comes with some sample data.
 
-> If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md)
+> If this is your first time spinning up a UC server, you might want to check out the [Quickstart](/quickstart)
 
     first.
 

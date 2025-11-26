@@ -46,14 +46,14 @@ Security is paramount when dealing with data and AI functionalities. Unity Catal
 
 Unity Catalog AI offers native integrations with a variety of popular GenAI frameworks, making it easy to incorporate UC Functions into your existing workflows. Supported integrations include:
 
-- [LangChain](./integrations/langchain.md)
-- [LlamaIndex](./integrations/llamaindex.md)
-- [OpenAI](./integrations/openai.md)
-- [Anthropic](./integrations/anthropic.md)
-- [CrewAI](./integrations/crewai.md)
-- [AutoGen](./integrations/autogen.md)
-- [LiteLLM](./integrations/litellm.md)
-- [Gemini](./integrations/gemini.md)
+- [LangChain](/ai/integrations/langchain)
+- [LlamaIndex](/ai/integrations/llamaindex)
+- [OpenAI](/ai/integrations/openai)
+- [Anthropic](/ai/integrations/anthropic)
+- [CrewAI](/ai/integrations/crewai)
+- [AutoGen](/ai/integrations/autogen)
+- [LiteLLM](/ai/integrations/litellm)
+- [Gemini](/ai/integrations/gemini)
 
 Each integration is designed to provide a smooth and intuitive experience, allowing you to focus on building intelligent applications without worrying about the underlying infrastructure.
 
@@ -61,13 +61,13 @@ Each integration is designed to provide a smooth and intuitive experience, allow
 
 ## Getting Started
 
-Embark on your journey with Unity Catalog AI by following our [Quickstart Guide](./quickstart.md). This guide will walk you through the essential steps of installing the library, setting up your environment, and creating and executing UC Functions. Whether you're using an open-source UC server or a Databricks-managed UC, our quickstart ensures you can get up and running swiftly.
+Embark on your journey with Unity Catalog AI by following our [Quickstart Guide](/ai/quickstart). This guide will walk you through the essential steps of installing the library, setting up your environment, and creating and executing UC Functions. Whether you're using an open-source UC server or a Databricks-managed UC, our quickstart ensures you can get up and running swiftly.
 
 ---
 
 ## Integrations
 
-Unity Catalog AI integrates with a range of GenAI frameworks to enhance your AI applications. Explore our [Integrations Page](./integrations/index.md) to discover detailed guides and example notebooks for each supported framework.
+Unity Catalog AI integrates with a range of GenAI frameworks to enhance your AI applications. Explore our [Integrations Page](/ai/integrations) to discover detailed guides and example notebooks for each supported framework.
 
 ---
 

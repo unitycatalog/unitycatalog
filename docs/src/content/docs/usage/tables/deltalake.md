@@ -297,4 +297,4 @@ as_int  as_double
 958     509.371273
 ```
 
-Take a look at the [Integrations](../../integrations/unity-catalog-duckdb.md) page for more examples of working with Delta tables stored in Unity Catalog.
+Take a look at the [Integrations](/integrations/unity-catalog-duckdb) page for more examples of working with Delta tables stored in Unity Catalog.

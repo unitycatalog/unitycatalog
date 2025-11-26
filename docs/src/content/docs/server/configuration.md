@@ -80,4 +80,4 @@ The server logs are located at `etc/logs/server.log`. The log level and log roll
 
 ## Authentication and Authorization
 
-Please refer to [Authentication and Authorization](./auth.md) section for more information.
+Please refer to [Authentication and Authorization](/server/auth) section for more information.

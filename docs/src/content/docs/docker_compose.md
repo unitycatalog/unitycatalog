@@ -28,7 +28,7 @@ To remove the containers and persistent volumes, `exit` the attached shell and r
 docker compose down --volumes --remove-orphans
 ```
 
-Refer to the main [Quickstart](/quickstart.md) for more examples of how to interact with the catalog.
+Refer to the main [Quickstart](/quickstart) for more examples of how to interact with the catalog.
 
 ## Configurations
 
@@ -36,4 +36,4 @@ Docker Compose is configured in the `./compose.yaml` file.
 
 The configuration will create a bind mount to the local files in `./etc/conf`. The UC server can be configured by editing the configuration files on the host, and the mount will reflect the changes in the container.
 
-The configuration will also create a persistent, named volume to store the server's data. This will persist between restarts of the container. See the [deployment](/deployment.md) page for more details on how to configure other databases like Postgres.
+The configuration will also create a persistent, named volume to store the server's data. This will persist between restarts of the container. See the [deployment](/deployment) page for more details on how to configure other databases like Postgres.

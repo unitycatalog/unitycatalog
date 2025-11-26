@@ -28,7 +28,7 @@ Currently, the Unity Catalog User Interface supports Google Identity Provider.
 
 :::
 
-You can follow [these instructions](./google-auth.md) if would like to use Google as your external identity provider.
+You can follow [these instructions](/server/google-auth) if would like to use Google as your external identity provider.
 
 Once you have configured your identity provider, the next step is to configure your Unity Catalog server settings.
 
@@ -236,7 +236,7 @@ SELECT * from unity.default.numbers;
 
 ## Using Spark with a User Token
 
-Now that you have enabled Google Authentication for your UC instance, any unauthenticated clients such as a spark-sql shell without using an identity token will fail. For example, if you were to run the `SHOW SCHEMA` step in the [working with Unity Catalog Tables with Spark](../integrations/unity-catalog-spark.md) using the unauthenticated spark-sql command, you would get the following error.
+Now that you have enabled Google Authentication for your UC instance, any unauthenticated clients such as a spark-sql shell without using an identity token will fail. For example, if you were to run the `SHOW SCHEMA` step in the [working with Unity Catalog Tables with Spark](/integrations/unity-catalog-spark) using the unauthenticated spark-sql command, you would get the following error.
 
 ```console
 spark-sql ()> SHOW SCHEMAS;
@@ -268,7 +268,7 @@ We previously configured Google as the Identity Provider and configured UC Serve
 
 ### Configure and restart the Unity Catalog UI
 
-First, you will need to edit the `ui/.env` file to enable Google Auth and add the Google Client ID that you created when you - in this example - previously [configured Google as the Identity Provider](./google-auth.md).
+First, you will need to edit the `ui/.env` file to enable Google Auth and add the Google Client ID that you created when you - in this example - previously [configured Google as the Identity Provider](/server/google-auth).
 
 ```sh
 REACT_APP_GOOGLE_AUTH_ENABLED=true

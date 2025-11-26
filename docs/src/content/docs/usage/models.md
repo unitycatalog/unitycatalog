@@ -32,7 +32,7 @@ We will use a local Unity Catalog server to get started.
 
 :::note[First time working with Unity Catalog?]
 
-If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md) first.
+If this is your first time spinning up a UC server, you might want to check out the [Quickstart](/quickstart) first.
 
 :::
 
@@ -119,7 +119,7 @@ Created version '1' of model 'unity.default.iris'.
 2024/09/24 20:51:29 INFO mlflow.tracking._tracking_service.client: 🧪 View experiment at: http://127.0.0.1:5000/#/experiments/0.
 ```
 
-The results can be seen in the Unity Catalog UI at [http://localhost:3000](http://localhost:3000). For more information, dive deeper into the [Unity Catalog UI](./ui.md).
+The results can be seen in the Unity Catalog UI at [http://localhost:3000](http://localhost:3000). For more information, dive deeper into the [Unity Catalog UI](/usage/ui).
 
 ![UC UI Models](../assets/images/uc_ui_models.png)
 

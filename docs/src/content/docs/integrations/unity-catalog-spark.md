@@ -127,7 +127,7 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
 
 - `--packages` points to the delta-spark and unitycatalog-spark packages; update the version numbers to your current versions.
 - `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance
-- `spark.sql.catalog.<catalog_name>.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
+- `spark.sql.catalog.<catalog_name>.token` is empty indicating there is no authentication; refer to [auth](/server/auth) for more information.
 - `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog.
 
 :::note[Three-part and two-part naming conventions]

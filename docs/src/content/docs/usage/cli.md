@@ -14,7 +14,7 @@ If you have set up authentication, you will need to provide an authentication to
 bin/uc --auth_token $token catalog list
 ```
 
-where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md) documentation.
+where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](/server/auth) documentation.
 
 :::
 
@@ -250,7 +250,7 @@ bin/uc schema delete \
 
 You can use the Unity Catalog CLI to manage tables within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting tables. Let's take a look at each operation.
 
-You can also read more in the [Tables](./tables/deltalake.md) section.
+You can also read more in the [Tables](/usage/tables/deltalake) section.
 
 ### List Tables
 
@@ -306,7 +306,7 @@ bin/uc table create \
   --storage_location "/path/to/storage"
 ```
 
-When running against UC server, the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
+When running against UC server, the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, the [server configuration](/server/configuration) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
 
 ### Read a Delta Table
 
@@ -349,7 +349,7 @@ bin/uc table delete \
 
 You can use the Unity Catalog CLI to manage volumes within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting volumes. Let's take a look at each operation.
 
-You can also read more in the [Volumes](./volumes.md) section.
+You can also read more in the [Volumes](/usage/volumes) section.
 
 ### List Volumes
 
@@ -389,7 +389,7 @@ bin/uc volume create \
 ```
 
 1. `full_name`: The full name of the volume, which is a concatenation of the catalog name, schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
-2. `storage_location`: The storage location associated with the volume. When running against UC OSS server, the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly. When running against Databricks Unity Catalog, the storage location for EXTERNAL volume can only be an S3 location which has been configured as an `external location` in your Databricks workspace.
+2. `storage_location`: The storage location associated with the volume. When running against UC OSS server, the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, the [server configuration](/server/configuration) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly. When running against Databricks Unity Catalog, the storage location for EXTERNAL volume can only be an S3 location which has been configured as an `external location` in your Databricks workspace.
 3. `comment`: _\[Optional\]_ The description of the volume.
 
 Here's an example that creates an external volume with full name `my_catalog.my_schema.my_volume` with storage location `/path/to/storage`:
@@ -469,7 +469,7 @@ bin/uc volume delete \
 
 You can use the Unity Catalog CLI to manage functions within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting function. Let's take a look at each operation.
 
-You can also read more in the [Functions](./functions.md) section.
+You can also read more in the [Functions](/usage/functions) section.
 
 ### List Functions
 
@@ -611,7 +611,7 @@ bin/uc registered_model update \
 2. `new_name`: _\[Optional\]_ The new name of the volume.
 3. `comment`: _\[Optional\]_ The description of the function.
 
-Read more in the [Models](models.md) documentatino.
+Read more in the [Models](/usage/models) documentation.
 
 ## CLI Server Configuration
 

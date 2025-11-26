@@ -24,7 +24,7 @@ Before you begin, ensure you have the following:
 
 ### Unity Catalog Open Source
 
-Ensure that you have met all of the prerequisites and have followed the [Unity Catalog Quickstart Guide](../quickstart.md). Once your server is up and running and you are able to create a catalog, schemas, and functions, you're all set to continue with this guide.
+Ensure that you have met all of the prerequisites and have followed the [Unity Catalog Quickstart Guide](/quickstart). Once your server is up and running and you are able to create a catalog, schemas, and functions, you're all set to continue with this guide.
 
 To see interactive examples of end-to-end workflows using Unity Catalog client capabilities for GenAI tool use, you can view or download the following notebooks:
 
@@ -172,5 +172,5 @@ agent_executor.invoke({"input": "What is the sum of 4321.9876 and 1234.5678?"})
 
 ## Next Steps
 
-- To learn more about Unity Catalog AI functionality, see [the main guide](usage.md).
-- To explore the available GenAI framework integrations, see [the integrations guide](integrations/index.md).
+- To learn more about Unity Catalog AI functionality, see [the main guide](/ai/usage).
+- To explore the available GenAI framework integrations, see [the integrations guide](/ai/integrations).
