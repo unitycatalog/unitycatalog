@@ -504,10 +504,11 @@ public class ApiClient {
       throw new IllegalArgumentException("Must provide an even number of arguments (name-version pairs)");
     }
 
-    String baseUserAgent = "UnityCatalog-Java-Client/" + {{invokerPackage}}.VersionUtils.VERSION;
+    // Build user agent starting with base
+    StringBuilder userAgentBuilder = new StringBuilder("UnityCatalog-Java-Client/")
+        .append({{invokerPackage}}.VersionUtils.VERSION);
 
-    // Build application info from all pairs
-    StringBuilder appInfoBuilder = new StringBuilder();
+    // Append application info from all pairs
     for (int i = 0; i < nameVersionPairs.length; i += 2) {
       String name = nameVersionPairs[i];
       String version = nameVersionPairs[i + 1];
@@ -516,23 +517,14 @@ public class ApiClient {
         throw new IllegalArgumentException("Client name at index " + i + " cannot be null or empty");
       }
 
-      if (appInfoBuilder.length() > 0) {
-        appInfoBuilder.append(" ");
-      }
-
-      appInfoBuilder.append(name.trim());
+      userAgentBuilder.append(" ").append(name.trim());
       if (version != null && !version.trim().isEmpty()) {
-        appInfoBuilder.append("/").append(version.trim());
+        userAgentBuilder.append("/").append(version.trim());
       }
     }
 
-    // Set the user agent, replacing any previous client info
-    if (appInfoBuilder.length() > 0) {
-      this.userAgent = baseUserAgent + " " + appInfoBuilder.toString();
-    } else {
-      this.userAgent = baseUserAgent;
-    }
-
+    this.userAgent = userAgentBuilder.toString();
     return this;
   }
 }
+

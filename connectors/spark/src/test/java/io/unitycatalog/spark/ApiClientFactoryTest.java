@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 public class ApiClientFactoryTest {
 
   @Test
-  public void testUserAgentContainsSpark() throws Exception {
+  public void testUserAgentContainsSparkAndDelta() throws Exception {
     ApiClientConf clientConf = new ApiClientConf();
     URI uri = new URI("http://localhost:8080");
     ApiClient client = ApiClientFactory.createApiClient(clientConf, uri, null);
@@ -23,29 +23,14 @@ public class ApiClientFactoryTest {
     // Verify the user agent contains the base Unity Catalog client
     assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
 
-    // Verify the user agent contains Spark (required)
-    assertThat(userAgent).contains("Spark");
+    // Get expected Spark version
+    String expectedSparkVersion = org.apache.spark.package$.MODULE$.SPARK_VERSION();
+    assertThat(userAgent).contains("Spark/" + expectedSparkVersion);
 
-    // Extract and verify Spark version (version may be empty but Spark must be present)
-    boolean foundSpark = false;
-    String[] parts = userAgent.split(" ");
-    for (String part : parts) {
-      if (part.startsWith("Spark")) {
-        foundSpark = true;
-        break;
-      }
-    }
-    assertThat(foundSpark).as("Spark must be present in User-Agent").isTrue();
-
-    // Delta is optional - verify it if present
-    boolean foundDelta = false;
-    for (String part : parts) {
-      if (part.startsWith("Delta")) {
-        foundDelta = true;
-        break;
-      }
-    }
-    // Note: Delta may or may not be present depending on classpath
+    // Get expected Delta version and verify
+    String expectedDeltaVersion = io.delta.package$.MODULE$.VERSION();
+    assertThat(expectedDeltaVersion).isNotNull();
+    assertThat(userAgent).contains("Delta/" + expectedDeltaVersion);
   }
 
   @Test
@@ -59,12 +44,8 @@ public class ApiClientFactoryTest {
 
     // Verify user agent is set correctly even with authentication
     assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
-
-    // Verify Spark is present (required)
     assertThat(userAgent).contains("Spark");
-
-    // Delta is optional
-    // assertThat(userAgent).contains("Delta"); // May or may not be present
+    assertThat(userAgent).contains("Delta");
 
     // Verify that the token is not part of the user agent
     assertThat(userAgent).doesNotContain(token);
@@ -94,8 +75,6 @@ public class ApiClientFactoryTest {
       }
     }
     assertThat(hasSparkOrVersion).isTrue();
-
-    // Delta is optional - we don't assert on it
   }
 
   @Test
@@ -110,7 +89,6 @@ public class ApiClientFactoryTest {
     // Verify user agent is still set with at least Spark
     assertThat(client.getUserAgent()).startsWith("UnityCatalog-Java-Client/");
     assertThat(client.getUserAgent()).contains("Spark");
-    // Delta is optional
   }
 
   @Test
