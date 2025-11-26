@@ -2,6 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicSessionCredentials;
+import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
@@ -14,7 +15,6 @@ import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.ByteArrayInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -29,9 +29,9 @@ import org.slf4j.LoggerFactory;
 
 public class FileOperations {
   private static final Logger LOGGER = LoggerFactory.getLogger(FileOperations.class);
-  private final ServerProperties serverProperties;
   private static String modelStorageRootCached;
   private static String modelStorageRootPropertyCached;
+  private final ServerProperties serverProperties;
 
   public FileOperations(ServerProperties serverProperties) {
     this.serverProperties = serverProperties;
@@ -47,50 +47,6 @@ public class FileOperations {
     modelStorageRootCached = null;
   }
 
-  // Model specific storage root handlers and convenience methods
-  private String getModelStorageRoot() {
-    String currentModelStorageRoot = serverProperties.get(Property.MODEL_STORAGE_ROOT);
-    if (modelStorageRootPropertyCached != currentModelStorageRoot) {
-      // This means the property has been updated from the previous read, or this is the first time
-      // reading it
-      reset();
-    }
-    if (modelStorageRootCached != null) {
-      return modelStorageRootCached;
-    }
-    String modelStorageRoot = currentModelStorageRoot;
-    if (modelStorageRoot == null) {
-      // If the model storage root is empty, use the CWD
-      modelStorageRoot = System.getProperty("user.dir");
-    }
-    // If the model storage root is not a valid URI, make it one
-    if (!UriUtils.isValidURI(modelStorageRoot)) {
-      // Convert to an absolute path
-      modelStorageRoot = Paths.get(modelStorageRoot).toUri().toString();
-    }
-    // Check if the modelStorageRoot ends with a slash and remove it if it does
-    while (modelStorageRoot.endsWith("/")) {
-      modelStorageRoot = modelStorageRoot.substring(0, modelStorageRoot.length() - 1);
-    }
-    modelStorageRootCached = modelStorageRoot;
-    modelStorageRootPropertyCached = currentModelStorageRoot;
-    return modelStorageRoot;
-  }
-
-  private String getModelDirectoryURI(String entityFullName) {
-    return getModelStorageRoot() + "/" + entityFullName.replace(".", "/");
-  }
-
-  public String getModelStorageLocation(String catalogId, String schemaId, String modelId) {
-    return getModelDirectoryURI(catalogId + "." + schemaId + ".models." + modelId);
-  }
-
-  public String getModelVersionStorageLocation(
-      String catalogId, String schemaId, String modelId, String versionId) {
-    return getModelDirectoryURI(
-        catalogId + "." + schemaId + ".models." + modelId + ".versions." + versionId);
-  }
-
   private static URI createURI(String uri) {
     if (uri.startsWith("s3://") || uri.startsWith("file:")) {
       return URI.create(uri);
@@ -99,24 +55,7 @@ public class FileOperations {
     }
   }
 
-  public void deleteDirectory(String path) {
-    URI directoryUri = createURI(path);
-    UriUtils.validateURI(directoryUri);
-    if (directoryUri.getScheme() == null || directoryUri.getScheme().equals("file")) {
-      try {
-        deleteLocalDirectory(Paths.get(directoryUri));
-      } catch (RuntimeException | IOException e) {
-        throw new BaseException(ErrorCode.INTERNAL, "Failed to delete directory: " + path, e);
-      }
-    } else if (directoryUri.getScheme().equals("s3")) {
-      modifyS3Directory(directoryUri, false);
-    } else {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + directoryUri.getScheme());
-    }
-  }
-
-  public static void deleteLocalDirectory(Path dirPath) throws IOException {
+  private static void deleteLocalDirectory(Path dirPath) throws IOException {
     if (Files.exists(dirPath)) {
       try (Stream<Path> walk = Files.walk(dirPath, FileVisitOption.FOLLOW_LINKS)) {
         walk.sorted(Comparator.reverseOrder())
@@ -130,62 +69,7 @@ public class FileOperations {
                 });
       }
     } else {
-      throw new FileNotFoundException("Directory does not exist: " + dirPath);
-    }
-  }
-
-  private URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
-    String bucketName = parsedUri.getHost();
-    String path = parsedUri.getPath().substring(1); // Remove leading '/'
-    String accessKey = serverProperties.get(Property.AWS_S3_ACCESS_KEY);
-    String secretKey = serverProperties.get(Property.AWS_S3_SECRET_KEY);
-    String sessionToken = serverProperties.get(Property.AWS_S3_SESSION_TOKEN);
-    String region = serverProperties.get(Property.AWS_REGION);
-
-    BasicSessionCredentials sessionCredentials =
-        new BasicSessionCredentials(accessKey, secretKey, sessionToken);
-    AmazonS3 s3Client =
-        AmazonS3ClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(sessionCredentials))
-            .withRegion(region)
-            .build();
-
-    if (createOrDelete) {
-
-      if (!path.endsWith("/")) {
-        path += "/";
-      }
-      if (s3Client.doesObjectExist(bucketName, path)) {
-        throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + path);
-      }
-      try {
-        // Create empty content
-        byte[] emptyContent = new byte[0];
-        ByteArrayInputStream emptyContentStream = new ByteArrayInputStream(emptyContent);
-
-        // Set metadata for the empty content
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength(0);
-        s3Client.putObject(new PutObjectRequest(bucketName, path, emptyContentStream, metadata));
-        LOGGER.debug("Directory created successfully: {}", path);
-        return URI.create(String.format("s3://%s/%s", bucketName, path));
-      } catch (Exception e) {
-        throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
-      }
-    } else {
-      ObjectListing listing;
-      ListObjectsRequest req = new ListObjectsRequest().withBucketName(bucketName).withPrefix(path);
-      do {
-        listing = s3Client.listObjects(req);
-        listing
-            .getObjectSummaries()
-            .forEach(
-                object -> {
-                  s3Client.deleteObject(bucketName, object.getKey());
-                });
-        req.setMarker(listing.getNextMarker());
-      } while (listing.isTruncated());
-      return URI.create(String.format("s3://%s/%s", bucketName, path));
+      throw new IOException("Directory does not exist: " + dirPath);
     }
   }
 
@@ -270,6 +154,128 @@ public class FileOperations {
       localUri = localUri.substring(0, localUri.length() - 1);
     }
     return localUri;
+  }
+
+  // Model specific storage root handlers and convenience methods
+  private String getModelStorageRoot() {
+    String currentModelStorageRoot = serverProperties.get(Property.MODEL_STORAGE_ROOT);
+    if (modelStorageRootPropertyCached != currentModelStorageRoot) {
+      // This means the property has been updated from the previous read, or this is the first time
+      // reading it
+      reset();
+    }
+    if (modelStorageRootCached != null) {
+      return modelStorageRootCached;
+    }
+    String modelStorageRoot = currentModelStorageRoot;
+    if (modelStorageRoot == null) {
+      // If the model storage root is empty, use the CWD
+      modelStorageRoot = System.getProperty("user.dir");
+    }
+    // If the model storage root is not a valid URI, make it one
+    if (!UriUtils.isValidURI(modelStorageRoot)) {
+      // Convert to an absolute path
+      modelStorageRoot = Paths.get(modelStorageRoot).toUri().toString();
+    }
+    // Check if the modelStorageRoot ends with a slash and remove it if it does
+    while (modelStorageRoot.endsWith("/")) {
+      modelStorageRoot = modelStorageRoot.substring(0, modelStorageRoot.length() - 1);
+    }
+    modelStorageRootCached = modelStorageRoot;
+    modelStorageRootPropertyCached = currentModelStorageRoot;
+    return modelStorageRoot;
+  }
+
+  private String getModelDirectoryURI(String entityFullName) {
+    return getModelStorageRoot() + "/" + entityFullName.replace(".", "/");
+  }
+
+  public String getModelStorageLocation(String catalogId, String schemaId, String modelId) {
+    return getModelDirectoryURI(catalogId + "." + schemaId + ".models." + modelId);
+  }
+
+  public String getModelVersionStorageLocation(
+      String catalogId, String schemaId, String modelId, String versionId) {
+    return getModelDirectoryURI(
+        catalogId + "." + schemaId + ".models." + modelId + ".versions." + versionId);
+  }
+
+  public void deleteDirectory(String path) {
+    URI directoryUri = createURI(path);
+    UriUtils.validateURI(directoryUri);
+    if (directoryUri.getScheme() == null || directoryUri.getScheme().equals("file")) {
+      try {
+        deleteLocalDirectory(Paths.get(directoryUri));
+      } catch (RuntimeException | IOException e) {
+        throw new BaseException(ErrorCode.INTERNAL, "Failed to delete directory: " + path, e);
+      }
+    } else if (directoryUri.getScheme().equals("s3")) {
+      modifyS3Directory(directoryUri, false);
+    } else {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + directoryUri.getScheme());
+    }
+  }
+
+  private URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
+    String bucketName = parsedUri.getHost();
+    String path = parsedUri.getPath().substring(1); // Remove leading '/'
+    String accessKey = serverProperties.get(Property.AWS_S3_ACCESS_KEY);
+    String secretKey = serverProperties.get(Property.AWS_S3_SECRET_KEY);
+    String sessionToken = serverProperties.get(Property.AWS_S3_SESSION_TOKEN);
+    String endpointUrl = serverProperties.get(Property.AWS_S3_ENDPOINT_URL);
+    String region = serverProperties.get(Property.AWS_REGION);
+
+    BasicSessionCredentials sessionCredentials =
+        new BasicSessionCredentials(accessKey, secretKey, sessionToken);
+    AmazonS3ClientBuilder s3ClientBuilder =
+        AmazonS3ClientBuilder.standard()
+            .withCredentials(new AWSStaticCredentialsProvider(sessionCredentials))
+            .withRegion(region);
+
+    if (endpointUrl != null && !endpointUrl.isEmpty()) {
+      s3ClientBuilder.withEndpointConfiguration(
+          new AwsClientBuilder.EndpointConfiguration(endpointUrl, region));
+    }
+    AmazonS3 s3Client = s3ClientBuilder.build();
+
+    if (createOrDelete) {
+
+      if (!path.endsWith("/")) {
+        path += "/";
+      }
+      if (s3Client.doesObjectExist(bucketName, path)) {
+        throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + path);
+      }
+      try {
+        // Create empty content
+        byte[] emptyContent = new byte[0];
+        ByteArrayInputStream emptyContentStream = new ByteArrayInputStream(emptyContent);
+
+        // Set metadata for the empty content
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentLength(0);
+        s3Client.putObject(new PutObjectRequest(bucketName, path, emptyContentStream, metadata));
+        LOGGER.debug("Directory created successfully: {}", path);
+        return URI.create(String.format("s3://%s/%s", bucketName, path));
+      } catch (Exception e) {
+        throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
+      }
+    } else {
+      ObjectListing listing;
+      ListObjectsRequest req = new ListObjectsRequest().withBucketName(bucketName).withPrefix(path);
+      do {
+        listing = s3Client.listObjects(req);
+        listing
+            .getObjectSummaries()
+            .forEach(
+                object -> {
+                  s3Client.deleteObject(bucketName, object.getKey());
+                });
+        req.setMarker(listing.getNextMarker());
+      } while (listing.isTruncated());
+      return URI.create(String.format("s3://%s/%s", bucketName, path));
+    }
   }
 
   private String getManagedTablesStorageRoot() {

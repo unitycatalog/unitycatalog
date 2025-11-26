@@ -2599,6 +2599,9 @@ components:
           $ref: '#/components/schemas/AzureUserDelegationSAS'
         gcp_oauth_token:
           $ref: '#/components/schemas/GcpOauthToken'
+        endpoint_url:
+          description: Optional S3 compatible endpoint URL
+          type: string
         expiration_time:
           description: |
             Server time when the credential will expire, in epoch milliseconds.

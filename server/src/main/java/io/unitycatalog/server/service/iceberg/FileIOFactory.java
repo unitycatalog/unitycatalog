@@ -1,13 +1,21 @@
 package io.unitycatalog.server.service.iceberg;
 
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
+
 import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
-import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
+import io.unitycatalog.server.utils.ServerProperties;
+import java.net.URI;
+import java.util.Map;
+import java.util.Set;
 import lombok.SneakyThrows;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.azure.AzureProperties;
@@ -21,24 +29,16 @@ import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.sts.model.Credentials;
-
-import java.net.URI;
-import java.util.Map;
-import java.util.Set;
-
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 
 public class FileIOFactory {
 
   private final CloudCredentialVendor cloudCredentialVendor;
   private final Map<String, S3StorageConfig> s3Configurations;
 
-  public FileIOFactory(CloudCredentialVendor cloudCredentialVendor,
-      ServerProperties serverProperties) {
+  public FileIOFactory(
+      CloudCredentialVendor cloudCredentialVendor, ServerProperties serverProperties) {
     this.cloudCredentialVendor = cloudCredentialVendor;
     this.s3Configurations = serverProperties.getS3Configurations();
   }
@@ -62,7 +62,8 @@ public class FileIOFactory {
 
     // NOTE: when fileio caching is implemented, need to set/deal with expiry here
     Map<String, String> properties =
-        Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(),
+        Map.of(
+            AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(),
             credential.getSasToken());
 
     ADLSFileIO result = new ADLSFileIO();
@@ -89,20 +90,29 @@ public class FileIOFactory {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
 
     S3FileIO s3FileIO =
-        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context),
-            s3StorageConfig.getRegion()));
+        new S3FileIO(
+            () ->
+                getS3Client(
+                    getAwsCredentialsProvider(context),
+                    s3StorageConfig.getRegion(),
+                    s3StorageConfig.getEndpointUrl()));
 
     s3FileIO.initialize(Map.of());
 
     return s3FileIO;
   }
 
-  protected S3Client getS3Client(AwsCredentialsProvider awsCredentialsProvider, String region) {
-    return S3Client.builder()
-        .region(Region.of(region))
-        .credentialsProvider(awsCredentialsProvider)
-        .forcePathStyle(false)
-        .build();
+  protected S3Client getS3Client(
+      AwsCredentialsProvider awsCredentialsProvider, String region, String endpointUrl) {
+    S3ClientBuilder s3ClientBuilder =
+        S3Client.builder()
+            .region(Region.of(region))
+            .credentialsProvider(awsCredentialsProvider)
+            .forcePathStyle(false);
+    if (endpointUrl != null && !endpointUrl.isEmpty()) {
+      s3ClientBuilder.endpointOverride(URI.create(endpointUrl));
+    }
+    return s3ClientBuilder.build();
   }
 
   private AwsCredentialsProvider getAwsCredentialsProvider(CredentialContext context) {
@@ -121,8 +131,6 @@ public class FileIOFactory {
   private CredentialContext getCredentialContextFromTableLocation(URI tableLocationUri) {
     // FIXME!! privileges are defaulted to READ only here for now as Iceberg REST impl doesn't
     // support write
-    return CredentialContext.create(tableLocationUri,
-        Set.of(CredentialContext.Privilege.SELECT));
+    return CredentialContext.create(tableLocationUri, Set.of(CredentialContext.Privilege.SELECT));
   }
 }
-

@@ -22,6 +22,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.stream.Stream;
 import com.google.auth.oauth2.AccessToken;
+import io.unitycatalog.server.utils.ServerProperties;
 import org.junit.jupiter.params.provider.Arguments;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mock;
@@ -59,8 +60,8 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     cloudCredentialVendor = new CloudCredentialVendor(
             awsCredentialVendor,
             azureCredentialVendor,
-            gcpCredentialVendor
-    );
+            gcpCredentialVendor,
+            new ServerProperties(serverProperties));
   }
 
   private void setupAwsCredentials() {

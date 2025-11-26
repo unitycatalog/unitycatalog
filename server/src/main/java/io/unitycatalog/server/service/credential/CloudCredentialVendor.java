@@ -5,6 +5,7 @@ import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
 import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
 import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 
+import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
@@ -13,12 +14,14 @@ import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.net.URI;
+import java.util.Map;
 import java.util.Set;
-import com.google.auth.oauth2.AccessToken;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class CloudCredentialVendor {
@@ -26,19 +29,21 @@ public class CloudCredentialVendor {
   private final AwsCredentialVendor awsCredentialVendor;
   private final AzureCredentialVendor azureCredentialVendor;
   private final GcpCredentialVendor gcpCredentialVendor;
+  private final Map<String, S3StorageConfig> s3Configurations;
 
   public CloudCredentialVendor(
       AwsCredentialVendor awsCredentialVendor,
       AzureCredentialVendor azureCredentialVendor,
-      GcpCredentialVendor gcpCredentialVendor) {
+      GcpCredentialVendor gcpCredentialVendor,
+      ServerProperties serverProperties) {
+    this.s3Configurations = serverProperties.getS3Configurations();
     this.awsCredentialVendor = awsCredentialVendor;
     this.azureCredentialVendor = azureCredentialVendor;
     this.gcpCredentialVendor = gcpCredentialVendor;
   }
 
   public TemporaryCredentials vendCredential(
-      String path,
-      Set<CredentialContext.Privilege> privileges) {
+      String path, Set<CredentialContext.Privilege> privileges) {
     if (path == null || path.isEmpty()) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Storage location is null or empty.");
     }
@@ -59,22 +64,29 @@ public class CloudCredentialVendor {
       switch (storageScheme) {
         case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
           AzureCredential azureCredential = vendAzureCredential(context);
-          temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS()
-                  .sasToken(azureCredential.getSasToken()))
+          temporaryCredentials
+              .azureUserDelegationSas(
+                  new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
               .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
         }
         case URI_SCHEME_GS -> {
           AccessToken gcpToken = vendGcpToken(context);
-          temporaryCredentials.gcpOauthToken(new GcpOauthToken()
-                  .oauthToken(gcpToken.getTokenValue()))
+          temporaryCredentials
+              .gcpOauthToken(new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
               .expirationTime(gcpToken.getExpirationTime().getTime());
         }
         case URI_SCHEME_S3 -> {
+          S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
+          String endpointUrl = s3StorageConfig.getEndpointUrl();
+          if (endpointUrl != null && !endpointUrl.isEmpty()) {
+            temporaryCredentials.setEndpointUrl(endpointUrl);
+          }
           Credentials awsSessionCredentials = vendAwsCredential(context);
-          temporaryCredentials.awsTempCredentials(new AwsCredentials()
-              .accessKeyId(awsSessionCredentials.accessKeyId())
-              .secretAccessKey(awsSessionCredentials.secretAccessKey())
-              .sessionToken(awsSessionCredentials.sessionToken()));
+          temporaryCredentials.awsTempCredentials(
+              new AwsCredentials()
+                  .accessKeyId(awsSessionCredentials.accessKeyId())
+                  .secretAccessKey(awsSessionCredentials.secretAccessKey())
+                  .sessionToken(awsSessionCredentials.sessionToken()));
 
           // Explicitly set the expiration time for the temporary credentials if it's a non-static
           // credential. For static credential, the expiration time can be nullable.
