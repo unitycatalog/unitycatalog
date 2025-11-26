@@ -3,7 +3,7 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.spark.auth.AbfsVendedTokenProvider;
+import io.unitycatalog.spark.auth.storage.AbfsVendedTokenProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.sparkproject.guava.base.Objects;
