@@ -6,7 +6,7 @@ import io.unitycatalog.client.ApiClient;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 
-public class ApiClientFactoryTest extends BaseSparkIntegrationTest {
+public class ApiClientFactoryTest {
   @Test
   public void testApiClientBaseUri() {
     ApiClientConf clientConf = new ApiClientConf();
