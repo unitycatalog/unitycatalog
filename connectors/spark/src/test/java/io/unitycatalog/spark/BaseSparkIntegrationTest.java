@@ -13,13 +13,9 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
-<<<<<<< HEAD
-import java.util.*;
-=======
 import java.util.List;
 import java.util.Optional;
 import org.apache.spark.sql.Row;
->>>>>>> 035c61d6 (Refactor ExternalTableReadWriteTest (#1223))
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
