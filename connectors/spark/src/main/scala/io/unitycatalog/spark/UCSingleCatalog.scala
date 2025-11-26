@@ -187,6 +187,25 @@ object UCSingleCatalog {
     }
   }
 
+  /**
+   * Constructs a fully qualified table name for Unity Catalog API calls.
+   *
+   * This method creates a three-part name in the format `catalog.schema.table` by combining
+   * the catalog name with the schema name (from the identifier's namespace) and table name.
+   * It is NOT backtick quoted like what is usually used in SQL statements even if the names have
+   * special characters like hyphens.
+   *
+   * Example:
+   * catalogName=catalog, ident=(schema, table): it returns "catalog.schema.table"
+   * catalogName=cata-log, ident=(sche-ma, ta-ble): it returns "cata-log.sche-ma.ta-ble" (no quote)
+   * catalogName=catalog, ident=((schema1, schema2), table): it throws
+   *   ApiException(Nested namespace not supported)
+   *
+   * @param catalogName the name of the catalog
+   * @param ident the table identifier containing the namespace (schema) and table name
+   * @return a fully qualified table name in the format "catalog.schema.table"
+   * @throws ApiException if the identifier contains nested namespaces (more than one level)
+   */
   def fullTableNameForApi(catalogName: String, ident: Identifier): String = {
     checkUnsupportedNestedNamespace(ident.namespace())
     Seq(catalogName, ident.namespace()(0), ident.name()).mkString(".")
