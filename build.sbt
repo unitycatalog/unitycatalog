@@ -171,12 +171,12 @@ lazy val controlApi = (project in file("target/control/java"))
 
 lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
     javaOnlyReleaseSettings,
     Compile / compile / javacOptions ++= javacRelease11,
+    javaCheckstyleTestOnlySettings("dev/checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,

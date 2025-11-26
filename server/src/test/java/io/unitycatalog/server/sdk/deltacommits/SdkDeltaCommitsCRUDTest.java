@@ -29,6 +29,7 @@ import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
+import io.unitycatalog.server.utils.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.HashMap;
 import java.util.List;
@@ -73,7 +74,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   private DeltaMetadata deltaMetadataWithTableId(String tableId) {
-    Map<String, String> propertiesWithTableId = Map.of("ucTableId", tableId);
+    Map<String, String> propertiesWithTableId =
+        Map.of(TableProperties.UC_TABLE_ID_KEY, tableId);
     return new DeltaMetadata()
         .properties(new DeltaCommitMetadataProperties().properties(propertiesWithTableId));
   }
@@ -335,7 +337,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         c -> c.getCommitInfo().setFileModificationTimestamp(-1L),
         "file_modification_timestamp");
 
-    // Commit with properties but without ucTableId
+    // Commit with properties but without io.unitycatalog.tableId
     checkCommitInvalidParameter(
         1L,
         c ->
@@ -343,18 +345,19 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
                 .setProperties(
                     new DeltaCommitMetadataProperties()
                         .properties(Map.of("randomProperty", "randomValue"))),
-        "commit does not contain ucTableId in the properties.");
+        "commit does not contain io.unitycatalog.tableId in the properties");
 
-    // Commit with metadata but without ucTableId in properties
+    // Commit with metadata but without io.unitycatalog.tableId in properties
     Map<String, String> properties1 = Map.of("customProperty", "customValue");
     DeltaMetadata metadata1 =
         new DeltaMetadata().properties(new DeltaCommitMetadataProperties().properties(properties1));
-    checkCommitInvalidParameter(1L, c -> c.setMetadata(metadata1), "ucTableId");
-    // Commit with metadata but with wrong ucTableId
+    checkCommitInvalidParameter(
+        1L, c -> c.setMetadata(metadata1), TableProperties.UC_TABLE_ID_KEY);
+    // Commit with metadata but with wrong io.unitycatalog.tableId
     checkCommitInvalidParameter(
         1L,
         c -> c.setMetadata(deltaMetadataWithTableId(ZERO_UUID)),
-        "does not match the properties ucTableId");
+        "does not match the properties io.unitycatalog.tableId");
 
     // Commit version 1 successfully
     DeltaCommit commit1 =
@@ -581,7 +584,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   public void testCommitWithMetadata() throws ApiException {
     // Commit with metadata properties
     Map<String, String> properties1 = new HashMap<>();
-    properties1.put("ucTableId", tableInfo.getTableId());
+    properties1.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
     properties1.put("customProperty", "customValue");
     properties1.put("delta.feature.test", "enabled");
 
@@ -597,7 +600,9 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // Retrieve the table and verify properties were updated
     TableInfo updatedTable1 = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     assertNotNull(updatedTable1.getProperties());
-    assertEquals(tableInfo.getTableId(), updatedTable1.getProperties().get("ucTableId"));
+    assertEquals(
+        tableInfo.getTableId(),
+        updatedTable1.getProperties().get(TableProperties.UC_TABLE_ID_KEY));
     assertEquals("customValue", updatedTable1.getProperties().get("customProperty"));
     assertEquals("enabled", updatedTable1.getProperties().get("delta.feature.test"));
 
@@ -647,7 +652,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Commit with all metadata fields
     Map<String, String> properties2 = new HashMap<>();
-    properties2.put("ucTableId", tableInfo.getTableId());
+    properties2.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
     properties2.put("customProperty", "customValueNew");
     metadataProperties = new DeltaCommitMetadataProperties().properties(properties2);
     columnInfos =
