@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
 import org.junit.jupiter.api.Test;
@@ -171,12 +172,18 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(session.catalog().tableExists(fullName)).isFalse();
     assertThatThrownBy(() -> sql("DROP TABLE a.b.c.d"))
         .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Invalid table name");
+        .hasMessageContaining("Nested namespaces are not supported");
+  }
+
+  protected String quoteEntityName(String entityName) {
+    return Arrays.stream(entityName.split("\\."))
+        .map(x -> x.contains("-") ? String.format("`%s`", x) : x)
+        .collect(Collectors.joining("."));
   }
 
   protected void testTableReadWrite(String tableFullName) {
-    assertThat(sql("SELECT * FROM %s", tableFullName)).isEmpty();
-    sql("INSERT INTO %s SELECT 1, 'a'", tableFullName);
-    validateRows(sql("SELECT * FROM %s", tableFullName), Pair.of(1, "a"));
+    assertThat(sql("SELECT * FROM %s", quoteEntityName(tableFullName))).isEmpty();
+    sql("INSERT INTO %s SELECT 1, 'a'", quoteEntityName(tableFullName));
+    validateRows(sql("SELECT * FROM %s", quoteEntityName(tableFullName)), Pair.of(1, "a"));
   }
 }

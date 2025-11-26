@@ -64,6 +64,28 @@ object Checkstyle {
   }
 
   /**
+   * Returns a sequence of SBT settings to enable Java Checkstyle only for test sources.
+   * This is useful for modules with auto-generated compile sources that may not comply with
+   * checkstyle rules, but where you want to enforce style checks on hand-written test code.
+   */
+  def javaCheckstyleTestOnlySettings(checkstyleFile: String): Def.SettingsDefinition = {
+    // Can be run explicitly via: build/sbt $module/Test/checkstyle
+    // Will automatically be run during test compilation and test execution
+    Seq(
+      checkstyleConfigLocation := CheckstyleConfigLocation.File(checkstyleFile),
+      checkstyleSeverityLevel := CheckstyleSeverityLevel.Ignore,
+
+      testJavastyle := {
+        (Test / checkstyle).value
+        javaCheckstyle(streams.value.log, (Compile / target).value / "checkstyle-test-report.xml")
+      },
+      // Make test compile and test tasks depend on testJavastyle so style is checked automatically.
+      (Test / compile) := ((Test / compile) dependsOn (Test / testJavastyle)).value,
+      (Test / test) := ((Test / test) dependsOn (Test / testJavastyle)).value
+    )
+  }
+
+  /**
    * Parse the checkstyle XML report and log errors. Fail the SBT task if there are any checkstyle
    * violations.
    */

@@ -299,6 +299,32 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
         .hasMessageContaining("not support managed table");
   }
 
+  // TODO: move this into BaseTableReadWriteTest
+  @Test
+  public void hyphenInTableName() throws ApiException, IOException {
+    String catalogName = "test-catalog-name";
+    String schemaName = "test-schema-name";
+    String tableName = "test-table-name";
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, catalogName);
+    sql("CREATE SCHEMA `%s`.`%s`", catalogName, schemaName);
+    String fullTableName = String.format("%s.%s.%s", catalogName, schemaName, tableName);
+    String location = generateTableLocation(catalogName, tableName);
+    sql(
+        "CREATE TABLE %s(i INT, s STRING) USING DELTA LOCATION '%s'",
+        quoteEntityName(fullTableName), location);
+
+    testTableReadWrite(fullTableName);
+
+    List<Row> tables1 = sql("SHOW TABLES in `%s`.`%s`", catalogName, schemaName);
+    assertThat(tables1).hasSize(1);
+    assertThat(tables1.get(0).getString(0)).isEqualTo(quoteEntityName(schemaName));
+    assertThat(tables1.get(0).getString(1)).isEqualTo(tableName);
+
+    sql("DROP TABLE %s", quoteEntityName(fullTableName));
+    List<Row> tables2 = sql("SHOW TABLES in `%s`.`%s`", catalogName, schemaName);
+    assertThat(tables2).isEmpty();
+  }
+
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
