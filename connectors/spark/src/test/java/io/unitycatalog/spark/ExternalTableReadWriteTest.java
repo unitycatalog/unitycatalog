@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Stream;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -59,6 +61,7 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
    */
   protected static Stream<Arguments> cloudParameters() {
     return Stream.of(
+        Arguments.of("file", false),
         Arguments.of("s3", false),
         Arguments.of("s3", true),
         Arguments.of("gs", false),
@@ -124,13 +127,13 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
       throws ApiException, IOException {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG);
 
-    String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
+    String loc1 = cloudPathPrefix(scheme) + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
     setupExternalParquetTable(PARQUET_TABLE, loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     testTableReadWrite(t1);
 
     String loc2 =
-        scheme + "://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
+        cloudPathPrefix(scheme) + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
     setupExternalParquetTable(ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
     String t2 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
     testTableReadWrite(t2);
@@ -144,13 +147,13 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
       throws IOException {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
-    String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String loc1 = cloudPathPrefix(scheme) + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupDeltaTableLocation(loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     sql("CREATE TABLE %s USING delta LOCATION '%s'", t1, loc1);
     testTableReadWrite(t1);
 
-    String loc2 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
+    String loc2 = cloudPathPrefix(scheme) + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
     setupDeltaTableLocation(loc2, new ArrayList<>(0));
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     sql("CREATE TABLE %s USING delta LOCATION '%s'", t2, loc2);
@@ -160,7 +163,7 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
 
     // Path that does not exist
     String loc3 =
-        scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
+        cloudPathPrefix(scheme) + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
     String t3 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
     sql("CREATE TABLE %s(i INT) USING delta LOCATION '%s'", t3, loc3);
     List<Row> rows = session.table(t3).collectAsList();
@@ -258,71 +261,10 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
   }
 
-  // TODO: move this test to ManagedTableReadWriteTest.java once it's created
   @Test
-  public void testCreateManagedParquetTable() throws IOException {
-    session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
-    String location = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
-    assertThatThrownBy(
-            () -> {
-              sql(
-                  "CREATE TABLE %s(name STRING) USING parquet TBLPROPERTIES(__FAKE_PATH__='%s')",
-                  fullTableName, location);
-            })
-        .hasMessageContaining("not support managed table");
-  }
-
-  // TODO: move this test to ManagedTableReadWriteTest.java once it's created
-  @Test
-  public void testCreateManagedDeltaTable() throws IOException {
-    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
-
-    String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    String location1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    assertThatThrownBy(
-            () -> {
-              sql(
-                  "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                  fullTableName1, location1);
-            })
-        .hasMessageContaining("not support managed table");
-
-    String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    String location2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
-    assertThatThrownBy(
-            () -> {
-              sql(
-                  "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                  fullTableName2, location2);
-            })
-        .hasMessageContaining("not support managed table");
-  }
-
-  // TODO: move this into BaseTableReadWriteTest
-  @Test
-  public void hyphenInTableName() throws ApiException, IOException {
-    String catalogName = "test-catalog-name";
-    String schemaName = "test-schema-name";
-    String tableName = "test-table-name";
-    session = createSparkSessionWithCatalogs(SPARK_CATALOG, catalogName);
-    sql("CREATE SCHEMA `%s`.`%s`", catalogName, schemaName);
-    String fullTableName = String.format("%s.%s.%s", catalogName, schemaName, tableName);
-    String location = generateTableLocation(catalogName, tableName);
-    sql(
-        "CREATE TABLE %s(i INT, s STRING) USING DELTA LOCATION '%s'",
-        quoteEntityName(fullTableName), location);
-
-    testTableReadWrite(fullTableName);
-
-    List<Row> tables1 = sql("SHOW TABLES in `%s`.`%s`", catalogName, schemaName);
-    assertThat(tables1).hasSize(1);
-    assertThat(tables1.get(0).getString(0)).isEqualTo(quoteEntityName(schemaName));
-    assertThat(tables1.get(0).getString(1)).isEqualTo(tableName);
-
-    sql("DROP TABLE %s", quoteEntityName(fullTableName));
-    List<Row> tables2 = sql("SHOW TABLES in `%s`.`%s`", catalogName, schemaName);
-    assertThat(tables2).isEmpty();
+  public void hyphenInTableName() throws IOException {
+    String location = new File(dataDir, UUID.randomUUID().toString()).getCanonicalPath();
+    testHyphenInTableNameBase(Optional.of(location));
   }
 
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
@@ -354,11 +296,15 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
     return String.format("%s://test-bucket%d", scheme, bucketIndex);
   }
 
+  protected String cloudPathPrefix(String cloudScheme) {
+    return cloudScheme.equals("file") ? "" : testBucket(cloudScheme);
+  }
+
   @Override
   protected String setupDeltaTable(
       String cloudScheme, String catalogName, String tableName, List<String> partitionColumns)
       throws IOException, ApiException {
-    String cloudPrefix = cloudScheme.equals("file") ? "" : testBucket(cloudScheme);
+    String cloudPrefix = cloudPathPrefix(cloudScheme);
     String location = cloudPrefix + generateTableLocation(catalogName, tableName);
     setupDeltaTableLocation(location, partitionColumns);
     setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
