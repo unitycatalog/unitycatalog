@@ -5,9 +5,6 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
-import io.unitycatalog.client.ApiException;
-import java.io.IOException;
-import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,6 +18,17 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+/**
+ * This test suite exercise all tests in BaseTableReadWriteTest plus extra tests that are dedicated
+ * to managed tables.
+ *
+ * <p>Specifically the managed table creation logic has distinct behavior to test in this class: 1.
+ * Automatically allocate storage path by server 2. Automatically enables UC as Delta commit
+ * coordinator These behaviors are only relevant to managed tables.
+ *
+ * <p>This test needs to start server with a single managed root location on a single emulated cloud
+ * so it can not test all emulated clouds yet.
+ */
 public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
   private static final String DELTA_TABLE = "test_delta";
 
@@ -42,7 +50,7 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
   }
 
   @Test
-  public void testCreateManagedTableErrors() throws IOException {
+  public void testCreateManagedTableErrors() {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     assertThatThrownBy(() -> sql("CREATE TABLE %s(name STRING) USING parquet", fullTableName))
@@ -84,8 +92,7 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
 
   @ParameterizedTest
   @MethodSource("cloudParameters")
-  public void testCreateManagedDeltaTable(String scheme, boolean renewCredEnabled)
-      throws IOException, URISyntaxException {
+  public void testCreateManagedDeltaTable(String scheme, boolean renewCredEnabled) {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     int counter = 0;
@@ -154,8 +161,7 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
 
   @Override
   protected String setupDeltaTable(
-      String cloudScheme, String catalogName, String tableName, List<String> partitionColumns)
-      throws IOException, ApiException {
+      String cloudScheme, String catalogName, String tableName, List<String> partitionColumns) {
     // For now, we only support testing one cloud, which is the one configured by
     // managedStorageCloudScheme(). Tests are only supposed to call this function with the correct
     // cloud scheme.
