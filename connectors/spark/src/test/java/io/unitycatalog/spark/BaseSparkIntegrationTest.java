@@ -13,6 +13,7 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.apache.spark.sql.Row;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 
 public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
+  protected ArrayList<String> createdCatalogs = new ArrayList<>();
   protected static final String SPARK_CATALOG = "spark_catalog";
 
   private SchemaOperations schemaOperations;
@@ -33,8 +35,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     catalogOperations.createCatalog(
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
     schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
-    catalogOperations.createCatalog(
-        new CreateCatalog().name(SPARK_CATALOG).comment("Spark catalog"));
+    createTestCatalog(SPARK_CATALOG);
     schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(SPARK_CATALOG));
   }
 
@@ -58,6 +59,9 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
               .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
               .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
               .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred);
+      if (!List.of(SPARK_CATALOG, CATALOG_NAME).contains(catalog)) {
+        createTestCatalog(catalog);
+      }
     }
     // Use fake file system for cloud storage so that we can test credentials.
     builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());
@@ -122,14 +126,27 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return new SdkCatalogOperations(createApiClient(serverConfig));
   }
 
+  private void createTestCatalog(String catalogName) {
+    try {
+      catalogOperations.createCatalog(
+          new CreateCatalog().name(catalogName).comment("Created by BaseSparkIntegrationTest"));
+    } catch (ApiException e) {
+      throw new RuntimeException(e);
+    }
+    createdCatalogs.add(catalogName);
+  }
+
   @AfterEach
   @Override
   public void cleanUp() {
-    try {
-      catalogOperations.deleteCatalog(SPARK_CATALOG, Optional.of(true));
-    } catch (Exception e) {
-      // Ignore
+    for (String catalogName : createdCatalogs) {
+      try {
+        catalogOperations.deleteCatalog(catalogName, Optional.of(true));
+      } catch (Exception e) {
+        // Ignore
+      }
     }
+    createdCatalogs.clear();
     try {
       if (session != null) {
         session.close();
