@@ -14,9 +14,11 @@ Use the `/schemas` endpoint to work with schemas.
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
-<!-- prettier-ignore -->
-!!! note "Unity Catalog server"
-    The examples assume a local Unity Catalog server running at the default location `http://localhost:8080`. Update the `BASE_URL` if your server is running somewhere else.
+:::note[Unity Catalog server]
+
+The examples assume a local Unity Catalog server running at the default location `http://localhost:8080`. Update the `BASE_URL` if your server is running somewhere else.
+
+:::
 
 ## How to list schemas
 
@@ -122,9 +124,9 @@ This has successfully updated only the comment field without having to rewrite t
 
 Use the `DELETE` command at the `/schemas/<full-schema-name>` endpoint to delete a specific schema.
 
-<!-- prettier-ignore -->
-!!! tip "Force Delete"
-    You can add the `force` parameter to force a delete even if the catalog is not empty.
+:::tip[Force Delete]
+
+You can add the `force` parameter to force a delete even if the catalog is not empty.
 
 ```python
 BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
@@ -137,3 +139,5 @@ response = requests.delete(URL, headers=headers, params=params)
 ```
 
 This will delete the schema.
+
+:::

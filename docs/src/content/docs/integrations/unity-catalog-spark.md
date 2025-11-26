@@ -12,7 +12,11 @@ Integrating Apache Spark with Unity Catalog offers significant advantages over t
 - Make it easier to decouple business logic from file paths.
 - Provides easy access to different file formats without end users needing to know how the data is stored.
 
-!!! warning "Prerequisites" For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
+:::caution[Prerequisites]
+
+For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
+
+:::
 
 ## Download and Configure Unity Catalog for Apache Spark
 
@@ -103,14 +107,21 @@ You can run the code below to work with data stored in a Unity Catalog server.
         --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
-!!! tip "Tip" Initially, this may take a few minutes to run to download the necessary dependencies. Afterwards, you can run some quick commands to see your UC assets within Spark SQL shell.
+:::tip
 
-!!! warning "Configuring Spark session catalog"
+Initially, this may take a few minutes to run to download the necessary dependencies. Afterwards, you can run some quick commands to see your UC assets within Spark SQL shell.
 
-    Depending on your use case, you may need to configure the Spark session catalog, using for example:
-    ```sh
-    --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog"
-    ```
+:::
+
+:::caution[Configuring Spark session catalog]
+
+Depending on your use case, you may need to configure the Spark session catalog, using for example:
+
+```sh
+--conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog"
+```
+
+:::
 
 Notice the following packages (`--packages`) and configurations (`--conf`)
 
@@ -119,14 +130,13 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
 - `spark.sql.catalog.<catalog_name>.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
 - `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog.
 
-??? note "Three-part and two-part naming conventions"
+:::note[Three-part and two-part naming conventions]
 
-    ![](https://cdn.prod.website-files.com/66954b344e907bd91f1c8027/66e2bafe16edde34db6395f2_AD_4nXdgqGKSeR2abf7zutk0fiALAs6vejg6EgUDgD_Ud9Xjy7nNkapMePCNH0zJw9Wv0uh6LYn7vlGYrRn4H74G9d0CouV0PWKsUTGkjfBKM5y4Br64B2P5Eapv97bCw0swV4pddsemaWU2zyYYlkKT6Ymxu2YO.png)
+![](https://cdn.prod.website-files.com/66954b344e907bd91f1c8027/66e2bafe16edde34db6395f2_AD_4nXdgqGKSeR2abf7zutk0fiALAs6vejg6EgUDgD_Ud9Xjy7nNkapMePCNH0zJw9Wv0uh6LYn7vlGYrRn4H74G9d0CouV0PWKsUTGkjfBKM5y4Br64B2P5Eapv97bCw0swV4pddsemaWU2zyYYlkKT6Ymxu2YO.png)
 
-    As noted in [Unity Catalog 101](https://www.unitycatalog.io/blogs/unity-catalog-oss), UC has a three-part naming
-    convention of [`catalog`].[`schema`].[`asset`]. In the following examples, you can use the three-part notation such
-    as `SELECT * FROM <catalog_name>.default.marksheet;` or the two-part notation `SELECT * FROM default.marksheet;` as the
-    `defaultCatalog` is already configured.
+As noted in [Unity Catalog 101](https://www.unitycatalog.io/blogs/unity-catalog-oss), UC has a three-part naming convention of [`catalog`].[`schema`].[`asset`]. In the following examples, you can use the three-part notation such as `SELECT * FROM <catalog_name>.default.marksheet;` or the two-part notation `SELECT * FROM default.marksheet;` as the `defaultCatalog` is already configured.
+
+:::
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
@@ -457,7 +467,11 @@ Drop Table
     spark.sql("SHOW TABLES IN default").show()
     ```
 
-!!! warning Note, this action will only drop the table from UC, it will not remove the data from the file system
+:::caution
+
+Note, this action will only drop the table from UC, it will not remove the data from the file system
+
+:::
 
 <!--
 ## Benefits of using Unity Catalog for Spark

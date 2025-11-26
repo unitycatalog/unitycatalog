@@ -14,9 +14,11 @@ Use the `/volumes` endpoint to work with volumes.
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
-<!-- prettier-ignore -->
-!!! note "Unity Catalog server"
-    The examples assume a local Unity Catalog server running at the default location `http://localhost:8080`. Update the `BASE_URL` if your server is running somewhere else.
+:::note[Unity Catalog server]
+
+The examples assume a local Unity Catalog server running at the default location `http://localhost:8080`. Update the `BASE_URL` if your server is running somewhere else.
+
+:::
 
 ## How to list volumes
 

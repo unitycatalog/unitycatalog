@@ -10,7 +10,11 @@ The Unity Catalog UI allows you to interact with a Unity Catalog server to view 
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
 
-!!! warning "Prerequisites" The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
+:::caution[Prerequisites]
+
+The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
+
+:::
 
 To start the UI locally, run the following commands to start `yarn`
 

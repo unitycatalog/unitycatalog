@@ -20,13 +20,21 @@ The MLflow client connects both MLflow and Unity Catalog services (via `port:500
 
 ## Setting up MLflow and Unity Catalog
 
-!!! warning "Prerequisites" For Unity Catalog MLflow Integration, ensure you are using MLflow version >= 2.16.1 and Unity Catalog >= 0.2.
+:::caution[Prerequisites]
+
+For Unity Catalog MLflow Integration, ensure you are using MLflow version >= 2.16.1 and Unity Catalog >= 0.2.
+
+:::
 
 ### Spin up Unity Catalog
 
 We will use a local Unity Catalog server to get started.
 
-!!! question "First time working with Unity Catalog?" If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md) first.
+:::note[First time working with Unity Catalog?]
+
+If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md) first.
+
+:::
 
 Spin up a local UC server by running the following code in a terminal from the root directory of your local `unitycatalog` repository:
 
@@ -127,7 +135,11 @@ This convention allows us to apply governance to these assets (e.g., models, tab
 
 ---
 
-!!! note "MLflow Guides" Please see the [MLflow quickstart guides](https://mlflow.org/docs/latest/getting-started/index.html) and the [MLflow python API](https://mlflow.org/docs/latest/python_api/index.html) to learn how to use the MLflow client to train, register, and use models from with the Unity Catalog server.
+:::note[MLflow Guides]
+
+Please see the [MLflow quickstart guides](https://mlflow.org/docs/latest/getting-started/index.html) and the [MLflow python API](https://mlflow.org/docs/latest/python_api/index.html) to learn how to use the MLflow client to train, register, and use models from with the Unity Catalog server.
+
+:::
 
 ## Load the sample model
 
@@ -172,7 +184,11 @@ This code snippet uses the `unity.default.iris` model to predict the class (`pre
 78                 6.0               2.9                4.5               1.5             1                1
 ```
 
-!!! tip The UC CLI also has support for interacting with models in the Unity Catalog server. It is recommended that you interact with models in Unity Catalog using the MLflow client.
+:::tip
+
+The UC CLI also has support for interacting with models in the Unity Catalog server. It is recommended that you interact with models in Unity Catalog using the MLflow client.
+
+:::
 
 ## Inspecting Registered Models and Model Versions
 

@@ -42,14 +42,18 @@ The server can be started by issuing the below command from the project root dir
 bin/start-uc-server
 ```
 
-!!! note "Running Unity Catalog Server on a specific port" To run the server on a specific port, use the `-p` or `--port` option followed by the port number:
+:::note[Running Unity Catalog Server on a specific port]
 
-    ```sh title="Use -p or --port to specify your port"
-    bin/start-uc-server -p <port_number>
-    bin/start-uc-server -port <port_number>
-    ```
+To run the server on a specific port, use the `-p` or `--port` option followed by the port number:
 
-    If no port is specified, the server defaults to port **8080**.
+```sh title="Use -p or --port to specify your port"
+bin/start-uc-server -p <port_number>
+bin/start-uc-server -port <port_number>
+```
+
+If no port is specified, the server defaults to port **8080**.
+
+:::
 
 ## Configuration
 

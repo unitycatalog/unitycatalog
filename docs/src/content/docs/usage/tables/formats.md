@@ -85,7 +85,6 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
        --format AVRO
     ```
 
-
 === "Text"
 
     ```sh
@@ -95,7 +94,11 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
        --format TEXT
     ```
 
-!!! Note "Setting your /path/to/storage" You will need to manually set the `/path/to/storage` to the correct storage location. If you don't know where Unity Catalog is storing your files, then take a look at the metadata of an existing table using `bin/uc table get --full_name <catalog.schema.table>` to see its storage location.
+:::note[Setting your /path/to/storage]
+
+You will need to manually set the `/path/to/storage` to the correct storage location. If you don't know where Unity Catalog is storing your files, then take a look at the metadata of an existing table using `bin/uc table get --full_name <catalog.schema.table>` to see its storage location.
+
+:::
 
 After you run the `table create` command, your output should look similar to the following _abridged_ output of a JSON table:
 

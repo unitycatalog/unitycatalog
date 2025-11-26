@@ -6,24 +6,27 @@ This page shows you how to use the Unity Catalog CLI.
 
 The CLI tool allows users to interact with a Unity Catalog server to create and manage catalogs, schemas, tables across different formats, volumes with unstructured data, functions, ML and AI models, and control catalog server and metastore configuration.
 
-!!! note "Specify token for authenticated access"
+:::note[Specify token for authenticated access]
 
-    If you have set up authentication, you will need to provide an authentication token when executng all of the following commands on this page.
-    For example, in the following section, to run the catalog list command, you would specify:
+If you have set up authentication, you will need to provide an authentication token when executng all of the following commands on this page. For example, in the following section, to run the catalog list command, you would specify:
 
-    ```sh
-    bin/uc --auth_token $token catalog list
-    ```
+```sh
+bin/uc --auth_token $token catalog list
+```
 
-    where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md) documentation.
+where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md) documentation.
+
+:::
 
 ## Catalog Management CLI Usage
 
 You can use the Unity Catalog CLI to manage catalogs within your system. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting catalogs. Let's take a look at each operation.
 
-!!! note "Default local Unity Catalog instance"
+:::note[Default local Unity Catalog instance]
 
-    All examples on this page will use the local Unity Catalog instance which comes pre-loaded with a default catalog (`unity`), schema (`default`) and some default assets.
+All examples on this page will use the local Unity Catalog instance which comes pre-loaded with a default catalog (`unity`), schema (`default`) and some default assets.
+
+:::
 
 ### List Catalogs
 
@@ -121,7 +124,7 @@ bin/uc catalog update \
 3. `comment`: _\[Optional\]_ The new description of the catalog.
 4. `properties`: _\[Optional\]_ The new properties of the catalog in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
-!!! note "At least one of the optional parameters must be specified."
+:::note[At least one of the optional parameters must be specified.]
 
 Here's an example:
 
@@ -132,6 +135,8 @@ bin/uc catalog update \
   --comment "Updated Catalog" \
   --properties '{"updated_key": "updated_value"}'
 ```
+
+:::
 
 ### Delete a Catalog
 
@@ -216,7 +221,7 @@ bin/uc schema update \
 3. `comment`: _\[Optional\]_ The new description of the schema.
 4. `properties`: _\[Optional\]_ The new properties of the schema in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
-!!! note "At least one of the optional parameters must be specified."
+:::note[At least one of the optional parameters must be specified.]
 
 Here's an example:
 
@@ -227,6 +232,8 @@ bin/uc schema update \
   --comment "Updated Schema" \
   --properties '{"updated_key": "updated_value"}'
 ```
+
+:::
 
 ### Delete a Schema
 
@@ -408,7 +415,7 @@ bin/uc volume update \
 2. `new_name`: _\[Optional\]_ The new name of the volume.
 3. `comment`: _\[Optional\]_ The new description of the volume.
 
-!!! note "At least one of the optional parameters must be specified."
+:::note[At least one of the optional parameters must be specified.]
 
 Here's an example:
 
@@ -418,6 +425,8 @@ bin/uc volume update \
   --new_name my_updated_volume \
   --comment "Updated Volume"
 ```
+
+:::
 
 ### Read Volume content
 
@@ -617,9 +626,11 @@ By default, the CLI tool is configured to interact with a local reference server
 
 Each parameter can be configured either from the CLI or the configuration file, independently of each other. The CLI will prioritize the values provided from the CLI over the configuration file.
 
-!!! feedback "Different look for users CLI commands"
+:::note[Different look for users CLI commands]
 
-    We're trying out a different look for the CLI commands - which do you prefer - the format above this or the format below? Chime in UC GitHub discussion [529](https://github.com/unitycatalog/unitycatalog/discussions/529) and let us know!
+We're trying out a different look for the CLI commands - which do you prefer - the format above this or the format below? Chime in UC GitHub discussion [529](https://github.com/unitycatalog/unitycatalog/discussions/529) and let us know!
+
+:::
 
 ## Manage Users
 

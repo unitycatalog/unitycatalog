@@ -231,7 +231,11 @@ bin/uc table create --full_name unity.default.mytable \
 
 If you list the tables (e.g., `bin/uc table list --catalog unity --schema default`) again, you should see this new table.
 
-!!! note "mytable is an empty table" Note, at this point, `unity.default.mytable` is an empty table; e.g. if you run `bin/uc table read --full_name unity.default.mytable` there will be no rows.
+:::note[mytable is an empty table]
+
+Note, at this point, `unity.default.mytable` is an empty table; e.g. if you run `bin/uc table read --full_name unity.default.mytable` there will be no rows.
+
+:::
 
 Next, append some randomly generated data to the table using `write`.
 
@@ -273,7 +277,11 @@ bin/uc table delete --full_name unity.default.mytable
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the Unity Catalog server (e.g., `./bin/start-uc-server`)
 
-!!! warning "Prerequisites" The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
+:::caution[Prerequisites]
+
+The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
+
+:::
 
 To start the UI locally, run the following commands to start `yarn`
 

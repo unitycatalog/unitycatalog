@@ -14,9 +14,11 @@ Use the `/catalogs` endpoint to work with catalogs.
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
-<!-- prettier-ignore -->
-!!! note "Unity Catalog server"
-    The examples assume a local Unity Catalog server running at the default location `http://localhost:8080`. Update the `BASE_URL` if your server is running somewhere else.
+:::note[Unity Catalog server]
+
+The examples assume a local Unity Catalog server running at the default location `http://localhost:8080`. Update the `BASE_URL` if your server is running somewhere else.
+
+:::
 
 ## How to list catalogs
 
@@ -135,22 +137,22 @@ This has successfully updated only the comment field without having to rewrite t
 
 Use the `DELETE` command at the `/catalogs/<catalog-name>` endpoint to delete a specific catalog.
 
-<!-- prettier-ignore -->
-!!! tip "Force Delete"
-    You can add the `force` parameter to force a delete even if the catalog is not empty.
+:::tip[Force Delete]
+
+You can add the `force` parameter to force a delete even if the catalog is not empty.
 
 ```python
-> BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
-> ENDPOINT = "/catalogs/my_new_catalog"
-> URL = f"{BASE_URL}{ENDPOINT}"
+BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
+ENDPOINT = "/catalogs/my_new_catalog"
+URL = f"{BASE_URL}{ENDPOINT}"
 
-> params = {"force": "true"}
-> response = requests.delete(URL, headers=headers, params=params)
+params = {"force": "true"}
+response = requests.delete(URL, headers=headers, params=params)
 
-> if response.status_code == 200:
->     print("✅ The catalog was successfully deleted.")
-> else:
->     print("❌ Failed to delete catalog:", response.text)
+if response.status_code == 200:
+    print("✅ The catalog was successfully deleted.")
+else:
+    print("❌ Failed to delete catalog:", response.text)
 ```
 
 This should return:
@@ -158,3 +160,5 @@ This should return:
 ```
 ✅ The catalog was successfully deleted.
 ```
+
+:::
