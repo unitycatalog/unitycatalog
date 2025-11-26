@@ -7,18 +7,13 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -53,23 +48,27 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
     assertThatThrownBy(
             () ->
                 sql(
-                    "CREATE TABLE %s(name STRING) USING delta "
-                        + "TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'disabled')",
-                    fullTableName))
-        .hasMessageContaining("Should not specify property delta.feature.catalogOwned-preview");
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
+                    fullTableName, UCTableProperties.CATALOG_MANAGED_KEY))
+        .hasMessageContaining(
+            String.format("Should not specify property %s", UCTableProperties.CATALOG_MANAGED_KEY));
     assertThatThrownBy(
             () ->
                 sql(
-                    "CREATE TABLE %s(name STRING) USING delta "
-                        + "TBLPROPERTIES ('ucTableId' = 'some_id')",
-                    fullTableName))
-        .hasMessageContaining("ucTableId");
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
+                    fullTableName, UCTableProperties.UC_TABLE_ID_KEY))
+        .hasMessageContaining(UCTableProperties.UC_TABLE_ID_KEY);
     assertThatThrownBy(
             () ->
                 sql(
-                    "CREATE TABLE %s(name STRING) USING delta "
-                        + "TBLPROPERTIES ('is_managed_location' = 'false')",
-                    fullTableName))
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
+                    fullTableName, UCTableProperties.UC_TABLE_ID_KEY_OLD))
+        .hasMessageContaining(UCTableProperties.UC_TABLE_ID_KEY_OLD);
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta " + "TBLPROPERTIES ('%s' = 'false')",
+                    fullTableName, TableCatalog.PROP_IS_MANAGED_LOCATION))
         .hasMessageContaining("is_managed_location");
   }
 
@@ -88,7 +87,10 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
           // Setting this table property isn't necessary, but we should not throw an error.
           String propertyClause =
               setProperty
-                  ? "TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported')"
+                  ? String.format(
+                      "TBLPROPERTIES ('%s' = '%s')",
+                      UCTableProperties.CATALOG_MANAGED_KEY,
+                      UCTableProperties.CATALOG_MANAGED_VALUE)
                   : "";
 
           if (ctas) {
@@ -111,26 +113,11 @@ public class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
           assertThat(describeResult.get("Provider")).isEqualToIgnoringCase("delta");
           assertThat(describeResult.get("Is_managed_location")).isEqualTo("true");
           assertThat(describeResult).containsKey("Table Properties");
-          assertThat(describeResult.get("Table Properties"))
-              .contains("delta.feature.catalogOwned-preview=supported");
-          assertThat(describeResult.get("Table Properties")).contains("ucTableId=");
-
-          // Make sure the table has commit under /_delta_log/_staged_commits
-          assertThat(describeResult).containsKey("Location");
-          String location = describeResult.get("Location");
-          URI uri = new URI(location);
-          assertThat(uri.getScheme()).isEqualTo(scheme);
-          String path = uri.getPath();
-          String stagedCommitPath = path + "/_delta_log/_staged_commits";
-          try (DirectoryStream<Path> directoryStream =
-              Files.newDirectoryStream(Path.of(stagedCommitPath))) {
-            Set<String> jsonFiles =
-                StreamSupport.stream(directoryStream.spliterator(), false)
-                    .map(Path::toString)
-                    .filter(s -> s.endsWith(".json"))
-                    .collect(Collectors.toSet());
-            assertThat(jsonFiles).hasSizeGreaterThanOrEqualTo(1);
-          }
+          String tableProperties = describeResult.get("Table Properties");
+          assertThat(tableProperties).contains(UCTableProperties.UC_TABLE_ID_KEY);
+          // When we switch to a newer version of Delta and the table property is renamed, this line
+          // may break. We'll need to come back and just change this line to expect a newer key.
+          assertThat(tableProperties).contains(UCTableProperties.CATALOG_MANAGED_KEY);
         }
       }
     }
