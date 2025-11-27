@@ -2,6 +2,8 @@
 title: Table Formats
 ---
 
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
 This page explains how you can work with various table storage format tables in your Unity Catalog. It will also explain the advantages and drawbacks of working with these storage formats including Parquet, ORC, JSON, CSV, Avro, and TEXT.
 
 ## Set up Unity Catalog
@@ -40,59 +42,68 @@ To create a table storage format table such as Parquet, ORC, Avro, CSV, JSON, or
 
 The following creates a new table in the `path/to/storage` LOCATION two colummns: `some_numbers` and `some_letters`
 
-=== "Parquet"
+<Tabs>
+<TabItem label="Parquet">
 
-    ```sh
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING" \
-       --storage_location /path/to/storage \
-       --format PARQUET
-    ```
+```sh
+bin/uc table create --full_name unity.default.test \
+    --columns "some_numbers INT, some_letters STRING" \
+    --storage_location /path/to/storage \
+    --format PARQUET
+```
 
-=== "JSON"
+</TabItem>
+<TabItem label="JSON">
 
-    ```sh
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING" \
-       --storage_location /path/to/storage \
-       --format JSON
-    ```
+```sh
+bin/uc table create --full_name unity.default.test \
+    --columns "some_numbers INT, some_letters STRING" \
+    --storage_location /path/to/storage \
+    --format JSON
+```
 
-=== "CSV"
+</TabItem>
+<TabItem label="CSV">
 
-    ```sh
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING" \
-       --storage_location /path/to/storage \
-       --format CSV
-    ```
+```sh
+bin/uc table create --full_name unity.default.test \
+    --columns "some_numbers INT, some_letters STRING" \
+    --storage_location /path/to/storage \
+    --format CSV
+```
 
-=== "ORC"
+</TabItem>
+<TabItem label="ORC">
 
-    ```sh
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING" \
-       --storage_location /path/to/storage \
-       --format ORC
-    ```
+```sh
+bin/uc table create --full_name unity.default.test \
+    --columns "some_numbers INT, some_letters STRING" \
+    --storage_location /path/to/storage \
+    --format ORC
+```
 
-=== "Avro"
+</TabItem>
+<TabItem label="Avro">
 
-    ```sh
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING" \
-       --storage_location /path/to/storage \
-       --format AVRO
-    ```
+```sh
+bin/uc table create --full_name unity.default.test \
+    --columns "some_numbers INT, some_letters STRING" \
+    --storage_location /path/to/storage \
+    --format AVRO
+```
 
-=== "Text"
+</TabItem>
+<TabItem label="Text">
 
-    ```sh
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING" \
-       --storage_location /path/to/storage \
-       --format TEXT
-    ```
+```sh
+bin/uc table create --full_name unity.default.test \
+    --columns "some_numbers INT, some_letters STRING" \
+    --storage_location /path/to/storage \
+    --format TEXT
+```
+
+</TabItem>
+</Tabs>
 
 :::note[Setting your /path/to/storage]
 
@@ -135,11 +146,11 @@ This command has multiple parameters:
 
 | Parameter | Description |
 | --- | --- |
-| `full_name` | The full name of the table, which is a concatenation of the catalog name, schema name, and table name separated by dots (e.g., catalog_name.schema_name.table_name). |
-| `columns` | The columns of the table in SQL-like format "column_name column_data_type". Supported data types include `BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, DECIMAL`. Separate multiple columns with a comma (e.g., "`id INT, name STRING`") |
-| `format` | [Optional] The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO, and TEXT. If not specified the default format is DELTA. |
-| `storage_location` | The storage location associated with the table. It is a mandatory field for EXTERNAL tables. |
-| `properties` | [Optional] The properties of the entity in JSON format (e.g., '{"key1": "value1", "key2": "value2"}'). Make sure to either escape the double quotes(\") inside the properties string or just use single quotes('') around the same. |
+| full_name | The full name of the table, which is a concatenation of the catalog name, schema name, and table name separated by dots (e.g., catalog_name.schema_name.table_name). |
+| columns | The columns of the table in SQL-like format "column_name column_data_type". Supported data types include `BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, DECIMAL`. Separate multiple columns with a comma (e.g., "`id INT, name STRING`") |
+| format | [Optional] The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO, and TEXT. If not specified the default format is DELTA. |
+| storage_location | The storage location associated with the table. It is a mandatory field for EXTERNAL tables. |
+| properties | [Optional] The properties of the entity in JSON format (e.g., `{"key1": "value1", "key2": "value2"}`). Make sure to either escape the double quotes(\") inside the properties string or just use single quotes('') around the same. |
 
 ## Challenges using table storage formats
 
