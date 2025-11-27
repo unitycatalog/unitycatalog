@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
@@ -173,6 +174,36 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     assertThatThrownBy(() -> sql("DROP TABLE a.b.c.d"))
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("Nested namespaces are not supported");
+  }
+
+  /**
+   * This function is used for testing table names with a hyphen to make sure that it doesn't quote
+   * with backtick incorrectly. It can be testing against an external or managed table.
+   *
+   * @param location Set to the location of external, or empty if it needs to be a managed table.
+   */
+  public void testHyphenInTableNameBase(Optional<String> location) {
+    String catalogName = "test-catalog-name";
+    String schemaName = "test-schema-name";
+    String tableName = "test-table-name";
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, catalogName);
+    sql("CREATE SCHEMA `%s`.`%s`", catalogName, schemaName);
+    String fullTableName = String.format("%s.%s.%s", catalogName, schemaName, tableName);
+    String locationClause = location.map(l -> String.format("LOCATION '%s'", l)).orElse("");
+    sql(
+        "CREATE TABLE %s(i INT, s STRING) USING DELTA %s",
+        quoteEntityName(fullTableName), locationClause);
+
+    testTableReadWrite(fullTableName);
+
+    List<Row> tables1 = sql("SHOW TABLES in `%s`.`%s`", catalogName, schemaName);
+    assertThat(tables1).hasSize(1);
+    assertThat(tables1.get(0).getString(0)).isEqualTo(quoteEntityName(schemaName));
+    assertThat(tables1.get(0).getString(1)).isEqualTo(tableName);
+
+    sql("DROP TABLE %s", quoteEntityName(fullTableName));
+    List<Row> tables2 = sql("SHOW TABLES in `%s`.`%s`", catalogName, schemaName);
+    assertThat(tables2).isEmpty();
   }
 
   protected String quoteEntityName(String entityName) {
