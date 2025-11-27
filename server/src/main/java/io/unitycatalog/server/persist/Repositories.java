@@ -26,6 +26,7 @@ public class Repositories {
   private final CredentialRepository credentialRepository;
   private final ExternalLocationRepository externalLocationRepository;
   private final DeltaCommitRepository deltaCommitRepository;
+  private final ViewRepository viewRepository;
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
@@ -44,5 +45,6 @@ public class Repositories {
     this.credentialRepository = new CredentialRepository(this, sessionFactory);
     this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
     this.deltaCommitRepository = new DeltaCommitRepository(sessionFactory, serverProperties);
+    this.viewRepository = new ViewRepository(this, sessionFactory);
   }
 }

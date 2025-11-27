@@ -62,7 +62,12 @@ public enum CliParams {
   FILTER("filter", "Query by which the results have to be filtered", "filter"),
   START_INDEX(
       "start_index", "Specifies the index (starting at 1) of the first result.", "startIndex"),
-  COUNT("count", "Desired number of results per page", "count");
+  COUNT("count", "Desired number of results per page", "count"),
+  VIEW_DEFINITION(
+      "view_definition",
+      "The SQL view definition. Should be a JSON array of ViewRepresentation objects with dialect and sql fields. For example: '[{\"dialect\":\"spark\",\"sql\":\"SELECT * FROM table\"}]'",
+      "view_definition");
+
   private final String value;
   private final String helpMessage;
   private final String serverParam;

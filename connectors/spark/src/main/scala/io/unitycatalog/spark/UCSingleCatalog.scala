@@ -1,9 +1,9 @@
 package io.unitycatalog.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
+import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi, ViewsApi}
+import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, CreateView, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, ViewRepresentation}
 import io.unitycatalog.client.auth.TokenProvider
-import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
 import io.unitycatalog.spark.utils.OptionsUtil
@@ -13,7 +13,7 @@ import java.util
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
+import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException, NoSuchViewException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -31,6 +31,7 @@ import scala.language.existentials
 class UCSingleCatalog
   extends TableCatalog
   with SupportsNamespaces
+  with ViewCatalog
   with Logging {
 
   private[this] var uri: URI = null
@@ -41,6 +42,7 @@ class UCSingleCatalog
   private[this] var tablesApi: TablesApi = null
 
   @volatile private var delegate: TableCatalog = null
+  @volatile private var viewDelegate: ViewCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get(OptionsUtil.URI)
@@ -59,6 +61,7 @@ class UCSingleCatalog
     val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, apiClient, tablesApi,
       temporaryCredentialsApi)
     proxy.initialize(name, options)
+    viewDelegate = proxy;
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
@@ -227,6 +230,30 @@ class UCSingleCatalog
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
   }
+
+  override def listViews(namespace: String*): Array[Identifier] = {
+    viewDelegate.listViews(namespace: _*)
+  }
+
+  override def loadView(ident: Identifier): View = {
+    viewDelegate.loadView(ident)
+  }
+
+  override def createView(viewInfo: ViewInfo): View = {
+    viewDelegate.createView(viewInfo)
+  }
+
+  override def dropView(ident: Identifier): Boolean = {
+    viewDelegate.dropView(ident)
+  }
+
+  override def renameView(oldIdent: Identifier, newIdent: Identifier): Unit = {
+    viewDelegate.renameView(oldIdent, newIdent)
+  }
+
+  override def alterView(identifier: Identifier, viewChanges: ViewChange*): View = {
+    viewDelegate.alterView(identifier, viewChanges: _*)
+  }
 }
 
 object UCSingleCatalog {
@@ -282,13 +309,15 @@ private class UCProxy(
     renewCredEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
+    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with ViewCatalog {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
+  private[this] var viewsApi: ViewsApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
     schemasApi = new SchemasApi(apiClient)
+    viewsApi = new ViewsApi(apiClient)
   }
 
   override def name(): String = {
@@ -528,5 +557,112 @@ private class UCProxy(
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     schemasApi.deleteSchema(name + "." + namespace.head, cascade)
     true
+  }
+
+  override def listViews(namespace: String*): Array[Identifier] = {
+    if (namespace.isEmpty) {
+      schemasApi.listSchemas(name, 0, null).getSchemas.asScala.flatMap { schema =>
+        listViewsInNamespace(schema.getName)
+      }.toArray
+    } else {
+      namespace.flatMap(ns => listViewsInNamespace(ns)).toArray
+    }
+  }
+
+  private def listViewsInNamespace(schemaName: String): Array[Identifier] = {
+    val namespace = Array(schemaName)
+    val catalogName = this.name
+    try {
+      val response = viewsApi.listViews(catalogName, schemaName, 0, null)
+      if (response.getViews != null) {
+        response.getViews.asScala.map(view => Identifier.of(namespace, view.getName)).toArray
+      } else {
+        Array.empty[Identifier]
+      }
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        Array.empty[Identifier]
+    }
+  }
+
+  override def loadView(ident: Identifier): View = {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    val fullName = Seq(this.name, ident.namespace().head, ident.name()).mkString(".")
+    val ucViewInfo = try {
+      viewsApi.getView(fullName)
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        throw new NoSuchViewException(ident)
+    }
+    UCViewMapper.toSparkView(ucViewInfo, ident)
+  }
+
+  override def createView(viewInfo: ViewInfo): View = {
+    val ident = viewInfo.ident()
+    val schema = viewInfo.schema()
+    val sql = viewInfo.sql()
+    val properties = viewInfo.properties()
+    val columnAliases = viewInfo.columnAliases()
+    val columnComments = viewInfo.columnComments()
+
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+
+    val createViewRequest = new CreateView()
+    createViewRequest.setName(ident.name())
+    createViewRequest.setCatalogName(this.name)
+    createViewRequest.setSchemaName(ident.namespace().head)
+
+    val columns: java.util.List[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
+      val column = new ColumnInfo()
+      column.setName(if (columnAliases != null && i < columnAliases.length && columnAliases(i) != null) {
+        columnAliases(i)
+      } else {
+        field.name
+      })
+      if (columnComments != null && i < columnComments.length && columnComments(i) != null) {
+        column.setComment(columnComments(i))
+      } else if (field.getComment().isDefined) {
+        column.setComment(field.getComment.get)
+      }
+      column.setNullable(field.nullable)
+      column.setTypeText(field.dataType.simpleString)
+      column.setTypeName(convertDataTypeToTypeName(field.dataType))
+      column.setTypeJson(field.dataType.json)
+      column.setPosition(i)
+      column
+    }.asJava
+    createViewRequest.setColumns(columns)
+
+    if (properties != null && !properties.isEmpty) {
+      createViewRequest.setProperties(properties)
+    }
+
+    val viewRep = new ViewRepresentation()
+    viewRep.setDialect("spark")
+    viewRep.setSql(sql)
+    createViewRequest.setViewDefinition(java.util.List.of(viewRep))
+
+    viewsApi.createView(createViewRequest)
+    loadView(ident)
+  }
+
+  override def dropView(ident: Identifier): Boolean = {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    val fullName = Seq(this.name, ident.namespace().head, ident.name()).mkString(".")
+    try {
+      viewsApi.deleteView(fullName)
+      true
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        false
+    }
+  }
+
+  override def renameView(oldIdent: Identifier, newIdent: Identifier): Unit = {
+    throw new UnsupportedOperationException("Renaming a view is not supported yet")
+  }
+
+  override def alterView(identifier: Identifier, viewChanges: ViewChange*): View = {
+    throw new UnsupportedOperationException("Altering a view is not supported yet")
   }
 }

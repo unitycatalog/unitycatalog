@@ -41,6 +41,7 @@ public class CliUtils {
   public static final String SCHEMA = "schema";
   public static final String VOLUME = "volume";
   public static final String TABLE = "table";
+  public static final String VIEW = "view";
   public static final String METASTORE = "metastore";
 
   public static final String FUNCTION = "function";
@@ -191,6 +192,25 @@ public class CliUtils {
                       READ,
                       new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.MAX_RESULTS)));
                   put(WRITE, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
+                  put(DELETE, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
+                }
+              });
+          put(
+              VIEW,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(
+                              CliParams.FULL_NAME, CliParams.COLUMNS, CliParams.VIEW_DEFINITION),
+                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME),
+                          List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
+                  put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(DELETE, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                 }
               });

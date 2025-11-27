@@ -243,19 +243,7 @@ public class TableRepository {
                   .storageLocation(storageLocation)
                   .tableId(tableID);
 
-          TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);
-          // create columns
-          tableInfoDAO
-              .getColumns()
-              .forEach(
-                  c -> {
-                    c.setId(UUID.randomUUID());
-                    c.setTable(tableInfoDAO);
-                  });
-          // create properties
-          PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
-              .forEach(session::persist);
-          session.persist(tableInfoDAO);
+          persistTableInfoDAO(session, tableInfo, schemaId);
           return tableInfo;
         },
         "Error creating table: " + fullName,
@@ -263,12 +251,35 @@ public class TableRepository {
   }
 
   public TableInfoDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
-    String hql = "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
+    String hql =
+        "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name AND t.type != :viewType";
     Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
     query.setParameter("schemaId", schemaId);
     query.setParameter("name", name);
+    query.setParameter("viewType", TableType.VIEW.getValue());
     LOGGER.debug("Finding table by schemaId: {} and name: {}", schemaId, name);
     return query.uniqueResult(); // Returns null if no result is found
+  }
+
+  /**
+   * Finds an entity (table or view) by schema ID, name, and type.
+   *
+   * @param session the Hibernate session
+   * @param schemaId the schema UUID
+   * @param name the entity name
+   * @param type the table type (MANAGED, EXTERNAL, VIEW, etc.)
+   * @return the TableInfoDAO if found, null otherwise
+   */
+  public TableInfoDAO findBySchemaIdAndNameWithType(
+      Session session, UUID schemaId, String name, TableType type) {
+    String hql =
+        "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name AND t.type = :type";
+    Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
+    query.setParameter("schemaId", schemaId);
+    query.setParameter("name", name);
+    query.setParameter("type", type.getValue());
+    LOGGER.debug("Finding {} by schemaId: {} and name: {}", type, schemaId, name);
+    return query.uniqueResult();
   }
 
   private String getTableFullName(CreateTable createTable) {
@@ -326,7 +337,10 @@ public class TableRepository {
       Boolean omitProperties,
       Boolean omitColumns) {
     List<TableInfoDAO> tableInfoDAOList =
-        LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
+        LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId).stream()
+            .filter(
+                t -> !TableType.VIEW.getValue().equals(t.getType())) // TODO[t.wiest] proper listing
+            .collect(Collectors.toList());
     String nextPageToken = LISTING_HELPER.getNextPageToken(tableInfoDAOList, maxResults);
     List<TableInfo> result = new ArrayList<>();
     for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
@@ -365,6 +379,10 @@ public class TableRepository {
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableName);
     }
+    if (TableType.VIEW.getValue().equals(tableInfoDAO.getType())) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Cannot delete view using table API: " + tableName);
+    }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {
         fileOperations.deleteDirectory(tableInfoDAO.getUrl());
@@ -378,5 +396,42 @@ public class TableRepository {
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
     session.remove(tableInfoDAO);
+  }
+
+  /**
+   * Deletes a TableInfoDAO and its associated properties. This is a shared method that can be used
+   * by both TableRepository and ViewRepository to delete entities stored as TableInfoDAO.
+   *
+   * @param session the Hibernate session
+   * @param tableInfoDAO the entity to delete
+   */
+  protected void deleteTableInfoDAO(Session session, TableInfoDAO tableInfoDAO) {
+    PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
+        .forEach(session::remove);
+    session.remove(tableInfoDAO);
+  }
+
+  /**
+   * Persists a TableInfoDAO with its columns and properties. This is a shared method used by both
+   * table and view creation.
+   *
+   * @param session the Hibernate session
+   * @param tableInfo the TableInfo model
+   * @param schemaId the schema UUID
+   * @return the persisted TableInfoDAO
+   */
+  protected TableInfoDAO persistTableInfoDAO(Session session, TableInfo tableInfo, UUID schemaId) {
+    TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);
+    tableInfoDAO
+        .getColumns()
+        .forEach(
+            c -> {
+              c.setId(UUID.randomUUID());
+              c.setTable(tableInfoDAO);
+            });
+    PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
+        .forEach(session::persist);
+    session.persist(tableInfoDAO);
+    return tableInfoDAO;
   }
 }

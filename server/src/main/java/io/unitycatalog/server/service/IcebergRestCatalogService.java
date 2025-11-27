@@ -11,26 +11,37 @@ import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
+import io.unitycatalog.server.model.ColumnInfo;
+import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.ViewInfo;
+import io.unitycatalog.server.model.ViewRepresentation;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.ViewRepository;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.types.Type;
+import org.apache.iceberg.types.Types;
+import org.apache.iceberg.view.ImmutableSQLViewRepresentation;
+import org.apache.iceberg.view.ImmutableViewVersion;
+import org.apache.iceberg.view.ViewMetadata;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
-import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
@@ -53,7 +64,8 @@ public class IcebergRestCatalogService {
           Endpoint.V1_LOAD_TABLE,
           Endpoint.V1_LOAD_VIEW,
           Endpoint.V1_REPORT_METRICS,
-          Endpoint.V1_LIST_TABLES);
+          Endpoint.V1_LIST_TABLES,
+          Endpoint.V1_LIST_VIEWS);
 
   private final CatalogService catalogService;
   private final SchemaService schemaService;
@@ -61,6 +73,7 @@ public class IcebergRestCatalogService {
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
   private final TableRepository tableRepository;
+  private final ViewRepository viewRepository;
   private final SessionFactory sessionFactory;
 
   public IcebergRestCatalogService(
@@ -76,6 +89,7 @@ public class IcebergRestCatalogService {
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
     this.tableRepository = repositories.getTableRepository();
+    this.viewRepository = repositories.getViewRepository();
     this.sessionFactory = repositories.getSessionFactory();
   }
 
@@ -187,12 +201,108 @@ public class IcebergRestCatalogService {
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
   @ProducesJson
   public LoadViewResponse loadView(
-      @Param("namespace") String namespace, @Param("view") String view) {
-    // this is not supported yet, but Iceberg REST client tries to load
-    // a table with given path name and then tries to load a view with that
-    // name if it didn't find a table, so for now, let's just return a 404
-    // as that should be expected since it didn't find a table with the name
-    throw new NoSuchViewException("View does not exist: %s", namespace + "." + view);
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("view") String view) {
+    String fullName = catalog + "." + namespace + "." + view;
+    ViewInfo viewInfo = viewRepository.getView(fullName);
+    ViewMetadata viewMetadata = buildViewMetadata(catalog, namespace, viewInfo);
+    return createLoadViewResponse(viewMetadata);
+  }
+
+  private LoadViewResponse createLoadViewResponse(ViewMetadata metadata) {
+    return new LoadViewResponse() {
+      @Override
+      public String metadataLocation() {
+        return ""; // Views in UC don't have a persisted metadata location
+      }
+
+      @Override
+      public ViewMetadata metadata() {
+        return metadata;
+      }
+
+      @Override
+      public Map<String, String> config() {
+        return Collections.emptyMap();
+      }
+    };
+  }
+
+  private ViewMetadata buildViewMetadata(String catalog, String namespace, ViewInfo viewInfo) {
+    Schema icebergSchema = buildIcebergSchema(viewInfo);
+    org.apache.iceberg.view.ViewVersion currentVersion =
+        buildIcebergVersion(viewInfo, namespace, catalog);
+
+    return ViewMetadata.builder()
+        .setLocation("uc://" + catalog + "/" + namespace + "/" + viewInfo.getName())
+        .addSchema(icebergSchema)
+        .setCurrentVersion(currentVersion, icebergSchema)
+        .setProperties(Collections.emptyMap())
+        .build();
+  }
+
+  private Schema buildIcebergSchema(ViewInfo viewInfo) {
+    if (viewInfo.getColumns() == null || viewInfo.getColumns().isEmpty()) {
+      return new Schema(Collections.emptyList());
+    }
+
+    List<Types.NestedField> fields = new ArrayList<>();
+    int fieldId = 1;
+    for (ColumnInfo col : viewInfo.getColumns()) {
+      fields.add(
+          Types.NestedField.optional(fieldId++, col.getName(), convertToIcebergType(col)));
+    }
+
+    return new Schema(1, fields);
+  }
+
+  private org.apache.iceberg.view.ViewVersion buildIcebergVersion(
+      ViewInfo viewInfo, String namespace, String catalog) {
+    List<org.apache.iceberg.view.ViewRepresentation> representations = new ArrayList<>();
+    for (ViewRepresentation ucRep : viewInfo.getRepresentations()) {
+      representations.add(
+          ImmutableSQLViewRepresentation.builder()
+              .sql(ucRep.getSql())
+              .dialect(ucRep.getDialect())
+              .build());
+    }
+
+    return ImmutableViewVersion.builder()
+        .versionId(1)
+        .schemaId(1)
+        .timestampMillis(viewInfo.getCreatedAt())
+        .summary(Collections.emptyMap())
+        .representations(representations)
+        .defaultNamespace(Namespace.of(namespace))
+        .defaultCatalog(catalog)
+        .build();
+  }
+
+  private Type convertToIcebergType(ColumnInfo col) {
+    ColumnTypeName typeName = col.getTypeName();
+    if (typeName == null) {
+      return Types.StringType.get();
+    }
+    return switch (typeName) {
+      case BOOLEAN -> Types.BooleanType.get();
+      case BYTE -> Types.IntegerType.get();
+      case SHORT -> Types.IntegerType.get();
+      case INT -> Types.IntegerType.get();
+      case LONG -> Types.LongType.get();
+      case FLOAT -> Types.FloatType.get();
+      case DOUBLE -> Types.DoubleType.get();
+      case DATE -> Types.DateType.get();
+      case TIMESTAMP -> Types.TimestampType.withZone();
+      case TIMESTAMP_NTZ -> Types.TimestampType.withoutZone();
+      case STRING, CHAR -> Types.StringType.get();
+      case BINARY -> Types.BinaryType.get();
+      case DECIMAL -> Types.DecimalType.of(
+          col.getTypePrecision() != null ? col.getTypePrecision() : 38,
+          col.getTypeScale() != null ? col.getTypeScale() : 18);
+      case INTERVAL, ARRAY, STRUCT, MAP, NULL, USER_DEFINED_TYPE, TABLE_TYPE ->
+          Types.StringType.get(); // Fallback for complex/unsupported types
+    };
   }
 
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics")
@@ -241,6 +351,22 @@ public class IcebergRestCatalogService {
 
     return org.apache.iceberg.rest.responses.ListTablesResponse.builder()
         .addAll(filteredTables)
+        .build();
+  }
+
+  @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views")
+  @ProducesJson
+  public org.apache.iceberg.rest.responses.ListTablesResponse listViews(
+      @Param("catalog") String catalog, @Param("namespace") String namespace) {
+    List<TableIdentifier> viewIdentifiers =
+        viewRepository.listViews(catalog, namespace).stream()
+            .map(
+                viewInfo ->
+                    TableIdentifier.of(Namespace.of(viewInfo.getSchemaName()), viewInfo.getName()))
+            .collect(Collectors.toList());
+
+    return org.apache.iceberg.rest.responses.ListTablesResponse.builder()
+        .addAll(viewIdentifiers)
         .build();
   }
 }
