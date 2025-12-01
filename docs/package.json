@@ -26,10 +26,10 @@
   "license": "ISC",
   "dependencies": {
     "@astrojs/check": "^0.9.6",
-    "@astrojs/netlify": "^6.6.3",
     "@astrojs/starlight": "^0.36.3",
     "astro": "^5.16.1",
     "sharp": "^0.34.5",
+    "starlight-plausible": "^0.1.0",
     "typescript": "^5.9.3"
   },
   "devDependencies": {
