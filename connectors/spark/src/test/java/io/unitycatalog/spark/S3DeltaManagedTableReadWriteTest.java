@@ -7,7 +7,7 @@ import org.junit.jupiter.params.provider.Arguments;
  * This test suite starts UC server with managed storage root on emulated S3 path and exercise the
  * tests.
  */
-public class S3ManagedTableReadWriteTest extends ManagedTableReadWriteTest {
+public class S3DeltaManagedTableReadWriteTest extends DeltaManagedTableReadWriteTest {
   /**
    * This function provides a set of test parameters that cloud-aware tests should run for this
    * class.
