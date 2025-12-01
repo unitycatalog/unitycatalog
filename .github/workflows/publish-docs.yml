@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   site:
@@ -15,9 +14,10 @@ jobs:
         with:
           node-version-file: "docs/.nvmrc"
           registry-url: https://registry.npmjs.org
-      - run: cd docs
       - run: npm ci
+        working-directory: docs
       - run: npm run build
+        working-directory: docs
       - uses: actions/upload-artifact@v4
         with:
           name: site
