@@ -1,0 +1,175 @@
+package io.unitycatalog.spark;
+
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.types.DataTypes;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+
+/**
+ * This test suite exercise all tests in BaseTableReadWriteTest plus extra tests that are dedicated
+ * to Delta managed tables.
+ *
+ * <p>Specifically the managed table creation logic has distinct behavior to test in this class: 1.
+ * Automatically allocate storage path by server 2. Automatically enables UC as Delta commit
+ * coordinator These behaviors are only relevant to managed tables.
+ *
+ * <p>This test needs to start server with a single managed root location on a single emulated cloud
+ * so it can not test all emulated clouds yet.
+ */
+public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteTest {
+  private static final String DELTA_TABLE = "test_delta";
+
+  @Override
+  protected String tableFormat() {
+    return "DELTA";
+  }
+
+  @Test
+  public void testCreateManagedTableErrors() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    assertThatThrownBy(() -> sql("CREATE TABLE %s(name STRING) USING parquet", fullTableName))
+        .hasMessageContaining("not support non-Delta managed table");
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
+                    fullTableName, UCTableProperties.CATALOG_MANAGED_KEY))
+        .hasMessageContaining(
+            String.format("Should not specify property %s", UCTableProperties.CATALOG_MANAGED_KEY));
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
+                    fullTableName, UCTableProperties.CATALOG_MANAGED_KEY_NEW))
+        .hasMessageContaining(
+            String.format(
+                "Should not specify property %s", UCTableProperties.CATALOG_MANAGED_KEY_NEW));
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
+                    fullTableName, UCTableProperties.UC_TABLE_ID_KEY))
+        .hasMessageContaining(UCTableProperties.UC_TABLE_ID_KEY);
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
+                    fullTableName, UCTableProperties.UC_TABLE_ID_KEY_OLD))
+        .hasMessageContaining(UCTableProperties.UC_TABLE_ID_KEY_OLD);
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta " + "TBLPROPERTIES ('%s' = 'false')",
+                    fullTableName, TableCatalog.PROP_IS_MANAGED_LOCATION))
+        .hasMessageContaining("is_managed_location");
+  }
+
+  @ParameterizedTest
+  @MethodSource("cloudParameters")
+  public void testCreateManagedDeltaTable(String scheme, boolean renewCredEnabled) {
+    session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
+
+    int counter = 0;
+    for (boolean withPartition : List.of(true, false)) {
+      for (boolean withProperty : List.of(true, false)) {
+        for (boolean ctas : List.of(true, false)) {
+          for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
+            String tableName = DELTA_TABLE + counter;
+            counter++;
+
+            SetupTableOptions options =
+                new SetupTableOptions()
+                    .setCatalogName(catalogName)
+                    .setTableName(tableName)
+                    .setCloudScheme(scheme);
+            if (withPartition) {
+              options.setPartitionColumn("i");
+            }
+            // Setting this table property isn't necessary, but we should not throw an error.
+            if (withProperty) {
+              options.setTableProperty(
+                  UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_VALUE);
+            }
+
+            if (ctas) {
+              options.setAsSelect(1, "a");
+            }
+            String fullTableName = setupTable(options);
+            if (!ctas) {
+              sql("INSERT INTO %s SELECT 1, 'a'", fullTableName);
+            }
+
+            List<Row> rows = sql("DESC EXTENDED " + fullTableName);
+            Map<String, String> describeResult =
+                rows.stream()
+                    // The column name i and s appears more than once when the partition info is
+                    // printed. Skip them anyway to avoid collision when collecting a map.
+                    .filter(row -> !List.of("i", "s").contains(row.getString(0)))
+                    .collect(Collectors.toMap(row -> row.getString(0), row -> row.getString(1)));
+
+            // Make sure the table created is managed and catalogManaged
+            assertThat(describeResult.get("Name")).isEqualTo(fullTableName);
+            assertThat(describeResult.get("Type")).isEqualTo("MANAGED");
+            assertThat(describeResult.get("Provider")).isEqualToIgnoringCase("delta");
+            assertThat(describeResult.get("Is_managed_location")).isEqualTo("true");
+            assertThat(describeResult).containsKey("Table Properties");
+            // Check that it either has the old table ID key or the new one. Doesn't matter if it
+            // has both.
+            String tableProperties = describeResult.get("Table Properties");
+            Assertions.assertTrue(
+                tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY)
+                    || tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY_OLD));
+            // Check that it either has the old feature name or the new one. We don't care if it
+            // has both but Delta won't allow that.
+            Assertions.assertTrue(
+                tableProperties.contains(
+                        String.format(
+                            "%s=%s",
+                            UCTableProperties.CATALOG_MANAGED_KEY,
+                            UCTableProperties.CATALOG_MANAGED_VALUE))
+                    || tableProperties.contains(
+                        String.format(
+                            "%s=%s",
+                            UCTableProperties.CATALOG_MANAGED_KEY_NEW,
+                            UCTableProperties.CATALOG_MANAGED_VALUE)));
+
+            // Check schema of table
+            validateTableSchema(
+                session.table(fullTableName).schema(),
+                Pair.of("i", DataTypes.IntegerType),
+                Pair.of("s", DataTypes.StringType));
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  public void hyphenInTableName() {
+    testHyphenInTableNameBase(Optional.empty());
+  }
+
+  @Override
+  protected String setupTable(SetupTableOptions options) {
+    // For now, we only support testing one cloud, which is the one configured by
+    // managedStorageCloudScheme(). Tests are only supposed to call this function with the correct
+    // cloud scheme.
+    assertThat(options.getCloudScheme()).isEqualTo(managedStorageCloudScheme());
+    sql(options.createManagedTableSql());
+    return options.fullTableName();
+  }
+}

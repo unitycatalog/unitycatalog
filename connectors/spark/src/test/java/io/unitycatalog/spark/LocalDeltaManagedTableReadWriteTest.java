@@ -4,10 +4,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.params.provider.Arguments;
 
 /**
- * This test suite starts UC server with managed storage root on emulated S3 path and exercise the
- * tests.
+ * This test suite starts UC server with managed storage root on local path and exercise the tests.
  */
-public class S3ManagedTableReadWriteTest extends ManagedTableReadWriteTest {
+public class LocalDeltaManagedTableReadWriteTest extends DeltaManagedTableReadWriteTest {
   /**
    * This function provides a set of test parameters that cloud-aware tests should run for this
    * class.
@@ -15,11 +14,11 @@ public class S3ManagedTableReadWriteTest extends ManagedTableReadWriteTest {
    * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled)
    */
   protected static Stream<Arguments> cloudParameters() {
-    return Stream.of(Arguments.of("s3", false), Arguments.of("s3", true));
+    return Stream.of(Arguments.of("file", false));
   }
 
   @Override
   protected String managedStorageCloudScheme() {
-    return "s3";
+    return "file";
   }
 }
