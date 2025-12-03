@@ -2,9 +2,16 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -73,14 +80,16 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
 
   @ParameterizedTest
   @MethodSource("cloudParameters")
-  public void testCreateManagedDeltaTable(String scheme, boolean renewCredEnabled) {
+  public void testCreateManagedDeltaTable(String scheme, boolean renewCredEnabled)
+      throws ApiException {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     int counter = 0;
     for (boolean setProperty : List.of(true, false)) {
       for (boolean ctas : List.of(true, false)) {
         for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
-          String fullTableName = catalogName + "." + SCHEMA_NAME + "." + DELTA_TABLE + counter;
+          String tableName = DELTA_TABLE + counter;
+          String fullTableName = catalogName + "." + SCHEMA_NAME + "." + tableName;
           counter++;
           // Setting this table property isn't necessary, but we should not throw an error.
           String propertyClause =
@@ -130,6 +139,36 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
                           "%s=%s",
                           UCTableProperties.CATALOG_MANAGED_KEY_NEW,
                           UCTableProperties.CATALOG_MANAGED_VALUE)));
+
+          boolean checkServerTableProperties = false;
+          if (checkServerTableProperties) {
+            // Currently we can not check these table properties on server because Delta doesn't
+            // send them yet. In the future this will be enabled.
+            TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
+            TableInfo tableInfo = tableOperations.getTable(fullTableName);
+            assertThat(tableInfo.getCatalogName()).isEqualTo(catalogName);
+            assertThat(tableInfo.getName()).isEqualTo(tableName);
+            assertThat(tableInfo.getSchemaName()).isEqualTo(SCHEMA_NAME);
+            assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
+            assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
+            Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
+            Assertions.assertTrue(
+                tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
+                    || tablePropertiesFromServer.containsKey(
+                        UCTableProperties.UC_TABLE_ID_KEY_OLD));
+            Assertions.assertTrue(
+                tablePropertiesFromServer.containsKey(UCTableProperties.CATALOG_MANAGED_KEY)
+                    || tablePropertiesFromServer.containsKey(
+                        UCTableProperties.CATALOG_MANAGED_KEY_NEW));
+            assertThat(
+                    Optional.ofNullable(
+                            tablePropertiesFromServer.get(UCTableProperties.CATALOG_MANAGED_KEY))
+                        .orElseGet(
+                            () ->
+                                tablePropertiesFromServer.get(
+                                    UCTableProperties.CATALOG_MANAGED_KEY_NEW)))
+                .isEqualTo(UCTableProperties.CATALOG_MANAGED_VALUE);
+          }
         }
       }
     }

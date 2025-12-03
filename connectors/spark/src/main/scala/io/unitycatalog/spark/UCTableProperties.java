@@ -9,6 +9,9 @@ public class UCTableProperties {
   public static final String UC_TABLE_ID_KEY = "io.unitycatalog.tableId";
   public static final String UC_TABLE_ID_KEY_OLD = "ucTableId";
 
+  // Prefix of table feature property key.
+  public static final String FEATURE_PROP_PREFIX = "delta.feature.";
+
   // This table property should be set in order to enable Delta code to use UC as commit coordinator
   public static final String CATALOG_MANAGED_KEY = "delta.feature.catalogOwned-preview";
   public static final String CATALOG_MANAGED_VALUE = "supported";

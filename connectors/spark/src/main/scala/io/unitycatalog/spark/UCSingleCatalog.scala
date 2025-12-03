@@ -226,6 +226,13 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
+  // These table properties, along with table feature ones starting by "delta.feature.", will be
+  // sent to server (if set) as they may be needed by server.
+  val CREATE_TABLE_SERVER_PROPERTIES = Set(
+    UCTableProperties.UC_TABLE_ID_KEY,
+    UCTableProperties.UC_TABLE_ID_KEY_OLD,
+  )
+
   def setCredentialProps(props: util.HashMap[String, String],
                          credentialProps: util.Map[String, String]): Unit = {
     props.putAll(credentialProps)
@@ -380,7 +387,7 @@ private class UCProxy(
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    assert(properties.get("provider") != null)
+    assert(properties.get(TableCatalog.PROP_PROVIDER) != null)
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())
@@ -419,6 +426,11 @@ private class UCProxy(
     }
     createTable.setColumns(columns)
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
+    // For now only the table features and other selected table properties are sent to server
+    val propertiesToServer = properties.view.filterKeys(
+        k => k.startsWith(UCTableProperties.FEATURE_PROP_PREFIX) ||
+          UCSingleCatalog.CREATE_TABLE_SERVER_PROPERTIES.contains(k)).toMap
+    createTable.setProperties(propertiesToServer)
     tablesApi.createTable(createTable)
     loadTable(ident)
   }
