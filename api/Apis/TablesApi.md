@@ -5,7 +5,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
 | [**createStagingTable**](TablesApi.md#createStagingTable) | **POST** /staging-tables | Create a staging table |
-| [**createTable**](TablesApi.md#createTable) | **POST** /tables | Create a table. Only external table creation is supported. WARNING: This API is experimental and will change in future versions.  |
+| [**createTable**](TablesApi.md#createTable) | **POST** /tables | Create a table. WARNING: This API is experimental and will change in future versions.  |
 | [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /tables/{full_name} | Delete a table |
 | [**getTable**](TablesApi.md#getTable) | **GET** /tables/{full_name} | Get a table |
 | [**listTables**](TablesApi.md#listTables) | **GET** /tables | List tables |
@@ -42,9 +42,9 @@ No authorization required
 # **createTable**
 > TableInfo createTable(CreateTable)
 
-Create a table. Only external table creation is supported. WARNING: This API is experimental and will change in future versions. 
+Create a table. WARNING: This API is experimental and will change in future versions. 
 
-    Creates a new external table instance. WARNING: This API is experimental and will change in future versions. 
+    Creates a new table instance. WARNING: This API is experimental and will change in future versions. 
 
 ### Parameters
 
