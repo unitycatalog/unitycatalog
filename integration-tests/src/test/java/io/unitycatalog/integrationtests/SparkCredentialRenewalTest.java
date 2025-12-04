@@ -3,11 +3,14 @@ package io.unitycatalog.integrationtests;
 import static io.unitycatalog.integrationtests.TestUtils.AUTH_TOKEN;
 import static io.unitycatalog.integrationtests.TestUtils.BASE_LOCATIONS;
 import static io.unitycatalog.integrationtests.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.integrationtests.TestUtils.EXTERNAL_TABLE_TYPE;
+import static io.unitycatalog.integrationtests.TestUtils.MANAGED_TABLE_TYPE;
 import static io.unitycatalog.integrationtests.TestUtils.OAUTH_CLIENT_ID;
 import static io.unitycatalog.integrationtests.TestUtils.OAUTH_CLIENT_SECRET;
 import static io.unitycatalog.integrationtests.TestUtils.OAUTH_URI;
 import static io.unitycatalog.integrationtests.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.integrationtests.TestUtils.SERVER_URL;
+import static io.unitycatalog.integrationtests.TestUtils.TABLE_TYPES;
 import static io.unitycatalog.integrationtests.TestUtils.envAsBoolean;
 import static io.unitycatalog.integrationtests.TestUtils.envAsLong;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
@@ -62,11 +65,6 @@ public class SparkCredentialRenewalTest {
   // long will the test run. 90 minutes by default.
   private static final long DURATION_SECONDS = envAsLong(PREFIX + "DURATION_SECONDS", 5400L);
 
-  // Define the CREDENTIAL_RENEWAL_TEST_MANAGED_TABLE_ENABLED environment variable, which decides
-  // if enable the managed table or not.
-  private static final boolean MANAGED_TABLE_ENABLED =
-      envAsBoolean(PREFIX + "MANAGED_TABLE_ENABLED", true);
-
   // Define managed table name.
   private static final String MANAGED_SRC_TABLE =
       String.format("%s.%s.managedSrcCredRenewal", CATALOG_NAME, SCHEMA_NAME);
@@ -81,16 +79,16 @@ public class SparkCredentialRenewalTest {
 
   private static SparkSession spark;
 
-  private static String srcTable(boolean managedTable) {
-    return managedTable ? MANAGED_SRC_TABLE : EXTERNAL_SRC_TABLE;
+  private static String srcTable(String tableType) {
+    return MANAGED_TABLE_TYPE.equals(tableType) ? MANAGED_SRC_TABLE : EXTERNAL_SRC_TABLE;
   }
 
-  private static String dstTable(boolean managedTable) {
-    return managedTable ? MANAGED_DST_TABLE : EXTERNAL_DST_TABLE;
+  private static String dstTable(String tableType) {
+    return MANAGED_TABLE_TYPE.equals(tableType) ? MANAGED_DST_TABLE : EXTERNAL_DST_TABLE;
   }
 
   private void setupSparkAndTable(
-      boolean managedTable, String baseLocation, Map<String, String> catalogProps) {
+      String tableType, String baseLocation, Map<String, String> catalogProps) {
     SparkSession.Builder builder =
         SparkSession.builder()
             .appName("test-credential-renewal-in-long-running-job")
@@ -100,6 +98,7 @@ public class SparkCredentialRenewalTest {
             .config(
                 "spark.sql.catalog.spark_catalog",
                 "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+            // Explicitly disable the Spark AQE to avoid coalescing small partitions by default.
             .config("spark.sql.adaptive.enabled", "false")
             .config("spark.sql.adaptive.coalescePartitions.enabled", "false");
 
@@ -111,27 +110,38 @@ public class SparkCredentialRenewalTest {
     spark = builder.getOrCreate();
 
     sql("CREATE SCHEMA IF NOT EXISTS %s.%s", CATALOG_NAME, SCHEMA_NAME);
-    if (managedTable) {
-      // TODO: SQL-managed table creation is not supported yet, so we create the table manually.
-      // Once SQL support is added, use the SQL to create tables.
-      sql("DELETE FROM %s", srcTable(true));
-      sql("DELETE FROM %s", dstTable(true));
+    if (MANAGED_TABLE_TYPE.equals(tableType)) {
+      // TODO: SQL-based managed table creation is not supported yet.
+      // Until that lands, the tables must be created manually in the external Unity Catalog.
+      //
+      // Example:
+      //
+      // CREATE TABLE main.demo.managedSrcCredRenewal (id INT)
+      //   USING delta
+      //   PARTITIONED BY (partition INT)
+      //   TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported');
+      //
+      // CREATE TABLE main.demo.managedDstCredRenewal (id INT)
+      //   USING delta
+      //   TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported');
+      sql("DELETE FROM %s", srcTable(tableType));
+      sql("DELETE FROM %s", dstTable(tableType));
     } else {
-      sql("DROP TABLE IF EXISTS %s", srcTable(false));
-      sql("DROP TABLE IF EXISTS %s", dstTable(false));
+      sql("DROP TABLE IF EXISTS %s", srcTable(tableType));
+      sql("DROP TABLE IF EXISTS %s", dstTable(tableType));
       sql(
           "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",
-          srcTable(false), baseLocation, UUID.randomUUID());
+          srcTable(tableType), baseLocation, UUID.randomUUID());
       sql(
           "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s'",
-          dstTable(false), baseLocation, UUID.randomUUID());
+          dstTable(tableType), baseLocation, UUID.randomUUID());
     }
   }
 
   @AfterEach
   public void afterEach() {
-    sql("DROP TABLE IF EXISTS %s", srcTable(false));
-    sql("DROP TABLE IF EXISTS %s", dstTable(false));
+    sql("DROP TABLE IF EXISTS %s", srcTable(EXTERNAL_TABLE_TYPE));
+    sql("DROP TABLE IF EXISTS %s", dstTable(EXTERNAL_TABLE_TYPE));
 
     if (spark != null) {
       spark.stop();
@@ -142,11 +152,11 @@ public class SparkCredentialRenewalTest {
   @ParameterizedTest
   @MethodSource("credentialRenewalArguments")
   public void testLongRunningJob(
-      boolean managedTable, String baseLocation, Map<String, String> catalogProps) {
+      String tableType, String baseLocation, Map<String, String> catalogProps) {
     // Prepare the spark setup, and both source table and destination table creation.
-    setupSparkAndTable(managedTable, baseLocation, catalogProps);
-    String srcTable = srcTable(managedTable);
-    String dstTable = dstTable(managedTable);
+    setupSparkAndTable(tableType, baseLocation, catalogProps);
+    String srcTable = srcTable(tableType);
+    String dstTable = dstTable(tableType);
 
     // Every 100 seconds produce a row, because we don't want to produce massive small files.
     long rowCount = DURATION_SECONDS / 100 + (DURATION_SECONDS % 100 == 0 ? 0 : 1);
@@ -206,15 +216,14 @@ public class SparkCredentialRenewalTest {
   public static Stream<Arguments> credentialRenewalArguments() {
     List<Arguments> testArguments = new ArrayList<>();
 
-    List<Boolean> managedTableFlags = MANAGED_TABLE_ENABLED ? List.of(false, true) : List.of(false);
-    for (boolean managedTable : managedTableFlags) {
+    for (String tableType : TABLE_TYPES) {
       for (String baseLocation : BASE_LOCATIONS) {
         if (!TestUtils.isEmptyOrNull(baseLocation)) {
           // Add the Personal Access Token (PAT) test case if specified in the env vars.
           if (!TestUtils.isEmptyOrNull(AUTH_TOKEN)) {
             testArguments.add(
                 Arguments.of(
-                    managedTable,
+                    tableType,
                     baseLocation,
                     Map.of(
                         OptionsUtil.URI, SERVER_URL,
@@ -227,7 +236,7 @@ public class SparkCredentialRenewalTest {
           if (!TestUtils.isEmptyOrNull(OAUTH_URI)) {
             testArguments.add(
                 Arguments.of(
-                    managedTable,
+                    tableType,
                     baseLocation,
                     Map.of(
                         OptionsUtil.URI, SERVER_URL,

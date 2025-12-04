@@ -1,5 +1,6 @@
 package io.unitycatalog.integrationtests;
 
+import com.google.common.base.Splitter;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -12,6 +13,12 @@ public class TestUtils {
 
   // Fixed token to authenticate unity catalog server.
   public static final String AUTH_TOKEN = envAsString("CATALOG_AUTH_TOKEN", "");
+
+  // The table types that will be specified in the integration tests.
+  public static final String MANAGED_TABLE_TYPE = "ManagedTable";
+  public static final String EXTERNAL_TABLE_TYPE = "ExternalTable";
+  public static final List<String> TABLE_TYPES =
+      envAsList("TABLE_TYPES", MANAGED_TABLE_TYPE, EXTERNAL_TABLE_TYPE);
 
   // OAuth to authenticate unity catalog server.
   public static final String OAUTH_URI = envAsString("CATALOG_OAUTH_URI", "");
@@ -39,6 +46,15 @@ public class TestUtils {
   public static boolean envAsBoolean(String key, boolean defaultValue) {
     String value = System.getenv().get(key);
     return value == null ? defaultValue : Boolean.parseBoolean(value);
+  }
+
+  public static List<String> envAsList(String key, String... values) {
+    String valuesString = System.getenv().get(key);
+    if (valuesString == null) {
+      return List.of(values);
+    } else {
+      return Splitter.on(',').trimResults().omitEmptyStrings().splitToList(valuesString);
+    }
   }
 
   public static String randomName() {
