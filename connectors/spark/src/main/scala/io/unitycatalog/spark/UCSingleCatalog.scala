@@ -62,6 +62,7 @@ class UCSingleCatalog
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
           .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
         delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
+        delegate.initialize(name, options)
         UCSingleCatalog.DELTA_CATALOG_LOADED.set(true)
       } catch {
         case e: ClassNotFoundException =>
