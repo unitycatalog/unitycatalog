@@ -7,10 +7,7 @@ public class RetryPolicy {
   private final double delayJitterFactor;
 
   private RetryPolicy(
-      int maxAttempts,
-      long initialDelayMillis,
-      double delayMultiplier,
-      double delayJitterFactor) {
+      int maxAttempts, long initialDelayMillis, double delayMultiplier, double delayJitterFactor) {
     this.maxAttempts = maxAttempts;
     this.initialDelayMillis = initialDelayMillis;
     this.delayMultiplier = delayMultiplier;

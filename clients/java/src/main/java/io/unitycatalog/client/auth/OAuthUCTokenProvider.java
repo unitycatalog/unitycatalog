@@ -2,6 +2,7 @@ package io.unitycatalog.client.auth;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.client.Constants;
 import io.unitycatalog.client.Preconditions;
 import io.unitycatalog.client.utils.Clock;
 import java.io.IOException;
@@ -42,8 +43,10 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
     Preconditions.checkNotNull(oauthUri, "OAuth URI must not be null");
     Preconditions.checkNotNull(oauthClientId, "OAuth client ID must not be null");
     Preconditions.checkNotNull(oauthClientSecret, "OAuth client secret must not be null");
-    Preconditions.checkArgument(leadRenewalTimeSeconds >= 0,
-        "Lead renewal time must be non-negative, but got %s", leadRenewalTimeSeconds);
+    Preconditions.checkArgument(
+        leadRenewalTimeSeconds >= 0,
+        "Lead renewal time must be non-negative, but got %s",
+        leadRenewalTimeSeconds);
     Preconditions.checkNotNull(httpClient, "Retrying API client must not be null");
     Preconditions.checkNotNull(clock, "Clock must not be null");
 
@@ -69,36 +72,40 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
 
   @Override
   public Map<String, String> properties() {
-    // TODO: define those properties.
-    return Map.of();
+    return Map.of(
+        Constants.OAUTH_URI, oauthUri,
+        Constants.OAUTH_CLIENT_ID, oauthClientId,
+        Constants.OAUTH_CLIENT_SECRET, oauthClientSecret);
   }
 
   private TempToken renewToken() {
     try {
       // Prepare Basic authentication header
       String credentials = String.format("%s:%s", oauthClientId, oauthClientSecret);
-      String encodedCredentials = Base64.getEncoder()
-          .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+      String encodedCredentials =
+          Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
 
       // Prepare form data
       String formData = "grant_type=client_credentials&scope=all-apis";
 
       // Build HTTP request
-      HttpRequest request = HttpRequest.newBuilder()
-          .uri(URI.create(oauthUri))
-          .header("Authorization", "Basic " + encodedCredentials)
-          .header("Content-Type", "application/x-www-form-urlencoded")
-          .POST(HttpRequest.BodyPublishers.ofString(formData))
-          .build();
+      HttpRequest request =
+          HttpRequest.newBuilder()
+              .uri(URI.create(oauthUri))
+              .header("Authorization", "Basic " + encodedCredentials)
+              .header("Content-Type", "application/x-www-form-urlencoded")
+              .POST(HttpRequest.BodyPublishers.ofString(formData))
+              .build();
 
       // Send request with retry support
-      HttpResponse<String> response = httpClient.send(request,
-          HttpResponse.BodyHandlers.ofString());
+      HttpResponse<String> response =
+          httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
       if (response.statusCode() != 200) {
-        throw new IOException(String.format(
-            "Failed to fetch OAuth token. HTTP status: %d, Response: %s",
-            response.statusCode(), response.body()));
+        throw new IOException(
+            String.format(
+                "Failed to fetch OAuth token. HTTP status: %d, Response: %s",
+                response.statusCode(), response.body()));
       }
 
       // Parse JSON response

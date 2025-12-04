@@ -1,7 +1,6 @@
-package io.unitycatalog.spark;
+package io.unitycatalog.client;
 
-import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.spark.utils.Clock;
+import io.unitycatalog.client.utils.Clock;
 import java.net.http.HttpClient;
 
 /**
@@ -9,11 +8,10 @@ import java.net.http.HttpClient;
  *
  * <p>The base {@link ApiClient} comes from the OpenAPI generator and is overwritten on every regen.
  * To keep that file untouched, this subclass overrides {@link #getHttpClient()} and wraps the
- * generated {@link HttpClient} in a {@link RetryingHttpClient} configured through
- * {@link ApiClientConf} and {@link HttpRetryHandler} (which defines the retry mechanism). Adding
- * retries at the HTTP layer means every generated API surface (for example {@code
- * TemporaryCredentialsApi}, {@code TablesApi}, etc.) inherits the same policy
- * without extra wrappers.</p>
+ * generated {@link HttpClient} in a {@link RetryingHttpClient} configured through {@link
+ * ApiClientConf} and {@link HttpRetryHandler} (which defines the retry mechanism). Adding retries
+ * at the HTTP layer means every generated API surface (for example {@code TemporaryCredentialsApi},
+ * {@code TablesApi}, etc.) inherits the same policy without extra wrappers.
  */
 public class RetryingApiClient extends ApiClient {
 
@@ -31,4 +29,3 @@ public class RetryingApiClient extends ApiClient {
     return new RetryingHttpClient(baseClient, retryHandler);
   }
 }
-

@@ -1,26 +1,25 @@
-package io.unitycatalog.spark;
-
-import org.sparkproject.guava.base.Preconditions;
+package io.unitycatalog.client;
 
 /**
  * Holds configuration that tweaks the behaviour of the Unity Catalog API client.
  *
  * <p>The defaults here are chosen to work out of the box. Callers can override them either
- * programmatically or via {@link UCHadoopConf#setApiClientConf} when communicating through
- * Hadoop configuration. These settings are used by {@link RetryingApiClient} to configure the
- * retry behaviour of the {@link RetryingHttpClient}.</p>
+ * programmatically or via {@link UCHadoopConf#setApiClientConf} when communicating through Hadoop
+ * configuration. These settings are used by {@link RetryingApiClient} to configure the retry
+ * behaviour of the {@link RetryingHttpClient}.
  *
- * <p>Retry defaults:</p>
+ * <p>Retry defaults:
+ *
  * <ul>
  *   <li>{@link #DEFAULT_REQUEST_MAX_ATTEMPTS}: maximum attempts per request (initial try plus
- *       retries).</li>
+ *       retries).
  *   <li>{@link #DEFAULT_REQUEST_INITIAL_DELAY_MS}: initial backoff delay in milliseconds; later
- *       attempts scale this using {@code initialDelayMs * multiplier ^ (attempt - 1) *
- *       (1 ± jitterFactor)}.</li>
+ *       attempts scale this using {@code initialDelayMs * multiplier ^ (attempt - 1) * (1 ±
+ *       jitterFactor)}.
  *   <li>{@link #DEFAULT_REQUEST_DELAY_MULTIPLIER}: exponential multiplier (e.g. {@code 2.0} doubles
- *       the wait each retry).</li>
+ *       the wait each retry).
  *   <li>{@link #DEFAULT_REQUEST_DELAY_JITTER_FACTOR}: jitter fraction in {@code [0, 1)} applied to
- *       the computed delay (e.g. {@code 0.5} randomises by ±50%).</li>
+ *       the computed delay (e.g. {@code 0.5} randomises by ±50%).
  * </ul>
  */
 public class ApiClientConf {
@@ -47,8 +46,10 @@ public class ApiClientConf {
   }
 
   public ApiClientConf setRequestMaxAttempts(int requestMaxAttempts) {
-    Preconditions.checkArgument(requestMaxAttempts >= 1,
-        "Retry max attempts must be at least 1, but got %s", requestMaxAttempts);
+    Preconditions.checkArgument(
+        requestMaxAttempts >= 1,
+        "Retry max attempts must be at least 1, but got %s",
+        requestMaxAttempts);
     this.requestMaxAttempts = requestMaxAttempts;
     return this;
   }
@@ -58,8 +59,10 @@ public class ApiClientConf {
   }
 
   public ApiClientConf setRequestInitialDelayMs(long requestInitialDelayMs) {
-    Preconditions.checkArgument(requestInitialDelayMs > 0,
-        "Retry initial delay must be positive, but got %s", requestInitialDelayMs);
+    Preconditions.checkArgument(
+        requestInitialDelayMs > 0,
+        "Retry initial delay must be positive, but got %s",
+        requestInitialDelayMs);
     this.requestInitialDelayMs = requestInitialDelayMs;
     return this;
   }
@@ -69,8 +72,10 @@ public class ApiClientConf {
   }
 
   public ApiClientConf setRequestDelayMultiplier(double requestDelayMultiplier) {
-    Preconditions.checkArgument(requestDelayMultiplier > 0,
-        "Retry delay multiplier must be positive, but got %s", requestDelayMultiplier);
+    Preconditions.checkArgument(
+        requestDelayMultiplier > 0,
+        "Retry delay multiplier must be positive, but got %s",
+        requestDelayMultiplier);
     this.requestDelayMultiplier = requestDelayMultiplier;
     return this;
   }
@@ -80,10 +85,11 @@ public class ApiClientConf {
   }
 
   public ApiClientConf setRequestDelayJitterFactor(double requestDelayJitterFactor) {
-    Preconditions.checkArgument(requestDelayJitterFactor >= 0 && requestDelayJitterFactor < 1,
-        "Retry delay jitter factor must be in [0, 1), but got %s", requestDelayJitterFactor);
+    Preconditions.checkArgument(
+        requestDelayJitterFactor >= 0 && requestDelayJitterFactor < 1,
+        "Retry delay jitter factor must be in [0, 1), but got %s",
+        requestDelayJitterFactor);
     this.requestDelayJitterFactor = requestDelayJitterFactor;
     return this;
   }
 }
-

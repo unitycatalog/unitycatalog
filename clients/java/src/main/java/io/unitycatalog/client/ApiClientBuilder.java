@@ -47,8 +47,7 @@ public class ApiClientBuilder {
     // Set the unity catalog token provider.
     Preconditions.checkNotNull(ucTokenProvider, "The UC token provider cannot be null");
     apiClient.setRequestInterceptor(
-        request -> request.header("Authorization", "Bearer " + ucTokenProvider.accessToken())
-    );
+        request -> request.header("Authorization", "Bearer " + ucTokenProvider.accessToken()));
 
     // Set the name and version pairs.
     if (nameValuePairs != null && nameValuePairs.length > 0) {

@@ -187,8 +187,13 @@ lazy val client = (project in file("clients/java"))
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      // TODO: Be careful to introduce this guava, since it's easily to conflict.
+      "com.google.guava" % "guava" % "31.0.1-jre",
 
       // Test dependencies
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,

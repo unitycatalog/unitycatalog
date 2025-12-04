@@ -4,6 +4,7 @@ import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_ACCOUNT_AUTH_TYPE_PROP
 import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_ACCOUNT_IS_HNS_ENABLED;
 import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
 
+import io.unitycatalog.client.auth.UCTokenProvider;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
@@ -11,7 +12,6 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.UCHadoopConf;
-import io.unitycatalog.spark.auth.catalog.UCTokenProvider;
 import io.unitycatalog.spark.auth.storage.AbfsVendedTokenProvider;
 import io.unitycatalog.spark.auth.storage.AwsVendedTokenProvider;
 import io.unitycatalog.spark.auth.storage.GcsVendedTokenProvider;

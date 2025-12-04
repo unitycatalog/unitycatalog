@@ -1,5 +1,6 @@
 package io.unitycatalog.client.auth;
 
+import io.unitycatalog.client.Constants;
 import java.util.Map;
 
 public class FixedUCTokenProvider implements UCTokenProvider {
@@ -20,6 +21,6 @@ public class FixedUCTokenProvider implements UCTokenProvider {
 
   @Override
   public Map<String, String> properties() {
-    return Map.of();
+    return Map.of(Constants.TOKEN, token);
   }
 }

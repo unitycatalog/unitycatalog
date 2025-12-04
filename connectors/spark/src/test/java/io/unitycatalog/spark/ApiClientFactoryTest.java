@@ -3,13 +3,12 @@ package io.unitycatalog.spark;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.spark.auth.catalog.FixedUCTokenProvider;
+import io.unitycatalog.client.ApiClientConf;
+import io.unitycatalog.client.auth.FixedUCTokenProvider;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 
-/**
- * Test class for ApiClientFactory to verify User-Agent configuration and client setup.
- */
+/** Test class for ApiClientFactory to verify User-Agent configuration and client setup. */
 public class ApiClientFactoryTest {
 
   @Test

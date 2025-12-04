@@ -1,8 +1,7 @@
 package io.unitycatalog.client;
 
 public class Preconditions {
-  private Preconditions() {
-  }
+  private Preconditions() {}
 
   public static void checkNotNull(Object object, String errorMessage, Object... args) {
     if (object == null) {

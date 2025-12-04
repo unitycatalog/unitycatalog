@@ -1,13 +1,12 @@
-package io.unitycatalog.spark;
+package io.unitycatalog.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.spark.utils.Clock;
+import io.unitycatalog.client.utils.Clock;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -54,7 +53,8 @@ public class HttpRetryHandlerTest {
 
     // Configure mock to fail twice, then succeed
     when(mockClient.send(
-            any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenReturn(response503)
         .thenReturn(response429)
         .thenReturn(response200);
@@ -64,7 +64,9 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
     verify(mockClient, times(3))
-        .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
 
     assertThat(result.statusCode()).isEqualTo(200);
     assertThat(result.body()).isEqualTo("Success");
@@ -98,7 +100,8 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> response200 = createMockResponse(200, "Recovered");
 
     when(mockClient.send(
-            any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenReturn(response503)
         .thenReturn(response200);
 
@@ -107,7 +110,9 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
     verify(mockClient, times(2))
-        .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
 
     assertThat(result.statusCode()).isEqualTo(200);
     assertThat(result.body()).isEqualTo("Recovered");
@@ -144,7 +149,8 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> response200 = createMockResponse(200, "Recovered");
 
     when(mockClient.send(
-            any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenReturn(response503)
         .thenReturn(response502)
         .thenReturn(response200);
@@ -154,7 +160,9 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
     verify(mockClient, times(3))
-        .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
     assertThat(result.statusCode()).isEqualTo(200);
 
     // Delays: 40ms * 3^(1-1) = 40ms, then 40ms * 3^(2-1) = 120ms.
@@ -180,7 +188,8 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> response200 = createMockResponse(200, "Success");
 
     when(mockClient.send(
-            any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenThrow(new java.net.SocketTimeoutException("Transient error"))
         .thenReturn(response503)
         .thenReturn(response200);
@@ -190,7 +199,9 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
     verify(mockClient, times(3))
-        .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
     assertThat(result.statusCode()).isEqualTo(200);
     // Retry delays: 50ms (after exception) + 100ms (after 503) = 150ms total.
     assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(150)));
