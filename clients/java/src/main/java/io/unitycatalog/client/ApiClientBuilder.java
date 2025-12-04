@@ -3,7 +3,7 @@ package io.unitycatalog.client;
 import io.unitycatalog.client.auth.UCTokenProvider;
 import java.net.URI;
 
-public class ClientBuilder {
+public class ApiClientBuilder {
   public static final String BASE_PATH = "/api/2.1/unity-catalog";
 
   private URI url = null;
@@ -12,26 +12,26 @@ public class ClientBuilder {
   // TODO we need to use this retry policy to build a retryable http client.
   private RetryPolicy retryPolicy = RetryPolicy.newBuilder().build();
 
-  public static ClientBuilder create() {
-    return new ClientBuilder();
+  public static ApiClientBuilder create() {
+    return new ApiClientBuilder();
   }
 
-  public ClientBuilder url(URI url) {
+  public ApiClientBuilder url(URI url) {
     this.url = url;
     return this;
   }
 
-  public ClientBuilder ucTokenProvider(UCTokenProvider ucTokenProvider) {
+  public ApiClientBuilder ucTokenProvider(UCTokenProvider ucTokenProvider) {
     this.ucTokenProvider = ucTokenProvider;
     return this;
   }
 
-  public ClientBuilder clientVersion(String... nameValuePairs) {
+  public ApiClientBuilder clientVersion(String... nameValuePairs) {
     this.nameValuePairs = nameValuePairs;
     return this;
   }
 
-  public ClientBuilder retryPolicy(RetryPolicy retryPolicy) {
+  public ApiClientBuilder retryPolicy(RetryPolicy retryPolicy) {
     this.retryPolicy = retryPolicy;
     return this;
   }
@@ -51,7 +51,7 @@ public class ClientBuilder {
     );
 
     // Set the name and version pairs.
-    if (nameValuePairs != null) {
+    if (nameValuePairs != null && nameValuePairs.length > 0) {
       apiClient.setClientVersion(nameValuePairs);
     }
 

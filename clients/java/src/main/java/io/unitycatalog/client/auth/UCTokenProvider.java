@@ -1,6 +1,5 @@
 package io.unitycatalog.client.auth;
 
-import io.unitycatalog.client.Constants;
 import io.unitycatalog.client.Preconditions;
 import java.util.Map;
 
@@ -28,42 +27,55 @@ public interface UCTokenProvider {
    */
   Map<String, String> properties();
 
-  /**
-   * Creates a token provider from configuration options. Returns {@link FixedUCTokenProvider} if
-   * a static token is provided, or {@link OAuthUCTokenProvider} if OAuth credentials are provided.
-   *
-   * @param options containing authentication configuration without prefix. Expected keys:
-   *                <ul>
-   *                  <li>{@code token} - for fixed token authentication, or</li>
-   *                  <li>{@code oauth.uri}, {@code oauth.clientId}, {@code oauth.clientSecret} -
-   *                      for OAuth 2.0 client authentication flow (all three required)</li>
-   *                </ul>
-   * @return a token provider instance
-   * @throws IllegalArgumentException if options are missing or incomplete
-   */
-  static UCTokenProvider create(Map<String, String> options) {
-    // If token is available, use FixedUCTokenProvider.
-    String token = options.get(Constants.TOKEN);
-    if (token != null) {
-      return new FixedUCTokenProvider(token);
+  static Builder newBuilder() {
+    return new Builder();
+  }
+
+  class Builder {
+    private String token;
+    private String oauthUri;
+    private String oauthClientId;
+    private String oauthClientSecret;
+
+    public Builder token(String token) {
+      this.token = token;
+      return this;
     }
 
-    // If OAuth options is available, use OAuthUCTokenProvider.
-    String oauthUri = options.get(Constants.OAUTH_URI);
-    String oauthClientId = options.get(Constants.OAUTH_CLIENT_ID);
-    String oauthClientSecret = options.get(Constants.OAUTH_CLIENT_SECRET);
-    if (oauthUri != null || oauthClientId != null || oauthClientSecret != null) {
-      Preconditions.checkArgument(oauthUri != null && oauthClientId != null && oauthClientSecret != null,
-          "Incomplete OAuth configuration detected. All of the keys are required: " +
-              "oauth.uri, oauth.clientId, oauth.clientSecret. Please ensure they are " +
-              "all set.");
-
-      return new OAuthUCTokenProvider(oauthUri, oauthClientId, oauthClientSecret);
+    public Builder oauthUri(String oauthUri) {
+      this.oauthUri = oauthUri;
+      return this;
     }
 
-    throw new IllegalArgumentException("Cannot determine UC authentication " +
-            "configuration from options, please set %stoken for static token authentication or " +
-            "oauth.uri, oauth.clientId, oauth.clientSecret for OAuth 2.0 authentication " +
-            "(all three required)");
+    public Builder oauthClientId(String oauthClientId) {
+      this.oauthClientId = oauthClientId;
+      return this;
+    }
+
+    public Builder oauthClientSecret(String oauthClientSecret) {
+      this.oauthClientSecret = oauthClientSecret;
+      return this;
+    }
+
+    public UCTokenProvider build() {
+      if (token != null) {
+        return new FixedUCTokenProvider(token);
+      }
+
+      if (oauthUri != null || oauthClientId != null || oauthClientSecret != null) {
+        Preconditions.checkArgument(
+            oauthUri != null && oauthClientId != null && oauthClientSecret != null,
+            "Incomplete OAuth configuration detected. All of the keys are required: " +
+                "oauthUri, oauthClientId, oauthClientSecret. Please ensure they are " +
+                "all set.");
+
+        return new OAuthUCTokenProvider(oauthUri, oauthClientId, oauthClientSecret);
+      }
+
+      throw new IllegalArgumentException("Cannot determine UC authentication " +
+          "configuration from options, please set %stoken for static token authentication or " +
+          "oauth.uri, oauth.clientId, oauth.clientSecret for OAuth 2.0 authentication " +
+          "(all three required)");
+    }
   }
 }
