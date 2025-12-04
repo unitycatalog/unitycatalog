@@ -1,7 +1,7 @@
 package io.unitycatalog.client.auth;
 
+import com.google.common.base.Preconditions;
 import io.unitycatalog.client.Constants;
-import io.unitycatalog.client.Preconditions;
 import java.util.Map;
 import java.util.function.Consumer;
 

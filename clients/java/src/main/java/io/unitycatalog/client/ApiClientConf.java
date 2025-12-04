@@ -1,5 +1,7 @@
 package io.unitycatalog.client;
 
+import com.google.common.base.Preconditions;
+
 /**
  * Holds configuration that tweaks the behaviour of the Unity Catalog API client.
  *

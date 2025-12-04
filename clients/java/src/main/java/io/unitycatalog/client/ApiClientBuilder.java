@@ -1,5 +1,6 @@
 package io.unitycatalog.client;
 
+import com.google.common.base.Preconditions;
 import io.unitycatalog.client.auth.UCTokenProvider;
 import java.net.URI;
 
