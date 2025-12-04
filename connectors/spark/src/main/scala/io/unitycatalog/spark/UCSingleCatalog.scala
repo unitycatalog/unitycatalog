@@ -113,10 +113,11 @@ class UCSingleCatalog
       // this property to the exactly value of what we need.
       // This is because some document may have mentioned setting it to enable UC as commit
       // coordinator. But we don't actually need that as we always set it automatically.
-      List(UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_KEY_NEW)
+      List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
         .foreach(k => {
           Option(properties.get(k))
-            .filter(_ != UCTableProperties.CATALOG_MANAGED_VALUE)
+            .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
             .foreach(_ => throw new ApiException(
               s"Should not specify property $k."))
         })
@@ -138,7 +139,7 @@ class UCSingleCatalog
       newProps.put(UCTableProperties.UC_TABLE_ID_KEY_OLD, stagingTableInfo.getId)
       // Only set the existing feature name. When Delta renames it, Delta needs to handle it
       // gracefully.
-      newProps.put(UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_VALUE)
+      newProps.put(UCTableProperties.DELTA_CATALOG_MANAGED_KEY, UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
@@ -427,8 +428,9 @@ private class UCProxy(
     createTable.setColumns(columns)
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
     // For now only the table features and other selected table properties are sent to server
+    // TODO: revise this logic once we have the spec of managed table creation finalized.
     val propertiesToServer = properties.view.filterKeys(
-        k => k.startsWith(UCTableProperties.FEATURE_PROP_PREFIX) ||
+        k => k.startsWith(UCTableProperties.DELTA_FEATURE_PROP_PREFIX) ||
           UCSingleCatalog.CREATE_TABLE_SERVER_PROPERTIES.contains(k)).toMap
     createTable.setProperties(propertiesToServer)
     tablesApi.createTable(createTable)

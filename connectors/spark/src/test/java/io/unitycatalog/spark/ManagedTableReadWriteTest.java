@@ -47,17 +47,18 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
             () ->
                 sql(
                     "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
-                    fullTableName, UCTableProperties.CATALOG_MANAGED_KEY))
+                    fullTableName, UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
         .hasMessageContaining(
-            String.format("Should not specify property %s", UCTableProperties.CATALOG_MANAGED_KEY));
+            String.format(
+                "Should not specify property %s", UCTableProperties.DELTA_CATALOG_MANAGED_KEY));
     assertThatThrownBy(
             () ->
                 sql(
                     "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
-                    fullTableName, UCTableProperties.CATALOG_MANAGED_KEY_NEW))
+                    fullTableName, UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW))
         .hasMessageContaining(
             String.format(
-                "Should not specify property %s", UCTableProperties.CATALOG_MANAGED_KEY_NEW));
+                "Should not specify property %s", UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
     assertThatThrownBy(
             () ->
                 sql(
@@ -96,8 +97,8 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
               setProperty
                   ? String.format(
                       "TBLPROPERTIES ('%s' = '%s')",
-                      UCTableProperties.CATALOG_MANAGED_KEY,
-                      UCTableProperties.CATALOG_MANAGED_VALUE)
+                      UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+                      UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
                   : "";
 
           if (ctas) {
@@ -132,42 +133,44 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
               tableProperties.contains(
                       String.format(
                           "%s=%s",
-                          UCTableProperties.CATALOG_MANAGED_KEY,
-                          UCTableProperties.CATALOG_MANAGED_VALUE))
+                          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+                          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE))
                   || tableProperties.contains(
                       String.format(
                           "%s=%s",
-                          UCTableProperties.CATALOG_MANAGED_KEY_NEW,
-                          UCTableProperties.CATALOG_MANAGED_VALUE)));
+                          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)));
 
+          TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
+          TableInfo tableInfo = tableOperations.getTable(fullTableName);
+          assertThat(tableInfo.getCatalogName()).isEqualTo(catalogName);
+          assertThat(tableInfo.getName()).isEqualTo(tableName);
+          assertThat(tableInfo.getSchemaName()).isEqualTo(SCHEMA_NAME);
+          assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
+          assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
+          // Currently we can not check these table properties on server because Delta doesn't
+          // send them yet. In the future this will be enabled.
+          // TODO: enable this check once the table properties are sent by Delta.
           boolean checkServerTableProperties = false;
           if (checkServerTableProperties) {
-            // Currently we can not check these table properties on server because Delta doesn't
-            // send them yet. In the future this will be enabled.
-            TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
-            TableInfo tableInfo = tableOperations.getTable(fullTableName);
-            assertThat(tableInfo.getCatalogName()).isEqualTo(catalogName);
-            assertThat(tableInfo.getName()).isEqualTo(tableName);
-            assertThat(tableInfo.getSchemaName()).isEqualTo(SCHEMA_NAME);
-            assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
-            assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
             Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
             Assertions.assertTrue(
                 tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
                     || tablePropertiesFromServer.containsKey(
                         UCTableProperties.UC_TABLE_ID_KEY_OLD));
             Assertions.assertTrue(
-                tablePropertiesFromServer.containsKey(UCTableProperties.CATALOG_MANAGED_KEY)
+                tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
                     || tablePropertiesFromServer.containsKey(
-                        UCTableProperties.CATALOG_MANAGED_KEY_NEW));
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
             assertThat(
                     Optional.ofNullable(
-                            tablePropertiesFromServer.get(UCTableProperties.CATALOG_MANAGED_KEY))
+                            tablePropertiesFromServer.get(
+                                UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
                         .orElseGet(
                             () ->
                                 tablePropertiesFromServer.get(
-                                    UCTableProperties.CATALOG_MANAGED_KEY_NEW)))
-                .isEqualTo(UCTableProperties.CATALOG_MANAGED_VALUE);
+                                    UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)))
+                .isEqualTo(UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
           }
         }
       }
