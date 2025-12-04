@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.client.RetryingApiClient;
 import io.unitycatalog.client.utils.Clock;
 import java.io.IOException;
 import java.net.http.HttpClient;
@@ -29,11 +30,14 @@ public class OAuthUCTokenProviderTest {
   private static final long EXPIRES_IN_SECONDS = 3600L;
 
   private HttpClient mockHttpClient;
+  private RetryingApiClient mockRetryingApiClient;
   private Clock.ManualClock clock;
 
   @BeforeEach
   public void setUp() {
     mockHttpClient = mock(HttpClient.class);
+    mockRetryingApiClient = mock(RetryingApiClient.class);
+    when(mockRetryingApiClient.getHttpClient()).thenReturn(mockHttpClient);
     clock = (Clock.ManualClock) Clock.manualClock(Instant.now());
   }
 
@@ -41,7 +45,8 @@ public class OAuthUCTokenProviderTest {
   public void testAccessTokenCachesTokenAndReusesIt() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
     OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockHttpClient, clock);
+        new OAuthUCTokenProvider(
+            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     String token1 = provider.accessToken();
     verifyOAuthRequest(1);
@@ -61,7 +66,8 @@ public class OAuthUCTokenProviderTest {
   public void testAccessTokenRenewsTokenBeforeExpiration() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, 60L);
     OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockHttpClient, clock);
+        new OAuthUCTokenProvider(
+            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     String token1 = provider.accessToken();
     assertThat(token1).isEqualTo(ACCESS_TOKEN_1);
@@ -86,7 +92,8 @@ public class OAuthUCTokenProviderTest {
   public void testAccessTokenSendsCorrectHttpRequest() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
     OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockHttpClient, clock);
+        new OAuthUCTokenProvider(
+            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     provider.accessToken();
 
@@ -117,7 +124,8 @@ public class OAuthUCTokenProviderTest {
         .thenReturn(mockResponse);
 
     OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockHttpClient, clock);
+        new OAuthUCTokenProvider(
+            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     assertThatThrownBy(provider::accessToken)
         .isInstanceOf(RuntimeException.class)
@@ -129,7 +137,8 @@ public class OAuthUCTokenProviderTest {
   public void testAccessTokenRenewsImmediatelyWhenExpired() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, 10L);
     OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockHttpClient, clock);
+        new OAuthUCTokenProvider(
+            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     String token1 = provider.accessToken();
     assertThat(token1).isEqualTo(ACCESS_TOKEN_1);
@@ -148,26 +157,28 @@ public class OAuthUCTokenProviderTest {
     assertThatThrownBy(
             () ->
                 new OAuthUCTokenProvider(
-                    null, CLIENT_ID, CLIENT_SECRET, 30L, mockHttpClient, clock))
+                    null, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("OAuth URI must not be null");
 
     assertThatThrownBy(
             () ->
                 new OAuthUCTokenProvider(
-                    OAUTH_URI, null, CLIENT_SECRET, 30L, mockHttpClient, clock))
+                    OAUTH_URI, null, CLIENT_SECRET, 30L, mockRetryingApiClient, clock))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("OAuth client ID must not be null");
 
     assertThatThrownBy(
-            () -> new OAuthUCTokenProvider(OAUTH_URI, CLIENT_ID, null, 30L, mockHttpClient, clock))
+            () ->
+                new OAuthUCTokenProvider(
+                    OAUTH_URI, CLIENT_ID, null, 30L, mockRetryingApiClient, clock))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("OAuth client secret must not be null");
 
     assertThatThrownBy(
             () ->
                 new OAuthUCTokenProvider(
-                    OAUTH_URI, CLIENT_ID, CLIENT_SECRET, -1L, mockHttpClient, clock))
+                    OAUTH_URI, CLIENT_ID, CLIENT_SECRET, -1L, mockRetryingApiClient, clock))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Lead renewal time must be non-negative");
   }

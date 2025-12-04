@@ -2,12 +2,14 @@ package io.unitycatalog.client.auth;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiClientConf;
 import io.unitycatalog.client.Constants;
 import io.unitycatalog.client.Preconditions;
+import io.unitycatalog.client.RetryingApiClient;
 import io.unitycatalog.client.utils.Clock;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +17,14 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
 
+/**
+ * OAuth-based token provider that fetches and automatically renews access tokens.
+ *
+ * <p>This provider uses the OAuth 2.0 client credentials flow to obtain access tokens. It
+ * automatically renews tokens before they expire (default: 30 seconds before expiration). Token
+ * requests are retried using {@link RetryingApiClient} for resilience against transient network
+ * failures.
+ */
 public class OAuthUCTokenProvider implements UCTokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -23,13 +33,19 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
   private final String oauthClientId;
   private final String oauthClientSecret;
   private final long leadRenewalTimeSeconds;
-  private final HttpClient httpClient;
+  private final ApiClient apiClient;
   private final Clock clock;
 
   private volatile TempToken tempToken;
 
   public OAuthUCTokenProvider(String oauthUri, String oauthClientId, String oauthClientSecret) {
-    this(oauthUri, oauthClientId, oauthClientSecret, DEFAULT_LEAD_RENEWAL_TIME_SECONDS, null, null);
+    this(
+        oauthUri,
+        oauthClientId,
+        oauthClientSecret,
+        DEFAULT_LEAD_RENEWAL_TIME_SECONDS,
+        new RetryingApiClient(new ApiClientConf(), Clock.systemClock()),
+        Clock.systemClock());
   }
 
   // Package-private constructor for testing with custom dependencies
@@ -38,7 +54,7 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
       String oauthClientId,
       String oauthClientSecret,
       long leadRenewalTimeSeconds,
-      HttpClient httpClient,
+      ApiClient apiClient,
       Clock clock) {
     Preconditions.checkNotNull(oauthUri, "OAuth URI must not be null");
     Preconditions.checkNotNull(oauthClientId, "OAuth client ID must not be null");
@@ -47,14 +63,14 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
         leadRenewalTimeSeconds >= 0,
         "Lead renewal time must be non-negative, but got %s",
         leadRenewalTimeSeconds);
-    Preconditions.checkNotNull(httpClient, "Retrying API client must not be null");
+    Preconditions.checkNotNull(apiClient, "Retrying API client must not be null");
     Preconditions.checkNotNull(clock, "Clock must not be null");
 
     this.oauthUri = oauthUri;
     this.oauthClientId = oauthClientId;
     this.oauthClientSecret = oauthClientSecret;
     this.leadRenewalTimeSeconds = leadRenewalTimeSeconds;
-    this.httpClient = httpClient;
+    this.apiClient = apiClient;
     this.clock = clock;
   }
 
@@ -99,7 +115,7 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
 
       // Send request with retry support
       HttpResponse<String> response =
-          httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+          apiClient.getHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
 
       if (response.statusCode() != 200) {
         throw new IOException(
