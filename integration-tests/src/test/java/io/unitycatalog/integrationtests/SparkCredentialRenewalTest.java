@@ -202,8 +202,9 @@ public class SparkCredentialRenewalTest {
    * contains:
    *
    * <ul>
-   *   <li><b>managedTable</b> - true indicate covering the managed table long-running test,
-   *       otherwise the external table long-running test.
+   *   <li><b>tableType</b> - {@link TestUtils#MANAGED_TABLE_TYPE} or {@link
+   *       TestUtils#EXTERNAL_TABLE_TYPE}, which indicates covering managed table tests or external
+   *       table tests.
    *   <li><b>baseLocation</b> – The base cloud storage path used during testing. External tables
    *       created in the tests will be placed under this location.
    *   <li><b>catalogProps</b> – A {@code Map<String, String>} of catalog configuration properties.
