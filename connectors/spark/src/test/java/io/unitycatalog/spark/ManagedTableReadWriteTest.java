@@ -86,6 +86,7 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     int counter = 0;
+    final String comment = "This is comment.";
     for (boolean setProperty : List.of(true, false)) {
       for (boolean ctas : List.of(true, false)) {
         for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
@@ -103,10 +104,12 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
 
           if (ctas) {
             sql(
-                "CREATE TABLE %s USING delta %s AS SELECT 'a' AS name",
-                fullTableName, propertyClause);
+                "CREATE TABLE %s USING delta %s COMMENT '%s' AS SELECT 'a' AS name",
+                fullTableName, propertyClause, comment);
           } else {
-            sql("CREATE TABLE %s(name STRING) USING delta %s", fullTableName, propertyClause);
+            sql(
+                "CREATE TABLE %s(name STRING) USING delta %s COMMENT '%s'",
+                fullTableName, propertyClause, comment);
           }
           sql("INSERT INTO " + fullTableName + " SELECT 'b'");
 
@@ -148,12 +151,13 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
           assertThat(tableInfo.getSchemaName()).isEqualTo(SCHEMA_NAME);
           assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
           assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
+          assertThat(tableInfo.getComment()).isEqualTo(comment);
           // Currently we can not check these table properties on server because Delta doesn't
           // send them yet. In the future this will be enabled.
           // TODO: enable this check once the table properties are sent by Delta.
-          boolean checkServerTableProperties = false;
-          if (checkServerTableProperties) {
-            Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
+          boolean deltaSendsServerTableProperties = false;
+          Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
+          if (deltaSendsServerTableProperties) {
             Assertions.assertTrue(
                 tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
                     || tablePropertiesFromServer.containsKey(
@@ -171,6 +175,9 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
                                 tablePropertiesFromServer.get(
                                     UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)))
                 .isEqualTo(UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
+          } else {
+            // Because Delta doesn't send these properties, it's empty.
+            assertThat(tablePropertiesFromServer).isEmpty();
           }
         }
       }

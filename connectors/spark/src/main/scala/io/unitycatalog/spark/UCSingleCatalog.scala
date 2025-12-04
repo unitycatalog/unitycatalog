@@ -227,13 +227,6 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
-  // These table properties, along with table feature ones starting by "delta.feature.", will be
-  // sent to server (if set) as they may be needed by server.
-  val CREATE_TABLE_SERVER_PROPERTIES = Set(
-    UCTableProperties.UC_TABLE_ID_KEY,
-    UCTableProperties.UC_TABLE_ID_KEY_OLD,
-  )
-
   def setCredentialProps(props: util.HashMap[String, String],
                          credentialProps: util.Map[String, String]): Unit = {
     props.putAll(credentialProps)
@@ -425,13 +418,13 @@ private class UCProxy(
       column.setPosition(i)
       column
     }
+    val comment = Option(properties.get(TableCatalog.PROP_COMMENT))
+    comment.foreach(createTable.setComment(_))
     createTable.setColumns(columns)
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
-    // For now only the table features and other selected table properties are sent to server
-    // TODO: revise this logic once we have the spec of managed table creation finalized.
-    val propertiesToServer = properties.view.filterKeys(
-        k => k.startsWith(UCTableProperties.DELTA_FEATURE_PROP_PREFIX) ||
-          UCSingleCatalog.CREATE_TABLE_SERVER_PROPERTIES.contains(k)).toMap
+    // Do not send the V2 table properties as they are made part of the `createTable` already.
+    val propertiesToServer =
+      properties.view.filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_)).toMap
     createTable.setProperties(propertiesToServer)
     tablesApi.createTable(createTable)
     loadTable(ident)
