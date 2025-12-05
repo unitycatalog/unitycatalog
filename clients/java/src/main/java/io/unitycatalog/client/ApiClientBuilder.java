@@ -42,6 +42,7 @@ public class ApiClientBuilder {
     // Set the scheme, host, port and base path, for the unity catalog client.
     Preconditions.checkNotNull(url, "The unitycatalog url cannot be null");
     ApiClient apiClient = new ApiClient();
+    apiClient.setScheme(url.getScheme());
     apiClient.setHost(url.getHost());
     apiClient.setPort(url.getPort());
     apiClient.setBasePath(url.getPath() + BASE_PATH);
