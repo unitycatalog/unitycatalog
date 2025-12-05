@@ -113,10 +113,11 @@ class UCSingleCatalog
       // this property to the exactly value of what we need.
       // This is because some document may have mentioned setting it to enable UC as commit
       // coordinator. But we don't actually need that as we always set it automatically.
-      List(UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_KEY_NEW)
+      List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
         .foreach(k => {
           Option(properties.get(k))
-            .filter(_ != UCTableProperties.CATALOG_MANAGED_VALUE)
+            .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
             .foreach(_ => throw new ApiException(
               s"Should not specify property $k."))
         })
@@ -138,7 +139,7 @@ class UCSingleCatalog
       newProps.put(UCTableProperties.UC_TABLE_ID_KEY_OLD, stagingTableInfo.getId)
       // Only set the existing feature name. When Delta renames it, Delta needs to handle it
       // gracefully.
-      newProps.put(UCTableProperties.CATALOG_MANAGED_KEY, UCTableProperties.CATALOG_MANAGED_VALUE)
+      newProps.put(UCTableProperties.DELTA_CATALOG_MANAGED_KEY, UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
@@ -380,7 +381,7 @@ private class UCProxy(
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    assert(properties.get("provider") != null)
+    assert(properties.get(TableCatalog.PROP_PROVIDER) != null)
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())
@@ -417,8 +418,14 @@ private class UCProxy(
       column.setPosition(i)
       column
     }
+    val comment = Option(properties.get(TableCatalog.PROP_COMMENT))
+    comment.foreach(createTable.setComment(_))
     createTable.setColumns(columns)
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
+    // Do not send the V2 table properties as they are made part of the `createTable` already.
+    val propertiesToServer =
+      properties.view.filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_)).toMap
+    createTable.setProperties(propertiesToServer)
     tablesApi.createTable(createTable)
     loadTable(ident)
   }
