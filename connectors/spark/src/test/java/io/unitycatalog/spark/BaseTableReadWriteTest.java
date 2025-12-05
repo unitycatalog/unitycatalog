@@ -182,7 +182,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
    *
    * @param location Set to the location of external, or empty if it needs to be a managed table.
    */
-  public void testHyphenInTableNameBase(Optional<String> location) {
+  public void testHyphenInTableNameBase(
+      Optional<String> location, Optional<String> tblpropertiesClause) {
     String catalogName = "test-catalog-name";
     String schemaName = "test-schema-name";
     String tableName = "test-table-name";
@@ -191,8 +192,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     String fullTableName = String.format("%s.%s.%s", catalogName, schemaName, tableName);
     String locationClause = location.map(l -> String.format("LOCATION '%s'", l)).orElse("");
     sql(
-        "CREATE TABLE %s(i INT, s STRING) USING DELTA %s",
-        quoteEntityName(fullTableName), locationClause);
+        "CREATE TABLE %s(i INT, s STRING) USING DELTA %s %s",
+        quoteEntityName(fullTableName), locationClause, tblpropertiesClause.orElse(""));
 
     testTableReadWrite(fullTableName);
 

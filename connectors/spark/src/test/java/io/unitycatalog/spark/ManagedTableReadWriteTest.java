@@ -36,47 +36,55 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
   private static final String DELTA_TABLE = "test_delta";
+  protected static final String TBLPROPERTIES_CLAUSE =
+      String.format(
+          "TBLPROPERTIES ('%s'='%s')",
+          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
 
   @Test
   public void testCreateManagedTableErrors() {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    assertThatThrownBy(() -> sql("CREATE TABLE %s(name STRING) USING parquet", fullTableName))
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING parquet %s",
+                    fullTableName, TBLPROPERTIES_CLAUSE))
         .hasMessageContaining("not support non-Delta managed table");
-    assertThatThrownBy(
-            () ->
-                sql(
-                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
-                    fullTableName, UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
-        .hasMessageContaining(
-            String.format(
-                "Should not specify property %s", UCTableProperties.DELTA_CATALOG_MANAGED_KEY));
-    assertThatThrownBy(
-            () ->
-                sql(
-                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
-                    fullTableName, UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW))
-        .hasMessageContaining(
-            String.format(
-                "Should not specify property %s", UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
-    assertThatThrownBy(
-            () ->
-                sql(
-                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
-                    fullTableName, UCTableProperties.UC_TABLE_ID_KEY))
-        .hasMessageContaining(UCTableProperties.UC_TABLE_ID_KEY);
-    assertThatThrownBy(
-            () ->
-                sql(
-                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
-                    fullTableName, UCTableProperties.UC_TABLE_ID_KEY_OLD))
-        .hasMessageContaining(UCTableProperties.UC_TABLE_ID_KEY_OLD);
+    for (String featureProperty :
+        List.of(
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
+      assertThatThrownBy(
+              () ->
+                  sql(
+                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
+                      fullTableName, featureProperty))
+          .hasMessageContaining(
+              String.format("Invalid property value 'disabled' for '%s'", featureProperty));
+    }
+    for (String ucTableIdProperty :
+        List.of(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD)) {
+      assertThatThrownBy(
+              () ->
+                  sql(
+                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
+                      fullTableName, ucTableIdProperty))
+          .hasMessageContaining(ucTableIdProperty);
+    }
     assertThatThrownBy(
             () ->
                 sql(
                     "CREATE TABLE %s(name STRING) USING delta " + "TBLPROPERTIES ('%s' = 'false')",
                     fullTableName, TableCatalog.PROP_IS_MANAGED_LOCATION))
         .hasMessageContaining("is_managed_location");
+    assertThatThrownBy(() -> sql("CREATE TABLE %s(name STRING) USING delta", fullTableName))
+        .hasMessageContaining(
+            String.format(
+                "Managed table creation requires table property '%s'='%s' to be set",
+                UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
   }
 
   @ParameterizedTest
@@ -87,98 +95,86 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
 
     int counter = 0;
     final String comment = "This is comment.";
-    for (boolean setProperty : List.of(true, false)) {
-      for (boolean ctas : List.of(true, false)) {
-        for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
-          String tableName = DELTA_TABLE + counter;
-          String fullTableName = catalogName + "." + SCHEMA_NAME + "." + tableName;
-          counter++;
-          // Setting this table property isn't necessary, but we should not throw an error.
-          String propertyClause =
-              setProperty
-                  ? String.format(
-                      "TBLPROPERTIES ('%s' = '%s')",
-                      UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-                      UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
-                  : "";
+    for (boolean ctas : List.of(true, false)) {
+      for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
+        String tableName = DELTA_TABLE + counter;
+        String fullTableName = catalogName + "." + SCHEMA_NAME + "." + tableName;
+        counter++;
+        if (ctas) {
+          sql(
+              "CREATE TABLE %s USING delta %s COMMENT '%s' AS SELECT 'a' AS name",
+              fullTableName, TBLPROPERTIES_CLAUSE, comment);
+        } else {
+          sql(
+              "CREATE TABLE %s(name STRING) USING delta %s COMMENT '%s'",
+              fullTableName, TBLPROPERTIES_CLAUSE, comment);
+        }
+        sql("INSERT INTO " + fullTableName + " SELECT 'b'");
 
-          if (ctas) {
-            sql(
-                "CREATE TABLE %s USING delta %s COMMENT '%s' AS SELECT 'a' AS name",
-                fullTableName, propertyClause, comment);
-          } else {
-            sql(
-                "CREATE TABLE %s(name STRING) USING delta %s COMMENT '%s'",
-                fullTableName, propertyClause, comment);
-          }
-          sql("INSERT INTO " + fullTableName + " SELECT 'b'");
+        List<Row> rows = sql("DESC EXTENDED " + fullTableName);
+        Map<String, String> describeResult =
+            rows.stream()
+                .collect(Collectors.toMap(row -> row.getString(0), row -> row.getString(1)));
 
-          List<Row> rows = sql("DESC EXTENDED " + fullTableName);
-          Map<String, String> describeResult =
-              rows.stream()
-                  .collect(Collectors.toMap(row -> row.getString(0), row -> row.getString(1)));
+        // Make sure the table created is managed and catalogOwned
+        assertThat(describeResult.get("Name")).isEqualTo(fullTableName);
+        assertThat(describeResult.get("Type")).isEqualTo("MANAGED");
+        assertThat(describeResult.get("Provider")).isEqualToIgnoringCase("delta");
+        assertThat(describeResult.get("Is_managed_location")).isEqualTo("true");
+        assertThat(describeResult).containsKey("Table Properties");
+        // Check that it either has the old table ID key or the new one. Doesn't matter if it
+        // has both.
+        String tableProperties = describeResult.get("Table Properties");
+        Assertions.assertTrue(
+            tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY)
+                || tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY_OLD));
+        // Check that it either has the old feature name or the new one. We don't care if it
+        // has both but Delta won't allow that.
+        Assertions.assertTrue(
+            tableProperties.contains(
+                    String.format(
+                        "%s=%s",
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+                        UCTableProperties.DELTA_CATALOG_MANAGED_VALUE))
+                || tableProperties.contains(
+                    String.format(
+                        "%s=%s",
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                        UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)));
 
-          // Make sure the table created is managed and catalogOwned
-          assertThat(describeResult.get("Name")).isEqualTo(fullTableName);
-          assertThat(describeResult.get("Type")).isEqualTo("MANAGED");
-          assertThat(describeResult.get("Provider")).isEqualToIgnoringCase("delta");
-          assertThat(describeResult.get("Is_managed_location")).isEqualTo("true");
-          assertThat(describeResult).containsKey("Table Properties");
-          // Check that it either has the old table ID key or the new one. Doesn't matter if it
-          // has both.
-          String tableProperties = describeResult.get("Table Properties");
+        TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
+        TableInfo tableInfo = tableOperations.getTable(fullTableName);
+        assertThat(tableInfo.getCatalogName()).isEqualTo(catalogName);
+        assertThat(tableInfo.getName()).isEqualTo(tableName);
+        assertThat(tableInfo.getSchemaName()).isEqualTo(SCHEMA_NAME);
+        assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
+        assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
+        assertThat(tableInfo.getComment()).isEqualTo(comment);
+        // Currently we can not check these table properties on server because Delta doesn't
+        // send them yet. In the future this will be enabled.
+        // TODO: enable this check once the table properties are sent by Delta.
+        boolean deltaSendsServerTableProperties = false;
+        Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
+        if (deltaSendsServerTableProperties) {
           Assertions.assertTrue(
-              tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY)
-                  || tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY_OLD));
-          // Check that it either has the old feature name or the new one. We don't care if it
-          // has both but Delta won't allow that.
+              tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
+                  || tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY_OLD));
           Assertions.assertTrue(
-              tableProperties.contains(
-                      String.format(
-                          "%s=%s",
-                          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-                          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE))
-                  || tableProperties.contains(
-                      String.format(
-                          "%s=%s",
-                          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
-                          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)));
-
-          TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
-          TableInfo tableInfo = tableOperations.getTable(fullTableName);
-          assertThat(tableInfo.getCatalogName()).isEqualTo(catalogName);
-          assertThat(tableInfo.getName()).isEqualTo(tableName);
-          assertThat(tableInfo.getSchemaName()).isEqualTo(SCHEMA_NAME);
-          assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
-          assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
-          assertThat(tableInfo.getComment()).isEqualTo(comment);
-          // Currently we can not check these table properties on server because Delta doesn't
-          // send them yet. In the future this will be enabled.
-          // TODO: enable this check once the table properties are sent by Delta.
-          boolean deltaSendsServerTableProperties = false;
-          Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
-          if (deltaSendsServerTableProperties) {
-            Assertions.assertTrue(
-                tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
-                    || tablePropertiesFromServer.containsKey(
-                        UCTableProperties.UC_TABLE_ID_KEY_OLD));
-            Assertions.assertTrue(
-                tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
-                    || tablePropertiesFromServer.containsKey(
-                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
-            assertThat(
-                    Optional.ofNullable(
-                            tablePropertiesFromServer.get(
-                                UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
-                        .orElseGet(
-                            () ->
-                                tablePropertiesFromServer.get(
-                                    UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)))
-                .isEqualTo(UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
-          } else {
-            // Because Delta doesn't send these properties, it's empty.
-            assertThat(tablePropertiesFromServer).isEmpty();
-          }
+              tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
+                  || tablePropertiesFromServer.containsKey(
+                      UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
+          assertThat(
+                  Optional.ofNullable(
+                          tablePropertiesFromServer.get(
+                              UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
+                      .orElseGet(
+                          () ->
+                              tablePropertiesFromServer.get(
+                                  UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)))
+              .isEqualTo(UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
+        } else {
+          // Because Delta doesn't send these properties, it's empty.
+          assertThat(tablePropertiesFromServer).isEmpty();
         }
       }
     }
@@ -186,7 +182,7 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
 
   @Test
   public void hyphenInTableName() {
-    testHyphenInTableNameBase(Optional.empty());
+    testHyphenInTableNameBase(Optional.empty(), Optional.of(TBLPROPERTIES_CLAUSE));
   }
 
   @Override
@@ -203,8 +199,8 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
       partitionClause = String.format(" PARTITIONED BY (%s)", String.join(", ", partitionColumns));
     }
     sql(
-        "CREATE TABLE %s.%s.%s(i INT, s STRING) USING delta %s",
-        catalogName, SCHEMA_NAME, tableName, partitionClause);
+        "CREATE TABLE %s.%s.%s(i INT, s STRING) USING delta %s %s",
+        catalogName, SCHEMA_NAME, tableName, TBLPROPERTIES_CLAUSE, partitionClause);
     return String.join(".", catalogName, SCHEMA_NAME, tableName);
   }
 }
