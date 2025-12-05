@@ -48,7 +48,7 @@ public class TransactionManager {
         return result;
       } catch (Exception e) {
         tx.rollback();
-        LOGGER.error(errorMessage, e);
+        LOGGER.debug(errorMessage, e);
         if (e instanceof BaseException) {
           throw (BaseException) e;
         }

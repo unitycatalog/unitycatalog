@@ -38,7 +38,10 @@ public class CredPropsUtil {
     }
 
     public T ucTokenProvider(UCTokenProvider ucTokenProvider) {
-      builder.putAll(ucTokenProvider.properties());
+      // As we can only propagate the properties with prefix 'fs.*' to the FileSystem
+      // implementation. So let's add the prefix here.
+      ucTokenProvider.properties()
+          .forEach((key, value) -> builder.put(UCHadoopConf.FS_UC_PREFIX + key, value));
       return self();
     }
 
