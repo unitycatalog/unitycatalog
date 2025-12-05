@@ -35,7 +35,7 @@ public class UCTokenProviderTest {
     assertThat(oauthProvider.properties())
         .containsEntry(Constants.OAUTH_URI, OAUTH_URI)
         .containsEntry(Constants.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(Constants.OAUTH_CLIENT_ID, CLIENT_SECRET);
+        .containsEntry(Constants.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
 
     // Test with incomplete OAuth config - should throw
     Map<String, String> incompleteOAuthOptions = Map.of(Constants.OAUTH_URI, OAUTH_URI);
@@ -58,53 +58,6 @@ public class UCTokenProviderTest {
     assertThat(precedenceProvider).isInstanceOf(FixedUCTokenProvider.class);
     assertThat(precedenceProvider.accessToken()).isEqualTo("fixed-token");
   }
-
-  /*
-  @Test
-  public void testCreateUCTokenProviderViaConf() {
-    // Test with Configuration containing valid token
-    Configuration tokenConf = new Configuration();
-    tokenConf.set(UCHadoopConf.UC_TOKEN_KEY, "conf-token");
-    UCTokenProvider confTokenProvider = UCTokenProvider.create(tokenConf);
-    assertThat(confTokenProvider).isInstanceOf(FixedUCTokenProvider.class);
-    assertThat(confTokenProvider.accessToken()).isEqualTo("conf-token");
-
-    // Test with Configuration containing complete OAuth config
-    Configuration oauthConf = new Configuration();
-    oauthConf.set(UCHadoopConf.UC_OAUTH_URI, OAUTH_URI);
-    oauthConf.set(UCHadoopConf.UC_OAUTH_CLIENT_ID, CLIENT_ID);
-    oauthConf.set(UCHadoopConf.UC_OAUTH_CLIENT_SECRET, CLIENT_SECRET);
-    UCTokenProvider confOAuthProvider = UCTokenProvider.create(oauthConf);
-    assertThat(confOAuthProvider).isInstanceOf(OAuthUCTokenProvider.class);
-    assertThat(confOAuthProvider.properties())
-        .containsEntry(UCHadoopConf.UC_OAUTH_URI, OAUTH_URI)
-        .containsEntry(UCHadoopConf.UC_OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(UCHadoopConf.UC_OAUTH_CLIENT_SECRET, CLIENT_SECRET);
-
-    // Test with Configuration containing incomplete OAuth config - should throw
-    Configuration incompleteOAuthConf = new Configuration();
-    incompleteOAuthConf.set(UCHadoopConf.UC_OAUTH_URI, OAUTH_URI);
-    assertThatThrownBy(() -> UCTokenProvider.create(incompleteOAuthConf))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Incomplete OAuth configuration detected");
-
-    // Test with empty Configuration - should throw
-    Configuration emptyConf = new Configuration();
-    assertThatThrownBy(() -> UCTokenProvider.create(emptyConf))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Cannot determine UC authentication configuration from options");
-
-    // Test token takes precedence over OAuth in Configuration
-    Configuration bothConf = new Configuration();
-    bothConf.set(UCHadoopConf.UC_TOKEN_KEY, "conf-fixed-token");
-    bothConf.set(UCHadoopConf.UC_OAUTH_URI, OAUTH_URI);
-    bothConf.set(UCHadoopConf.UC_OAUTH_CLIENT_ID, CLIENT_ID);
-    bothConf.set(UCHadoopConf.UC_OAUTH_CLIENT_SECRET, CLIENT_SECRET);
-    UCTokenProvider confPrecedenceProvider = UCTokenProvider.create(bothConf);
-    assertThat(confPrecedenceProvider).isInstanceOf(FixedUCTokenProvider.class);
-    assertThat(confPrecedenceProvider.accessToken()).isEqualTo("conf-fixed-token");
-  }
-   */
 
   @Test
   public void testFixedUCTokenProvider() {

@@ -1,9 +1,10 @@
 package io.unitycatalog.spark
 
-import io.unitycatalog.client.{ApiClient, ApiClientConf, ApiException}
+import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.auth.UCTokenProvider
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.spark.auth.CredPropsUtil
 import io.unitycatalog.spark.utils.OptionsUtil
 
@@ -51,7 +52,8 @@ class UCSingleCatalog
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
-    apiClient = ApiClientFactory.createApiClient(new ApiClientConf(), uri, ucTokenProvider)
+    apiClient = ApiClientFactory.createApiClient(
+      JitterDelayRetryPolicy.builder().build(),uri, ucTokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
     val proxy = new UCProxy(uri, ucTokenProvider, renewCredEnabled, apiClient, tablesApi,

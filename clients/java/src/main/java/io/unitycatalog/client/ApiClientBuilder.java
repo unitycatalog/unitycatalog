@@ -2,6 +2,8 @@ package io.unitycatalog.client;
 
 import com.google.common.base.Preconditions;
 import io.unitycatalog.client.auth.UCTokenProvider;
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
+import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
 
 public class ApiClientBuilder {
@@ -10,8 +12,7 @@ public class ApiClientBuilder {
   private URI url = null;
   private UCTokenProvider ucTokenProvider = null;
   private String[] nameValuePairs = null;
-  // TODO we need to use this retry policy to build a retryable http client.
-  private RetryPolicy retryPolicy = RetryPolicy.newBuilder().build();
+  private RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder().build();
 
   public static ApiClientBuilder create() {
     return new ApiClientBuilder();

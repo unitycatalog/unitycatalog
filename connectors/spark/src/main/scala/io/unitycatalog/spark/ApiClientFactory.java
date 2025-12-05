@@ -2,8 +2,8 @@ package io.unitycatalog.spark;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiClientBuilder;
-import io.unitycatalog.client.ApiClientConf;
 import io.unitycatalog.client.auth.UCTokenProvider;
+import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
 
 public class ApiClientFactory {
@@ -12,13 +12,14 @@ public class ApiClientFactory {
   }
 
   public static ApiClient createApiClient(
-      ApiClientConf clientConf, URI url, UCTokenProvider ucTokenProvider) {
+      RetryPolicy retryPolicy, URI url, UCTokenProvider ucTokenProvider) {
 
     // TODO:  we need to map the ApiClientConf to the builder.
     // TODO:  Remember to do that.
     ApiClientBuilder builder = ApiClientBuilder.create()
         .url(url)
-        .ucTokenProvider(ucTokenProvider);
+        .ucTokenProvider(ucTokenProvider)
+        .retryPolicy(retryPolicy);
 
     // Add Spark to User-Agent, and Delta if available
     String sparkVersion = getSparkVersion();

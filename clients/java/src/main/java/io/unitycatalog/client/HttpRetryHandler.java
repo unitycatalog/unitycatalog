@@ -2,6 +2,7 @@ package io.unitycatalog.client;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
+import io.unitycatalog.client.retry.RetryPolicy;
 import io.unitycatalog.client.utils.Clock;
 import java.io.IOException;
 import java.net.http.HttpClient;
@@ -11,13 +12,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
 
-/** Retry handler that retries on common recoverable HTTP errors and network exceptions. */
+/**
+ * Retry handler that retries on common recoverable HTTP errors and network exceptions.
+ */
 public class HttpRetryHandler {
   // Non-5xx server errors are not retried.
   private static final Set<Integer> RECOVERABLE_STATUS_CODES =
       Set.of(
           429 // Too Many Requests
-          );
+      );
 
   private static final Set<Class<? extends Throwable>> RECOVERABLE_EXCEPTIONS =
       Set.of(
@@ -26,19 +29,13 @@ public class HttpRetryHandler {
           java.net.UnknownHostException.class);
 
   private final Clock clock;
-  private final int maxAttempts;
-  private final long initialDelayMs;
-  private final double delayMultiplier;
-  private final double delayJitterFactor;
+  private final RetryPolicy retryPolicy;
 
-  HttpRetryHandler(ApiClientConf conf, Clock clock) {
-    Preconditions.checkNotNull(conf, "ApiClientConf must not be null");
+  HttpRetryHandler(RetryPolicy retryPolicy, Clock clock) {
+    Preconditions.checkNotNull(retryPolicy, "RetryPolicy must not be null");
     Preconditions.checkNotNull(clock, "Clock must not be null");
     this.clock = clock;
-    this.maxAttempts = conf.getRequestMaxAttempts();
-    this.initialDelayMs = conf.getRequestInitialDelayMs();
-    this.delayMultiplier = conf.getRequestDelayMultiplier();
-    this.delayJitterFactor = conf.getRequestDelayJitterFactor();
+    this.retryPolicy = retryPolicy;
   }
 
   public <T> HttpResponse<T> call(
@@ -47,7 +44,7 @@ public class HttpRetryHandler {
     IOException lastException = null;
     Instant startTime = clock.now();
 
-    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+    for (int attempt = 1; attempt <= retryPolicy.maxAttempts(); attempt++) {
       HttpResponse<T> response;
       boolean shouldRetry = true;
       try {
@@ -60,8 +57,13 @@ public class HttpRetryHandler {
         shouldRetry = isRecoverableException(e);
       }
 
-      if (shouldRetry && attempt < maxAttempts) {
-        sleepWithBackoff(attempt);
+      if (shouldRetry && retryPolicy.allowRetry(attempt)) {
+        try {
+          clock.sleep(retryPolicy.sleepTime(attempt));
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+          throw interrupted;
+        }
       } else {
         break;
       }
@@ -74,28 +76,12 @@ public class HttpRetryHandler {
       throw new IOException(
           String.format(
               "Failed HTTP request after %s attempts with elapsed time %s ms",
-              maxAttempts, elapsedMs));
+              retryPolicy.maxAttempts(), elapsedMs));
     }
   }
 
   private static boolean isRetryable(int statusCode) {
     return RECOVERABLE_STATUS_CODES.contains(statusCode) || (statusCode >= 500 && statusCode < 600);
-  }
-
-  private void sleepWithBackoff(int attempt) throws InterruptedException {
-    long baseDelay = (long) (initialDelayMs * Math.pow(delayMultiplier, attempt - 1));
-    double jitter = delayJitterFactor == 0 ? 0 : (Math.random() - 0.5) * 2 * delayJitterFactor;
-    long delay = (long) (baseDelay * (1 + jitter));
-    if (delay <= 0) {
-      return;
-    }
-
-    try {
-      clock.sleep(Duration.ofMillis(delay));
-    } catch (InterruptedException interrupted) {
-      Thread.currentThread().interrupt();
-      throw interrupted;
-    }
   }
 
   private boolean isRecoverableException(Throwable e) {
