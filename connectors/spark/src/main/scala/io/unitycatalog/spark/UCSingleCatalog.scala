@@ -112,17 +112,16 @@ class UCSingleCatalog
       // Setting the catalogManaged table feature is required for creating a managed table.
       if (!properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) &&
         !properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
-        // Setting the old property name is accepted during the feature rename transition period.
-        // So in this error message only the current feature name is included.
         throw new ApiException(
           s"Managed table creation requires table property " +
-            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY}'=" +
+            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'=" +
             s"'${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'" +
             s" to be set.")
       }
       // Caller should not set these two table properties to values other than "supported". This is
       // the only documented value.
-      List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY, UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
+      List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
         .foreach(k => {
           Option(properties.get(k))
             .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)

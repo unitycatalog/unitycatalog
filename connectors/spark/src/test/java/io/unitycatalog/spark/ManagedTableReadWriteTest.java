@@ -83,7 +83,7 @@ public abstract class ManagedTableReadWriteTest extends BaseTableReadWriteTest {
         .hasMessageContaining(
             String.format(
                 "Managed table creation requires table property '%s'='%s' to be set",
-                UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+                UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
                 UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
   }
 
