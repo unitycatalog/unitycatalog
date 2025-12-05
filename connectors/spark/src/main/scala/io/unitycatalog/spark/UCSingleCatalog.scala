@@ -108,18 +108,25 @@ class UCSingleCatalog
       List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
         TableCatalog.PROP_IS_MANAGED_LOCATION)
         .filter(properties.containsKey(_))
-        .foreach(p => throw new ApiException(s"Cannot specify property $p."))
-      // Caller should not set this table property directly. But it's OK if it happens to set
-      // this property to the exactly value of what we need.
-      // This is because some document may have mentioned setting it to enable UC as commit
-      // coordinator. But we don't actually need that as we always set it automatically.
+        .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
+      // Setting the catalogManaged table feature is required for creating a managed table.
+      if (!properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) &&
+        !properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
+        throw new ApiException(
+          s"Managed table creation requires table property " +
+            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'=" +
+            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'" +
+            s" to be set.")
+      }
+      // Caller should not set these two table properties to values other than "supported". This is
+      // the only documented value.
       List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
         UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
         .foreach(k => {
           Option(properties.get(k))
             .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
-            .foreach(_ => throw new ApiException(
-              s"Should not specify property $k."))
+            .foreach(v => throw new ApiException(
+              s"Invalid property value '$v' for '$k'."))
         })
 
       // Get staging table location and table id from UC
@@ -137,9 +144,6 @@ class UCSingleCatalog
       // Sets both the new and old table ID property while it's being renamed.
       newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableInfo.getId)
       newProps.put(UCTableProperties.UC_TABLE_ID_KEY_OLD, stagingTableInfo.getId)
-      // Only set the existing feature name. When Delta renames it, Delta needs to handle it
-      // gracefully.
-      newProps.put(UCTableProperties.DELTA_CATALOG_MANAGED_KEY, UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")

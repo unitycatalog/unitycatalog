@@ -264,7 +264,7 @@ public class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
   @Test
   public void hyphenInTableName() throws IOException {
     String location = new File(dataDir, UUID.randomUUID().toString()).getCanonicalPath();
-    testHyphenInTableNameBase(Optional.of(location));
+    testHyphenInTableNameBase(Optional.of(location), Optional.empty());
   }
 
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
