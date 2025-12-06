@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-public class ADLSLocationPreconditionsTest {
+public class ADLSLocationUtilsTest {
 
   private static final String TEST_CONTAINER = "testcontainer";
   private static final String TEST_STORAGE_ACCOUNT = "teststorage";

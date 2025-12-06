@@ -14,8 +14,7 @@ public class ApiClientFactory {
   public static ApiClient createApiClient(
       RetryPolicy retryPolicy, URI url, UCTokenProvider ucTokenProvider) {
 
-    // TODO:  we need to map the ApiClientConf to the builder.
-    // TODO:  Remember to do that.
+    // Create a new ApiClient Builder.
     ApiClientBuilder builder = ApiClientBuilder.create()
         .url(url)
         .ucTokenProvider(ucTokenProvider)

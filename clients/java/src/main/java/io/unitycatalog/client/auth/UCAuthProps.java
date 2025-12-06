@@ -1,7 +1,7 @@
-package io.unitycatalog.client;
+package io.unitycatalog.client.auth;
 
-public class Constants {
-  private Constants() {}
+public class UCAuthProps {
+  private UCAuthProps() {}
 
   public static final String TOKEN = "token";
   public static final String OAUTH_URI = "oauth.uri";

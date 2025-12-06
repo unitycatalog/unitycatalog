@@ -45,8 +45,8 @@ public interface RetryPolicy {
    * Determines whether a retry should be allowed for the given attempt number.
    *
    * <p>This method is invoked to check if another retry attempt should be made based on the current
-   * attempt number and the policy's configuration. Typically returns {@code false} when the attempt
-   * number exceeds {@link #maxAttempts()}.
+   * attempt number and the policy's configuration. Typically, returns {@code false} when the
+   * attempt number exceeds {@link #maxAttempts()}.
    *
    * @param attempt the current retry attempt number, starting from 1 for the first retry
    * @return {@code true} if a retry is allowed for this attempt, {@code false} otherwise

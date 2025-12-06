@@ -47,7 +47,7 @@ class UCSingleCatalog
     Preconditions.checkArgument(urlStr != null,
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
-    ucTokenProvider = UCTokenProvider.newBuilder().options(options).build()
+    ucTokenProvider = UCTokenProvider.builder().options(options).build()
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)

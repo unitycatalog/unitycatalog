@@ -1,7 +1,6 @@
 package io.unitycatalog.client.auth;
 
 import com.google.common.base.Preconditions;
-import io.unitycatalog.client.Constants;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -30,7 +29,7 @@ public interface UCTokenProvider {
    */
   Map<String, String> properties();
 
-  static Builder newBuilder() {
+  static Builder builder() {
     return new Builder();
   }
 
@@ -68,10 +67,10 @@ public interface UCTokenProvider {
     }
 
     public Builder options(Map<String, String> options) {
-      setIfPresent(options, Constants.TOKEN, this::token);
-      setIfPresent(options, Constants.OAUTH_URI, this::oauthUri);
-      setIfPresent(options, Constants.OAUTH_CLIENT_ID, this::oauthClientId);
-      setIfPresent(options, Constants.OAUTH_CLIENT_SECRET, this::oauthClientSecret);
+      setIfPresent(options, UCAuthProps.TOKEN, this::token);
+      setIfPresent(options, UCAuthProps.OAUTH_URI, this::oauthUri);
+      setIfPresent(options, UCAuthProps.OAUTH_CLIENT_ID, this::oauthClientId);
+      setIfPresent(options, UCAuthProps.OAUTH_CLIENT_SECRET, this::oauthClientSecret);
       return this;
     }
 

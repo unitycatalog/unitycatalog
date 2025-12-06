@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.client.Constants;
 import io.unitycatalog.client.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.utils.Clock;
@@ -89,9 +88,9 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
   @Override
   public Map<String, String> properties() {
     return Map.of(
-        Constants.OAUTH_URI, oauthUri,
-        Constants.OAUTH_CLIENT_ID, oauthClientId,
-        Constants.OAUTH_CLIENT_SECRET, oauthClientSecret);
+        UCAuthProps.OAUTH_URI, oauthUri,
+        UCAuthProps.OAUTH_CLIENT_ID, oauthClientId,
+        UCAuthProps.OAUTH_CLIENT_SECRET, oauthClientSecret);
   }
 
   private TempToken renewToken() {
