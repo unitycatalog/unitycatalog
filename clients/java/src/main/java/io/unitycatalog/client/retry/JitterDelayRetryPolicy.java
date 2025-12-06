@@ -7,9 +7,9 @@ import java.time.Duration;
 /**
  * A retry policy implementation that uses exponential backoff with configurable jitter.
  *
- * <p>This policy implements the {@link RetryPolicy} interface and provides exponential backoff
- * with jitter for retrying failed HTTP requests. It is used by {@link RetryingApiClient} and
- * {@link RetryingHttpClient} to determine retry behavior.
+ * <p>This policy implements the {@link RetryPolicy} interface and provides exponential backoff with
+ * jitter for retrying failed HTTP requests. It is used by {@link RetryingApiClient} and {@link
+ * RetryingHttpClient} to determine retry behavior.
  *
  * <p>The delay for each retry attempt is calculated as: {@code initialDelayMs * multiplier ^
  * (attempt - 1) * (1 ± jitterFactor)}
@@ -23,8 +23,8 @@ import java.time.Duration;
  * <ul>
  *   <li>{@link #DEFAULT_MAX_ATTEMPTS}: 3 - maximum attempts per request (includes initial try).
  *   <li>{@link #DEFAULT_INITIAL_DELAY_MS}: 500ms - initial backoff delay.
- *   <li>{@link #DEFAULT_DELAY_MULTIPLIER}: 2.0 - exponential multiplier (e.g., 2.0 doubles the
- *       wait each retry).
+ *   <li>{@link #DEFAULT_DELAY_MULTIPLIER}: 2.0 - exponential multiplier (e.g., 2.0 doubles the wait
+ *       each retry).
  *   <li>{@link #DEFAULT_DELAY_JITTER_FACTOR}: 0.5 - jitter fraction in [0, 1) applied to the
  *       computed delay (e.g., 0.5 randomizes by ±50%).
  * </ul>
@@ -56,10 +56,7 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
   private final double delayJitterFactor;
 
   private JitterDelayRetryPolicy(
-      int maxAttempts,
-      long initialDelayMs,
-      double delayMultiplier,
-      double delayJitterFactor) {
+      int maxAttempts, long initialDelayMs, double delayMultiplier, double delayJitterFactor) {
     this.maxAttempts = maxAttempts;
     this.initialDelayMs = initialDelayMs;
     this.delayMultiplier = delayMultiplier;
@@ -105,9 +102,7 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
     return new Builder();
   }
 
-  /**
-   * Builder for creating {@link JitterDelayRetryPolicy} instances with custom configuration.
-   */
+  /** Builder for creating {@link JitterDelayRetryPolicy} instances with custom configuration. */
   public static class Builder {
     private int maxAttempts = DEFAULT_MAX_ATTEMPTS;
     private long initDelayMs = DEFAULT_INITIAL_DELAY_MS;

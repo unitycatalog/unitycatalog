@@ -36,12 +36,13 @@ public class HttpRetryHandlerTest {
 
   @Test
   public void testRetrySucceedsAfterTwoFailures() throws IOException, InterruptedException {
-    RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder()
-        .maxAttempts(5)
-        .initDelayMs(100L)
-        .delayMultiplier(2.0)
-        .delayJitterFactor(0.0) // Disable jitter
-        .build();
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder()
+            .maxAttempts(5)
+            .initDelayMs(100L)
+            .delayMultiplier(2.0)
+            .delayJitterFactor(0.0) // Disable jitter
+            .build();
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
@@ -54,8 +55,8 @@ public class HttpRetryHandlerTest {
 
     // Configure mock to fail twice, then succeed
     when(mockClient.send(
-        ArgumentMatchers.any(HttpRequest.class),
-        ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenReturn(response503)
         .thenReturn(response429)
         .thenReturn(response200);
@@ -84,13 +85,13 @@ public class HttpRetryHandlerTest {
   public void testRetryServerErrorAppliesJitterWithinBounds()
       throws IOException, InterruptedException {
     double jitterFactor = 0.5;
-    RetryPolicy retryPolicy = JitterDelayRetryPolicy
-        .builder()
-        .maxAttempts(2)
-        .initDelayMs(100L)
-        .delayMultiplier(1.0)
-        .delayJitterFactor(jitterFactor)
-        .build();
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder()
+            .maxAttempts(2)
+            .initDelayMs(100L)
+            .delayMultiplier(1.0)
+            .delayJitterFactor(jitterFactor)
+            .build();
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
@@ -101,8 +102,8 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> response200 = createMockResponse(200, "Recovered");
 
     when(mockClient.send(
-        ArgumentMatchers.any(HttpRequest.class),
-        ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenReturn(response503)
         .thenReturn(response200);
 
@@ -133,13 +134,13 @@ public class HttpRetryHandlerTest {
   @Test
   @SuppressWarnings("unchecked")
   public void testMultiplierControlsBackoffScaling() throws IOException, InterruptedException {
-    RetryPolicy retryPolicy = JitterDelayRetryPolicy
-        .builder()
-        .maxAttempts(3)
-        .initDelayMs(40L)
-        .delayMultiplier(3.0)
-        .delayJitterFactor(0.0) // Disable jitter
-        .build();
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder()
+            .maxAttempts(3)
+            .initDelayMs(40L)
+            .delayMultiplier(3.0)
+            .delayJitterFactor(0.0) // Disable jitter
+            .build();
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
@@ -151,8 +152,8 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> response200 = createMockResponse(200, "Recovered");
 
     when(mockClient.send(
-        ArgumentMatchers.any(HttpRequest.class),
-        ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenReturn(response503)
         .thenReturn(response502)
         .thenReturn(response200);
@@ -173,13 +174,13 @@ public class HttpRetryHandlerTest {
 
   @Test
   public void testRetriesRecoverableException() throws IOException, InterruptedException {
-    RetryPolicy retryPolicy = JitterDelayRetryPolicy
-        .builder()
-        .maxAttempts(3)
-        .initDelayMs(50L)
-        .delayMultiplier(2.0)
-        .delayJitterFactor(0.0)
-        .build();
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder()
+            .maxAttempts(3)
+            .initDelayMs(50L)
+            .delayMultiplier(2.0)
+            .delayJitterFactor(0.0)
+            .build();
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
@@ -190,8 +191,8 @@ public class HttpRetryHandlerTest {
     HttpResponse<String> response200 = createMockResponse(200, "Success");
 
     when(mockClient.send(
-        ArgumentMatchers.any(HttpRequest.class),
-        ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenThrow(new java.net.SocketTimeoutException("Transient error"))
         .thenReturn(response503)
         .thenReturn(response200);
