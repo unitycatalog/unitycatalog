@@ -2628,6 +2628,7 @@ components:
         - function
         - volume
         - registered_model
+        - external_location
       description: The type of the resource.
     Privilege:
       type: string
@@ -2644,6 +2645,7 @@ components:
         - CREATE VOLUME
         - READ VOLUME
         - CREATE MODEL
+        - EXTERNAL_USE_LOCATION
       description: The privilege to grant.
     UpdatePermissions:
       type: object
@@ -2815,6 +2817,9 @@ components:
       properties:
         name:
           description: Name of the external location.
+          type: string
+        external_location_id:
+          description: Unique identifier of the external location.
           type: string
         url:
           description: Path URL of the external location.
