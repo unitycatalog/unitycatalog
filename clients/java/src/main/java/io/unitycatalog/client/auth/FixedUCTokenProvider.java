@@ -1,6 +1,5 @@
-package io.unitycatalog.spark.auth.catalog;
+package io.unitycatalog.client.auth;
 
-import io.unitycatalog.spark.UCHadoopConf;
 import java.util.Map;
 
 public class FixedUCTokenProvider implements UCTokenProvider {
@@ -21,6 +20,6 @@ public class FixedUCTokenProvider implements UCTokenProvider {
 
   @Override
   public Map<String, String> properties() {
-    return Map.of(UCHadoopConf.UC_TOKEN_KEY, token);
+    return Map.of(UCAuthProps.TOKEN, token);
   }
 }

@@ -2,16 +2,16 @@ package io.unitycatalog.spark.auth.storage;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.auth.UCTokenProvider;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.spark.ApiClientConf;
+import io.unitycatalog.client.retry.RetryPolicy;
+import io.unitycatalog.client.utils.Clock;
 import io.unitycatalog.spark.ApiClientFactory;
 import io.unitycatalog.spark.UCHadoopConf;
-import io.unitycatalog.spark.auth.catalog.UCTokenProvider;
-import io.unitycatalog.spark.utils.Clock;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
@@ -58,7 +58,9 @@ public abstract class GenericCredentialProvider {
     this.ucUri = URI.create(ucUriStr);
 
     // Initialize the UCTokenProvider.
-    this.ucTokenProvider = UCTokenProvider.create(conf);
+    this.ucTokenProvider = UCTokenProvider.builder()
+        .options(conf.getPropsWithPrefix(UCHadoopConf.FS_UC_PREFIX))
+        .build();
 
     this.credUid = conf.get(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
     Preconditions.checkState(credUid != null && !credUid.isEmpty(),
@@ -97,9 +99,9 @@ public abstract class GenericCredentialProvider {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
-          ApiClientConf clientConf = UCHadoopConf.getApiClientConf(conf);
+          RetryPolicy retryPolicy = UCHadoopConf.createRetryPolicy(conf);
           tempCredApi = new TemporaryCredentialsApi(
-              ApiClientFactory.createApiClient(clientConf, ucUri, ucTokenProvider));
+              ApiClientFactory.createApiClient(retryPolicy, ucUri, ucTokenProvider));
         }
       }
     }

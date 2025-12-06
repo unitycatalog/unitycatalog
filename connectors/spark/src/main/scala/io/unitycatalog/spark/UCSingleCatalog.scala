@@ -2,9 +2,10 @@ package io.unitycatalog.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
+import io.unitycatalog.client.auth.UCTokenProvider
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.spark.auth.CredPropsUtil
-import io.unitycatalog.spark.auth.catalog.UCTokenProvider
 import io.unitycatalog.spark.utils.OptionsUtil
 
 import java.net.URI
@@ -46,12 +47,13 @@ class UCSingleCatalog
     Preconditions.checkArgument(urlStr != null,
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
-    ucTokenProvider = UCTokenProvider.create(options)
+    ucTokenProvider = UCTokenProvider.builder().options(options).build()
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
-    apiClient = ApiClientFactory.createApiClient(new ApiClientConf(), uri, ucTokenProvider)
+    apiClient = ApiClientFactory.createApiClient(
+      JitterDelayRetryPolicy.builder().build(),uri, ucTokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
     val proxy = new UCProxy(uri, ucTokenProvider, renewCredEnabled, apiClient, tablesApi,

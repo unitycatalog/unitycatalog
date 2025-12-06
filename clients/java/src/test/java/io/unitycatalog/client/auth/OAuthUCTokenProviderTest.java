@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.auth.catalog;
+package io.unitycatalog.client.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -8,8 +8,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.spark.RetryingApiClient;
-import io.unitycatalog.spark.utils.Clock;
+import io.unitycatalog.client.RetryingApiClient;
+import io.unitycatalog.client.utils.Clock;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;

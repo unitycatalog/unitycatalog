@@ -1,16 +1,14 @@
 package io.unitycatalog.client;
 
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
 
 /**
  * Test class demonstrating User-Agent functionality in the Unity Catalog Java client.
  *
- * This test verifies that:
- * 1. ApiClient has a default User-Agent header set
- * 2. Users can customize the User-Agent header
- * 3. The User-Agent header is applied to all HTTP requests
+ * <p>This test verifies that: 1. ApiClient has a default User-Agent header set 2. Users can
+ * customize the User-Agent header 3. The User-Agent header is applied to all HTTP requests
  */
 public class UserAgentTest {
 
@@ -44,10 +42,7 @@ public class UserAgentTest {
     // Verify that setUserAgent returns the ApiClient for method chaining
     ApiClient client = new ApiClient();
 
-    ApiClient result = client
-        .setUserAgent("ChainedApp/2.0")
-        .setHost("example.com")
-        .setPort(8443);
+    ApiClient result = client.setUserAgent("ChainedApp/2.0").setHost("example.com").setPort(8443);
 
     assertThat(result).isSameAs(client);
     assertThat(client.getUserAgent()).isEqualTo("ChainedApp/2.0");
@@ -99,10 +94,11 @@ public class UserAgentTest {
   @Test
   public void testSetClientVersionChaining() {
     // Create a new ApiClient and use method chaining
-    ApiClient client = new ApiClient()
-        .setClientVersion("DataPipeline", "2.1.0")
-        .setHost("catalog.example.com")
-        .setPort(8443);
+    ApiClient client =
+        new ApiClient()
+            .setClientVersion("DataPipeline", "2.1.0")
+            .setHost("catalog.example.com")
+            .setPort(8443);
 
     // Verify chaining worked
     assertThat(client.getUserAgent()).contains("DataPipeline/2.1.0");
@@ -199,8 +195,7 @@ public class UserAgentTest {
 
     String userAgent = client.getUserAgent();
     assertThat(userAgent).contains("MyApp/1.0.0");
-    assertThat(userAgent).contains("MyTool ");  // No version slash
+    assertThat(userAgent).contains("MyTool "); // No version slash
     assertThat(userAgent).contains("MyWrapper/2.5.1");
   }
 }
-

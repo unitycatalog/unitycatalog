@@ -15,6 +15,7 @@ import static io.unitycatalog.integrationtests.TestUtils.envAsBoolean;
 import static io.unitycatalog.integrationtests.TestUtils.envAsLong;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
+import io.unitycatalog.client.auth.UCAuthProps;
 import io.unitycatalog.spark.UCSingleCatalog;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.ArrayList;
@@ -228,7 +229,7 @@ public class SparkCredentialRenewalTest {
                     baseLocation,
                     Map.of(
                         OptionsUtil.URI, SERVER_URL,
-                        OptionsUtil.TOKEN, AUTH_TOKEN,
+                        UCAuthProps.TOKEN, AUTH_TOKEN,
                         OptionsUtil.WAREHOUSE, CATALOG_NAME,
                         OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
           }
@@ -241,9 +242,9 @@ public class SparkCredentialRenewalTest {
                     baseLocation,
                     Map.of(
                         OptionsUtil.URI, SERVER_URL,
-                        OptionsUtil.OAUTH_URI, OAUTH_URI,
-                        OptionsUtil.OAUTH_CLIENT_ID, OAUTH_CLIENT_ID,
-                        OptionsUtil.OAUTH_CLIENT_SECRET, OAUTH_CLIENT_SECRET,
+                        UCAuthProps.OAUTH_URI, OAUTH_URI,
+                        UCAuthProps.OAUTH_CLIENT_ID, OAUTH_CLIENT_ID,
+                        UCAuthProps.OAUTH_CLIENT_SECRET, OAUTH_CLIENT_SECRET,
                         OptionsUtil.WAREHOUSE, CATALOG_NAME,
                         OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
           }

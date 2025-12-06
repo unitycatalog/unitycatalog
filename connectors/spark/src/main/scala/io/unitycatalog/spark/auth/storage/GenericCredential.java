@@ -4,7 +4,7 @@ import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.spark.utils.Clock;
+import io.unitycatalog.client.utils.Clock;
 import java.util.Objects;
 
 public class GenericCredential {
