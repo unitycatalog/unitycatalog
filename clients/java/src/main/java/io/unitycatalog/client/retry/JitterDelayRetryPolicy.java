@@ -1,15 +1,12 @@
 package io.unitycatalog.client.retry;
 
-import io.unitycatalog.client.RetryingApiClient;
-import io.unitycatalog.client.RetryingHttpClient;
 import java.time.Duration;
 
 /**
  * A retry policy implementation that uses exponential backoff with configurable jitter.
  *
  * <p>This policy implements the {@link RetryPolicy} interface and provides exponential backoff with
- * jitter for retrying failed HTTP requests. It is used by {@link RetryingApiClient} and {@link
- * RetryingHttpClient} to determine retry behavior.
+ * jitter for retrying failed HTTP requests.
  *
  * <p>The delay for each retry attempt is calculated as: {@code initialDelayMs * multiplier ^
  * (attempt - 1) * (1 ± jitterFactor)}
@@ -41,8 +38,6 @@ import java.time.Duration;
  * }</pre>
  *
  * @see RetryPolicy
- * @see RetryingApiClient
- * @see RetryingHttpClient
  */
 public class JitterDelayRetryPolicy implements RetryPolicy {
   public static final int DEFAULT_MAX_ATTEMPTS = 3;
@@ -77,7 +72,7 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
   @Override
   public Duration sleepTime(int attempt) {
     long baseDelay = (long) (initialDelayMs * Math.pow(delayMultiplier, attempt - 1));
-    double jitter = delayJitterFactor == 0 ? 0 : (Math.random() - 0.5) * 2 * delayJitterFactor;
+    double jitter = (Math.random() - 0.5) * 2 * delayJitterFactor;
     long delay = Math.max(0, (long) (baseDelay * (1 + jitter)));
     return Duration.ofMillis(delay);
   }

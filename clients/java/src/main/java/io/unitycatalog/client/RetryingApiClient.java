@@ -18,9 +18,8 @@ public class RetryingApiClient extends ApiClient {
 
   private final HttpRetryHandler retryHandler;
 
-  public RetryingApiClient(RetryPolicy retryPolicy, Clock clock) {
-    Clock effectiveClock = clock != null ? clock : Clock.systemClock();
-    this.retryHandler = new HttpRetryHandler(retryPolicy, effectiveClock);
+  public RetryingApiClient(RetryPolicy retryPolicy) {
+    this.retryHandler = new HttpRetryHandler(retryPolicy, Clock.systemClock());
   }
 
   @Override

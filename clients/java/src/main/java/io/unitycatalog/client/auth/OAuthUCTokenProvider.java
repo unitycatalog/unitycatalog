@@ -44,7 +44,7 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
         oauthClientId,
         oauthClientSecret,
         DEFAULT_LEAD_RENEWAL_TIME_SECONDS,
-        new RetryingApiClient(JitterDelayRetryPolicy.builder().build(), Clock.systemClock()),
+        new RetryingApiClient(JitterDelayRetryPolicy.builder().build()),
         Clock.systemClock());
   }
 
