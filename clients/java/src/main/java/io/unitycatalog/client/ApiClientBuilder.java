@@ -2,6 +2,7 @@ package io.unitycatalog.client;
 
 import com.google.common.base.Preconditions;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.internal.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
@@ -14,7 +15,7 @@ import java.net.URI;
  * <pre>{@code
  * ApiClient client = ApiClientBuilder.create()
  *     .url("http://localhost:8080")
- *     .ucTokenProvider(UCTokenProvider.builder().token("my-token").build())
+ *     .tokenProvider(TokenProvider.builder().token("my-token").build())
  *     .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(5).build())
  *     .clientVersion("MyApp", "1.0.0", "Java", "11")
  *     .build();
@@ -28,7 +29,7 @@ public class ApiClientBuilder {
   private static final String BASE_PATH = "/api/2.1/unity-catalog";
 
   private URI url = null;
-  private TokenProvider ucTokenProvider = null;
+  private TokenProvider tokenProvider = null;
   private String[] nameVersionPairs = null;
   private RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder().build();
 
@@ -70,12 +71,12 @@ public class ApiClientBuilder {
    *
    * <p>The token will be included in the Authorization header as a Bearer token.
    *
-   * @param ucTokenProvider the token provider implementation, must not be null
+   * @param tokenProvider the token provider implementation, must not be null
    * @return this builder instance for method chaining
    * @see TokenProvider
    */
-  public ApiClientBuilder ucTokenProvider(TokenProvider ucTokenProvider) {
-    this.ucTokenProvider = ucTokenProvider;
+  public ApiClientBuilder tokenProvider(TokenProvider tokenProvider) {
+    this.tokenProvider = tokenProvider;
     return this;
   }
 
@@ -92,7 +93,7 @@ public class ApiClientBuilder {
   public ApiClientBuilder clientVersion(String... nameVersionPairs) {
     Preconditions.checkArgument(
         nameVersionPairs.length % 2 == 0,
-        "Must provide an even number of arguments for the name-value pairs.");
+        "Must provide an even number of arguments for the name-version pairs.");
     this.nameVersionPairs = nameVersionPairs;
     return this;
   }
@@ -128,9 +129,9 @@ public class ApiClientBuilder {
     apiClient.setBasePath(url.getPath() + BASE_PATH);
 
     // Set the unity catalog token provider.
-    Preconditions.checkNotNull(ucTokenProvider, "The unitycatalog token provider cannot be null");
+    Preconditions.checkNotNull(tokenProvider, "The unitycatalog token provider cannot be null");
     apiClient.setRequestInterceptor(
-        request -> request.header("Authorization", "Bearer " + ucTokenProvider.accessToken()));
+        request -> request.header("Authorization", "Bearer " + tokenProvider.accessToken()));
 
     // Set the name and version pairs.
     if (nameVersionPairs != null && nameVersionPairs.length > 0) {

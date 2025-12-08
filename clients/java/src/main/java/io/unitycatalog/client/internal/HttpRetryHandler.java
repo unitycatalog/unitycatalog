@@ -1,9 +1,8 @@
-package io.unitycatalog.client;
+package io.unitycatalog.client.internal;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import io.unitycatalog.client.retry.RetryPolicy;
-import io.unitycatalog.client.utils.Clock;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;

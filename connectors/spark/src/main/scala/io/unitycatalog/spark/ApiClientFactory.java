@@ -17,7 +17,7 @@ public class ApiClientFactory {
     // Create a new ApiClient Builder.
     ApiClientBuilder builder = ApiClientBuilder.create()
         .url(url)
-        .ucTokenProvider(ucTokenProvider)
+        .tokenProvider(ucTokenProvider)
         .retryPolicy(retryPolicy);
 
     // Add Spark to User-Agent, and Delta if available

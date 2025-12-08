@@ -1,4 +1,4 @@
-package io.unitycatalog.client.utils;
+package io.unitycatalog.client.internal;
 
 import java.time.Duration;
 import java.time.Instant;

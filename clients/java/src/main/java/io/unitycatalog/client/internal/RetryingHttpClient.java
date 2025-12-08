@@ -1,4 +1,4 @@
-package io.unitycatalog.client;
+package io.unitycatalog.client.internal;
 
 import java.io.IOException;
 import java.net.Authenticator;

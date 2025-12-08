@@ -1,4 +1,4 @@
-package io.unitycatalog.client;
+package io.unitycatalog.client.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
-import io.unitycatalog.client.utils.Clock;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;

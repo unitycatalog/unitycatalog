@@ -8,8 +8,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.client.RetryingApiClient;
-import io.unitycatalog.client.utils.Clock;
+import io.unitycatalog.client.internal.RetryingApiClient;
+import io.unitycatalog.client.internal.Clock;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;

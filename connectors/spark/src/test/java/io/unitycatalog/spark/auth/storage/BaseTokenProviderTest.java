@@ -9,7 +9,7 @@ import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.client.utils.Clock;
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.time.Duration;
 import java.util.UUID;

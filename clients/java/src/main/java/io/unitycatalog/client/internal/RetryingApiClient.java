@@ -1,7 +1,7 @@
-package io.unitycatalog.client;
+package io.unitycatalog.client.internal;
 
+import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.retry.RetryPolicy;
-import io.unitycatalog.client.utils.Clock;
 import java.net.http.HttpClient;
 
 /**
