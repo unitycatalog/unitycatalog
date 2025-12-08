@@ -9,6 +9,7 @@ import io.unitycatalog.client.internal.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import java.io.IOException;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -31,7 +32,7 @@ class OAuthTokenProvider implements TokenProvider {
   private final String oauthClientId;
   private final String oauthClientSecret;
   private final long leadRenewalTimeSeconds;
-  private final ApiClient apiClient;
+  private final HttpClient httpClient;
   private final Clock clock;
 
   private volatile TempToken tempToken;
@@ -68,7 +69,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthClientId = oauthClientId;
     this.oauthClientSecret = oauthClientSecret;
     this.leadRenewalTimeSeconds = leadRenewalTimeSeconds;
-    this.apiClient = apiClient;
+    this.httpClient = apiClient.getHttpClient();
     this.clock = clock;
   }
 
@@ -113,7 +114,7 @@ class OAuthTokenProvider implements TokenProvider {
 
       // Send request with retry support
       HttpResponse<String> response =
-          apiClient.getHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+          httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
       if (response.statusCode() != 200) {
         throw new IOException(
