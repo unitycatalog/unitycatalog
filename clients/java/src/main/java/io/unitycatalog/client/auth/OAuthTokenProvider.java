@@ -21,10 +21,9 @@ import java.util.Map;
  *
  * <p>This provider uses the OAuth 2.0 client credentials flow to obtain access tokens. It
  * automatically renews tokens before they expire (default: 30 seconds before expiration). Token
- * requests are retried using {@link RetryingApiClient} for resilience against transient network
- * failures.
+ * requests are retried automatically for resilience against transient network failures.
  */
-public class OAuthUCTokenProvider implements UCTokenProvider {
+public class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -37,7 +36,7 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
 
   private volatile TempToken tempToken;
 
-  public OAuthUCTokenProvider(String oauthUri, String oauthClientId, String oauthClientSecret) {
+  public OAuthTokenProvider(String oauthUri, String oauthClientId, String oauthClientSecret) {
     this(
         oauthUri,
         oauthClientId,
@@ -48,7 +47,7 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
   }
 
   // Package-private constructor for testing with custom dependencies
-  OAuthUCTokenProvider(
+  OAuthTokenProvider(
       String oauthUri,
       String oauthClientId,
       String oauthClientSecret,
@@ -88,9 +87,9 @@ public class OAuthUCTokenProvider implements UCTokenProvider {
   @Override
   public Map<String, String> properties() {
     return Map.of(
-        UCAuthProps.OAUTH_URI, oauthUri,
-        UCAuthProps.OAUTH_CLIENT_ID, oauthClientId,
-        UCAuthProps.OAUTH_CLIENT_SECRET, oauthClientSecret);
+        AuthProps.OAUTH_URI, oauthUri,
+        AuthProps.OAUTH_CLIENT_ID, oauthClientId,
+        AuthProps.OAUTH_CLIENT_SECRET, oauthClientSecret);
   }
 
   private TempToken renewToken() {

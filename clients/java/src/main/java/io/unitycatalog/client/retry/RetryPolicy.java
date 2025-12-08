@@ -9,10 +9,16 @@ import java.time.Duration;
  *
  * <pre>{@code
  * RetryPolicy policy = JitterDelayRetryPolicy.builder().build();
- * int attempt = 1;
- * if (policy.allowRetry(attempt)) {
- *   Thread.sleep(policy.sleepTime(attempt).toMillis());
- *   // Retry the operation
+ * for(int attempt = 1; policy.allowRetry(attempt); attempt +=1) {
+ *   try {
+ *     doSomeAction();
+ *   } catch (Exception e) {
+ *     if (isRetryable(e)){
+ *       Thread.sleep(policy.sleepTime(attempt).toMillis());
+ *     } else {
+ *       throw e;
+ *     }
+ *   }
  * }
  * }</pre>
  */

@@ -2,7 +2,7 @@ package io.unitycatalog.spark;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiClientBuilder;
-import io.unitycatalog.client.auth.UCTokenProvider;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
 
@@ -12,7 +12,7 @@ public class ApiClientFactory {
   }
 
   public static ApiClient createApiClient(
-      RetryPolicy retryPolicy, URI url, UCTokenProvider ucTokenProvider) {
+      RetryPolicy retryPolicy, URI url, TokenProvider ucTokenProvider) {
 
     // Create a new ApiClient Builder.
     ApiClientBuilder builder = ApiClientBuilder.create()

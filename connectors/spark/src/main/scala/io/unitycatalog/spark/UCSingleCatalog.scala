@@ -2,7 +2,7 @@ package io.unitycatalog.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
-import io.unitycatalog.client.auth.UCTokenProvider
+import io.unitycatalog.client.auth.TokenProvider
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.spark.auth.CredPropsUtil
@@ -34,7 +34,7 @@ class UCSingleCatalog
   with Logging {
 
   private[this] var uri: URI = null
-  private[this] var ucTokenProvider: UCTokenProvider = null
+  private[this] var ucTokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
@@ -47,7 +47,7 @@ class UCSingleCatalog
     Preconditions.checkArgument(urlStr != null,
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
-    ucTokenProvider = UCTokenProvider.builder().options(options).build()
+    ucTokenProvider = TokenProvider.builder().options(options).build()
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
@@ -277,12 +277,12 @@ object UCSingleCatalog {
 
 // An internal proxy to talk to the UC client.
 private class UCProxy(
-    uri: URI,
-    ucTokenProvider: UCTokenProvider,
-    renewCredEnabled: Boolean,
-    apiClient: ApiClient,
-    tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
+                       uri: URI,
+                       ucTokenProvider: TokenProvider,
+                       renewCredEnabled: Boolean,
+                       apiClient: ApiClient,
+                       tablesApi: TablesApi,
+                       temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
 

@@ -20,7 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-public class OAuthUCTokenProviderTest {
+public class OAuthTokenProviderTest {
 
   private static final String OAUTH_URI = "https://oauth.example.com/token";
   private static final String CLIENT_ID = "test-client-id";
@@ -44,8 +44,8 @@ public class OAuthUCTokenProviderTest {
   @Test
   public void testAccessTokenCachesTokenAndReusesIt() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
-    OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(
+    OAuthTokenProvider provider =
+        new OAuthTokenProvider(
             OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     String token1 = provider.accessToken();
@@ -65,8 +65,8 @@ public class OAuthUCTokenProviderTest {
   @Test
   public void testAccessTokenRenewsTokenBeforeExpiration() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, 60L);
-    OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(
+    OAuthTokenProvider provider =
+        new OAuthTokenProvider(
             OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     String token1 = provider.accessToken();
@@ -91,8 +91,8 @@ public class OAuthUCTokenProviderTest {
   @Test
   public void testAccessTokenSendsCorrectHttpRequest() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
-    OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(
+    OAuthTokenProvider provider =
+        new OAuthTokenProvider(
             OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     provider.accessToken();
@@ -123,8 +123,8 @@ public class OAuthUCTokenProviderTest {
     when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
         .thenReturn(mockResponse);
 
-    OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(
+    OAuthTokenProvider provider =
+        new OAuthTokenProvider(
             OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     assertThatThrownBy(provider::accessToken)
@@ -136,8 +136,8 @@ public class OAuthUCTokenProviderTest {
   @Test
   public void testAccessTokenRenewsImmediatelyWhenExpired() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, 10L);
-    OAuthUCTokenProvider provider =
-        new OAuthUCTokenProvider(
+    OAuthTokenProvider provider =
+        new OAuthTokenProvider(
             OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
 
     String token1 = provider.accessToken();
@@ -156,28 +156,28 @@ public class OAuthUCTokenProviderTest {
   public void testConstructor() {
     assertThatThrownBy(
             () ->
-                new OAuthUCTokenProvider(
+                new OAuthTokenProvider(
                     null, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("OAuth URI must not be null");
 
     assertThatThrownBy(
             () ->
-                new OAuthUCTokenProvider(
+                new OAuthTokenProvider(
                     OAUTH_URI, null, CLIENT_SECRET, 30L, mockRetryingApiClient, clock))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("OAuth client ID must not be null");
 
     assertThatThrownBy(
             () ->
-                new OAuthUCTokenProvider(
+                new OAuthTokenProvider(
                     OAUTH_URI, CLIENT_ID, null, 30L, mockRetryingApiClient, clock))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("OAuth client secret must not be null");
 
     assertThatThrownBy(
             () ->
-                new OAuthUCTokenProvider(
+                new OAuthTokenProvider(
                     OAUTH_URI, CLIENT_ID, CLIENT_SECRET, -1L, mockRetryingApiClient, clock))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Lead renewal time must be non-negative");

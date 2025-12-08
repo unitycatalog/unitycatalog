@@ -1,7 +1,7 @@
 package io.unitycatalog.client;
 
 import com.google.common.base.Preconditions;
-import io.unitycatalog.client.auth.UCTokenProvider;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
@@ -21,14 +21,14 @@ import java.net.URI;
  * }</pre>
  *
  * @see ApiClient
- * @see UCTokenProvider
+ * @see TokenProvider
  * @see RetryPolicy
  */
 public class ApiClientBuilder {
   private static final String BASE_PATH = "/api/2.1/unity-catalog";
 
   private URI url = null;
-  private UCTokenProvider ucTokenProvider = null;
+  private TokenProvider ucTokenProvider = null;
   private String[] nameVersionPairs = null;
   private RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder().build();
 
@@ -72,9 +72,9 @@ public class ApiClientBuilder {
    *
    * @param ucTokenProvider the token provider implementation, must not be null
    * @return this builder instance for method chaining
-   * @see UCTokenProvider
+   * @see TokenProvider
    */
-  public ApiClientBuilder ucTokenProvider(UCTokenProvider ucTokenProvider) {
+  public ApiClientBuilder ucTokenProvider(TokenProvider ucTokenProvider) {
     this.ucTokenProvider = ucTokenProvider;
     return this;
   }

@@ -1,0 +1,25 @@
+package io.unitycatalog.client.auth;
+
+import java.util.Map;
+
+public class FixedTokenProvider implements TokenProvider {
+  private final String token;
+
+  public FixedTokenProvider(String token) {
+    this.token = token;
+  }
+
+  public static FixedTokenProvider create(String token) {
+    return new FixedTokenProvider(token);
+  }
+
+  @Override
+  public String accessToken() {
+    return token;
+  }
+
+  @Override
+  public Map<String, String> properties() {
+    return Map.of(AuthProps.TOKEN, token);
+  }
+}

@@ -4,7 +4,7 @@ import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_ACCOUNT_AUTH_TYPE_PROP
 import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_ACCOUNT_IS_HNS_ENABLED;
 import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
 
-import io.unitycatalog.client.auth.UCTokenProvider;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
@@ -37,7 +37,7 @@ public class CredPropsUtil {
       return self();
     }
 
-    public T ucTokenProvider(UCTokenProvider ucTokenProvider) {
+    public T ucTokenProvider(TokenProvider ucTokenProvider) {
       // As we can only propagate the properties with prefix 'fs.*' to the FileSystem
       // implementation. So let's add the prefix here.
       ucTokenProvider.properties()
@@ -141,7 +141,7 @@ public class CredPropsUtil {
 
   private static S3PropsBuilder s3TempCredPropsBuilder(
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider ucTokenProvider,
       TemporaryCredentials tempCreds) {
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     S3PropsBuilder builder = new S3PropsBuilder()
@@ -164,7 +164,7 @@ public class CredPropsUtil {
 
   private static Map<String, String> s3TableTempCredProps(
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider ucTokenProvider,
       String tableId,
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
@@ -177,7 +177,7 @@ public class CredPropsUtil {
 
   private static Map<String, String> s3PathTempCredProps(
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider ucTokenProvider,
       String path,
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
@@ -202,7 +202,7 @@ public class CredPropsUtil {
 
   private static GcsPropsBuilder gcsTempCredPropsBuilder(
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider ucTokenProvider,
       TemporaryCredentials tempCreds) {
     GcpOauthToken gcpToken = tempCreds.getGcpOauthToken();
     GcsPropsBuilder builder = new GcsPropsBuilder()
@@ -224,7 +224,7 @@ public class CredPropsUtil {
 
   private static Map<String, String> gsTableTempCredProps(
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider ucTokenProvider,
       String tableId,
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
@@ -237,7 +237,7 @@ public class CredPropsUtil {
 
   private static Map<String, String> gsPathTempCredProps(
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider ucTokenProvider,
       String path,
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
@@ -257,7 +257,7 @@ public class CredPropsUtil {
 
   private static AbfsPropsBuilder abfsTempCredPropsBuilder(
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider ucTokenProvider,
       TemporaryCredentials tempCreds) {
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     AbfsPropsBuilder builder = new AbfsPropsBuilder()
@@ -278,7 +278,7 @@ public class CredPropsUtil {
 
   private static Map<String, String> abfsTableTempCredProps(
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider ucTokenProvider,
       String tableId,
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
@@ -291,7 +291,7 @@ public class CredPropsUtil {
 
   private static Map<String, String> abfsPathTempCredProps(
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider ucTokenProvider,
       String path,
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
@@ -306,27 +306,27 @@ public class CredPropsUtil {
       boolean renewCredEnabled,
       String scheme,
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       String tableId,
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
-          return s3TableTempCredProps(uri, ucTokenProvider, tableId, tableOp, tempCreds);
+          return s3TableTempCredProps(uri, tokenProvider, tableId, tableOp, tempCreds);
         } else {
           return s3FixedCredProps(tempCreds);
         }
       case "gs":
         if (renewCredEnabled) {
-          return gsTableTempCredProps(uri, ucTokenProvider, tableId, tableOp, tempCreds);
+          return gsTableTempCredProps(uri, tokenProvider, tableId, tableOp, tempCreds);
         } else {
           return gsFixedCredProps(tempCreds);
         }
       case "abfss":
       case "abfs":
         if (renewCredEnabled) {
-          return abfsTableTempCredProps(uri, ucTokenProvider, tableId, tableOp, tempCreds);
+          return abfsTableTempCredProps(uri, tokenProvider, tableId, tableOp, tempCreds);
         } else {
           return abfsFixedCredProps(tempCreds);
         }
@@ -339,27 +339,27 @@ public class CredPropsUtil {
       boolean renewCredEnabled,
       String scheme,
       String uri,
-      UCTokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       String path,
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
-          return s3PathTempCredProps(uri, ucTokenProvider, path, pathOp, tempCreds);
+          return s3PathTempCredProps(uri, tokenProvider, path, pathOp, tempCreds);
         } else {
           return s3FixedCredProps(tempCreds);
         }
       case "gs":
         if (renewCredEnabled) {
-          return gsPathTempCredProps(uri, ucTokenProvider, path, pathOp, tempCreds);
+          return gsPathTempCredProps(uri, tokenProvider, path, pathOp, tempCreds);
         } else {
           return gsFixedCredProps(tempCreds);
         }
       case "abfss":
       case "abfs":
         if (renewCredEnabled) {
-          return abfsPathTempCredProps(uri, ucTokenProvider, path, pathOp, tempCreds);
+          return abfsPathTempCredProps(uri, tokenProvider, path, pathOp, tempCreds);
         } else {
           return abfsFixedCredProps(tempCreds);
         }

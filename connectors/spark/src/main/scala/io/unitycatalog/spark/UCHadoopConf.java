@@ -88,7 +88,19 @@ public class UCHadoopConf {
   public static final String REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY =
       "fs.unitycatalog.request.retry.delayJitterFactor";
 
-  public static RetryPolicy createRetryPolicy(Configuration conf) {
+  /**
+   * Creates a {@link RetryPolicy} configured from Hadoop configuration properties.
+   *
+   * <p>This method constructs a {@link JitterDelayRetryPolicy} using retry parameters from the
+   * provided Hadoop configuration. If no configuration is provided (null), returns a retry policy
+   * with default values.
+   *
+   * @param conf the Hadoop configuration containing retry parameters, or null to use defaults
+   * @return a configured {@link RetryPolicy} instance for handling HTTP request retries
+   * @see JitterDelayRetryPolicy
+   * @see RetryPolicy
+   */
+  public static RetryPolicy createRequestRetryPolicy(Configuration conf) {
     JitterDelayRetryPolicy.Builder builder = JitterDelayRetryPolicy.builder();
 
     if (conf == null) {

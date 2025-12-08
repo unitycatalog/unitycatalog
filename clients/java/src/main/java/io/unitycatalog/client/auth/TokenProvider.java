@@ -10,11 +10,11 @@ import java.util.function.Consumer;
  * <p>Implementations include:
  *
  * <ul>
- *   <li>{@link FixedUCTokenProvider} - uses a pre-configured static token
- *   <li>{@link OAuthUCTokenProvider} - obtains tokens via OAuth 2.0 client credentials flow
+ *   <li>{@link FixedTokenProvider} - uses a pre-configured static token
+ *   <li>{@link OAuthTokenProvider} - obtains tokens via OAuth 2.0 client credentials flow
  * </ul>
  */
-public interface UCTokenProvider {
+public interface TokenProvider {
   /**
    * Returns the access token for Unity Catalog authentication.
    *
@@ -67,16 +67,16 @@ public interface UCTokenProvider {
     }
 
     public Builder options(Map<String, String> options) {
-      setIfPresent(options, UCAuthProps.TOKEN, this::token);
-      setIfPresent(options, UCAuthProps.OAUTH_URI, this::oauthUri);
-      setIfPresent(options, UCAuthProps.OAUTH_CLIENT_ID, this::oauthClientId);
-      setIfPresent(options, UCAuthProps.OAUTH_CLIENT_SECRET, this::oauthClientSecret);
+      setIfPresent(options, AuthProps.TOKEN, this::token);
+      setIfPresent(options, AuthProps.OAUTH_URI, this::oauthUri);
+      setIfPresent(options, AuthProps.OAUTH_CLIENT_ID, this::oauthClientId);
+      setIfPresent(options, AuthProps.OAUTH_CLIENT_SECRET, this::oauthClientSecret);
       return this;
     }
 
-    public UCTokenProvider build() {
+    public TokenProvider build() {
       if (token != null) {
-        return new FixedUCTokenProvider(token);
+        return new FixedTokenProvider(token);
       }
 
       if (oauthUri != null || oauthClientId != null || oauthClientSecret != null) {
@@ -86,7 +86,7 @@ public interface UCTokenProvider {
                 + "oauthUri, oauthClientId, oauthClientSecret. Please ensure they are "
                 + "all set.");
 
-        return new OAuthUCTokenProvider(oauthUri, oauthClientId, oauthClientSecret);
+        return new OAuthTokenProvider(oauthUri, oauthClientId, oauthClientSecret);
       }
 
       throw new IllegalArgumentException(

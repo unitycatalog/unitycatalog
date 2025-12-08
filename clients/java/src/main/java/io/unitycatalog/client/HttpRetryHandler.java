@@ -13,7 +13,7 @@ import java.time.Instant;
 import java.util.Set;
 
 /** Retry handler that retries on common recoverable HTTP errors and network exceptions. */
-public class HttpRetryHandler {
+class HttpRetryHandler {
   // Non-5xx server errors are not retried.
   private static final Set<Integer> RECOVERABLE_STATUS_CODES =
       Set.of(

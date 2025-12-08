@@ -2,7 +2,7 @@ package io.unitycatalog.spark.auth.storage;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.auth.UCTokenProvider;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
@@ -34,7 +34,7 @@ public abstract class GenericCredentialProvider {
   private Clock clock;
   private long renewalLeadTimeMillis;
   private URI ucUri;
-  private UCTokenProvider ucTokenProvider;
+  private TokenProvider ucTokenProvider;
   private String credUid;
   private boolean credCacheEnabled;
 
@@ -58,7 +58,7 @@ public abstract class GenericCredentialProvider {
     this.ucUri = URI.create(ucUriStr);
 
     // Initialize the UCTokenProvider.
-    this.ucTokenProvider = UCTokenProvider.builder()
+    this.ucTokenProvider = TokenProvider.builder()
         .options(conf.getPropsWithPrefix(UCHadoopConf.FS_UC_PREFIX))
         .build();
 
@@ -99,7 +99,7 @@ public abstract class GenericCredentialProvider {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
-          RetryPolicy retryPolicy = UCHadoopConf.createRetryPolicy(conf);
+          RetryPolicy retryPolicy = UCHadoopConf.createRequestRetryPolicy(conf);
           tempCredApi = new TemporaryCredentialsApi(
               ApiClientFactory.createApiClient(retryPolicy, ucUri, ucTokenProvider));
         }

@@ -25,11 +25,11 @@ import javax.net.ssl.SSLParameters;
  * {@link HttpRetryHandler#call}, which implements exponential backoff while using the underlying
  * {@link HttpClient#send(HttpRequest, HttpResponse.BodyHandler)} to send the request.
  */
-public class RetryingHttpClient extends HttpClient {
+class RetryingHttpClient extends HttpClient {
   private final HttpClient delegate;
   private final HttpRetryHandler retryHandler;
 
-  public RetryingHttpClient(HttpClient delegate, HttpRetryHandler retryHandler) {
+  RetryingHttpClient(HttpClient delegate, HttpRetryHandler retryHandler) {
     this.delegate = delegate;
     this.retryHandler = retryHandler;
   }
