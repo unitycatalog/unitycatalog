@@ -1,5 +1,6 @@
 package io.unitycatalog.client.retry;
 
+import com.google.common.base.Preconditions;
 import java.time.Duration;
 
 /**
@@ -111,6 +112,8 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
      * @return this builder instance
      */
     public Builder maxAttempts(int maxAttempts) {
+      Preconditions.checkArgument(
+          maxAttempts > 0, "maxAttempts must be greater than 0, but got %s", maxAttempts);
       this.maxAttempts = maxAttempts;
       return this;
     }
@@ -122,6 +125,8 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
      * @return this builder instance
      */
     public Builder initDelayMs(long initDelayMs) {
+      Preconditions.checkArgument(
+          initDelayMs > 0, "initDelayMs must be greater than 0, but got %s", initDelayMs);
       this.initDelayMs = initDelayMs;
       return this;
     }
@@ -141,6 +146,10 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
      * @return this builder instance
      */
     public Builder delayMultiplier(double delayMultiplier) {
+      Preconditions.checkArgument(
+          delayMultiplier > 0,
+          "delayMultiplier must be greater than 0, but got %s",
+          delayMultiplier);
       this.delayMultiple = delayMultiplier;
       return this;
     }
@@ -156,6 +165,10 @@ public class JitterDelayRetryPolicy implements RetryPolicy {
      * @return this builder instance
      */
     public Builder delayJitterFactor(double delayJitterFactor) {
+      Preconditions.checkArgument(
+          delayJitterFactor >= 0 && delayJitterFactor < 1,
+          "delayJitterFactor must be between 0 and 1, but got %s",
+          delayJitterFactor);
       this.delayJitterFactor = delayJitterFactor;
       return this;
     }
