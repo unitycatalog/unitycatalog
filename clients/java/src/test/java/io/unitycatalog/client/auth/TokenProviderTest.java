@@ -29,7 +29,7 @@ public class TokenProviderTest {
                 AuthProps.OAUTH_CLIENT_ID, CLIENT_ID,
                 AuthProps.OAUTH_CLIENT_SECRET, CLIENT_SECRET));
     assertThat(oauthProvider).isInstanceOf(OAuthTokenProvider.class);
-    assertThat(oauthProvider.properties())
+    assertThat(oauthProvider.getConfigs())
         .containsEntry(AuthProps.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthProps.OAUTH_CLIENT_ID, CLIENT_ID)
         .containsEntry(AuthProps.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
@@ -70,7 +70,7 @@ public class TokenProviderTest {
     assertThat(consistentProvider.accessToken()).isEqualTo("consistent");
 
     FixedTokenProvider providerWithProperties = new FixedTokenProvider("test-token");
-    assertThat(providerWithProperties.properties())
+    assertThat(providerWithProperties.getConfigs())
         .hasSize(1)
         .containsEntry(AuthProps.TOKEN, "test-token");
 

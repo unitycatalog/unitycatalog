@@ -12,21 +12,21 @@ public class ApiClientFactory {
   }
 
   public static ApiClient createApiClient(
-      RetryPolicy retryPolicy, URI url, TokenProvider ucTokenProvider) {
+      RetryPolicy retryPolicy, URI uri, TokenProvider tokenProvider) {
 
     // Create a new ApiClient Builder.
     ApiClientBuilder builder = ApiClientBuilder.create()
-        .url(url)
-        .tokenProvider(ucTokenProvider)
+        .uri(uri)
+        .tokenProvider(tokenProvider)
         .retryPolicy(retryPolicy);
 
     // Add Spark to User-Agent, and Delta if available
     String sparkVersion = getSparkVersion();
     String deltaVersion = getDeltaVersion();
     if (deltaVersion != null) {
-      builder.clientVersion("Spark", sparkVersion, "Delta", deltaVersion);
+      builder.appVersion("Spark", sparkVersion, "Delta", deltaVersion);
     } else {
-      builder.clientVersion("Spark", sparkVersion);
+      builder.appVersion("Spark", sparkVersion);
     }
 
     return builder.build();

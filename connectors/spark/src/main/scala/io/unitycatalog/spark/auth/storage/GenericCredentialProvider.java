@@ -34,7 +34,7 @@ public abstract class GenericCredentialProvider {
   private Clock clock;
   private long renewalLeadTimeMillis;
   private URI ucUri;
-  private TokenProvider ucTokenProvider;
+  private TokenProvider tokenProvider;
   private String credUid;
   private boolean credCacheEnabled;
 
@@ -58,7 +58,7 @@ public abstract class GenericCredentialProvider {
     this.ucUri = URI.create(ucUriStr);
 
     // Initialize the UCTokenProvider.
-    this.ucTokenProvider = TokenProvider.createFromConfigs(
+    this.tokenProvider = TokenProvider.createFromConfigs(
         conf.getPropsWithPrefix(UCHadoopConf.FS_UC_PREFIX));
 
     this.credUid = conf.get(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
@@ -100,7 +100,7 @@ public abstract class GenericCredentialProvider {
         if (tempCredApi == null) {
           RetryPolicy retryPolicy = UCHadoopConf.createRequestRetryPolicy(conf);
           tempCredApi = new TemporaryCredentialsApi(
-              ApiClientFactory.createApiClient(retryPolicy, ucUri, ucTokenProvider));
+              ApiClientFactory.createApiClient(retryPolicy, ucUri, tokenProvider));
         }
       }
     }

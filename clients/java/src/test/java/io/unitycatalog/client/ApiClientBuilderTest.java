@@ -21,57 +21,57 @@ import org.mockito.ArgumentCaptor;
  */
 public class ApiClientBuilderTest {
 
-  private static final String TEST_URL = "http://localhost:8080";
+  private static final String TEST_URI = "http://localhost:8080";
   private static final String TEST_TOKEN = "test-token";
 
   @Test
-  public void testBasicBuildAndUrlConfiguration() {
+  public void testBasicBuildAndUriConfiguration() {
     TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
 
     // Test basic build with minimal configuration
     ApiClient client1 =
-        ApiClientBuilder.create().url(TEST_URL).tokenProvider(tokenProvider).build();
+        ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).build();
     assertThat(client1).isNotNull();
     assertThat(client1.getRequestInterceptor()).isNotNull();
 
-    // Test URL with String parameter (different host and port)
+    // Test URI with String parameter (different host and port)
     ApiClient client2 =
         ApiClientBuilder.create()
-            .url("https://example.com:9090")
+            .uri("https://example.com:9090")
             .tokenProvider(tokenProvider)
             .build();
     assertThat(client2).isNotNull();
 
-    // Test URL with URI parameter
+    // Test URI with URI parameter
     ApiClient client3 =
         ApiClientBuilder.create()
-            .url(URI.create("https://catalog.example.com:8443"))
+            .uri(URI.create("https://catalog.example.com:8443"))
             .tokenProvider(tokenProvider)
             .build();
     assertThat(client3).isNotNull();
 
-    // Test URL with custom path
+    // Test URI with custom path
     ApiClient client4 =
         ApiClientBuilder.create()
-            .url("http://localhost:8080/custom/path")
+            .uri("http://localhost:8080/custom/path")
             .tokenProvider(tokenProvider)
             .build();
     assertThat(client4).isNotNull();
 
-    // Test URL without explicit port
+    // Test URI without explicit port
     ApiClient client5 =
-        ApiClientBuilder.create().url("https://example.com").tokenProvider(tokenProvider).build();
+        ApiClientBuilder.create().uri("https://example.com").tokenProvider(tokenProvider).build();
     assertThat(client5).isNotNull();
 
     // Verify multiple builds produce different instances
-    ApiClientBuilder builder = ApiClientBuilder.create().url(TEST_URL).tokenProvider(tokenProvider);
+    ApiClientBuilder builder = ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider);
     assertThat(builder.build()).isNotSameAs(builder.build());
   }
 
   @Test
   public void testTokenProviderConfiguration() {
     TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
-    ApiClient client = ApiClientBuilder.create().url(TEST_URL).tokenProvider(tokenProvider).build();
+    ApiClient client = ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).build();
 
     assertThat(client.getRequestInterceptor()).isNotNull();
 
@@ -90,38 +90,34 @@ public class ApiClientBuilderTest {
   }
 
   @Test
-  public void testClientVersionConfiguration() {
+  public void testAppVersionConfiguration() {
     TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
 
     // Test single client version pair
     ApiClient client1 =
         ApiClientBuilder.create()
-            .url(TEST_URL)
+            .uri(TEST_URI)
             .tokenProvider(tokenProvider)
-            .clientVersion("MyApp", "1.0.0", "Java", "11")
+            .appVersion("MyApp", "1.0.0", "Java", "11")
             .build();
     assertThat(client1.getUserAgent()).contains("MyApp/1.0.0", "Java/11");
 
     // Test multiple client version pairs
     ApiClient client2 =
         ApiClientBuilder.create()
-            .url(TEST_URL)
+            .uri(TEST_URI)
             .tokenProvider(tokenProvider)
-            .clientVersion("App1", "1.0", "App2", "2.0", "App3", "3.0")
+            .appVersion("App1", "1.0", "App2", "2.0", "App3", "3.0")
             .build();
     assertThat(client2.getUserAgent()).contains("App1/1.0", "App2/2.0", "App3/3.0");
 
     // Test empty client version (no-op)
     ApiClient client3 =
-        ApiClientBuilder.create()
-            .url(TEST_URL)
-            .tokenProvider(tokenProvider)
-            .clientVersion()
-            .build();
+        ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).appVersion().build();
     assertThat(client3).isNotNull();
 
     // Test validation: odd number of arguments
-    assertThatThrownBy(() -> ApiClientBuilder.create().clientVersion("MyApp", "1.0.0", "Java"))
+    assertThatThrownBy(() -> ApiClientBuilder.create().appVersion("MyApp", "1.0.0", "Java"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Must provide an even number of arguments");
   }
@@ -134,7 +130,7 @@ public class ApiClientBuilderTest {
     RetryPolicy customRetryPolicy = JitterDelayRetryPolicy.builder().maxAttempts(10).build();
     ApiClient client1 =
         ApiClientBuilder.create()
-            .url(TEST_URL)
+            .uri(TEST_URI)
             .tokenProvider(tokenProvider)
             .retryPolicy(customRetryPolicy)
             .build();
@@ -142,7 +138,7 @@ public class ApiClientBuilderTest {
 
     // Test with default retry policy (no explicit setting)
     ApiClient client2 =
-        ApiClientBuilder.create().url(TEST_URL).tokenProvider(tokenProvider).build();
+        ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).build();
     assertThat(client2).isNotNull();
   }
 
@@ -150,23 +146,23 @@ public class ApiClientBuilderTest {
   public void testValidationFailures() {
     TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
 
-    // Test missing URL
+    // Test missing URI
     assertThatThrownBy(() -> ApiClientBuilder.create().tokenProvider(tokenProvider).build())
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("unitycatalog url cannot be null");
+        .hasMessageContaining("unitycatalog uri cannot be null");
 
     // Test missing token provider
-    assertThatThrownBy(() -> ApiClientBuilder.create().url(TEST_URL).build())
+    assertThatThrownBy(() -> ApiClientBuilder.create().uri(TEST_URI).build())
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("unitycatalog token provider cannot be null");
 
-    // Test null URL
+    // Test null URI
     assertThatThrownBy(
-            () -> ApiClientBuilder.create().url((String) null).tokenProvider(tokenProvider).build())
+            () -> ApiClientBuilder.create().uri((String) null).tokenProvider(tokenProvider).build())
         .isInstanceOf(NullPointerException.class);
 
     // Test null token provider
-    assertThatThrownBy(() -> ApiClientBuilder.create().url(TEST_URL).tokenProvider(null).build())
+    assertThatThrownBy(() -> ApiClientBuilder.create().uri(TEST_URI).tokenProvider(null).build())
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("unitycatalog token provider cannot be null");
   }
@@ -178,9 +174,9 @@ public class ApiClientBuilderTest {
 
     ApiClient client =
         ApiClientBuilder.create()
-            .url("https://unity-catalog.example.com:8443/api")
+            .uri("https://unity-catalog.example.com:8443/api")
             .tokenProvider(tokenProvider)
-            .clientVersion("TestApp", "3.0.0", "Java", "17", "Framework", "Spring")
+            .appVersion("TestApp", "3.0.0", "Java", "17", "Framework", "Spring")
             .retryPolicy(retryPolicy)
             .build();
 
@@ -196,14 +192,14 @@ public class ApiClientBuilderTest {
     // Test base URI without path suffix
     URI uriNoSuffix = URI.create("https://localhost:8080");
     ApiClient clientNoSuffix =
-        ApiClientBuilder.create().url(uriNoSuffix).tokenProvider(tokenProvider).build();
+        ApiClientBuilder.create().uri(uriNoSuffix).tokenProvider(tokenProvider).build();
     assertThat(clientNoSuffix.getBaseUri())
         .isEqualTo("https://localhost:8080/api/2.1/unity-catalog");
 
     // Test base URI with path suffix
     URI uriWithSuffix = URI.create("https://localhost:8080/path/to/uc");
     ApiClient clientWithSuffix =
-        ApiClientBuilder.create().url(uriWithSuffix).tokenProvider(tokenProvider).build();
+        ApiClientBuilder.create().uri(uriWithSuffix).tokenProvider(tokenProvider).build();
     assertThat(clientWithSuffix.getBaseUri())
         .isEqualTo("https://localhost:8080/path/to/uc/api/2.1/unity-catalog");
   }

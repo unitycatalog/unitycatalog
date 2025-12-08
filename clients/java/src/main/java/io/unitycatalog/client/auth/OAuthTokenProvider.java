@@ -86,7 +86,7 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   @Override
-  public Map<String, String> properties() {
+  public Map<String, String> getConfigs() {
     return Map.of(
         AuthProps.OAUTH_URI, oauthUri,
         AuthProps.OAUTH_CLIENT_ID, oauthClientId,

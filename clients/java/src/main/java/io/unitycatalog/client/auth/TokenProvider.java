@@ -22,11 +22,11 @@ public interface TokenProvider {
   String accessToken();
 
   /**
-   * Returns the configuration properties associated with this token provider.
+   * Returns the configuration associated with this token provider.
    *
    * @return a map of configuration key-value pairs
    */
-  Map<String, String> properties();
+  Map<String, String> getConfigs();
 
   /**
    * Creates a token provider using a static access token.

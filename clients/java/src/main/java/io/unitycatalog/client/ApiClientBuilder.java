@@ -15,7 +15,7 @@ import java.net.URI;
  * <pre>{@code
  * ApiClient client = ApiClientBuilder.create()
  *     .url("http://localhost:8080")
- *     .tokenProvider(TokenProvider.builder().token("my-token").build())
+ *     .tokenProvider(TokenProvider.create("my-token"))
  *     .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(5).build())
  *     .clientVersion("MyApp", "1.0.0", "Java", "11")
  *     .build();
@@ -28,7 +28,7 @@ import java.net.URI;
 public class ApiClientBuilder {
   private static final String BASE_PATH = "/api/2.1/unity-catalog";
 
-  private URI url = null;
+  private URI uri = null;
   private TokenProvider tokenProvider = null;
   private String[] nameVersionPairs = null;
   private RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder().build();
@@ -43,27 +43,27 @@ public class ApiClientBuilder {
   }
 
   /**
-   * Sets the Unity Catalog server URL.
+   * Sets the Unity Catalog server URI.
    *
    * <p>The base path {@code /api/2.1/unity-catalog} will be automatically appended.
    *
-   * @param url the Unity Catalog server URL, must not be null
+   * @param uri the Unity Catalog server URI, must not be null
    * @return this builder instance for method chaining
    */
-  public ApiClientBuilder url(URI url) {
-    this.url = url;
+  public ApiClientBuilder uri(URI uri) {
+    this.uri = uri;
     return this;
   }
 
   /**
-   * Sets the Unity Catalog server URL from a string.
+   * Sets the Unity Catalog server URI from a string.
    *
-   * @param url the Unity Catalog server URL, must not be null
+   * @param uri the Unity Catalog server URI, must not be null
    * @return this builder instance for method chaining
-   * @see #url(URI)
+   * @see #uri(URI)
    */
-  public ApiClientBuilder url(String url) {
-    return url(URI.create(url));
+  public ApiClientBuilder uri(String uri) {
+    return uri(URI.create(uri));
   }
 
   /**
@@ -81,7 +81,7 @@ public class ApiClientBuilder {
   }
 
   /**
-   * Sets client version metadata as name-version pairs.
+   * Sets application version metadata as name-version pairs.
    *
    * <p>Arguments must be provided in alternating name-version order with an even count, e.g.,
    * {@code "MyApp1", "0.1.0", "MyApp2", "1.0.2"}.
@@ -90,7 +90,7 @@ public class ApiClientBuilder {
    * @return this builder instance for method chaining
    * @throws IllegalArgumentException if an odd number of arguments is provided
    */
-  public ApiClientBuilder clientVersion(String... nameVersionPairs) {
+  public ApiClientBuilder appVersion(String... nameVersionPairs) {
     Preconditions.checkArgument(
         nameVersionPairs.length % 2 == 0,
         "Must provide an even number of arguments for the name-version pairs.");
@@ -117,16 +117,16 @@ public class ApiClientBuilder {
    * Builds and returns a configured {@link ApiClient} instance.
    *
    * @return a configured {@link ApiClient} instance
-   * @throws NullPointerException if {@code url} or {@code ucTokenProvider} is null
+   * @throws NullPointerException if {@code uri} or {@code tokenProvider} is null
    */
   public ApiClient build() {
     // Set the scheme, host, port and base path, for the unity catalog client.
-    Preconditions.checkNotNull(url, "The unitycatalog url cannot be null");
+    Preconditions.checkNotNull(uri, "The unitycatalog uri cannot be null");
     ApiClient apiClient = new RetryingApiClient(retryPolicy);
-    apiClient.setScheme(url.getScheme());
-    apiClient.setHost(url.getHost());
-    apiClient.setPort(url.getPort());
-    apiClient.setBasePath(url.getPath() + BASE_PATH);
+    apiClient.setScheme(uri.getScheme());
+    apiClient.setHost(uri.getHost());
+    apiClient.setPort(uri.getPort());
+    apiClient.setBasePath(uri.getPath() + BASE_PATH);
 
     // Set the unity catalog token provider.
     Preconditions.checkNotNull(tokenProvider, "The unitycatalog token provider cannot be null");

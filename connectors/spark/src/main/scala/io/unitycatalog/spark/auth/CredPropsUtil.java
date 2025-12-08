@@ -37,10 +37,10 @@ public class CredPropsUtil {
       return self();
     }
 
-    public T ucTokenProvider(TokenProvider ucTokenProvider) {
+    public T tokenProvider(TokenProvider tokenProvider) {
       // As we can only propagate the properties with prefix 'fs.*' to the FileSystem
       // implementation. So let's add the prefix here.
-      ucTokenProvider.properties()
+      tokenProvider.getConfigs()
           .forEach((key, value) -> builder.put(UCHadoopConf.FS_UC_PREFIX + key, value));
       return self();
     }
@@ -141,13 +141,13 @@ public class CredPropsUtil {
 
   private static S3PropsBuilder s3TempCredPropsBuilder(
       String uri,
-      TokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       TemporaryCredentials tempCreds) {
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     S3PropsBuilder builder = new S3PropsBuilder()
         .set(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName())
         .uri(uri)
-        .ucTokenProvider(ucTokenProvider)
+        .tokenProvider(tokenProvider)
         .uid(UUID.randomUUID().toString())
         .set(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
         .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
@@ -164,11 +164,11 @@ public class CredPropsUtil {
 
   private static Map<String, String> s3TableTempCredProps(
       String uri,
-      TokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       String tableId,
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
-    return s3TempCredPropsBuilder(uri, ucTokenProvider, tempCreds)
+    return s3TempCredPropsBuilder(uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
@@ -177,11 +177,11 @@ public class CredPropsUtil {
 
   private static Map<String, String> s3PathTempCredProps(
       String uri,
-      TokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       String path,
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
-    return s3TempCredPropsBuilder(uri, ucTokenProvider, tempCreds)
+    return s3TempCredPropsBuilder(uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
@@ -202,14 +202,14 @@ public class CredPropsUtil {
 
   private static GcsPropsBuilder gcsTempCredPropsBuilder(
       String uri,
-      TokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       TemporaryCredentials tempCreds) {
     GcpOauthToken gcpToken = tempCreds.getGcpOauthToken();
     GcsPropsBuilder builder = new GcsPropsBuilder()
         .set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
         .set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName())
         .uri(uri)
-        .ucTokenProvider(ucTokenProvider)
+        .tokenProvider(tokenProvider)
         .uid(UUID.randomUUID().toString())
         .set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
 
@@ -224,11 +224,11 @@ public class CredPropsUtil {
 
   private static Map<String, String> gsTableTempCredProps(
       String uri,
-      TokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       String tableId,
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
-    return gcsTempCredPropsBuilder(uri, ucTokenProvider, tempCreds)
+    return gcsTempCredPropsBuilder(uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
@@ -237,11 +237,11 @@ public class CredPropsUtil {
 
   private static Map<String, String> gsPathTempCredProps(
       String uri,
-      TokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       String path,
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
-    return gcsTempCredPropsBuilder(uri, ucTokenProvider, tempCreds)
+    return gcsTempCredPropsBuilder(uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
@@ -257,13 +257,13 @@ public class CredPropsUtil {
 
   private static AbfsPropsBuilder abfsTempCredPropsBuilder(
       String uri,
-      TokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       TemporaryCredentials tempCreds) {
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     AbfsPropsBuilder builder = new AbfsPropsBuilder()
         .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName())
         .uri(uri)
-        .ucTokenProvider(ucTokenProvider)
+        .tokenProvider(tokenProvider)
         .uid(UUID.randomUUID().toString())
         .set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
 
@@ -278,11 +278,11 @@ public class CredPropsUtil {
 
   private static Map<String, String> abfsTableTempCredProps(
       String uri,
-      TokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       String tableId,
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
-    return abfsTempCredPropsBuilder(uri, ucTokenProvider, tempCreds)
+    return abfsTempCredPropsBuilder(uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
@@ -291,11 +291,11 @@ public class CredPropsUtil {
 
   private static Map<String, String> abfsPathTempCredProps(
       String uri,
-      TokenProvider ucTokenProvider,
+      TokenProvider tokenProvider,
       String path,
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
-    return abfsTempCredPropsBuilder(uri, ucTokenProvider, tempCreds)
+    return abfsTempCredPropsBuilder(uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)

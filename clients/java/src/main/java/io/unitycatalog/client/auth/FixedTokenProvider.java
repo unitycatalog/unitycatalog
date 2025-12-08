@@ -15,7 +15,7 @@ class FixedTokenProvider implements TokenProvider {
   }
 
   @Override
-  public Map<String, String> properties() {
+  public Map<String, String> getConfigs() {
     return Map.of(AuthProps.TOKEN, token);
   }
 }
