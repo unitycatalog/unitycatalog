@@ -1,6 +1,6 @@
 package io.unitycatalog.client.auth;
 
-public class AuthProps {
+class AuthProps {
   private AuthProps() {}
 
   public static final String TOKEN = "token";

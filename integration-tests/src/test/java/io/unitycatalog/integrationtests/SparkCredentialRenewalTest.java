@@ -15,7 +15,6 @@ import static io.unitycatalog.integrationtests.TestUtils.envAsBoolean;
 import static io.unitycatalog.integrationtests.TestUtils.envAsLong;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
-import io.unitycatalog.client.auth.AuthProps;
 import io.unitycatalog.spark.UCSingleCatalog;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.ArrayList;
@@ -57,6 +56,11 @@ import org.sparkproject.guava.collect.Iterators;
  * </pre>
  */
 public class SparkCredentialRenewalTest {
+  private static final String UC_PROPS_TOKEN = "token";
+  private static final String UC_PROPS_OAUTH_URI = "oauth.uri";
+  private static final String UC_PROPS_OAUTH_CLIENT_ID = "oauth.clientId";
+  private static final String UC_PROPS_OAUTH_CLIENT_SECRET = "oauth.clientSecret";
+
   private static final String PREFIX = "CREDENTIAL_RENEWAL_TEST_";
 
   // Define the CREDENTIAL_RENEWAL_TEST_RENEWAL_ENABLED environment variable.
@@ -229,7 +233,7 @@ public class SparkCredentialRenewalTest {
                     baseLocation,
                     Map.of(
                         OptionsUtil.URI, SERVER_URL,
-                        AuthProps.TOKEN, AUTH_TOKEN,
+                        UC_PROPS_TOKEN, AUTH_TOKEN,
                         OptionsUtil.WAREHOUSE, CATALOG_NAME,
                         OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
           }
@@ -242,9 +246,9 @@ public class SparkCredentialRenewalTest {
                     baseLocation,
                     Map.of(
                         OptionsUtil.URI, SERVER_URL,
-                        AuthProps.OAUTH_URI, OAUTH_URI,
-                        AuthProps.OAUTH_CLIENT_ID, OAUTH_CLIENT_ID,
-                        AuthProps.OAUTH_CLIENT_SECRET, OAUTH_CLIENT_SECRET,
+                        UC_PROPS_OAUTH_URI, OAUTH_URI,
+                        UC_PROPS_OAUTH_CLIENT_ID, OAUTH_CLIENT_ID,
+                        UC_PROPS_OAUTH_CLIENT_SECRET, OAUTH_CLIENT_SECRET,
                         OptionsUtil.WAREHOUSE, CATALOG_NAME,
                         OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
           }
