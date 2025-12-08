@@ -17,17 +17,17 @@ public class TokenProviderTest {
   public void testCreateTokenProviderViaOptions() {
     // Test with valid token - should create FixedUCTokenProvider
     Map<String, String> tokenOptions = Map.of(AuthProps.TOKEN, "test-token");
-    TokenProvider tokenProvider = TokenProvider.create(tokenOptions);
+    TokenProvider tokenProvider = TokenProvider.createFromConfigs(tokenOptions);
     assertThat(tokenProvider).isInstanceOf(FixedTokenProvider.class);
     assertThat(tokenProvider.accessToken()).isEqualTo("test-token");
 
     // Test with complete OAuth config - should create OAuthUCTokenProvider
     TokenProvider oauthProvider =
-        TokenProvider.create(
-                Map.of(
-                    AuthProps.OAUTH_URI, OAUTH_URI,
-                    AuthProps.OAUTH_CLIENT_ID, CLIENT_ID,
-                    AuthProps.OAUTH_CLIENT_SECRET, CLIENT_SECRET));
+        TokenProvider.createFromConfigs(
+            Map.of(
+                AuthProps.OAUTH_URI, OAUTH_URI,
+                AuthProps.OAUTH_CLIENT_ID, CLIENT_ID,
+                AuthProps.OAUTH_CLIENT_SECRET, CLIENT_SECRET));
     assertThat(oauthProvider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(oauthProvider.properties())
         .containsEntry(AuthProps.OAUTH_URI, OAUTH_URI)
@@ -36,15 +36,15 @@ public class TokenProviderTest {
 
     // Test with incomplete OAuth config - should throw
     Map<String, String> incompleteOAuthOptions = Map.of(AuthProps.OAUTH_URI, OAUTH_URI);
-    assertThatThrownBy(() -> TokenProvider.create(incompleteOAuthOptions))
+    assertThatThrownBy(() -> TokenProvider.createFromConfigs(incompleteOAuthOptions))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Incomplete OAuth configuration detected");
 
     // Test with no valid config - should throw
-    assertThatThrownBy(() -> TokenProvider.create(Map.of()))
+    assertThatThrownBy(() -> TokenProvider.createFromConfigs(Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Cannot determine unity catalog authentication configuration " +
-            "from options");
+        .hasMessageContaining(
+            "Cannot determine unity catalog authentication configuration " + "from options");
 
     // Test token takes precedence over OAuth when both are present
     Map<String, String> bothOptions = new HashMap<>();
@@ -52,10 +52,11 @@ public class TokenProviderTest {
     bothOptions.put(AuthProps.OAUTH_URI, OAUTH_URI);
     bothOptions.put(AuthProps.OAUTH_CLIENT_ID, CLIENT_ID);
     bothOptions.put(AuthProps.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
-    assertThatThrownBy(() -> TokenProvider.create(bothOptions))
+    assertThatThrownBy(() -> TokenProvider.createFromConfigs(bothOptions))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Invalid Unity Catalog authentication configuration: token-" +
-            "based and OAuth settings were both supplied. Configure exactly one authentication method.");
+        .hasMessageContaining(
+            "Invalid Unity Catalog authentication configuration: token-"
+                + "based and OAuth settings were both supplied. Configure exactly one authentication method.");
   }
 
   @Test
