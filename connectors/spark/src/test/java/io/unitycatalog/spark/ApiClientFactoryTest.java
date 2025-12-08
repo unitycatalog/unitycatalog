@@ -3,18 +3,16 @@ package io.unitycatalog.spark;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.client.auth.FixedTokenProvider;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 
-/**
- * Test class for ApiClientFactory to verify User-Agent configuration and client setup.
- */
+/** Test class for ApiClientFactory to verify User-Agent configuration and client setup. */
 public class ApiClientFactoryTest {
-  private static final TokenProvider UC_TOKEN_PROVIDER = FixedTokenProvider.create("token");
+  private static final TokenProvider UC_TOKEN_PROVIDER =
+      TokenProvider.builder().token("token").build();
 
   @Test
   public void testUserAgentContainsSparkAndDelta() throws Exception {
@@ -111,6 +109,7 @@ public class ApiClientFactoryTest {
   }
 
   public static ApiClient createApiClient(RetryPolicy retryPolicy, URI uri, String token) {
-    return ApiClientFactory.createApiClient(retryPolicy, uri, FixedTokenProvider.create(token));
+    return ApiClientFactory.createApiClient(
+        retryPolicy, uri, TokenProvider.builder().token(token).build());
   }
 }

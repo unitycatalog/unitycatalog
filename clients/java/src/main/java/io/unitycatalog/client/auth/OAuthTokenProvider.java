@@ -23,7 +23,7 @@ import java.util.Map;
  * automatically renews tokens before they expire (default: 30 seconds before expiration). Token
  * requests are retried automatically for resilience against transient network failures.
  */
-public class OAuthTokenProvider implements TokenProvider {
+class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -36,7 +36,7 @@ public class OAuthTokenProvider implements TokenProvider {
 
   private volatile TempToken tempToken;
 
-  public OAuthTokenProvider(String oauthUri, String oauthClientId, String oauthClientSecret) {
+  OAuthTokenProvider(String oauthUri, String oauthClientId, String oauthClientSecret) {
     this(
         oauthUri,
         oauthClientId,

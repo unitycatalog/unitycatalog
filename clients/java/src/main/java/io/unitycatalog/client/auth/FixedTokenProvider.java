@@ -2,10 +2,10 @@ package io.unitycatalog.client.auth;
 
 import java.util.Map;
 
-public class FixedTokenProvider implements TokenProvider {
+class FixedTokenProvider implements TokenProvider {
   private final String token;
 
-  public FixedTokenProvider(String token) {
+  FixedTokenProvider(String token) {
     this.token = token;
   }
 
