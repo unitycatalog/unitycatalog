@@ -16,8 +16,7 @@ import org.junit.jupiter.api.Test;
  * general ApiClient configuration tests, see {@link io.unitycatalog.client.ApiClientBuilderTest}.
  */
 public class ApiClientFactoryTest {
-  private static final TokenProvider UC_TOKEN_PROVIDER =
-      TokenProvider.builder().token("token").build();
+  private static final TokenProvider UC_TOKEN_PROVIDER = TokenProvider.create("token");
   private static final RetryPolicy RETRY_POLICY = JitterDelayRetryPolicy.builder().build();
   private static final URI TEST_URI = URI.create("http://localhost:8080");
 
@@ -42,7 +41,7 @@ public class ApiClientFactoryTest {
   @Test
   public void testTokenNotLeakedInUserAgent() {
     String sensitiveToken = "test-token-12345";
-    TokenProvider tokenProvider = TokenProvider.builder().token(sensitiveToken).build();
+    TokenProvider tokenProvider = TokenProvider.create(sensitiveToken);
     ApiClient client = ApiClientFactory.createApiClient(RETRY_POLICY, TEST_URI, tokenProvider);
 
     String userAgent = client.getUserAgent();
@@ -57,7 +56,7 @@ public class ApiClientFactoryTest {
   }
 
   @Test
-  public void testUserAgentFormatCompliesWithRFC7231() {
+  public void testUserAgentFormat() {
     ApiClient client = ApiClientFactory.createApiClient(RETRY_POLICY, TEST_URI, UC_TOKEN_PROVIDER);
     String userAgent = client.getUserAgent();
 
