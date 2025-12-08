@@ -26,7 +26,6 @@ lazy val sparkVersion = "4.0.0"
 lazy val hadoopVersion = "3.4.0"
 
 // Library versions
-lazy val guavaVersion = "33.4.0-jre"
 lazy val jacksonVersion = "2.17.0"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
 lazy val log4jVersion = "2.24.3"
@@ -188,8 +187,6 @@ lazy val client = (project in file("clients/java"))
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
-      // TODO: Be careful to introduce this, since it's easily to conflict. Need relocate it.
-      "com.google.guava" % "guava" % guavaVersion,
 
       // Test dependencies
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
@@ -526,7 +523,7 @@ lazy val cli = (project in file("examples") / "cli")
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion,
-      "com.google.guava" % "guava" % guavaVersion,
+      "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,

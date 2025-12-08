@@ -2,9 +2,9 @@ package io.unitycatalog.client.auth;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Preconditions;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.internal.Clock;
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.internal.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import java.io.IOException;

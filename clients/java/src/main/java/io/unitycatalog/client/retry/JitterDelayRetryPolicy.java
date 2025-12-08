@@ -1,6 +1,6 @@
 package io.unitycatalog.client.retry;
 
-import com.google.common.base.Preconditions;
+import io.unitycatalog.client.internal.Preconditions;
 import java.time.Duration;
 
 /**

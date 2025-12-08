@@ -277,12 +277,12 @@ object UCSingleCatalog {
 
 // An internal proxy to talk to the UC client.
 private class UCProxy(
-                       uri: URI,
-                       ucTokenProvider: TokenProvider,
-                       renewCredEnabled: Boolean,
-                       apiClient: ApiClient,
-                       tablesApi: TablesApi,
-                       temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
+    uri: URI,
+    ucTokenProvider: TokenProvider,
+    renewCredEnabled: Boolean,
+    apiClient: ApiClient,
+    tablesApi: TablesApi,
+    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
 

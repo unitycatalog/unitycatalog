@@ -1,6 +1,6 @@
 package io.unitycatalog.client.auth;
 
-import com.google.common.base.Preconditions;
+import io.unitycatalog.client.internal.Preconditions;
 import java.util.Map;
 
 /**
@@ -94,19 +94,19 @@ public interface TokenProvider {
    * <p>Example usage with static token:
    *
    * <pre>{@code
-   * Map<String, String> config = new HashMap<>();
-   * config.put("token", "my-access-token");
-   * TokenProvider provider = TokenProvider.createFromConfigs(config);
+   * Map<String, String> configs = new HashMap<>();
+   * configs.put("token", "my-access-token");
+   * TokenProvider provider = TokenProvider.createFromConfigs(configs);
    * }</pre>
    *
    * <p>Example usage with OAuth 2.0:
    *
    * <pre>{@code
-   * Map<String, String> config = new HashMap<>();
-   * config.put("oauth.uri", "https://uc.example.com/token");
-   * config.put("oauth.clientId", "my-client-id");
-   * config.put("oauth.clientSecret", "my-client-secret");
-   * TokenProvider provider = TokenProvider.createFromConfigs(config);
+   * Map<String, String> configs = new HashMap<>();
+   * configs.put("oauth.uri", "https://uc.example.com/token");
+   * configs.put("oauth.clientId", "my-client-id");
+   * configs.put("oauth.clientSecret", "my-client-secret");
+   * TokenProvider provider = TokenProvider.createFromConfigs(configs);
    * }</pre>
    *
    * @param configs a map containing authentication configuration parameters

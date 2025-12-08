@@ -55,8 +55,8 @@ public class TokenProviderTest {
     assertThatThrownBy(() -> TokenProvider.createFromConfigs(bothOptions))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining(
-            "Invalid Unity Catalog authentication configuration: token-"
-                + "based and OAuth settings were both supplied. Configure exactly one authentication method.");
+            "Invalid Unity Catalog authentication configuration: token-based and OAuth "
+                + "settings were both supplied. Configure exactly one authentication method.");
   }
 
   @Test
@@ -74,7 +74,7 @@ public class TokenProviderTest {
         .hasSize(1)
         .containsEntry(AuthProps.TOKEN, "test-token");
 
-    FixedTokenProvider factoryProvider = FixedTokenProvider.create("factory-token");
+    TokenProvider factoryProvider = TokenProvider.create("factory-token");
     assertThat(factoryProvider).isNotNull();
     assertThat(factoryProvider.accessToken()).isEqualTo("factory-token");
   }

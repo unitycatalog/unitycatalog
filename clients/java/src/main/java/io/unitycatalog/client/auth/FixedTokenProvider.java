@@ -9,10 +9,6 @@ class FixedTokenProvider implements TokenProvider {
     this.token = token;
   }
 
-  public static FixedTokenProvider create(String token) {
-    return new FixedTokenProvider(token);
-  }
-
   @Override
   public String accessToken() {
     return token;

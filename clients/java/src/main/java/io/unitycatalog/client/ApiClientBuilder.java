@@ -1,7 +1,7 @@
 package io.unitycatalog.client;
 
-import com.google.common.base.Preconditions;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.internal.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;

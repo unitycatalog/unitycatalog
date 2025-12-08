@@ -1,7 +1,5 @@
 package io.unitycatalog.client.internal;
 
-import com.google.common.base.Preconditions;
-import com.google.common.base.Throwables;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.io.IOException;
 import java.net.http.HttpClient;
@@ -51,7 +49,7 @@ class HttpRetryHandler {
         }
       } catch (IOException e) {
         lastException = e;
-        shouldRetry = isRecoverableException(e);
+        shouldRetry = isCausedByRecoverableEx(e);
       }
 
       if (shouldRetry && retryPolicy.allowRetry(attempt)) {
@@ -82,11 +80,19 @@ class HttpRetryHandler {
   }
 
   private boolean isRecoverableException(Throwable e) {
+    return RECOVERABLE_EXCEPTIONS.stream().anyMatch(exClass -> exClass.isInstance(e));
+  }
+
+  private boolean isCausedByRecoverableEx(Throwable e) {
     // Check the entire exception cause chain for recoverable exceptions
-    return Throwables.getCausalChain(e).stream()
-        .anyMatch(
-            cause ->
-                RECOVERABLE_EXCEPTIONS.stream()
-                    .anyMatch(exceptionClass -> exceptionClass.isInstance(cause)));
+    if (isRecoverableException(e)) {
+      return true;
+    }
+    for (Throwable cause = e.getCause(); cause != e && cause != null; cause = cause.getCause()) {
+      if (isRecoverableException(cause)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
