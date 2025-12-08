@@ -61,7 +61,7 @@ class OAuthTokenProvider implements TokenProvider {
         leadRenewalTimeSeconds >= 0,
         "Lead renewal time must be non-negative, but got %s",
         leadRenewalTimeSeconds);
-    Preconditions.checkNotNull(apiClient, "Retrying API client must not be null");
+    Preconditions.checkNotNull(apiClient, "API client must not be null");
     Preconditions.checkNotNull(clock, "Clock must not be null");
 
     this.oauthUri = oauthUri;
