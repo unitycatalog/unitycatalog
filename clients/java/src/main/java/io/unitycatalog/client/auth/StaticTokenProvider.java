@@ -8,11 +8,10 @@ class StaticTokenProvider implements TokenProvider {
 
   @Override
   public void initialize(Map<String, String> configs) {
-    String tokenStr = configs.get(AuthConfigs.STATIC_TOKEN);
+    String token = configs.get(AuthConfigs.STATIC_TOKEN);
     Preconditions.checkArgument(
-        tokenStr != null,
-        "Invalid Unity Catalog authentication configuration: token cannot be null ");
-    this.token = tokenStr;
+        token != null, "Configuration key '%s' is missing or empty", AuthConfigs.STATIC_TOKEN);
+    this.token = token;
   }
 
   @Override

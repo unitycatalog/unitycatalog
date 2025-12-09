@@ -67,24 +67,28 @@ class OAuthTokenProvider implements TokenProvider {
 
   @Override
   public void initialize(Map<String, String> configs) {
-    // Parse and validate the Oauth URI.
+    // Parse and validate the OAuth URI.
     String oauthUri = configs.get(AuthConfigs.OAUTH_URI);
     Preconditions.checkArgument(
-        oauthUri != null && !oauthUri.isEmpty(), "OAuth URI must not be null or empty");
+        oauthUri != null && !oauthUri.isEmpty(),
+        "Configuration key '%s' is missing or empty",
+        AuthConfigs.OAUTH_URI);
     this.oauthUri = oauthUri;
 
     // Parse and validate the OAuth Client ID.
     String oauthClientId = configs.get(AuthConfigs.OAUTH_CLIENT_ID);
     Preconditions.checkArgument(
         oauthClientId != null && !oauthClientId.isEmpty(),
-        "OAuth Client ID must not be null or empty");
+        "Configuration key '%s' is missing or empty",
+        AuthConfigs.OAUTH_CLIENT_ID);
     this.oauthClientId = oauthClientId;
 
     // Parse and validate the OAuth Client Secret.
     String oauthClientSecret = configs.get(AuthConfigs.OAUTH_CLIENT_SECRET);
     Preconditions.checkArgument(
         oauthClientSecret != null && !oauthClientSecret.isEmpty(),
-        "OAuth Client Secret must not be null or empty");
+        "Configuration key '%s' is missing or empty",
+        AuthConfigs.OAUTH_CLIENT_SECRET);
     this.oauthClientSecret = oauthClientSecret;
 
     this.leadRenewalTimeSeconds = DEFAULT_LEAD_RENEWAL_TIME_SECONDS;

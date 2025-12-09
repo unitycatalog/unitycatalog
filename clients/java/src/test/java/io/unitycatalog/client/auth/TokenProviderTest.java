@@ -41,7 +41,7 @@ public class TokenProviderTest {
         Map.of(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE, AuthConfigs.OAUTH_URI, OAUTH_URI);
     assertThatThrownBy(() -> TokenProvider.create(incompleteOAuthOptions))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("OAuth Client ID must not be null or empty");
+        .hasMessageContaining("Configuration key 'oauth.clientId' is missing or empty");
 
     // Test with no valid config - should throw
     assertThatThrownBy(() -> TokenProvider.create(Map.of()))
