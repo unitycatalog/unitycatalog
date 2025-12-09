@@ -6,9 +6,11 @@ import io.unitycatalog.client.internal.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.net.http.HttpRequest;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Builder to create configured {@link ApiClient} instances for Unity Catalog operations.
@@ -20,7 +22,7 @@ import java.util.List;
  *     .url("http://localhost:8080")
  *     .tokenProvider(TokenProvider.create("my-token"))
  *     .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(5).build())
- *     .addAppVersion("MyApp", "1.0.0", "Java", "11")
+ *     .addAppVersion("MyApp", "1.0.0")
  *     .build();
  * }</pre>
  *
@@ -29,12 +31,14 @@ import java.util.List;
  * @see RetryPolicy
  */
 public class ApiClientBuilder {
+  private static final String DEFAULT_APP_NAME = "UnityCatalog-Java-Client";
   private static final String BASE_PATH = "/api/2.1/unity-catalog";
 
   private URI uri = null;
   private TokenProvider tokenProvider = null;
-  private final List<String> nameVersionPairs = new ArrayList<>();
+  private final Map<String, String> appVersionMap = new LinkedHashMap<>();
   private RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder().build();
+  private Consumer<HttpRequest.Builder> requestInterceptor = t -> {};
 
   /**
    * Creates a new instance of {@link ApiClientBuilder}.
@@ -43,6 +47,11 @@ public class ApiClientBuilder {
    */
   public static ApiClientBuilder create() {
     return new ApiClientBuilder();
+  }
+
+  private ApiClientBuilder() {
+    // Add the default app name and version.
+    appVersionMap.put(DEFAULT_APP_NAME, VersionUtils.VERSION);
   }
 
   /**
@@ -87,17 +96,19 @@ public class ApiClientBuilder {
    * Sets application version metadata as name-version pairs.
    *
    * <p>Arguments must be provided in alternating name-version order with an even count, e.g.,
-   * {@code "MyApp1", "0.1.0", "MyApp2", "1.0.2"}.
+   * {@code "MyApp1", "0.1.0"}.
    *
-   * @param nameVersionPairs the metadata as alternating name-version pairs
+   * @param name the application name.
+   * @param version the application version.
    * @return this builder instance for method chaining
-   * @throws IllegalArgumentException if an odd number of arguments is provided
+   * @throws IllegalArgumentException if any argument is null or empty.
    */
-  public ApiClientBuilder addAppVersion(String... nameVersionPairs) {
+  public ApiClientBuilder addAppVersion(String name, String version) {
     Preconditions.checkArgument(
-        nameVersionPairs.length % 2 == 0,
-        "Must provide an even number of arguments for the name-version pairs.");
-    Collections.addAll(this.nameVersionPairs, nameVersionPairs);
+        name != null && !name.isEmpty(), "App name cannot be null or empty");
+    Preconditions.checkArgument(
+        version != null && !version.isEmpty(), "App version cannot be null or empty");
+    appVersionMap.put(name, version);
     return this;
   }
 
@@ -116,6 +127,16 @@ public class ApiClientBuilder {
     return this;
   }
 
+  public ApiClientBuilder addRequestInterceptor(Consumer<HttpRequest.Builder> interceptor) {
+    Consumer<HttpRequest.Builder> oldInterceptor = this.requestInterceptor;
+    this.requestInterceptor =
+        builder -> {
+          oldInterceptor.accept(builder);
+          interceptor.accept(builder);
+        };
+    return this;
+  }
+
   /**
    * Builds and returns a configured {@link ApiClient} instance.
    *
@@ -123,7 +144,7 @@ public class ApiClientBuilder {
    * @throws NullPointerException if {@code uri} or {@code tokenProvider} is null
    */
   public ApiClient build() {
-    // Set the scheme, host, port and base path, for the unity catalog client.
+    // Set the scheme, host, port and base path, for the Api client.
     Preconditions.checkNotNull(uri, "The unitycatalog uri cannot be null");
     ApiClient apiClient = new RetryingApiClient(retryPolicy);
     apiClient.setScheme(uri.getScheme());
@@ -131,15 +152,22 @@ public class ApiClientBuilder {
     apiClient.setPort(uri.getPort());
     apiClient.setBasePath(uri.getPath() + BASE_PATH);
 
-    // Set the unity catalog token provider.
-    Preconditions.checkNotNull(tokenProvider, "The unitycatalog token provider cannot be null");
-    apiClient.setRequestInterceptor(
-        request -> request.header("Authorization", "Bearer " + tokenProvider.accessToken()));
-
-    // Set the name and version pairs.
-    if (!nameVersionPairs.isEmpty()) {
-      apiClient.setClientVersion(nameVersionPairs.toArray(new String[0]));
+    // Add the User-Agent request interceptor.
+    if (!appVersionMap.isEmpty()) {
+      String userAgent =
+          appVersionMap.entrySet().stream()
+              .map(e -> String.format("%s/%s", e.getKey(), e.getValue()))
+              .collect(Collectors.joining(" "));
+      addRequestInterceptor(builder -> builder.header("User-Agent", userAgent));
     }
+
+    // Add the client's token interceptor.
+    Preconditions.checkNotNull(tokenProvider, "The unitycatalog token provider cannot be null");
+    addRequestInterceptor(
+        builder -> builder.header("Authorization", "Bearer " + tokenProvider.accessToken()));
+
+    // Set the composed request interceptor on the API client.
+    apiClient.setRequestInterceptor(requestInterceptor);
 
     return apiClient;
   }

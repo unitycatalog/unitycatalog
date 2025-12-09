@@ -24,7 +24,8 @@ public class ApiClientFactory {
     String sparkVersion = getSparkVersion();
     String deltaVersion = getDeltaVersion();
     if (deltaVersion != null) {
-      builder.addAppVersion("Spark", sparkVersion, "Delta", deltaVersion);
+      builder.addAppVersion("Spark", sparkVersion)
+          .addAppVersion("Delta", deltaVersion);
     } else {
       builder.addAppVersion("Spark", sparkVersion);
     }

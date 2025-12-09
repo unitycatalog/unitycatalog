@@ -90,7 +90,7 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
     assertThatThrownBy(() -> provider.setConf(conf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining(
-            "Cannot determine unity catalog authentication configuration from options");
+            "Invalid Unity Catalog authentication configuration: token cannot be null");
 
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
     assertThatThrownBy(() -> provider.setConf(conf))

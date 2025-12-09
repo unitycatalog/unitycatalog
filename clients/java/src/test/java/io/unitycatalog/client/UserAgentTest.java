@@ -1,201 +1,176 @@
 package io.unitycatalog.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
+import io.unitycatalog.client.auth.TokenProvider;
+import java.net.http.HttpRequest;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
- * Test class demonstrating User-Agent functionality in the Unity Catalog Java client.
+ * Test class for User-Agent functionality in the Unity Catalog Java client.
  *
- * <p>This test verifies that: 1. ApiClient has a default User-Agent header set 2. Users can
- * customize the User-Agent header 3. The User-Agent header is applied to all HTTP requests
+ * <p>This test verifies that:
+ *
+ * <ul>
+ *   <li>ApiClientBuilder sets a default User-Agent header
+ *   <li>Users can customize the User-Agent header through addAppVersion
+ *   <li>The User-Agent header is properly formatted and applied to HTTP requests
+ *   <li>Multiple application versions can be added and are properly formatted
+ * </ul>
  */
 public class UserAgentTest {
 
-  @Test
-  public void testDefaultUserAgent() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
+  private static final String TEST_URI = "http://localhost:8080";
+  private static final String TEST_TOKEN = "test-token";
 
-    // Verify that a default User-Agent is set
-    String userAgent = client.getUserAgent();
-    assertThat(userAgent).isNotNull();
-    assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
+  /**
+   * Helper method to extract the User-Agent header value from an ApiClient's request interceptor.
+   *
+   * @param client the ApiClient to extract the User-Agent from
+   * @return the User-Agent header value
+   */
+  private String extractUserAgent(ApiClient client) {
+    HttpRequest.Builder mockRequestBuilder = mock(HttpRequest.Builder.class);
+    client.getRequestInterceptor().accept(mockRequestBuilder);
+
+    ArgumentCaptor<String> headerNameCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> headerValueCaptor = ArgumentCaptor.forClass(String.class);
+    verify(mockRequestBuilder, atLeastOnce())
+        .header(headerNameCaptor.capture(), headerValueCaptor.capture());
+
+    assertThat(headerNameCaptor.getAllValues()).contains("User-Agent");
+    int userAgentIndex = headerNameCaptor.getAllValues().indexOf("User-Agent");
+    return headerValueCaptor.getAllValues().get(userAgentIndex);
   }
 
   @Test
-  public void testCustomUserAgent() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
+  public void testDefaultUserAgent() {
+    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    ApiClient client = ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).build();
 
-    // Set a custom User-Agent
-    String customUserAgent = "MyApplication/1.0.0 (CustomClient)";
-    client.setUserAgent(customUserAgent);
+    String userAgent = extractUserAgent(client);
+    assertThat(userAgent).contains("UnityCatalog-Java-Client");
+    assertThat(userAgent).contains(VersionUtils.VERSION);
+  }
 
-    // Verify that the custom User-Agent is set
-    String userAgent = client.getUserAgent();
-    assertThat(userAgent).isEqualTo(customUserAgent);
+  @Test
+  public void testCustomUserAgentWithSingleApp() {
+    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    ApiClient client =
+        ApiClientBuilder.create()
+            .uri(TEST_URI)
+            .tokenProvider(tokenProvider)
+            .addAppVersion("MyApp", "1.0.0")
+            .build();
+
+    String userAgent = extractUserAgent(client);
+    assertThat(userAgent).contains("UnityCatalog-Java-Client", "MyApp", "1.0.0");
+  }
+
+  @Test
+  public void testCustomUserAgentWithMultipleApps() {
+    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    ApiClient client =
+        ApiClientBuilder.create()
+            .uri(TEST_URI)
+            .tokenProvider(tokenProvider)
+            .addAppVersion("MyApp", "1.0.0")
+            .addAppVersion("MyWrapper", "2.5.1")
+            .addAppVersion("Java", "17")
+            .build();
+
+    String userAgent = extractUserAgent(client);
+    assertThat(userAgent)
+        .contains("UnityCatalog-Java-Client", "MyApp", "1.0.0", "MyWrapper", "2.5.1", "Java", "17");
   }
 
   @Test
   public void testUserAgentChaining() {
-    // Verify that setUserAgent returns the ApiClient for method chaining
-    ApiClient client = new ApiClient();
+    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
 
-    ApiClient result = client.setUserAgent("ChainedApp/2.0").setHost("example.com").setPort(8443);
+    ApiClientBuilder builder = ApiClientBuilder.create();
+    ApiClientBuilder result =
+        builder
+            .uri(TEST_URI)
+            .tokenProvider(tokenProvider)
+            .addAppVersion("ChainedApp", "2.0")
+            .addAppVersion("Framework", "Spring");
 
-    assertThat(result).isSameAs(client);
-    assertThat(client.getUserAgent()).isEqualTo("ChainedApp/2.0");
+    assertThat(result).isSameAs(builder);
+
+    ApiClient client = result.build();
+    String userAgent = extractUserAgent(client);
+    assertThat(userAgent).contains("ChainedApp", "2.0", "Framework", "Spring");
   }
 
   @Test
-  public void testUserAgentReset() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
+  public void testAddAppVersionValidation() {
+    // Test validation: null name
+    assertThatThrownBy(() -> ApiClientBuilder.create().addAppVersion(null, "1.0.0"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("App name cannot be null or empty");
 
-    // Set a custom User-Agent
-    client.setUserAgent("CustomApp/1.0");
-    assertThat(client.getUserAgent()).isEqualTo("CustomApp/1.0");
+    // Test validation: empty name
+    assertThatThrownBy(() -> ApiClientBuilder.create().addAppVersion("", "1.0.0"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("App name cannot be null or empty");
 
-    // Reset to default by passing null
-    client.setUserAgent(null);
-    assertThat(client.getUserAgent()).startsWith("UnityCatalog-Java-Client/");
+    // Test validation: null version
+    assertThatThrownBy(() -> ApiClientBuilder.create().addAppVersion("MyApp", null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("App version cannot be null or empty");
+
+    // Test validation: empty version
+    assertThatThrownBy(() -> ApiClientBuilder.create().addAppVersion("MyApp", ""))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("App version cannot be null or empty");
   }
 
   @Test
-  public void testSetClientVersion() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
-
-    // Add client application information
-    client.setClientVersion("MyApp", "1.0.0");
-
-    // Verify the User-Agent includes both Unity Catalog client and application info
-    String userAgent = client.getUserAgent();
-    assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
-    assertThat(userAgent).contains("MyApp/1.0.0");
-  }
-
-  @Test
-  public void testSetClientVersionWithoutVersion() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
-
-    // Add client information without version
-    client.setClientVersion("MyApp", null);
-
-    // Verify the User-Agent includes client name without version
-    String userAgent = client.getUserAgent();
-    assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
-    assertThat(userAgent).contains("MyApp");
-    assertThat(userAgent).doesNotContain("MyApp/");
-  }
-
-  @Test
-  public void testSetClientVersionChaining() {
-    // Create a new ApiClient and use method chaining
+  public void testAppVersionOrdering() {
+    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
     ApiClient client =
-        new ApiClient()
-            .setClientVersion("DataPipeline", "2.1.0")
-            .setHost("catalog.example.com")
-            .setPort(8443);
+        ApiClientBuilder.create()
+            .uri(TEST_URI)
+            .tokenProvider(tokenProvider)
+            .addAppVersion("FirstApp", "1.0")
+            .addAppVersion("SecondApp", "2.0")
+            .addAppVersion("ThirdApp", "3.0")
+            .build();
 
-    // Verify chaining worked
-    assertThat(client.getUserAgent()).contains("DataPipeline/2.1.0");
+    String userAgent = extractUserAgent(client);
+
+    // Verify ordering - UnityCatalog client should appear first
+    int ucIndex = userAgent.indexOf("UnityCatalog-Java-Client");
+    int firstAppIndex = userAgent.indexOf("FirstApp");
+    int secondAppIndex = userAgent.indexOf("SecondApp");
+    int thirdAppIndex = userAgent.indexOf("ThirdApp");
+
+    assertThat(ucIndex).isLessThan(firstAppIndex);
+    assertThat(firstAppIndex).isLessThan(secondAppIndex);
+    assertThat(secondAppIndex).isLessThan(thirdAppIndex);
   }
 
   @Test
-  public void testSetClientVersionMultiplePairs() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
+  public void testDuplicateAppNameOverrides() {
+    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    ApiClient client =
+        ApiClientBuilder.create()
+            .uri(TEST_URI)
+            .tokenProvider(tokenProvider)
+            .addAppVersion("MyApp", "1.0.0")
+            .addAppVersion("MyApp", "2.0.0") // Should override the previous version
+            .build();
 
-    // Add multiple client information in a single call
-    client.setClientVersion("MyApp", "1.0.0", "MyWrapper", "2.5.1");
+    String userAgent = extractUserAgent(client);
 
-    // Verify the User-Agent includes all client info
-    String userAgent = client.getUserAgent();
-    assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
-    assertThat(userAgent).contains("MyApp/1.0.0");
-    assertThat(userAgent).contains("MyWrapper/2.5.1");
-  }
-
-  @Test
-  public void testSetClientVersionOverrides() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
-
-    // Set initial client version
-    client.setClientVersion("MyApp", "1.0.0");
-    assertThat(client.getUserAgent()).contains("MyApp/1.0.0");
-
-    // Set a different client version - should override, not append
-    client.setClientVersion("MyWrapper", "2.5.1");
-
-    String userAgent = client.getUserAgent();
-    assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
-    assertThat(userAgent).contains("MyWrapper/2.5.1");
-    assertThat(userAgent).doesNotContain("MyApp"); // Previous client is replaced
-  }
-
-  @Test
-  public void testSetClientVersionPreservesBase() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
-
-    // Store the original base user agent
-    String originalUserAgent = client.getUserAgent();
-
-    // Add client information
-    client.setClientVersion("TestApp", "3.0");
-
-    // Verify the original Unity Catalog client info is still present
-    String newUserAgent = client.getUserAgent();
-    assertThat(newUserAgent).startsWith(originalUserAgent);
-    assertThat(newUserAgent).contains("TestApp/3.0");
-  }
-
-  @Test
-  public void testSetClientVersionWithEmptyName() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
-
-    // Try to add client information with empty name
-    try {
-      client.setClientVersion("", "1.0.0");
-      // Should throw IllegalArgumentException
-      assertThat(false).as("Expected IllegalArgumentException").isTrue();
-    } catch (IllegalArgumentException e) {
-      assertThat(e.getMessage()).contains("Client name");
-      assertThat(e.getMessage()).contains("cannot be null or empty");
-    }
-  }
-
-  @Test
-  public void testSetClientVersionWithOddNumberOfArgs() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
-
-    // Try to add client information with odd number of arguments
-    try {
-      client.setClientVersion("MyApp", "1.0.0", "MissingVersion");
-      // Should throw IllegalArgumentException
-      assertThat(false).as("Expected IllegalArgumentException").isTrue();
-    } catch (IllegalArgumentException e) {
-      assertThat(e.getMessage()).contains("even number of arguments");
-    }
-  }
-
-  @Test
-  public void testSetClientVersionWithMixedVersions() {
-    // Create a new ApiClient
-    ApiClient client = new ApiClient();
-
-    // Add multiple clients, some with versions, some without
-    client.setClientVersion("MyApp", "1.0.0", "MyTool", null, "MyWrapper", "2.5.1");
-
-    String userAgent = client.getUserAgent();
-    assertThat(userAgent).contains("MyApp/1.0.0");
-    assertThat(userAgent).contains("MyTool "); // No version slash
-    assertThat(userAgent).contains("MyWrapper/2.5.1");
+    // Verify only the latest version is present
+    assertThat(userAgent).contains("MyApp", "2.0.0");
+    assertThat(userAgent).doesNotContain("1.0.0");
   }
 }
