@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
  *
  * <pre>{@code
  * ApiClient client = ApiClientBuilder.create()
- *     .url("http://localhost:8080")
+ *     .uri("http://localhost:8080")
  *     .tokenProvider(TokenProvider.create("my-token"))
  *     .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(5).build())
  *     .addAppVersion("MyApp", "1.0.0")
@@ -127,6 +127,26 @@ public class ApiClientBuilder {
     return this;
   }
 
+  /**
+   * Adds a custom request interceptor to modify HTTP requests before they are sent.
+   *
+   * <p>Request interceptors can be used to add custom headers, modify request properties, or
+   * perform logging. Multiple interceptors can be added and will be executed in the order they were
+   * registered.
+   *
+   * <p>Example usage:
+   *
+   * <pre>{@code
+   * ApiClientBuilder builder = ApiClientBuilder.create()
+   *     .uri("http://localhost:8080")
+   *     .tokenProvider(TokenProvider.create("my-token"))
+   *     .addRequestInterceptor(builder -> builder.header("X-Custom-Header", "custom-value"));
+   * }</pre>
+   *
+   * @param interceptor a consumer that accepts an {@link HttpRequest.Builder} to modify the
+   *     request, must not be null
+   * @return this builder instance for method chaining
+   */
   public ApiClientBuilder addRequestInterceptor(Consumer<HttpRequest.Builder> interceptor) {
     Consumer<HttpRequest.Builder> oldInterceptor = this.requestInterceptor;
     this.requestInterceptor =
