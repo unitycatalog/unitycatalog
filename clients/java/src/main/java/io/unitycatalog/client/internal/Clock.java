@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.utils;
+package io.unitycatalog.client.internal;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -6,16 +6,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public interface Clock {
-  /**
-   * @return the current time of the clock.
-   */
+  /** @return the current time of the clock. */
   Instant now();
 
   /**
    * Sleeps for the given duration.
-   * <p>
-   * For system clock, this performs an actual sleep by calling {@link Thread#sleep}.
-   * For manual clock, this advances the clock time by the given duration without sleeping.
+   *
+   * <p>For system clock, this performs an actual sleep by calling {@link Thread#sleep}. For manual
+   * clock, this advances the clock time by the given duration without sleeping.
    *
    * @param duration the duration to sleep
    * @throws InterruptedException if the sleep is interrupted (only for system clock)
@@ -30,11 +28,9 @@ public interface Clock {
     return new ManualClock(now);
   }
 
-
   static Clock getManualClock(String name) {
-    return ManualClock.globalManualClock.compute(name, (clockName, clock) ->
-        clock == null ? manualClock(Instant.now()) : clock
-    );
+    return ManualClock.globalManualClock.compute(
+        name, (clockName, clock) -> clock == null ? manualClock(Instant.now()) : clock);
   }
 
   static void removeManualClock(String name) {

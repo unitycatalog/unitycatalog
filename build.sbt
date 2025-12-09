@@ -169,7 +169,7 @@ lazy val controlApi = (project in file("target/control/java"))
     }
   )
 
-lazy val client = (project in file("target/clients/java"))
+lazy val client = (project in file("clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
     name := s"$artifactNamePrefix-client",
@@ -177,6 +177,8 @@ lazy val client = (project in file("target/clients/java"))
     javaOnlyReleaseSettings,
     Compile / compile / javacOptions ++= javacRelease11,
     javaCheckstyleTestOnlySettings("dev/checkstyle-config.xml"),
+    // Include generated OpenAPI sources
+    Compile / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "target" / "src" / "main" / "java"),
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -187,6 +189,9 @@ lazy val client = (project in file("target/clients/java"))
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
 
       // Test dependencies
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
@@ -199,7 +204,7 @@ lazy val client = (project in file("target/clients/java"))
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := (file("target") / "clients" / "java").toString,
+    openApiOutputDir := (file(".") / "clients" / "java" / "target").toString,
     openApiApiPackage := s"$orgName.client.api",
     openApiModelPackage := s"$orgName.client.model",
     openApiAdditionalProperties := Map(

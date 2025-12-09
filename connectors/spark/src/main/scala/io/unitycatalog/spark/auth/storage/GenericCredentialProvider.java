@@ -2,16 +2,16 @@ package io.unitycatalog.spark.auth.storage;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.spark.ApiClientConf;
+import io.unitycatalog.client.retry.RetryPolicy;
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.spark.ApiClientFactory;
 import io.unitycatalog.spark.UCHadoopConf;
-import io.unitycatalog.spark.auth.catalog.UCTokenProvider;
-import io.unitycatalog.spark.utils.Clock;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
@@ -34,7 +34,7 @@ public abstract class GenericCredentialProvider {
   private Clock clock;
   private long renewalLeadTimeMillis;
   private URI ucUri;
-  private UCTokenProvider ucTokenProvider;
+  private TokenProvider tokenProvider;
   private String credUid;
   private boolean credCacheEnabled;
 
@@ -58,7 +58,8 @@ public abstract class GenericCredentialProvider {
     this.ucUri = URI.create(ucUriStr);
 
     // Initialize the UCTokenProvider.
-    this.ucTokenProvider = UCTokenProvider.create(conf);
+    this.tokenProvider = TokenProvider.createFromConfigs(
+        conf.getPropsWithPrefix(UCHadoopConf.FS_UC_PREFIX));
 
     this.credUid = conf.get(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
     Preconditions.checkState(credUid != null && !credUid.isEmpty(),
@@ -97,9 +98,9 @@ public abstract class GenericCredentialProvider {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
-          ApiClientConf clientConf = UCHadoopConf.getApiClientConf(conf);
+          RetryPolicy retryPolicy = UCHadoopConf.createRequestRetryPolicy(conf);
           tempCredApi = new TemporaryCredentialsApi(
-              ApiClientFactory.createApiClient(clientConf, ucUri, ucTokenProvider));
+              ApiClientFactory.createApiClient(retryPolicy, ucUri, tokenProvider));
         }
       }
     }

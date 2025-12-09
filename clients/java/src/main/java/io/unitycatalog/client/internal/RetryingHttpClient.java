@@ -1,4 +1,4 @@
-package io.unitycatalog.spark;
+package io.unitycatalog.client.internal;
 
 import java.io.IOException;
 import java.net.Authenticator;
@@ -20,17 +20,16 @@ import javax.net.ssl.SSLParameters;
  * <p>The generated {@link io.unitycatalog.client.ApiClient} is recreated from OpenAPI specs, so we
  * keep retry state outside of it. Handling retries here means every generated endpoint class that
  * relies on the shared {@link io.unitycatalog.client.ApiClient} automatically gets the same
- * behaviour. {@link RetryingApiClient} uses this adapter to run retries through
- * {@link HttpRetryHandler} by overriding {@link #send(HttpRequest, HttpResponse.BodyHandler)} to
- * call {@link HttpRetryHandler#call}, which implements exponential backoff while using the
- * underlying {@link HttpClient#send(HttpRequest, HttpResponse.BodyHandler)} to send the request.
- * </p>
+ * behaviour. {@link RetryingApiClient} uses this adapter to run retries through {@link
+ * HttpRetryHandler} by overriding {@link #send(HttpRequest, HttpResponse.BodyHandler)} to call
+ * {@link HttpRetryHandler#call}, which implements exponential backoff while using the underlying
+ * {@link HttpClient#send(HttpRequest, HttpResponse.BodyHandler)} to send the request.
  */
-public class RetryingHttpClient extends HttpClient {
+class RetryingHttpClient extends HttpClient {
   private final HttpClient delegate;
   private final HttpRetryHandler retryHandler;
 
-  public RetryingHttpClient(HttpClient delegate, HttpRetryHandler retryHandler) {
+  RetryingHttpClient(HttpClient delegate, HttpRetryHandler retryHandler) {
     this.delegate = delegate;
     this.retryHandler = retryHandler;
   }
@@ -88,8 +87,7 @@ public class RetryingHttpClient extends HttpClient {
 
   @Override
   public <T> CompletableFuture<HttpResponse<T>> sendAsync(
-      HttpRequest request,
-      HttpResponse.BodyHandler<T> handler) {
+      HttpRequest request, HttpResponse.BodyHandler<T> handler) {
     return delegate.sendAsync(request, handler);
   }
 
@@ -102,4 +100,3 @@ public class RetryingHttpClient extends HttpClient {
     return delegate.sendAsync(request, handler, pushPromiseHandler);
   }
 }
-
