@@ -123,8 +123,7 @@ public class TokenProviderTest {
 
     assertThatThrownBy(() -> TokenProvider.create(invalidConfigs))
         .isInstanceOf(RuntimeException.class)
-        .hasMessageContaining(
-            "Failed to instantiate custom TokenProvider")
+        .hasMessageContaining("Failed to instantiate custom TokenProvider")
         .hasCauseInstanceOf(ClassNotFoundException.class);
   }
 
@@ -136,8 +135,7 @@ public class TokenProviderTest {
 
     assertThatThrownBy(() -> TokenProvider.create(invalidConfigs))
         .isInstanceOf(RuntimeException.class)
-        .hasMessageContaining(
-            "Failed to instantiate custom TokenProvider");
+        .hasMessageContaining("Failed to instantiate custom TokenProvider");
   }
 
   /** Custom TokenProvider implementation for testing purposes. */
