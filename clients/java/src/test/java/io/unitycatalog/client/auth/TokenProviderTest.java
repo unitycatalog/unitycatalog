@@ -14,85 +14,85 @@ public class TokenProviderTest {
   private static final String CLIENT_SECRET = "test-client-secret";
 
   @Test
-  public void testCreateTokenProviderViaOptions() {
+  public void testCreateTokenProviderViaConfigs() {
     // Test with valid token - should create StaticTokenProvider
-    Map<String, String> tokenOptions = Map.of(AuthProps.STATIC_TOKEN, "test-token");
-    TokenProvider tokenProvider = TokenProvider.createFromConfigs(tokenOptions);
+    TokenProvider tokenProvider = TokenProviderUtils.create("test-token");
     assertThat(tokenProvider).isInstanceOf(StaticTokenProvider.class);
     assertThat(tokenProvider.accessToken()).isEqualTo("test-token");
 
     // Test with complete OAuth config - should create OAuthUCTokenProvider
     TokenProvider oauthProvider =
-        TokenProvider.createFromConfigs(
+        TokenProvider.create(
             Map.of(
-                AuthProps.AUTH_TYPE, AuthProps.OAUTH_AUTH_TYPE,
-                AuthProps.OAUTH_URI, OAUTH_URI,
-                AuthProps.OAUTH_CLIENT_ID, CLIENT_ID,
-                AuthProps.OAUTH_CLIENT_SECRET, CLIENT_SECRET));
+                AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE,
+                AuthConfigs.OAUTH_URI, OAUTH_URI,
+                AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID,
+                AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET));
     assertThat(oauthProvider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(oauthProvider.getConfigs())
         .hasSize(4)
-        .containsEntry(AuthProps.AUTH_TYPE, AuthProps.OAUTH_AUTH_TYPE)
-        .containsEntry(AuthProps.OAUTH_URI, OAUTH_URI)
-        .containsEntry(AuthProps.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthProps.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE)
+        .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
 
     // Test with incomplete OAuth config - should throw
     Map<String, String> incompleteOAuthOptions =
-        Map.of(AuthProps.AUTH_TYPE, AuthProps.OAUTH_AUTH_TYPE, AuthProps.OAUTH_URI, OAUTH_URI);
-    assertThatThrownBy(() -> TokenProvider.createFromConfigs(incompleteOAuthOptions))
+        Map.of(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE, AuthConfigs.OAUTH_URI, OAUTH_URI);
+    assertThatThrownBy(() -> TokenProvider.create(incompleteOAuthOptions))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("OAuth Client ID must not be null or empty");
 
     // Test with no valid config - should throw
-    assertThatThrownBy(() -> TokenProvider.createFromConfigs(Map.of()))
+    assertThatThrownBy(() -> TokenProvider.create(Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining(
-            "Invalid Unity Catalog authentication configuration: token cannot be null");
+            "Value of 'type' to instantiate TokenProvider cannot be null or empty");
 
     // Test token takes precedence over OAuth when both are present
     Map<String, String> bothOptions = new HashMap<>();
-    bothOptions.put(AuthProps.STATIC_TOKEN, "fixed-token");
-    bothOptions.put(AuthProps.OAUTH_URI, OAUTH_URI);
-    bothOptions.put(AuthProps.OAUTH_CLIENT_ID, CLIENT_ID);
-    bothOptions.put(AuthProps.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
-    TokenProvider provider = TokenProvider.createFromConfigs(bothOptions);
-    assertThat(provider).isInstanceOf(StaticTokenProvider.class);
+    bothOptions.put(AuthConfigs.STATIC_TOKEN, "fixed-token");
+    bothOptions.put(AuthConfigs.OAUTH_URI, OAUTH_URI);
+    bothOptions.put(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID);
+    bothOptions.put(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+    assertThatThrownBy(() -> TokenProvider.create(bothOptions))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining(
+            "Value of 'type' to instantiate TokenProvider cannot be null or empty");
   }
 
   @Test
   public void testStaticTokenProvider() {
-    TokenProvider provider = TokenProvider.create("my-token");
+    TokenProvider provider = TokenProviderUtils.create("my-token");
     assertThat(provider.accessToken()).isEqualTo("my-token");
 
-    TokenProvider consistentProvider = TokenProvider.create("consistent");
+    TokenProvider consistentProvider = TokenProviderUtils.create("consistent");
     assertThat(consistentProvider.accessToken()).isEqualTo("consistent");
     assertThat(consistentProvider.accessToken()).isEqualTo("consistent");
     assertThat(consistentProvider.accessToken()).isEqualTo("consistent");
 
-    TokenProvider providerWithProperties = TokenProvider.create("test-token");
+    TokenProvider providerWithProperties = TokenProviderUtils.create("test-token");
     assertThat(providerWithProperties.getConfigs())
         .hasSize(2)
-        .containsEntry(AuthProps.STATIC_TOKEN, "test-token")
-        .containsEntry(AuthProps.AUTH_TYPE, AuthProps.STATIC_AUTH_TYPE);
+        .containsEntry(AuthConfigs.STATIC_TOKEN, "test-token")
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.STATIC_TYPE);
 
-    TokenProvider factoryProvider = TokenProvider.create("factory-token");
+    TokenProvider factoryProvider = TokenProviderUtils.create("factory-token");
     assertThat(factoryProvider).isNotNull();
     assertThat(factoryProvider.accessToken()).isEqualTo("factory-token");
   }
 
   @Test
   public void testOAuthTokenProvider() {
-    TokenProvider provider =
-        TokenProvider.createFromOAuthConfigs(OAUTH_URI, CLIENT_ID, CLIENT_SECRET);
+    TokenProvider provider = TokenProviderUtils.create(OAUTH_URI, CLIENT_ID, CLIENT_SECRET);
     assertThat(provider).isNotNull();
     assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
 
     assertThat(provider.getConfigs())
         .hasSize(4)
-        .containsEntry(AuthProps.AUTH_TYPE, AuthProps.OAUTH_AUTH_TYPE)
-        .containsEntry(AuthProps.OAUTH_URI, OAUTH_URI)
-        .containsEntry(AuthProps.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthProps.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE)
+        .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
   }
 }

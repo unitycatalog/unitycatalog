@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  * @see RetryPolicy
  */
 public class ApiClientBuilder {
-  private static final String DEFAULT_APP_NAME = "UnityCatalog-Java-Client";
+  private static final String DEFAULT_CLIENT_NAME = "UnityCatalog-Java-Client";
   private static final String BASE_PATH = "/api/2.1/unity-catalog";
 
   private URI uri = null;
@@ -50,8 +50,8 @@ public class ApiClientBuilder {
   }
 
   private ApiClientBuilder() {
-    // Add the default app name and version.
-    appVersionMap.put(DEFAULT_APP_NAME, VersionUtils.VERSION);
+    // Add the default client name and version.
+    appVersionMap.put(DEFAULT_CLIENT_NAME, VersionUtils.VERSION);
   }
 
   /**

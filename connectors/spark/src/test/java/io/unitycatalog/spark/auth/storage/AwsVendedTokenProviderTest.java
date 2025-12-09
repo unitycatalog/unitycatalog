@@ -93,10 +93,11 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
     assertThatThrownBy(() -> new AwsVendedTokenProvider(conf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining(
-            "Invalid Unity Catalog authentication configuration: token cannot be null");
+            "Value of 'type' to instantiate TokenProvider cannot be null or empty");
 
     // Verify the UID validation error message.
-    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_AUTH_TYPE, "static");
+    conf.set(UCHadoopConf.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
     assertThatThrownBy(() -> new AwsVendedTokenProvider(conf))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage(

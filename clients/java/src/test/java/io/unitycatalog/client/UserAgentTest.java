@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.auth.TokenProviderUtils;
 import java.net.http.HttpRequest;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -27,6 +28,7 @@ public class UserAgentTest {
 
   private static final String TEST_URI = "http://localhost:8080";
   private static final String TEST_TOKEN = "test-token";
+  private static final TokenProvider TOKEN_PROVIDER = TokenProviderUtils.create(TEST_TOKEN);
 
   /**
    * Helper method to extract the User-Agent header value from an ApiClient's request interceptor.
@@ -50,8 +52,8 @@ public class UserAgentTest {
 
   @Test
   public void testDefaultUserAgent() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
-    ApiClient client = ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).build();
+    ApiClient client =
+        ApiClientBuilder.create().uri(TEST_URI).tokenProvider(TOKEN_PROVIDER).build();
 
     String userAgent = extractUserAgent(client);
     assertThat(userAgent).contains("UnityCatalog-Java-Client");
@@ -60,11 +62,10 @@ public class UserAgentTest {
 
   @Test
   public void testCustomUserAgentWithSingleApp() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
     ApiClient client =
         ApiClientBuilder.create()
             .uri(TEST_URI)
-            .tokenProvider(tokenProvider)
+            .tokenProvider(TOKEN_PROVIDER)
             .addAppVersion("MyApp", "1.0.0")
             .build();
 
@@ -74,11 +75,10 @@ public class UserAgentTest {
 
   @Test
   public void testCustomUserAgentWithMultipleApps() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
     ApiClient client =
         ApiClientBuilder.create()
             .uri(TEST_URI)
-            .tokenProvider(tokenProvider)
+            .tokenProvider(TOKEN_PROVIDER)
             .addAppVersion("MyApp", "1.0.0")
             .addAppVersion("MyWrapper", "2.5.1")
             .addAppVersion("Java", "17")
@@ -91,13 +91,11 @@ public class UserAgentTest {
 
   @Test
   public void testUserAgentChaining() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
-
     ApiClientBuilder builder = ApiClientBuilder.create();
     ApiClientBuilder result =
         builder
             .uri(TEST_URI)
-            .tokenProvider(tokenProvider)
+            .tokenProvider(TOKEN_PROVIDER)
             .addAppVersion("ChainedApp", "2.0")
             .addAppVersion("Framework", "Spring");
 
@@ -133,11 +131,10 @@ public class UserAgentTest {
 
   @Test
   public void testAppVersionOrdering() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
     ApiClient client =
         ApiClientBuilder.create()
             .uri(TEST_URI)
-            .tokenProvider(tokenProvider)
+            .tokenProvider(TOKEN_PROVIDER)
             .addAppVersion("FirstApp", "1.0")
             .addAppVersion("SecondApp", "2.0")
             .addAppVersion("ThirdApp", "3.0")
@@ -158,11 +155,10 @@ public class UserAgentTest {
 
   @Test
   public void testDuplicateAppNameOverrides() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
     ApiClient client =
         ApiClientBuilder.create()
             .uri(TEST_URI)
-            .tokenProvider(tokenProvider)
+            .tokenProvider(TOKEN_PROVIDER)
             .addAppVersion("MyApp", "1.0.0")
             .addAppVersion("MyApp", "2.0.0") // Should override the previous version
             .build();

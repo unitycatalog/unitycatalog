@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.auth.TokenProviderUtils;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
@@ -26,7 +27,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testBasicBuildAndUriConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
     // Test basic build with minimal configuration
     ApiClient client1 =
@@ -70,7 +71,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testTokenProviderConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
     ApiClient client = ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).build();
 
     assertThat(client.getRequestInterceptor()).isNotNull();
@@ -91,7 +92,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testAddAppVersionConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
     // Test that addAppVersion method works and returns builder for chaining
     ApiClientBuilder builder = ApiClientBuilder.create();
@@ -110,7 +111,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testRetryPolicyConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
     // Test with custom retry policy
     RetryPolicy customRetryPolicy = JitterDelayRetryPolicy.builder().maxAttempts(10).build();
@@ -130,7 +131,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testValidationFailures() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
     // Test missing URI
     assertThatThrownBy(() -> ApiClientBuilder.create().tokenProvider(tokenProvider).build())
@@ -155,7 +156,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testCompleteConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
     RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder().maxAttempts(3).build();
 
     // Test that all builder components work together
@@ -179,7 +180,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testBaseUriConstruction() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
     // Test base URI without path suffix
     URI uriNoSuffix = URI.create("https://localhost:8080");

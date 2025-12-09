@@ -68,20 +68,20 @@ class OAuthTokenProvider implements TokenProvider {
   @Override
   public void initialize(Map<String, String> configs) {
     // Parse and validate the Oauth URI.
-    String oauthUri = configs.get(AuthProps.OAUTH_URI);
+    String oauthUri = configs.get(AuthConfigs.OAUTH_URI);
     Preconditions.checkArgument(
         oauthUri != null && !oauthUri.isEmpty(), "OAuth URI must not be null or empty");
     this.oauthUri = oauthUri;
 
     // Parse and validate the OAuth Client ID.
-    String oauthClientId = configs.get(AuthProps.OAUTH_CLIENT_ID);
+    String oauthClientId = configs.get(AuthConfigs.OAUTH_CLIENT_ID);
     Preconditions.checkArgument(
         oauthClientId != null && !oauthClientId.isEmpty(),
         "OAuth Client ID must not be null or empty");
     this.oauthClientId = oauthClientId;
 
     // Parse and validate the OAuth Client Secret.
-    String oauthClientSecret = configs.get(AuthProps.OAUTH_CLIENT_SECRET);
+    String oauthClientSecret = configs.get(AuthConfigs.OAUTH_CLIENT_SECRET);
     Preconditions.checkArgument(
         oauthClientSecret != null && !oauthClientSecret.isEmpty(),
         "OAuth Client Secret must not be null or empty");
@@ -108,10 +108,10 @@ class OAuthTokenProvider implements TokenProvider {
   @Override
   public Map<String, String> getConfigs() {
     return Map.of(
-        AuthProps.AUTH_TYPE, AuthProps.OAUTH_AUTH_TYPE,
-        AuthProps.OAUTH_URI, oauthUri,
-        AuthProps.OAUTH_CLIENT_ID, oauthClientId,
-        AuthProps.OAUTH_CLIENT_SECRET, oauthClientSecret);
+        AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE,
+        AuthConfigs.OAUTH_URI, oauthUri,
+        AuthConfigs.OAUTH_CLIENT_ID, oauthClientId,
+        AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret);
   }
 
   private TempToken renewToken() {

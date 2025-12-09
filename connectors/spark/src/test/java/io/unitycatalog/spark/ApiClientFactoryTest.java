@@ -11,6 +11,7 @@ import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
 import java.net.http.HttpRequest;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -21,7 +22,7 @@ import org.mockito.ArgumentCaptor;
  * general ApiClient configuration tests, see {@link io.unitycatalog.client.ApiClientBuilderTest}.
  */
 public class ApiClientFactoryTest {
-  private static final TokenProvider UC_TOKEN_PROVIDER = TokenProvider.create("token");
+  private static final TokenProvider UC_TOKEN_PROVIDER = createStaticTokenProvider("token");
   private static final RetryPolicy RETRY_POLICY = JitterDelayRetryPolicy.builder().build();
   private static final URI TEST_URI = URI.create("http://localhost:8080");
 
@@ -66,7 +67,7 @@ public class ApiClientFactoryTest {
   @Test
   public void testTokenNotLeakedInUserAgent() {
     String sensitiveToken = "test-token-12345";
-    TokenProvider tokenProvider = TokenProvider.create(sensitiveToken);
+    TokenProvider tokenProvider = createStaticTokenProvider(sensitiveToken);
     ApiClient client = ApiClientFactory.createApiClient(RETRY_POLICY, TEST_URI, tokenProvider);
 
     String userAgent = extractUserAgent(client);
@@ -101,5 +102,9 @@ public class ApiClientFactoryTest {
     }
     assertThat(hasSparkVersion).isTrue();
     assertThat(hasDeltaVersion).isTrue();
+  }
+
+  private static TokenProvider createStaticTokenProvider(String token) {
+    return TokenProvider.create(Map.of("type", "static", "token", token));
   }
 }
