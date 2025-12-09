@@ -18,9 +18,10 @@ import java.util.stream.Collectors;
  * <p>Example usage:
  *
  * <pre>{@code
+ * Map<String, String> configMap = ...;
  * ApiClient client = ApiClientBuilder.create()
  *     .uri("http://localhost:8080")
- *     .tokenProvider(TokenProvider.create("my-token"))
+ *     .tokenProvider(TokenProvider.create(configMap))
  *     .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(5).build())
  *     .addAppVersion("MyApp", "1.0.0")
  *     .build();
@@ -139,7 +140,7 @@ public class ApiClientBuilder {
    * <pre>{@code
    * ApiClientBuilder builder = ApiClientBuilder.create()
    *     .uri("http://localhost:8080")
-   *     .tokenProvider(TokenProvider.create("my-token"))
+   *     .tokenProvider(TokenProvider.create(configMap))
    *     .addRequestInterceptor(builder -> builder.header("X-Custom-Header", "custom-value"));
    * }</pre>
    *
