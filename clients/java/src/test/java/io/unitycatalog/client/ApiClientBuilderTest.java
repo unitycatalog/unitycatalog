@@ -90,7 +90,7 @@ public class ApiClientBuilderTest {
   }
 
   @Test
-  public void testAppVersionConfiguration() {
+  public void testAddAppVersionConfiguration() {
     TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
 
     // Test single client version pair
@@ -98,7 +98,7 @@ public class ApiClientBuilderTest {
         ApiClientBuilder.create()
             .uri(TEST_URI)
             .tokenProvider(tokenProvider)
-            .appVersion("MyApp", "1.0.0", "Java", "11")
+            .addAppVersion("MyApp", "1.0.0", "Java", "11")
             .build();
     assertThat(client1.getUserAgent()).contains("MyApp/1.0.0", "Java/11");
 
@@ -107,17 +107,21 @@ public class ApiClientBuilderTest {
         ApiClientBuilder.create()
             .uri(TEST_URI)
             .tokenProvider(tokenProvider)
-            .appVersion("App1", "1.0", "App2", "2.0", "App3", "3.0")
+            .addAppVersion("App1", "1.0", "App2", "2.0", "App3", "3.0")
             .build();
     assertThat(client2.getUserAgent()).contains("App1/1.0", "App2/2.0", "App3/3.0");
 
     // Test empty client version (no-op)
     ApiClient client3 =
-        ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).appVersion().build();
+        ApiClientBuilder.create()
+            .uri(TEST_URI)
+            .tokenProvider(tokenProvider)
+            .addAppVersion()
+            .build();
     assertThat(client3).isNotNull();
 
     // Test validation: odd number of arguments
-    assertThatThrownBy(() -> ApiClientBuilder.create().appVersion("MyApp", "1.0.0", "Java"))
+    assertThatThrownBy(() -> ApiClientBuilder.create().addAppVersion("MyApp", "1.0.0", "Java"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Must provide an even number of arguments");
   }
@@ -176,7 +180,7 @@ public class ApiClientBuilderTest {
         ApiClientBuilder.create()
             .uri("https://unity-catalog.example.com:8443/api")
             .tokenProvider(tokenProvider)
-            .appVersion("TestApp", "3.0.0", "Java", "17", "Framework", "Spring")
+            .addAppVersion("TestApp", "3.0.0", "Java", "17", "Framework", "Spring")
             .retryPolicy(retryPolicy)
             .build();
 

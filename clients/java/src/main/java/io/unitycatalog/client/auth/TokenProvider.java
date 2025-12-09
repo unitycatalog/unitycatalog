@@ -1,6 +1,5 @@
 package io.unitycatalog.client.auth;
 
-import io.unitycatalog.client.internal.Preconditions;
 import java.util.Map;
 
 /**
@@ -9,11 +8,14 @@ import java.util.Map;
  * <p>Implementations include:
  *
  * <ul>
- *   <li>{@link FixedTokenProvider} - uses a pre-configured static token
+ *   <li>{@link StaticTokenProvider} - uses a pre-configured static token
  *   <li>{@link OAuthTokenProvider} - obtains tokens via OAuth 2.0 client credentials flow
  * </ul>
  */
 public interface TokenProvider {
+
+  void initialize(Map<String, String> configs);
+
   /**
    * Returns the access token for Unity Catalog authentication.
    *
@@ -47,7 +49,7 @@ public interface TokenProvider {
    * @throws NullPointerException if token is null
    */
   static TokenProvider create(String token) {
-    return new FixedTokenProvider(token);
+    return createFromConfigs(Map.of(AuthProps.STATIC_TOKEN, token));
   }
 
   /**
@@ -76,7 +78,16 @@ public interface TokenProvider {
    */
   static TokenProvider createFromOAuthConfigs(
       String oauthUri, String oauthClientId, String oauthClientSecret) {
-    return new OAuthTokenProvider(oauthUri, oauthClientId, oauthClientSecret);
+    return createFromConfigs(
+        Map.of(
+            AuthProps.AUTH_TYPE,
+            AuthProps.OAUTH_AUTH_TYPE,
+            AuthProps.OAUTH_URI,
+            oauthUri,
+            AuthProps.OAUTH_CLIENT_ID,
+            oauthClientId,
+            AuthProps.OAUTH_CLIENT_SECRET,
+            oauthClientSecret));
   }
 
   /**
@@ -117,33 +128,26 @@ public interface TokenProvider {
    * @throws NullPointerException if configs is null
    */
   static TokenProvider createFromConfigs(Map<String, String> configs) {
-    String token = configs.get(AuthProps.TOKEN);
-    String oauthUri = configs.get(AuthProps.OAUTH_URI);
-    String oauthClientId = configs.get(AuthProps.OAUTH_CLIENT_ID);
-    String oauthClientSecret = configs.get(AuthProps.OAUTH_CLIENT_SECRET);
+    String authType = configs.getOrDefault(AuthProps.AUTH_TYPE, AuthProps.STATIC_AUTH_TYPE);
 
-    if (token != null) {
-      Preconditions.checkArgument(
-          oauthUri == null && oauthClientId == null && oauthClientSecret == null,
-          "Invalid Unity Catalog authentication configuration: token-based and OAuth "
-              + "settings were both supplied. Configure exactly one authentication method.");
-      return create(token);
+    TokenProvider tokenProvider;
+    switch (authType) {
+      case AuthProps.STATIC_AUTH_TYPE:
+        tokenProvider = new StaticTokenProvider();
+        tokenProvider.initialize(configs);
+        return tokenProvider;
+
+      case AuthProps.OAUTH_AUTH_TYPE:
+        tokenProvider = new OAuthTokenProvider();
+        tokenProvider.initialize(configs);
+        return tokenProvider;
+
+      default:
+        throw new IllegalArgumentException(
+            "Cannot determine unity catalog authentication "
+                + "configuration from options, please set token for static token authentication or "
+                + "OAuth 2.0 authentication "
+                + "(all three required)");
     }
-
-    if (oauthUri != null || oauthClientId != null || oauthClientSecret != null) {
-      Preconditions.checkArgument(
-          oauthUri != null && oauthClientId != null && oauthClientSecret != null,
-          "Incomplete OAuth configuration detected. All of the keys are required: "
-              + "oauthUri, oauthClientId, oauthClientSecret. Please ensure they are "
-              + "all set.");
-
-      return createFromOAuthConfigs(oauthUri, oauthClientId, oauthClientSecret);
-    }
-
-    throw new IllegalArgumentException(
-        "Cannot determine unity catalog authentication "
-            + "configuration from options, please set token for static token authentication or "
-            + "oauth.uri, oauth.clientId, oauth.clientSecret for OAuth 2.0 authentication "
-            + "(all three required)");
   }
 }

@@ -6,6 +6,9 @@ import io.unitycatalog.client.internal.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Builder to create configured {@link ApiClient} instances for Unity Catalog operations.
@@ -17,7 +20,7 @@ import java.net.URI;
  *     .url("http://localhost:8080")
  *     .tokenProvider(TokenProvider.create("my-token"))
  *     .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(5).build())
- *     .clientVersion("MyApp", "1.0.0", "Java", "11")
+ *     .addAppVersion("MyApp", "1.0.0", "Java", "11")
  *     .build();
  * }</pre>
  *
@@ -30,7 +33,7 @@ public class ApiClientBuilder {
 
   private URI uri = null;
   private TokenProvider tokenProvider = null;
-  private String[] nameVersionPairs = null;
+  private final List<String> nameVersionPairs = new ArrayList<>();
   private RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder().build();
 
   /**
@@ -90,16 +93,16 @@ public class ApiClientBuilder {
    * @return this builder instance for method chaining
    * @throws IllegalArgumentException if an odd number of arguments is provided
    */
-  public ApiClientBuilder appVersion(String... nameVersionPairs) {
+  public ApiClientBuilder addAppVersion(String... nameVersionPairs) {
     Preconditions.checkArgument(
         nameVersionPairs.length % 2 == 0,
         "Must provide an even number of arguments for the name-version pairs.");
-    this.nameVersionPairs = nameVersionPairs;
+    Collections.addAll(this.nameVersionPairs, nameVersionPairs);
     return this;
   }
 
   /**
-   * Sets a custom retry policy for handling transient failures.
+   * Sets a custom request retry policy for handling transient failures.
    *
    * <p>Defaults to {@link JitterDelayRetryPolicy} if not specified.
    *
@@ -134,8 +137,8 @@ public class ApiClientBuilder {
         request -> request.header("Authorization", "Bearer " + tokenProvider.accessToken()));
 
     // Set the name and version pairs.
-    if (nameVersionPairs != null && nameVersionPairs.length > 0) {
-      apiClient.setClientVersion(nameVersionPairs);
+    if (!nameVersionPairs.isEmpty()) {
+      apiClient.setClientVersion(nameVersionPairs.toArray(new String[0]));
     }
 
     return apiClient;
