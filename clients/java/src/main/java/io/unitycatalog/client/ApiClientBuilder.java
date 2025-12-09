@@ -143,6 +143,11 @@ public class ApiClientBuilder {
    *     .addRequestInterceptor(builder -> builder.header("X-Custom-Header", "custom-value"));
    * }</pre>
    *
+   * <p><b>Warning:</b> If you call {@code setRequestInterceptor} directly on the built {@link
+   * ApiClient}, it will replace all built-in interceptors from this builder, including the
+   * User-Agent and Authorization headers, which may cause authentication to fail. Always use {@link
+   * #addRequestInterceptor(Consumer)} instead to preserve the built-in interceptors.
+   *
    * @param interceptor a consumer that accepts an {@link HttpRequest.Builder} to modify the
    *     request, must not be null
    * @return this builder instance for method chaining
