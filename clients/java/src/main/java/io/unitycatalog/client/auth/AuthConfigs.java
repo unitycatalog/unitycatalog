@@ -4,9 +4,9 @@ class AuthConfigs {
   private AuthConfigs() {}
 
   // Define the authentication type, where the type can be:
-  // 1. {@link STATIC_TYPE}: which use the {@link StaticTokenProvider} to generate the static token.
-  // 2. {@link OAUTH_TYPE}: which use the {@link OAuthTokenProvider} to generate to oauth token.
-  // 3. customized TokenProvider implementation.
+  // 1. static: which uses the StaticTokenProvider to generate the static token.
+  // 2. oauth: which uses the OAuthTokenProvider to generate the oauth token.
+  // 3. fully qualified class name of the custom TokenProvider implementation.
   static final String TYPE = "type";
 
   // Configure keys for static token provider.

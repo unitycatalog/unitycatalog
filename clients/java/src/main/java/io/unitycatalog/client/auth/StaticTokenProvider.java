@@ -21,7 +21,7 @@ class StaticTokenProvider implements TokenProvider {
   }
 
   @Override
-  public Map<String, String> getConfigs() {
+  public Map<String, String> configs() {
     return Map.of(AuthConfigs.TYPE, AuthConfigs.STATIC_TYPE, AuthConfigs.STATIC_TOKEN, token);
   }
 }

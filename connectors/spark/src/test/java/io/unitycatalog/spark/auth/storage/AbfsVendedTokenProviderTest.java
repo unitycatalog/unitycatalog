@@ -79,8 +79,7 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     assertThatThrownBy(() -> provider.initialize(conf))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining(
-            "Value of 'type' to instantiate TokenProvider cannot be null or empty");
+        .hasMessageContaining("Required configuration key 'type' is missing or empty");
 
     // Verify the UID validation error message.
     conf.set(UCHadoopConf.UC_AUTH_TYPE, "static");

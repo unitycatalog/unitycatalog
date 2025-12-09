@@ -106,7 +106,7 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   @Override
-  public Map<String, String> getConfigs() {
+  public Map<String, String> configs() {
     return Map.of(
         AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE,
         AuthConfigs.OAUTH_URI, oauthUri,

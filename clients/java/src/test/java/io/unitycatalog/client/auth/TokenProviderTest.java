@@ -29,7 +29,7 @@ public class TokenProviderTest {
                 AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID,
                 AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET));
     assertThat(oauthProvider).isInstanceOf(OAuthTokenProvider.class);
-    assertThat(oauthProvider.getConfigs())
+    assertThat(oauthProvider.configs())
         .hasSize(4)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
@@ -46,8 +46,7 @@ public class TokenProviderTest {
     // Test with no valid config - should throw
     assertThatThrownBy(() -> TokenProvider.create(Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining(
-            "Value of 'type' to instantiate TokenProvider cannot be null or empty");
+        .hasMessageContaining("Required configuration key 'type' is missing or empty");
 
     // Test token takes precedence over OAuth when both are present
     Map<String, String> bothOptions = new HashMap<>();
@@ -57,8 +56,7 @@ public class TokenProviderTest {
     bothOptions.put(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
     assertThatThrownBy(() -> TokenProvider.create(bothOptions))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining(
-            "Value of 'type' to instantiate TokenProvider cannot be null or empty");
+        .hasMessageContaining("Required configuration key 'type' is missing or empty");
   }
 
   @Test
@@ -72,7 +70,7 @@ public class TokenProviderTest {
     assertThat(consistentProvider.accessToken()).isEqualTo("consistent");
 
     TokenProvider providerWithProperties = TokenProviderUtils.create("test-token");
-    assertThat(providerWithProperties.getConfigs())
+    assertThat(providerWithProperties.configs())
         .hasSize(2)
         .containsEntry(AuthConfigs.STATIC_TOKEN, "test-token")
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.STATIC_TYPE);
@@ -88,11 +86,77 @@ public class TokenProviderTest {
     assertThat(provider).isNotNull();
     assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
 
-    assertThat(provider.getConfigs())
+    assertThat(provider.configs())
         .hasSize(4)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+  }
+
+  @Test
+  public void testCustomTokenProvider() {
+    // Test with custom TokenProvider using fully qualified class name
+    Map<String, String> customConfigs = new HashMap<>();
+    customConfigs.put(AuthConfigs.TYPE, CustomTestTokenProvider.class.getName());
+    customConfigs.put("custom.token", "custom-test-token");
+
+    TokenProvider customProvider = TokenProvider.create(customConfigs);
+    assertThat(customProvider).isNotNull();
+    assertThat(customProvider).isInstanceOf(CustomTestTokenProvider.class);
+    assertThat(customProvider.accessToken()).isEqualTo("custom-test-token");
+    assertThat(customProvider.configs())
+        .containsEntry(AuthConfigs.TYPE, CustomTestTokenProvider.class.getName())
+        .containsEntry("custom.token", "custom-test-token");
+
+    // Test that configs() can be used to create a new instance
+    TokenProvider clonedProvider = TokenProvider.create(customProvider.configs());
+    assertThat(clonedProvider).isInstanceOf(CustomTestTokenProvider.class);
+    assertThat(clonedProvider.accessToken()).isEqualTo("custom-test-token");
+  }
+
+  @Test
+  public void testCustomTokenProviderWithInvalidClassName() {
+    // Test with non-existent class name - should throw RuntimeException
+    Map<String, String> invalidConfigs = new HashMap<>();
+    invalidConfigs.put(AuthConfigs.TYPE, "com.example.NonExistentTokenProvider");
+
+    assertThatThrownBy(() -> TokenProvider.create(invalidConfigs))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining(
+            "Cannot determine unity catalog authentication configuration from configs")
+        .hasCauseInstanceOf(ClassNotFoundException.class);
+  }
+
+  @Test
+  public void testCustomTokenProviderWithInvalidClass() {
+    // Test with a class that doesn't implement TokenProvider - should throw RuntimeException
+    Map<String, String> invalidConfigs = new HashMap<>();
+    invalidConfigs.put(AuthConfigs.TYPE, String.class.getName());
+
+    assertThatThrownBy(() -> TokenProvider.create(invalidConfigs))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining(
+            "Cannot determine unity catalog authentication configuration from configs");
+  }
+
+  /** Custom TokenProvider implementation for testing purposes. */
+  public static class CustomTestTokenProvider implements TokenProvider {
+    private Map<String, String> configs;
+
+    @Override
+    public void initialize(Map<String, String> configs) {
+      this.configs = new HashMap<>(configs);
+    }
+
+    @Override
+    public String accessToken() {
+      return configs.get("custom.token");
+    }
+
+    @Override
+    public Map<String, String> configs() {
+      return new HashMap<>(configs);
+    }
   }
 }
