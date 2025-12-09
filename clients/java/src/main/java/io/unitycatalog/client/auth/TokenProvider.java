@@ -14,6 +14,12 @@ import java.util.Map;
  */
 public interface TokenProvider {
 
+  /**
+   * Initializes the token provider with configuration parameters.
+   *
+   * @param configs configuration map with authentication settings
+   * @throws IllegalArgumentException if required parameters are missing or invalid
+   */
   void initialize(Map<String, String> configs);
 
   /**
