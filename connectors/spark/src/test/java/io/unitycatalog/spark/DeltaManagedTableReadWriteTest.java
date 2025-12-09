@@ -103,8 +103,8 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
           String tableName = DELTA_TABLE + counter;
           counter++;
 
-          SetupTableOptions options =
-              new SetupTableOptions()
+          TableSetupOptions options =
+              new TableSetupOptions()
                   .setCatalogName(catalogName)
                   .setTableName(tableName)
                   .setCloudScheme(scheme)
@@ -200,7 +200,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   }
 
   @Override
-  protected String setupTable(SetupTableOptions options) {
+  protected String setupTable(TableSetupOptions options) {
     // For now, we only support testing one cloud, which is the one configured by
     // managedStorageCloudScheme(). Tests are only supposed to call this function with the correct
     // cloud scheme.

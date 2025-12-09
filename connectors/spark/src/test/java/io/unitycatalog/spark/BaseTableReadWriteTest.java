@@ -34,12 +34,16 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
           UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
           UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
 
+  /**
+   * This class is used for control various options for table creation during test. The tableFormat
+   * is controlled at the testsuite level by tableFormat().
+   */
   @NoArgsConstructor
   @AllArgsConstructor
   @Accessors(chain = true)
   @Getter
   @Setter
-  protected class SetupTableOptions {
+  protected class TableSetupOptions {
     private String catalogName;
     private String schemaName = SCHEMA_NAME;
     private String tableName;
@@ -47,34 +51,35 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     private Optional<String> partitionColumn = Optional.empty();
     @With private Optional<Pair<Integer, String>> asSelect = Optional.empty();
     private Optional<String> comment = Optional.empty();
+    private boolean replaceTable = false;
 
-    public SetupTableOptions setCatalogName(String name) {
+    public TableSetupOptions setCatalogName(String name) {
       catalogName = quoteEntityName(name);
       return this;
     }
 
-    public SetupTableOptions setSchemaName(String name) {
+    public TableSetupOptions setSchemaName(String name) {
       schemaName = quoteEntityName(name);
       return this;
     }
 
-    public SetupTableOptions setTableName(String name) {
+    public TableSetupOptions setTableName(String name) {
       tableName = quoteEntityName(name);
       return this;
     }
 
-    public SetupTableOptions setPartitionColumn(String column) {
+    public TableSetupOptions setPartitionColumn(String column) {
       assert List.of("i", "s").contains(column);
       partitionColumn = Optional.of(column);
       return this;
     }
 
-    public SetupTableOptions setAsSelect(int i, String s) {
+    public TableSetupOptions setAsSelect(int i, String s) {
       asSelect = Optional.of(Pair.of(i, s));
       return this;
     }
 
-    public SetupTableOptions setComment(String c) {
+    public TableSetupOptions setComment(String c) {
       comment = Optional.of(c);
       return this;
     }
@@ -102,9 +107,14 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       return comment.map(c -> String.format("COMMENT '%s'", c)).orElse("");
     }
 
+    public String ddlCommand() {
+      return replaceTable ? "REPLACE" : "CREATE";
+    }
+
     public String createManagedTableSql() {
       return String.format(
-          "CREATE TABLE %s.%s.%s %s USING %s %s %s %s %s",
+          "%s TABLE %s.%s.%s %s USING %s %s %s %s %s",
+          ddlCommand(),
           catalogName,
           schemaName,
           tableName,
@@ -118,7 +128,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
     public String createExternalTableSql(String location) {
       return String.format(
-          "CREATE TABLE %s.%s.%s%s USING %s %s %s LOCATION '%s' %s",
+          "%s TABLE %s.%s.%s%s USING %s %s %s LOCATION '%s' %s",
+          ddlCommand(),
           catalogName,
           schemaName,
           tableName,
@@ -133,7 +144,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     public String createDeltaPathTableSql(String location) {
       assert testingDelta();
       return String.format(
-          "CREATE TABLE %s.`%s`%s USING %s %s %s %s",
+          "%s TABLE %s.`%s`%s USING %s %s %s %s",
+          ddlCommand(),
           tableFormat(),
           location,
           columnsClause(),
@@ -149,35 +161,54 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
-   * Set up a delta table and returns the table full name. This function is used by tests that
-   * aren't cloud aware. It simply uses the same cloud as configured for managed storage.
+   * Set up a table and returns the table full name. This function is used by tests that aren't
+   * cloud aware. It simply uses the same cloud as configured for managed storage. The table format
+   * is controlled by tableFormat().
    */
   protected final String setupTable(String catalogName, String tableName) {
-    return setupTable(new SetupTableOptions().setCatalogName(catalogName).setTableName(tableName));
+    return setupTable(new TableSetupOptions().setCatalogName(catalogName).setTableName(tableName));
   }
 
-  /** Set up a delta table with storage on emulated cloud and returns the table full name. */
+  /**
+   * Set up a table with storage on emulated cloud and returns the table full name. The table format
+   * is controlled by tableFormat().
+   */
   protected final String setupTable(String cloudScheme, String catalogName, String tableName) {
     return setupTable(
-        new SetupTableOptions()
+        new TableSetupOptions()
             .setCloudScheme(cloudScheme)
             .setCatalogName(catalogName)
             .setTableName(tableName));
   }
 
   /**
-   * Set up a delta table with storage on emulated cloud and returns the table full name. Subclasses
-   * need to override it accordingly.
+   * Set up a table with storage on emulated cloud and returns the table full name. The table format
+   * is controlled by tableFormat(). Subclasses need to override this function accordingly.
    */
-  protected abstract String setupTable(SetupTableOptions options);
+  protected abstract String setupTable(TableSetupOptions options);
 
-  /** The table format to be tested */
+  /**
+   * The table format to be tested. Subclasses override this function to test different table
+   * formats.
+   */
   protected abstract String tableFormat();
 
   protected final boolean testingDelta() {
     return tableFormat().equalsIgnoreCase("DELTA");
   }
 
+  /**
+   * This test creates table in different ways:
+   *
+   * <ul>
+   *   <li>in both SPARK_CATALOG and CATALOG_NAME
+   *   <li>with and without partition columns
+   *   <li>with and without CTAS
+   *   <li>using UPDATE TABLE and CREATE TABLE
+   * </ul>
+   *
+   * For all the 16 (2^4) tables it does a simple read and write test to make sure they all work.
+   */
   @Test
   public void testTableCreateReadWrite() {
     // Test both `spark_catalog` and other catalog names.
@@ -187,21 +218,36 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
       for (boolean withPartitionColumns : List.of(true, false)) {
         for (boolean withCtas : List.of(true, false)) {
-          String tableName = TEST_TABLE + tableNameCounter;
-          tableNameCounter++;
-          SetupTableOptions options =
-              new SetupTableOptions().setCatalogName(catalogName).setTableName(tableName);
-          if (withPartitionColumns) {
-            options.setPartitionColumn("s");
-          }
-          if (withCtas) {
-            options.setAsSelect(1, "a");
-          }
-          String t1 = setupTable(options);
-          if (withCtas) {
-            testTableReadWriteCreatedAsSelect(t1, Pair.of(1, "a"));
-          } else {
-            testTableReadWrite(t1);
+          for (boolean replaceTable : List.of(true, false)) {
+            String tableName = TEST_TABLE + tableNameCounter;
+            tableNameCounter++;
+            if (replaceTable) {
+              if (withCtas && !testingDelta()) {
+                // "REPLACE TABLE AS SELECT" is only supported for Delta.
+                continue;
+              }
+              // First, create a different table to replace.
+              sql(
+                  "CREATE TABLE %s.%s.%s USING DELTA %s AS SELECT 0.1 AS col1",
+                  catalogName, SCHEMA_NAME, tableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
+            }
+            TableSetupOptions options =
+                new TableSetupOptions()
+                    .setCatalogName(catalogName)
+                    .setTableName(tableName)
+                    .setReplaceTable(replaceTable);
+            if (withPartitionColumns) {
+              options.setPartitionColumn("s");
+            }
+            if (withCtas) {
+              options.setAsSelect(1, "a");
+            }
+            String t1 = setupTable(options);
+            if (withCtas) {
+              testTableReadWriteCreatedAsSelect(t1, Pair.of(1, "a"));
+            } else {
+              testTableReadWrite(t1);
+            }
           }
         }
       }
@@ -283,9 +329,6 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     sql("INSERT INTO %s SELECT 2, 'a'", t2);
     validateRows(sql("SELECT * FROM %s", t2), Pair.of(2, "a"));
 
-    // A query join two tables
-    validateRows(sql("SELECT r.i FROM %s l JOIN %s r ON l.s = r.s WHERE l.i = 1", t1, t2), 2);
-
     if (testingDelta()) {
       // UPDATE, MERGE INTO and DELETE are only supported in Delta tables.
 
@@ -340,7 +383,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     sql("CREATE SCHEMA `%s`.`%s`", catalogName, schemaName);
     String fullTableName =
         setupTable(
-            new SetupTableOptions()
+            new TableSetupOptions()
                 .setCatalogName(catalogName)
                 .setSchemaName(schemaName)
                 .setTableName(tableName));

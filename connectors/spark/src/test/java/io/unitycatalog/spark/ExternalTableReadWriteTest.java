@@ -82,8 +82,8 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
           for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
             String tableName = TEST_TABLE + tableNameCounter;
             tableNameCounter++;
-            SetupTableOptions options =
-                new SetupTableOptions().setCatalogName(catalogName).setTableName(tableName);
+            TableSetupOptions options =
+                new TableSetupOptions().setCatalogName(catalogName).setTableName(tableName);
             if (withPartitionColumns) {
               options.setPartitionColumn("s");
             }
@@ -148,7 +148,7 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
   }
 
   @SneakyThrows
-  protected String getLocation(SetupTableOptions options) {
+  protected String getLocation(TableSetupOptions options) {
     String cloudPrefix =
         options.getCloudScheme().equals("file") ? "" : testBucket(options.getCloudScheme());
     String rawCatalogName = options.getCatalogName().replace("`", "");
@@ -158,18 +158,18 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
   }
 
   @Override
-  protected String setupTable(SetupTableOptions options) {
+  protected String setupTable(TableSetupOptions options) {
     String location = getLocation(options);
     sql(options.createExternalTableSql(location));
     return options.fullTableName();
   }
 
-  protected String setupWithPathTable(SetupTableOptions options) {
+  protected String setupWithPathTable(TableSetupOptions options) {
     String location = getLocation(options);
     sql(options.createDeltaPathTableSql(location));
 
     // The CTAS is already done in existing path table. Do not do it twice.
-    SetupTableOptions optionsWithoutAsSelect = options.withAsSelect(Optional.empty());
+    TableSetupOptions optionsWithoutAsSelect = options.withAsSelect(Optional.empty());
     sql(optionsWithoutAsSelect.createExternalTableSql(location));
     return options.fullTableName();
   }

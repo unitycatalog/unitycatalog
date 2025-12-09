@@ -6,6 +6,10 @@ import java.util.List;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.Test;
 
+/**
+ * This test suite runs all tests in ExternalTableReadWriteTest plus extra test. Tests that are only
+ * for Delta external tables should live here.
+ */
 public class DeltaExternalTableReadWriteTest extends ExternalTableReadWriteTest {
 
   @Test
@@ -15,7 +19,7 @@ public class DeltaExternalTableReadWriteTest extends ExternalTableReadWriteTest 
 
     int tableCounter = 0;
     for (boolean ctas : List.of(true, false)) {
-      SetupTableOptions options = new SetupTableOptions();
+      TableSetupOptions options = new TableSetupOptions();
       if (ctas) {
         options.setAsSelect(1, "a");
       }
