@@ -16,6 +16,7 @@ import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import lombok.SneakyThrows;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.AfterEach;
@@ -126,13 +127,10 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return new SdkCatalogOperations(createApiClient(serverConfig));
   }
 
+  @SneakyThrows
   private void createTestCatalog(String catalogName) {
-    try {
-      catalogOperations.createCatalog(
-          new CreateCatalog().name(catalogName).comment("Created by BaseSparkIntegrationTest"));
-    } catch (ApiException e) {
-      throw new RuntimeException(e);
-    }
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(catalogName).comment("Created by BaseSparkIntegrationTest"));
     createdCatalogs.add(catalogName);
   }
 
