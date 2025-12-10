@@ -9,11 +9,20 @@ import java.util.Map;
  * <p>Implementations include:
  *
  * <ul>
- *   <li>{@link FixedTokenProvider} - uses a pre-configured static token
+ *   <li>{@link StaticTokenProvider} - uses a pre-configured static token
  *   <li>{@link OAuthTokenProvider} - obtains tokens via OAuth 2.0 client credentials flow
  * </ul>
  */
 public interface TokenProvider {
+
+  /**
+   * Initializes the token provider with configuration parameters.
+   *
+   * @param configs configuration map with authentication settings
+   * @throws IllegalArgumentException if required parameters are missing or invalid
+   */
+  void initialize(Map<String, String> configs);
+
   /**
    * Returns the access token for Unity Catalog authentication.
    *
@@ -24,126 +33,114 @@ public interface TokenProvider {
   /**
    * Returns the configuration associated with this token provider.
    *
+   * <p>The returned configuration map can be passed to {@link #create(Map)} to create a new token
+   * provider instance with the same configuration:
+   *
+   * <pre>{@code
+   * TokenProvider existingProvider = ...;
+   * TokenProvider newProvider = TokenProvider.create(existingProvider.configs());
+   * }</pre>
+   *
    * @return a map of configuration key-value pairs
    */
-  Map<String, String> getConfigs();
-
-  /**
-   * Creates a token provider using a static access token.
-   *
-   * <p>Use this method when you have a pre-configured access token that doesn't change. The
-   * returned provider will always return the same token for authentication.
-   *
-   * <p>Example usage:
-   *
-   * <pre>{@code
-   * TokenProvider provider = TokenProvider.create("my-access-token");
-   * // returns "my-access-token"
-   * String token = provider.accessToken();
-   * }</pre>
-   *
-   * @param token the access token to use for authentication
-   * @return a token provider that returns the specified token
-   * @throws NullPointerException if token is null
-   */
-  static TokenProvider create(String token) {
-    return new FixedTokenProvider(token);
-  }
-
-  /**
-   * Creates a token provider using OAuth 2.0 client credentials flow.
-   *
-   * <p>Use this method to automatically obtain and refresh access tokens using the OAuth 2.0 client
-   * credentials grant type. The returned provider will handle token expiration and renewal
-   * automatically.
-   *
-   * <p>Example usage:
-   *
-   * <pre>{@code
-   * TokenProvider provider = TokenProvider.createFromOAuthConfigs(
-   *     "https://auth.example.com/token",
-   *     "my-client-id",
-   *     "my-client-secret"
-   * );
-   * String token = provider.accessToken(); // obtains and returns a valid token
-   * }</pre>
-   *
-   * @param oauthUri the OAuth 2.0 token endpoint URI (e.g., "https://uc.example.com/token")
-   * @param oauthClientId the OAuth 2.0 client identifier issued by the authorization server
-   * @param oauthClientSecret the OAuth 2.0 client secret issued by the authorization server
-   * @return a token provider that obtains tokens via OAuth 2.0
-   * @throws NullPointerException if any parameter is null
-   */
-  static TokenProvider createFromOAuthConfigs(
-      String oauthUri, String oauthClientId, String oauthClientSecret) {
-    return new OAuthTokenProvider(oauthUri, oauthClientId, oauthClientSecret);
-  }
+  Map<String, String> configs();
 
   /**
    * Creates a token provider from a configuration map.
    *
-   * <p>This method automatically determines which type of authentication to use based on the
-   * configuration parameters provided. It supports two authentication modes:
+   * <p>This method creates a token provider based on the required {@code "type"} configuration
+   * parameter. It supports three authentication modes:
    *
    * <ul>
-   *   <li><b>Static token authentication:</b> Provide a {@code "token"} key
-   *   <li><b>OAuth 2.0 authentication:</b> Provide all three OAuth keys: {@code "oauth.uri"},
-   *       {@code "oauth.clientId"}, and {@code "oauth.clientSecret"}
+   *   <li><b>Static token authentication:</b> Set {@code "type"} to {@code "static"} and provide a
+   *       {@code "token"} key with the access token value
+   *   <li><b>OAuth 2.0 authentication:</b> Set {@code "type"} to {@code "oauth"} and provide all
+   *       three OAuth keys: {@code "oauth.uri"}, {@code "oauth.clientId"}, and {@code
+   *       "oauth.clientSecret"}
+   *   <li><b>Custom authentication:</b> Set {@code "type"} to the fully qualified class name of a
+   *       custom {@link TokenProvider} implementation
    * </ul>
    *
    * <p>Example usage with static token:
    *
    * <pre>{@code
    * Map<String, String> configs = new HashMap<>();
+   * configs.put("type", "static");
    * configs.put("token", "my-access-token");
-   * TokenProvider provider = TokenProvider.createFromConfigs(configs);
+   * TokenProvider provider = TokenProvider.create(configs);
    * }</pre>
    *
    * <p>Example usage with OAuth 2.0:
    *
    * <pre>{@code
    * Map<String, String> configs = new HashMap<>();
+   * configs.put("type", "oauth");
    * configs.put("oauth.uri", "https://uc.example.com/token");
    * configs.put("oauth.clientId", "my-client-id");
    * configs.put("oauth.clientSecret", "my-client-secret");
-   * TokenProvider provider = TokenProvider.createFromConfigs(configs);
+   * TokenProvider provider = TokenProvider.create(configs);
    * }</pre>
    *
-   * @param configs a map containing authentication configuration parameters
+   * <p>Example usage with custom token provider:
+   *
+   * <pre>{@code
+   * Map<String, String> configs = new HashMap<>();
+   * configs.put("type", "com.example.MyCustomTokenProvider");
+   * // Add any additional configs required by your custom provider
+   * TokenProvider provider = TokenProvider.create(configs);
+   * }</pre>
+   *
+   * <p>You can also use {@link #configs()} to obtain the configuration from an existing token
+   * provider and pass it to this method to create a new instance:
+   *
+   * <pre>{@code
+   * TokenProvider existingProvider = ...;
+   * TokenProvider newProvider = TokenProvider.create(existingProvider.getConfigs());
+   * }</pre>
+   *
+   * @param configs a map containing authentication configuration parameters. Must contain a
+   *     non-null, non-empty {@code "type"} key.
    * @return a token provider configured according to the provided parameters
-   * @throws IllegalArgumentException if both token and OAuth configs are provided, if OAuth configs
-   *     are incomplete (only some OAuth parameters are set), or if no valid authentication
-   *     configuration is found
-   * @throws NullPointerException if configs is null
+   * @throws IllegalArgumentException if the {@code "type"} parameter is null, empty, or if required
+   *     authentication parameters for the specified type are missing or invalid
+   * @throws RuntimeException if a custom TokenProvider class cannot be instantiated (e.g., class
+   *     not found, no default constructor, or instantiation failure)
    */
-  static TokenProvider createFromConfigs(Map<String, String> configs) {
-    String token = configs.get(AuthProps.TOKEN);
-    String oauthUri = configs.get(AuthProps.OAUTH_URI);
-    String oauthClientId = configs.get(AuthProps.OAUTH_CLIENT_ID);
-    String oauthClientSecret = configs.get(AuthProps.OAUTH_CLIENT_SECRET);
+  static TokenProvider create(Map<String, String> configs) {
+    String authType = configs.get(AuthConfigs.TYPE);
+    Preconditions.checkArgument(
+        authType != null && !authType.trim().isEmpty(),
+        "Required configuration key '%s' is missing or empty. "
+            + "Must be 'static', 'oauth', or a fully qualified TokenProvider class name.",
+        AuthConfigs.TYPE);
 
-    if (token != null) {
-      Preconditions.checkArgument(
-          oauthUri == null && oauthClientId == null && oauthClientSecret == null,
-          "Invalid Unity Catalog authentication configuration: token-based and OAuth "
-              + "settings were both supplied. Configure exactly one authentication method.");
-      return create(token);
+    TokenProvider tokenProvider;
+    switch (authType) {
+      case AuthConfigs.STATIC_TYPE_VALUE:
+        tokenProvider = new StaticTokenProvider();
+        break;
+
+      case AuthConfigs.OAUTH_TYPE_VALUE:
+        tokenProvider = new OAuthTokenProvider();
+        break;
+
+      default:
+        try {
+          tokenProvider =
+              (TokenProvider) Class.forName(authType).getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+          throw new RuntimeException(
+              String.format(
+                  "Failed to instantiate custom TokenProvider '%s'. Ensure the class exists, "
+                      + "implements TokenProvider, and has a public no-arg constructor.",
+                  authType),
+              e);
+        }
+        break;
     }
 
-    if (oauthUri != null || oauthClientId != null || oauthClientSecret != null) {
-      Preconditions.checkArgument(
-          oauthUri != null && oauthClientId != null && oauthClientSecret != null,
-          "Incomplete OAuth configuration detected. All of the keys are required: "
-              + "oauthUri, oauthClientId, oauthClientSecret. Please ensure they are "
-              + "all set.");
-
-      return createFromOAuthConfigs(oauthUri, oauthClientId, oauthClientSecret);
-    }
-
-    throw new IllegalArgumentException(
-        "Cannot determine unity catalog authentication "
-            + "configuration from options, please set token for static token authentication or "
-            + "oauth.uri, oauth.clientId, oauth.clientSecret for OAuth 2.0 authentication "
-            + "(all three required)");
+    // Initialize the TokenProvider with configs.
+    tokenProvider.initialize(configs);
+    return tokenProvider;
   }
 }

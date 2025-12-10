@@ -79,11 +79,11 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     assertThatThrownBy(() -> provider.initialize(conf))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining(
-            "Cannot determine unity catalog authentication configuration from options");
+        .hasMessageContaining("Required configuration key 'type' is missing or empty");
 
     // Verify the UID validation error message.
-    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_AUTH_TYPE, "static");
+    conf.set(UCHadoopConf.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
     assertThatThrownBy(() -> provider.initialize(conf))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage(
