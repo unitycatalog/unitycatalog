@@ -572,6 +572,19 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease11,
+    Test / compile / javacOptions := {
+      // lombok is only a dependency of test. So its path needs to be added explicitly.
+      val lombokPath = (Test / dependencyClasspath).value
+        .files
+        .filter(_.getName.contains("lombok"))
+        .mkString(File.pathSeparator)
+      javacRelease11 ++ Seq(
+        "-processor",
+        "lombok.launch.AnnotationProcessorHider$AnnotationProcessor",
+        "-processorpath",
+        lombokPath
+      )
+    },
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
@@ -595,6 +608,7 @@ lazy val spark = (project in file("connectors/spark"))
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
+      "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
       "io.delta" %% "delta-spark" % deltaVersion % Test,
     ),
