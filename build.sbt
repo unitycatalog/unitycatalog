@@ -212,6 +212,8 @@ lazy val client = (project in file("target/clients/java"))
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
     openApiGenerateModelDocumentation := SettingDisabled,
+    // Use custom Mustache templates for ApiClient customization
+    openApiTemplateDir := (file(".") / "clients" / "java" / "openapi-templates").toString,
     // Define the simple generate command to generate full client codes
     generate := {
       val _ = openApiGenerate.value
@@ -224,9 +226,9 @@ lazy val client = (project in file("target/clients/java"))
     },
     // Add VersionInfo in the same way like in server
     Compile / sourceGenerators += Def.task {
-      val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "cli" / "utils" / "VersionUtils.java"
+      val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "client" / "VersionUtils.java"
       IO.write(file,
-        s"""package io.unitycatalog.cli.utils;
+        s"""package io.unitycatalog.client;
           |
           |public class VersionUtils {
           |  public static String VERSION = "${version.value}";
