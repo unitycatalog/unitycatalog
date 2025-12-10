@@ -116,11 +116,11 @@ public interface TokenProvider {
 
     TokenProvider tokenProvider;
     switch (authType) {
-      case AuthConfigs.STATIC_TYPE:
+      case AuthConfigs.STATIC_TYPE_VALUE:
         tokenProvider = new StaticTokenProvider();
         break;
 
-      case AuthConfigs.OAUTH_TYPE:
+      case AuthConfigs.OAUTH_TYPE_VALUE:
         tokenProvider = new OAuthTokenProvider();
         break;
 

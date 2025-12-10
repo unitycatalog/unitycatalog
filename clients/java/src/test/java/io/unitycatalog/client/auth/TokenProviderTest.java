@@ -25,14 +25,14 @@ public class TokenProviderTest {
     assertThat(oauthProvider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(oauthProvider.configs())
         .hasSize(4)
-        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE)
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
 
     // Test with incomplete OAuth config - should throw
     Map<String, String> incompleteOAuthOptions =
-        Map.of(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE, AuthConfigs.OAUTH_URI, OAUTH_URI);
+        Map.of(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE, AuthConfigs.OAUTH_URI, OAUTH_URI);
     assertThatThrownBy(() -> TokenProvider.create(incompleteOAuthOptions))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Configuration key 'oauth.clientId' is missing or empty");
@@ -67,7 +67,7 @@ public class TokenProviderTest {
     assertThat(providerWithProperties.configs())
         .hasSize(2)
         .containsEntry(AuthConfigs.STATIC_TOKEN, "test-token")
-        .containsEntry(AuthConfigs.TYPE, AuthConfigs.STATIC_TYPE);
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.STATIC_TYPE_VALUE);
 
     TokenProvider factoryProvider = TokenProviderUtils.create("factory-token");
     assertThat(factoryProvider).isNotNull();
@@ -82,7 +82,7 @@ public class TokenProviderTest {
 
     assertThat(provider.configs())
         .hasSize(4)
-        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE)
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);

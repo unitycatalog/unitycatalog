@@ -11,11 +11,11 @@ class AuthConfigs {
   static final String TYPE = "type";
 
   // Configure keys for static token provider.
-  static final String STATIC_TYPE = "static";
+  static final String STATIC_TYPE_VALUE = "static";
   static final String STATIC_TOKEN = "token";
 
   // Configure keys for oauth token provider.
-  static final String OAUTH_TYPE = "oauth";
+  static final String OAUTH_TYPE_VALUE = "oauth";
   static final String OAUTH_URI = "oauth.uri";
   static final String OAUTH_CLIENT_ID = "oauth.clientId";
   static final String OAUTH_CLIENT_SECRET = "oauth.clientSecret";
