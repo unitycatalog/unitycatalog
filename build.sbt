@@ -217,8 +217,6 @@ lazy val client = (project in file("clients/java"))
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
     openApiGenerateModelDocumentation := SettingDisabled,
-    // Use custom Mustache templates for ApiClient customization
-    openApiTemplateDir := (file(".") / "clients" / "java" / "openapi-templates").toString,
     // Define the simple generate command to generate full client codes
     generate := {
       val _ = openApiGenerate.value

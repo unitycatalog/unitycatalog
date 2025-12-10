@@ -5,7 +5,7 @@ import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsAp
 import io.unitycatalog.client.auth.TokenProvider
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
-import io.unitycatalog.spark.auth.CredPropsUtil
+import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
 import io.unitycatalog.spark.utils.OptionsUtil
 
 import java.net.URI
@@ -47,7 +47,7 @@ class UCSingleCatalog
     Preconditions.checkArgument(urlStr != null,
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
-    tokenProvider = TokenProvider.createFromConfigs(options)
+    tokenProvider = TokenProvider.create(AuthConfigUtils.buildAuthConfigs(options));
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)

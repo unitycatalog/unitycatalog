@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.auth.TokenProviderUtils;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
@@ -26,7 +27,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testBasicBuildAndUriConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
     // Test basic build with minimal configuration
     ApiClient client1 =
@@ -70,7 +71,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testTokenProviderConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
     ApiClient client = ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).build();
 
     assertThat(client.getRequestInterceptor()).isNotNull();
@@ -90,41 +91,27 @@ public class ApiClientBuilderTest {
   }
 
   @Test
-  public void testAppVersionConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+  public void testAddAppVersionConfiguration() {
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
-    // Test single client version pair
-    ApiClient client1 =
-        ApiClientBuilder.create()
-            .uri(TEST_URI)
-            .tokenProvider(tokenProvider)
-            .appVersion("MyApp", "1.0.0", "Java", "11")
-            .build();
-    assertThat(client1.getUserAgent()).contains("MyApp/1.0.0", "Java/11");
+    // Test that addAppVersion method works and returns builder for chaining
+    ApiClientBuilder builder = ApiClientBuilder.create();
+    ApiClientBuilder result =
+        builder.uri(TEST_URI).tokenProvider(tokenProvider).addAppVersion("MyApp", "1.0.0");
 
-    // Test multiple client version pairs
-    ApiClient client2 =
-        ApiClientBuilder.create()
-            .uri(TEST_URI)
-            .tokenProvider(tokenProvider)
-            .appVersion("App1", "1.0", "App2", "2.0", "App3", "3.0")
-            .build();
-    assertThat(client2.getUserAgent()).contains("App1/1.0", "App2/2.0", "App3/3.0");
+    assertThat(result).isSameAs(builder);
 
-    // Test empty client version (no-op)
-    ApiClient client3 =
-        ApiClientBuilder.create().uri(TEST_URI).tokenProvider(tokenProvider).appVersion().build();
-    assertThat(client3).isNotNull();
+    // Verify client builds successfully with app versions
+    ApiClient client = result.addAppVersion("App2", "2.0").build();
+    assertThat(client).isNotNull();
+    assertThat(client.getRequestInterceptor()).isNotNull();
 
-    // Test validation: odd number of arguments
-    assertThatThrownBy(() -> ApiClientBuilder.create().appVersion("MyApp", "1.0.0", "Java"))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Must provide an even number of arguments");
+    // Note: Detailed User-Agent testing is in UserAgentTest
   }
 
   @Test
   public void testRetryPolicyConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
     // Test with custom retry policy
     RetryPolicy customRetryPolicy = JitterDelayRetryPolicy.builder().maxAttempts(10).build();
@@ -144,7 +131,7 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testValidationFailures() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
     // Test missing URI
     assertThatThrownBy(() -> ApiClientBuilder.create().tokenProvider(tokenProvider).build())
@@ -169,25 +156,31 @@ public class ApiClientBuilderTest {
 
   @Test
   public void testCompleteConfiguration() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
     RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder().maxAttempts(3).build();
 
+    // Test that all builder components work together
     ApiClient client =
         ApiClientBuilder.create()
             .uri("https://unity-catalog.example.com:8443/api")
             .tokenProvider(tokenProvider)
-            .appVersion("TestApp", "3.0.0", "Java", "17", "Framework", "Spring")
+            .addAppVersion("TestApp", "3.0.0")
             .retryPolicy(retryPolicy)
             .build();
 
     assertThat(client).isNotNull();
-    assertThat(client.getUserAgent()).contains("TestApp/3.0.0", "Java/17", "Framework/Spring");
     assertThat(client.getRequestInterceptor()).isNotNull();
+
+    // Verify base URI construction
+    assertThat(client.getBaseUri())
+        .isEqualTo("https://unity-catalog.example.com:8443/api/api/2.1/unity-catalog");
+
+    // Note: Detailed User-Agent and token testing is in dedicated test classes
   }
 
   @Test
   public void testBaseUriConstruction() {
-    TokenProvider tokenProvider = TokenProvider.create(TEST_TOKEN);
+    TokenProvider tokenProvider = TokenProviderUtils.create(TEST_TOKEN);
 
     // Test base URI without path suffix
     URI uriNoSuffix = URI.create("https://localhost:8080");
