@@ -58,9 +58,9 @@ import org.sparkproject.guava.collect.Iterators;
 public class SparkCredentialRenewalTest {
   private static final String UC_PROPS_TOKEN = "token";
   private static final String UC_PROPS_AUTH_TYPE = "auth.type";
-  private static final String UC_PROPS_OAUTH_URI = "oauth.uri";
-  private static final String UC_PROPS_OAUTH_CLIENT_ID = "oauth.clientId";
-  private static final String UC_PROPS_OAUTH_CLIENT_SECRET = "oauth.clientSecret";
+  private static final String UC_PROPS_OAUTH_URI = "auth.oauth.uri";
+  private static final String UC_PROPS_OAUTH_CLIENT_ID = "auth.oauth.clientId";
+  private static final String UC_PROPS_OAUTH_CLIENT_SECRET = "auth.oauth.clientSecret";
 
   private static final String PREFIX = "CREDENTIAL_RENEWAL_TEST_";
 
@@ -234,7 +234,6 @@ public class SparkCredentialRenewalTest {
                     baseLocation,
                     Map.of(
                         OptionsUtil.URI, SERVER_URL,
-                        UC_PROPS_AUTH_TYPE, "static",
                         UC_PROPS_TOKEN, AUTH_TOKEN,
                         OptionsUtil.WAREHOUSE, CATALOG_NAME,
                         OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));

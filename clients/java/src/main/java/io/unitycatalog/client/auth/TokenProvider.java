@@ -113,23 +113,21 @@ public interface TokenProvider {
         "Required configuration key '%s' is missing or empty. "
             + "Must be 'static', 'oauth', or a fully qualified TokenProvider class name.",
         AuthConfigs.TYPE);
+
+    TokenProvider tokenProvider;
     switch (authType) {
       case AuthConfigs.STATIC_TYPE:
-        StaticTokenProvider staticTokenProvider = new StaticTokenProvider();
-        staticTokenProvider.initialize(configs);
-        return staticTokenProvider;
+        tokenProvider = new StaticTokenProvider();
+        break;
 
       case AuthConfigs.OAUTH_TYPE:
-        OAuthTokenProvider oauthTokenProvider = new OAuthTokenProvider();
-        oauthTokenProvider.initialize(configs);
-        return oauthTokenProvider;
+        tokenProvider = new OAuthTokenProvider();
+        break;
 
       default:
         try {
-          TokenProvider customTokenProvider =
+          tokenProvider =
               (TokenProvider) Class.forName(authType).getDeclaredConstructor().newInstance();
-          customTokenProvider.initialize(configs);
-          return customTokenProvider;
         } catch (Exception e) {
           throw new RuntimeException(
               String.format(
@@ -138,6 +136,11 @@ public interface TokenProvider {
                   authType),
               e);
         }
+        break;
     }
+
+    // Initialize the TokenProvider with configs.
+    tokenProvider.initialize(configs);
+    return tokenProvider;
   }
 }

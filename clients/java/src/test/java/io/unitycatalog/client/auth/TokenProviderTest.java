@@ -21,13 +21,7 @@ public class TokenProviderTest {
     assertThat(tokenProvider.accessToken()).isEqualTo("test-token");
 
     // Test with complete OAuth config - should create OAuthUCTokenProvider
-    TokenProvider oauthProvider =
-        TokenProvider.create(
-            Map.of(
-                AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE,
-                AuthConfigs.OAUTH_URI, OAUTH_URI,
-                AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID,
-                AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET));
+    TokenProvider oauthProvider = TokenProviderUtils.create(OAUTH_URI, CLIENT_ID, CLIENT_SECRET);
     assertThat(oauthProvider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(oauthProvider.configs())
         .hasSize(4)
@@ -48,7 +42,7 @@ public class TokenProviderTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Required configuration key 'type' is missing or empty");
 
-    // Test token takes precedence over OAuth when both are present
+    // Test with no 'type' even both static token and oauth are provided - should throw
     Map<String, String> bothOptions = new HashMap<>();
     bothOptions.put(AuthConfigs.STATIC_TOKEN, "fixed-token");
     bothOptions.put(AuthConfigs.OAUTH_URI, OAUTH_URI);

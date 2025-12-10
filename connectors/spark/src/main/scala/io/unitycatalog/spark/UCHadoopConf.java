@@ -43,8 +43,8 @@ public class UCHadoopConf {
   // custom configuration keys (e.g., AWS, ABFS, or GCS credentials) propagate correctly into Hadoop
   // FileSystems such as S3AFileSystem or AbfsFileSystem, the keys must include the "fs." prefix.
   // See also: https://github.com/unitycatalog/unitycatalog/issues/1112.
-  public static final String FS_UC_AUTH_PREFIX = "fs.unitycatalog.auth.";
   public static final String UC_URI_KEY = "fs.unitycatalog.uri";
+  public static final String UC_AUTH_PREFIX = "fs.unitycatalog.auth.";
   public static final String UC_AUTH_TYPE = "fs.unitycatalog.auth.type";
   public static final String UC_AUTH_TOKEN_KEY = "fs.unitycatalog.auth.token";
 

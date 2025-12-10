@@ -59,7 +59,7 @@ public abstract class GenericCredentialProvider {
 
     // Initialize the UCTokenProvider.
     this.tokenProvider = TokenProvider.create(
-        conf.getPropsWithPrefix(UCHadoopConf.FS_UC_AUTH_PREFIX));
+        conf.getPropsWithPrefix(UCHadoopConf.UC_AUTH_PREFIX));
 
     this.credUid = conf.get(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
     Preconditions.checkState(credUid != null && !credUid.isEmpty(),

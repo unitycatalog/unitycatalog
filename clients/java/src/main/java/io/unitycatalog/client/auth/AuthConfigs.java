@@ -1,5 +1,6 @@
 package io.unitycatalog.client.auth;
 
+/** Internal class - not intended for direct use. */
 class AuthConfigs {
   private AuthConfigs() {}
 

@@ -3,6 +3,7 @@ package io.unitycatalog.client.auth;
 import io.unitycatalog.client.internal.Preconditions;
 import java.util.Map;
 
+/** Internal class - not intended for direct use. */
 class StaticTokenProvider implements TokenProvider {
   private String token;
 

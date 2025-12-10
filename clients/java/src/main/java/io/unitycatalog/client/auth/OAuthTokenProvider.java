@@ -18,7 +18,9 @@ import java.util.Base64;
 import java.util.Map;
 
 /**
- * OAuth-based token provider that fetches and automatically renews access tokens.
+ * Internal class - not intended for direct use.
+ *
+ * <p>OAuth-based token provider that fetches and automatically renews access tokens.
  *
  * <p>This provider uses the OAuth 2.0 client credentials flow to obtain access tokens. It
  * automatically renews tokens before they expire (default: 30 seconds before expiration). Token
