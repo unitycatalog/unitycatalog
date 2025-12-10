@@ -18,7 +18,9 @@ import java.util.Base64;
 import java.util.Map;
 
 /**
- * OAuth-based token provider that fetches and automatically renews access tokens.
+ * Internal class - not intended for direct use.
+ *
+ * <p>OAuth-based token provider that fetches and automatically renews access tokens.
  *
  * <p>This provider uses the OAuth 2.0 client credentials flow to obtain access tokens. It
  * automatically renews tokens before they expire (default: 30 seconds before expiration). Token
@@ -28,24 +30,16 @@ class OAuthTokenProvider implements TokenProvider {
   private static final long DEFAULT_LEAD_RENEWAL_TIME_SECONDS = 30L;
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-  private final String oauthUri;
-  private final String oauthClientId;
-  private final String oauthClientSecret;
-  private final long leadRenewalTimeSeconds;
-  private final HttpClient httpClient;
-  private final Clock clock;
+  private String oauthUri;
+  private String oauthClientId;
+  private String oauthClientSecret;
+  private long leadRenewalTimeSeconds;
+  private HttpClient httpClient;
+  private Clock clock;
 
   private volatile TempToken tempToken;
 
-  OAuthTokenProvider(String oauthUri, String oauthClientId, String oauthClientSecret) {
-    this(
-        oauthUri,
-        oauthClientId,
-        oauthClientSecret,
-        DEFAULT_LEAD_RENEWAL_TIME_SECONDS,
-        new RetryingApiClient(JitterDelayRetryPolicy.builder().build()),
-        Clock.systemClock());
-  }
+  OAuthTokenProvider() {}
 
   // Package-private constructor for testing with custom dependencies
   OAuthTokenProvider(
@@ -74,6 +68,38 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   @Override
+  public void initialize(Map<String, String> configs) {
+    // Parse and validate the OAuth URI.
+    String oauthUri = configs.get(AuthConfigs.OAUTH_URI);
+    Preconditions.checkArgument(
+        oauthUri != null && !oauthUri.isEmpty(),
+        "Configuration key '%s' is missing or empty",
+        AuthConfigs.OAUTH_URI);
+    this.oauthUri = oauthUri;
+
+    // Parse and validate the OAuth Client ID.
+    String oauthClientId = configs.get(AuthConfigs.OAUTH_CLIENT_ID);
+    Preconditions.checkArgument(
+        oauthClientId != null && !oauthClientId.isEmpty(),
+        "Configuration key '%s' is missing or empty",
+        AuthConfigs.OAUTH_CLIENT_ID);
+    this.oauthClientId = oauthClientId;
+
+    // Parse and validate the OAuth Client Secret.
+    String oauthClientSecret = configs.get(AuthConfigs.OAUTH_CLIENT_SECRET);
+    Preconditions.checkArgument(
+        oauthClientSecret != null && !oauthClientSecret.isEmpty(),
+        "Configuration key '%s' is missing or empty",
+        AuthConfigs.OAUTH_CLIENT_SECRET);
+    this.oauthClientSecret = oauthClientSecret;
+
+    this.leadRenewalTimeSeconds = DEFAULT_LEAD_RENEWAL_TIME_SECONDS;
+    this.httpClient =
+        new RetryingApiClient(JitterDelayRetryPolicy.builder().build()).getHttpClient();
+    this.clock = Clock.systemClock();
+  }
+
+  @Override
   public String accessToken() {
     if (tempToken == null || tempToken.isReadyToRenew()) {
       synchronized (this) {
@@ -86,11 +112,12 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   @Override
-  public Map<String, String> getConfigs() {
+  public Map<String, String> configs() {
     return Map.of(
-        AuthProps.OAUTH_URI, oauthUri,
-        AuthProps.OAUTH_CLIENT_ID, oauthClientId,
-        AuthProps.OAUTH_CLIENT_SECRET, oauthClientSecret);
+        AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE,
+        AuthConfigs.OAUTH_URI, oauthUri,
+        AuthConfigs.OAUTH_CLIENT_ID, oauthClientId,
+        AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret);
   }
 
   private TempToken renewToken() {
