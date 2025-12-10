@@ -4,6 +4,7 @@ import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import io.delta.tables.DeltaTable;
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTest;
@@ -15,7 +16,6 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.spark.CredentialTestFileSystem;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.UCSingleCatalog;
-import io.unitycatalog.spark.utils.Clock;
 import java.io.File;
 import java.net.URI;
 import java.time.Duration;

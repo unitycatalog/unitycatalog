@@ -2,9 +2,10 @@ package io.unitycatalog.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
+import io.unitycatalog.client.auth.TokenProvider
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.spark.auth.CredPropsUtil
-import io.unitycatalog.spark.auth.catalog.UCTokenProvider
 import io.unitycatalog.spark.utils.OptionsUtil
 
 import java.net.URI
@@ -33,7 +34,7 @@ class UCSingleCatalog
   with Logging {
 
   private[this] var uri: URI = null
-  private[this] var ucTokenProvider: UCTokenProvider = null
+  private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
@@ -46,15 +47,16 @@ class UCSingleCatalog
     Preconditions.checkArgument(urlStr != null,
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
-    ucTokenProvider = UCTokenProvider.create(options)
+    tokenProvider = TokenProvider.createFromConfigs(options)
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
-    apiClient = ApiClientFactory.createApiClient(new ApiClientConf(), uri, ucTokenProvider)
+    apiClient = ApiClientFactory.createApiClient(
+      JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
-    val proxy = new UCProxy(uri, ucTokenProvider, renewCredEnabled, apiClient, tablesApi,
+    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, apiClient, tablesApi,
       temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
@@ -154,7 +156,7 @@ class UCSingleCatalog
         renewCredEnabled,
         CatalogUtils.stringToURI(stagingLocation).getScheme,
         uri.toString,
-        ucTokenProvider,
+        tokenProvider,
         stagingTableId,
         TableOperation.READ_WRITE,
         temporaryCredentials,
@@ -174,7 +176,7 @@ class UCSingleCatalog
         renewCredEnabled,
         CatalogUtils.stringToURI(location).getScheme,
         uri.toString,
-        ucTokenProvider,
+        tokenProvider,
         location,
         PathOperation.PATH_CREATE_TABLE,
         cred)
@@ -276,7 +278,7 @@ object UCSingleCatalog {
 // An internal proxy to talk to the UC client.
 private class UCProxy(
     uri: URI,
-    ucTokenProvider: UCTokenProvider,
+    tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
@@ -351,7 +353,7 @@ private class UCProxy(
       renewCredEnabled,
       locationUri.getScheme,
       uri.toString,
-      ucTokenProvider,
+      tokenProvider,
       tableId,
       tableOp,
       temporaryCredentials,
