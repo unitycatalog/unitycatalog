@@ -2,18 +2,27 @@ package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.function.IntPredicate;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,19 +32,173 @@ public class ServerProperties {
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerProperties.class);
   private final Properties properties = new Properties(generateDefaults());
 
+  /** Validator interface for property values */
+  private interface PropertyValidator {
+    /**
+     * Validates a property value
+     *
+     * @param key the property key
+     * @param value the property value to validate
+     * @throws BaseException if validation fails
+     */
+    void validate(String key, String value);
+  }
+
+  /** Validator for enum-like properties with a fixed set of allowed values */
+  private static class EnumValidator implements PropertyValidator {
+    private final Set<String> allowedValues;
+    private final boolean caseInsensitive;
+
+    EnumValidator(boolean caseInsensitive, String... allowedValues) {
+      this.caseInsensitive = caseInsensitive;
+      this.allowedValues = new HashSet<>();
+      for (String value : allowedValues) {
+        this.allowedValues.add(caseInsensitive ? value.toLowerCase() : value);
+      }
+    }
+
+    @Override
+    public void validate(String key, String value) {
+      String checkValue = caseInsensitive ? value.toLowerCase() : value;
+      if (!allowedValues.contains(checkValue)) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Invalid value '%s' for property '%s'. Allowed values: %s",
+                value, key, allowedValues));
+      }
+    }
+  }
+
+  /** Validator for boolean properties */
+  private static class BooleanValidator extends EnumValidator {
+    BooleanValidator() {
+      super(/* caseInsensitive= */ true, "true", "false");
+    }
+  }
+
+  /** Validator for URL properties */
+  private static class UrlValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      try {
+        new URL(value).toURI();
+      } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format("Invalid URL '%s' for property '%s': %s", value, key, e.getMessage()));
+      }
+    }
+  }
+
+  /**
+   * Validator for storage path properties that can be either URLs or file paths. This is more
+   * lenient than UrlValidator as it accepts both proper URLs (e.g., file:///tmp/path) and plain
+   * file paths (e.g., /tmp/path).
+   */
+  private static class StoragePathValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      try {
+        FileOperations.toStandardizedURIString(value);
+      } catch (Exception e) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Invalid storage path '%s' for property '%s': %s", value, key, e.getMessage()));
+      }
+    }
+  }
+
+  /** Validator for integer properties with a custom condition */
+  private static class IntegerValidator implements PropertyValidator {
+    private final IntPredicate condition;
+    private final String conditionDescription;
+
+    /**
+     * Creates an IntegerValidator with a custom condition.
+     *
+     * @param condition the condition that the integer value must satisfy
+     * @param conditionDescription human-readable description of the condition for error messages
+     */
+    IntegerValidator(IntPredicate condition, String conditionDescription) {
+      this.condition = condition;
+      this.conditionDescription = conditionDescription;
+    }
+
+    @Override
+    public void validate(String key, String value) {
+      try {
+        int intValue = Integer.parseInt(value);
+        if (!condition.test(intValue)) {
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              String.format(
+                  "Invalid value '%s' for property '%s'. Expected %s",
+                  value, key, conditionDescription));
+        }
+      } catch (NumberFormatException e) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format("Invalid value '%s' for property '%s'. Expected an integer", value, key));
+      }
+    }
+  }
+
+  /** Validator for positive integer properties */
+  private static class PositiveIntegerValidator extends IntegerValidator {
+    PositiveIntegerValidator() {
+      super(i -> i > 0, "a positive integer (> 0)");
+    }
+  }
+
+  /**
+   * Validator for the string format of {@code java.time.Duration}. Check function {@Duration.parse}
+   * for all the accepted forms.
+   */
+  private static class DurationValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      try {
+        Duration.parse(value);
+      } catch (DateTimeParseException e) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format("Invalid value '%s' for property '%s': %s", value, key, e.getMessage()));
+      }
+    }
+  }
+
+  /** No-op validator that accepts any value */
+  private static class NoOpValidator implements PropertyValidator {
+    @Override
+    public void validate(String key, String value) {
+      // Accept any value
+    }
+  }
+
+  private static final BooleanValidator BOOLEAN_VALIDATOR = new BooleanValidator();
+  private static final UrlValidator URL_VALIDATOR = new UrlValidator();
+  private static final StoragePathValidator STORAGE_PATH_VALIDATOR = new StoragePathValidator();
+  private static final PositiveIntegerValidator POSITIVE_INTEGER_VALIDATOR =
+      new PositiveIntegerValidator();
+  private static final NoOpValidator NOOP_VALIDATOR = new NoOpValidator();
+  private static final DurationValidator DURATION_VALIDATOR = new DurationValidator();
+
   @Getter
   public enum Property {
-    SERVER_ENV("server.env"),
-    AUTHORIZATION_ENABLED("server.authorization", "disable"),
-    AUTHORIZATION_URL("server.authorization-url"),
-    TOKEN_URL("server.token-url"),
+    SERVER_ENV("server.env", "dev", new EnumValidator(true, "dev", "prod", "test")),
+    AUTHORIZATION_ENABLED(
+        "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
+    AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
+    TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
     CLIENT_SECRET("server.client-secret"),
-    REDIRECT_PORT("server.redirect-port"),
-    COOKIE_TIMEOUT("server.cookie-timeout", "P5D"),
-    MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false"),
-    MODEL_STORAGE_ROOT("storage-root.models", "file:///tmp/ucroot"),
-    TABLE_STORAGE_ROOT("storage-root.tables", "file:///tmp/ucroot"),
+    REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
+    COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
+    MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false", BOOLEAN_VALIDATOR),
+    MODEL_STORAGE_ROOT("storage-root.models", "file:///tmp/ucroot", STORAGE_PATH_VALIDATOR),
+    TABLE_STORAGE_ROOT("storage-root.tables", "file:///tmp/ucroot", STORAGE_PATH_VALIDATOR),
     AWS_S3_ACCESS_KEY("aws.s3.accessKey"),
     AWS_S3_SECRET_KEY("aws.s3.secretKey"),
     AWS_S3_SESSION_TOKEN("aws.s3.sessionToken"),
@@ -46,25 +209,57 @@ public class ServerProperties {
 
     private final String key;
     private final String defaultValue;
+    private final PropertyValidator validator;
 
-    Property(String key, String defaultValue) {
+    Property(String key, String defaultValue, PropertyValidator validator) {
       this.key = key;
       this.defaultValue = defaultValue;
+      this.validator = validator;
+      // Default values are always valid. They are validated by
+      // ServerPropertiesTest.testDefaultPropertyValues
+    }
+
+    Property(String key, PropertyValidator validator) {
+      this(key, null, validator);
     }
 
     Property(String key) {
-      this(key, null);
+      this(key, null, NOOP_VALIDATOR);
     }
   }
 
-  public ServerProperties() {}
+  public ServerProperties() {
+    // This call is still useful after the default values being validated by constructors of
+    // Property because it also validates values picked up from system property and env.
+    validateProperties();
+  }
 
   public ServerProperties(String propertiesFile) {
     readPropertiesFromFile(propertiesFile);
+    validateProperties();
   }
 
   public ServerProperties(Properties inputProperties) {
     properties.putAll(inputProperties);
+    validateProperties();
+  }
+
+  /**
+   * Validates all registered properties against their validators. This method is called during
+   * initialization to fail fast if any property has an invalid value. It also validates any
+   * override value from system property and env if set.
+   *
+   * @throws BaseException if any property value is invalid
+   */
+  private void validateProperties() {
+    for (Property property : Property.values()) {
+      String value = get(property);
+      if (value == null || value.isBlank()) {
+        // null or empty values are OK.
+        continue;
+      }
+      property.validator.validate(property.key, value);
+    }
   }
 
   // Load properties from a configuration file
@@ -209,6 +404,8 @@ public class ServerProperties {
   }
 
   public void set(Property property, String value) {
+    // Validate before setting
+    property.validator.validate(property.key, value);
     properties.setProperty(property.key, value);
   }
 
