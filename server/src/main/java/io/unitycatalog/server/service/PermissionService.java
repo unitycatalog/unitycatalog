@@ -8,6 +8,11 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -22,6 +27,7 @@ import io.unitycatalog.server.model.PrivilegeAssignment;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdatePermissions;
 import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.ExternalLocationRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.ModelRepository;
@@ -39,11 +45,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Patch;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class PermissionService {
@@ -57,6 +58,7 @@ public class PermissionService {
   private final FunctionRepository functionRepository;
   private final VolumeRepository volumeRepository;
   private final ModelRepository modelRepository;
+  private final ExternalLocationRepository externalLocationRepository;
 
   public PermissionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
@@ -68,53 +70,51 @@ public class PermissionService {
     this.functionRepository = repositories.getFunctionRepository();
     this.volumeRepository = repositories.getVolumeRepository();
     this.modelRepository = repositories.getModelRepository();
+    this.externalLocationRepository = repositories.getExternalLocationRepository();
   }
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Get("/metastore/{name}")
-  public HttpResponse getMetastoreAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getMetastoreAuthorization(@Param("name") String name) {
     return getAuthorization(METASTORE, name);
   }
 
   @Get("/catalog/{name}")
-  public HttpResponse getCatalogAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getCatalogAuthorization(@Param("name") String name) {
     return getAuthorization(CATALOG, name);
   }
 
   @Get("/schema/{name}")
-  public HttpResponse getSchemaAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getSchemaAuthorization(@Param("name") String name) {
     return getAuthorization(SCHEMA, name);
   }
 
   @Get("/table/{name}")
-  public HttpResponse getTableAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getTableAuthorization(@Param("name") String name) {
     return getAuthorization(TABLE, name);
   }
 
   @Get("/function/{name}")
-  public HttpResponse getFunctionAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getFunctionAuthorization(@Param("name") String name) {
     return getAuthorization(FUNCTION, name);
   }
 
   @Get("/volume/{name}")
-  public HttpResponse getVolumeAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getVolumeAuthorization(@Param("name") String name) {
     return getAuthorization(VOLUME, name);
   }
 
   @Get("/registered_model/{name}")
-  public HttpResponse getRegisteredModelAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getRegisteredModelAuthorization(@Param("name") String name) {
     return getAuthorization(REGISTERED_MODEL, name);
   }
 
-  private HttpResponse getAuthorization(
-      SecurableType securableType, String name) {
+  @Get("/external_location/{name}")
+  public HttpResponse getExternalLocationAuthorization(@Param("name") String name) {
+    return getAuthorization(SecurableType.EXTERNAL_LOCATION, name);
+  }
+
+  private HttpResponse getAuthorization(SecurableType securableType, String name) {
 
     // Only show permissions for the authenticated identity unless they are the owner
     // or if the authenticated identity is the owner of the parent resource(s)
@@ -146,7 +146,7 @@ public class PermissionService {
                 entry -> {
                   List<Privilege> privileges =
                       entry.getValue().stream()
-                          .<Privilege>map(Privileges::toPrivilege)
+                          .map(Privileges::toPrivilege)
                           // mapping to Privilege may result in nulls since Privilege is a subset of
                           // Privileges, so filter them out.
                           .filter(Objects::nonNull)
@@ -180,7 +180,8 @@ public class PermissionService {
   }
 
   @Patch("/schema/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG))
@@ -192,7 +193,8 @@ public class PermissionService {
   }
 
   @Patch("/table/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -207,7 +209,8 @@ public class PermissionService {
   }
 
   @Patch("/function/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -222,7 +225,8 @@ public class PermissionService {
   }
 
   @Patch("/volume/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -243,6 +247,16 @@ public class PermissionService {
   public HttpResponse updateRegisteredModelAuthorization(
       @Param("name") @AuthorizeKey(REGISTERED_MODEL) String name, UpdatePermissions request) {
     return updateAuthorization(REGISTERED_MODEL, name, request);
+  }
+
+  @Patch("/external_location/{name}")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #external_location, OWNER)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse updateExternalLocationAuthorization(
+      @Param("name") @AuthorizeKey(SecurableType.EXTERNAL_LOCATION) String name,
+      UpdatePermissions request) {
+    return updateAuthorization(SecurableType.EXTERNAL_LOCATION, name, request);
   }
 
   private HttpResponse updateAuthorization(
@@ -282,7 +296,7 @@ public class PermissionService {
                 entry -> {
                   List<Privilege> privileges =
                       entry.getValue().stream()
-                          .<Privilege>map(Privileges::toPrivilege)
+                          .map(Privileges::toPrivilege)
                           // mapping to Privilege may result in nulls since Privilege is a subset of
                           // Privileges, so filter them out.
                           .filter(Objects::nonNull)
@@ -307,10 +321,12 @@ public class PermissionService {
       case FUNCTION -> functionRepository.getFunction(name).getFunctionId();
       case VOLUME -> volumeRepository.getVolume(name).getVolumeId();
       case REGISTERED_MODEL -> modelRepository.getRegisteredModel(name).getId();
-      default -> throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
+      case EXTERNAL_LOCATION ->
+          externalLocationRepository.getExternalLocation(name).getExternalLocationId();
+      default ->
+          throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
     };
 
     return UUID.fromString(Objects.requireNonNull(resourceId));
   }
 }
-
