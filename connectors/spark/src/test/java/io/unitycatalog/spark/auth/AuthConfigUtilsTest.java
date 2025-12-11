@@ -3,6 +3,7 @@ package io.unitycatalog.spark.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.client.auth.TokenProvider;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -38,27 +39,72 @@ public class AuthConfigUtilsTest {
   }
 
   @Test
-  public void testLegacyTokenSupport() {
-    assertThat(normalizeConfigs("token", "legacy-token"))
-        .containsEntry("type", "static")
-        .containsEntry("token", "legacy-token");
+  public void testStaticTokenSupport() {
+    Map<String, String> configs = normalizeConfigs("token", "legacy-token");
+    assertMapEquals(
+        TokenProvider.create(configs).configs(), Map.of("type", "static", "token", "legacy-token"));
 
-    assertThat(normalizeConfigs("auth.type", "oauth", "token", "legacy-token"))
-        .containsEntry("type", "static")
-        .containsEntry("token", "legacy-token");
+    configs = normalizeConfigs("auth.type", "static", "token", "legacy-token");
+    assertMapEquals(
+        TokenProvider.create(configs).configs(), Map.of("type", "static", "token", "legacy-token"));
 
-    assertThat(normalizeConfigs("auth.extra", "value", "token", "legacy-token"))
-        .hasSize(3)
-        .containsEntry("type", "static")
-        .containsEntry("token", "legacy-token")
-        .containsEntry("extra", "value");
+    configs = normalizeConfigs("auth.extra", "value", "token", "legacy-token");
+    assertMapEquals(configs, Map.of("type", "static", "token", "legacy-token", "extra", "value"));
+    assertMapEquals(
+        TokenProvider.create(configs).configs(), Map.of("type", "static", "token", "legacy-token"));
+
+    configs = normalizeConfigs("auth.type", "static", "auth.token", "new-token");
+    assertMapEquals(
+        TokenProvider.create(configs).configs(), Map.of("type", "static", "token", "new-token"));
   }
 
   @Test
-  public void testNewStyleToken() {
-    assertThat(normalizeConfigs("auth.type", "static", "auth.token", "new-token"))
-        .containsEntry("type", "static")
-        .containsEntry("token", "new-token");
+  public void testOAuthTokenSupport() {
+    // Case-sensitive OAuth configs.
+    Map<String, String> configs =
+        normalizeConfigs(
+            "auth.type",
+            "oauth",
+            "auth.oauth.uri",
+            "https://auth.example.com",
+            "auth.oauth.clientId",
+            "client-id",
+            "auth.oauth.clientSecret",
+            "client-secret");
+    assertMapEquals(
+        TokenProvider.create(configs).configs(),
+        Map.of(
+            "type",
+            "oauth",
+            "oauth.uri",
+            "https://auth.example.com",
+            "oauth.clientId",
+            "client-id",
+            "oauth.clientSecret",
+            "client-secret"));
+
+    // Case-insensitive OAuth configs.
+    configs =
+        normalizeConfigs(
+            "auth.type",
+            "oauth",
+            "auth.OaUTH.URI",
+            "https://auth.example.com",
+            "auth.oAuth.clientid",
+            "client-id",
+            "auth.oauth.clientsecret",
+            "client-secret");
+    assertMapEquals(
+        TokenProvider.create(configs).configs(),
+        Map.of(
+            "type",
+            "oauth",
+            "oauth.uri",
+            "https://auth.example.com",
+            "oauth.clientId",
+            "client-id",
+            "oauth.clientSecret",
+            "client-secret"));
   }
 
   @Test
@@ -70,10 +116,11 @@ public class AuthConfigUtilsTest {
 
   @Test
   public void testNullAndEdgeCases() {
-    assertThat(normalizeConfigs("auth.type", "oauth", "token", null))
-        .hasSize(1)
-        .containsEntry("type", "oauth");
-
+    assertMapEquals(normalizeConfigs("auth.type", "oauth", "token", null), Map.of("type", "oauth"));
     assertThat(normalizeConfigs("auth.", "value")).hasSize(0);
+  }
+
+  private static void assertMapEquals(Map<String, String> expected, Map<String, String> actual) {
+    assertThat(expected).hasSize(actual.size()).containsAllEntriesOf(actual);
   }
 }

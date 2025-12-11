@@ -3,6 +3,7 @@ package io.unitycatalog.spark.auth;
 import io.unitycatalog.client.internal.Preconditions;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 
 public class AuthConfigUtils {
   private static final String AUTH_PREFIX = "auth.";
@@ -37,6 +38,6 @@ public class AuthConfigUtils {
       newConfigs.put(STATIC_TOKEN, token);
     }
 
-    return newConfigs;
+    return new CaseInsensitiveStringMap(newConfigs);
   }
 }
