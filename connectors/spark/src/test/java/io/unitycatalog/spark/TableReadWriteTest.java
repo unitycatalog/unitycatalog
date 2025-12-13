@@ -58,7 +58,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .config(catalogConf + ".warehouse", CATALOG_NAME)
             .config(catalogConf + ".__TEST_NO_DELTA__", "true");
     SparkSession session = builder.getOrCreate();
-    setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
+    setupExternalParquetTable(SPARK_CATALOG, PARQUET_TABLE, new ArrayList<>(0));
     testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
     assertEquals(false, UCSingleCatalog.DELTA_CATALOG_LOADED().get());
     session.close();
@@ -66,14 +66,20 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Test
   public void testParquetReadWrite() throws IOException, ApiException {
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
-    // Spark only allow `spark_catalog` to return built-in file source tables.
-    setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
+    // Test both `spark_catalog` and other catalog names.
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    setupExternalParquetTable(SPARK_CATALOG, PARQUET_TABLE, new ArrayList<>(0));
     testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
 
-    setupExternalParquetTable(PARQUET_TABLE_PARTITIONED, Arrays.asList("s"));
-    testTableReadWrite(
-        SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE_PARTITIONED, session);
+    setupExternalParquetTable(SPARK_CATALOG, PARQUET_TABLE_PARTITIONED, Arrays.asList("s"));
+    testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE_PARTITIONED, session);
+
+    setupExternalParquetTable(CATALOG_NAME, PARQUET_TABLE, new ArrayList<>(0));
+    testTableReadWrite(CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
+
+    setupExternalParquetTable(CATALOG_NAME, PARQUET_TABLE_PARTITIONED, Arrays.asList("s"));
+    testTableReadWrite(CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE_PARTITIONED, session);
 
     session.stop();
   }
@@ -131,13 +137,13 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
-    setupExternalParquetTable(PARQUET_TABLE, loc1, new ArrayList<>(0));
+    setupExternalParquetTable(SPARK_CATALOG, PARQUET_TABLE, loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     testTableReadWrite(t1, session);
 
     String loc2 =
         scheme + "://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
-    setupExternalParquetTable(ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
+    setupExternalParquetTable(SPARK_CATALOG, ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
     String t2 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
     testTableReadWrite(t2, session);
 
@@ -274,7 +280,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   @Test
   public void testShowTables() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
-    setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
+    setupExternalParquetTable(SPARK_CATALOG, PARQUET_TABLE, new ArrayList<>(0));
 
     Row[] tables = (Row[]) session.sql("SHOW TABLES in " + SCHEMA_NAME).collect();
     assertThat(tables).hasSize(1);
@@ -291,7 +297,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   @Test
   public void testDropTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
-    setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
+    setupExternalParquetTable(SPARK_CATALOG, PARQUET_TABLE, new ArrayList<>(0));
     String fullName = String.join(".", SPARK_CATALOG, SCHEMA_NAME, PARQUET_TABLE);
     assertTrue(session.catalog().tableExists(fullName));
     session.sql("DROP TABLE " + fullName).collect();
@@ -302,24 +308,40 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  private void setupExternalParquetTable(String tableName, List<String> partitionColumns)
-      throws IOException, ApiException {
-    String location = generateTableLocation(SPARK_CATALOG, tableName);
-    setupExternalParquetTable(tableName, location, partitionColumns);
+  private void setupExternalParquetTable(
+      String catalogName,
+      String tableName,
+      List<String> partitionColumns) throws IOException, ApiException {
+    String location = generateTableLocation(catalogName, tableName);
+    setupExternalParquetTable(catalogName, tableName, location, partitionColumns);
   }
 
   private void setupExternalParquetTable(
-      String tableName, String location, List<String> partitionColumns)
-      throws IOException, ApiException {
+      String catalogName,
+      String tableName,
+      String location,
+      List<String> partitionColumns) throws IOException, ApiException {
     setupTables(
-        SPARK_CATALOG, tableName, DataSourceFormat.PARQUET, location, partitionColumns, false);
+        catalogName, tableName, DataSourceFormat.PARQUET, location, partitionColumns, false);
   }
 
   private void setupExternalDeltaTable(
-      String catalogName, String tableName, List<String> partitionColumns, SparkSession session)
-      throws IOException, ApiException {
+      String catalogName,
+      String tableName,
+      List<String> partitionColumns,
+      SparkSession session) throws IOException, ApiException {
     String location = generateTableLocation(catalogName, tableName);
     setupExternalDeltaTable(catalogName, tableName, location, partitionColumns, session);
+  }
+
+  private void setupExternalDeltaTable(
+      String catalogName,
+      String tableName,
+      String location,
+      List<String> partitionColumns,
+      SparkSession session) throws IOException, ApiException {
+    setupDeltaTableLocation(session, location, partitionColumns);
+    setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
   }
 
   @Test
@@ -510,17 +532,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
         String.format(
             "CREATE TABLE delta.`%s`(i INT, s STRING) USING delta %s", location, partitionClause));
     CredentialTestFileSystem.credentialCheckEnabled = true;
-  }
-
-  private void setupExternalDeltaTable(
-      String catalogName,
-      String tableName,
-      String location,
-      List<String> partitionColumns,
-      SparkSession session)
-      throws IOException, ApiException {
-    setupDeltaTableLocation(session, location, partitionColumns);
-    setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
   }
 
   private void testTableReadWrite(String tableFullName, SparkSession session) {
