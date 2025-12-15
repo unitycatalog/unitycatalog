@@ -18,6 +18,9 @@ RUN apk add --no-cache bash && ./build/sbt -info clean package
 # Small runtime image
 FROM alpine:${ALPINE_VERSION} as runtime
 
+# Resolve missing libc package
+RUN apk update && apk add --no-cache libc6-compat
+
 # Specific JAVA_HOME from Amazon Corretto
 ARG JAVA_HOME="/usr/lib/jvm/default-jvm"
 ARG USER="unitycatalog"
