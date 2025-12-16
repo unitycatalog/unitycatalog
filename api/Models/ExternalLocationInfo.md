@@ -4,6 +4,7 @@
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
 | **name** | **String** | Name of the external location. | [optional] [default to null] |
+| **external\_location\_id** | **String** | Unique identifier of the external location. | [optional] [default to null] |
 | **url** | **String** | Path URL of the external location. | [optional] [default to null] |
 | **credential\_name** | **String** | Name of the storage credential used with this location. | [optional] [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
