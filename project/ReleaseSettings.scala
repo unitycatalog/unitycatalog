@@ -109,8 +109,8 @@ object ReleaseSettings {
       runTest,
       setReleaseVersion,
       commitReleaseVersion,
-      tagRelease,
-      releaseStepCommandAndRemaining("+publishSigned"),
+      tagRelease
+    ) ++ CrossSparkVersions.crossSparkReleaseSteps("+publishSigned") ++ Seq[ReleaseStep](
       setNextVersion,
       commitNextVersion
     )

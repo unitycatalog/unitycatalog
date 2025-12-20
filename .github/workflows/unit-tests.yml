@@ -30,8 +30,31 @@ jobs:
     - name: Compile integration tests to verify compilation and checkstyle issues.
       run: build/sbt integrationTests/test:compile
 
-    - name: Run tests with coverage
-      run: build/sbt -J-Xmx2G +jacoco
+      # Run tests only for non-Spark modules (server, client, cli, etc.)
+      # Exclude spark and integrationTests which will be tested separately with each Spark version
+    - name: Run tests with coverage (non-Spark modules only)
+      run: build/sbt -J-Xmx2G "server/test; client/test; cli/test"
 
     - name: Run license check
       run: build/sbt licenseCheck
+
+  spark-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        spark-version: ['4.0.0']
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+      # Compile integration tests to catch compilation issues
+    - name: Run Spark module tests with Spark ${{ matrix.spark-version }}
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} spark/test
+
+    - name: Run integration tests with Spark ${{ matrix.spark-version }}
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} integrationTests/test
