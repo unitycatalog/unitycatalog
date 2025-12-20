@@ -11,15 +11,15 @@ import scala.language.implicitConversions
  * The plugin:
  * 1. Defines supported Spark versions with their specifications (Java version, Jackson version, etc.)
  * 2. Provides settings for configuring Spark-dependent modules
- * 3. Handles artifact naming (adds Spark version suffix for non-latest versions)
+ * 3. Handles artifact naming (adds Spark version suffix for non-default versions)
  * 4. Provides release steps for publishing artifacts for all supported Spark versions
  * 
  * Artifact naming convention:
- * - Latest Spark version: unitycatalog-spark_2.13
+ * - Default Spark version: unitycatalog-spark_2.13
  * - Older Spark versions: unitycatalog-spark_X.Y_2.13 (e.g., unitycatalog-spark_4.0_2.13)
  * 
  * Build examples:
- * - Default build (latest Spark): build/sbt publishM2
+ * - Default build (default Spark): build/sbt publishM2
  * - Specific Spark version: build/sbt -DsparkVersion=4.0.0 publishM2
  * - Build for specific Spark only: build/sbt -DsparkVersion=4.0.0 "runOnlyForSparkModules publishM2"
  * 
@@ -64,11 +64,11 @@ object CrossSparkVersions {
     antlrVersion = "4.13.1"
   )
 
-  // All supported versions in order (latest last)
+  // All supported versions in order (default last)
   val allSparkVersions: Seq[SparkVersionSpec] = Seq(spark40Spec)
   
-  // The latest/default Spark version
-  val latestSparkSpec: SparkVersionSpec = allSparkVersions.last
+  // The default Spark version
+  val defaultSparkSpec: SparkVersionSpec = allSparkVersions.last
 
   // ==================================================================================
   // Version selection and configuration
@@ -88,15 +88,15 @@ object CrossSparkVersions {
               s"Unsupported Spark version: $v. Supported versions: ${allSparkVersions.map(_.sparkVersion).mkString(", ")}"
             )
         }
-      case None => latestSparkSpec
+      case None => defaultSparkSpec
     }
   }
 
   /**
-   * Check if the current build is for the latest Spark version
+   * Check if the current build is for the default Spark version
    */
-  def isLatestSpark(spec: SparkVersionSpec): Boolean = {
-    spec.sparkVersion == latestSparkSpec.sparkVersion
+  def isDefaultSpark(spec: SparkVersionSpec): Boolean = {
+    spec.sparkVersion == defaultSparkSpec.sparkVersion
   }
 
   // ==================================================================================
@@ -105,11 +105,11 @@ object CrossSparkVersions {
 
   /**
    * Get the artifact name suffix for Spark-dependent modules.
-   * For the latest Spark version, no suffix is added.
+   * For the default Spark version, no suffix is added.
    * For older versions, add "_X.Y" suffix (e.g., "_4.0")
    */
   def getSparkVersionSuffix(spec: SparkVersionSpec): String = {
-    if (isLatestSpark(spec)) {
+    if (isDefaultSpark(spec)) {
       ""
     } else {
       s"_${spec.sparkMajorMinor}"
@@ -232,8 +232,8 @@ object CrossSparkVersions {
    * @return Sequence of release steps
    */
   def crossSparkReleaseSteps(publishTask: String): Seq[ReleaseStep] = {
-    // Step 1: Publish all modules for the latest Spark version
-    val latestSparkSteps = Seq[ReleaseStep](
+    // Step 1: Publish all modules for the default Spark version
+    val defaultSparkSteps = Seq[ReleaseStep](
       releaseStepCommandAndRemaining(publishTask)
     )
 
@@ -246,7 +246,7 @@ object CrossSparkVersions {
       )
     }
 
-    latestSparkSteps ++ olderSparkSteps
+    defaultSparkSteps ++ olderSparkSteps
   }
 
   /**
@@ -263,7 +263,7 @@ object CrossSparkVersions {
     println(s"Jackson Version: ${spec.jacksonVersion}")
     println(s"Delta Version: ${spec.deltaVersion}")
     println(s"Hadoop Version: ${spec.hadoopVersion}")
-    println(s"Latest Spark: ${isLatestSpark(spec)}")
+    println(s"Default Spark: ${isDefaultSpark(spec)}")
     println(s"Artifact Suffix: ${getSparkVersionSuffix(spec)}")
     println("=" * 80)
   }
