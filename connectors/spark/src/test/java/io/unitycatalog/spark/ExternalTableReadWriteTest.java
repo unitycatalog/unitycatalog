@@ -137,20 +137,23 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
   }
 
-    @Test
-    public void testExternalDeltaTableWithDateType() throws IOException {
-        session = createSparkSessionWithCatalogs(CATALOG_NAME);
+  @Test
+  public void testExternalDeltaTableWithDateType() throws IOException {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
 
+    TableSetupOptions options = new TableSetupOptions()
+            .setCatalogName(CATALOG_NAME)
+            .setTableName(TEST_TABLE);
 
-        TableSetupOptions options = new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE);
-        String fullTableName = options.fullTableName();
-        String create_table_stmt = String.format(
-                "CREATE TABLE %s (start_date DATE) USING delta LOCATION '%s'",
-                fullTableName, getLocation(options));
+    sql(String.format(
+            "CREATE TABLE %s (start_date DATE) USING delta LOCATION '%s'",
+            options.fullTableName(), getLocation(options)));
+    sql(String.format("INSERT INTO %s VALUES ('2025-12-22')", options.fullTableName()));
 
-        session.sql(create_table_stmt);
-        assertThat(session.catalog().tableExists(fullTableName)).isTrue();
-    }
+    validateTableSchema(
+            session.table(options.fullTableName()).schema(),
+            Pair.of("start_date", DataTypes.DateType));
+  }
 
   /**
    * Returns an emulated cloud bucket to be used for creating external table. Alternating between
