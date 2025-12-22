@@ -1,5 +1,7 @@
 package io.unitycatalog.spark;
 
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
+import io.unitycatalog.client.retry.RetryPolicy;
 import org.apache.hadoop.conf.Configuration;
 
 public class UCHadoopConf {
@@ -42,7 +44,9 @@ public class UCHadoopConf {
   // FileSystems such as S3AFileSystem or AbfsFileSystem, the keys must include the "fs." prefix.
   // See also: https://github.com/unitycatalog/unitycatalog/issues/1112.
   public static final String UC_URI_KEY = "fs.unitycatalog.uri";
-  public static final String UC_TOKEN_KEY = "fs.unitycatalog.token";
+  public static final String UC_AUTH_PREFIX = "fs.unitycatalog.auth.";
+  public static final String UC_AUTH_TYPE = "fs.unitycatalog.auth.type";
+  public static final String UC_AUTH_TOKEN_KEY = "fs.unitycatalog.auth.token";
 
   // Key representing the remaining time before expiration, used to trigger credentials renewal in
   // advance.
@@ -85,36 +89,42 @@ public class UCHadoopConf {
   public static final String REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY =
       "fs.unitycatalog.request.retry.delayJitterFactor";
 
-  // Sets the HTTP request retry configuration in the Hadoop configuration.
-  public static void setApiClientConf(Configuration conf, ApiClientConf apiClientConf) {
-    if (conf == null || apiClientConf == null) {
-      return;
-    }
-    conf.setInt(
-        REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts());
-    conf.setLong(
-        REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs());
-    conf.setDouble(
-        REQUEST_RETRY_DELAY_MULTIPLIER_KEY, apiClientConf.getRequestDelayMultiplier());
-    conf.setDouble(
-        REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY, apiClientConf.getRequestDelayJitterFactor());
-  }
+  /**
+   * Creates a {@link RetryPolicy} configured from Hadoop configuration properties.
+   *
+   * <p>This method constructs a {@link JitterDelayRetryPolicy} using retry parameters from the
+   * provided Hadoop configuration. If no configuration is provided (null), returns a retry policy
+   * with default values.
+   *
+   * @param conf the Hadoop configuration containing retry parameters, or null to use defaults
+   * @return a configured {@link RetryPolicy} instance for handling HTTP request retries
+   * @see JitterDelayRetryPolicy
+   * @see RetryPolicy
+   */
+  public static RetryPolicy createRequestRetryPolicy(Configuration conf) {
+    JitterDelayRetryPolicy.Builder builder = JitterDelayRetryPolicy.builder();
 
-  public static ApiClientConf getApiClientConf(Configuration conf) {
-    ApiClientConf apiClientConf = new ApiClientConf();
     if (conf == null) {
-      return apiClientConf;
+      return builder.build();
     }
 
-    apiClientConf
-        .setRequestMaxAttempts(conf.getInt(
-            REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts()))
-        .setRequestInitialDelayMs(conf.getLong(
-            REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs()))
-        .setRequestDelayMultiplier(conf.getDouble(
-            REQUEST_RETRY_DELAY_MULTIPLIER_KEY, apiClientConf.getRequestDelayMultiplier()))
-        .setRequestDelayJitterFactor(conf.getDouble(
-            REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY, apiClientConf.getRequestDelayJitterFactor()));
-    return apiClientConf;
+    builder.maxAttempts(conf.getInt(
+        REQUEST_RETRY_MAX_ATTEMPTS_KEY,
+        JitterDelayRetryPolicy.DEFAULT_MAX_ATTEMPTS));
+
+    builder.initDelayMs(conf.getLong(
+        REQUEST_RETRY_INITIAL_DELAY_KEY,
+        JitterDelayRetryPolicy.DEFAULT_INITIAL_DELAY_MS));
+
+    builder.delayMultiplier(conf.getDouble(
+        REQUEST_RETRY_DELAY_MULTIPLIER_KEY,
+        JitterDelayRetryPolicy.DEFAULT_DELAY_MULTIPLIER));
+
+    builder.delayJitterFactor(conf.getDouble(
+        REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY,
+        JitterDelayRetryPolicy.DEFAULT_DELAY_JITTER_FACTOR
+    ));
+
+    return builder.build();
   }
 }

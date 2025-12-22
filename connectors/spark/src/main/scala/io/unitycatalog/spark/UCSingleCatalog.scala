@@ -2,8 +2,10 @@ package io.unitycatalog.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
-import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
-import io.unitycatalog.spark.auth.CredPropsUtil
+import io.unitycatalog.client.auth.TokenProvider
+import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy
+import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
 import io.unitycatalog.spark.utils.OptionsUtil
 
 import java.net.URI
@@ -32,10 +34,11 @@ class UCSingleCatalog
   with Logging {
 
   private[this] var uri: URI = null
-  private[this] var token: String = null
+  private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
+  private[this] var tablesApi: TablesApi = null
 
   @volatile private var delegate: TableCatalog = null
 
@@ -44,20 +47,24 @@ class UCSingleCatalog
     Preconditions.checkArgument(urlStr != null,
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
-    token = options.get(OptionsUtil.TOKEN)
+    tokenProvider = TokenProvider.create(AuthConfigUtils.buildAuthConfigs(options));
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
-    apiClient = ApiClientFactory.createApiClient(new ApiClientConf(), uri, token)
+    apiClient = ApiClientFactory.createApiClient(
+      JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
-    val proxy = new UCProxy(uri, token, renewCredEnabled, apiClient, temporaryCredentialsApi)
+    tablesApi = new TablesApi(apiClient)
+    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, apiClient, tablesApi,
+      temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
           .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
         delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
+        delegate.initialize(name, options)
         UCSingleCatalog.DELTA_CATALOG_LOADED.set(true)
       } catch {
         case e: ClassNotFoundException =>
@@ -88,23 +95,74 @@ class UCSingleCatalog
       columns: Array[Column],
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     if (hasExternalClause && !hasLocationClause) {
       throw new ApiException("Cannot create EXTERNAL TABLE without location.")
     }
     def isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
+
     // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
     // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
     if (!hasExternalClause && !hasLocationClause && !isPathTable) {
+      // Check that caller shouldn't set some properties
+      List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
+        TableCatalog.PROP_IS_MANAGED_LOCATION)
+        .filter(properties.containsKey(_))
+        .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
+      // Setting the catalogManaged table feature is required for creating a managed table.
+      if (!properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) &&
+        !properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
+        throw new ApiException(
+          s"Managed table creation requires table property " +
+            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'=" +
+            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'" +
+            s" to be set.")
+      }
+      // Caller should not set these two table properties to values other than "supported". This is
+      // the only documented value.
+      List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
+        .foreach(k => {
+          Option(properties.get(k))
+            .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
+            .foreach(v => throw new ApiException(
+              s"Invalid property value '$v' for '$k'."))
+        })
+
+      // Get staging table location and table id from UC
+      val createStagingTable = new CreateStagingTable()
+        .catalogName(name())
+        .schemaName(ident.namespace().head)
+        .name(ident.name())
+      val stagingTableInfo = tablesApi.createStagingTable(createStagingTable)
+      val stagingLocation = stagingTableInfo.getStagingLocation
+      val stagingTableId = stagingTableInfo.getId
+
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
-      // TODO: here we use a fake location for managed table, we should generate table location
-      //       properly when Unity Catalog supports creating managed table.
-      newProps.put(TableCatalog.PROP_LOCATION, properties.get("__FAKE_PATH__"))
+      newProps.put(TableCatalog.PROP_LOCATION, stagingTableInfo.getStagingLocation)
+      // Sets both the new and old table ID property while it's being renamed.
+      newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableInfo.getId)
+      newProps.put(UCTableProperties.UC_TABLE_ID_KEY_OLD, stagingTableInfo.getId)
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+
+      val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
+        new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
+      val credentialProps = CredPropsUtil.createTableCredProps(
+        renewCredEnabled,
+        CatalogUtils.stringToURI(stagingLocation).getScheme,
+        uri.toString,
+        tokenProvider,
+        stagingTableId,
+        TableOperation.READ_WRITE,
+        temporaryCredentials,
+      )
+      UCSingleCatalog.setCredentialProps(newProps, credentialProps)
+
       delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
       val location = properties.get(TableCatalog.PROP_LOCATION)
@@ -118,18 +176,12 @@ class UCSingleCatalog
         renewCredEnabled,
         CatalogUtils.stringToURI(location).getScheme,
         uri.toString,
-        token,
+        tokenProvider,
         location,
         PathOperation.PATH_CREATE_TABLE,
         cred)
 
-      newProps.putAll(credentialProps)
-      // TODO: Delta requires the options to be set twice in the properties, with and without the
-      //       `option.` prefix. We should revisit this in Delta.
-      val prefix = TableCatalog.OPTION_PREFIX
-      newProps.putAll(credentialProps.map {
-        case (k, v) => (prefix + k, v)
-      }.asJava)
+      UCSingleCatalog.setCredentialProps(newProps, credentialProps)
       delegate.createTable(ident, columns, partitions, newProps)
     } else {
       // TODO: for path-based tables, Spark should generate a location property using the qualified
@@ -180,22 +232,62 @@ class UCSingleCatalog
 object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
+
+  def setCredentialProps(props: util.HashMap[String, String],
+                         credentialProps: util.Map[String, String]): Unit = {
+    props.putAll(credentialProps)
+    // TODO: Delta requires the options to be set twice in the properties, with and without the
+    //       `option.` prefix. We should revisit this in Delta.
+    val prefix = TableCatalog.OPTION_PREFIX
+    props.putAll(credentialProps.map {
+      case (k, v) => (prefix + k, v)
+    }.asJava)
+  }
+
+  def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
+    if (namespace.length > 1) {
+      throw new ApiException("Nested namespaces are not supported: " + namespace.mkString("."))
+    }
+  }
+
+  /**
+   * Constructs a fully qualified table name for Unity Catalog API calls.
+   *
+   * This method creates a three-part name in the format `catalog.schema.table` by combining
+   * the catalog name with the schema name (from the identifier's namespace) and table name.
+   * It is NOT backtick quoted like what is usually used in SQL statements even if the names have
+   * special characters like hyphens.
+   *
+   * Example:
+   * catalogName=catalog, ident=(schema, table): it returns "catalog.schema.table"
+   * catalogName=cata-log, ident=(sche-ma, ta-ble): it returns "cata-log.sche-ma.ta-ble" (no quote)
+   * catalogName=catalog, ident=((schema1, schema2), table): it throws
+   *   ApiException(Nested namespace not supported)
+   *
+   * @param catalogName the name of the catalog
+   * @param ident the table identifier containing the namespace (schema) and table name
+   * @return a fully qualified table name in the format "catalog.schema.table"
+   * @throws ApiException if the identifier contains nested namespaces (more than one level)
+   */
+  def fullTableNameForApi(catalogName: String, ident: Identifier): String = {
+    checkUnsupportedNestedNamespace(ident.namespace())
+    Seq(catalogName, ident.namespace()(0), ident.name()).mkString(".")
+  }
 }
 
 // An internal proxy to talk to the UC client.
 private class UCProxy(
     uri: URI,
-    token: String,
+    tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
     apiClient: ApiClient,
+    tablesApi: TablesApi,
     temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
-  private[this] var tablesApi: TablesApi = null
   private[this] var schemasApi: SchemasApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
-    tablesApi = new TablesApi(apiClient)
     schemasApi = new SchemasApi(apiClient)
   }
 
@@ -205,7 +297,7 @@ private class UCProxy(
   }
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
-    checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
 
     val catalogName = this.name
     val schemaName = namespace.head
@@ -218,7 +310,7 @@ private class UCProxy(
   override def loadTable(ident: Identifier): Table = {
     val t = try {
       tablesApi.getTable(
-        name + "." + ident.toString,
+        UCSingleCatalog.fullTableNameForApi(this.name, ident),
         /* readStreamingTableAsManaged = */ true,
         /* readMaterializedViewAsManaged = */ true)
     } catch {
@@ -261,7 +353,7 @@ private class UCProxy(
       renewCredEnabled,
       locationUri.getScheme,
       uri.toString,
-      token,
+      tokenProvider,
       tableId,
       tableOp,
       temporaryCredentials,
@@ -294,8 +386,8 @@ private class UCProxy(
   }
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
-    checkUnsupportedNestedNamespace(ident.namespace())
-    assert(properties.get("provider") != null)
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    assert(properties.get(TableCatalog.PROP_PROVIDER) != null)
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())
@@ -307,12 +399,16 @@ private class UCProxy(
     assert(storageLocation != null, "location should either be user specified or system generated.")
     val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
       .exists(_.equalsIgnoreCase("true"))
+    val format = properties.get("provider")
     if (isManagedLocation) {
       assert(!hasExternalClause, "location is only generated for managed tables.")
-      // TODO: Unity Catalog does not support managed tables now.
-      throw new ApiException("Unity Catalog does not support managed table.")
+      if (!format.equalsIgnoreCase(DataSourceFormat.DELTA.name)) {
+        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
+      }
+      createTable.setTableType(TableType.MANAGED)
+    } else {
+      createTable.setTableType(TableType.EXTERNAL)
     }
-    createTable.setTableType(TableType.EXTERNAL)
     createTable.setStorageLocation(storageLocation)
 
     val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
@@ -328,9 +424,14 @@ private class UCProxy(
       column.setPosition(i)
       column
     }
+    val comment = Option(properties.get(TableCatalog.PROP_COMMENT))
+    comment.foreach(createTable.setComment(_))
     createTable.setColumns(columns)
-    val format: String = properties.get("provider")
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
+    // Do not send the V2 table properties as they are made part of the `createTable` already.
+    val propertiesToServer =
+      properties.view.filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_)).toMap
+    createTable.setProperties(propertiesToServer)
     tablesApi.createTable(createTable)
     loadTable(ident)
   }
@@ -371,20 +472,12 @@ private class UCProxy(
   }
 
   override def dropTable(ident: Identifier): Boolean = {
-    checkUnsupportedNestedNamespace(ident.namespace())
-    val ret =
-      tablesApi.deleteTable(Seq(this.name, ident.namespace()(0), ident.name()).mkString("."))
+    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
     if (ret == 200) true else false
   }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
     throw new UnsupportedOperationException("Renaming a table is not supported yet")
-  }
-
-  private def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
-    if (namespace.length > 1) {
-      throw new ApiException("Nested namespaces are not supported:  " + namespace.mkString("."))
-    }
   }
 
   override def listNamespaces(): Array[Array[String]] = {
@@ -398,7 +491,7 @@ private class UCProxy(
   }
 
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
-    checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     val schema = try {
       schemasApi.getSchema(name + "." + namespace(0))
     } catch {
@@ -420,7 +513,7 @@ private class UCProxy(
   }
 
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
-    checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     val createSchema = new CreateSchema()
     createSchema.setCatalogName(this.name)
     createSchema.setName(namespace.head)
@@ -433,7 +526,7 @@ private class UCProxy(
   }
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
-    checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     schemasApi.deleteSchema(name + "." + namespace.head, cascade)
     true
   }
