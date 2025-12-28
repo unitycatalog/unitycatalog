@@ -1,21 +1,39 @@
 package io.unitycatalog.server.base.externallocation;
 
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
+import static io.unitycatalog.server.utils.TestUtils.VOLUME_NAME;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateExternalLocation;
+import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.credential.CredentialOperations;
+import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.base.volume.VolumeOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import java.io.IOException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import lombok.SneakyThrows;
@@ -31,9 +49,18 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   private static final String CREDENTIAL_NAME = "uc_testcredential";
   private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
   protected ExternalLocationOperations externalLocationOperations;
+  protected SchemaOperations schemaOperations;
+  protected VolumeOperations volumeOperations;
+  protected TableOperations tableOperations;
 
   protected abstract ExternalLocationOperations createExternalLocationOperations(
       ServerConfig config);
+
+  protected abstract SchemaOperations createSchemaOperations(ServerConfig config);
+
+  protected abstract VolumeOperations createVolumeOperations(ServerConfig config);
+
+  protected abstract TableOperations createTableOperations(ServerConfig config);
 
   protected CredentialOperations credentialOperations;
 
@@ -49,6 +76,13 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     super.setUp();
     externalLocationOperations = createExternalLocationOperations(serverConfig);
     credentialOperations = createCredentialOperations(serverConfig);
+    schemaOperations = createSchemaOperations(serverConfig);
+    volumeOperations = createVolumeOperations(serverConfig);
+    tableOperations = createTableOperations(serverConfig);
+
+    // Create catalog and schema
+    catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME));
+    schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
 
     CreateCredentialRequest createCredentialRequest =
         new CreateCredentialRequest()
@@ -62,8 +96,9 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   @AfterEach
   @Override
   public void tearDown() {
+    catalogOperations.deleteCatalog(CATALOG_NAME, Optional.of(true));
     for (String externalLocationName : externalLocationsToDelete) {
-      externalLocationOperations.deleteExternalLocation(externalLocationName);
+      externalLocationOperations.deleteExternalLocation(externalLocationName, Optional.of(true));
     }
     externalLocationsToDelete.clear();
     credentialOperations.deleteCredential(credentialInfo.getName());
@@ -80,6 +115,15 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     assertThat(externalLocationInfo.getUrl()).isEqualTo(url);
     assertThat(externalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
     return externalLocationInfo;
+  }
+
+  protected void delete(String name, Optional<Boolean> force) throws ApiException {
+    externalLocationOperations.deleteExternalLocation(name, force);
+    externalLocationsToDelete.remove(name);
+    assertApiException(
+        () -> externalLocationOperations.getExternalLocation(name),
+        ErrorCode.NOT_FOUND,
+        "External location not found");
   }
 
   @Test
@@ -179,5 +223,62 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     // Test 8: sibling paths (same level, different names) are allowed
     create(EXTERNAL_LOCATION_NAME + "_sibling1", URL + "/data1");
     create(EXTERNAL_LOCATION_NAME + "_sibling2", URL + "/data2");
+  }
+
+  @Test
+  public void testExternalLocationDeletion() throws ApiException, IOException {
+    // Test 1: External location with volume - delete without force should fail
+    create(EXTERNAL_LOCATION_NAME + "_volume", URL + "/volumes");
+
+    CreateVolumeRequestContent createVolumeRequest =
+        new CreateVolumeRequestContent()
+            .name(VOLUME_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation(URL + "/volumes/test");
+    volumeOperations.createVolume(createVolumeRequest);
+
+    assertApiException(
+        () -> delete(EXTERNAL_LOCATION_NAME + "_volume", Optional.empty()),
+        ErrorCode.INVALID_ARGUMENT,
+        "External location still used by");
+
+    // Delete with force should succeed
+    delete(EXTERNAL_LOCATION_NAME + "_volume", Optional.of(true));
+
+    // Test 2: External location with table - delete without force should fail
+    create(EXTERNAL_LOCATION_NAME + "_table", URL + "/tables");
+
+    CreateTable createTableRequest =
+        new CreateTable()
+            .name(TABLE_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA)
+            .storageLocation(URL + "/tables/test_table")
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("id")
+                        .typeText("integer")
+                        .typeName(ColumnTypeName.INT)
+                        .typeJson("{\"type\": \"integer\"}")
+                        .position(0)));
+    tableOperations.createTable(createTableRequest);
+
+    assertApiException(
+        () -> delete(EXTERNAL_LOCATION_NAME + "_table", Optional.of(false)),
+        ErrorCode.INVALID_ARGUMENT,
+        "External location still used by");
+
+    // Delete with force should succeed
+    delete(EXTERNAL_LOCATION_NAME + "_table", Optional.of(true));
+
+    // Test 3: External location without entities - delete without force should succeed
+    create(EXTERNAL_LOCATION_NAME + "_empty", URL + "/empty");
+
+    delete(EXTERNAL_LOCATION_NAME + "_empty", Optional.of(false));
   }
 }

@@ -12,6 +12,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.fs.Path;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
@@ -46,6 +47,58 @@ public class ExternalLocationUtils {
           SecurableType.VOLUME, new DaoClassInfo(VolumeInfoDAO.class, "storageLocation"),
           SecurableType.REGISTERED_MODEL, new DaoClassInfo(RegisteredModelInfoDAO.class, "url"),
           SecurableType.EXTERNAL_LOCATION, new DaoClassInfo(ExternalLocationDAO.class, "url"));
+
+  /**
+   * List of securable types that represent data objects (tables, volumes, registered models). Used
+   * to check which entities are using an external location's URL path.
+   */
+  public static final List<SecurableType> DATA_SECURABLE_TYPES =
+      List.of(SecurableType.TABLE, SecurableType.VOLUME, SecurableType.REGISTERED_MODEL);
+
+  /**
+   * Finds all entities across multiple securable types whose URLs overlap with the given URL.
+   *
+   * <p>This is a convenience method that queries multiple securable types at once and returns
+   * results as pairs of (SecurableType, IdentifiableDAO). Results are limited by 'limit' globally
+   * across all types, not per type.
+   *
+   * @param session The Hibernate session for database access
+   * @param url The URL to check for overlaps
+   * @param securableTypes List of securable types to search across (e.g., TABLE, VOLUME,
+   *     REGISTERED_MODEL)
+   * @param limit Maximum number of total results to return across all types
+   * @param includeParent If true, include entities whose URL is a parent of the given URL
+   * @param includeSelf If true, include entities with the exact same URL
+   * @param includeSubdir If true, include entities whose URL is a subdirectory of the given URL
+   * @return List of pairs containing the securable type and matching entity DAO, limited to the
+   *     specified number of results
+   * @throws IllegalArgumentException if any securableType is not supported for URL overlap checks
+   */
+  public static List<Pair<SecurableType, IdentifiableDAO>> getAllEntityDAOsOverlapUrl(
+      Session session,
+      String url,
+      List<SecurableType> securableTypes,
+      int limit,
+      boolean includeParent,
+      boolean includeSelf,
+      boolean includeSubdir) {
+    // The flatMap().limit(limit) will stop executing next query once it finds enough entities.
+    return securableTypes.stream()
+        .flatMap(
+            securableType ->
+                generateEntitiesDAOsOverlapUrlQuery(
+                        session,
+                        url,
+                        securableType,
+                        limit,
+                        includeParent,
+                        includeSelf,
+                        includeSubdir)
+                    .stream()
+                    .map(entity -> Pair.<SecurableType, IdentifiableDAO>of(securableType, entity)))
+        .limit(limit)
+        .toList();
+  }
 
   /**
    * Finds entities of the specified type whose URLs overlap with the given URL. Refer to
