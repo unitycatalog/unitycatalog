@@ -2628,6 +2628,7 @@ components:
         - function
         - volume
         - registered_model
+        - external_location
       description: The type of the resource.
     Privilege:
       type: string
