@@ -76,12 +76,12 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             .name(EXTERNAL_LOCATION_NAME)
             .comment(COMMENT)
             .url(URL)
-            .credentialName(CREDENTIAL_NAME + "_not_exist");
+            .credentialName("not_exist");
     // Fails as the credential does not exist
     assertApiException(
         () -> externalLocationOperations.createExternalLocation(createExternalLocation),
         ErrorCode.NOT_FOUND,
-        "Credential not found: " + CREDENTIAL_NAME + "_not_exist");
+        "Credential not found: not_exist");
 
     assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
         .noneMatch(

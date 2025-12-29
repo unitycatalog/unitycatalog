@@ -43,46 +43,178 @@ public class PathBasedRpcUtilsTest {
   @Test
   public void testGetParentAndCurrentPathsList() {
     // Test S3 nested path
-    List<String> s3Result = PathBasedRpcUtils.getParentPathsList("s3://bucket/path/to/file");
-    String[] expectedResultForPathToFile =
-        new String[] {"s3://bucket/path/to", "s3://bucket/path", "s3://bucket"};
-    assertThat(s3Result).containsExactly(expectedResultForPathToFile);
-
-    // Test S3 path with trailing slash (should normalize)
-    List<String> s3TrailingResult =
-        PathBasedRpcUtils.getParentPathsList("s3://bucket/path/to/file/");
-    assertThat(s3TrailingResult).containsExactly(expectedResultForPathToFile);
-
-    // Test S3 bucket only (no path)
-    List<String> s3BucketResult = PathBasedRpcUtils.getParentPathsList("s3://bucket");
-    assertThat(s3BucketResult).isEmpty();
-
-    List<String> s3BucketRootResult = PathBasedRpcUtils.getParentPathsList("s3://bucket/");
-    assertThat(s3BucketRootResult).isEmpty();
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("s3://bucket/path/to/file"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket/path/to/file/"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket/path/to/file///"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket/path////to/file/"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket///path/to/file//"))) {
+      assertThat(result).containsExactly("s3://bucket/path/to", "s3://bucket/path", "s3://bucket");
+    }
 
     // Test S3 single path level
-    List<String> s3SingleLevelResult = PathBasedRpcUtils.getParentPathsList("s3://bucket/path");
-    assertThat(s3SingleLevelResult).containsExactly("s3://bucket");
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("s3://bucket/path"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket/path/"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket/path//"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket/path///"))) {
+      assertThat(result).containsExactly("s3://bucket");
+    }
 
-    // Test Azure Blob Storage path
-    List<String> azureResult =
-        PathBasedRpcUtils.getParentPathsList(
-            "abfs://container@storage.dfs.core.windows.net/path/to/file");
-    assertThat(azureResult)
-        .containsExactly(
-            "abfs://container@storage.dfs.core.windows.net/path/to",
-            "abfs://container@storage.dfs.core.windows.net/path",
-            "abfs://container@storage.dfs.core.windows.net");
+    // Test S3 bucket only (no path)
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("s3://bucket"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket/"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket//"),
+            PathBasedRpcUtils.getParentPathsList("s3://bucket///"))) {
+      assertThat(result).isEmpty();
+    }
 
-    // Test Google Cloud Storage path
-    List<String> gcsResult = PathBasedRpcUtils.getParentPathsList("gs://bucket/path/to/file");
-    assertThat(gcsResult).containsExactly("gs://bucket/path/to", "gs://bucket/path", "gs://bucket");
+    // Test Azure Blob Storage nested path
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net/path/to/file"),
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net/path/to/file/"),
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net/path/to/file///"),
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net/path////to/file/"),
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net///path/to/file//"))) {
+      assertThat(result)
+          .containsExactly(
+              "abfs://container@storage.dfs.core.windows.net/path/to",
+              "abfs://container@storage.dfs.core.windows.net/path",
+              "abfs://container@storage.dfs.core.windows.net");
+    }
 
-    // Test local file path
-    assertThat(PathBasedRpcUtils.getParentPathsList("file:/tmp/path/to/file"))
-        .containsExactly("file:///tmp/path/to", "file:///tmp/path", "file:///tmp", "file:///");
-    assertThat(PathBasedRpcUtils.getParentPathsList("file:///tmp/")).containsExactly("file:///");
-    assertThat(PathBasedRpcUtils.getParentPathsList("file:///tmp")).containsExactly("file:///");
+    // Test Azure Blob Storage single path level
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net/path"),
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net/path/"),
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net/path//"),
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net/path///"))) {
+      assertThat(result).containsExactly("abfs://container@storage.dfs.core.windows.net");
+    }
+
+    // Test Azure Blob Storage container only (no path)
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("abfs://container@storage.dfs.core.windows.net"),
+            PathBasedRpcUtils.getParentPathsList("abfs://container@storage.dfs.core.windows.net/"),
+            PathBasedRpcUtils.getParentPathsList("abfs://container@storage.dfs.core.windows.net//"),
+            PathBasedRpcUtils.getParentPathsList(
+                "abfs://container@storage.dfs.core.windows.net///"))) {
+      assertThat(result).isEmpty();
+    }
+
+    // Test Google Cloud Storage nested path
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("gs://bucket/path/to/file"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket/path/to/file/"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket/path/to/file///"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket/path////to/file/"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket///path/to/file//"))) {
+      assertThat(result).containsExactly("gs://bucket/path/to", "gs://bucket/path", "gs://bucket");
+    }
+
+    // Test Google Cloud Storage single path level
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("gs://bucket/path"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket/path/"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket/path//"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket/path///"))) {
+      assertThat(result).containsExactly("gs://bucket");
+    }
+
+    // Test Google Cloud Storage bucket only (no path)
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("gs://bucket"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket/"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket//"),
+            PathBasedRpcUtils.getParentPathsList("gs://bucket///"))) {
+      assertThat(result).isEmpty();
+    }
+
+    // Test file:// nested path
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("file:///path/to/file"),
+            PathBasedRpcUtils.getParentPathsList("file:///path/to/file/"),
+            PathBasedRpcUtils.getParentPathsList("file:///path/to/file///"),
+            PathBasedRpcUtils.getParentPathsList("file:///path////to/file/"),
+            PathBasedRpcUtils.getParentPathsList("file://///path/to/file//"))) {
+      assertThat(result).containsExactly("file:///path/to", "file:///path", "file:///");
+    }
+
+    // Test file:// single path level
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("file:///path"),
+            PathBasedRpcUtils.getParentPathsList("file:///path/"),
+            PathBasedRpcUtils.getParentPathsList("file:///path//"),
+            PathBasedRpcUtils.getParentPathsList("file:////path///"),
+            PathBasedRpcUtils.getParentPathsList("file:///path///"),
+            PathBasedRpcUtils.getParentPathsList("file://path///"),
+            PathBasedRpcUtils.getParentPathsList("file:/path///"),
+            PathBasedRpcUtils.getParentPathsList("file:///path///"))) {
+      assertThat(result).containsExactly("file:///");
+    }
+
+    // Test file:// root only
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("file:/"),
+            PathBasedRpcUtils.getParentPathsList("file:///"),
+            PathBasedRpcUtils.getParentPathsList("file:////"),
+            PathBasedRpcUtils.getParentPathsList("file://///"))) {
+      assertThat(result).isEmpty();
+    }
+
+    // Test local FS nested path
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("/path/to/file"),
+            PathBasedRpcUtils.getParentPathsList("/path/to/file/"),
+            PathBasedRpcUtils.getParentPathsList("/path/to/file///"),
+            PathBasedRpcUtils.getParentPathsList("/path////to/file/"),
+            PathBasedRpcUtils.getParentPathsList("///path/to/file//"))) {
+      assertThat(result).containsExactly("file:///path/to", "file:///path", "file:///");
+    }
+
+    // Test local FS single path level
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("/path"),
+            PathBasedRpcUtils.getParentPathsList("/path/"),
+            PathBasedRpcUtils.getParentPathsList("/path//"),
+            PathBasedRpcUtils.getParentPathsList("//path//"),
+            PathBasedRpcUtils.getParentPathsList("///path///"),
+            PathBasedRpcUtils.getParentPathsList("/path///"))) {
+      assertThat(result).containsExactly("file:///");
+    }
+
+    // Test local FS root only
+    for (List<String> result :
+        List.of(
+            PathBasedRpcUtils.getParentPathsList("/"),
+            PathBasedRpcUtils.getParentPathsList("///"),
+            PathBasedRpcUtils.getParentPathsList("/////"))) {
+      assertThat(result).isEmpty();
+    }
 
     // Test deeply nested path (10 levels)
     List<String> deepResult =
@@ -137,9 +269,9 @@ public class PathBasedRpcUtilsTest {
                     null,
                     "s3://bucket/path",
                     SecurableType.METASTORE,
-                    1,
-                    /* includeSelf= */ true,
+                    /* limit= */ 1,
                     /* includeParent= */ true,
+                    /* includeSelf= */ true,
                     /* includeSubdir= */ true))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Unsupported securable type for URL overlap check");
@@ -150,9 +282,9 @@ public class PathBasedRpcUtilsTest {
                     null,
                     "s3://bucket/path",
                     SecurableType.CATALOG,
-                    1,
-                    /* includeSelf= */ true,
+                    /* limit= */ 1,
                     /* includeParent= */ true,
+                    /* includeSelf= */ true,
                     /* includeSubdir= */ true))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Unsupported securable type for URL overlap check");
@@ -163,14 +295,25 @@ public class PathBasedRpcUtilsTest {
                     null,
                     "s3://bucket/path",
                     SecurableType.SCHEMA,
-                    1,
-                    /* includeSelf= */ true,
+                    /* limit= */ 1,
                     /* includeParent= */ true,
+                    /* includeSelf= */ true,
                     /* includeSubdir= */ true))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Unsupported securable type for URL overlap check");
   }
 
+  /**
+   * Validates a query generated by {@link PathBasedRpcUtils#generateEntitiesDAOsOverlapUrlQuery}
+   * that it has exactly the same query string and parameters.
+   *
+   * @param query The query to be validated.
+   * @param expectedQueryString The query must have this query string.
+   * @param expectedMatchPaths They query must have this as :matchPaths parameter. Or it must have
+   *     no :matchPaths parameter if expectedMatchPaths is null.
+   * @param expectedLikePattern They query must have this as :likePattern parameter. Or it must have
+   *     no :likePattern parameter if expectedLikePattern is null.
+   */
   private void validateQuery(
       Query<ExternalLocationDAO> query,
       String expectedQueryString,
@@ -202,7 +345,7 @@ public class PathBasedRpcUtilsTest {
             session,
             "s3://bucket/path",
             SecurableType.EXTERNAL_LOCATION,
-            10,
+            /* limit= */ 10,
             /* includeParent= */ false,
             /* includeSelf= */ true,
             /* includeSubdir= */ false);
@@ -219,7 +362,7 @@ public class PathBasedRpcUtilsTest {
             session,
             "s3://bucket/path/to/file",
             SecurableType.EXTERNAL_LOCATION,
-            10,
+            /* limit= */ 10,
             /* includeParent= */ true,
             /* includeSelf= */ false,
             /* includeSubdir= */ false);
@@ -236,7 +379,7 @@ public class PathBasedRpcUtilsTest {
             session,
             "s3://bucket/path",
             SecurableType.EXTERNAL_LOCATION,
-            10,
+            /* limit= */ 10,
             /* includeParent= */ false,
             /* includeSelf= */ false,
             /* includeSubdir= */ true);
@@ -254,7 +397,7 @@ public class PathBasedRpcUtilsTest {
             session,
             "s3://bucket/path",
             SecurableType.EXTERNAL_LOCATION,
-            10,
+            /* limit= */ 10,
             /* includeParent= */ true,
             /* includeSelf= */ true,
             /* includeSubdir= */ false);
@@ -271,7 +414,7 @@ public class PathBasedRpcUtilsTest {
             session,
             "s3://bucket/path",
             SecurableType.EXTERNAL_LOCATION,
-            10,
+            /* limit= */ 10,
             /* includeParent= */ false,
             /* includeSelf= */ true,
             /* includeSubdir= */ true);
@@ -289,7 +432,7 @@ public class PathBasedRpcUtilsTest {
             session,
             "s3://bucket/path/to/file",
             SecurableType.EXTERNAL_LOCATION,
-            10,
+            /* limit= */ 10,
             /* includeParent= */ true,
             /* includeSelf= */ false,
             /* includeSubdir= */ true);
@@ -307,7 +450,7 @@ public class PathBasedRpcUtilsTest {
             session,
             "s3://bucket/path/to/file",
             SecurableType.EXTERNAL_LOCATION,
-            10,
+            /* limit= */ 10,
             /* includeParent= */ true,
             /* includeSelf= */ true,
             /* includeSubdir= */ true);
@@ -326,7 +469,7 @@ public class PathBasedRpcUtilsTest {
             session,
             "s3://bucket/path%with_special\\chars",
             SecurableType.EXTERNAL_LOCATION,
-            10,
+            /* limit= */ 10,
             /* includeParent= */ false,
             /* includeSelf= */ false,
             /* includeSubdir= */ true);
@@ -344,7 +487,7 @@ public class PathBasedRpcUtilsTest {
             session,
             "s3://bucket/path/",
             SecurableType.EXTERNAL_LOCATION,
-            10,
+            /* limit= */ 10,
             /* includeParent= */ false,
             /* includeSelf= */ true,
             /* includeSubdir= */ true);

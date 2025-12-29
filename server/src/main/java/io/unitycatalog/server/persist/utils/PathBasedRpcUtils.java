@@ -187,7 +187,7 @@ public class PathBasedRpcUtils {
     List<String> parentPaths = new ArrayList<>();
 
     // Use Hadoop's Path class which handles URLs natively
-    Path path = new Path(url).getParent();
+    Path path = new Path(FileOperations.toStandardizedURIString(url)).getParent();
     // Iterate from parent URL up to the root using getParent()
     while (path != null) {
       URI uri = path.toUri();
