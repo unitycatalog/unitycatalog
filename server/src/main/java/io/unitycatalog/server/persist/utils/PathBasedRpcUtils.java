@@ -12,7 +12,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.apache.hadoop.fs.Path;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
@@ -49,18 +48,8 @@ public class PathBasedRpcUtils {
           SecurableType.EXTERNAL_LOCATION, new DaoClassInfo(ExternalLocationDAO.class, "url"));
 
   /**
-   * Finds entities of the specified type whose URLs overlap with the given URL.
-   *
-   * <p>This method searches the database for entities that have URLs that overlap with the provided
-   * URL. The type of overlap to check is controlled by the boolean flags:
-   *
-   * <ul>
-   *   <li>{@code includeParent}: Include entities whose URL is a parent directory of the given URL
-   *   <li>{@code includeSelf}: Include entities with the exact same URL
-   *   <li>{@code includeSubdir}: Include entities whose URL is a subdirectory of the given URL
-   * </ul>
-   *
-   * <p>Results are ordered by URL length (descending), so closer matches appear first.
+   * Finds entities of the specified type whose URLs overlap with the given URL. Refer to
+   * generateEntitiesDAOsOverlapUrlQuery for the details.
    *
    * @param <T> The DAO type to return, must extend IdentifiableDAO
    * @param session The Hibernate session for database access
@@ -83,50 +72,55 @@ public class PathBasedRpcUtils {
       boolean includeParent,
       boolean includeSelf,
       boolean includeSubdir) {
-    DaoClassInfo daoClassInfo = SECURABLE_TYPE_TO_DAO_MAP.get(securableType);
-    if (daoClassInfo == null) {
-      throw new IllegalArgumentException(
-          "Unsupported securable type for URL overlap check: " + securableType);
-    }
-    return getEntitiesDAOsOverlapUrlHelper(
-            session,
-            url,
-            daoClassInfo.clazz,
-            daoClassInfo.urlFieldName,
-            limit,
-            includeParent,
-            includeSelf,
-            includeSubdir)
-        .map(entity -> (T) entity)
-        .toList();
-  }
-
-  private static <T extends IdentifiableDAO> Stream<T> getEntitiesDAOsOverlapUrlHelper(
-      Session session,
-      String url,
-      Class<T> daoClass,
-      String urlFieldName,
-      int limit,
-      boolean includeParent,
-      boolean includeSelf,
-      boolean includeSubdir) {
     Query<T> query =
         generateEntitiesDAOsOverlapUrlQuery(
-            session, url, daoClass, urlFieldName, limit, includeParent, includeSelf, includeSubdir);
-    return query.stream();
+            session, url, securableType, limit, includeParent, includeSelf, includeSubdir);
+    return query.stream().toList();
   }
 
+  /**
+   * Generate a query to find entities of the specified securableType whose URLs overlap with the
+   * given URL.
+   *
+   * <p>The query would search the database for entities that have URLs that overlap with the
+   * provided URL. The type of overlap to check is controlled by the boolean flags:
+   *
+   * <ul>
+   *   <li>{@code includeParent}: Include entities whose URL is a parent directory of the given URL
+   *   <li>{@code includeSelf}: Include entities with the exact same URL
+   *   <li>{@code includeSubdir}: Include entities whose URL is a subdirectory of the given URL
+   * </ul>
+   *
+   * <p>Results are ordered by URL length (descending), so closer matches appear first.
+   *
+   * @param <T> The DAO type to return, must extend IdentifiableDAO
+   * @param session The Hibernate session for database access
+   * @param url The URL to check for overlaps (should be standardized via {@link
+   *     FileOperations#toStandardizedURIString})
+   * @param securableType The type of securable entity to search (TABLE, VOLUME, REGISTERED_MODEL,
+   *     EXTERNAL_LOCATION)
+   * @param limit Maximum number of results to return
+   * @param includeParent If true, include entities whose URL is a parent of the given URL
+   * @param includeSelf If true, include entities with the exact same URL
+   * @param includeSubdir If true, include entities whose URL is a subdirectory of the given URL
+   * @return Query to find matching entity DAOs, ordered by URL length descending
+   * @throws IllegalArgumentException if the securableType is not supported for URL overlap checks
+   */
   @VisibleForTesting
   static <T extends IdentifiableDAO> Query<T> generateEntitiesDAOsOverlapUrlQuery(
       Session session,
       String url,
-      Class<T> daoClass,
-      String urlFieldName,
+      SecurableType securableType,
       int limit,
       boolean includeParent,
       boolean includeSelf,
       boolean includeSubdir) {
     assert (includeParent || includeSelf || includeSubdir);
+    DaoClassInfo daoClassInfo = SECURABLE_TYPE_TO_DAO_MAP.get(securableType);
+    if (daoClassInfo == null) {
+      throw new IllegalArgumentException(
+          "Unsupported securable type for URL overlap check: " + securableType);
+    }
 
     List<String> queryConditions = new ArrayList<>();
     // parent paths + self
@@ -135,7 +129,7 @@ public class PathBasedRpcUtils {
       matchPaths.add(url);
     }
     if (!matchPaths.isEmpty()) {
-      queryConditions.add(String.format("%s IN (:matchPaths)", urlFieldName));
+      queryConditions.add(String.format("%s IN (:matchPaths)", daoClassInfo.urlFieldName));
     }
 
     String likePattern;
@@ -144,7 +138,8 @@ public class PathBasedRpcUtils {
       String normalizedUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
       String escapedUrl = escapeLikePattern(normalizedUrl);
       likePattern = escapedUrl + "/%";
-      queryConditions.add(String.format("%s LIKE :likePattern ESCAPE '\\'", urlFieldName));
+      queryConditions.add(
+          String.format("%s LIKE :likePattern ESCAPE '\\'", daoClassInfo.urlFieldName));
     } else {
       likePattern = "";
     }
@@ -152,9 +147,11 @@ public class PathBasedRpcUtils {
     String queryString =
         String.format(
             "FROM %s WHERE %s ORDER BY LENGTH(%s) DESC",
-            daoClass.getSimpleName(), String.join(" OR ", queryConditions), urlFieldName);
+            daoClassInfo.clazz.getSimpleName(),
+            String.join(" OR ", queryConditions),
+            daoClassInfo.urlFieldName);
 
-    Query<T> query = session.createQuery(queryString, daoClass);
+    Query<T> query = session.createQuery(queryString, (Class<T>) daoClassInfo.clazz);
     if (!matchPaths.isEmpty()) {
       query.setParameter("matchPaths", matchPaths);
     }

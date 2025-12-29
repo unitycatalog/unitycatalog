@@ -201,8 +201,7 @@ public class PathBasedRpcUtilsTest {
         PathBasedRpcUtils.generateEntitiesDAOsOverlapUrlQuery(
             session,
             "s3://bucket/path",
-            ExternalLocationDAO.class,
-            "url",
+            SecurableType.EXTERNAL_LOCATION,
             10,
             /* includeParent= */ false,
             /* includeSelf= */ true,
@@ -219,8 +218,7 @@ public class PathBasedRpcUtilsTest {
         PathBasedRpcUtils.generateEntitiesDAOsOverlapUrlQuery(
             session,
             "s3://bucket/path/to/file",
-            ExternalLocationDAO.class,
-            "url",
+            SecurableType.EXTERNAL_LOCATION,
             10,
             /* includeParent= */ true,
             /* includeSelf= */ false,
@@ -237,8 +235,7 @@ public class PathBasedRpcUtilsTest {
         PathBasedRpcUtils.generateEntitiesDAOsOverlapUrlQuery(
             session,
             "s3://bucket/path",
-            ExternalLocationDAO.class,
-            "url",
+            SecurableType.EXTERNAL_LOCATION,
             10,
             /* includeParent= */ false,
             /* includeSelf= */ false,
@@ -256,8 +253,7 @@ public class PathBasedRpcUtilsTest {
         PathBasedRpcUtils.generateEntitiesDAOsOverlapUrlQuery(
             session,
             "s3://bucket/path",
-            ExternalLocationDAO.class,
-            "url",
+            SecurableType.EXTERNAL_LOCATION,
             10,
             /* includeParent= */ true,
             /* includeSelf= */ true,
@@ -274,8 +270,7 @@ public class PathBasedRpcUtilsTest {
         PathBasedRpcUtils.generateEntitiesDAOsOverlapUrlQuery(
             session,
             "s3://bucket/path",
-            ExternalLocationDAO.class,
-            "url",
+            SecurableType.EXTERNAL_LOCATION,
             10,
             /* includeParent= */ false,
             /* includeSelf= */ true,
@@ -293,8 +288,7 @@ public class PathBasedRpcUtilsTest {
         PathBasedRpcUtils.generateEntitiesDAOsOverlapUrlQuery(
             session,
             "s3://bucket/path/to/file",
-            ExternalLocationDAO.class,
-            "url",
+            SecurableType.EXTERNAL_LOCATION,
             10,
             /* includeParent= */ true,
             /* includeSelf= */ false,
@@ -312,8 +306,7 @@ public class PathBasedRpcUtilsTest {
         PathBasedRpcUtils.generateEntitiesDAOsOverlapUrlQuery(
             session,
             "s3://bucket/path/to/file",
-            ExternalLocationDAO.class,
-            "url",
+            SecurableType.EXTERNAL_LOCATION,
             10,
             /* includeParent= */ true,
             /* includeSelf= */ true,
@@ -332,8 +325,7 @@ public class PathBasedRpcUtilsTest {
         PathBasedRpcUtils.generateEntitiesDAOsOverlapUrlQuery(
             session,
             "s3://bucket/path%with_special\\chars",
-            ExternalLocationDAO.class,
-            "url",
+            SecurableType.EXTERNAL_LOCATION,
             10,
             /* includeParent= */ false,
             /* includeSelf= */ false,
@@ -351,8 +343,7 @@ public class PathBasedRpcUtilsTest {
         PathBasedRpcUtils.generateEntitiesDAOsOverlapUrlQuery(
             session,
             "s3://bucket/path/",
-            ExternalLocationDAO.class,
-            "url",
+            SecurableType.EXTERNAL_LOCATION,
             10,
             /* includeParent= */ false,
             /* includeSelf= */ true,
