@@ -122,34 +122,41 @@ public class PathBasedRpcUtils {
           "Unsupported securable type for URL overlap check: " + securableType);
     }
 
-    List<String> queryConditions = new ArrayList<>();
+    boolean hasInCondition = false;
     // parent paths + self
     List<String> matchPaths = includeParent ? getParentPathsList(url) : new ArrayList<>();
     if (includeSelf) {
       matchPaths.add(url);
     }
     if (!matchPaths.isEmpty()) {
-      queryConditions.add(String.format("%s IN (:matchPaths)", daoClassInfo.urlFieldName));
+      hasInCondition = true;
     }
 
-    String likePattern;
+    String likePattern = "";
+    boolean hasLikeCondition = false;
     if (includeSubdir) {
       // Construct a LIKE pattern to match all child URLs. Escape special LIKE characters.
       String normalizedUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
       String escapedUrl = escapeLikePattern(normalizedUrl);
       likePattern = escapedUrl + "/%";
-      queryConditions.add(
-          String.format("%s LIKE :likePattern ESCAPE '\\'", daoClassInfo.urlFieldName));
-    } else {
-      likePattern = "";
+      hasLikeCondition = true;
     }
 
+    String inConditon = String.format("%s IN (:matchPaths)", daoClassInfo.urlFieldName);
+    String likeConditon =
+        String.format("%s LIKE :likePattern ESCAPE '\\'", daoClassInfo.urlFieldName);
+    String condition = null;
+    if (hasInCondition && hasLikeCondition) {
+      condition = inConditon + " OR " + likeConditon;
+    } else if (hasInCondition) {
+      condition = inConditon;
+    } else if (hasLikeCondition) {
+      condition = likeConditon;
+    }
     String queryString =
         String.format(
             "FROM %s WHERE %s ORDER BY LENGTH(%s) DESC",
-            daoClassInfo.clazz.getSimpleName(),
-            String.join(" OR ", queryConditions),
-            daoClassInfo.urlFieldName);
+            daoClassInfo.clazz.getSimpleName(), condition, daoClassInfo.urlFieldName);
 
     Query<T> query = session.createQuery(queryString, (Class<T>) daoClassInfo.clazz);
     if (!matchPaths.isEmpty()) {
