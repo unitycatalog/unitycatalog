@@ -1,6 +1,8 @@
 package io.unitycatalog.server.auth.decorator;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.FUNCTION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
@@ -16,6 +18,8 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.CredentialRepository;
+import io.unitycatalog.server.persist.ExternalLocationRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.ModelRepository;
@@ -36,6 +40,8 @@ public class KeyMapper {
   private final FunctionRepository functionRepository;
   private final ModelRepository modelRepository;
   private final MetastoreRepository metastoreRepository;
+  private final ExternalLocationRepository externalLocationRepository;
+  private final CredentialRepository credentialRepository;
 
   public KeyMapper(Repositories repositories) {
     this.catalogRepository = repositories.getCatalogRepository();
@@ -45,6 +51,8 @@ public class KeyMapper {
     this.functionRepository = repositories.getFunctionRepository();
     this.modelRepository = repositories.getModelRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
+    this.externalLocationRepository = repositories.getExternalLocationRepository();
+    this.credentialRepository = repositories.getCredentialRepository();
   }
 
   public Map<SecurableType, Object> mapResourceKeys(Map<SecurableType, Object> resourceKeys) {
@@ -208,6 +216,33 @@ public class KeyMapper {
 
     if (resourceKeys.containsKey(METASTORE)) {
       resourceIds.put(METASTORE, metastoreRepository.getMetastoreId());
+    }
+
+    // External locations can be referenced by name (string) or UUID
+    if (resourceKeys.containsKey(EXTERNAL_LOCATION)) {
+      Object resourceObject = resourceKeys.get(EXTERNAL_LOCATION);
+      if (resourceObject instanceof UUID) {
+        resourceIds.put(EXTERNAL_LOCATION, resourceObject);
+      } else {
+        String name = (String) resourceObject;
+        resourceIds.put(
+            EXTERNAL_LOCATION,
+            UUID.fromString(externalLocationRepository.getExternalLocation(name).getId()));
+      }
+    }
+
+    // Credentials can be referenced by name (string) or UUID
+    if (resourceKeys.containsKey(CREDENTIAL)) {
+      Object resourceObject = resourceKeys.get(CREDENTIAL);
+      if (resourceObject == null) {
+        // Credential is explicitly null (e.g., not being updated), don't add to resourceIds
+      } else if (resourceObject instanceof UUID) {
+        resourceIds.put(CREDENTIAL, resourceObject);
+      } else {
+        String name = (String) resourceObject;
+        String credentialId = credentialRepository.getCredential(name).getId();
+        resourceIds.put(CREDENTIAL, UUID.fromString(credentialId));
+      }
     }
 
     return resourceIds;

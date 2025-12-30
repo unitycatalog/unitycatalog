@@ -2629,6 +2629,7 @@ components:
         - volume
         - registered_model
         - external_location
+        - credential
       description: The type of the resource.
     Privilege:
       type: string
@@ -2645,6 +2646,12 @@ components:
         - CREATE VOLUME
         - READ VOLUME
         - CREATE MODEL
+        - CREATE EXTERNAL LOCATION
+        - READ FILES
+        - WRITE FILES
+        - CREATE EXTERNAL TABLE
+        - CREATE EXTERNAL VOLUME
+        - CREATE MANAGED STORAGE
       description: The privilege to grant.
     UpdatePermissions:
       type: object

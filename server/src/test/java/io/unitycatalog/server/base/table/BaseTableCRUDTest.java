@@ -144,7 +144,7 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
     List<TableInfo> createdTables = new ArrayList<>();
     for (int i = numberOfTables; i > 0; i--) {
       String tableName = TestUtils.TABLE_NAME + "_" + i;
-      String storageLocation = TestUtils.STORAGE_LOCATION + "/" + tableName;
+      String storageLocation = testDirectoryRoot + "/" + tableName;
       createdTables.add(
           createTestingTable(
               tableName, TableType.EXTERNAL, Optional.of(storageLocation), tableOperations));

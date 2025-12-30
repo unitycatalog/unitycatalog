@@ -4,6 +4,7 @@ import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.GrantsApi;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -57,6 +58,7 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
   protected ServerConfig adminConfig;
   protected UsersApi usersApi;
   protected GrantsApi grantsApi;
+  protected ApiClient adminApiClient;
 
   // Track created users and granted permissions for cleanup
   private final List<String> createdUserIds = new ArrayList<>();
@@ -92,7 +94,8 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
     String adminToken = securityContext.createServiceToken();
     adminConfig = new ServerConfig(serverConfig.getServerUrl(), adminToken);
     usersApi = new UsersApi(createControlApiClient(adminConfig));
-    grantsApi = new GrantsApi(TestUtils.createApiClient(adminConfig));
+    adminApiClient = TestUtils.createApiClient(adminConfig);
+    grantsApi = new GrantsApi(adminApiClient);
     createCommonResources();
   }
 
