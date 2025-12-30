@@ -611,6 +611,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
       "io.delta" %% "delta-spark" % deltaVersion % Test,
+      "com.squareup.okhttp3" % "mockwebserver3" % "5.3.2" % Test
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
