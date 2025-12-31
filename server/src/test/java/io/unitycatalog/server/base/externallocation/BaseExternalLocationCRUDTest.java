@@ -32,6 +32,7 @@ import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.base.volume.VolumeOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -40,12 +41,11 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   private static final String EXTERNAL_LOCATION_NAME = "uc_testexternallocation";
   private static final String NEW_EXTERNAL_LOCATION_NAME = EXTERNAL_LOCATION_NAME + "_new";
-  private static final String URL = "s3://unitycatalog-test";
-  private static final String NEW_URL = "s3://unitycatalog-test-new";
   private static final String CREDENTIAL_NAME = "uc_testcredential";
   private static final String ANOTHER_CREDENTIAL_NAME = "uc_testcredential_another";
   private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
@@ -53,6 +53,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   protected SchemaOperations schemaOperations;
   protected VolumeOperations volumeOperations;
   protected TableOperations tableOperations;
+
+  @TempDir private Path testDir;
 
   protected abstract ExternalLocationOperations createExternalLocationOperations(
       ServerConfig config);
@@ -112,6 +114,14 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     super.tearDown();
   }
 
+  private String testUrl() {
+    return "file://" + testDir + "/unitycatalog-test";
+  }
+
+  private String anotherTestUrl() {
+    return testUrl() + "-new";
+  }
+
   protected ExternalLocationInfo create(String name, String url) throws ApiException {
     ExternalLocationInfo externalLocationInfo =
         externalLocationOperations.createExternalLocation(
@@ -140,7 +150,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     CreateExternalLocation createExternalLocation =
         new CreateExternalLocation()
             .name(EXTERNAL_LOCATION_NAME)
-            .url(URL)
+            .url(testUrl())
             .credentialName("not_exist");
     // Fails as the credential does not exist
     assertApiException(
@@ -152,7 +162,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         .noneMatch(
             externalLocationInfo -> externalLocationInfo.getName().equals(EXTERNAL_LOCATION_NAME));
 
-    ExternalLocationInfo externalLocationInfo = create(EXTERNAL_LOCATION_NAME, URL);
+    ExternalLocationInfo externalLocationInfo = create(EXTERNAL_LOCATION_NAME, testUrl());
 
     // List external locations
     assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
@@ -164,13 +174,13 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
 
     // Update external location
     UpdateExternalLocation updateExternalLocation =
-        new UpdateExternalLocation().newName(NEW_EXTERNAL_LOCATION_NAME).url(NEW_URL);
+        new UpdateExternalLocation().newName(NEW_EXTERNAL_LOCATION_NAME).url(anotherTestUrl());
     ExternalLocationInfo updatedExternalLocationInfo =
         externalLocationOperations.updateExternalLocation(
             EXTERNAL_LOCATION_NAME, updateExternalLocation);
     assertThat(updatedExternalLocationInfo.getId()).isEqualTo(externalLocationInfo.getId());
     assertThat(updatedExternalLocationInfo.getName()).isEqualTo(NEW_EXTERNAL_LOCATION_NAME);
-    assertThat(updatedExternalLocationInfo.getUrl()).isEqualTo(NEW_URL);
+    assertThat(updatedExternalLocationInfo.getUrl()).isEqualTo(anotherTestUrl());
     assertThat(updatedExternalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
     assertThat(updatedExternalLocationInfo.getCredentialName()).isEqualTo(CREDENTIAL_NAME);
     externalLocationsToDelete.remove(EXTERNAL_LOCATION_NAME);
@@ -183,7 +193,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             new UpdateExternalLocation().credentialName(ANOTHER_CREDENTIAL_NAME));
     assertThat(updatedExternalLocationInfo2.getId()).isEqualTo(externalLocationInfo.getId());
     assertThat(updatedExternalLocationInfo2.getName()).isEqualTo(NEW_EXTERNAL_LOCATION_NAME);
-    assertThat(updatedExternalLocationInfo2.getUrl()).isEqualTo(NEW_URL);
+    assertThat(updatedExternalLocationInfo2.getUrl()).isEqualTo(anotherTestUrl());
     assertThat(updatedExternalLocationInfo2.getCredentialId())
         .isEqualTo(anotherCredentialInfo.getId());
     assertThat(updatedExternalLocationInfo2.getCredentialName()).isEqualTo(ANOTHER_CREDENTIAL_NAME);
@@ -194,37 +204,39 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     final String errorMessageCreateWithOverlap =
         "Cannot accept an external location that duplicates"
             + " or overlaps with existing external location";
-    create(EXTERNAL_LOCATION_NAME, URL);
+    create(EXTERNAL_LOCATION_NAME, testUrl());
 
     // Test 1: Duplicate URL should be rejected
     assertApiException(
-        () -> create(EXTERNAL_LOCATION_NAME + "_duplicate", URL),
+        () -> create(EXTERNAL_LOCATION_NAME + "_duplicate", testUrl()),
         ErrorCode.INVALID_ARGUMENT,
         errorMessageCreateWithOverlap);
 
     // Test 2: Duplicate name should be rejected
     assertApiException(
-        () -> create(EXTERNAL_LOCATION_NAME, NEW_URL), ErrorCode.ALREADY_EXISTS, "already exist");
+        () -> create(EXTERNAL_LOCATION_NAME, anotherTestUrl()),
+        ErrorCode.ALREADY_EXISTS,
+        "already exist");
 
     // Test 3: Child URL should be rejected when parent exists
     assertApiException(
-        () -> create(EXTERNAL_LOCATION_NAME + "_child", URL + "/subpath"),
+        () -> create(EXTERNAL_LOCATION_NAME + "_child", testUrl() + "/subpath"),
         ErrorCode.INVALID_ARGUMENT,
         errorMessageCreateWithOverlap);
 
     // Update the external location to subdir first
     externalLocationOperations.updateExternalLocation(
-        EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(URL + "/subpath/deeper"));
+        EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(testUrl() + "/subpath/deeper"));
 
     // Test 4: Parent URL should be rejected when child exists
     assertApiException(
-        () -> create(EXTERNAL_LOCATION_NAME + "_parent", URL),
+        () -> create(EXTERNAL_LOCATION_NAME + "_parent", testUrl()),
         ErrorCode.INVALID_ARGUMENT,
         errorMessageCreateWithOverlap);
 
     // Test 5: Trailing slash should be normalized (treated as same URL)
     assertApiException(
-        () -> create(EXTERNAL_LOCATION_NAME + "_slash", URL + "/subpath/deeper/"),
+        () -> create(EXTERNAL_LOCATION_NAME + "_slash", testUrl() + "/subpath/deeper/"),
         ErrorCode.INVALID_ARGUMENT,
         errorMessageCreateWithOverlap);
 
@@ -243,15 +255,15 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         errorMessageCreateWithOverlap);
 
     // Test 8: sibling paths (same level, different names) are allowed
-    create(EXTERNAL_LOCATION_NAME + "_sibling1", URL + "/data1");
-    create(EXTERNAL_LOCATION_NAME + "_sibling2", URL + "/data2");
+    create(EXTERNAL_LOCATION_NAME + "_sibling1", testUrl() + "/data1");
+    create(EXTERNAL_LOCATION_NAME + "_sibling2", testUrl() + "/data2");
   }
 
   @Test
   public void testExternalLocationDeletion() throws ApiException, IOException {
     // Test 1: External location with volume - delete without force should fail
     String volumeExternalLocationName = EXTERNAL_LOCATION_NAME + "_volume";
-    String volumeUrlRoot = URL + "/volumes";
+    String volumeUrlRoot = testUrl() + "/volumes";
     create(volumeExternalLocationName, volumeUrlRoot);
 
     CreateVolumeRequestContent createVolumeRequest =
@@ -273,7 +285,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
 
     // Test 2: External location with table - delete without force should fail
     String tableExternalLocationName = EXTERNAL_LOCATION_NAME + "_table";
-    String tableUrlRoot = URL + "/tables";
+    String tableUrlRoot = testUrl() + "/tables";
     create(tableExternalLocationName, tableUrlRoot);
 
     CreateTable createTableRequest =
@@ -304,7 +316,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
 
     // Test 3: External location without entities - delete without force should succeed
     String emptyExternalLocationName = EXTERNAL_LOCATION_NAME + "_empty";
-    create(emptyExternalLocationName, URL + "/empty");
+    create(emptyExternalLocationName, testUrl() + "/empty");
 
     delete(emptyExternalLocationName, Optional.of(false));
   }

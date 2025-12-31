@@ -2,10 +2,12 @@ package io.unitycatalog.cli.volume;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeInfo;
@@ -74,8 +76,7 @@ public class CliVolumeOperations implements VolumeOperations {
   @Override
   public VolumeInfo updateVolume(
       String volumeFullName, UpdateVolumeRequestContent updateVolumeRequest) {
-    List<String> argsList =
-        new ArrayList<>(List.of("volume", "update", "--full_name", volumeFullName));
+    List<String> argsList = new ArrayList<>();
     if (updateVolumeRequest.getNewName() != null) {
       argsList.add("--new_name");
       argsList.add(updateVolumeRequest.getNewName());
@@ -84,9 +85,17 @@ public class CliVolumeOperations implements VolumeOperations {
       argsList.add("--comment");
       argsList.add(updateVolumeRequest.getComment());
     }
+    boolean isEmptyUpdate = argsList.isEmpty();
+    argsList.addAll(List.of("volume", "update", "--full_name", volumeFullName));
     String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode updatedVolumeInfo = executeCLICommand(args);
-    return objectMapper.convertValue(updatedVolumeInfo, VolumeInfo.class);
+    if (isEmptyUpdate) {
+      // CLI does not allow empty update.
+      assertThrows(CliException.class, () -> executeCLICommand(args));
+      return null;
+    } else {
+      JsonNode updatedVolumeInfo = executeCLICommand(args);
+      return objectMapper.convertValue(updatedVolumeInfo, VolumeInfo.class);
+    }
   }
 
   @Override
