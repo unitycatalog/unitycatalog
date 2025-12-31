@@ -41,7 +41,7 @@ public class SdkCredentialOperations implements CredentialOperations {
   }
 
   @Override
-  public void deleteCredential(String name) throws ApiException {
-    credentialsApi.deleteCredential(name, true);
+  public void deleteCredential(String name, Optional<Boolean> force) throws ApiException {
+    credentialsApi.deleteCredential(name, force.orElse(false));
   }
 }

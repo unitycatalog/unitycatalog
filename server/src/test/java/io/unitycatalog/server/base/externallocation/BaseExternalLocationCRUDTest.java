@@ -107,8 +107,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
       externalLocationOperations.deleteExternalLocation(externalLocationName, Optional.of(true));
     }
     externalLocationsToDelete.clear();
-    credentialOperations.deleteCredential(CREDENTIAL_NAME);
-    credentialOperations.deleteCredential(ANOTHER_CREDENTIAL_NAME);
+    credentialOperations.deleteCredential(CREDENTIAL_NAME, Optional.of(true));
+    credentialOperations.deleteCredential(ANOTHER_CREDENTIAL_NAME, Optional.of(true));
     credentialInfo = null;
     anotherCredentialInfo = null;
     super.tearDown();
