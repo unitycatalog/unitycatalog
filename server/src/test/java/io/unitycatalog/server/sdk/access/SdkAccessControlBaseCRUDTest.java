@@ -139,6 +139,7 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
     // Clear tracking lists for each test
     createdUserIds.clear();
     grantedPermissions.clear();
+    super.tearDown();
   }
 
   /** Creates common resources (catalog and schema) using an admin token for authorization. */
@@ -199,6 +200,10 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
     createdUserIds.add(createdUser.getId());
     LOGGER.debug("Created test user: {} (ID: {})", email, createdUser.getId());
     return createdUser;
+  }
+
+  protected UserResource createTestUser(String email) throws io.unitycatalog.control.ApiException {
+    return createTestUser(email, email.split("@")[0]);
   }
 
   /**

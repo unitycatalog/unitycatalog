@@ -83,7 +83,7 @@ public class SdkCredentialAccessControlTest extends SdkAccessControlBaseCRUDTest
 
   @SneakyThrows
   private CredentialsApi createCredentialsApi(String email) {
-    createTestUser(email, email.split("@")[0]);
+    createTestUser(email);
     return new CredentialsApi(TestUtils.createApiClient(createTestUserServerConfig(email)));
   }
 

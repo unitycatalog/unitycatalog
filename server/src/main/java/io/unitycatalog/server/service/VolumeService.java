@@ -1,12 +1,14 @@
 package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
@@ -55,18 +57,46 @@ public class VolumeService extends AuthorizedService {
     this.evaluator = new UnityAccessEvaluator(authorizer);
   }
 
+  /**
+   * Creates a new volume in the specified schema.
+   *
+   * <p>Authorization requirements:
+   *
+   * <ul>
+   *   <li>Must have OWNER or USE_CATALOG permission on the catalog
+   *   <li>Must have either OWNER permission on the schema, or both USE_SCHEMA and CREATE_VOLUME
+   *       permissions
+   *   <li>For EXTERNAL volumes:
+   *       <ul>
+   *         <li>The storage location must not overlap with any existing table, volume, or
+   *             registered model
+   *         <li>If the storage location falls within a registered external location, the user
+   *             must have OWNER or CREATE_EXTERNAL_VOLUME permission on that external location
+   *         <li>If the storage location does not fall within any registered external location,
+   *             the volume can be created without additional external location permissions
+   *       </ul>
+   * </ul>
+   *
+   * @param createVolumeRequest the volume creation request containing volume metadata and storage
+   * @return HTTP response containing the created VolumeInfo
+   */
   @Post("")
-  // TODO: for now, we are not supporting CREATE VOLUME or CREATE EXTERNAL VOLUME privileges
   @AuthorizeExpression("""
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
+      (#authorize(#principal, #schema, OWNER) ||
+        #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME)) &&
+      (#volume_type != 'EXTERNAL' ||
+        (#table == null && #volume == null && #registered_model == null &&
+          (#external_location == null ||
+           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_VOLUME))))
       """)
-  @AuthorizeResourceKey(METASTORE)
   public HttpResponse createVolume(
       @AuthorizeResourceKeys({
         @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
-        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
+        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
+        @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
       })
+      @AuthorizeKey(key = "volume_type")
       CreateVolumeRequestContent createVolumeRequest) {
     // Throw error if catalog/schema does not exist
     VolumeInfo volumeInfo = volumeRepository.createVolume(createVolumeRequest);
