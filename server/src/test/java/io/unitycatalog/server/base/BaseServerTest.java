@@ -20,11 +20,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 public abstract class BaseServerTest {
 
-  public static ServerConfig serverConfig = new ServerConfig("http://localhost", "");
-  protected static UnityCatalogServer unityCatalogServer;
-  protected static Properties serverProperties;
-  protected static HibernateConfigurator hibernateConfigurator;
-  protected static CloudCredentialVendor cloudCredentialVendor;
+  public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
+  protected UnityCatalogServer unityCatalogServer;
+  protected Properties serverProperties;
+  protected HibernateConfigurator hibernateConfigurator;
+  protected CloudCredentialVendor cloudCredentialVendor;
 
   // All test data should be written under this directory. It will be cleaned up.
   @TempDir protected Path testDirectoryRoot;

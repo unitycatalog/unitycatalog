@@ -39,7 +39,7 @@ public class SchemaService extends AuthorizedService {
 
   @SneakyThrows
   public SchemaService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.schemaRepository = repositories.getSchemaRepository();
     this.catalogRepository = repositories.getCatalogRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
