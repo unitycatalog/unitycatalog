@@ -2652,6 +2652,7 @@ components:
         - CREATE EXTERNAL TABLE
         - CREATE EXTERNAL VOLUME
         - CREATE MANAGED STORAGE
+        - CREATE STORAGE CREDENTIAL
       description: The privilege to grant.
     UpdatePermissions:
       type: object
