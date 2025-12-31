@@ -71,18 +71,6 @@ public enum CliParams {
   private final String helpMessage;
   private final String serverParam;
 
-  CliParams(String value) {
-    this.value = value;
-    this.serverParam = "";
-    this.helpMessage = "";
-  }
-
-  CliParams(String value, String helpMessage) {
-    this.value = value;
-    this.helpMessage = helpMessage;
-    this.serverParam = "";
-  }
-
   CliParams(String value, String helpMessage, String serverParam) {
     this.value = value;
     this.helpMessage = helpMessage;
@@ -108,15 +96,6 @@ public enum CliParams {
       }
     }
     throw new IllegalArgumentException("No enum constant for value: " + text);
-  }
-
-  public static boolean contains(String text) {
-    for (CliParams cliParam : CliParams.values()) {
-      if (cliParam.value.equalsIgnoreCase(text)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   @Override

@@ -10,7 +10,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.RegisteredModelsApi;
 import io.unitycatalog.client.model.CreateRegisteredModel;
 import io.unitycatalog.client.model.UpdateRegisteredModel;
-import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
@@ -94,18 +93,7 @@ public class ModelCli {
       throws JsonProcessingException, ApiException {
     String registeredModelFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     json.remove(CliParams.FULL_NAME.getServerParam());
-    if (json.length() == 0) {
-      List<CliParams> optionalParams =
-          CliUtils.cliOptions
-              .get(CliUtils.REGISTERED_MODEL)
-              .get(CliUtils.UPDATE)
-              .getOptionalParams();
-      String errorMessage = "No parameters to update, please provide one of:";
-      for (CliParams param : optionalParams) {
-        errorMessage += "\n  --" + param.val();
-      }
-      throw new RuntimeException(errorMessage);
-    }
+    CliUtils.validateUpdateParameters(json, CliUtils.REGISTERED_MODEL, CliUtils.UPDATE);
     UpdateRegisteredModel updateRegisteredModel =
         objectMapper.readValue(json.toString(), UpdateRegisteredModel.class);
     return objectWriter.writeValueAsString(
