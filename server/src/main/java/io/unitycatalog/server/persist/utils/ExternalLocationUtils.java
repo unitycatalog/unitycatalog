@@ -1,19 +1,26 @@
 package io.unitycatalog.server.persist.utils;
 
 import com.google.common.annotations.VisibleForTesting;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Stream;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.fs.Path;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
 
 /**
@@ -36,7 +43,11 @@ import org.hibernate.query.Query;
  */
 public class ExternalLocationUtils {
 
-  private ExternalLocationUtils() {}
+  private final SessionFactory sessionFactory;
+
+  public ExternalLocationUtils(SessionFactory sessionFactory) {
+    this.sessionFactory = sessionFactory;
+  }
 
   private record DaoClassInfo(Class<? extends IdentifiableDAO> clazz, String urlFieldName) {}
 
@@ -53,6 +64,93 @@ public class ExternalLocationUtils {
    */
   public static final List<SecurableType> DATA_SECURABLE_TYPES =
       List.of(SecurableType.TABLE, SecurableType.VOLUME, SecurableType.REGISTERED_MODEL);
+
+  private static final List<SecurableType> EXTERNAL_LOCATION_AND_DATA_SECURABLE_TYPES =
+      Stream.concat(Stream.of(SecurableType.EXTERNAL_LOCATION), DATA_SECURABLE_TYPES.stream())
+          .toList();
+
+  public Map<SecurableType, UUID> getMapResourceIdsForPath(NormalizedURL url) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          // 1. Fail if it's parent of any of the data securable or external location
+          if (!getAllEntityDAOsWithURLOverlap(
+                  session,
+                  url,
+                  EXTERNAL_LOCATION_AND_DATA_SECURABLE_TYPES,
+                  /* limit= */ 1,
+                  /* includeParent= */ false,
+                  /* includeSelf= */ false,
+                  /* includeSubdir= */ true)
+              .isEmpty()) {
+            throw new BaseException(
+                ErrorCode.PERMISSION_DENIED,
+                "Input path '" + url + "' overlaps with other entities.");
+          }
+
+          // 2. If it's under only one data securable, use that securable as resource id
+          // 3. If it's under only one external location, use that external location as resource id
+          return getResourceIdOfOwnerEntity(session, url, DATA_SECURABLE_TYPES)
+              .or(
+                  () ->
+                      getResourceIdOfOwnerEntity(
+                          session, url, List.of(SecurableType.EXTERNAL_LOCATION)))
+              .orElse(Map.of());
+        },
+        "Failed to resolve resource IDs for path",
+        /* readOnly= */ true);
+  }
+
+  private Optional<Map<SecurableType, UUID>> getResourceIdOfOwnerEntity(
+      Session session, NormalizedURL url, List<SecurableType> securableTypes) {
+    List<Pair<SecurableType, IdentifiableDAO>> securablesContainUrl =
+        getAllEntityDAOsWithURLOverlap(
+            session,
+            url,
+            securableTypes,
+            /* limit= */ 2,
+            /* includeParent= */ true,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ false);
+    if (securablesContainUrl.size() > 1) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Input path '" + url + "' overlaps with multiple entities.");
+    } else if (securablesContainUrl.isEmpty()) {
+      return Optional.empty();
+    }
+
+    SecurableType securableType = securablesContainUrl.get(0).getLeft();
+    IdentifiableDAO dao = securablesContainUrl.get(0).getRight();
+    if (securableType == SecurableType.EXTERNAL_LOCATION) {
+      return Optional.of(Map.of(securableType, dao.getId()));
+    }
+
+    UUID schemaId = getSchemaId(securableType, dao);
+    SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, schemaId);
+    if (schemaInfoDAO == null) {
+      throw new BaseException(ErrorCode.INTERNAL, "Schema not found: " + schemaId);
+    }
+    UUID catalogId = schemaInfoDAO.getCatalogId();
+
+    return Optional.of(
+        Map.of(
+            SecurableType.CATALOG,
+            catalogId,
+            SecurableType.SCHEMA,
+            schemaId,
+            securableType,
+            dao.getId()));
+  }
+
+  private UUID getSchemaId(SecurableType securableType, IdentifiableDAO dao) {
+    return switch (securableType) {
+      case TABLE -> ((TableInfoDAO) dao).getSchemaId();
+      case VOLUME -> ((VolumeInfoDAO) dao).getSchemaId();
+      case REGISTERED_MODEL -> ((RegisteredModelInfoDAO) dao).getSchemaId();
+      default -> throw new BaseException(
+          ErrorCode.UNIMPLEMENTED, "Unknown securable type: " + securableType);
+    };
+  }
 
   /**
    * Finds all entities across multiple securable types whose URLs overlap with the given URL.
@@ -195,16 +293,16 @@ public class ExternalLocationUtils {
       hasLikeCondition = true;
     }
 
-    String inConditon = String.format("%s IN (:matchPaths)", daoClassInfo.urlFieldName);
-    String likeConditon =
+    String inCondition = String.format("%s IN (:matchPaths)", daoClassInfo.urlFieldName);
+    String likeCondition =
         String.format("%s LIKE :likePattern ESCAPE '\\'", daoClassInfo.urlFieldName);
     String condition = null;
     if (hasInCondition && hasLikeCondition) {
-      condition = inConditon + " OR " + likeConditon;
+      condition = inCondition + " OR " + likeCondition;
     } else if (hasInCondition) {
-      condition = inConditon;
+      condition = inCondition;
     } else if (hasLikeCondition) {
-      condition = likeConditon;
+      condition = likeCondition;
     }
     String queryString =
         String.format(
