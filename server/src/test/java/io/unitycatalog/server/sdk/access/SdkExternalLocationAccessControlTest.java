@@ -1,27 +1,40 @@
 package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
+import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.CredentialPurpose;
+import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.ListExternalLocationsResponse;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateExternalLocation;
+import io.unitycatalog.client.model.VolumeInfo;
+import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.Singular;
 import lombok.SneakyThrows;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -43,8 +56,6 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   private ExternalLocationsApi userAApi;
   private ExternalLocationsApi userBApi;
   private ExternalLocationsApi userCApi;
-
-  private Set<String> externalLocationsToDelete = new HashSet<>();
 
   @SneakyThrows
   @Override
@@ -92,24 +103,8 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   @SneakyThrows
-  @Override
-  @AfterEach
-  public void tearDown() {
-    for (String externalLocationName : externalLocationsToDelete) {
-      try {
-        adminApi.deleteExternalLocation(externalLocationName, true);
-      } catch (ApiException e) {
-        // Already deleted
-      }
-    }
-    adminCredentialsApi.deleteCredential(CREDENTIAL_NAME, true);
-    adminCredentialsApi.deleteCredential(ANOTHER_CREDENTIAL_NAME, true);
-    super.tearDown();
-  }
-
-  @SneakyThrows
   private ExternalLocationsApi createExternalLocationsApi(String email) {
-    createTestUser(email, email.split("@")[0]);
+    createTestUser(email);
     return new ExternalLocationsApi(TestUtils.createApiClient(createTestUserServerConfig(email)));
   }
 
@@ -211,7 +206,6 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
   private void assertCreateSuccess(ExternalLocationsApi api, String name) throws ApiException {
     ExternalLocationInfo created = api.createExternalLocation(createRequest(name));
-    externalLocationsToDelete.add(name);
     assertThat(created.getName()).isEqualTo(name);
     assertThat(created.getUrl()).isNotNull();
     assertThat(created.getId()).isNotNull();
@@ -225,10 +219,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertCreateFailure(ExternalLocationsApi api, String name) {
-    assertApiException(
-        () -> api.createExternalLocation(createRequest(name)),
-        ErrorCode.PERMISSION_DENIED,
-        "Access denied.");
+    assertPermissionDenied(() -> api.createExternalLocation(createRequest(name)));
   }
 
   @SneakyThrows
@@ -244,8 +235,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
       assertThat(retrieved.getUrl()).isNotNull().isNotEmpty();
     }
     for (String name : deniedExternalLocationNames) {
-      assertApiException(
-          () -> api.getExternalLocation(name), ErrorCode.PERMISSION_DENIED, "Access denied");
+      assertPermissionDenied(() -> api.getExternalLocation(name));
     }
     // Test list operation
     ListExternalLocationsResponse response = api.listExternalLocations(100, null);
@@ -272,35 +262,244 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertUpdateUrlFailure(ExternalLocationsApi api, String name) {
-    assertApiException(
+    assertPermissionDenied(
         () ->
             api.updateExternalLocation(
-                name, new UpdateExternalLocation().url("s3://test-bucket/fail-path-" + name)),
-        ErrorCode.PERMISSION_DENIED,
-        "Access denied");
+                name, new UpdateExternalLocation().url("s3://test-bucket/fail-path-" + name)));
   }
 
   private void assertUpdateCredentialFailure(
       ExternalLocationsApi api, String name, String newCredentialName) {
-    assertApiException(
+    assertPermissionDenied(
         () ->
             api.updateExternalLocation(
-                name, new UpdateExternalLocation().credentialName(newCredentialName)),
-        ErrorCode.PERMISSION_DENIED,
-        "Access denied");
+                name, new UpdateExternalLocation().credentialName(newCredentialName)));
   }
 
   private void assertDeleteSuccess(ExternalLocationsApi api, String name) throws ApiException {
     api.deleteExternalLocation(name, false);
-    externalLocationsToDelete.remove(name);
     // Verify deletion by checking that get fails with 404
     assertApiException(() -> adminApi.getExternalLocation(name), ErrorCode.NOT_FOUND, "not found");
   }
 
   private void assertDeleteFailure(ExternalLocationsApi api, String name) {
-    assertApiException(
-        () -> api.deleteExternalLocation(name, false),
-        ErrorCode.PERMISSION_DENIED,
-        "Access denied");
+    assertPermissionDenied(() -> api.deleteExternalLocation(name, false));
+  }
+
+  /**
+   * Test case configuration for external table and volume creation permission tests.
+   *
+   * <p>Each test case defines a user email, optional storage root, permissions to grant, and
+   * expected outcomes for table and volume creation attempts.
+   */
+  @Builder
+  @Getter
+  public static class CreateTableVolumeTestCase {
+    /** The email address of the test user. */
+    private final String email;
+
+    /**
+     * Optional storage root URL for the test. If null, the external location URL is used. Setting
+     * this to a non-registered path tests the scenario where no external location covers the path.
+     */
+    private final String storageRoot;
+
+    /** List of privileges to grant to the test user. */
+    @Singular private final List<Privileges> grantPermissions;
+
+    /** Whether the user is expected to be able to create an external table. */
+    private final boolean expectCanCreateExternalTable;
+
+    /** Whether the user is expected to be able to create an external volume. */
+    private final boolean expectCanCreateExternalVolume;
+  }
+
+  /**
+   * Test that creating external tables and volumes requires appropriate permissions on external
+   * locations.
+   */
+  @Test
+  public void testCreateExternalTableVolumePermissions() throws Exception {
+    // Create external location as userC
+    String externalLocationName = "test_external_loc";
+    String extLocationUrl = "s3://ext-bucket/tables";
+    userCApi.createExternalLocation(
+        new CreateExternalLocation()
+            .name(externalLocationName)
+            .url(extLocationUrl)
+            .credentialName(CREDENTIAL_NAME));
+
+    List<CreateTableVolumeTestCase> testCases =
+        List.of(
+            // A user can't create table or volume without permission
+            CreateTableVolumeTestCase.builder().email("no_permission@example.com").build(),
+            // A user can't create table or volume with only permission on schema
+            CreateTableVolumeTestCase.builder()
+                .email("only_schema_perm@example.com")
+                .grantPermission(Privileges.CREATE_TABLE)
+                .grantPermission(Privileges.CREATE_VOLUME)
+                .build(),
+            // A user can create table or volume with only permission on schema if it's not using
+            // any external location (path is not registered)
+            CreateTableVolumeTestCase.builder()
+                .email("only_schema_perm_use_no_external_location@example.com")
+                .storageRoot("s3://some-other-unregistered-bucket/root")
+                .grantPermission(Privileges.CREATE_TABLE)
+                .grantPermission(Privileges.CREATE_VOLUME)
+                .expectCanCreateExternalTable(true)
+                .expectCanCreateExternalVolume(true)
+                .build(),
+            // A user can't create table or volume with only permission on location
+            CreateTableVolumeTestCase.builder()
+                .email("only_location_perm@example.com")
+                .grantPermission(Privileges.CREATE_EXTERNAL_TABLE)
+                .grantPermission(Privileges.CREATE_EXTERNAL_VOLUME)
+                .build(),
+            // A user can create table with both permissions on schema and location
+            CreateTableVolumeTestCase.builder()
+                .email("only_table@example.com")
+                .grantPermission(Privileges.CREATE_EXTERNAL_TABLE)
+                .grantPermission(Privileges.CREATE_TABLE)
+                .expectCanCreateExternalTable(true)
+                .build(),
+            // A user can create volume with both permissions on schema and location
+            CreateTableVolumeTestCase.builder()
+                .email("only_volume@example.com")
+                .grantPermission(Privileges.CREATE_EXTERNAL_VOLUME)
+                .grantPermission(Privileges.CREATE_VOLUME)
+                .expectCanCreateExternalVolume(true)
+                .build(),
+            // A user can create both table and volume with all 4 permissions
+            CreateTableVolumeTestCase.builder()
+                .email("table_and_volume@example.com")
+                .grantPermission(Privileges.CREATE_EXTERNAL_TABLE)
+                .grantPermission(Privileges.CREATE_EXTERNAL_VOLUME)
+                .grantPermission(Privileges.CREATE_TABLE)
+                .grantPermission(Privileges.CREATE_VOLUME)
+                .expectCanCreateExternalVolume(true)
+                .expectCanCreateExternalTable(true)
+                .build(),
+            // Location owner can create as long as it has the proper schema permissions
+            CreateTableVolumeTestCase.builder()
+                .email(USER_C_EMAIL)
+                .grantPermission(Privileges.CREATE_TABLE)
+                .grantPermission(Privileges.CREATE_VOLUME)
+                .expectCanCreateExternalTable(true)
+                .expectCanCreateExternalVolume(true)
+                .build());
+
+    int counter = 0;
+    for (CreateTableVolumeTestCase testCase : testCases) {
+      counter++;
+      String storageRoot =
+          testCase.getStorageRoot() != null ? testCase.getStorageRoot() : extLocationUrl;
+
+      // Skip creating user if it's a known user
+      if (!testCase.email.equals(USER_C_EMAIL)) {
+        createTestUser(testCase.email);
+      }
+
+      // Grant common permissions on catalog and schema
+      grantPermissions(
+          testCase.email, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+      grantPermissions(
+          testCase.email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, Privileges.USE_SCHEMA);
+      // Grant test case specific permissions
+      for (Privileges privilege : testCase.grantPermissions) {
+        switch (privilege) {
+          case CREATE_TABLE, CREATE_VOLUME -> grantPermissions(
+              testCase.email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, privilege);
+          case CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME -> grantPermissions(
+              testCase.email, SecurableType.EXTERNAL_LOCATION, externalLocationName, privilege);
+          default -> throw new RuntimeException("Unknown privilege: " + privilege);
+        }
+      }
+
+      ApiClient apiClient = TestUtils.createApiClient(createTestUserServerConfig(testCase.email));
+
+      // Verify that the Table creation is as expected
+      String tableName = TestUtils.TABLE_NAME + counter;
+      String tableLocation = storageRoot + "/" + tableName;
+      TablesApi tablesApi = new TablesApi(apiClient);
+      if (testCase.expectCanCreateExternalTable) {
+        TableInfo tableInfo =
+            tablesApi.createTable(createExternalTableRequest(tableName, tableLocation));
+        assertThat(tableInfo).isNotNull();
+        assertThat(tableInfo.getStorageLocation()).startsWith(storageRoot);
+
+        // Verify that we can not create another under the same path, or subdir, or parent
+        for (String url : List.of(tableLocation, tableLocation + "/subdir", storageRoot)) {
+          assertPermissionDenied(
+              () -> tablesApi.createTable(createExternalTableRequest(tableName + "_another", url)));
+        }
+      } else {
+        assertPermissionDenied(
+            () -> tablesApi.createTable(createExternalTableRequest(tableName, tableLocation)));
+      }
+
+      // Verify that the Volume creation is as expected
+      String volumeName = TestUtils.VOLUME_NAME + counter;
+      String volumeLocation = storageRoot + "/" + volumeName;
+      VolumesApi volumesApi = new VolumesApi(apiClient);
+      if (testCase.expectCanCreateExternalVolume) {
+        VolumeInfo volumeInfo =
+            volumesApi.createVolume(createExternalVolumeRequest(volumeName, volumeLocation));
+        assertThat(volumeInfo).isNotNull();
+        assertThat(volumeInfo.getStorageLocation()).startsWith(storageRoot);
+
+        // Verify that we can not create another under the same path, or subdir, or parent
+        for (String url : List.of(volumeLocation, volumeLocation + "/subdir", storageRoot)) {
+          assertPermissionDenied(
+              () ->
+                  volumesApi.createVolume(
+                      createExternalVolumeRequest(volumeName + "_another", url)));
+        }
+      } else {
+        assertPermissionDenied(
+            () -> volumesApi.createVolume(createExternalVolumeRequest(volumeName, volumeLocation)));
+      }
+
+      // Verify that creation of a table at storage location of an existing volume should fail,
+      // vice versa.
+      if (testCase.expectCanCreateExternalTable && testCase.expectCanCreateExternalVolume) {
+        assertPermissionDenied(
+            () ->
+                volumesApi.createVolume(
+                    createExternalVolumeRequest(volumeName + "_another", tableLocation)));
+        assertPermissionDenied(
+            () ->
+                tablesApi.createTable(
+                    createExternalTableRequest(tableName + "_another", volumeLocation)));
+      }
+    }
+  }
+
+  private CreateTable createExternalTableRequest(String name, String storageLocation) {
+    return new CreateTable()
+        .name(name)
+        .catalogName(TestUtils.CATALOG_NAME)
+        .schemaName(TestUtils.SCHEMA_NAME)
+        .tableType(TableType.EXTERNAL)
+        .dataSourceFormat(DataSourceFormat.DELTA)
+        .storageLocation(storageLocation)
+        .columns(
+            List.of(
+                new ColumnInfo()
+                    .name("id")
+                    .typeName(ColumnTypeName.INT)
+                    .typeText("INTEGER")
+                    .typeJson("{\"type\": \"integer\"}")
+                    .position(0)
+                    .nullable(true)));
+  }
+
+  private CreateVolumeRequestContent createExternalVolumeRequest(
+      String name, String storageLocation) {
+    return new CreateVolumeRequestContent()
+        .name(name)
+        .catalogName(TestUtils.CATALOG_NAME)
+        .schemaName(TestUtils.SCHEMA_NAME)
+        .volumeType(VolumeType.EXTERNAL)
+        .storageLocation(storageLocation);
   }
 }

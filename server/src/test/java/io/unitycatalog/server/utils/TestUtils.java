@@ -76,4 +76,8 @@ public class TestUtils {
     assertThat(ex.getMessage()).contains(containsMessage);
     assertThat(ex.getCode()).isEqualTo(errorCode.getHttpStatus().code());
   }
+
+  public static void assertPermissionDenied(Executable executable) {
+    assertApiException(executable, ErrorCode.PERMISSION_DENIED, "PERMISSION_DENIED");
+  }
 }
