@@ -74,7 +74,7 @@ public class ExternalLocationRepository {
           }
 
           String url = FileOperations.toStandardizedURIString(createExternalLocation.getUrl());
-          validateUrlNotUsedByAnyExternalLocation(session, url);
+          validateUrlNotUsedByAnyExternalLocation(session, url, Optional.empty());
 
           CredentialDAO credentialDAO =
               validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
@@ -172,7 +172,8 @@ public class ExternalLocationRepository {
           if (updateExternalLocation.getUrl() != null) {
             existingLocation.setUrl(
                 FileOperations.toStandardizedURIString(updateExternalLocation.getUrl()));
-            validateUrlNotUsedByAnyOtherExternalLocation(session, existingLocation);
+            validateUrlNotUsedByAnyExternalLocation(
+                session, existingLocation.getUrl(), Optional.of(existingLocation.getId()));
           }
           if (updateExternalLocation.getComment() != null) {
             existingLocation.setComment(updateExternalLocation.getComment());
@@ -211,7 +212,7 @@ public class ExternalLocationRepository {
   }
 
   /**
-   * Validates that no existing external location has a URL that overlaps with the given URL.
+   * Validates that no other external location has a URL that overlaps with the given URL.
    *
    * <p>This method ensures that external locations have non-overlapping URL hierarchies. It checks
    * for three types of overlap:
@@ -227,68 +228,40 @@ public class ExternalLocationRepository {
    *
    * @param session The Hibernate session for database access
    * @param url The URL to validate (must be standardized)
+   * @param currentExternalLocationId The ID of the current external location it's validating. This
+   *     is only set for updating an existing external location. For creating new ones it's empty.
    * @throws BaseException if an overlapping external location exists
    */
-  private void validateUrlNotUsedByAnyExternalLocation(Session session, String url) {
+  private void validateUrlNotUsedByAnyExternalLocation(
+      Session session, String url, Optional<UUID> currentExternalLocationId) {
     ExternalLocationUtils.<ExternalLocationDAO>getEntitiesDAOsOverlapUrl(
             session,
             url,
             SecurableType.EXTERNAL_LOCATION,
-            /* limit= */ 1,
-            /* includeParent= */ true,
-            /* includeSelf= */ true,
-            /* includeSubdir= */ true)
-        .stream()
-        .findAny()
-        .ifPresent(
-            existingExternalLocation -> {
-              throw new BaseException(
-                  ErrorCode.INVALID_ARGUMENT,
-                  "An existing external location with URL '"
-                      + existingExternalLocation.getUrl()
-                      + "' already exists. A new external location should not duplicate or"
-                      + " overlap with existing external locations.");
-            });
-  }
-
-  /**
-   * Validates that no other external location has a URL that overlaps with the new URL.
-   *
-   * <p>This method is similar to {@link #validateUrlNotUsedByAnyExternalLocation}, but is used when
-   * updating an existing external location's URL. It filters out the location being updated itself,
-   * only checking for overlaps with other external locations.
-   *
-   * <p>This allows an external location to be updated to a URL that may technically "overlap" with
-   * its old URL (since they're the same entity), but prevents overlapping with any other external
-   * location.
-   *
-   * @param session The Hibernate session for database access
-   * @param locationWithNewUrl The external location DAO with the new URL to validate
-   * @throws BaseException if an overlapping external location exists (other than itself)
-   */
-  private void validateUrlNotUsedByAnyOtherExternalLocation(
-      Session session, ExternalLocationDAO locationWithNewUrl) {
-    ExternalLocationUtils.<ExternalLocationDAO>getEntitiesDAOsOverlapUrl(
-            session,
-            locationWithNewUrl.getUrl(),
-            SecurableType.EXTERNAL_LOCATION,
-            /* limit= */ 2,
+            // If it needs to find *another* besides the current one, it has to find at least 2.
+            /* limit= */ currentExternalLocationId.map(current -> 2).orElse(1),
             /* includeParent= */ true,
             /* includeSelf= */ true,
             /* includeSubdir= */ true)
         .stream()
         .filter(
             otherExternalLocation ->
-                !locationWithNewUrl.getId().equals(otherExternalLocation.getId()))
+                currentExternalLocationId
+                    .map(id -> !id.equals(otherExternalLocation.getId()))
+                    .orElse(true))
         .findAny()
         .ifPresent(
-            existingExternalLocation -> {
+            otherExternalLocation -> {
+              LOGGER.error(
+                  "Cannot have external location with a URL {} that overlaps/duplicates with "
+                      + "existing external location {} with url {}",
+                  url,
+                  otherExternalLocation.getName(),
+                  otherExternalLocation.getUrl());
               throw new BaseException(
                   ErrorCode.INVALID_ARGUMENT,
-                  "An existing external location with URL '"
-                      + existingExternalLocation.getUrl()
-                      + "' already exists. Cannot change the URL to duplicate or overlap with "
-                      + "existing external locations.");
+                  "Cannot accept an external location that duplicates or overlaps with existing "
+                      + "external location");
             });
   }
 }

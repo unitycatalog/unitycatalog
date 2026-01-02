@@ -369,7 +369,7 @@ lazy val server = (project in file("server"))
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
 
-      // Hadoop dependencies for PathBasedRpcUtils
+      // Hadoop dependencies for ExternalLocationUtils
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
 
       // Auth dependencies

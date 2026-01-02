@@ -16,8 +16,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tests for PathBasedRpcUtils including both unit tests for static helper methods and integration
- * tests that verify query generation with a real Hibernate session.
+ * Tests for ExternalLocationUtils including both unit tests for static helper methods and
+ * integration tests that verify query generation with a real Hibernate session.
  */
 public class ExternalLocationUtilsTest {
 
@@ -40,190 +40,140 @@ public class ExternalLocationUtilsTest {
     sessionFactory.close();
   }
 
+  /**
+   * Helper method to validate that all URLs in the list produce the same expected parent paths.
+   *
+   * @param urls List of URLs to test
+   * @param expectedResult Expected parent paths list
+   */
+  private void validateGetParentPathsList(List<String> urls, List<String> expectedResult) {
+    for (String url : urls) {
+      assertThat(ExternalLocationUtils.getParentPathsList(url))
+          .containsExactlyElementsOf(expectedResult);
+    }
+  }
+
   @Test
   public void testGetParentAndCurrentPathsList() {
     // Test S3 nested path
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList("s3://bucket/path/to/file"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket/path/to/file/"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket/path/to/file///"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket/path////to/file/"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket///path/to/file//"))) {
-      assertThat(result).containsExactly("s3://bucket/path/to", "s3://bucket/path", "s3://bucket");
-    }
+            "s3://bucket/path/to/file",
+            "s3://bucket/path/to/file/",
+            "s3://bucket/path/to/file///",
+            "s3://bucket/path////to/file/",
+            "s3://bucket///path/to/file//"),
+        List.of("s3://bucket/path/to", "s3://bucket/path", "s3://bucket"));
 
     // Test S3 single path level
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList("s3://bucket/path"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket/path/"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket/path//"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket/path///"))) {
-      assertThat(result).containsExactly("s3://bucket");
-    }
+            "s3://bucket/path", "s3://bucket/path/", "s3://bucket/path//", "s3://bucket/path///"),
+        List.of("s3://bucket"));
 
     // Test S3 bucket only (no path)
-    for (List<String> result :
-        List.of(
-            ExternalLocationUtils.getParentPathsList("s3://bucket"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket/"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket//"),
-            ExternalLocationUtils.getParentPathsList("s3://bucket///"))) {
-      assertThat(result).isEmpty();
-    }
+    validateGetParentPathsList(
+        List.of("s3://bucket", "s3://bucket/", "s3://bucket//", "s3://bucket///"), List.of());
 
     // Test Azure Blob Storage nested path
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net/path/to/file"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net/path/to/file/"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net/path/to/file///"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net/path////to/file/"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net///path/to/file//"))) {
-      assertThat(result)
-          .containsExactly(
-              "abfs://container@storage.dfs.core.windows.net/path/to",
-              "abfs://container@storage.dfs.core.windows.net/path",
-              "abfs://container@storage.dfs.core.windows.net");
-    }
+            "abfs://container@storage.dfs.core.windows.net/path/to/file",
+            "abfs://container@storage.dfs.core.windows.net/path/to/file/",
+            "abfs://container@storage.dfs.core.windows.net/path/to/file///",
+            "abfs://container@storage.dfs.core.windows.net/path////to/file/",
+            "abfs://container@storage.dfs.core.windows.net///path/to/file//"),
+        List.of(
+            "abfs://container@storage.dfs.core.windows.net/path/to",
+            "abfs://container@storage.dfs.core.windows.net/path",
+            "abfs://container@storage.dfs.core.windows.net"));
 
     // Test Azure Blob Storage single path level
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net/path"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net/path/"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net/path//"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net/path///"))) {
-      assertThat(result).containsExactly("abfs://container@storage.dfs.core.windows.net");
-    }
+            "abfs://container@storage.dfs.core.windows.net/path",
+            "abfs://container@storage.dfs.core.windows.net/path/",
+            "abfs://container@storage.dfs.core.windows.net/path//",
+            "abfs://container@storage.dfs.core.windows.net/path///"),
+        List.of("abfs://container@storage.dfs.core.windows.net"));
 
     // Test Azure Blob Storage container only (no path)
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net/"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net//"),
-            ExternalLocationUtils.getParentPathsList(
-                "abfs://container@storage.dfs.core.windows.net///"))) {
-      assertThat(result).isEmpty();
-    }
+            "abfs://container@storage.dfs.core.windows.net",
+            "abfs://container@storage.dfs.core.windows.net/",
+            "abfs://container@storage.dfs.core.windows.net//",
+            "abfs://container@storage.dfs.core.windows.net///"),
+        List.of());
 
     // Test Google Cloud Storage nested path
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList("gs://bucket/path/to/file"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket/path/to/file/"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket/path/to/file///"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket/path////to/file/"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket///path/to/file//"))) {
-      assertThat(result).containsExactly("gs://bucket/path/to", "gs://bucket/path", "gs://bucket");
-    }
+            "gs://bucket/path/to/file",
+            "gs://bucket/path/to/file/",
+            "gs://bucket/path/to/file///",
+            "gs://bucket/path////to/file/",
+            "gs://bucket///path/to/file//"),
+        List.of("gs://bucket/path/to", "gs://bucket/path", "gs://bucket"));
 
     // Test Google Cloud Storage single path level
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList("gs://bucket/path"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket/path/"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket/path//"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket/path///"))) {
-      assertThat(result).containsExactly("gs://bucket");
-    }
+            "gs://bucket/path", "gs://bucket/path/", "gs://bucket/path//", "gs://bucket/path///"),
+        List.of("gs://bucket"));
 
     // Test Google Cloud Storage bucket only (no path)
-    for (List<String> result :
-        List.of(
-            ExternalLocationUtils.getParentPathsList("gs://bucket"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket/"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket//"),
-            ExternalLocationUtils.getParentPathsList("gs://bucket///"))) {
-      assertThat(result).isEmpty();
-    }
+    validateGetParentPathsList(
+        List.of("gs://bucket", "gs://bucket/", "gs://bucket//", "gs://bucket///"), List.of());
 
     // Test file:// nested path
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList("file:///path/to/file"),
-            ExternalLocationUtils.getParentPathsList("file:///path/to/file/"),
-            ExternalLocationUtils.getParentPathsList("file:///path/to/file///"),
-            ExternalLocationUtils.getParentPathsList("file:///path////to/file/"),
-            ExternalLocationUtils.getParentPathsList("file://///path/to/file//"))) {
-      assertThat(result).containsExactly("file:///path/to", "file:///path", "file:///");
-    }
+            "file:///path/to/file",
+            "file:///path/to/file/",
+            "file:///path/to/file///",
+            "file:///path////to/file/",
+            "file://///path/to/file//"),
+        List.of("file:///path/to", "file:///path", "file:///"));
 
     // Test file:// single path level
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList("file:///path"),
-            ExternalLocationUtils.getParentPathsList("file:///path/"),
-            ExternalLocationUtils.getParentPathsList("file:///path//"),
-            ExternalLocationUtils.getParentPathsList("file:////path///"),
-            ExternalLocationUtils.getParentPathsList("file:///path///"),
-            ExternalLocationUtils.getParentPathsList("file://path///"),
-            ExternalLocationUtils.getParentPathsList("file:/path///"),
-            ExternalLocationUtils.getParentPathsList("file:///path///"))) {
-      assertThat(result).containsExactly("file:///");
-    }
+            "file:///path",
+            "file:///path/",
+            "file:///path//",
+            "file:////path///",
+            "file:///path///",
+            "file://path///",
+            "file:/path///",
+            "file:///path///"),
+        List.of("file:///"));
 
     // Test file:// root only
-    for (List<String> result :
-        List.of(
-            ExternalLocationUtils.getParentPathsList("file:/"),
-            ExternalLocationUtils.getParentPathsList("file:///"),
-            ExternalLocationUtils.getParentPathsList("file:////"),
-            ExternalLocationUtils.getParentPathsList("file://///"))) {
-      assertThat(result).isEmpty();
-    }
+    validateGetParentPathsList(List.of("file:/", "file:///", "file:////", "file://///"), List.of());
 
     // Test local FS nested path
-    for (List<String> result :
+    validateGetParentPathsList(
         List.of(
-            ExternalLocationUtils.getParentPathsList("/path/to/file"),
-            ExternalLocationUtils.getParentPathsList("/path/to/file/"),
-            ExternalLocationUtils.getParentPathsList("/path/to/file///"),
-            ExternalLocationUtils.getParentPathsList("/path////to/file/"),
-            ExternalLocationUtils.getParentPathsList("///path/to/file//"))) {
-      assertThat(result).containsExactly("file:///path/to", "file:///path", "file:///");
-    }
+            "/path/to/file",
+            "/path/to/file/",
+            "/path/to/file///",
+            "/path////to/file/",
+            "///path/to/file//"),
+        List.of("file:///path/to", "file:///path", "file:///"));
 
     // Test local FS single path level
-    for (List<String> result :
-        List.of(
-            ExternalLocationUtils.getParentPathsList("/path"),
-            ExternalLocationUtils.getParentPathsList("/path/"),
-            ExternalLocationUtils.getParentPathsList("/path//"),
-            ExternalLocationUtils.getParentPathsList("//path//"),
-            ExternalLocationUtils.getParentPathsList("///path///"),
-            ExternalLocationUtils.getParentPathsList("/path///"))) {
-      assertThat(result).containsExactly("file:///");
-    }
+    validateGetParentPathsList(
+        List.of("/path", "/path/", "/path//", "//path//", "///path///", "/path///"),
+        List.of("file:///"));
 
     // Test local FS root only
-    for (List<String> result :
-        List.of(
-            ExternalLocationUtils.getParentPathsList("/"),
-            ExternalLocationUtils.getParentPathsList("///"),
-            ExternalLocationUtils.getParentPathsList("/////"))) {
-      assertThat(result).isEmpty();
-    }
+    validateGetParentPathsList(List.of("/", "///", "/////"), List.of());
 
     // Test deeply nested path (10 levels)
-    List<String> deepResult =
-        ExternalLocationUtils.getParentPathsList("s3://bucket/a/b/c/d/e/f/g/h/i/j");
-    assertThat(deepResult)
-        .containsExactly(
+    validateGetParentPathsList(
+        List.of("s3://bucket/a/b/c/d/e/f/g/h/i/j"),
+        List.of(
             "s3://bucket/a/b/c/d/e/f/g/h/i",
             "s3://bucket/a/b/c/d/e/f/g/h",
             "s3://bucket/a/b/c/d/e/f/g",
@@ -233,7 +183,7 @@ public class ExternalLocationUtilsTest {
             "s3://bucket/a/b/c",
             "s3://bucket/a/b",
             "s3://bucket/a",
-            "s3://bucket");
+            "s3://bucket"));
   }
 
   @Test

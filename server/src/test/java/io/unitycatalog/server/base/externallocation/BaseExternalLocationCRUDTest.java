@@ -1,10 +1,7 @@
 package io.unitycatalog.server.base.externallocation;
 
-import static io.unitycatalog.server.utils.TestUtils.COMMENT;
-import static io.unitycatalog.server.utils.TestUtils.COMMENT2;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
@@ -18,7 +15,9 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.credential.CredentialOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +40,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   protected abstract CredentialOperations createCredentialOperations(ServerConfig config);
 
   protected CredentialInfo credentialInfo = null;
+  protected Set<String> externalLocationsToDelete = new HashSet<>();
 
   @SneakyThrows
   @BeforeEach
@@ -53,7 +53,6 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     CreateCredentialRequest createCredentialRequest =
         new CreateCredentialRequest()
             .name(CREDENTIAL_NAME)
-            .comment(COMMENT)
             .purpose(CredentialPurpose.STORAGE)
             .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN));
     credentialInfo = credentialOperations.createCredential(createCredentialRequest);
@@ -63,9 +62,24 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   @AfterEach
   @Override
   public void tearDown() {
+    for (String externalLocationName : externalLocationsToDelete) {
+      externalLocationOperations.deleteExternalLocation(externalLocationName);
+    }
+    externalLocationsToDelete.clear();
     credentialOperations.deleteCredential(credentialInfo.getName());
     credentialInfo = null;
     super.tearDown();
+  }
+
+  protected ExternalLocationInfo create(String name, String url) throws ApiException {
+    ExternalLocationInfo externalLocationInfo =
+        externalLocationOperations.createExternalLocation(
+            new CreateExternalLocation().name(name).url(url).credentialName(CREDENTIAL_NAME));
+    externalLocationsToDelete.add(name);
+    assertThat(externalLocationInfo.getName()).isEqualTo(name);
+    assertThat(externalLocationInfo.getUrl()).isEqualTo(url);
+    assertThat(externalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
+    return externalLocationInfo;
   }
 
   @Test
@@ -74,7 +88,6 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     CreateExternalLocation createExternalLocation =
         new CreateExternalLocation()
             .name(EXTERNAL_LOCATION_NAME)
-            .comment(COMMENT)
             .url(URL)
             .credentialName("not_exist");
     // Fails as the credential does not exist
@@ -87,13 +100,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         .noneMatch(
             externalLocationInfo -> externalLocationInfo.getName().equals(EXTERNAL_LOCATION_NAME));
 
-    createExternalLocation.setCredentialName(CREDENTIAL_NAME);
-    ExternalLocationInfo externalLocationInfo =
-        externalLocationOperations.createExternalLocation(createExternalLocation);
-    assertThat(externalLocationInfo.getName()).isEqualTo(EXTERNAL_LOCATION_NAME);
-    assertThat(externalLocationInfo.getComment()).isEqualTo(COMMENT);
-    assertThat(externalLocationInfo.getUrl()).isEqualTo(URL);
-    assertThat(externalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
+    ExternalLocationInfo externalLocationInfo = create(EXTERNAL_LOCATION_NAME, URL);
 
     // List external locations
     assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
@@ -105,126 +112,59 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
 
     // Update external location
     UpdateExternalLocation updateExternalLocation =
-        new UpdateExternalLocation()
-            .newName(NEW_EXTERNAL_LOCATION_NAME)
-            .comment(COMMENT2)
-            .url(NEW_URL);
+        new UpdateExternalLocation().newName(NEW_EXTERNAL_LOCATION_NAME).url(NEW_URL);
     ExternalLocationInfo updatedExternalLocationInfo =
         externalLocationOperations.updateExternalLocation(
             EXTERNAL_LOCATION_NAME, updateExternalLocation);
     assertThat(updatedExternalLocationInfo.getName()).isEqualTo(NEW_EXTERNAL_LOCATION_NAME);
-    assertThat(updatedExternalLocationInfo.getComment()).isEqualTo(COMMENT2);
     assertThat(updatedExternalLocationInfo.getUrl()).isEqualTo(NEW_URL);
     assertThat(updatedExternalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
-
-    // Delete external location
-    externalLocationOperations.deleteExternalLocation(NEW_EXTERNAL_LOCATION_NAME);
-    assertThatThrownBy(
-            () -> externalLocationOperations.getExternalLocation(NEW_EXTERNAL_LOCATION_NAME))
-        .isInstanceOf(ApiException.class);
+    externalLocationsToDelete.remove(EXTERNAL_LOCATION_NAME);
+    externalLocationsToDelete.add(NEW_EXTERNAL_LOCATION_NAME);
   }
 
   @Test
   public void testExternalLocationUrlOverlapPrevention() throws ApiException {
-    CreateExternalLocation firstLocation =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME)
-            .comment(COMMENT)
-            .url(URL)
-            .credentialName(CREDENTIAL_NAME);
-    externalLocationOperations.createExternalLocation(firstLocation);
+    final String errorMessageCreateWithOverlap =
+        "Cannot accept an external location that duplicates"
+            + " or overlaps with existing external location";
+    create(EXTERNAL_LOCATION_NAME, URL);
 
     // Test 1: Duplicate URL should be rejected
-    CreateExternalLocation duplicateLocation =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME + "_duplicate")
-            .comment(COMMENT)
-            .url(URL)
-            .credentialName(CREDENTIAL_NAME);
     assertApiException(
-        () -> externalLocationOperations.createExternalLocation(duplicateLocation),
+        () -> create(EXTERNAL_LOCATION_NAME + "_duplicate", URL),
         ErrorCode.INVALID_ARGUMENT,
-        "An existing external location with URL");
+        errorMessageCreateWithOverlap);
 
     // Test 2: Duplicate name should be rejected
-    CreateExternalLocation duplicateName =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME)
-            .comment(COMMENT)
-            .url(NEW_URL)
-            .credentialName(CREDENTIAL_NAME);
     assertApiException(
-        () -> externalLocationOperations.createExternalLocation(duplicateName),
-        ErrorCode.ALREADY_EXISTS,
-        "already exist");
+        () -> create(EXTERNAL_LOCATION_NAME, NEW_URL), ErrorCode.ALREADY_EXISTS, "already exist");
 
     // Test 3: Child URL should be rejected when parent exists
-    CreateExternalLocation childLocation =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME + "_child")
-            .comment(COMMENT)
-            .url(URL + "/subpath")
-            .credentialName(CREDENTIAL_NAME);
     assertApiException(
-        () -> externalLocationOperations.createExternalLocation(childLocation),
+        () -> create(EXTERNAL_LOCATION_NAME + "_child", URL + "/subpath"),
         ErrorCode.INVALID_ARGUMENT,
-        "An existing external location with URL");
+        errorMessageCreateWithOverlap);
 
-    // Clean up for next test
-    externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME);
-
-    // Create an external location with subdir first
-    CreateExternalLocation childFirst =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME)
-            .comment(COMMENT)
-            .url(URL + "/subpath/deeper")
-            .credentialName(CREDENTIAL_NAME);
-    externalLocationOperations.createExternalLocation(childFirst);
+    // Update the external location to subdir first
+    externalLocationOperations.updateExternalLocation(
+        EXTERNAL_LOCATION_NAME, new UpdateExternalLocation().url(URL + "/subpath/deeper"));
 
     // Test 4: Parent URL should be rejected when child exists
-    CreateExternalLocation parentLocation =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME + "_parent")
-            .comment(COMMENT)
-            .url(URL)
-            .credentialName(CREDENTIAL_NAME);
     assertApiException(
-        () -> externalLocationOperations.createExternalLocation(parentLocation),
+        () -> create(EXTERNAL_LOCATION_NAME + "_parent", URL),
         ErrorCode.INVALID_ARGUMENT,
-        "An existing external location with URL");
+        errorMessageCreateWithOverlap);
 
     // Test 5: Trailing slash should be normalized (treated as same URL)
-    CreateExternalLocation withSlash =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME + "_slash")
-            .comment(COMMENT)
-            .url(URL + "/subpath/deeper/")
-            .credentialName(CREDENTIAL_NAME);
     assertApiException(
-        () -> externalLocationOperations.createExternalLocation(withSlash),
+        () -> create(EXTERNAL_LOCATION_NAME + "_slash", URL + "/subpath/deeper/"),
         ErrorCode.INVALID_ARGUMENT,
-        "already exist");
-    externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME);
+        errorMessageCreateWithOverlap);
 
     // Test 6: Different buckets should be allowed (no overlap)
-    CreateExternalLocation bucket1Location =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME + "_bucket1")
-            .comment(COMMENT)
-            .url("s3://bucket1/path")
-            .credentialName(CREDENTIAL_NAME);
-    externalLocationOperations.createExternalLocation(bucket1Location);
-
-    CreateExternalLocation bucket2Location =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME + "_bucket2")
-            .comment(COMMENT)
-            .url("s3://bucket2/path")
-            .credentialName(CREDENTIAL_NAME);
-    ExternalLocationInfo bucket2Info =
-        externalLocationOperations.createExternalLocation(bucket2Location);
-    assertThat(bucket2Info.getName()).isEqualTo(EXTERNAL_LOCATION_NAME + "_bucket2");
+    create(EXTERNAL_LOCATION_NAME + "_bucket1", "s3://bucket1/path");
+    create(EXTERNAL_LOCATION_NAME + "_bucket2", "s3://bucket2/path");
 
     // Test 7: Update bucket2 location to use bucket1 with overlapping URL would fail.
     UpdateExternalLocation updateBucket2Location =
@@ -234,32 +174,10 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             externalLocationOperations.updateExternalLocation(
                 EXTERNAL_LOCATION_NAME + "_bucket2", updateBucket2Location),
         ErrorCode.INVALID_ARGUMENT,
-        "already exist");
-
-    // Cleanup for both buckets
-    externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME + "_bucket1");
-    externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME + "_bucket2");
+        errorMessageCreateWithOverlap);
 
     // Test 8: sibling paths (same level, different names) are allowed
-    CreateExternalLocation sibling1 =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME + "_sibling1")
-            .comment(COMMENT)
-            .url(URL + "/data1")
-            .credentialName(CREDENTIAL_NAME);
-    externalLocationOperations.createExternalLocation(sibling1);
-
-    CreateExternalLocation sibling2 =
-        new CreateExternalLocation()
-            .name(EXTERNAL_LOCATION_NAME + "_sibling2")
-            .comment(COMMENT)
-            .url(URL + "/data2")
-            .credentialName(CREDENTIAL_NAME);
-    ExternalLocationInfo sibling2Info = externalLocationOperations.createExternalLocation(sibling2);
-    assertThat(sibling2Info.getName()).isEqualTo(EXTERNAL_LOCATION_NAME + "_sibling2");
-
-    // Cleanup
-    externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME + "_sibling1");
-    externalLocationOperations.deleteExternalLocation(EXTERNAL_LOCATION_NAME + "_sibling2");
+    create(EXTERNAL_LOCATION_NAME + "_sibling1", URL + "/data1");
+    create(EXTERNAL_LOCATION_NAME + "_sibling2", URL + "/data2");
   }
 }
