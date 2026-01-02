@@ -34,9 +34,9 @@ import org.hibernate.query.Query;
  * <p>The class uses Hadoop's {@link org.apache.hadoop.fs.Path} for URI manipulation, which provides
  * correct handling of different storage schemes (file://, s3://, gs://, abfs://, etc.).
  */
-public class PathBasedRpcUtils {
+public class ExternalLocationUtils {
 
-  private PathBasedRpcUtils() {}
+  private ExternalLocationUtils() {}
 
   private record DaoClassInfo(Class<? extends IdentifiableDAO> clazz, String urlFieldName) {}
 

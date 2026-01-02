@@ -10,9 +10,9 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
-import io.unitycatalog.server.persist.utils.PathBasedRpcUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -230,7 +230,7 @@ public class ExternalLocationRepository {
    * @throws BaseException if an overlapping external location exists
    */
   private void validateUrlNotUsedByAnyExternalLocation(Session session, String url) {
-    PathBasedRpcUtils.<ExternalLocationDAO>getEntitiesDAOsOverlapUrl(
+    ExternalLocationUtils.<ExternalLocationDAO>getEntitiesDAOsOverlapUrl(
             session,
             url,
             SecurableType.EXTERNAL_LOCATION,
@@ -268,7 +268,7 @@ public class ExternalLocationRepository {
    */
   private void validateUrlNotUsedByAnyOtherExternalLocation(
       Session session, ExternalLocationDAO locationWithNewUrl) {
-    PathBasedRpcUtils.<ExternalLocationDAO>getEntitiesDAOsOverlapUrl(
+    ExternalLocationUtils.<ExternalLocationDAO>getEntitiesDAOsOverlapUrl(
             session,
             locationWithNewUrl.getUrl(),
             SecurableType.EXTERNAL_LOCATION,
