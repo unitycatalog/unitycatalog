@@ -47,6 +47,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   private static final String URL = "s3://unitycatalog-test";
   private static final String NEW_URL = "s3://unitycatalog-test-new";
   private static final String CREDENTIAL_NAME = "uc_testcredential";
+  private static final String ANOTHER_CREDENTIAL_NAME = "uc_testcredential_another";
   private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
   protected ExternalLocationOperations externalLocationOperations;
   protected SchemaOperations schemaOperations;
@@ -67,6 +68,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   protected abstract CredentialOperations createCredentialOperations(ServerConfig config);
 
   protected CredentialInfo credentialInfo = null;
+  protected CredentialInfo anotherCredentialInfo = null;
   protected Set<String> externalLocationsToDelete = new HashSet<>();
 
   @SneakyThrows
@@ -90,6 +92,8 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             .purpose(CredentialPurpose.STORAGE)
             .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN));
     credentialInfo = credentialOperations.createCredential(createCredentialRequest);
+    createCredentialRequest.setName(ANOTHER_CREDENTIAL_NAME);
+    anotherCredentialInfo = credentialOperations.createCredential(createCredentialRequest);
   }
 
   @SneakyThrows
@@ -101,8 +105,10 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
       externalLocationOperations.deleteExternalLocation(externalLocationName, Optional.of(true));
     }
     externalLocationsToDelete.clear();
-    credentialOperations.deleteCredential(credentialInfo.getName());
+    credentialOperations.deleteCredential(CREDENTIAL_NAME);
+    credentialOperations.deleteCredential(ANOTHER_CREDENTIAL_NAME);
     credentialInfo = null;
+    anotherCredentialInfo = null;
     super.tearDown();
   }
 
@@ -114,6 +120,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     assertThat(externalLocationInfo.getName()).isEqualTo(name);
     assertThat(externalLocationInfo.getUrl()).isEqualTo(url);
     assertThat(externalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
+    assertThat(externalLocationInfo.getCredentialName()).isEqualTo(CREDENTIAL_NAME);
     return externalLocationInfo;
   }
 
@@ -163,8 +170,20 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     assertThat(updatedExternalLocationInfo.getName()).isEqualTo(NEW_EXTERNAL_LOCATION_NAME);
     assertThat(updatedExternalLocationInfo.getUrl()).isEqualTo(NEW_URL);
     assertThat(updatedExternalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
+    assertThat(updatedExternalLocationInfo.getCredentialName()).isEqualTo(CREDENTIAL_NAME);
     externalLocationsToDelete.remove(EXTERNAL_LOCATION_NAME);
     externalLocationsToDelete.add(NEW_EXTERNAL_LOCATION_NAME);
+
+    // Update external location with new credential
+    ExternalLocationInfo updatedExternalLocationInfo2 =
+        externalLocationOperations.updateExternalLocation(
+            NEW_EXTERNAL_LOCATION_NAME,
+            new UpdateExternalLocation().credentialName(ANOTHER_CREDENTIAL_NAME));
+    assertThat(updatedExternalLocationInfo2.getName()).isEqualTo(NEW_EXTERNAL_LOCATION_NAME);
+    assertThat(updatedExternalLocationInfo2.getUrl()).isEqualTo(NEW_URL);
+    assertThat(updatedExternalLocationInfo2.getCredentialId())
+        .isEqualTo(anotherCredentialInfo.getId());
+    assertThat(updatedExternalLocationInfo2.getCredentialName()).isEqualTo(ANOTHER_CREDENTIAL_NAME);
   }
 
   @Test

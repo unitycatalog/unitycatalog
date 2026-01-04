@@ -2817,6 +2817,9 @@ components:
         name:
           description: Name of the external location.
           type: string
+        id:
+          description: Unique identifier for the external location.
+          type: string
         url:
           description: Path URL of the external location.
           type: string

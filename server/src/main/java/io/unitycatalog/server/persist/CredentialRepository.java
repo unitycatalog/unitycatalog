@@ -94,6 +94,14 @@ public class CredentialRepository {
         /* readOnly = */ true);
   }
 
+  protected String getCredentialName(Session session, UUID id) {
+    CredentialDAO credentialDAO = session.get(CredentialDAO.class, id);
+    if (credentialDAO == null) {
+      throw new BaseException(ErrorCode.INTERNAL, "Credential not found: " + id);
+    }
+    return credentialDAO.getName();
+  }
+
   protected CredentialDAO getCredentialDAO(Session session, String name) {
     Query<CredentialDAO> query =
         session.createQuery("FROM CredentialDAO WHERE name = :value", CredentialDAO.class);
