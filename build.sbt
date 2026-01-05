@@ -369,6 +369,9 @@ lazy val server = (project in file("server"))
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
 
+      // Hadoop dependencies for ExternalLocationUtils
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
+
       // Auth dependencies
       "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
       "org.casbin" % "jcasbin" % "1.55.0",

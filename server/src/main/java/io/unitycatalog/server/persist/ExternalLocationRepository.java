@@ -6,9 +6,12 @@ import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.CredentialPurpose;
 import io.unitycatalog.server.model.ExternalLocationInfo;
 import io.unitycatalog.server.model.ListExternalLocationsResponse;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
@@ -70,6 +73,9 @@ public class ExternalLocationRepository {
                 "External location already exists: " + createExternalLocation.getName());
           }
 
+          String url = FileOperations.toStandardizedURIString(createExternalLocation.getUrl());
+          validateUrlNotUsedByAnyExternalLocation(session, url, Optional.empty());
+
           CredentialDAO credentialDAO =
               validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
           UUID externalLocationId = UUID.randomUUID();
@@ -77,7 +83,7 @@ public class ExternalLocationRepository {
               ExternalLocationDAO.builder()
                   .id(externalLocationId)
                   .name(createExternalLocation.getName())
-                  .url(createExternalLocation.getUrl())
+                  .url(url)
                   .comment(createExternalLocation.getComment())
                   .owner(callerId)
                   .credentialId(credentialDAO.getId())
@@ -93,6 +99,10 @@ public class ExternalLocationRepository {
   }
 
   public ExternalLocationInfo getExternalLocation(String name) {
+    return getExternalLocationDAO(name).toExternalLocationInfo();
+  }
+
+  public ExternalLocationDAO getExternalLocationDAO(String name) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -100,8 +110,8 @@ public class ExternalLocationRepository {
           if (externalLocationDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
-          LOGGER.info("External location retrieved: {}", externalLocationDAO.getName());
-          return externalLocationDAO.toExternalLocationInfo();
+          LOGGER.debug("External location retrieved: {}", externalLocationDAO.getName());
+          return externalLocationDAO;
         },
         "Failed to get external location",
         /* readOnly = */ true);
@@ -160,7 +170,10 @@ public class ExternalLocationRepository {
             existingLocation.setName(updateExternalLocation.getNewName());
           }
           if (updateExternalLocation.getUrl() != null) {
-            existingLocation.setUrl(updateExternalLocation.getUrl());
+            existingLocation.setUrl(
+                FileOperations.toStandardizedURIString(updateExternalLocation.getUrl()));
+            validateUrlNotUsedByAnyExternalLocation(
+                session, existingLocation.getUrl(), Optional.of(existingLocation.getId()));
           }
           if (updateExternalLocation.getComment() != null) {
             existingLocation.setComment(updateExternalLocation.getComment());
@@ -196,5 +209,59 @@ public class ExternalLocationRepository {
         },
         "Failed to delete external location",
         /* readOnly = */ false);
+  }
+
+  /**
+   * Validates that no other external location has a URL that overlaps with the given URL.
+   *
+   * <p>This method ensures that external locations have non-overlapping URL hierarchies. It checks
+   * for three types of overlap:
+   *
+   * <ol>
+   *   <li>Exact match: An existing location has the same URL
+   *   <li>Parent match: An existing location's URL is a parent directory of the given URL
+   *   <li>Subdirectory match: An existing location's URL is a subdirectory of the given URL
+   * </ol>
+   *
+   * <p>If any overlap is found, this method throws a BaseException with INVALID_ARGUMENT error
+   * code.
+   *
+   * @param session The Hibernate session for database access
+   * @param url The URL to validate (must be standardized)
+   * @param currentExternalLocationId The ID of the current external location it's validating. This
+   *     is only set for updating an existing external location. For creating new ones it's empty.
+   * @throws BaseException if an overlapping external location exists
+   */
+  private void validateUrlNotUsedByAnyExternalLocation(
+      Session session, String url, Optional<UUID> currentExternalLocationId) {
+    ExternalLocationUtils.<ExternalLocationDAO>getEntitiesDAOsOverlapUrl(
+            session,
+            url,
+            SecurableType.EXTERNAL_LOCATION,
+            // If it needs to find *another* besides the current one, it has to find at least 2.
+            /* limit= */ currentExternalLocationId.map(current -> 2).orElse(1),
+            /* includeParent= */ true,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ true)
+        .stream()
+        .filter(
+            otherExternalLocation ->
+                currentExternalLocationId
+                    .map(id -> !id.equals(otherExternalLocation.getId()))
+                    .orElse(true))
+        .findAny()
+        .ifPresent(
+            otherExternalLocation -> {
+              LOGGER.error(
+                  "Cannot have external location with a URL {} that overlaps/duplicates with "
+                      + "existing external location {} with url {}",
+                  url,
+                  otherExternalLocation.getName(),
+                  otherExternalLocation.getUrl());
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  "Cannot accept an external location that duplicates or overlaps with existing "
+                      + "external location");
+            });
   }
 }
