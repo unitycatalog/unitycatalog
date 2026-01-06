@@ -60,7 +60,11 @@ public class ExternalLocationUtils {
    *
    * <p>This is a convenience method that queries multiple securable types at once and returns
    * results as pairs of (SecurableType, IdentifiableDAO). Results are limited by 'limit' globally
-   * across all types, not per type.
+   * across all types, not per type. For each SecurableType, multiple IdentifiableDAO objects can be
+   * returned. For example, if it's called with securableTypes=[TABLE, VOLUME] and limit=3, and
+   * there are a total of 2 matching tables and 2 matching volumes in the database, it returns:
+   *
+   * <p>[(TABLE, table1), (TABLE, table2), (VOLUME, volume1)] // volume2 isn't returned
    *
    * @param session The Hibernate session for database access
    * @param url The URL to check for overlaps
@@ -117,7 +121,7 @@ public class ExternalLocationUtils {
    * @return List of matching entity DAOs, ordered by URL length descending
    * @throws IllegalArgumentException if the securableType is not supported for URL overlap checks
    */
-  public static <T extends IdentifiableDAO> List<T> getEntitiesDAOsOverlapUrl(
+  public static <T extends IdentifiableDAO> List<T> getEntityDAOsOverlapUrl(
       Session session,
       String url,
       SecurableType securableType,

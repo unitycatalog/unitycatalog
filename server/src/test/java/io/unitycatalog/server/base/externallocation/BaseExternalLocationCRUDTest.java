@@ -228,7 +228,9 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   @Test
   public void testExternalLocationDeletion() throws ApiException, IOException {
     // Test 1: External location with volume - delete without force should fail
-    create(EXTERNAL_LOCATION_NAME + "_volume", URL + "/volumes");
+    String volumeExternalLocationName = EXTERNAL_LOCATION_NAME + "_volume";
+    String volumeUrlRoot = URL + "/volumes";
+    create(volumeExternalLocationName, volumeUrlRoot);
 
     CreateVolumeRequestContent createVolumeRequest =
         new CreateVolumeRequestContent()
@@ -236,19 +238,21 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .volumeType(VolumeType.EXTERNAL)
-            .storageLocation(URL + "/volumes/test");
+            .storageLocation(volumeUrlRoot + "/test");
     volumeOperations.createVolume(createVolumeRequest);
 
     assertApiException(
-        () -> delete(EXTERNAL_LOCATION_NAME + "_volume", Optional.empty()),
+        () -> delete(volumeExternalLocationName, Optional.empty()),
         ErrorCode.INVALID_ARGUMENT,
         "External location still used by");
 
     // Delete with force should succeed
-    delete(EXTERNAL_LOCATION_NAME + "_volume", Optional.of(true));
+    delete(volumeExternalLocationName, Optional.of(true));
 
     // Test 2: External location with table - delete without force should fail
-    create(EXTERNAL_LOCATION_NAME + "_table", URL + "/tables");
+    String tableExternalLocationName = EXTERNAL_LOCATION_NAME + "_table";
+    String tableUrlRoot = URL + "/tables";
+    create(tableExternalLocationName, tableUrlRoot);
 
     CreateTable createTableRequest =
         new CreateTable()
@@ -257,7 +261,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             .schemaName(SCHEMA_NAME)
             .tableType(TableType.EXTERNAL)
             .dataSourceFormat(DataSourceFormat.DELTA)
-            .storageLocation(URL + "/tables/test_table")
+            .storageLocation(tableUrlRoot + "/test")
             .columns(
                 List.of(
                     new ColumnInfo()
@@ -269,16 +273,17 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     tableOperations.createTable(createTableRequest);
 
     assertApiException(
-        () -> delete(EXTERNAL_LOCATION_NAME + "_table", Optional.of(false)),
+        () -> delete(tableExternalLocationName, Optional.of(false)),
         ErrorCode.INVALID_ARGUMENT,
         "External location still used by");
 
     // Delete with force should succeed
-    delete(EXTERNAL_LOCATION_NAME + "_table", Optional.of(true));
+    delete(tableExternalLocationName, Optional.of(true));
 
     // Test 3: External location without entities - delete without force should succeed
-    create(EXTERNAL_LOCATION_NAME + "_empty", URL + "/empty");
+    String emptyExternalLocationName = EXTERNAL_LOCATION_NAME + "_empty";
+    create(emptyExternalLocationName, URL + "/empty");
 
-    delete(EXTERNAL_LOCATION_NAME + "_empty", Optional.of(false));
+    delete(emptyExternalLocationName, Optional.of(false));
   }
 }

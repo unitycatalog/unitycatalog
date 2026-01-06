@@ -269,7 +269,7 @@ public class ExternalLocationRepository {
    */
   private void validateUrlNotUsedByAnyExternalLocation(
       Session session, String url, Optional<UUID> currentExternalLocationId) {
-    ExternalLocationUtils.<ExternalLocationDAO>getEntitiesDAOsOverlapUrl(
+    ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsOverlapUrl(
             session,
             url,
             SecurableType.EXTERNAL_LOCATION,
