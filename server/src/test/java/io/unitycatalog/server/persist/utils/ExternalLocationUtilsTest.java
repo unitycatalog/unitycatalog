@@ -218,7 +218,7 @@ public class ExternalLocationUtilsTest {
     // METASTORE, CATALOG, SCHEMA, FUNCTION are not supported for URL overlap checks
     assertThatThrownBy(
             () ->
-                ExternalLocationUtils.getEntitiesDAOsOverlapUrl(
+                ExternalLocationUtils.getEntityDAOsOverlapUrl(
                     null,
                     "s3://bucket/path",
                     SecurableType.METASTORE,
@@ -231,7 +231,7 @@ public class ExternalLocationUtilsTest {
 
     assertThatThrownBy(
             () ->
-                ExternalLocationUtils.getEntitiesDAOsOverlapUrl(
+                ExternalLocationUtils.getEntityDAOsOverlapUrl(
                     null,
                     "s3://bucket/path",
                     SecurableType.CATALOG,
@@ -244,7 +244,7 @@ public class ExternalLocationUtilsTest {
 
     assertThatThrownBy(
             () ->
-                ExternalLocationUtils.getEntitiesDAOsOverlapUrl(
+                ExternalLocationUtils.getEntityDAOsOverlapUrl(
                     null,
                     "s3://bucket/path",
                     SecurableType.SCHEMA,

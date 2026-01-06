@@ -74,9 +74,10 @@ public class ExternalLocationService extends AuthorizedService {
   @Delete("/{name}")
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeKey(METASTORE)
-  public HttpResponse deleteExternalLocation(@Param("name") String name) {
+  public HttpResponse deleteExternalLocation(
+      @Param("name") String name, @Param("force") Optional<Boolean> force) {
     ExternalLocationDAO externalLocationDAO =
-        externalLocationRepository.deleteExternalLocation(name);
+        externalLocationRepository.deleteExternalLocation(name, force.orElse(false));
     removeAuthorizations(externalLocationDAO.getId().toString());
     return HttpResponse.of(HttpStatus.OK);
   }
