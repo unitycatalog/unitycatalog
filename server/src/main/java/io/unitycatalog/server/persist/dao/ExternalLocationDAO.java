@@ -53,13 +53,15 @@ public class ExternalLocationDAO extends IdentifiableDAO {
   @Column(name = "updated_by")
   private String updatedBy;
 
-  public ExternalLocationInfo toExternalLocationInfo() {
+  public ExternalLocationInfo toExternalLocationInfo(String credentialName) {
     return new ExternalLocationInfo()
         .name(getName())
         .url(getUrl())
         .comment(getComment())
         .owner(getOwner())
+        .id(getId() != null ? getId().toString() : null)
         .credentialId(getCredentialId() != null ? getCredentialId().toString() : null)
+        .credentialName(credentialName)
         .createdAt(getCreatedAt().getTime())
         .createdBy(getCreatedBy())
         .updatedAt(getUpdatedAt() != null ? getUpdatedAt().getTime() : null)

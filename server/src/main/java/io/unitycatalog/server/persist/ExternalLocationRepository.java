@@ -60,7 +60,7 @@ public class ExternalLocationRepository {
     return credentialDAO;
   }
 
-  public ExternalLocationDAO addExternalLocation(CreateExternalLocation createExternalLocation) {
+  public ExternalLocationInfo addExternalLocation(CreateExternalLocation createExternalLocation) {
     ValidationUtils.validateSqlObjectName(createExternalLocation.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
@@ -92,17 +92,13 @@ public class ExternalLocationRepository {
                   .build();
           session.persist(externalLocationDAO);
           LOGGER.info("External location added: {}", externalLocationDAO.getName());
-          return externalLocationDAO;
+          return externalLocationDAO.toExternalLocationInfo(credentialDAO.getName());
         },
         "Failed to add external location",
         /* readOnly = */ false);
   }
 
   public ExternalLocationInfo getExternalLocation(String name) {
-    return getExternalLocationDAO(name).toExternalLocationInfo();
-  }
-
-  public ExternalLocationDAO getExternalLocationDAO(String name) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -111,7 +107,11 @@ public class ExternalLocationRepository {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
           LOGGER.debug("External location retrieved: {}", externalLocationDAO.getName());
-          return externalLocationDAO;
+          String credentialName =
+              repositories
+                  .getCredentialRepository()
+                  .getCredentialName(session, externalLocationDAO.getCredentialId());
+          return externalLocationDAO.toExternalLocationInfo(credentialName);
         },
         "Failed to get external location",
         /* readOnly = */ true);
@@ -137,7 +137,11 @@ public class ExternalLocationRepository {
           String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
           List<ExternalLocationInfo> results = new ArrayList<>();
           for (ExternalLocationDAO dao : daoList) {
-            results.add(dao.toExternalLocationInfo());
+            String credentialName =
+                repositories
+                    .getCredentialRepository()
+                    .getCredentialName(session, dao.getCredentialId());
+            results.add(dao.toExternalLocationInfo(credentialName));
           }
           return new ListExternalLocationsResponse()
               .externalLocations(results)
@@ -178,10 +182,18 @@ public class ExternalLocationRepository {
           if (updateExternalLocation.getComment() != null) {
             existingLocation.setComment(updateExternalLocation.getComment());
           }
+          String credentialName;
           if (updateExternalLocation.getCredentialName() != null) {
-            CredentialDAO credentialDAO =
-                validateAndGetCredentialDAO(session, updateExternalLocation.getCredentialName());
+            // Setting a new credential
+            credentialName = updateExternalLocation.getCredentialName();
+            CredentialDAO credentialDAO = validateAndGetCredentialDAO(session, credentialName);
             existingLocation.setCredentialId(credentialDAO.getId());
+          } else {
+            // Keep the current credential
+            credentialName =
+                repositories
+                    .getCredentialRepository()
+                    .getCredentialName(session, existingLocation.getCredentialId());
           }
 
           existingLocation.setUpdatedAt(new Date());
@@ -189,7 +201,7 @@ public class ExternalLocationRepository {
 
           session.merge(existingLocation);
           LOGGER.info("Updated external location: {}", name);
-          return existingLocation.toExternalLocationInfo();
+          return existingLocation.toExternalLocationInfo(credentialName);
         },
         "Failed to update external location",
         /* readOnly = */ false);
