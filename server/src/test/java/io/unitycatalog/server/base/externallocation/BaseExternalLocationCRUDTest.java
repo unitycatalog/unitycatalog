@@ -117,6 +117,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         externalLocationOperations.createExternalLocation(
             new CreateExternalLocation().name(name).url(url).credentialName(CREDENTIAL_NAME));
     externalLocationsToDelete.add(name);
+    assertThat(externalLocationInfo.getId()).isNotEmpty();
     assertThat(externalLocationInfo.getName()).isEqualTo(name);
     assertThat(externalLocationInfo.getUrl()).isEqualTo(url);
     assertThat(externalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
@@ -167,6 +168,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     ExternalLocationInfo updatedExternalLocationInfo =
         externalLocationOperations.updateExternalLocation(
             EXTERNAL_LOCATION_NAME, updateExternalLocation);
+    assertThat(updatedExternalLocationInfo.getId()).isEqualTo(externalLocationInfo.getId());
     assertThat(updatedExternalLocationInfo.getName()).isEqualTo(NEW_EXTERNAL_LOCATION_NAME);
     assertThat(updatedExternalLocationInfo.getUrl()).isEqualTo(NEW_URL);
     assertThat(updatedExternalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
@@ -179,6 +181,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         externalLocationOperations.updateExternalLocation(
             NEW_EXTERNAL_LOCATION_NAME,
             new UpdateExternalLocation().credentialName(ANOTHER_CREDENTIAL_NAME));
+    assertThat(updatedExternalLocationInfo2.getId()).isEqualTo(externalLocationInfo.getId());
     assertThat(updatedExternalLocationInfo2.getName()).isEqualTo(NEW_EXTERNAL_LOCATION_NAME);
     assertThat(updatedExternalLocationInfo2.getUrl()).isEqualTo(NEW_URL);
     assertThat(updatedExternalLocationInfo2.getCredentialId())
