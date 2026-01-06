@@ -32,6 +32,86 @@ import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.lang3.tuple.Pair;
 
+/**
+ * Maps resource identifiers to internal UUIDs for authorization purposes.
+ *
+ * <p>This class serves as a translation layer in the Unity Catalog permission system, converting
+ * human-readable resource identifiers (names, full names, or UUIDs) into the internal UUID format
+ * required for authorization checks. It handles the hierarchical nature of Unity Catalog resources
+ * by automatically resolving parent resource IDs when needed.
+ *
+ * <h2>Permission System Integration</h2>
+ *
+ * <p>In the authorization flow:
+ *
+ * <ol>
+ *   <li>A method annotated with {@code @AuthorizeExpression} specifies required permissions
+ *   <li>The UnityAccessDecorator intercepts the call and extracts resource keys from parameters
+ *   <li>KeyMapper transforms these resource keys (usually names) into resource IDs (UUIDs)
+ *   <li>The evaluator checks if the principal has permission on the resolved resource IDs
+ * </ol>
+ *
+ * <h2>Supported Resource Types</h2>
+ *
+ * <ul>
+ *   <li>METASTORE - Singleton metastore resource
+ *   <li>CATALOG - Top-level namespace
+ *   <li>SCHEMA - Namespace within a catalog
+ *   <li>TABLE - Data table within a schema (supports staging tables too)
+ *   <li>VOLUME - Storage volume within a schema
+ *   <li>FUNCTION - User-defined function within a schema
+ *   <li>REGISTERED_MODEL - ML model within a schema
+ *   <li>EXTERNAL_LOCATION - External storage location
+ *   <li>CREDENTIAL - Cloud storage credential
+ * </ul>
+ *
+ * <h2>Input Formats</h2>
+ *
+ * <p>The mapper accepts flexible input formats for resources:
+ *
+ * <ul>
+ *   <li><b>Hierarchical keys:</b> Separate keys for each level (e.g., CATALOG="main",
+ *       SCHEMA="sales", TABLE="transactions")
+ *   <li><b>Full names:</b> Dot-separated full names (e.g., TABLE="main.sales.transactions")
+ *   <li><b>UUIDs:</b> Direct UUID references (e.g., TABLE="550e8400-e29b-41d4-a716-446655440000")
+ * </ul>
+ *
+ * <h2>Hierarchical Resolution</h2>
+ *
+ * <p>For nested resources (tables, volumes, functions, models), the mapper automatically resolves
+ * and populates parent resource IDs. For example, when given just a table name, it returns:
+ *
+ * <ul>
+ *   <li>TABLE → table UUID
+ *   <li>SCHEMA → parent schema UUID
+ *   <li>CATALOG → parent catalog UUID
+ * </ul>
+ *
+ * <p>This ensures that authorization checks can evaluate permissions at all levels of the
+ * hierarchy.
+ *
+ * <h2>Example Usage</h2>
+ *
+ * <pre>{@code
+ * // Input: Table referenced by full name
+ * Map<SecurableType, Object> resourceKeys = Map.of(TABLE, "main.sales.transactions");
+ *
+ * // Output: Resolved UUIDs for table and its parents
+ * Map<SecurableType, Object> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
+ * // Returns: {TABLE: <table-uuid>, SCHEMA: <schema-uuid>, CATALOG: <catalog-uuid>}
+ * }</pre>
+ *
+ * <h2>Special Cases</h2>
+ *
+ * <ul>
+ *   <li><b>Credentials:</b> Can be null (when not being updated), a name, or a UUID
+ *   <li><b>External Locations:</b> Can be referenced by name or UUID
+ *   <li><b>Tables:</b> Supports both regular tables and staging tables via ID lookup
+ * </ul>
+ *
+ * @see UnityAccessDecorator
+ * @see io.unitycatalog.server.auth.annotation.AuthorizeExpression
+ */
 public class KeyMapper {
   private final CatalogRepository catalogRepository;
   private final SchemaRepository schemaRepository;
