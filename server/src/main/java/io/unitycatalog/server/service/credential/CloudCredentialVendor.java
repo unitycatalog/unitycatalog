@@ -19,6 +19,7 @@ import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import java.net.URI;
 import java.util.Set;
 import com.google.auth.oauth2.AccessToken;
+import io.unitycatalog.server.utils.NormalizedURL;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class CloudCredentialVendor {
@@ -37,12 +38,12 @@ public class CloudCredentialVendor {
   }
 
   public TemporaryCredentials vendCredential(
-      String path,
+      NormalizedURL path,
       Set<CredentialContext.Privilege> privileges) {
     if (path == null || path.isEmpty()) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Storage location is null or empty.");
     }
-    URI storageLocationUri = URI.create(path);
+    URI storageLocationUri = path.toUri();
     // TODO: At some point, we need to check if user/subject has privileges they are asking for
     CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
     return vendCredential(credentialContext);

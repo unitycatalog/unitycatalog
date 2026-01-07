@@ -24,6 +24,7 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Map;
 import java.util.Set;
 import com.linecorp.armeria.common.HttpResponse;
@@ -89,7 +90,7 @@ public class TemporaryModelVersionCredentialsService {
     }
     return HttpResponse.ofJson(
         cloudCredentialVendor.vendCredential(
-            modelVersionInfo.getStorageLocation(),
+            new NormalizedURL(modelVersionInfo.getStorageLocation()),
             modelVersionOperationToPrivileges(requestedOperation)));
   }
 

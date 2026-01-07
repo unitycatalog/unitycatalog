@@ -2,7 +2,6 @@ package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
@@ -100,7 +99,7 @@ public class ServerProperties {
     @Override
     public void validate(String key, String value) {
       try {
-        FileOperations.toStandardizedURIString(value);
+        new NormalizedURL(value);
       } catch (Exception e) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,

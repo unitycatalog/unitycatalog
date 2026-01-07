@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Properties;
@@ -48,8 +49,11 @@ public class ExternalLocationUtilsTest {
    */
   private void validateGetParentPathsList(List<String> urls, List<String> expectedResult) {
     for (String url : urls) {
-      assertThat(ExternalLocationUtils.getParentPathsList(url))
-          .containsExactlyElementsOf(expectedResult);
+      List<String> parentPathsList =
+          ExternalLocationUtils.getParentPathsList(new NormalizedURL(url)).stream()
+              .map(NormalizedURL::toString)
+              .toList();
+      assertThat(parentPathsList).containsExactlyElementsOf(expectedResult);
     }
   }
 
@@ -220,7 +224,7 @@ public class ExternalLocationUtilsTest {
             () ->
                 ExternalLocationUtils.getEntityDAOsWithURLOverlap(
                     null,
-                    "s3://bucket/path",
+                    new NormalizedURL("s3://bucket/path"),
                     SecurableType.METASTORE,
                     /* limit= */ 1,
                     /* includeParent= */ true,
@@ -233,7 +237,7 @@ public class ExternalLocationUtilsTest {
             () ->
                 ExternalLocationUtils.getEntityDAOsWithURLOverlap(
                     null,
-                    "s3://bucket/path",
+                    new NormalizedURL("s3://bucket/path"),
                     SecurableType.CATALOG,
                     /* limit= */ 1,
                     /* includeParent= */ true,
@@ -246,7 +250,7 @@ public class ExternalLocationUtilsTest {
             () ->
                 ExternalLocationUtils.getEntityDAOsWithURLOverlap(
                     null,
-                    "s3://bucket/path",
+                    new NormalizedURL("s3://bucket/path"),
                     SecurableType.SCHEMA,
                     /* limit= */ 1,
                     /* includeParent= */ true,
@@ -297,7 +301,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query1 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            "s3://bucket/path",
+            new NormalizedURL("s3://bucket/path"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ false,
@@ -314,7 +318,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query2 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            "s3://bucket/path/to/file",
+            new NormalizedURL("s3://bucket/path/to/file"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,
@@ -331,7 +335,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query3 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            "s3://bucket/path",
+            new NormalizedURL("s3://bucket/path"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ false,
@@ -349,7 +353,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query4 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            "s3://bucket/path",
+            new NormalizedURL("s3://bucket/path"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,
@@ -366,7 +370,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query5 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            "s3://bucket/path",
+            new NormalizedURL("s3://bucket/path"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ false,
@@ -384,7 +388,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query6 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            "s3://bucket/path/to/file",
+            new NormalizedURL("s3://bucket/path/to/file"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,
@@ -402,7 +406,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query7 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            "s3://bucket/path/to/file",
+            new NormalizedURL("s3://bucket/path/to/file"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,
@@ -418,28 +422,31 @@ public class ExternalLocationUtilsTest {
         "s3://bucket/path/to/file/%");
 
     // Test 8: Special characters in URL - verify proper escaping
+    // Using URL-encoded characters: %25 for %, %5C for \, _ stays as-is. Un-encoded characters
+    // will be rejected by NormalizedURL.
     Query<ExternalLocationDAO> query8 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            "s3://bucket/path%with_special\\chars",
+            new NormalizedURL("s3://bucket/path%25test_file%5Cdata/"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
-            /* includeParent= */ false,
-            /* includeSelf= */ false,
+            /* includeParent= */ true,
+            /* includeSelf= */ true,
             /* includeSubdir= */ true);
 
     validateQuery(
         query8,
-        "FROM ExternalLocationDAO WHERE url LIKE :likePattern ESCAPE '\\' "
+        "FROM ExternalLocationDAO WHERE url IN (:matchPaths) OR url LIKE :likePattern ESCAPE '\\' "
             + "ORDER BY LENGTH(url) DESC",
-        null,
-        "s3://bucket/path\\%with\\_special\\\\chars/%");
+        List.of("s3://bucket", "s3://bucket/path%25test_file%5Cdata"),
+        "s3://bucket/path\\%25test\\_file\\%5Cdata/%");
 
     // Test 9: URL with trailing slash - should be normalized
+    // The normalized URL will have trailing slashes removed
     Query<ExternalLocationDAO> query9 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            "s3://bucket/path/",
+            new NormalizedURL("s3://bucket/path/"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ false,
@@ -450,7 +457,26 @@ public class ExternalLocationUtilsTest {
         query9,
         "FROM ExternalLocationDAO WHERE url IN (:matchPaths) OR url LIKE :likePattern "
             + "ESCAPE '\\' ORDER BY LENGTH(url) DESC",
-        List.of("s3://bucket/path/"),
+        List.of("s3://bucket/path"),
         "s3://bucket/path/%");
+
+    // Test 9: URL from local path
+    // The normalized URL will have file:/// prefix.
+    Query<ExternalLocationDAO> query10 =
+        ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
+            session,
+            new NormalizedURL("/tmp/path/"),
+            SecurableType.EXTERNAL_LOCATION,
+            /* limit= */ 10,
+            /* includeParent= */ true,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ true);
+
+    validateQuery(
+        query10,
+        "FROM ExternalLocationDAO WHERE url IN (:matchPaths) OR url LIKE :likePattern "
+            + "ESCAPE '\\' ORDER BY LENGTH(url) DESC",
+        List.of("file:///tmp", "file:///", "file:///tmp/path"),
+        "file:///tmp/path/%");
   }
 }

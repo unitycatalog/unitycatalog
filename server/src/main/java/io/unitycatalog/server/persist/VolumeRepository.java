@@ -14,6 +14,7 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
@@ -71,7 +72,8 @@ public class VolumeRepository {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
     }
-    volumeInfo.setStorageLocation(createVolumeRequest.getStorageLocation());
+    NormalizedURL storageLocation = new NormalizedURL(createVolumeRequest.getStorageLocation());
+    volumeInfo.setStorageLocation(storageLocation.toString());
     VolumeInfoDAO volumeInfoDAO = VolumeInfoDAO.from(volumeInfo);
 
     return TransactionManager.executeWithTransaction(

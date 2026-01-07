@@ -18,6 +18,7 @@ import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
@@ -60,24 +61,24 @@ public class TableRepository {
    * common supplemental of an actual table but only a special case.
    *
    * @param tableId the ID of the table or staging table
-   * @return the standardized URI string of the storage location
+   * @return the normalized URL of the storage location
    * @throws BaseException with ErrorCode.NOT_FOUND if neither a table nor staging table is found
    *     with the given ID
    */
-  public String getStorageLocationForTableOrStagingTable(UUID tableId) {
+  public NormalizedURL getStorageLocationForTableOrStagingTable(UUID tableId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           LOGGER.debug("Getting storage location of table by id: {}", tableId);
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
           if (tableInfoDAO != null) {
-            return FileOperations.toStandardizedURIString(tableInfoDAO.getUrl());
+            return new NormalizedURL(tableInfoDAO.getUrl());
           }
 
           LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
           StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
           if (stagingTableDAO != null) {
-            return FileOperations.toStandardizedURIString(stagingTableDAO.getStagingLocation());
+            return new NormalizedURL(stagingTableDAO.getStagingLocation());
           }
           throw new BaseException(
               ErrorCode.NOT_FOUND, "Neither table nor staging table found with id: " + tableId);
@@ -186,8 +187,7 @@ public class TableRepository {
           String schemaName = createTable.getSchemaName();
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
-          String storageLocation =
-              FileOperations.toStandardizedURIString(createTable.getStorageLocation());
+          NormalizedURL storageLocation = new NormalizedURL(createTable.getStorageLocation());
 
           // Check if table already exists
           TableInfoDAO existingTable =
@@ -240,7 +240,7 @@ public class TableRepository {
                   .createdBy(callerId)
                   .updatedAt(createTime)
                   .updatedBy(callerId)
-                  .storageLocation(storageLocation)
+                  .storageLocation(storageLocation.toString())
                   .tableId(tableID);
 
           TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);

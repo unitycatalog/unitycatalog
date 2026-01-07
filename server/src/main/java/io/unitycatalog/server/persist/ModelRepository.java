@@ -21,6 +21,7 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
@@ -215,7 +216,7 @@ public class ModelRepository {
       UUID schemaId =
           repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
       UUID catalogId = repositories.getCatalogRepository().getCatalogId(session, catalogName);
-      String storageLocation =
+      NormalizedURL storageLocation =
           fileOperations.getModelStorageLocation(
               catalogId.toString(), schemaId.toString(), modelId);
       try {
@@ -226,7 +227,7 @@ public class ModelRepository {
           throw new BaseException(
               ErrorCode.ALREADY_EXISTS, "Registered model already exists: " + fullName);
         }
-        registeredModelInfo.setStorageLocation(storageLocation);
+        registeredModelInfo.setStorageLocation(storageLocation.toString());
         RegisteredModelInfoDAO registeredModelInfoDAO =
             RegisteredModelInfoDAO.from(registeredModelInfo);
         registeredModelInfoDAO.setSchemaId(schemaId);
@@ -545,7 +546,7 @@ public class ModelRepository {
       UUID catalogId = repositories.getCatalogRepository().getCatalogId(session, catalogName);
       UUID schemaId =
           repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
-      String storageLocation = "";
+      NormalizedURL storageLocation = null;
       try {
         // Check if registered model already exists
         RegisteredModelInfoDAO existingRegisteredModel =
@@ -563,7 +564,7 @@ public class ModelRepository {
             fileOperations.getModelVersionStorageLocation(
                 catalogId.toString(), schemaId.toString(), modelId.toString(), modelVersionId);
         modelVersionInfo.setVersion(version);
-        modelVersionInfo.setStorageLocation(storageLocation);
+        modelVersionInfo.setStorageLocation(storageLocation.toString());
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);
         modelVersionInfoDAO.setRegisteredModelId(modelId);
         session.persist(modelVersionInfoDAO);
@@ -580,7 +581,7 @@ public class ModelRepository {
           } catch (Exception deleteErr) {
             LOGGER.error(
                 "Unable to delete storage location {} during rollback: {}",
-                storageLocation,
+                storageLocation == null ? "null" : storageLocation.toString(),
                 deleteErr.getMessage());
           }
           tx.rollback();

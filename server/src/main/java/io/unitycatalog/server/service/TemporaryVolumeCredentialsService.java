@@ -18,6 +18,7 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.NormalizedURL;
 import lombok.SneakyThrows;
 
 import java.util.Collections;
@@ -61,7 +62,7 @@ public class TemporaryVolumeCredentialsService {
     VolumeInfo volumeInfo = volumeRepository.getVolumeById(volumeId);
     return HttpResponse.ofJson(
         cloudCredentialVendor.vendCredential(
-            volumeInfo.getStorageLocation(),
+            new NormalizedURL(volumeInfo.getStorageLocation()),
             volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
   }
 
