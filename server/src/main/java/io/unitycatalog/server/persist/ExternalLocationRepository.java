@@ -6,9 +6,12 @@ import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.CredentialPurpose;
 import io.unitycatalog.server.model.ExternalLocationInfo;
 import io.unitycatalog.server.model.ListExternalLocationsResponse;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
@@ -57,7 +60,7 @@ public class ExternalLocationRepository {
     return credentialDAO;
   }
 
-  public ExternalLocationDAO addExternalLocation(CreateExternalLocation createExternalLocation) {
+  public ExternalLocationInfo addExternalLocation(CreateExternalLocation createExternalLocation) {
     ValidationUtils.validateSqlObjectName(createExternalLocation.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
@@ -70,6 +73,9 @@ public class ExternalLocationRepository {
                 "External location already exists: " + createExternalLocation.getName());
           }
 
+          String url = FileOperations.toStandardizedURIString(createExternalLocation.getUrl());
+          validateUrlNotUsedByAnyExternalLocation(session, url, Optional.empty());
+
           CredentialDAO credentialDAO =
               validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
           UUID externalLocationId = UUID.randomUUID();
@@ -77,7 +83,7 @@ public class ExternalLocationRepository {
               ExternalLocationDAO.builder()
                   .id(externalLocationId)
                   .name(createExternalLocation.getName())
-                  .url(createExternalLocation.getUrl())
+                  .url(url)
                   .comment(createExternalLocation.getComment())
                   .owner(callerId)
                   .credentialId(credentialDAO.getId())
@@ -86,7 +92,7 @@ public class ExternalLocationRepository {
                   .build();
           session.persist(externalLocationDAO);
           LOGGER.info("External location added: {}", externalLocationDAO.getName());
-          return externalLocationDAO;
+          return externalLocationDAO.toExternalLocationInfo(credentialDAO.getName());
         },
         "Failed to add external location",
         /* readOnly = */ false);
@@ -100,8 +106,12 @@ public class ExternalLocationRepository {
           if (externalLocationDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
-          LOGGER.info("External location retrieved: {}", externalLocationDAO.getName());
-          return externalLocationDAO.toExternalLocationInfo();
+          LOGGER.debug("External location retrieved: {}", externalLocationDAO.getName());
+          String credentialName =
+              repositories
+                  .getCredentialRepository()
+                  .getCredentialName(session, externalLocationDAO.getCredentialId());
+          return externalLocationDAO.toExternalLocationInfo(credentialName);
         },
         "Failed to get external location",
         /* readOnly = */ true);
@@ -127,7 +137,11 @@ public class ExternalLocationRepository {
           String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
           List<ExternalLocationInfo> results = new ArrayList<>();
           for (ExternalLocationDAO dao : daoList) {
-            results.add(dao.toExternalLocationInfo());
+            String credentialName =
+                repositories
+                    .getCredentialRepository()
+                    .getCredentialName(session, dao.getCredentialId());
+            results.add(dao.toExternalLocationInfo(credentialName));
           }
           return new ListExternalLocationsResponse()
               .externalLocations(results)
@@ -160,15 +174,26 @@ public class ExternalLocationRepository {
             existingLocation.setName(updateExternalLocation.getNewName());
           }
           if (updateExternalLocation.getUrl() != null) {
-            existingLocation.setUrl(updateExternalLocation.getUrl());
+            existingLocation.setUrl(
+                FileOperations.toStandardizedURIString(updateExternalLocation.getUrl()));
+            validateUrlNotUsedByAnyExternalLocation(
+                session, existingLocation.getUrl(), Optional.of(existingLocation.getId()));
           }
           if (updateExternalLocation.getComment() != null) {
             existingLocation.setComment(updateExternalLocation.getComment());
           }
+          String credentialName;
           if (updateExternalLocation.getCredentialName() != null) {
-            CredentialDAO credentialDAO =
-                validateAndGetCredentialDAO(session, updateExternalLocation.getCredentialName());
+            // Setting a new credential
+            credentialName = updateExternalLocation.getCredentialName();
+            CredentialDAO credentialDAO = validateAndGetCredentialDAO(session, credentialName);
             existingLocation.setCredentialId(credentialDAO.getId());
+          } else {
+            // Keep the current credential
+            credentialName =
+                repositories
+                    .getCredentialRepository()
+                    .getCredentialName(session, existingLocation.getCredentialId());
           }
 
           existingLocation.setUpdatedAt(new Date());
@@ -176,13 +201,27 @@ public class ExternalLocationRepository {
 
           session.merge(existingLocation);
           LOGGER.info("Updated external location: {}", name);
-          return existingLocation.toExternalLocationInfo();
+          return existingLocation.toExternalLocationInfo(credentialName);
         },
         "Failed to update external location",
         /* readOnly = */ false);
   }
 
-  public ExternalLocationDAO deleteExternalLocation(String name) {
+  /**
+   * Deletes an external location by name.
+   *
+   * <p>By default, deletion will fail if the external location is still in use by any tables,
+   * volumes, or registered models. Use the force parameter to bypass this check and delete the
+   * external location even if it is still referenced.
+   *
+   * @param name The name of the external location to delete
+   * @param force If true, delete the external location even if it's still in use by other entities
+   * @return The deleted ExternalLocationDAO
+   * @throws BaseException with NOT_FOUND if the external location doesn't exist
+   * @throws BaseException with INVALID_ARGUMENT if the external location is in use and force is
+   *     false
+   */
+  public ExternalLocationDAO deleteExternalLocation(String name, boolean force) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -190,11 +229,86 @@ public class ExternalLocationRepository {
           if (existingLocation == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
+          // Check if the external location is in use by any data objects (tables, volumes, models)
+          if (!force) {
+            ExternalLocationUtils.getAllEntityDAOsOverlapUrl(
+                    session,
+                    existingLocation.getUrl(),
+                    ExternalLocationUtils.DATA_SECURABLE_TYPES,
+                    /* limit= */ 1,
+                    /* includeParent= */ false,
+                    /* includeSelf= */ true,
+                    /* includeSubdir= */ true)
+                .stream()
+                .findAny()
+                .ifPresent(
+                    pair -> {
+                      throw new BaseException(
+                          ErrorCode.INVALID_ARGUMENT,
+                          String.format(
+                              "External location still used by %s '%s'",
+                              pair.getLeft(), pair.getRight().getId()));
+                    });
+          }
           session.remove(existingLocation);
           LOGGER.info("Deleted external location: {}", name);
           return existingLocation;
         },
         "Failed to delete external location",
         /* readOnly = */ false);
+  }
+
+  /**
+   * Validates that no other external location has a URL that overlaps with the given URL.
+   *
+   * <p>This method ensures that external locations have non-overlapping URL hierarchies. It checks
+   * for three types of overlap:
+   *
+   * <ol>
+   *   <li>Exact match: An existing location has the same URL
+   *   <li>Parent match: An existing location's URL is a parent directory of the given URL
+   *   <li>Subdirectory match: An existing location's URL is a subdirectory of the given URL
+   * </ol>
+   *
+   * <p>If any overlap is found, this method throws a BaseException with INVALID_ARGUMENT error
+   * code.
+   *
+   * @param session The Hibernate session for database access
+   * @param url The URL to validate (must be standardized)
+   * @param currentExternalLocationId The ID of the current external location it's validating. This
+   *     is only set for updating an existing external location. For creating new ones it's empty.
+   * @throws BaseException if an overlapping external location exists
+   */
+  private void validateUrlNotUsedByAnyExternalLocation(
+      Session session, String url, Optional<UUID> currentExternalLocationId) {
+    ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsOverlapUrl(
+            session,
+            url,
+            SecurableType.EXTERNAL_LOCATION,
+            // If it needs to find *another* besides the current one, it has to find at least 2.
+            /* limit= */ currentExternalLocationId.map(current -> 2).orElse(1),
+            /* includeParent= */ true,
+            /* includeSelf= */ true,
+            /* includeSubdir= */ true)
+        .stream()
+        .filter(
+            otherExternalLocation ->
+                currentExternalLocationId
+                    .map(id -> !id.equals(otherExternalLocation.getId()))
+                    .orElse(true))
+        .findAny()
+        .ifPresent(
+            otherExternalLocation -> {
+              LOGGER.error(
+                  "Cannot have external location with a URL {} that overlaps/duplicates with "
+                      + "existing external location {} with url {}",
+                  url,
+                  otherExternalLocation.getName(),
+                  otherExternalLocation.getUrl());
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  "Cannot accept an external location that duplicates or overlaps with existing "
+                      + "external location");
+            });
   }
 }

@@ -2628,6 +2628,7 @@ components:
         - function
         - volume
         - registered_model
+        - external_location
       description: The type of the resource.
     Privilege:
       type: string
@@ -2815,6 +2816,9 @@ components:
       properties:
         name:
           description: Name of the external location.
+          type: string
+        id:
+          description: Unique identifier for the external location.
           type: string
         url:
           description: Path URL of the external location.

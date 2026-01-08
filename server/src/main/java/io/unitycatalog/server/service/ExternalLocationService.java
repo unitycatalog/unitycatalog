@@ -15,6 +15,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateExternalLocation;
+import io.unitycatalog.server.model.ExternalLocationInfo;
 import io.unitycatalog.server.model.ListExternalLocationsResponse;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.ExternalLocationRepository;
@@ -38,10 +39,10 @@ public class ExternalLocationService extends AuthorizedService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse createExternalLocation(CreateExternalLocation createExternalLocation) {
-    ExternalLocationDAO externalLocationDAO =
+    ExternalLocationInfo externalLocationInfo =
         externalLocationRepository.addExternalLocation(createExternalLocation);
-    initializeBasicAuthorization(externalLocationDAO.getId().toString());
-    return HttpResponse.ofJson(externalLocationDAO.toExternalLocationInfo());
+    initializeBasicAuthorization(externalLocationInfo.getId());
+    return HttpResponse.ofJson(externalLocationInfo);
   }
 
   @Get("")
@@ -74,9 +75,10 @@ public class ExternalLocationService extends AuthorizedService {
   @Delete("/{name}")
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeKey(METASTORE)
-  public HttpResponse deleteExternalLocation(@Param("name") String name) {
+  public HttpResponse deleteExternalLocation(
+      @Param("name") String name, @Param("force") Optional<Boolean> force) {
     ExternalLocationDAO externalLocationDAO =
-        externalLocationRepository.deleteExternalLocation(name);
+        externalLocationRepository.deleteExternalLocation(name, force.orElse(false));
     removeAuthorizations(externalLocationDAO.getId().toString());
     return HttpResponse.of(HttpStatus.OK);
   }

@@ -8,6 +8,7 @@ import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.Constants;
@@ -194,13 +195,14 @@ public class FileOperations {
    * file:///. This function makes sure these URIs must begin with file:/// in order to be a valid
    * local file URI.
    */
-  private static URI adjustLocalFileURI(URI fileUri) {
+  public static String localFileURIToString(URI fileUri) {
     String uriString = fileUri.toString();
     // Ensure the URI starts with "file:///" for absolute paths
-    if (uriString.startsWith("file:/") && !uriString.startsWith("file:///")) {
-      uriString = "file://" + uriString.substring(5);
+    if (uriString.startsWith("file:/")) {
+      String path = uriString.substring(5);
+      uriString = "file://" + removeExtraSlashes(path);
     }
-    return URI.create(uriString);
+    return uriString;
   }
 
   public static void assertValidLocation(String location) {
@@ -248,28 +250,74 @@ public class FileOperations {
     // Check if the path is already a URI with a valid scheme
     URI uri;
     try {
-      uri = new URI(inputPath);
+      uri = new URI(inputPath).normalize();
     } catch (URISyntaxException e) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported path: " + inputPath);
     }
-    // If it's a file URI, standardize it
-    if (uri.getScheme() != null) {
-      if (uri.getScheme().equals(Constants.URI_SCHEME_FILE)) {
-        return adjustLocalFileURI(uri).toString();
-      } else if (Constants.SUPPORTED_CLOUD_SCHEMES.contains(uri.getScheme())) {
-        return uri.toString();
-      } else {
-        throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + uri.getScheme());
-      }
+    if (uri.getScheme() == null) {
+      // It's a local path without file://. Construct a file:// URI using Path.
+      uri = Paths.get(inputPath).toAbsolutePath().toUri().normalize();
     }
-    String localUri = Paths.get(inputPath).toUri().toString();
-    if (!inputPath.endsWith("/") && localUri.endsWith("/")) {
-      // A special case where the local inputPath is a directory already exist, generated localUri
-      // will have an extra trailing slash. Remove it to make it consistent.
-      localUri = localUri.substring(0, localUri.length() - 1);
+    if (Constants.URI_SCHEME_FILE.equals(uri.getScheme())) {
+      return localFileURIToString(uri);
+    } else if (Constants.SUPPORTED_CLOUD_SCHEMES.contains(uri.getScheme())) {
+      return removeExtraSlashes(uri.toString());
+    } else {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + inputPath);
     }
-    return localUri;
+  }
+
+  /**
+   * Removes leading and trailing slashes from a path string, keeping only one leading slash if
+   * present.
+   *
+   * <p>This method normalizes paths by:
+   *
+   * <ul>
+   *   <li>Reducing multiple leading slashes to a single slash
+   *   <li>Removing all trailing slashes
+   *   <li>Preserving the internal structure of the path
+   * </ul>
+   *
+   * <p>Examples:
+   *
+   * <ul>
+   *   <li>"///a/b///" -> "/a/b"
+   *   <li>"///////" -> "/"
+   *   <li>"a/b////" -> "a/b"
+   *   <li>"" -> ""
+   *   <li>null -> null
+   * </ul>
+   *
+   * @param path The path string to normalize, may be null
+   * @return The normalized path, or null if input is null
+   */
+  @VisibleForTesting
+  static String removeExtraSlashes(String path) {
+    if (path == null || path.length() <= 1) {
+      return path;
+    }
+
+    // 1. find the first non-slash
+    int start = 0;
+    while (start < path.length() && path.charAt(start) == '/') {
+      start++;
+    }
+    // Keep the first slash if any
+    if (start > 0) {
+      start--;
+    }
+
+    // 2. find the last non-slash. stop before when reaching start.
+    int end = path.length() - 1;
+    while (end > start && path.charAt(end) == '/') {
+      end--;
+    }
+    // Advance end to point to the first trailing slashes to remove, or path.length() if nothing to
+    // remove
+    end++;
+
+    return path.substring(start, end);
   }
 
   private String getManagedTablesStorageRoot() {
