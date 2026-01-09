@@ -117,10 +117,14 @@ public class CliCredentialOperations implements CredentialOperations {
   }
 
   @Override
-  public void deleteCredential(String name) throws ApiException {
+  public void deleteCredential(String name, Optional<Boolean> force) throws ApiException {
     try {
-      String[] args =
-          addServerAndAuthParams(List.of("credential", "delete", "--name", name), config);
+      List<String> argsList = new ArrayList<>(List.of("credential", "delete", "--name", name));
+      if (force.isPresent() && force.get()) {
+        argsList.add("--force");
+        argsList.add("true");
+      }
+      String[] args = addServerAndAuthParams(argsList, config);
       executeCLICommand(args);
     } catch (RuntimeException e) {
       if (e.getCause() instanceof ApiException) {
