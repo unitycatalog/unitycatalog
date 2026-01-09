@@ -95,7 +95,6 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   @Override
   @AfterEach
   public void tearDown() {
-    Thread.sleep(5000);
     for (String externalLocationName : externalLocationsToDelete) {
       try {
         adminApi.deleteExternalLocation(externalLocationName, true);
