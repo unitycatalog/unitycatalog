@@ -78,7 +78,7 @@ public class ExternalLocationUtils {
    *     specified number of results
    * @throws IllegalArgumentException if any securableType is not supported for URL overlap checks
    */
-  public static List<Pair<SecurableType, IdentifiableDAO>> getAllEntityDAOsOverlapUrl(
+  public static List<Pair<SecurableType, IdentifiableDAO>> getAllEntityDAOsWithURLOverlap(
       Session session,
       String url,
       List<SecurableType> securableTypes,
@@ -90,7 +90,7 @@ public class ExternalLocationUtils {
     return securableTypes.stream()
         .flatMap(
             securableType ->
-                generateEntitiesDAOsOverlapUrlQuery(
+                generateEntitiesDAOsWithURLOverlapQuery(
                         session,
                         url,
                         securableType,
@@ -106,7 +106,7 @@ public class ExternalLocationUtils {
 
   /**
    * Finds entities of the specified type whose URLs overlap with the given URL. Refer to
-   * generateEntitiesDAOsOverlapUrlQuery for the details.
+   * generateEntitiesDAOsWithURLOverlapQuery for the details.
    *
    * @param <T> The DAO type to return, must extend IdentifiableDAO
    * @param session The Hibernate session for database access
@@ -121,7 +121,7 @@ public class ExternalLocationUtils {
    * @return List of matching entity DAOs, ordered by URL length descending
    * @throws IllegalArgumentException if the securableType is not supported for URL overlap checks
    */
-  public static <T extends IdentifiableDAO> List<T> getEntityDAOsOverlapUrl(
+  public static <T extends IdentifiableDAO> List<T> getEntityDAOsWithURLOverlap(
       Session session,
       String url,
       SecurableType securableType,
@@ -130,7 +130,7 @@ public class ExternalLocationUtils {
       boolean includeSelf,
       boolean includeSubdir) {
     Query<T> query =
-        generateEntitiesDAOsOverlapUrlQuery(
+        generateEntitiesDAOsWithURLOverlapQuery(
             session, url, securableType, limit, includeParent, includeSelf, includeSubdir);
     return query.stream().toList();
   }
@@ -164,7 +164,7 @@ public class ExternalLocationUtils {
    * @throws IllegalArgumentException if the securableType is not supported for URL overlap checks
    */
   @VisibleForTesting
-  static <T extends IdentifiableDAO> Query<T> generateEntitiesDAOsOverlapUrlQuery(
+  static <T extends IdentifiableDAO> Query<T> generateEntitiesDAOsWithURLOverlapQuery(
       Session session,
       String url,
       SecurableType securableType,

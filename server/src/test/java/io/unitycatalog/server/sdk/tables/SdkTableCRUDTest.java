@@ -24,6 +24,7 @@ import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -78,7 +79,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         createTestingTable(
             TestUtils.TABLE_NAME,
             TableType.EXTERNAL,
-            Optional.of(TestUtils.STORAGE_LOCATION),
+            Optional.of(Files.createTempDirectory(testDirectoryRoot, "table").toString()),
             tableOperations);
     ListTablesResponse resp =
         localTablesApi.listTables(

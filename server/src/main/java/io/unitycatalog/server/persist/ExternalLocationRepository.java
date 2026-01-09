@@ -231,7 +231,7 @@ public class ExternalLocationRepository {
           }
           // Check if the external location is in use by any data objects (tables, volumes, models)
           if (!force) {
-            ExternalLocationUtils.getAllEntityDAOsOverlapUrl(
+            ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
                     session,
                     existingLocation.getUrl(),
                     ExternalLocationUtils.DATA_SECURABLE_TYPES,
@@ -281,7 +281,7 @@ public class ExternalLocationRepository {
    */
   private void validateUrlNotUsedByAnyExternalLocation(
       Session session, String url, Optional<UUID> currentExternalLocationId) {
-    ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsOverlapUrl(
+    ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsWithURLOverlap(
             session,
             url,
             SecurableType.EXTERNAL_LOCATION,

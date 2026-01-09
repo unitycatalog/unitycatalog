@@ -16,6 +16,7 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Optional;
 import lombok.SneakyThrows;
@@ -79,12 +80,13 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
     }
   }
 
+  @SneakyThrows
   protected TableInfo createAndVerifyExternalTable() {
     TableInfo tableInfo =
         createTestingTable(
             TestUtils.TABLE_NAME,
             TableType.EXTERNAL,
-            Optional.of(TestUtils.STORAGE_LOCATION),
+            Optional.of(Files.createTempDirectory(testDirectoryRoot, "table").toString()),
             tableOperations);
     assertThat(tableInfo.getName()).isEqualTo(TestUtils.TABLE_NAME);
     assertThat(tableInfo.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
