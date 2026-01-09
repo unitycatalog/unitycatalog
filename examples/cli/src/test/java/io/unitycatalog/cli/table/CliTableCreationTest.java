@@ -9,10 +9,12 @@ import static org.apache.commons.io.FileUtils.deleteDirectory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.schema.CliSchemaOperations;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
@@ -108,29 +110,36 @@ public class CliTableCreationTest extends BaseServerTest {
   }
 
   @Test
-  public void testCreateManagedTableAndFail() throws IOException, ApiException {
+  public void testCreateManagedTableAndFail() {
     // This fails due to setting a storage location for managed table.
-    assertThat(
-            tableOperations.createTable(
-                new CreateTable()
-                    .catalogName(CATALOG_NAME)
-                    .schemaName(SCHEMA_NAME)
-                    .name(TABLE_NAME + "_1")
-                    .tableType(TableType.MANAGED)
-                    .storageLocation("/tmp/some_path")
-                    .columns(COLUMNS)))
-        .isNull();
+    CliException ex1 =
+        assertThrows(
+            CliException.class,
+            () ->
+                tableOperations.createTable(
+                    new CreateTable()
+                        .catalogName(CATALOG_NAME)
+                        .schemaName(SCHEMA_NAME)
+                        .name(TABLE_NAME + "_1")
+                        .tableType(TableType.MANAGED)
+                        .storageLocation("/tmp/some_path")
+                        .columns(COLUMNS)));
+    assertThat(ex1.getMessage()).contains("Storage location is not allowed for managed tables");
     // This fails due to setting PARQUET. Only DELTA is supported for managed table right now.
-    assertThat(
-            tableOperations.createTable(
-                new CreateTable()
-                    .catalogName(CATALOG_NAME)
-                    .schemaName(SCHEMA_NAME)
-                    .name(TABLE_NAME + "_2")
-                    .tableType(TableType.MANAGED)
-                    .dataSourceFormat(DataSourceFormat.PARQUET)
-                    .columns(COLUMNS)))
-        .isNull();
+    CliException ex2 =
+        assertThrows(
+            CliException.class,
+            () ->
+                tableOperations.createTable(
+                    new CreateTable()
+                        .catalogName(CATALOG_NAME)
+                        .schemaName(SCHEMA_NAME)
+                        .name(TABLE_NAME + "_2")
+                        .tableType(TableType.MANAGED)
+                        .dataSourceFormat(DataSourceFormat.PARQUET)
+                        .columns(COLUMNS)));
+    assertThat(ex2.getMessage())
+        .contains("Only Delta tables are supported for managed tables: PARQUET");
   }
 
   private void createTableAndAssertReadTableSucceeds(
