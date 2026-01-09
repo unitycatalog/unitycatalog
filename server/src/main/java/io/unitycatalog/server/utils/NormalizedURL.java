@@ -28,8 +28,8 @@ import lombok.EqualsAndHashCode;
  * <p>Usage example:
  *
  * <pre>
- * NormalizedURL url1 = new NormalizedURL("s3://bucket/path/");
- * NormalizedURL url2 = new NormalizedURL("s3://bucket/path");
+ * NormalizedURL url1 = NormalizedURL.from("s3://bucket/path/");
+ * NormalizedURL url2 = NormalizedURL.from("s3://bucket/path");
  * assert url1.equals(url2); // true - both normalized to "s3://bucket/path"
  * </pre>
  *
@@ -46,13 +46,22 @@ public final class NormalizedURL {
    * Creates a normalized URL from the given input path or URI.
    *
    * @param url the input path or URI to normalize
-   * @throws BaseException if the input is null, or has an invalid or unsupported URI scheme
    */
-  public NormalizedURL(String url) {
+  private NormalizedURL(String url) {
+    this.url = normalize(url);
+  }
+
+  /**
+   * Creates a normalized URL from the given input path or URI. Returns null if the input is null.
+   *
+   * @param url the input path or URI to normalize
+   */
+  public static NormalizedURL from(String url) {
     if (url == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "URL cannot be null");
+      return null;
+    } else {
+      return new NormalizedURL(url);
     }
-    this.url = toStandardizedURIString(url);
   }
 
   /**
@@ -118,7 +127,7 @@ public final class NormalizedURL {
    * "ftp://example.com/file"   -> Throws BaseException with message: "Unsupported URI scheme: ftp"
    * </pre>
    */
-  private static String toStandardizedURIString(String inputPath) {
+  public static String normalize(String inputPath) {
     // Check if the path is already a URI with a valid scheme
     URI uri;
     try {

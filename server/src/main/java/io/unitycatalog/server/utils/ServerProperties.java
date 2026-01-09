@@ -99,7 +99,7 @@ public class ServerProperties {
     @Override
     public void validate(String key, String value) {
       try {
-        new NormalizedURL(value);
+        NormalizedURL.from(value);
       } catch (Exception e) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,

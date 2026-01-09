@@ -73,7 +73,7 @@ public class ExternalLocationRepository {
                 "External location already exists: " + createExternalLocation.getName());
           }
 
-          NormalizedURL url = new NormalizedURL(createExternalLocation.getUrl());
+          NormalizedURL url = NormalizedURL.from(createExternalLocation.getUrl());
           validateUrlNotUsedByAnyExternalLocation(session, url, Optional.empty());
 
           CredentialDAO credentialDAO =
@@ -174,7 +174,7 @@ public class ExternalLocationRepository {
             existingLocation.setName(updateExternalLocation.getNewName());
           }
           if (updateExternalLocation.getUrl() != null) {
-            NormalizedURL url = new NormalizedURL(updateExternalLocation.getUrl());
+            NormalizedURL url = NormalizedURL.from(updateExternalLocation.getUrl());
             existingLocation.setUrl(url.toString());
             validateUrlNotUsedByAnyExternalLocation(
                 session, url, Optional.of(existingLocation.getId()));
@@ -233,7 +233,7 @@ public class ExternalLocationRepository {
           if (!force) {
             ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
                     session,
-                    new NormalizedURL(existingLocation.getUrl()),
+                    NormalizedURL.from(existingLocation.getUrl()),
                     ExternalLocationUtils.DATA_SECURABLE_TYPES,
                     /* limit= */ 1,
                     /* includeParent= */ false,

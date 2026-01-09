@@ -34,7 +34,7 @@ public class TemporaryPathCredentialsService {
       GenerateTemporaryPathCredential generateTemporaryPathCredential) {
     return HttpResponse.ofJson(
         cloudCredentialVendor.vendCredential(
-            new NormalizedURL(generateTemporaryPathCredential.getUrl()),
+            NormalizedURL.from(generateTemporaryPathCredential.getUrl()),
             pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
   }
 

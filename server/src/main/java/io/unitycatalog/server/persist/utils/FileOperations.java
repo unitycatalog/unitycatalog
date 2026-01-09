@@ -77,7 +77,7 @@ public class FileOperations {
   }
 
   private NormalizedURL getModelDirectoryURI(String entityFullName) {
-    return new NormalizedURL(getModelStorageRoot() + "/" + entityFullName.replace(".", "/"));
+    return NormalizedURL.from(getModelStorageRoot() + "/" + entityFullName.replace(".", "/"));
   }
 
   public NormalizedURL getModelStorageLocation(String catalogId, String schemaId, String modelId) {
@@ -202,6 +202,6 @@ public class FileOperations {
    */
   public NormalizedURL createTableDirectory(String tableId) {
     String directoryUriString = getManagedTablesStorageRoot() + "/tables/" + tableId;
-    return new NormalizedURL(directoryUriString);
+    return NormalizedURL.from(directoryUriString);
   }
 }

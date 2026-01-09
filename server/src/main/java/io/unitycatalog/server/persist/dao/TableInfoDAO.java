@@ -108,7 +108,7 @@ public class TableInfoDAO extends IdentifiableDAO {
             .schemaName(schemaName)
             .tableType(TableType.valueOf(type))
             .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
-            .storageLocation(new NormalizedURL(url).toString())
+            .storageLocation(NormalizedURL.normalize(url))
             .comment(comment)
             .owner(owner)
             .createdAt(createdAt != null ? createdAt.getTime() : null)

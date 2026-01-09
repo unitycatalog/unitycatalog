@@ -879,8 +879,8 @@ public class DeltaCommitRepository {
    */
   private static void validateTableForCommit(DeltaCommit commit, TableInfoDAO tableInfoDAO) {
     validateTable(tableInfoDAO);
-    NormalizedURL commitTableUri = new NormalizedURL(commit.getTableUri());
-    NormalizedURL tableUri = new NormalizedURL(tableInfoDAO.getUrl());
+    NormalizedURL commitTableUri = NormalizedURL.from(commit.getTableUri());
+    NormalizedURL tableUri = NormalizedURL.from(tableInfoDAO.getUrl());
     ValidationUtils.checkArgument(
         commitTableUri.equals(tableUri),
         "Table URI in commit %s does not match the table path %s",

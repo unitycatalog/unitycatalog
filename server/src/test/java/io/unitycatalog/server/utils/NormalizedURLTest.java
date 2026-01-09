@@ -10,14 +10,7 @@ import org.junit.jupiter.api.Test;
 public class NormalizedURLTest {
 
   void assertNormalizedURL(String url, String expected) {
-    assertThat(new NormalizedURL(url).toString()).isEqualTo(expected);
-  }
-
-  @Test
-  public void testNullURLThrowsException() {
-    assertThatThrownBy(() -> new NormalizedURL(null))
-        .isInstanceOf(BaseException.class)
-        .hasMessageContaining("URL cannot be null");
+    assertThat(NormalizedURL.from(url).toString()).isEqualTo(expected);
   }
 
   @Test
@@ -60,7 +53,7 @@ public class NormalizedURLTest {
     assertNormalizedURL("gs://my-bucket/my-file///", "gs://my-bucket/my-file");
     assertNormalizedURL("gs://my-bucket///my-file", "gs://my-bucket/my-file");
 
-    assertThatThrownBy(() -> new NormalizedURL("ftp://example.com/file"))
+    assertThatThrownBy(() -> NormalizedURL.from("ftp://example.com/file"))
         .isInstanceOf(BaseException.class);
 
     assertNormalizedURL("file:/tmp/mydir/", "file:///tmp/mydir");

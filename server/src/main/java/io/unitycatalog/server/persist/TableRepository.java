@@ -72,13 +72,13 @@ public class TableRepository {
           LOGGER.debug("Getting storage location of table by id: {}", tableId);
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
           if (tableInfoDAO != null) {
-            return new NormalizedURL(tableInfoDAO.getUrl());
+            return NormalizedURL.from(tableInfoDAO.getUrl());
           }
 
           LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
           StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
           if (stagingTableDAO != null) {
-            return new NormalizedURL(stagingTableDAO.getStagingLocation());
+            return NormalizedURL.from(stagingTableDAO.getStagingLocation());
           }
           throw new BaseException(
               ErrorCode.NOT_FOUND, "Neither table nor staging table found with id: " + tableId);
@@ -187,7 +187,7 @@ public class TableRepository {
           String schemaName = createTable.getSchemaName();
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
-          NormalizedURL storageLocation = new NormalizedURL(createTable.getStorageLocation());
+          NormalizedURL storageLocation = NormalizedURL.from(createTable.getStorageLocation());
 
           // Check if table already exists
           TableInfoDAO existingTable =

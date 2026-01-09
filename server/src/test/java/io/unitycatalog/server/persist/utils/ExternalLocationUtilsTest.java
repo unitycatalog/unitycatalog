@@ -50,7 +50,7 @@ public class ExternalLocationUtilsTest {
   private void validateGetParentPathsList(List<String> urls, List<String> expectedResult) {
     for (String url : urls) {
       List<String> parentPathsList =
-          ExternalLocationUtils.getParentPathsList(new NormalizedURL(url)).stream()
+          ExternalLocationUtils.getParentPathsList(NormalizedURL.from(url)).stream()
               .map(NormalizedURL::toString)
               .toList();
       assertThat(parentPathsList).containsExactlyElementsOf(expectedResult);
@@ -224,7 +224,7 @@ public class ExternalLocationUtilsTest {
             () ->
                 ExternalLocationUtils.getEntityDAOsWithURLOverlap(
                     null,
-                    new NormalizedURL("s3://bucket/path"),
+                    NormalizedURL.from("s3://bucket/path"),
                     SecurableType.METASTORE,
                     /* limit= */ 1,
                     /* includeParent= */ true,
@@ -237,7 +237,7 @@ public class ExternalLocationUtilsTest {
             () ->
                 ExternalLocationUtils.getEntityDAOsWithURLOverlap(
                     null,
-                    new NormalizedURL("s3://bucket/path"),
+                    NormalizedURL.from("s3://bucket/path"),
                     SecurableType.CATALOG,
                     /* limit= */ 1,
                     /* includeParent= */ true,
@@ -250,7 +250,7 @@ public class ExternalLocationUtilsTest {
             () ->
                 ExternalLocationUtils.getEntityDAOsWithURLOverlap(
                     null,
-                    new NormalizedURL("s3://bucket/path"),
+                    NormalizedURL.from("s3://bucket/path"),
                     SecurableType.SCHEMA,
                     /* limit= */ 1,
                     /* includeParent= */ true,
@@ -301,7 +301,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query1 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("s3://bucket/path"),
+            NormalizedURL.from("s3://bucket/path"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ false,
@@ -318,7 +318,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query2 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("s3://bucket/path/to/file"),
+            NormalizedURL.from("s3://bucket/path/to/file"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,
@@ -335,7 +335,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query3 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("s3://bucket/path"),
+            NormalizedURL.from("s3://bucket/path"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ false,
@@ -353,7 +353,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query4 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("s3://bucket/path"),
+            NormalizedURL.from("s3://bucket/path"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,
@@ -370,7 +370,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query5 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("s3://bucket/path"),
+            NormalizedURL.from("s3://bucket/path"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ false,
@@ -388,7 +388,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query6 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("s3://bucket/path/to/file"),
+            NormalizedURL.from("s3://bucket/path/to/file"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,
@@ -406,7 +406,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query7 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("s3://bucket/path/to/file"),
+            NormalizedURL.from("s3://bucket/path/to/file"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,
@@ -427,7 +427,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query8 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("s3://bucket/path%25test_file%5Cdata/"),
+            NormalizedURL.from("s3://bucket/path%25test_file%5Cdata/"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,
@@ -446,7 +446,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query9 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("s3://bucket/path/"),
+            NormalizedURL.from("s3://bucket/path/"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ false,
@@ -465,7 +465,7 @@ public class ExternalLocationUtilsTest {
     Query<ExternalLocationDAO> query10 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
             session,
-            new NormalizedURL("/tmp/path/"),
+            NormalizedURL.from("/tmp/path/"),
             SecurableType.EXTERNAL_LOCATION,
             /* limit= */ 10,
             /* includeParent= */ true,

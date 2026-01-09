@@ -244,7 +244,7 @@ public class ExternalLocationUtils {
     Path path = new Path(url.toString()).getParent();
     // Iterate from parent URL up to the root using getParent()
     while (path != null) {
-      parentPaths.add(new NormalizedURL(path.toString()));
+      parentPaths.add(NormalizedURL.from(path.toString()));
       path = path.getParent();
     }
     return parentPaths;

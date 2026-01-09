@@ -57,7 +57,7 @@ public class VolumeInfoDAO extends IdentifiableDAO {
         .volumeId(getId().toString())
         .name(getName())
         .comment(comment)
-        .storageLocation(new NormalizedURL(storageLocation).toString())
+        .storageLocation(NormalizedURL.normalize(storageLocation))
         .owner(owner)
         .createdAt(createdAt.getTime())
         .createdBy(createdBy)

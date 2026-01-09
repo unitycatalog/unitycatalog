@@ -72,8 +72,8 @@ public class VolumeRepository {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
     }
-    NormalizedURL storageLocation = new NormalizedURL(createVolumeRequest.getStorageLocation());
-    volumeInfo.setStorageLocation(storageLocation.toString());
+    volumeInfo.setStorageLocation(
+        NormalizedURL.normalize(createVolumeRequest.getStorageLocation()));
     VolumeInfoDAO volumeInfoDAO = VolumeInfoDAO.from(volumeInfo);
 
     return TransactionManager.executeWithTransaction(

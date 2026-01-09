@@ -62,7 +62,7 @@ public class TemporaryVolumeCredentialsService {
     VolumeInfo volumeInfo = volumeRepository.getVolumeById(volumeId);
     return HttpResponse.ofJson(
         cloudCredentialVendor.vendCredential(
-            new NormalizedURL(volumeInfo.getStorageLocation()),
+            NormalizedURL.from(volumeInfo.getStorageLocation()),
             volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
   }
 

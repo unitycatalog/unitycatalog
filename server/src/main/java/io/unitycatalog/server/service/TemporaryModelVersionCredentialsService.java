@@ -90,7 +90,7 @@ public class TemporaryModelVersionCredentialsService {
     }
     return HttpResponse.ofJson(
         cloudCredentialVendor.vendCredential(
-            new NormalizedURL(modelVersionInfo.getStorageLocation()),
+            NormalizedURL.from(modelVersionInfo.getStorageLocation()),
             modelVersionOperationToPrivileges(requestedOperation)));
   }
 
