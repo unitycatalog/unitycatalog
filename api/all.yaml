@@ -2673,6 +2673,7 @@ components:
         - Enables creating external tables through external locations.
         - Enables creating external volumes through external locations.
         - Allows designating managed storage locations at catalog or schema levels.
+        - Required privilege on the metastore to create storage credentials.
     UpdatePermissions:
       type: object
       properties:
