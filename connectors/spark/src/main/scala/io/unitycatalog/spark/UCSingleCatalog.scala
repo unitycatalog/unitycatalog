@@ -1,15 +1,12 @@
 package io.unitycatalog.spark
 
-import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.auth.TokenProvider
-import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.model._
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
+import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
 import io.unitycatalog.spark.utils.OptionsUtil
-
-import java.net.URI
-import java.util
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -17,12 +14,14 @@ import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchT
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
+import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.sparkproject.guava.base.Preconditions
 
-import scala.collection.convert.ImplicitConversions._
+import java.net.URI
+import java.util
 import scala.collection.JavaConverters._
+import scala.collection.convert.ImplicitConversions._
 import scala.language.existentials
 
 /**
@@ -318,7 +317,57 @@ private class UCProxy(
         throw new NoSuchTableException(ident)
     }
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
+
+    val tableType = t.getTableType match {
+      case TableType.MANAGED => CatalogTableType.MANAGED
+      case TableType.VIEW => CatalogTableType.VIEW
+      case _ => CatalogTableType.EXTERNAL
+    }
+
+    val storage = if (t.getStorageLocation != null) {
+      val tableId = t.getTableId
+      var tableOp = TableOperation.READ_WRITE
+      val temporaryCredentials = {
+        try {
+          temporaryCredentialsApi
+            .generateTemporaryTableCredentials(
+              // TODO: at this time, we don't know if the table will be read or written. For now we always
+              //       request READ_WRITE credentials as the server doesn't distinguish between READ and
+              //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
+              //       for read or write, we can request the proper credential after fixing Spark.
+              new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
+            )
+        } catch {
+          case _: ApiException =>
+            tableOp = TableOperation.READ
+            temporaryCredentialsApi
+              .generateTemporaryTableCredentials(
+                new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
+              )
+        }
+      }
+
+      val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
+
+      val extraSerdeProps = CredPropsUtil.createTableCredProps(
+        renewCredEnabled,
+        locationUri.getScheme,
+        uri.toString,
+        tokenProvider,
+        tableId,
+        tableOp,
+        temporaryCredentials,
+      )
+      CatalogStorageFormat.empty.copy(
+        locationUri = Some(locationUri),
+        properties = t.getProperties.asScala.toMap ++ extraSerdeProps
+      )
+    } else {
+      CatalogStorageFormat.empty
+    }
+
     val partitionCols = scala.collection.mutable.ArrayBuffer.empty[(String, Int)]
+
     val fields = t.getColumns.asScala.map { col =>
       Option(col.getPartitionIndex).foreach { index =>
         partitionCols += col.getName -> index
@@ -326,55 +375,19 @@ private class UCProxy(
       StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
         .withComment(col.getComment)
     }.toArray
-    val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
-    val tableId = t.getTableId
-    var tableOp = TableOperation.READ_WRITE
-    val temporaryCredentials = {
-      try {
-        temporaryCredentialsApi
-          .generateTemporaryTableCredentials(
-            // TODO: at this time, we don't know if the table will be read or written. For now we always
-            //       request READ_WRITE credentials as the server doesn't distinguish between READ and
-            //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
-            //       for read or write, we can request the proper credential after fixing Spark.
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-          )
-      } catch {
-        case _: ApiException =>
-          tableOp = TableOperation.READ
-          temporaryCredentialsApi
-            .generateTemporaryTableCredentials(
-              new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-            )
-      }
-    }
-
-    val extraSerdeProps = CredPropsUtil.createTableCredProps(
-      renewCredEnabled,
-      locationUri.getScheme,
-      uri.toString,
-      tokenProvider,
-      tableId,
-      tableOp,
-      temporaryCredentials,
-    )
 
     val sparkTable = CatalogTable(
       identifier,
-      tableType = if (t.getTableType == TableType.MANAGED) {
-        CatalogTableType.MANAGED
-      } else {
-        CatalogTableType.EXTERNAL
-      },
-      storage = CatalogStorageFormat.empty.copy(
-        locationUri = Some(locationUri),
-        properties = t.getProperties.asScala.toMap ++ extraSerdeProps
-      ),
+      tableType = tableType,
+      storage = storage,
       schema = StructType(fields),
-      provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
+      provider = Option(t.getDataSourceFormat).map(_.getValue.toLowerCase()),
       createTime = t.getCreatedAt,
       tracksPartitionsInCatalog = false,
-      partitionColumnNames = partitionCols.sortBy(_._2).map(_._1).toSeq
+      partitionColumnNames = partitionCols.sortBy(_._2).map(_._1).toSeq,
+      viewText = Option(t.getViewDefinition),
+      viewOriginalText = None,
+      comment = Option(t.getComment)
     )
     // Spark separates table lookup and data source resolution. To support Spark native data
     // sources, here we return the `V1Table` which only contains the table metadata. Spark will
