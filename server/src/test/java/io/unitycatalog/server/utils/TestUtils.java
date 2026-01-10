@@ -54,10 +54,6 @@ public class TestUtils {
       new HashMap<>(Map.of("prop2", "value22", "prop3", "value33"));
   public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
 
-  public static int getRandomPort() {
-    return (int) (Math.random() * 1000) + 9000;
-  }
-
   public static ApiClient createApiClient(ServerConfig serverConfig) {
     ApiClient apiClient = new ApiClient();
     URI uri = URI.create(serverConfig.getServerUrl());
