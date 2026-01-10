@@ -2654,6 +2654,26 @@ components:
         - CREATE MANAGED STORAGE
         - CREATE STORAGE CREDENTIAL
       description: The privilege to grant.
+      x-enum-descriptions:
+        - Enables users to create new catalogs in a metastore.
+        - Required to interact with any object within a catalog.
+        - Enables users to create new schemas in a catalog.
+        - Required to interact with any object within a schema.
+        - Allows creating tables or views in a schema.
+        - Enables querying tables, views, materialized views.
+        - Enables adding, updating, and deleting data within tables (requires SELECT privilege also).
+        - Allows users to create functions or procedures within a schema.
+        - Permits invoking user-defined functions or loading models for inference.
+        - Enables creating volumes in a schema.
+        - Permits reading files and directories within volumes.
+        - Permits establishing MLflow registered models in a schema.
+        - Required privilege on both the metastore and referenced storage credential to create external locations.
+        - Grants direct read access to files in cloud storage configured as external locations.
+        - Grants direct write access to files in cloud storage configured as external locations.
+        - Enables creating external tables through external locations.
+        - Enables creating external volumes through external locations.
+        - Allows designating managed storage locations at catalog or schema levels.
+        - Required privilege on the metastore to create storage credentials.
     UpdatePermissions:
       type: object
       properties:
