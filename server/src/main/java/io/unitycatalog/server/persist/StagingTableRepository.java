@@ -8,6 +8,7 @@ import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Date;
@@ -29,15 +30,15 @@ public class StagingTableRepository {
     this.serverProperties = serverProperties;
   }
 
-  private StagingTableDAO findByStagingLocation(Session session, String stagingLocation) {
+  private StagingTableDAO findByStagingLocation(Session session, NormalizedURL stagingLocation) {
     String hql = "FROM StagingTableDAO t WHERE t.stagingLocation = :stagingLocation";
     Query<StagingTableDAO> query = session.createQuery(hql, StagingTableDAO.class);
-    query.setParameter("stagingLocation", stagingLocation);
+    query.setParameter("stagingLocation", stagingLocation.toString());
     return query.uniqueResult(); // Returns null if no result is found
   }
 
   private void validateIfAlreadyExists(
-      Session session, UUID schemaId, String tableName, String stagingLocation) {
+      Session session, UUID schemaId, String tableName, NormalizedURL stagingLocation) {
     // Check if table by the same name already exists. It's OK if a staging table with the same name
     // already exist.
     TableInfoDAO existingTable =
@@ -83,7 +84,7 @@ public class StagingTableRepository {
     ValidationUtils.validateSqlObjectName(createStagingTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     UUID stagingTableId = UUID.randomUUID();
-    String stagingLocation =
+    NormalizedURL stagingLocation =
         repositories.getFileOperations().createTableDirectory(stagingTableId.toString());
 
     return TransactionManager.executeWithTransaction(
@@ -103,7 +104,7 @@ public class StagingTableRepository {
           stagingTableDAO.setId(stagingTableId);
           stagingTableDAO.setSchemaId(schemaId);
           stagingTableDAO.setName(createStagingTable.getName());
-          stagingTableDAO.setStagingLocation(stagingLocation);
+          stagingTableDAO.setStagingLocation(stagingLocation.toString());
           stagingTableDAO.setCreatedBy(callerId);
           session.persist(stagingTableDAO);
           return stagingTableDAO.toStagingTableInfo(
@@ -122,7 +123,7 @@ public class StagingTableRepository {
    *
    * @param session the Hibernate session for database operations
    * @param callerId the identifier of the user attempting to commit the staging table
-   * @param storageLocation the storage location URI of the staging table to commit
+   * @param storageLocation the normalized storage location URL of the staging table to commit
    * @return StagingTableDAO the committed staging table data access object
    * @throws BaseException with ErrorCode.NOT_FOUND if no staging table exists at the specified
    *     location
@@ -132,7 +133,7 @@ public class StagingTableRepository {
    *     committed
    */
   public StagingTableDAO commitStagingTable(
-      Session session, String callerId, String storageLocation) {
+      Session session, String callerId, NormalizedURL storageLocation) {
     serverProperties.checkManagedTableEnabled();
     StagingTableDAO stagingTableDAO = findByStagingLocation(session, storageLocation);
     if (stagingTableDAO == null) {

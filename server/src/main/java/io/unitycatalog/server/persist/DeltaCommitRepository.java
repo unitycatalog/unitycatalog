@@ -15,10 +15,10 @@ import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TableProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -879,9 +879,10 @@ public class DeltaCommitRepository {
    */
   private static void validateTableForCommit(DeltaCommit commit, TableInfoDAO tableInfoDAO) {
     validateTable(tableInfoDAO);
+    NormalizedURL commitTableUri = NormalizedURL.from(commit.getTableUri());
+    NormalizedURL tableUri = NormalizedURL.from(tableInfoDAO.getUrl());
     ValidationUtils.checkArgument(
-        FileOperations.toStandardizedURIString(commit.getTableUri())
-            .equals(FileOperations.toStandardizedURIString(tableInfoDAO.getUrl())),
+        commitTableUri.equals(tableUri),
         "Table URI in commit %s does not match the table path %s",
         commit.getTableUri(),
         tableInfoDAO.getUrl());

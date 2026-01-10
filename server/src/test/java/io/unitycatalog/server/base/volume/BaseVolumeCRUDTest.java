@@ -27,7 +27,7 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
-import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
@@ -72,8 +72,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     assertThat(volumeInfo.getSchemaName()).isEqualTo(createVolumeRequest.getSchemaName());
     assertThat(volumeInfo.getVolumeType()).isEqualTo(createVolumeRequest.getVolumeType());
     assertThat(volumeInfo.getStorageLocation())
-        .isEqualTo(
-            FileOperations.toStandardizedURIString(createVolumeRequest.getStorageLocation()));
+        .isEqualTo(NormalizedURL.normalize(createVolumeRequest.getStorageLocation()));
     assertThat(volumeInfo.getFullName()).isEqualTo(volumeFullName);
     assertThat(volumeInfo.getCreatedAt()).isNotNull();
   }
