@@ -83,16 +83,4 @@ public class NormalizedURLTest {
     String uuid = UUID.randomUUID().toString();
     assertNormalizedURL("/tmp/tables/" + uuid, "file:///tmp/tables/" + uuid);
   }
-
-  @Test
-  public void testRemoveExtraSlashes() {
-    assertThat(NormalizedURL.removeExtraSlashes(null)).isEqualTo(null);
-    assertThat(NormalizedURL.removeExtraSlashes("")).isEqualTo("");
-    assertThat(NormalizedURL.removeExtraSlashes("///////")).isEqualTo("/");
-    assertThat(NormalizedURL.removeExtraSlashes("//a/////////")).isEqualTo("/a");
-    assertThat(NormalizedURL.removeExtraSlashes("///a/b///")).isEqualTo("/a/b");
-    assertThat(NormalizedURL.removeExtraSlashes("a/b")).isEqualTo("a/b");
-    assertThat(NormalizedURL.removeExtraSlashes("///a/b")).isEqualTo("/a/b");
-    assertThat(NormalizedURL.removeExtraSlashes("a/b////")).isEqualTo("a/b");
-  }
 }

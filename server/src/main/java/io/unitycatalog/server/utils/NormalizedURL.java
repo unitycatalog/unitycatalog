@@ -1,6 +1,5 @@
 package io.unitycatalog.server.utils;
 
-import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
@@ -188,8 +187,7 @@ public final class NormalizedURL {
    * @param path The path string to normalize, may be null
    * @return The normalized path, or null if input is null
    */
-  @VisibleForTesting
-  static String removeExtraSlashes(String path) {
+  private static String removeExtraSlashes(String path) {
     if (path == null || path.length() <= 1) {
       return path;
     }

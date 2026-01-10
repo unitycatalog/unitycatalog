@@ -581,7 +581,7 @@ public class ModelRepository {
           } catch (Exception deleteErr) {
             LOGGER.error(
                 "Unable to delete storage location {} during rollback: {}",
-                storageLocation == null ? "null" : storageLocation.toString(),
+                storageLocation,
                 deleteErr.getMessage());
           }
           tx.rollback();
