@@ -7,11 +7,12 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateFunctionRequest;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.model.SchemaInfo;
@@ -20,10 +21,8 @@ import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
-import java.util.List;
-import java.util.Map;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
-import java.util.UUID;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
@@ -42,8 +41,11 @@ public class FunctionService extends AuthorizedService {
   private final MetastoreRepository metastoreRepository;
 
   @SneakyThrows
-  public FunctionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories);
+  public FunctionService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.functionRepository = repositories.getFunctionRepository();
@@ -74,24 +76,25 @@ public class FunctionService extends AuthorizedService {
   }
 
   @Get("")
-  @AuthorizeExpression("#defer")
+  @AuthorizeExpression("""
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #schema, OWNER) &&
+          #authorize(#principal, #catalog, USE_CATALOG)) ||
+      (#authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #function, OWNER, EXECUTE))
+      """)
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse listFunctions(
-      @Param("catalog_name") String catalogName,
-      @Param("schema_name") String schemaName,
+      @Param("catalog_name") @AuthorizeResourceKey(CATALOG) String catalogName,
+      @Param("schema_name") @AuthorizeResourceKey(SCHEMA) String schemaName,
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
-
     ListFunctionsResponse listFunctionsResponse =
         functionRepository.listFunctions(catalogName, schemaName, maxResults, pageToken);
-    filterFunctions("""
-        #authorize(#principal, #metastore, OWNER) ||
-        #authorize(#principal, #catalog, OWNER) ||
-        (#authorize(#principal, #schema, OWNER) &&
-            #authorize(#principal, #catalog, USE_CATALOG)) ||
-        (#authorize(#principal, #schema, USE_SCHEMA) &&
-            #authorizeAny(#principal, #catalog, USE_CATALOG) &&
-            #authorizeAny(#principal, #function, OWNER, EXECUTE))
-        """, listFunctionsResponse.getFunctions());
+    applyResponseFilter(SecurableType.FUNCTION, listFunctionsResponse.getFunctions());
     return HttpResponse.ofJson(listFunctionsResponse);
   }
 
@@ -132,28 +135,5 @@ public class FunctionService extends AuthorizedService {
     return HttpResponse.of(HttpStatus.OK);
   }
 
-  public void filterFunctions(String expression, List<FunctionInfo> entries) {
-    // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = userRepository.findPrincipalId();
-
-    evaluator.filter(
-        principalId,
-        expression,
-        entries,
-        fi -> {
-          CatalogInfo catalogInfo = catalogRepository.getCatalog(fi.getCatalogName());
-          SchemaInfo schemaInfo =
-              schemaRepository.getSchema(fi.getCatalogName() + "." + fi.getSchemaName());
-          return Map.of(
-              METASTORE,
-              metastoreRepository.getMetastoreId(),
-              CATALOG,
-              UUID.fromString(catalogInfo.getId()),
-              SCHEMA,
-              UUID.fromString(schemaInfo.getSchemaId()),
-              FUNCTION,
-              UUID.fromString(fi.getFunctionId()));
-        });
-  }
 }
 

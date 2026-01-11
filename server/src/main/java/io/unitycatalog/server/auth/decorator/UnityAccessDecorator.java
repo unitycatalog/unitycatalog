@@ -11,10 +11,12 @@ import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.SimpleDecoratingHttpService;
+import io.netty.util.AttributeKey;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
@@ -67,6 +69,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private final UnityAccessEvaluator evaluator;
 
+  // Context attribute key for passing ResultFilter to service methods
+  public static final AttributeKey<ResultFilter> RESULT_FILTER_ATTR =
+      AttributeKey.valueOf(ResultFilter.class, "RESULT_FILTER");
+
   public UnityAccessDecorator(UnityCatalogAuthorizer authorizer, Repositories repositories)
       throws BaseException {
     try {
@@ -84,26 +90,28 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     LOGGER.debug("AccessDecorator checking {}", req.path());
 
     Method method = findServiceMethod(ctx.config().service());
+    if (method == null) {
+      throw new RuntimeException("Couldn't unwrap service.");
+    }
 
-    if (method != null) {
+    // Find the authorization parameters to use for this service method.
+    String expression = findAuthorizeExpression(method);
+    List<AuthorizeKeyLocator> locators = findAuthorizeKeys(method);
 
-      // Find the authorization parameters to use for this service method.
-      String expression = findAuthorizeExpression(method);
-      List<AuthorizeKeyLocator> locators = findAuthorizeKeys(method);
+    // Check for response filtering annotation
+    Optional<ResponseAuthorizeFilter> filterAnnotation =
+        Optional.ofNullable(method.getAnnotation(ResponseAuthorizeFilter.class));
 
-      if (expression != null) {
-        if (!locators.isEmpty()) {
-          UUID principal = userRepository.findPrincipalId();
-          return authorizeByRequest(delegate, ctx, req, principal, locators, expression);
-        } else {
-          LOGGER.warn("No authorization resource(s) found.");
-          // going to assume the expression is just #deny, #permit or #defer
-        }
-      } else {
-        LOGGER.debug("No authorization expression found.");
-      }
+    if (expression == null) {
+      throw new RuntimeException("No authorization expression found.");
+    }
+    if (!locators.isEmpty()) {
+      UUID principal = userRepository.findPrincipalId();
+      return authorizeByRequest(
+          delegate, ctx, method, req, principal, locators, expression, filterAnnotation);
     } else {
-      LOGGER.warn("Couldn't unwrap service.");
+      LOGGER.warn("No authorization resource(s) found.");
+      // going to assume the expression is just #deny or #permit
     }
 
     return delegate.serve(ctx, req);
@@ -112,10 +120,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   private HttpResponse authorizeByRequest(
       HttpService delegate,
       ServiceRequestContext ctx,
+      Method method,
       HttpRequest req,
       UUID principal,
       List<AuthorizeKeyLocator> locators,
-      String expression) throws Exception {
+      String expression,
+      Optional<ResponseAuthorizeFilter> filterAnnotation) throws Exception {
     //
     // Based on the query and payload parameters defined on the service method (that
     // have been gathered as Locators), we'll attempt to find the entity/resource that
@@ -152,13 +162,14 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       }
     });
 
-    if (payloadLocators.isEmpty()) {
-      // If we don't have any PAYLOAD locators, we're ready to evaluate the authorization and allow
-      // or deny the request.
-      LOGGER.debug("Checking authorization before method.");
-      checkAuthorization(principal, expression, resourceKeys, nonResourceValues);
+    AbstractEvaluationAction evaluateAction =
+        filterAnnotation
+            .<AbstractEvaluationAction>map(x -> new ResultFilterAction(ctx, method))
+            .orElseGet(() -> new RequestEvaluationAction(method));
 
-      return delegate.serve(ctx, req);
+    if (payloadLocators.isEmpty()) {
+      Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
+      evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
     } else {
       // Since we have PAYLOAD locators, we can only interrogate the payload while the request
       // is being evaluated, via peekData()
@@ -172,16 +183,18 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
       // Note that peekData only gets called for requests that actually have data (like PUT&POST)
 
-      var peekReq = req.peekData(data -> {
+      req = req.peekData(data -> {
+        // This code block is not called immediately. It is called later as part of delegate.serve()
         LOGGER.debug("Authorization peekData invoked.");
 
-        if (peekDataHandler.processPeekData(data)) {
-          checkAuthorization(principal, expression, resourceKeys, nonResourceValues);
-        }
+        peekDataHandler.processPeekData(data);
+        Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
+        evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
       });
-
-      return delegate.serve(ctx, peekReq);
     }
+
+    HttpResponse response = delegate.serve(ctx, req);
+    return evaluateAction.afterRequest(response);
   }
 
   private static Object findPayloadValue(String key, Map<String, Object> payload) {
@@ -200,14 +213,107 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  private void checkAuthorization(
-      UUID principal,
-      String expression,
-      Map<SecurableType, Object> resourceKeys,
-      Map<String, Object> nonResourceValues) {
-    LOGGER.debug("resourceKeys = {}", resourceKeys);
+  private abstract static class AbstractEvaluationAction {
+    private boolean beforeRequestWasCalled = false;
+    protected Method method;
+    protected static final String ERR_AUTH_NOT_EXECUTED =
+        "Authorization required but failed to execute";
 
-    Map<SecurableType, Object> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
+    AbstractEvaluationAction(Method method) {
+      this.method = method;
+    }
+
+    void beforeRequest(
+        UUID principal,
+        String expression,
+        Map<SecurableType, UUID> resourceIds,
+        Map<String, Object> nonResourceValues) {
+      beforeRequestWasCalled = true;
+      evaluateBeforeRequest(principal, expression, resourceIds, nonResourceValues);
+    }
+
+    abstract void evaluateBeforeRequest(
+        UUID principal,
+        String expression,
+        Map<SecurableType, UUID> resourceIds,
+        Map<String, Object> nonResourceValues);
+
+    HttpResponse afterRequest(HttpResponse response) {
+      return HttpResponse.of(response.aggregate().thenApply(
+        aggregated -> {
+          if (aggregated.status().isSuccess()) {
+            if (!beforeRequestWasCalled) {
+              LOGGER.error(
+                  "SECURITY VIOLATION: Method {} did not execute evaluateAction",
+                  method.getName());
+              throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
+            }
+            evaluateAfterRequest();
+          }
+          return aggregated.toHttpResponse();
+        }));
+    }
+
+    abstract void evaluateAfterRequest();
+  }
+
+  private class RequestEvaluationAction extends AbstractEvaluationAction {
+
+    RequestEvaluationAction(Method method) {
+      super(method);
+    }
+
+    @Override
+    public void evaluateBeforeRequest(
+        UUID principal,
+        String expression,
+        Map<SecurableType, UUID> resourceIds,
+        Map<String, Object> nonResourceValues) {
+      if (!evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
+        throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+      }
+    }
+
+    @Override
+    public void evaluateAfterRequest() {}
+  }
+
+  private class ResultFilterAction extends AbstractEvaluationAction {
+    private final ServiceRequestContext ctx;
+    private ResultFilter resultFilter = null;
+
+    ResultFilterAction(ServiceRequestContext ctx, Method method) {
+      super(method);
+      this.ctx = ctx;
+    }
+
+    @Override
+    public void evaluateBeforeRequest(
+        UUID principal,
+        String expression,
+        Map<SecurableType, UUID> resourceIds,
+        Map<String, Object> nonResourceValues) {
+      resultFilter =
+          new ResultFilter(
+              evaluator, principal, expression, resourceIds, nonResourceValues, keyMapper);
+      ctx.setAttr(RESULT_FILTER_ATTR, resultFilter);
+    }
+
+    @Override
+    public void evaluateAfterRequest() {
+      if (!resultFilter.wasCalled()) {
+        LOGGER.error(
+            "SECURITY VIOLATION: Method {} with @ResponseAuthorizeFilter did not call "
+                + "applyResponseFilter(). This is a security vulnerability!",
+            method.getName());
+        throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
+      }
+    }
+  }
+
+  private Map<SecurableType, UUID> mapResourceKeys(
+      Map<SecurableType, Object> resourceKeys, Map<String, Object> nonResourceValues) {
+    Map<SecurableType, UUID> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
 
     if (resourceKeys.containsKey(SecurableType.EXTERNAL_LOCATION)) {
       // KeyMapper will try to map a path of EXTERNAL_LOCATION to any data securable if the path
@@ -224,11 +330,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     LOGGER.debug("resourceIds = {}", resourceIds);
-    LOGGER.debug("nonResourceValues = {}", nonResourceValues);
-
-    if (!evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
-    }
+    return resourceIds;
   }
 
   private static String findAuthorizeExpression(Method method) {
