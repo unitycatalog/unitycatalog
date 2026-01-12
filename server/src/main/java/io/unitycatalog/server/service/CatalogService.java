@@ -36,7 +36,7 @@ public class CatalogService extends AuthorizedService {
 
   @SneakyThrows
   public CatalogService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.catalogRepository = repositories.getCatalogRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
   }

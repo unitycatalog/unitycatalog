@@ -19,6 +19,7 @@ import lombok.experimental.SuperBuilder;
     name = "uc_external_locations",
     indexes = {
       @Index(name = "idx_url", columnList = "url"),
+      @Index(name = "idx_credential_id", columnList = "credential_id"),
     })
 // Lombok
 @Getter

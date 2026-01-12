@@ -35,7 +35,7 @@ public class CredentialService extends AuthorizedService {
 
   @SneakyThrows
   public CredentialService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.credentialRepository = repositories.getCredentialRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
   }
@@ -92,8 +92,10 @@ public class CredentialService extends AuthorizedService {
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteCredential(
-      @Param("name") @AuthorizeKey(CREDENTIAL) String name) {
-    CredentialInfo credentialInfo = credentialRepository.deleteCredential(name);
+      @Param("name") @AuthorizeKey(CREDENTIAL) String name,
+      @Param("force") Optional<Boolean> force) {
+    CredentialInfo credentialInfo =
+        credentialRepository.deleteCredential(name, force.orElse(false));
     removeAuthorizations(credentialInfo.getId());
     return HttpResponse.of(HttpStatus.OK);
   }
