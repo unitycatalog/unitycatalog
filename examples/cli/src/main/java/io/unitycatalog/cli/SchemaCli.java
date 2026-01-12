@@ -3,7 +3,6 @@ package io.unitycatalog.cli;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiClient;
@@ -12,7 +11,6 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateSchema;
-import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
@@ -87,15 +85,7 @@ public class SchemaCli {
       throws JsonProcessingException, ApiException {
     String schemaFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     json.remove(CliParams.FULL_NAME.getServerParam());
-    if (json.length() == 0) {
-      List<CliParams> optionalParams =
-          CliUtils.cliOptions.get(CliUtils.SCHEMA).get(CliUtils.UPDATE).getOptionalParams();
-      String errorMessage = "No parameters to update, please provide one of:";
-      for (CliParams param : optionalParams) {
-        errorMessage += "\n  --" + param.val();
-      }
-      throw new CliException(errorMessage);
-    }
+    CliUtils.validateUpdateParameters(json, CliUtils.SCHEMA, CliUtils.UPDATE);
     UpdateSchema updateSchema =
         new UpdateSchema()
             .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))

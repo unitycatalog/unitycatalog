@@ -831,4 +831,16 @@ public class CliUtils {
     json.remove(CliParams.INPUT_PARAMS.getServerParam());
     return new FunctionParameterInfos().parameters(parameterInfos);
   }
+
+  public static void validateUpdateParameters(JSONObject json, String command, String subCommand) {
+    if (json.isEmpty()) {
+      List<CliParams> optionalParams =
+          CliUtils.cliOptions.get(command).get(subCommand).getOptionalParams();
+      String errorMessage = "No parameters to update, please provide one of:";
+      for (CliParams param : optionalParams) {
+        errorMessage += "\n  --" + param.val();
+      }
+      throw new CliException(errorMessage);
+    }
+  }
 }
