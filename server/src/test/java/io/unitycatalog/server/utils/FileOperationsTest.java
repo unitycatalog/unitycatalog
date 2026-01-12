@@ -15,8 +15,9 @@ public class FileOperationsTest {
     serverProperties.set(ServerProperties.Property.MODEL_STORAGE_ROOT, "/tmp");
     FileOperations fileOperations = new FileOperations(serverProperties);
 
-    String modelPathUri = fileOperations.getModelStorageLocation("catalog", "schema", "my-model");
-    String modelVersionPathUri =
+    NormalizedURL modelPathUri =
+        fileOperations.getModelStorageLocation("catalog", "schema", "my-model");
+    NormalizedURL modelVersionPathUri =
         fileOperations.getModelVersionStorageLocation("catalog", "schema", "my-model", "1");
     String modelPath = UriUtils.createStorageLocationPath(modelPathUri);
     String modelVersionPath = UriUtils.createStorageLocationPath(modelVersionPathUri);

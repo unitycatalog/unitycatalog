@@ -8,6 +8,7 @@ import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -35,8 +36,16 @@ public class UriUtils {
     return updateDirectoryFromUri(uri, Operation.CREATE, Optional.empty()).toString();
   }
 
+  public static String createStorageLocationPath(NormalizedURL uri) {
+    return createStorageLocationPath(uri.toString());
+  }
+
   public static String deleteStorageLocationPath(String uri) {
     return updateDirectoryFromUri(uri, Operation.DELETE, Optional.empty()).toString();
+  }
+
+  public static String deleteStorageLocationPath(NormalizedURL uri) {
+    return deleteStorageLocationPath(uri.toString());
   }
 
   private static URI updateDirectoryFromUri(

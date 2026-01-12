@@ -17,6 +17,7 @@ import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.utils.NormalizedURL;
 import lombok.SneakyThrows;
 
 import java.util.Collections;
@@ -55,7 +56,7 @@ public class TemporaryTableCredentialsService {
     authorizeForOperation(generateTemporaryTableCredential);
 
     String tableId = generateTemporaryTableCredential.getTableId();
-    String storageLocation = tableRepository.getStorageLocationForTableOrStagingTable(
+    NormalizedURL storageLocation = tableRepository.getStorageLocationForTableOrStagingTable(
         UUID.fromString(tableId));
     return HttpResponse.ofJson(cloudCredentialVendor.vendCredential(storageLocation,
             tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));

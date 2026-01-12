@@ -10,6 +10,7 @@ import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.utils.NormalizedURL;
 
 import java.util.Collections;
 import java.util.Set;
@@ -33,7 +34,7 @@ public class TemporaryPathCredentialsService {
       GenerateTemporaryPathCredential generateTemporaryPathCredential) {
     return HttpResponse.ofJson(
         cloudCredentialVendor.vendCredential(
-            generateTemporaryPathCredential.getUrl(),
+            NormalizedURL.from(generateTemporaryPathCredential.getUrl()),
             pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
   }
 
