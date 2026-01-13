@@ -35,7 +35,7 @@ public class CredentialService extends AuthorizedService {
 
   @SneakyThrows
   public CredentialService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.credentialRepository = repositories.getCredentialRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
   }

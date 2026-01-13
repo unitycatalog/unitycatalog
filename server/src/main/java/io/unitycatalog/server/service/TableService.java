@@ -43,7 +43,7 @@ public class TableService extends AuthorizedService {
 
   @SneakyThrows
   public TableService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.tableRepository = repositories.getTableRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.catalogRepository = repositories.getCatalogRepository();

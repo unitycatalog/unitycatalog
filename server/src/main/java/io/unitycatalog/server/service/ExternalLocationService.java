@@ -38,7 +38,7 @@ public class ExternalLocationService extends AuthorizedService {
 
   @SneakyThrows
   public ExternalLocationService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.externalLocationRepository = repositories.getExternalLocationRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
   }

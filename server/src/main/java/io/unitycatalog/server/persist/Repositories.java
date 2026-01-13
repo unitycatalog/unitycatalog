@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist;
 
+import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.ServerProperties;
 import lombok.Getter;
@@ -27,6 +28,8 @@ public class Repositories {
   private final ExternalLocationRepository externalLocationRepository;
   private final DeltaCommitRepository deltaCommitRepository;
 
+  private final KeyMapper keyMapper;
+
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
     this.fileOperations = new FileOperations(serverProperties);
@@ -44,5 +47,8 @@ public class Repositories {
     this.credentialRepository = new CredentialRepository(this, sessionFactory);
     this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
     this.deltaCommitRepository = new DeltaCommitRepository(sessionFactory, serverProperties);
+
+    // KeyMapper uses all the repositories above.
+    this.keyMapper = new KeyMapper(this);
   }
 }
