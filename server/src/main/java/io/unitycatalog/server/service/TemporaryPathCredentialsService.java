@@ -99,8 +99,7 @@ public class TemporaryPathCredentialsService extends AuthorizedService {
         (#volume != null &&
          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-         (#authorize(#principal, #volume, OWNER) ||
-          #authorizeAll(#principal, #volume, READ_VOLUME, WRITE_VOLUME))) ||
+         #authorize(#principal, #volume, OWNER)) ||
         (#registered_model != null &&
          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&

@@ -65,7 +65,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
   private CredentialsApi adminCredentialsApi;
   private TemporaryCredentialsApi adminTempCredsApi;
   private TablesApi adminTablesApi;
-  private VolumesApi adminVolumesApi;
+  private VolumesApi volumesApi = null;
 
   private ExternalLocationsApi locationOwnerExternalLocationsApi;
   private TemporaryCredentialsApi locationOwnerTempCredsApi;
@@ -90,7 +90,6 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
     adminCredentialsApi = new CredentialsApi(TestUtils.createApiClient(adminConfig));
     adminTempCredsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(adminConfig));
     adminTablesApi = new TablesApi(TestUtils.createApiClient(adminConfig));
-    adminVolumesApi = new VolumesApi(TestUtils.createApiClient(adminConfig));
 
     // Create a credential
     CreateCredentialRequest createCredentialRequest =
@@ -139,10 +138,13 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
     } catch (ApiException e) {
       // Pass
     }
-    try {
-      adminVolumesApi.deleteVolume(TestUtils.VOLUME_FULL_NAME);
-    } catch (ApiException e) {
-      // Pass
+    if (volumesApi != null) {
+      // If volumesApi hasn't been initialized, no volume was ever created.
+      try {
+        volumesApi.deleteVolume(TestUtils.VOLUME_FULL_NAME);
+      } catch (ApiException e) {
+        // Pass
+      }
     }
     try {
       locationOwnerExternalLocationsApi.deleteExternalLocation(TEST_EXTERNAL_LOCATION_NAME, true);
@@ -195,9 +197,11 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
 
     TemporaryCredentialsApi readOnlyTempCredsApi =
         createTempCredApiForNewUser(READONLY_EMAIL, List.of(Privileges.READ_FILES));
-    TemporaryCredentialsApi readWriteTempCredsApi =
-        createTempCredApiForNewUser(
+    ApiClient readWriteUserApiClient =
+        createApiClientForNewUser(
             READWRITE_EMAIL, List.of(Privileges.READ_FILES, Privileges.WRITE_FILES));
+    TemporaryCredentialsApi readWriteTempCredsApi =
+        new TemporaryCredentialsApi(readWriteUserApiClient);
     TemporaryCredentialsApi createTableTempCredsApi =
         createTempCredApiForNewUser(CREATE_TABLE_EMAIL, List.of(Privileges.CREATE_EXTERNAL_TABLE));
     TemporaryCredentialsApi unauthorizedTempCredsApi =
@@ -273,12 +277,21 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
             new TestCase(createTableTempCredsApi, Set.of()),
             new TestCase(unauthorizedTempCredsApi, Set.of())));
 
-    // 3. Test permission when a volume exists under the path
-    createExternalVolume(TEST_EXTERNAL_LOCATION_URL + "/volumes/test_volume");
+    // 3. Test permission when a volume exists under the path, with READWRITE_EMAIL as owner.
+    volumesApi = new VolumesApi(readWriteUserApiClient);
+    createExternalVolume(volumesApi, TEST_EXTERNAL_LOCATION_URL + "/volumes/test_volume");
 
-    // Before granting permission, no regular user can access the volume, not even the location
-    // owner
+    // Before granting permission, no regular user except owner can access the volume. The location
+    // owner can not access either.
 
+    testPathCredentials(
+        List.of(TEST_EXTERNAL_LOCATION_URL + "/volumes"),
+        List.of(new TestCase(readWriteTempCredsApi, Set.of())));
+    testPathCredentials(
+        List.of(
+            TEST_EXTERNAL_LOCATION_URL + "/volumes/test_volume",
+            TEST_EXTERNAL_LOCATION_URL + "/volumes/test_volume/subdir"),
+        List.of(new TestCase(readWriteTempCredsApi, TestCase.READ_WRITE)));
     testPathCredentials(
         List.of(
             TEST_EXTERNAL_LOCATION_URL + "/volumes",
@@ -286,20 +299,13 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
             TEST_EXTERNAL_LOCATION_URL + "/volumes/test_volume/subdir"),
         List.of(
             new TestCase(locationOwnerTempCredsApi, Set.of()),
-            new TestCase(readWriteTempCredsApi, Set.of()),
             new TestCase(readOnlyTempCredsApi, Set.of()),
             new TestCase(createTableTempCredsApi, Set.of()),
             new TestCase(unauthorizedTempCredsApi, Set.of())));
 
-    // Grant volume permissions
+    // Grant readonly volume permissions
     grantPermissions(
         READONLY_EMAIL, SecurableType.VOLUME, TestUtils.VOLUME_FULL_NAME, Privileges.READ_VOLUME);
-    grantPermissions(
-        READWRITE_EMAIL,
-        SecurableType.VOLUME,
-        TestUtils.VOLUME_FULL_NAME,
-        Privileges.READ_VOLUME,
-        Privileges.WRITE_VOLUME);
 
     testPathCredentials(
         List.of(
@@ -395,7 +401,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
   }
 
   @SneakyThrows
-  private void createExternalVolume(String storageLocation) {
+  private void createExternalVolume(VolumesApi volumesApi, String storageLocation) {
     CreateVolumeRequestContent createVolumeRequest =
         new CreateVolumeRequestContent()
             .name(TestUtils.VOLUME_NAME)
@@ -403,7 +409,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
             .schemaName(TestUtils.SCHEMA_NAME)
             .volumeType(VolumeType.EXTERNAL)
             .storageLocation(storageLocation);
-    VolumeInfo volumeInfo = adminVolumesApi.createVolume(createVolumeRequest);
+    VolumeInfo volumeInfo = volumesApi.createVolume(createVolumeRequest);
     assertThat(volumeInfo).isNotNull();
   }
 

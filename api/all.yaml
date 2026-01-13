@@ -2645,7 +2645,6 @@ components:
         - EXECUTE
         - CREATE VOLUME
         - READ VOLUME
-        - WRITE VOLUME
         - CREATE MODEL
         - CREATE EXTERNAL LOCATION
         - READ FILES
