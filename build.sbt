@@ -295,12 +295,6 @@ lazy val apiDocs = (project in file("api"))
     // Define the simple generate command to generate markdown docs
     generate := {
       val _ = openApiGenerate.value
-      // Post-process markdown docs to add enum value tables (with or without descriptions)
-      new EnumDocProcessor(
-        file("api") / "all.yaml",
-        file("api") / "Models",
-        streams.value.log
-      ).run()
     }
   )
 

@@ -2476,6 +2476,7 @@ components:
         - PENDING_REGISTRATION
         - FAILED_REGISTRATION
         - READY
+      # NOTE: When adding a new enum, make sure add a new description in the same order.
       x-enum-descriptions:
         - 'MODEL_VERSION_STATUS_UNKNOWN: Unknown'
         - 'PENDING_REGISTRATION: Indicates that the client has not completely written all model artifacts to external storage.'
@@ -2633,6 +2634,7 @@ components:
         - credential
       description: The type of the resource.
     Privilege:
+      description: The privilege to grant.
       type: string
       enum:
         - CREATE CATALOG
@@ -2654,7 +2656,7 @@ components:
         - CREATE EXTERNAL VOLUME
         - CREATE MANAGED STORAGE
         - CREATE STORAGE CREDENTIAL
-      description: The privilege to grant.
+      # NOTE: When adding a new enum, make sure add a new description in the same order.
       x-enum-descriptions:
         - 'CREATE CATALOG: Enables users to create new catalogs in a metastore.'
         - 'USE CATALOG: Required to interact with any object within a catalog.'

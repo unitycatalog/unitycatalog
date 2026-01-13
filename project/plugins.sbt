@@ -38,6 +38,3 @@ addSbtPlugin("software.purpledragon" % "sbt-checkstyle-plugin" % "4.0.1")
 dependencyOverrides += "com.puppycrawl.tools" % "checkstyle" % "9.3"
 
 addSbtPlugin("com.github.sbt" % "sbt-jacoco" % "3.4.0")
-
-// Library for parsing YAML in EnumDocProcessor
-libraryDependencies += "org.yaml" % "snakeyaml" % "1.33"
