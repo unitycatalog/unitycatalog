@@ -2,11 +2,13 @@ package io.unitycatalog.cli.schema;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateSchema;
@@ -75,8 +77,7 @@ public class CliSchemaOperations implements SchemaOperations {
 
   @Override
   public SchemaInfo updateSchema(String schemaFullName, UpdateSchema updateSchema) {
-    List<String> argsList =
-        new ArrayList<>(List.of("schema", "update", "--full_name", schemaFullName));
+    List<String> argsList = new ArrayList<>();
     if (updateSchema.getNewName() != null) {
       argsList.add("--new_name");
       argsList.add(updateSchema.getNewName());
@@ -93,9 +94,17 @@ public class CliSchemaOperations implements SchemaOperations {
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
+    boolean isEmptyUpdate = argsList.isEmpty();
+    argsList.addAll(List.of("schema", "update", "--full_name", schemaFullName));
     String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode updatedSchemaInfo = executeCLICommand(args);
-    return objectMapper.convertValue(updatedSchemaInfo, SchemaInfo.class);
+    if (isEmptyUpdate) {
+      // CLI does not allow empty update.
+      assertThrows(CliException.class, () -> executeCLICommand(args));
+      return null;
+    } else {
+      JsonNode updatedSchemaInfo = executeCLICommand(args);
+      return objectMapper.convertValue(updatedSchemaInfo, SchemaInfo.class);
+    }
   }
 
   @Override

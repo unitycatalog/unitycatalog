@@ -5,7 +5,8 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
-import io.unitycatalog.server.utils.TestUtils;
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -78,7 +79,7 @@ public abstract class BaseServerTest {
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
       // start the server on a random port
-      int port = TestUtils.getRandomPort();
+      int port = findAvailablePort();
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
@@ -93,6 +94,13 @@ public abstract class BaseServerTest {
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
+    }
+  }
+
+  /** Finds an available port for the UC server. */
+  private int findAvailablePort() throws IOException {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
     }
   }
 

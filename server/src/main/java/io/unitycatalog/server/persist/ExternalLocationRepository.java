@@ -11,10 +11,10 @@ import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
@@ -73,7 +73,7 @@ public class ExternalLocationRepository {
                 "External location already exists: " + createExternalLocation.getName());
           }
 
-          String url = FileOperations.toStandardizedURIString(createExternalLocation.getUrl());
+          NormalizedURL url = NormalizedURL.from(createExternalLocation.getUrl());
           validateUrlNotUsedByAnyExternalLocation(session, url, Optional.empty());
 
           CredentialDAO credentialDAO =
@@ -83,7 +83,7 @@ public class ExternalLocationRepository {
               ExternalLocationDAO.builder()
                   .id(externalLocationId)
                   .name(createExternalLocation.getName())
-                  .url(url)
+                  .url(url.toString())
                   .comment(createExternalLocation.getComment())
                   .owner(callerId)
                   .credentialId(credentialDAO.getId())
@@ -174,10 +174,10 @@ public class ExternalLocationRepository {
             existingLocation.setName(updateExternalLocation.getNewName());
           }
           if (updateExternalLocation.getUrl() != null) {
-            existingLocation.setUrl(
-                FileOperations.toStandardizedURIString(updateExternalLocation.getUrl()));
+            NormalizedURL url = NormalizedURL.from(updateExternalLocation.getUrl());
+            existingLocation.setUrl(url.toString());
             validateUrlNotUsedByAnyExternalLocation(
-                session, existingLocation.getUrl(), Optional.of(existingLocation.getId()));
+                session, url, Optional.of(existingLocation.getId()));
           }
           if (updateExternalLocation.getComment() != null) {
             existingLocation.setComment(updateExternalLocation.getComment());
@@ -231,9 +231,9 @@ public class ExternalLocationRepository {
           }
           // Check if the external location is in use by any data objects (tables, volumes, models)
           if (!force) {
-            ExternalLocationUtils.getAllEntityDAOsOverlapUrl(
+            ExternalLocationUtils.getAllEntityDAOsWithURLOverlap(
                     session,
-                    existingLocation.getUrl(),
+                    NormalizedURL.from(existingLocation.getUrl()),
                     ExternalLocationUtils.DATA_SECURABLE_TYPES,
                     /* limit= */ 1,
                     /* includeParent= */ false,
@@ -280,8 +280,8 @@ public class ExternalLocationRepository {
    * @throws BaseException if an overlapping external location exists
    */
   private void validateUrlNotUsedByAnyExternalLocation(
-      Session session, String url, Optional<UUID> currentExternalLocationId) {
-    ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsOverlapUrl(
+      Session session, NormalizedURL url, Optional<UUID> currentExternalLocationId) {
+    ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsWithURLOverlap(
             session,
             url,
             SecurableType.EXTERNAL_LOCATION,

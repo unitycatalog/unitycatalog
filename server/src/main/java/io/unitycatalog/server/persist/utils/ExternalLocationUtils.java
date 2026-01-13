@@ -7,8 +7,7 @@ import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
-import io.unitycatalog.server.utils.Constants;
-import java.net.URI;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -78,9 +77,9 @@ public class ExternalLocationUtils {
    *     specified number of results
    * @throws IllegalArgumentException if any securableType is not supported for URL overlap checks
    */
-  public static List<Pair<SecurableType, IdentifiableDAO>> getAllEntityDAOsOverlapUrl(
+  public static List<Pair<SecurableType, IdentifiableDAO>> getAllEntityDAOsWithURLOverlap(
       Session session,
-      String url,
+      NormalizedURL url,
       List<SecurableType> securableTypes,
       int limit,
       boolean includeParent,
@@ -90,7 +89,7 @@ public class ExternalLocationUtils {
     return securableTypes.stream()
         .flatMap(
             securableType ->
-                generateEntitiesDAOsOverlapUrlQuery(
+                generateEntitiesDAOsWithURLOverlapQuery(
                         session,
                         url,
                         securableType,
@@ -106,12 +105,11 @@ public class ExternalLocationUtils {
 
   /**
    * Finds entities of the specified type whose URLs overlap with the given URL. Refer to
-   * generateEntitiesDAOsOverlapUrlQuery for the details.
+   * generateEntitiesDAOsWithURLOverlapQuery for the details.
    *
    * @param <T> The DAO type to return, must extend IdentifiableDAO
    * @param session The Hibernate session for database access
-   * @param url The URL to check for overlaps (should be standardized via {@link
-   *     FileOperations#toStandardizedURIString})
+   * @param url The normalized URL to check for overlaps
    * @param securableType The type of securable entity to search (TABLE, VOLUME, REGISTERED_MODEL,
    *     EXTERNAL_LOCATION)
    * @param limit Maximum number of results to return
@@ -121,16 +119,16 @@ public class ExternalLocationUtils {
    * @return List of matching entity DAOs, ordered by URL length descending
    * @throws IllegalArgumentException if the securableType is not supported for URL overlap checks
    */
-  public static <T extends IdentifiableDAO> List<T> getEntityDAOsOverlapUrl(
+  public static <T extends IdentifiableDAO> List<T> getEntityDAOsWithURLOverlap(
       Session session,
-      String url,
+      NormalizedURL url,
       SecurableType securableType,
       int limit,
       boolean includeParent,
       boolean includeSelf,
       boolean includeSubdir) {
     Query<T> query =
-        generateEntitiesDAOsOverlapUrlQuery(
+        generateEntitiesDAOsWithURLOverlapQuery(
             session, url, securableType, limit, includeParent, includeSelf, includeSubdir);
     return query.stream().toList();
   }
@@ -152,8 +150,7 @@ public class ExternalLocationUtils {
    *
    * @param <T> The DAO type to return, must extend IdentifiableDAO
    * @param session The Hibernate session for database access
-   * @param url The URL to check for overlaps (should be standardized via {@link
-   *     FileOperations#toStandardizedURIString})
+   * @param url The normalized URL to check for overlaps
    * @param securableType The type of securable entity to search (TABLE, VOLUME, REGISTERED_MODEL,
    *     EXTERNAL_LOCATION)
    * @param limit Maximum number of results to return
@@ -164,9 +161,9 @@ public class ExternalLocationUtils {
    * @throws IllegalArgumentException if the securableType is not supported for URL overlap checks
    */
   @VisibleForTesting
-  static <T extends IdentifiableDAO> Query<T> generateEntitiesDAOsOverlapUrlQuery(
+  static <T extends IdentifiableDAO> Query<T> generateEntitiesDAOsWithURLOverlapQuery(
       Session session,
-      String url,
+      NormalizedURL url,
       SecurableType securableType,
       int limit,
       boolean includeParent,
@@ -181,7 +178,7 @@ public class ExternalLocationUtils {
 
     boolean hasInCondition = false;
     // parent paths + self
-    List<String> matchPaths = includeParent ? getParentPathsList(url) : new ArrayList<>();
+    List<NormalizedURL> matchPaths = includeParent ? getParentPathsList(url) : new ArrayList<>();
     if (includeSelf) {
       matchPaths.add(url);
     }
@@ -193,8 +190,7 @@ public class ExternalLocationUtils {
     boolean hasLikeCondition = false;
     if (includeSubdir) {
       // Construct a LIKE pattern to match all child URLs. Escape special LIKE characters.
-      String normalizedUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
-      String escapedUrl = escapeLikePattern(normalizedUrl);
+      String escapedUrl = escapeLikePattern(url.toString());
       likePattern = escapedUrl + "/%";
       hasLikeCondition = true;
     }
@@ -217,7 +213,8 @@ public class ExternalLocationUtils {
 
     Query<T> query = session.createQuery(queryString, (Class<T>) daoClassInfo.clazz);
     if (!matchPaths.isEmpty()) {
-      query.setParameter("matchPaths", matchPaths);
+      List<String> matchPathsList = matchPaths.stream().map(NormalizedURL::toString).toList();
+      query.setParameter("matchPaths", matchPathsList);
     }
     if (!likePattern.isEmpty()) {
       query.setParameter("likePattern", likePattern);
@@ -240,20 +237,14 @@ public class ExternalLocationUtils {
    * @return List of parent paths from immediate parent to root, empty list if URL has no parent
    */
   @VisibleForTesting
-  static List<String> getParentPathsList(String url) {
-    List<String> parentPaths = new ArrayList<>();
+  static List<NormalizedURL> getParentPathsList(NormalizedURL url) {
+    List<NormalizedURL> parentPaths = new ArrayList<>();
 
     // Use Hadoop's Path class which handles URLs natively
-    Path path = new Path(FileOperations.toStandardizedURIString(url)).getParent();
+    Path path = new Path(url.toString()).getParent();
     // Iterate from parent URL up to the root using getParent()
     while (path != null) {
-      URI uri = path.toUri();
-      if (uri.getScheme().equals(Constants.URI_SCHEME_FILE)) {
-        // Hadoop's Path normalizes file:/// to file:/, localFileURIToString fixes it back
-        parentPaths.add(FileOperations.localFileURIToString(uri));
-      } else {
-        parentPaths.add(FileOperations.removeExtraSlashes(uri.toString()));
-      }
+      parentPaths.add(NormalizedURL.from(path.toString()));
       path = path.getParent();
     }
     return parentPaths;

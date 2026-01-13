@@ -2,11 +2,13 @@ package io.unitycatalog.cli.catalog;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.UpdateCatalog;
@@ -66,7 +68,7 @@ public class CliCatalogOperations implements CatalogOperations {
 
   @Override
   public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
-    List<String> argsList = new ArrayList<>(List.of("catalog", "update", "--name", name));
+    List<String> argsList = new ArrayList<>();
     if (updateCatalog.getNewName() != null) {
       argsList.add("--new_name");
       argsList.add(updateCatalog.getNewName());
@@ -83,9 +85,17 @@ public class CliCatalogOperations implements CatalogOperations {
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
+    boolean isEmptyUpdate = argsList.isEmpty();
+    argsList.addAll(List.of("catalog", "update", "--name", name));
     String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode updatedCatalogInfo = executeCLICommand(args);
-    return objectMapper.convertValue(updatedCatalogInfo, CatalogInfo.class);
+    if (isEmptyUpdate) {
+      // CLI does not allow empty update.
+      assertThrows(CliException.class, () -> executeCLICommand(args));
+      return null;
+    } else {
+      JsonNode updatedCatalogInfo = executeCLICommand(args);
+      return objectMapper.convertValue(updatedCatalogInfo, CatalogInfo.class);
+    }
   }
 
   @Override

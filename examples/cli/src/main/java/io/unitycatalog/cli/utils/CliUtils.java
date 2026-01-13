@@ -42,12 +42,14 @@ public class CliUtils {
   public static final String VOLUME = "volume";
   public static final String TABLE = "table";
   public static final String METASTORE = "metastore";
-
+  public static final String CREDENTIAL = "credential";
+  public static final String EXTERNAL_LOCATION = "external_location";
   public static final String FUNCTION = "function";
   public static final String REGISTERED_MODEL = "registered_model";
   public static final String MODEL_VERSION = "model_version";
   public static final String PERMISSION = "permission";
   public static final String USER = "user";
+
   public static final String CREATE = "create";
   public static final String LIST = "list";
   public static final String GET = "get";
@@ -339,6 +341,55 @@ public class CliUtils {
               new HashMap<String, CliOptions>() {
                 {
                   put(GET, new CliOptions(List.of(), List.of()));
+                }
+              });
+          put(
+              CREDENTIAL,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.COMMENT, CliParams.AWS_IAM_ROLE_ARN)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(), List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
+                  put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(
+                              CliParams.NEW_NAME, CliParams.COMMENT, CliParams.AWS_IAM_ROLE_ARN)));
+                  put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
+                }
+              });
+          put(
+              EXTERNAL_LOCATION,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME, CliParams.URL, CliParams.CREDENTIAL_NAME),
+                          List.of(CliParams.COMMENT)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(), List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
+                  put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(
+                              CliParams.NEW_NAME,
+                              CliParams.URL,
+                              CliParams.CREDENTIAL_NAME,
+                              CliParams.COMMENT)));
+                  put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
                 }
               });
         }

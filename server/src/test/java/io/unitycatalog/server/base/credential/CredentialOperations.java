@@ -20,5 +20,5 @@ public interface CredentialOperations {
   CredentialInfo updateCredential(String name, UpdateCredentialRequest updateCredentialRequest)
       throws ApiException;
 
-  void deleteCredential(String name) throws ApiException;
+  void deleteCredential(String name, Optional<Boolean> force) throws ApiException;
 }

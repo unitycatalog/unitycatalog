@@ -20,14 +20,22 @@ public class ApiClientFactory {
         .tokenProvider(tokenProvider)
         .retryPolicy(retryPolicy);
 
-    // Add Spark to User-Agent, and Delta if available
+    // Add Spark, Delta, Java, and Scala versions to User-Agent
     String sparkVersion = getSparkVersion();
     String deltaVersion = getDeltaVersion();
+    String javaVersion = getJavaVersion();
+    String scalaVersion = getScalaVersion();
+
+    // Add versions in order: Spark, Delta, Java, Scala
+    builder.addAppVersion("Spark", sparkVersion);
     if (deltaVersion != null) {
-      builder.addAppVersion("Spark", sparkVersion)
-          .addAppVersion("Delta", deltaVersion);
-    } else {
-      builder.addAppVersion("Spark", sparkVersion);
+      builder.addAppVersion("Delta", deltaVersion);
+    }
+    if (javaVersion != null) {
+      builder.addAppVersion("Java", javaVersion);
+    }
+    if (scalaVersion != null) {
+      builder.addAppVersion("Scala", scalaVersion);
     }
 
     return builder.build();
@@ -58,6 +66,23 @@ public class ApiClientFactory {
         // Delta not available or version not accessible
         return null;
       }
+    }
+  }
+
+  private static String getJavaVersion() {
+    try {
+      return System.getProperty("java.version");
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  private static String getScalaVersion() {
+    try {
+      return scala.util.Properties.versionNumberString();
+    } catch (Exception e) {
+      // Scala not available or version not accessible
+      return null;
     }
   }
 }

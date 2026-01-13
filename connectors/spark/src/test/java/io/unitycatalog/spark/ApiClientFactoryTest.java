@@ -18,8 +18,9 @@ import org.mockito.ArgumentCaptor;
 /**
  * Test class for ApiClientFactory to verify Spark-specific functionality.
  *
- * <p>This test class focuses on Spark/Delta version metadata injection into the User-Agent. For
- * general ApiClient configuration tests, see {@link io.unitycatalog.client.ApiClientBuilderTest}.
+ * <p>This test class focuses on Spark/Delta/Java/Scala version metadata injection into the
+ * User-Agent. For general ApiClient configuration tests, see {@link
+ * io.unitycatalog.client.ApiClientBuilderTest}.
  */
 public class ApiClientFactoryTest {
   private static final TokenProvider UC_TOKEN_PROVIDER = createStaticTokenProvider("token");
@@ -47,12 +48,22 @@ public class ApiClientFactoryTest {
   }
 
   @Test
-  public void testSparkAndDeltaVersionsInUserAgent() {
+  public void testAllVersionsInUserAgent() {
     ApiClient client = ApiClientFactory.createApiClient(RETRY_POLICY, TEST_URI, UC_TOKEN_PROVIDER);
     String userAgent = extractUserAgent(client);
 
     // Verify the base Unity Catalog client is present
     assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
+
+    // Verify Java version is included
+    String expectedJavaVersion = System.getProperty("java.version");
+    assertThat(expectedJavaVersion).isNotNull();
+    assertThat(userAgent).contains("Java/" + expectedJavaVersion);
+
+    // Verify Scala version is included
+    String expectedScalaVersion = scala.util.Properties.versionNumberString();
+    assertThat(expectedScalaVersion).isNotNull();
+    assertThat(userAgent).contains("Scala/" + expectedScalaVersion);
 
     // Verify Spark version is included
     String expectedSparkVersion = org.apache.spark.package$.MODULE$.SPARK_VERSION();
@@ -72,8 +83,10 @@ public class ApiClientFactoryTest {
 
     String userAgent = extractUserAgent(client);
 
-    // Verify Spark/Delta versions are present
+    // Verify Java/Scala/Spark/Delta versions are present
     assertThat(userAgent).startsWith("UnityCatalog-Java-Client/");
+    assertThat(userAgent).contains("Java");
+    assertThat(userAgent).contains("Scala");
     assertThat(userAgent).contains("Spark");
     assertThat(userAgent).contains("Delta");
 
@@ -88,20 +101,34 @@ public class ApiClientFactoryTest {
 
     // Verify format: project/version,[project/version,...]
     String[] parts = userAgent.split(" ");
-    assertThat(parts.length).isGreaterThanOrEqualTo(3); // UC client, Spark, and Delta
+    assertThat(parts.length).isGreaterThanOrEqualTo(5); // UC client, Java, Scala, Spark, and Delta
 
     // First part should be UnityCatalog-Java-Client/version
     assertThat(parts[0]).matches("UnityCatalog-Java-Client/.*");
 
-    // Verify Spark and Delta are present
-    boolean hasSparkVersion = false;
-    boolean hasDeltaVersion = false;
-    for (String part : parts) {
-      if (part.startsWith("Spark/")) hasSparkVersion = true;
-      if (part.startsWith("Delta/")) hasDeltaVersion = true;
+    // Verify all expected versions are present in the correct order
+    int sparkIndex = -1;
+    int deltaIndex = -1;
+    int javaIndex = -1;
+    int scalaIndex = -1;
+
+    for (int i = 0; i < parts.length; i++) {
+      if (parts[i].startsWith("Spark/")) sparkIndex = i;
+      if (parts[i].startsWith("Delta/")) deltaIndex = i;
+      if (parts[i].startsWith("Java/")) javaIndex = i;
+      if (parts[i].startsWith("Scala/")) scalaIndex = i;
     }
-    assertThat(hasSparkVersion).isTrue();
-    assertThat(hasDeltaVersion).isTrue();
+
+    // Verify all versions are present
+    assertThat(sparkIndex).isGreaterThan(0);
+    assertThat(deltaIndex).isGreaterThan(0);
+    assertThat(javaIndex).isGreaterThan(0);
+    assertThat(scalaIndex).isGreaterThan(0);
+
+    // Verify ordering: UC (position 0) < Spark < Delta < Java < Scala
+    assertThat(sparkIndex).isLessThan(deltaIndex);
+    assertThat(deltaIndex).isLessThan(javaIndex);
+    assertThat(javaIndex).isLessThan(scalaIndex);
   }
 
   private static TokenProvider createStaticTokenProvider(String token) {
