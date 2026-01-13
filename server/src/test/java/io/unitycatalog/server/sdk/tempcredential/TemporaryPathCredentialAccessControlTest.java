@@ -86,6 +86,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
   @BeforeEach
   @Override
   public void setUp() {
+    cloudCredentialVendor = null;
     super.setUp();
     adminCredentialsApi = new CredentialsApi(TestUtils.createApiClient(adminConfig));
     adminTempCredsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(adminConfig));
