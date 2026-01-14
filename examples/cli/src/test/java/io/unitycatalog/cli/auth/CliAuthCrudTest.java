@@ -1,6 +1,6 @@
 package io.unitycatalog.cli.auth;
 
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
+import static io.unitycatalog.cli.TestUtils.executeCliCommand;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -32,7 +32,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
     List<String> argsList = List.of("auth", "login", "--identity_token", token);
 
-    JsonNode authExchangeInfo = executeCLICommand(serverConfig, argsList);
+    JsonNode authExchangeInfo = executeCliCommand(serverConfig, argsList);
 
     assertThat(authExchangeInfo.get("access_token")).isNotNull();
   }
@@ -47,7 +47,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     // Test with no Authentication on authenticated end point
     assertThatThrownBy(
             () -> {
-              executeCLICommand(serverConfig, argsList);
+              executeCliCommand(serverConfig, argsList);
             })
         .isInstanceOf(RuntimeException.class);
 
@@ -57,7 +57,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
     serverConfig.setAuthToken(token);
 
-    JsonNode responseJsonInfo = executeCLICommand(serverConfig, argsList);
+    JsonNode responseJsonInfo = executeCliCommand(serverConfig, argsList);
     assertThat(responseJsonInfo).isNotNull();
 
     // Test with authentication on authenticated end point with missing user
@@ -76,7 +76,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
     assertThatThrownBy(
             () -> {
-              executeCLICommand(serverConfig, argsList);
+              executeCliCommand(serverConfig, argsList);
             })
         .isInstanceOf(RuntimeException.class);
 
@@ -85,7 +85,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     // Test adding a user
     List<String> argsAddUser =
         List.of("user", "create", "--email", "test@localhost", "--name", "Test User");
-    responseJsonInfo = executeCLICommand(serverConfig, argsAddUser);
+    responseJsonInfo = executeCliCommand(serverConfig, argsAddUser);
     assertThat(responseJsonInfo).isNotNull();
 
     // Test with authentication on authenticated end point with added user
@@ -101,7 +101,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
             .sign(securityConfiguration.algorithmRSA());
 
     serverConfig.setAuthToken(testUserJwt);
-    responseJsonInfo = executeCLICommand(serverConfig, argsList);
+    responseJsonInfo = executeCliCommand(serverConfig, argsList);
     assertThat(responseJsonInfo).isNotNull();
   }
 
@@ -115,7 +115,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     // Test creating a user
     List<String> argsAddUser =
         List.of("user", "create", "--email", "user@localhost", "--name", "Test User");
-    JsonNode responseJsonInfo = executeCLICommand(serverConfig, argsAddUser);
+    JsonNode responseJsonInfo = executeCliCommand(serverConfig, argsAddUser);
     assertThat(responseJsonInfo).isNotNull();
     assertThat(responseJsonInfo.get("name").asText()).isEqualTo("Test User");
     assertThat(responseJsonInfo.get("email").asText()).isEqualTo("user@localhost");
@@ -125,7 +125,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     // Test creating a user that already exists.
     assertThatThrownBy(
             () -> {
-              executeCLICommand(serverConfig, argsAddUser);
+              executeCliCommand(serverConfig, argsAddUser);
             })
         .isInstanceOf(RuntimeException.class);
 
@@ -133,26 +133,26 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     List<String> argsUpdateUser =
         List.of(
             "user", "update", "--id", id, "--name", "Test User Updated", "--external_id", "123");
-    responseJsonInfo = executeCLICommand(serverConfig, argsUpdateUser);
+    responseJsonInfo = executeCliCommand(serverConfig, argsUpdateUser);
     assertThat(responseJsonInfo).isNotNull();
     assertThat(responseJsonInfo.get("name").asText()).isEqualTo("Test User Updated");
     assertThat(responseJsonInfo.get("external_id").asText()).isEqualTo("123");
 
     // Test getting a user
     List<String> argsGetUser = List.of("user", "get", "--id", id);
-    responseJsonInfo = executeCLICommand(serverConfig, argsGetUser);
+    responseJsonInfo = executeCliCommand(serverConfig, argsGetUser);
     assertThat(responseJsonInfo).isNotNull();
     assertThat(responseJsonInfo.get("name").asText()).isEqualTo("Test User Updated");
 
     // Test listing users
     List<String> argsListUsers = List.of("user", "list");
-    responseJsonInfo = executeCLICommand(serverConfig, argsListUsers);
+    responseJsonInfo = executeCliCommand(serverConfig, argsListUsers);
     assertThat(responseJsonInfo).isNotNull();
     assertThat(responseJsonInfo).hasSize(2);
 
     // Test deleting a user
     List<String> argsDeleteUser = List.of("user", "delete", "--id", id);
-    responseJsonInfo = executeCLICommand(serverConfig, argsDeleteUser);
+    responseJsonInfo = executeCliCommand(serverConfig, argsDeleteUser);
     assertThat(responseJsonInfo).isNotNull();
 
     serverConfig.setAuthToken("");

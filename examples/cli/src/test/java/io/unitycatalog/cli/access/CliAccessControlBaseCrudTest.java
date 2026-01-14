@@ -1,6 +1,6 @@
 package io.unitycatalog.cli.access;
 
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
+import static io.unitycatalog.cli.TestUtils.executeCliCommand;
 import static io.unitycatalog.cli.access.Step.Expect.FAIL;
 import static io.unitycatalog.cli.access.Step.Expect.SUCCEED;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -166,10 +166,10 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
             stepNumber, commandStep.getExpectedResult(), commandStep.getArgs());
 
         if (commandStep.getExpectedResult() == FAIL) {
-          assertThatThrownBy(() -> executeCLICommand(serverConfig, commandStep.getArgs()))
+          assertThatThrownBy(() -> executeCliCommand(serverConfig, commandStep.getArgs()))
               .isInstanceOf(RuntimeException.class);
         } else {
-          JsonNode resultJson = executeCLICommand(serverConfig, commandStep.getArgs());
+          JsonNode resultJson = executeCliCommand(serverConfig, commandStep.getArgs());
           assertThat(resultJson).isNotNull();
           if (resultJson.isArray()) {
             assertThat(resultJson).hasSize(step.getItemCount());

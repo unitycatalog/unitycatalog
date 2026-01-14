@@ -1,7 +1,5 @@
 package io.unitycatalog.cli;
 
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -81,7 +79,7 @@ public class BaseCliOperations {
       commandLine.add(subCommand);
       TestUtils.addServerAndAuthParams(commandLine, config);
       commandLine.addAll(args);
-      return executeCLICommand(commandLine);
+      return TestUtils.executeCliCommand(commandLine);
     } catch (RuntimeException e) {
       // Unwrap the ApiException which is the one we care about
       if (e.getCause() instanceof ApiException) {

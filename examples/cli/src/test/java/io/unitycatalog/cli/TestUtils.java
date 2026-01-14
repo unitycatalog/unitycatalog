@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 public class TestUtils {
   public static ObjectMapper objectMapper = new ObjectMapper();
 
-  public static JsonNode executeCLICommand(List<String> args) {
+  public static JsonNode executeCliCommand(List<String> args) {
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     PrintStream printStream = new PrintStream(outputStream);
     PrintStream oldOut = System.out;
@@ -34,10 +34,10 @@ public class TestUtils {
     return null;
   }
 
-  public static JsonNode executeCLICommand(ServerConfig serverConfig, List<String> args) {
+  public static JsonNode executeCliCommand(ServerConfig serverConfig, List<String> args) {
     List<String> commandLine = new ArrayList<>(args);
     addServerAndAuthParams(commandLine, serverConfig);
-    return executeCLICommand(commandLine);
+    return executeCliCommand(commandLine);
   }
 
   private static JsonNode parseJsonOutput(String output) throws JsonProcessingException {
