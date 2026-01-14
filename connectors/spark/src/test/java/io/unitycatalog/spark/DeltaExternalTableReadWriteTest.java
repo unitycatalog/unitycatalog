@@ -48,7 +48,7 @@ public class DeltaExternalTableReadWriteTest extends ExternalTableReadWriteTest 
 
     sql("CREATE TABLE %s (start_date DATE) USING delta LOCATION '%s'",
             options.fullTableName(), getLocation(options));
-    sql("INSERT INTO %s VALUES ('2026-01-14')", options.fullTableName());
+    sql("INSERT INTO %s SELECT DATE '2026-01-14'", options.fullTableName());
 
     validateTableSchema(
             session.table(options.fullTableName()).schema(),
@@ -56,7 +56,7 @@ public class DeltaExternalTableReadWriteTest extends ExternalTableReadWriteTest 
 
     List<Row> rows = sql("SELECT * FROM %s", options.fullTableName());
     assertThat(rows).hasSize(1);
-    assertThat(rows.get(0).getDate(0).toString()).isEqualTo("2026-01-14");
+    assertThat(rows.get(0).getLocalDate(0).toString()).isEqualTo("2026-01-14");
   }
 
   @Override

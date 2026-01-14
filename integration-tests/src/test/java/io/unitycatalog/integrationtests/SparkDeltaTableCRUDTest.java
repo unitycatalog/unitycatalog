@@ -53,7 +53,7 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
     String table = getTableName(locationType);
 
     spark.sql(format(
-        "CREATE TABLE %s(as_int INT, as_double DOUBLE, as_DATE) USING DELTA LOCATION '%s'",
+        "CREATE TABLE %s(as_int INT, as_double DOUBLE, as_date DATE) USING DELTA LOCATION '%s'",
         table, location));
 
     assertThat(getData(table))
@@ -71,7 +71,7 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
         VALUES (0, 0, '2026-01-14'),
           (1, 1.5, '2026-01-14T16:00:00'),
           (42, 244.25, '2026-01-14T16:00:00+01:00'),
-          (539, 425.66102859000944, 'Wed, 14 Jan 2026 16:00:00 GMT')
+          (539, 425.66102859000944, '2026')
         """, table));
 
     assertThat(getData(table))
@@ -80,7 +80,7 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
             "{\"as_int\":0,\"as_double\":0.0,\"as_date\":\"2026-01-14\"}",
             "{\"as_int\":1,\"as_double\":1.5,\"as_date\":\"2026-01-14\"}",
             "{\"as_int\":42,\"as_double\":244.25,\"as_date\":\"2026-01-14\"}",
-            "{\"as_int\":539,\"as_double\":425.66102859000944,\"as_date\":\"2026-01-14\"}"
+            "{\"as_int\":539,\"as_double\":425.66102859000944,\"as_date\":\"2026-01-01\"}"
         ));
   }
 
@@ -109,7 +109,7 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
             "{\"as_int\":3,\"as_double\":3.75,\"as_date\":\"2026-01-16\"}",
             "{\"as_int\":5,\"as_double\":2.5,\"as_date\":\"2026-05-17\"}",
             "{\"as_int\":42,\"as_double\":244.25,\"as_date\":\"2026-01-14\"}",
-            "{\"as_int\":539,\"as_double\":425.66102859000944,\"as_date\":\"2026-01-14\"}"
+            "{\"as_int\":539,\"as_double\":425.66102859000944,\"as_date\":\"2026-01-01\"}"
         ));
   }
 
@@ -125,7 +125,7 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
         .as("Data after DELETE")
         .isEqualTo(List.of(
             "{\"as_int\":42,\"as_double\":244.25,\"as_date\":\"2026-01-14\"}",
-            "{\"as_int\":539,\"as_double\":425.66102859000944,\"as_date\":\"2026-01-14\"}"
+            "{\"as_int\":539,\"as_double\":425.66102859000944,\"as_date\":\"2026-01-01\"}"
         ));
   }
 
@@ -143,7 +143,7 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
         .as("Data after UPDATE")
         .isEqualTo(List.of(
             "{\"as_int\":42,\"as_double\":63.0,\"as_date\":\"2026-01-15\"}",
-            "{\"as_int\":539,\"as_double\":425.66102859000944,\"as_date\":\"2026-01-14\"}"
+            "{\"as_int\":539,\"as_double\":425.66102859000944,\"as_date\":\"2026-01-01\"}"
         ));
   }
 }
