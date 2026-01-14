@@ -69,36 +69,56 @@ public class ExternalLocationUtils {
       Stream.concat(Stream.of(SecurableType.EXTERNAL_LOCATION), DATA_SECURABLE_TYPES.stream())
           .toList();
 
+  /**
+   * For a input URL, find out the actual owner securables of the URL.
+   *
+   * <ul>
+   *   <li>If the URL is a parent path of one or more securable, we can not figure out the actual
+   *       owner but have to deny the access
+   *   <li>If the URL is under or the same path of any data securable, we'll figure out the UUID of
+   *       that data securable along with its catalog&schema UUIDs and return the result.
+   *   <li>If the URL is not owned by any data securable but only by external locations, return UUID
+   *       of that external location.
+   *   <li>Lastly if no securable is found, return empty map.
+   * </ul>
+   *
+   * @param url the input URL to search securables for
+   * @return A map of SecurableType->UUID. For external location, this will be a 1-entry map. For
+   *     data securables, this will be a 3-entry map.
+   */
   public Map<SecurableType, UUID> getMapResourceIdsForPath(NormalizedURL url) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> {
-          // 1. Fail if it's parent of any of the data securable or external location
-          if (!getAllEntityDAOsWithURLOverlap(
-                  session,
-                  url,
-                  EXTERNAL_LOCATION_AND_DATA_SECURABLE_TYPES,
-                  /* limit= */ 1,
-                  /* includeParent= */ false,
-                  /* includeSelf= */ false,
-                  /* includeSubdir= */ true)
-              .isEmpty()) {
-            throw new BaseException(
-                ErrorCode.PERMISSION_DENIED,
-                "Input path '" + url + "' overlaps with other entities.");
-          }
-
-          // 2. If it's under only one data securable, use that securable as resource id
-          // 3. If it's under only one external location, use that external location as resource id
-          return getResourceIdOfOwnerEntity(session, url, DATA_SECURABLE_TYPES)
-              .or(
-                  () ->
-                      getResourceIdOfOwnerEntity(
-                          session, url, List.of(SecurableType.EXTERNAL_LOCATION)))
-              .orElse(Map.of());
-        },
+        session -> getMapResourceIdsForPath(session, url),
         "Failed to resolve resource IDs for path",
         /* readOnly= */ true);
+  }
+
+  private Map<SecurableType, UUID> getMapResourceIdsForPath(Session session, NormalizedURL url) {
+    // 1. Fail if it's parent of any of the data securable or external location
+    if (!getAllEntityDAOsWithURLOverlap(
+            session,
+            url,
+            EXTERNAL_LOCATION_AND_DATA_SECURABLE_TYPES,
+            /* limit= */ 1,
+            /* includeParent= */ false,
+            /* includeSelf= */ false,
+            /* includeSubdir= */ true)
+        .isEmpty()) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED, "Input path '" + url + "' overlaps with other entities.");
+    }
+
+    // 2. If it's under only one data securable, use that securable as resource id
+    Optional<Map<SecurableType, UUID>> result =
+        getResourceIdOfOwnerEntity(session, url, DATA_SECURABLE_TYPES);
+    if (result.isPresent()) {
+      return result.get();
+    }
+
+    // 3. If it's under only one external location, use that external location as resource id
+    return getResourceIdOfOwnerEntity(session, url, List.of(SecurableType.EXTERNAL_LOCATION))
+        .orElse(Map.of());
   }
 
   private Optional<Map<SecurableType, UUID>> getResourceIdOfOwnerEntity(
