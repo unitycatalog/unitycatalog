@@ -2476,7 +2476,9 @@ components:
         - PENDING_REGISTRATION
         - FAILED_REGISTRATION
         - READY
-      # NOTE: When adding a new enum, make sure add a new description in the same order.
+      # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
+      #  corresponding description at the end of the description list. Both list must have the same
+      #  order.
       x-enum-descriptions:
         - 'MODEL_VERSION_STATUS_UNKNOWN: Unknown'
         - 'PENDING_REGISTRATION: Indicates that the client has not completely written all model artifacts to external storage.'
@@ -2656,7 +2658,9 @@ components:
         - CREATE EXTERNAL VOLUME
         - CREATE MANAGED STORAGE
         - CREATE STORAGE CREDENTIAL
-      # NOTE: When adding a new enum, make sure add a new description in the same order.
+      # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
+      #  corresponding description at the end of the description list. Both list must have the same
+      #  order.
       x-enum-descriptions:
         - 'CREATE CATALOG: Enables users to create new catalogs in a metastore.'
         - 'USE CATALOG: Required to interact with any object within a catalog.'
