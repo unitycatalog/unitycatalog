@@ -54,7 +54,7 @@ public class ModelService extends AuthorizedService {
 
   @SneakyThrows
   public ModelService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.evaluator = new UnityAccessEvaluator(authorizer);
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();

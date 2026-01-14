@@ -29,7 +29,7 @@ public class DeltaCommitsService extends AuthorizedService {
 
   @SneakyThrows
   public DeltaCommitsService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.deltaCommitRepository = repositories.getDeltaCommitRepository();
   }
 

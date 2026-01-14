@@ -43,7 +43,7 @@ public class FunctionService extends AuthorizedService {
 
   @SneakyThrows
   public FunctionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.functionRepository = repositories.getFunctionRepository();

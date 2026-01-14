@@ -70,7 +70,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
     }
-    keyMapper = new KeyMapper(repositories);
+    keyMapper = repositories.getKeyMapper();
     userRepository = repositories.getUserRepository();
   }
 

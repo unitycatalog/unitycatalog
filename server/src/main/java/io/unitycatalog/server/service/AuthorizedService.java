@@ -1,7 +1,9 @@
 package io.unitycatalog.server.service;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.Privileges;
 import java.util.UUID;
@@ -15,12 +17,14 @@ public abstract class AuthorizedService {
   protected final UnityCatalogAuthorizer authorizer;
   protected final UnityAccessEvaluator evaluator;
   protected final UserRepository userRepository;
+  protected final KeyMapper keyMapper;
 
   @SneakyThrows
-  protected AuthorizedService(UnityCatalogAuthorizer authorizer, UserRepository userRepository) {
+  protected AuthorizedService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
     this.evaluator = new UnityAccessEvaluator(authorizer);
-    this.userRepository = userRepository;
+    this.userRepository = repositories.getUserRepository();
+    this.keyMapper = repositories.getKeyMapper();
   }
 
   /**

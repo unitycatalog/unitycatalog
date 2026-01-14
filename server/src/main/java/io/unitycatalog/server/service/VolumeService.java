@@ -47,7 +47,7 @@ public class VolumeService extends AuthorizedService {
 
   @SneakyThrows
   public VolumeService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.volumeRepository = repositories.getVolumeRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.catalogRepository = repositories.getCatalogRepository();

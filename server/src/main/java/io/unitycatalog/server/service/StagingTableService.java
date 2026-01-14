@@ -27,7 +27,7 @@ public class StagingTableService extends AuthorizedService {
   private final SchemaRepository schemaRepository;
 
   public StagingTableService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.stagingTableRepository = repositories.getStagingTableRepository();
     this.schemaRepository = repositories.getSchemaRepository();
   }
