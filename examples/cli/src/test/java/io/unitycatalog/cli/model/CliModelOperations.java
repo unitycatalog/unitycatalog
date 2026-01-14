@@ -82,8 +82,12 @@ public class CliModelOperations implements ModelOperations {
       argsList.add("--comment");
       argsList.add(updateRm.getComment());
     }
+    // chEmptyUpdateCliException=false because the test expects the exception.
     return registeredModelOps.executeUpdate(
-        RegisteredModelInfo.class, List.of("--full_name", registeredModelFullName), argsList);
+        RegisteredModelInfo.class,
+        /* catchEmptyUpdateCliException= */ false,
+        List.of("--full_name", registeredModelFullName),
+        argsList);
   }
 
   @Override
@@ -152,6 +156,7 @@ public class CliModelOperations implements ModelOperations {
     }
     return modelVersionOps.executeUpdate(
         ModelVersionInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
         List.of("--full_name", fullName, "--version", version.toString()),
         argsList);
   }

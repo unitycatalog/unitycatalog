@@ -103,19 +103,25 @@ public class BaseCliOperations {
    *
    * @param <T> the type to deserialize the response into
    * @param clazz the class object representing the type T
+   * @param catchEmptyUpdateCliException true if CliException should be caught and return as null to
+   *     allow test to continue
    * @param identityArgs arguments that identify the resource to update (e.g., --name, --full_name)
    * @param updateArgs arguments specifying what to update (e.g., --new_name, --comment)
    * @return the updated resource, or null if updateArgs is empty and CliException was thrown
    * @throws ApiException if the CLI command execution fails for reasons other than empty update
    * @throws CliException if updateArgs is not empty but the command still fails
    */
-  public <T> T executeUpdate(Class<T> clazz, List<String> identityArgs, List<String> updateArgs)
+  public <T> T executeUpdate(
+      Class<T> clazz,
+      boolean catchEmptyUpdateCliException,
+      List<String> identityArgs,
+      List<String> updateArgs)
       throws ApiException {
     List<String> args = Stream.concat(identityArgs.stream(), updateArgs.stream()).toList();
     try {
       return execute(clazz, "update", args);
     } catch (CliException e) {
-      if (updateArgs.isEmpty()) {
+      if (catchEmptyUpdateCliException && updateArgs.isEmpty()) {
         // CLI does not allow empty update. If it throws CliException for this reason, tests want
         // to continue.
         return null;

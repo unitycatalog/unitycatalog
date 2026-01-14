@@ -71,7 +71,11 @@ public class CliCatalogOperations extends BaseCliOperations implements CatalogOp
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
-    return executeUpdate(CatalogInfo.class, List.of("--name", name), argsList);
+    return executeUpdate(
+        CatalogInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
+        List.of("--name", name),
+        argsList);
   }
 
   @Override

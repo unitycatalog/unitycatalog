@@ -68,7 +68,11 @@ public class CliVolumeOperations extends BaseCliOperations implements VolumeOper
       argsList.add("--comment");
       argsList.add(updateVolumeRequest.getComment());
     }
-    return executeUpdate(VolumeInfo.class, List.of("--full_name", volumeFullName), argsList);
+    return executeUpdate(
+        VolumeInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
+        List.of("--full_name", volumeFullName),
+        argsList);
   }
 
   @Override

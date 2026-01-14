@@ -74,7 +74,11 @@ public class CliExternalLocationOperations extends BaseCliOperations
       argsList.add("--comment");
       argsList.add(updateExternalLocation.getComment());
     }
-    return executeUpdate(ExternalLocationInfo.class, List.of("--name", name), argsList);
+    return executeUpdate(
+        ExternalLocationInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
+        List.of("--name", name),
+        argsList);
   }
 
   @Override

@@ -75,7 +75,11 @@ public class CliSchemaOperations extends BaseCliOperations implements SchemaOper
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
-    return executeUpdate(SchemaInfo.class, List.of("--full_name", schemaFullName), argsList);
+    return executeUpdate(
+        SchemaInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
+        List.of("--full_name", schemaFullName),
+        argsList);
   }
 
   @Override

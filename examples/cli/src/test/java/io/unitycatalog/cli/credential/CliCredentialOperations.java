@@ -68,7 +68,11 @@ public class CliCredentialOperations extends BaseCliOperations implements Creden
       argsList.add("--aws_iam_role_arn");
       argsList.add(updateCredentialRequest.getAwsIamRole().getRoleArn());
     }
-    return executeUpdate(CredentialInfo.class, List.of("--name", name), argsList);
+    return executeUpdate(
+        CredentialInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
+        List.of("--name", name),
+        argsList);
   }
 
   @Override
