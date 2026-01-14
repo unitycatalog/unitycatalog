@@ -242,15 +242,7 @@ public class VolumeCli {
       throws JsonProcessingException, ApiException {
     String volumeFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     json.remove(CliParams.FULL_NAME.getServerParam());
-    if (json.length() == 0) {
-      List<CliParams> optionalParams =
-          CliUtils.cliOptions.get(CliUtils.VOLUME).get(CliUtils.UPDATE).getOptionalParams();
-      String errorMessage = "No parameters to update, please provide one of:";
-      for (CliParams param : optionalParams) {
-        errorMessage += "\n  --" + param.val();
-      }
-      throw new CliException(errorMessage);
-    }
+    CliUtils.validateUpdateParameters(json, CliUtils.VOLUME, CliUtils.UPDATE);
     UpdateVolumeRequestContent updateVolumeRequest =
         objectMapper.readValue(json.toString(), UpdateVolumeRequestContent.class);
     return objectWriter.writeValueAsString(
