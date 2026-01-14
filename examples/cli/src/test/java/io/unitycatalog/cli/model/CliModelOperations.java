@@ -1,11 +1,8 @@
 package io.unitycatalog.cli.model;
 
-import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
-
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.cli.BaseCliOperations;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateModelVersion;
 import io.unitycatalog.client.model.CreateRegisteredModel;
 import io.unitycatalog.client.model.FinalizeModelVersion;
@@ -21,20 +18,20 @@ import java.util.Optional;
 
 public class CliModelOperations implements ModelOperations {
 
-  private final ServerConfig config;
-  private final ObjectMapper objectMapper = new ObjectMapper();
+  private final BaseCliOperations registeredModelOps;
+  private final BaseCliOperations modelVersionOps;
 
   public CliModelOperations(ServerConfig config) {
-    this.config = config;
+    this.registeredModelOps = new BaseCliOperations("registered_model", config);
+    this.modelVersionOps = new BaseCliOperations("model_version", config);
   }
 
   @Override
-  public RegisteredModelInfo createRegisteredModel(CreateRegisteredModel createRegisteredModel) {
+  public RegisteredModelInfo createRegisteredModel(CreateRegisteredModel createRegisteredModel)
+      throws ApiException {
     List<String> argsList =
         new ArrayList<>(
             List.of(
-                "registered_model",
-                "create",
                 "--name",
                 createRegisteredModel.getName(),
                 "--schema",
@@ -45,53 +42,38 @@ public class CliModelOperations implements ModelOperations {
       argsList.add("--comment");
       argsList.add(createRegisteredModel.getComment());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode registeredModelInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(registeredModelInfoJson, RegisteredModelInfo.class);
+    return registeredModelOps.execute(RegisteredModelInfo.class, "create", argsList);
   }
 
   @Override
   public List<RegisteredModelInfo> listRegisteredModels(
-      Optional<String> catalogName, Optional<String> schemaName, Optional<String> pageToken) {
-    List<String> argsList;
-    if (catalogName.isEmpty() || schemaName.isEmpty()) {
-      argsList = new ArrayList<>(List.of("registered_model", "list"));
-    } else {
-      argsList =
-          new ArrayList<>(
-              List.of(
-                  "registered_model",
-                  "list",
-                  "--catalog",
-                  catalogName.get(),
-                  "--schema",
-                  schemaName.get()));
+      Optional<String> catalogName, Optional<String> schemaName, Optional<String> pageToken)
+      throws ApiException {
+    List<String> argsList = new ArrayList<>();
+    if (catalogName.isPresent() && schemaName.isPresent()) {
+      argsList.add("--catalog");
+      argsList.add(catalogName.get());
+      argsList.add("--schema");
+      argsList.add(schemaName.get());
     }
     if (pageToken.isPresent()) {
       argsList.add("--page_token");
       argsList.add(pageToken.get());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode registeredModelList = executeCLICommand(args);
-    return objectMapper.convertValue(
-        registeredModelList, new TypeReference<List<RegisteredModelInfo>>() {});
+    return registeredModelOps.execute(new TypeReference<>() {}, "list", argsList);
   }
 
   @Override
-  public RegisteredModelInfo getRegisteredModel(String registeredModelFullName) {
-    String[] args =
-        addServerAndAuthParams(
-            List.of("registered_model", "get", "--full_name", registeredModelFullName), config);
-    JsonNode registeredModelInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(registeredModelInfoJson, RegisteredModelInfo.class);
+  public RegisteredModelInfo getRegisteredModel(String registeredModelFullName)
+      throws ApiException {
+    return registeredModelOps.execute(
+        RegisteredModelInfo.class, "get", List.of("--full_name", registeredModelFullName));
   }
 
   @Override
   public RegisteredModelInfo updateRegisteredModel(
-      String registeredModelFullName, UpdateRegisteredModel updateRm) {
-    List<String> argsList =
-        new ArrayList<>(
-            List.of("registered_model", "update", "--full_name", registeredModelFullName));
+      String registeredModelFullName, UpdateRegisteredModel updateRm) throws ApiException {
+    List<String> argsList = new ArrayList<>();
     if (updateRm.getNewName() != null) {
       argsList.add("--new_name");
       argsList.add(updateRm.getNewName());
@@ -100,31 +82,31 @@ public class CliModelOperations implements ModelOperations {
       argsList.add("--comment");
       argsList.add(updateRm.getComment());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode updatedRegisteredModelInfo = executeCLICommand(args);
-    return objectMapper.convertValue(updatedRegisteredModelInfo, RegisteredModelInfo.class);
+    // chEmptyUpdateCliException=false because the test expects the exception.
+    return registeredModelOps.executeUpdate(
+        RegisteredModelInfo.class,
+        /* catchEmptyUpdateCliException= */ false,
+        List.of("--full_name", registeredModelFullName),
+        argsList);
   }
 
   @Override
-  public void deleteRegisteredModel(String registeredModelFullName, Optional<Boolean> force) {
-    List<String> argsList =
-        new ArrayList<>(
-            List.of("registered_model", "delete", "--full_name", registeredModelFullName));
+  public void deleteRegisteredModel(String registeredModelFullName, Optional<Boolean> force)
+      throws ApiException {
+    List<String> argsList = new ArrayList<>(List.of("--full_name", registeredModelFullName));
     if (force.isPresent() && force.get()) {
       argsList.add("--force");
       argsList.add("true");
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    executeCLICommand(args);
+    registeredModelOps.execute(Void.class, "delete", argsList);
   }
 
   @Override
-  public ModelVersionInfo createModelVersion(CreateModelVersion createModelVersion) {
+  public ModelVersionInfo createModelVersion(CreateModelVersion createModelVersion)
+      throws ApiException {
     List<String> argsList =
         new ArrayList<>(
             List.of(
-                "model_version",
-                "create",
                 "--name",
                 createModelVersion.getModelName(),
                 "--schema",
@@ -141,92 +123,59 @@ public class CliModelOperations implements ModelOperations {
       argsList.add("--run_id");
       argsList.add(createModelVersion.getRunId());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode modelVersionInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(modelVersionInfoJson, ModelVersionInfo.class);
+    return modelVersionOps.execute(ModelVersionInfo.class, "create", argsList);
   }
 
   @Override
   public List<ModelVersionInfo> listModelVersions(
-      String registeredModelFullName, Optional<String> pageToken) {
-    List<String> argsList =
-        new ArrayList<>(List.of("model_version", "list", "--full_name", registeredModelFullName));
+      String registeredModelFullName, Optional<String> pageToken) throws ApiException {
+    List<String> argsList = new ArrayList<>(List.of("--full_name", registeredModelFullName));
     if (pageToken.isPresent()) {
       argsList.add("--page_token");
       argsList.add(pageToken.get());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode modelVersionList = executeCLICommand(args);
-    return objectMapper.convertValue(
-        modelVersionList, new TypeReference<List<ModelVersionInfo>>() {});
+    return modelVersionOps.execute(new TypeReference<>() {}, "list", argsList);
   }
 
   @Override
-  public ModelVersionInfo getModelVersion(String registeredModelFullName, Long version) {
-    String[] args =
-        addServerAndAuthParams(
-            List.of(
-                "model_version",
-                "get",
-                "--full_name",
-                registeredModelFullName,
-                "--version",
-                version.toString()),
-            config);
-    JsonNode modelVersionInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(modelVersionInfoJson, ModelVersionInfo.class);
+  public ModelVersionInfo getModelVersion(String registeredModelFullName, Long version)
+      throws ApiException {
+    return modelVersionOps.execute(
+        ModelVersionInfo.class,
+        "get",
+        List.of("--full_name", registeredModelFullName, "--version", version.toString()));
   }
 
   @Override
   public ModelVersionInfo updateModelVersion(
-      String fullName, Long version, UpdateModelVersion updateMv) {
-    List<String> argsList =
-        new ArrayList<>(
-            List.of(
-                "model_version",
-                "update",
-                "--full_name",
-                fullName,
-                "--version",
-                version.toString()));
+      String fullName, Long version, UpdateModelVersion updateMv) throws ApiException {
+    List<String> argsList = new ArrayList<>();
     if (updateMv.getComment() != null) {
       argsList.add("--comment");
       argsList.add(updateMv.getComment());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode updatedModelVersionInfo = executeCLICommand(args);
-    return objectMapper.convertValue(updatedModelVersionInfo, ModelVersionInfo.class);
+    return modelVersionOps.executeUpdate(
+        ModelVersionInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
+        List.of("--full_name", fullName, "--version", version.toString()),
+        argsList);
   }
 
   @Override
-  public void deleteModelVersion(String registeredModelFullName, Long version) {
-    List<String> argsList =
-        new ArrayList<>(
-            List.of(
-                "model_version",
-                "delete",
-                "--full_name",
-                registeredModelFullName,
-                "--version",
-                version.toString()));
-    String[] args = addServerAndAuthParams(argsList, config);
-    executeCLICommand(args);
+  public void deleteModelVersion(String registeredModelFullName, Long version) throws ApiException {
+    modelVersionOps.execute(
+        Void.class,
+        "delete",
+        List.of("--full_name", registeredModelFullName, "--version", version.toString()));
   }
 
   @Override
   public ModelVersionInfo finalizeModelVersion(
-      String registeredModelFullName, Long version, FinalizeModelVersion finalizeModelVersion) {
-    List<String> argsList =
-        new ArrayList<>(
-            List.of(
-                "model_version",
-                "finalize",
-                "--full_name",
-                registeredModelFullName,
-                "--version",
-                version.toString()));
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode finalizedModelVersionInfo = executeCLICommand(args);
-    return objectMapper.convertValue(finalizedModelVersionInfo, ModelVersionInfo.class);
+      String registeredModelFullName, Long version, FinalizeModelVersion finalizeModelVersion)
+      throws ApiException {
+    return modelVersionOps.execute(
+        ModelVersionInfo.class,
+        "finalize",
+        List.of("--full_name", registeredModelFullName, "--version", version.toString()));
   }
 }

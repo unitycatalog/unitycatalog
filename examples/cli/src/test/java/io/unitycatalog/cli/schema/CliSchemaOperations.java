@@ -1,14 +1,9 @@
 package io.unitycatalog.cli.schema;
 
-import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.unitycatalog.cli.utils.CliException;
+import io.unitycatalog.cli.BaseCliOperations;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateSchema;
@@ -18,26 +13,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public class CliSchemaOperations implements SchemaOperations {
-
-  private final ServerConfig config;
-  private final ObjectMapper objectMapper = new ObjectMapper();
+public class CliSchemaOperations extends BaseCliOperations implements SchemaOperations {
 
   public CliSchemaOperations(ServerConfig config) {
-    this.config = config;
+    super("schema", config);
   }
 
   @Override
-  public SchemaInfo createSchema(CreateSchema createSchema) {
+  public SchemaInfo createSchema(CreateSchema createSchema) throws ApiException {
     List<String> argsList =
         new ArrayList<>(
-            List.of(
-                "schema",
-                "create",
-                "--name",
-                createSchema.getName(),
-                "--catalog",
-                createSchema.getCatalogName()));
+            List.of("--name", createSchema.getName(), "--catalog", createSchema.getCatalogName()));
     if (createSchema.getComment() != null) {
       argsList.add("--comment");
       argsList.add(createSchema.getComment());
@@ -50,33 +36,28 @@ public class CliSchemaOperations implements SchemaOperations {
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode schemaInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(schemaInfoJson, SchemaInfo.class);
+    return execute(SchemaInfo.class, "create", argsList);
   }
 
   @Override
-  public List<SchemaInfo> listSchemas(String catalogName, Optional<String> pageToken) {
-    List<String> argsList = new ArrayList<>(List.of("schema", "list", "--catalog", catalogName));
+  public List<SchemaInfo> listSchemas(String catalogName, Optional<String> pageToken)
+      throws ApiException {
+    List<String> argsList = new ArrayList<>(List.of("--catalog", catalogName));
     if (pageToken.isPresent()) {
       argsList.add("--page_token");
       argsList.add(pageToken.get());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode schemaList = executeCLICommand(args);
-    return objectMapper.convertValue(schemaList, new TypeReference<List<SchemaInfo>>() {});
+    return execute(new TypeReference<>() {}, "list", argsList);
   }
 
   @Override
-  public SchemaInfo getSchema(String schemaFullName) {
-    String[] args =
-        addServerAndAuthParams(List.of("schema", "get", "--full_name", schemaFullName), config);
-    JsonNode schemaInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(schemaInfoJson, SchemaInfo.class);
+  public SchemaInfo getSchema(String schemaFullName) throws ApiException {
+    return execute(SchemaInfo.class, "get", List.of("--full_name", schemaFullName));
   }
 
   @Override
-  public SchemaInfo updateSchema(String schemaFullName, UpdateSchema updateSchema) {
+  public SchemaInfo updateSchema(String schemaFullName, UpdateSchema updateSchema)
+      throws ApiException {
     List<String> argsList = new ArrayList<>();
     if (updateSchema.getNewName() != null) {
       argsList.add("--new_name");
@@ -94,28 +75,20 @@ public class CliSchemaOperations implements SchemaOperations {
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
-    boolean isEmptyUpdate = argsList.isEmpty();
-    argsList.addAll(List.of("schema", "update", "--full_name", schemaFullName));
-    String[] args = addServerAndAuthParams(argsList, config);
-    if (isEmptyUpdate) {
-      // CLI does not allow empty update.
-      assertThrows(CliException.class, () -> executeCLICommand(args));
-      return null;
-    } else {
-      JsonNode updatedSchemaInfo = executeCLICommand(args);
-      return objectMapper.convertValue(updatedSchemaInfo, SchemaInfo.class);
-    }
+    return executeUpdate(
+        SchemaInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
+        List.of("--full_name", schemaFullName),
+        argsList);
   }
 
   @Override
-  public void deleteSchema(String schemaFullName, Optional<Boolean> force) {
-    List<String> argsList =
-        new ArrayList<>(List.of("schema", "delete", "--full_name", schemaFullName));
+  public void deleteSchema(String schemaFullName, Optional<Boolean> force) throws ApiException {
+    List<String> argsList = new ArrayList<>(List.of("--full_name", schemaFullName));
     if (force.isPresent() && force.get()) {
       argsList.add("--force");
       argsList.add("true");
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    executeCLICommand(args);
+    execute(Void.class, "delete", argsList);
   }
 }
