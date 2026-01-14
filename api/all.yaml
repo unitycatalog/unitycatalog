@@ -2469,17 +2469,21 @@ components:
           description: Unique identifier for the model version.
           type: string
     ModelVersionStatus:
-      description: |
-        All possible model version statuses (MODEL_VERSION_STATUS_UNKNOWN, PENDING_REGISTRATION, FAILED_REGISTRATION, READY).
-        PENDING_REGISTRATION status indicates that the client has not completely written all model artifacts to external storage.
-        FAILED_REGISTRATION status indicates that the client has failed to write all model artifacts to external storage.
-        READY status indicates that the client has successfully written all model artifacts to external storage.
+      description: All possible model version statuses.
       type: string
       enum:
         - MODEL_VERSION_STATUS_UNKNOWN
         - PENDING_REGISTRATION
         - FAILED_REGISTRATION
         - READY
+      # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
+      #  corresponding description at the end of the description list. Both list must have the same
+      #  order.
+      x-enum-descriptions:
+        - 'MODEL_VERSION_STATUS_UNKNOWN: Unknown'
+        - 'PENDING_REGISTRATION: Indicates that the client has not completely written all model artifacts to external storage.'
+        - 'FAILED_REGISTRATION: Indicates that the client has failed to write all model artifacts to external storage.'
+        - 'READY: Indicates that the client has successfully written all model artifacts to external storage.'
     CreateRegisteredModel:
       type: object
       properties:
@@ -2632,6 +2636,7 @@ components:
         - credential
       description: The type of the resource.
     Privilege:
+      description: The privilege to grant.
       type: string
       enum:
         - CREATE CATALOG
@@ -2653,27 +2658,29 @@ components:
         - CREATE EXTERNAL VOLUME
         - CREATE MANAGED STORAGE
         - CREATE STORAGE CREDENTIAL
-      description: The privilege to grant.
+      # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
+      #  corresponding description at the end of the description list. Both list must have the same
+      #  order.
       x-enum-descriptions:
-        - Enables users to create new catalogs in a metastore.
-        - Required to interact with any object within a catalog.
-        - Enables users to create new schemas in a catalog.
-        - Required to interact with any object within a schema.
-        - Allows creating tables or views in a schema.
-        - Enables querying tables, views, materialized views.
-        - Enables adding, updating, and deleting data within tables (requires SELECT privilege also).
-        - Allows users to create functions or procedures within a schema.
-        - Permits invoking user-defined functions or loading models for inference.
-        - Enables creating volumes in a schema.
-        - Permits reading files and directories within volumes.
-        - Permits establishing MLflow registered models in a schema.
-        - Required privilege on both the metastore and referenced storage credential to create external locations.
-        - Grants direct read access to files in cloud storage configured as external locations.
-        - Grants direct write access to files in cloud storage configured as external locations.
-        - Enables creating external tables through external locations.
-        - Enables creating external volumes through external locations.
-        - Allows designating managed storage locations at catalog or schema levels.
-        - Required privilege on the metastore to create storage credentials.
+        - 'CREATE CATALOG: Enables users to create new catalogs in a metastore.'
+        - 'USE CATALOG: Required to interact with any object within a catalog.'
+        - 'CREATE SCHEMA: Enables users to create new schemas in a catalog.'
+        - 'USE SCHEMA: Required to interact with any object within a schema.'
+        - 'CREATE TABLE: Allows creating tables or views in a schema.'
+        - 'SELECT: Enables querying tables, views, materialized views.'
+        - 'MODIFY: Enables adding, updating, and deleting data within tables (requires SELECT privilege also).'
+        - 'CREATE FUNCTION: Allows users to create functions or procedures within a schema.'
+        - 'EXECUTE: Permits invoking user-defined functions or loading models for inference.'
+        - 'CREATE VOLUME: Enables creating volumes in a schema.'
+        - 'READ VOLUME: Permits reading files and directories within volumes.'
+        - 'CREATE MODEL: Permits establishing MLflow registered models in a schema.'
+        - 'CREATE EXTERNAL LOCATION: Required privilege on both the metastore and referenced storage credential to create external locations.'
+        - 'READ FILES: Grants direct read access to files in cloud storage configured as external locations.'
+        - 'WRITE FILES: Grants direct write access to files in cloud storage configured as external locations.'
+        - 'CREATE EXTERNAL TABLE: Enables creating external tables through external locations.'
+        - 'CREATE EXTERNAL VOLUME: Enables creating external volumes through external locations.'
+        - 'CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.'
+        - 'CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.'
     UpdatePermissions:
       type: object
       properties:
