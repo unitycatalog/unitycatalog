@@ -4,8 +4,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.Row;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * This test suite runs all tests in ExternalTableReadWriteTest plus extra test. Tests that are only
@@ -37,21 +39,24 @@ public class DeltaExternalTableReadWriteTest extends ExternalTableReadWriteTest 
   }
 
   @Test
-  public void testExternalDeltaTableWithDateType() throws IOException {
+  public void testExternalDeltaTableWithDateType() {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     TableSetupOptions options = new TableSetupOptions()
             .setCatalogName(SPARK_CATALOG)
             .setTableName(TEST_TABLE);
 
-    sql(String.format(
-            "CREATE TABLE %s (start_date DATE) USING delta LOCATION '%s'",
-            options.fullTableName(), getLocation(options)));
-    sql(String.format("INSERT INTO %s VALUES ('2025-12-22')", options.fullTableName()));
+    sql("CREATE TABLE %s (start_date DATE) USING delta LOCATION '%s'",
+            options.fullTableName(), getLocation(options));
+    sql("INSERT INTO %s VALUES ('2026-01-14')", options.fullTableName());
 
     validateTableSchema(
             session.table(options.fullTableName()).schema(),
             Pair.of("start_date", DataTypes.DateType));
+
+    List<Row> rows = sql("SELECT * FROM %s", options.fullTableName());
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getDate(0).toString()).isEqualTo("2026-01-14");
   }
 
   @Override
