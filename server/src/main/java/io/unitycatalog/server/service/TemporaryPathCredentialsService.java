@@ -57,7 +57,7 @@ public class TemporaryPathCredentialsService extends AuthorizedService {
 
   private void authorizeForOperation(
       GenerateTemporaryPathCredential generateTemporaryPathCredential) {
-    // The authorization will be in this order:
+    // The authorization will determine which securable to authorize against in this order:
     // 1. if user is owner of metastore, always allow
     // 2. if the path is a parent of any data securable or external location, fail with error.
     // 3. if the path is a part of more than one data securable or more than one external location,
@@ -70,6 +70,16 @@ public class TemporaryPathCredentialsService extends AuthorizedService {
     //  it.
     // This function will only set resource key for ONE of the table, volume, model, or external
     // location.
+
+    // Once it decided which securable to authorize against:
+    // a. For external location, it requires READ_FILES for reads, and +WRITE_FILES for writes
+    //  and reads.
+    // b. For table, it requires SELECT for reads, and +MODIFY for writes and reads.
+    // c. For volume, it requires READ_VOLUME for reads, and OWNER for writes and reads.
+    //  (WRITE_VOLUME is not implemented yet)
+    // d. For model,  it requires EXECUTE for reads, and OWNER for writes and reads.
+    // e. Additionally for all data securables, it requires USE_CATALOG and USE_SCHEMA (or OWNER)
+    //  of the parent catalog and schema.
 
     final String readExpression = """
         #authorize(#principal, #metastore, OWNER) ||
