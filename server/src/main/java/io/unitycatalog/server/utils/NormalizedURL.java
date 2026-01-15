@@ -127,6 +127,11 @@ public final class NormalizedURL {
    * </pre>
    */
   public static String normalize(String inputPath) {
+    if (!inputPath.contains("/")) {
+      // A path containing no / is very likely a malformed path or it's intended to be a name.
+      // In any case we reject it.
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Ambiguous path: " + inputPath);
+    }
     // Check if the path is already a URI with a valid scheme
     URI uri;
     try {
