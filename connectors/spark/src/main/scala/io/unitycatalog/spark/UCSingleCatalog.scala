@@ -3,7 +3,7 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.auth.TokenProvider
-import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
 import io.unitycatalog.spark.utils.OptionsUtil
@@ -328,36 +328,53 @@ private class UCProxy(
     }.toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
-    var tableOp = TableOperation.READ_WRITE
-    val temporaryCredentials = {
+
+    // Try to get credentials - may fail if user is not authorized (e.g., FGAC with row filters/column masks)
+    // If credentials cannot be obtained, return None to allow downstream code the opportunity to
+    // obtain credentials from elsewhere (e.g., a different endpoint) rather than throwing an exception
+    val temporaryCredentials: Option[TemporaryCredentials] = {
       try {
-        temporaryCredentialsApi
+        val creds = temporaryCredentialsApi
           .generateTemporaryTableCredentials(
             // TODO: at this time, we don't know if the table will be read or written. For now we always
             //       request READ_WRITE credentials as the server doesn't distinguish between READ and
             //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
             //       for read or write, we can request the proper credential after fixing Spark.
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
+            new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
           )
+        Some(creds)
       } catch {
         case _: ApiException =>
-          tableOp = TableOperation.READ
-          temporaryCredentialsApi
-            .generateTemporaryTableCredentials(
-              new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-            )
+          try {
+            val creds = temporaryCredentialsApi
+              .generateTemporaryTableCredentials(
+                new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ)
+              )
+            Some(creds)
+          } catch {
+            case _: ApiException =>
+              // Credentials not available (e.g., user not authorized due to FGAC row filter/column mask)
+              // Return None to allow downstream code the opportunity to obtain credentials from elsewhere
+              // (e.g., a different endpoint) rather than throwing an exception
+              None
+          }
       }
     }
 
-    val extraSerdeProps = CredPropsUtil.createTableCredProps(
-      renewCredEnabled,
-      locationUri.getScheme,
-      uri.toString,
-      tokenProvider,
-      tableId,
-      tableOp,
-      temporaryCredentials,
-    )
+    val extraSerdeProps = temporaryCredentials match {
+      case Some(creds) =>
+        CredPropsUtil.createTableCredProps(
+          renewCredEnabled,
+          locationUri.getScheme,
+          uri.toString,
+          tokenProvider,
+          tableId,
+          TableOperation.READ_WRITE,
+          creds,
+        )
+      case None =>
+        java.util.Collections.emptyMap[String, String]()
+    }
 
     val sparkTable = CatalogTable(
       identifier,
