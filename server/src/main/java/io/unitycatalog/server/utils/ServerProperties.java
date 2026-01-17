@@ -198,6 +198,7 @@ public class ServerProperties {
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false", BOOLEAN_VALIDATOR),
     MODEL_STORAGE_ROOT("storage-root.models", "file:///tmp/ucroot", STORAGE_PATH_VALIDATOR),
     TABLE_STORAGE_ROOT("storage-root.tables", "file:///tmp/ucroot", STORAGE_PATH_VALIDATOR),
+    AWS_S3_MASTER_ROLE_ARN("aws.s3.masterRoleArn"),
     AWS_S3_ACCESS_KEY("aws.s3.accessKey"),
     AWS_S3_SECRET_KEY("aws.s3.secretKey"),
     AWS_S3_SESSION_TOKEN("aws.s3.sessionToken"),

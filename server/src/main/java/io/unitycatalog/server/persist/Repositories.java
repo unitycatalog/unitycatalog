@@ -47,7 +47,7 @@ public class Repositories {
     this.metastoreRepository = new MetastoreRepository(this, sessionFactory);
     this.functionRepository = new FunctionRepository(this, sessionFactory);
     this.modelRepository = new ModelRepository(this, sessionFactory);
-    this.credentialRepository = new CredentialRepository(this, sessionFactory);
+    this.credentialRepository = new CredentialRepository(this, sessionFactory, serverProperties);
     this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
     this.deltaCommitRepository = new DeltaCommitRepository(sessionFactory, serverProperties);
 
