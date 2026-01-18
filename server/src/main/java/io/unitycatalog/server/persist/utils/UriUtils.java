@@ -1,14 +1,13 @@
 package io.unitycatalog.server.persist.utils;
 
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
-
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -19,8 +18,6 @@ import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.stream.Stream;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class UriUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(UriUtils.class);
@@ -53,29 +50,28 @@ public class UriUtils {
     URI parsedUri = URI.create(uri);
     validateURI(parsedUri);
     try {
-      if (parsedUri.getScheme().equals("file")) {
-        return updateLocalDirectory(parsedUri, op);
-      } else if (parsedUri.getScheme().equals(URI_SCHEME_S3)) {
+      return switch (UriScheme.fromURI(parsedUri)) {
+        case FILE, NULL -> updateLocalDirectory(parsedUri, op);
+
         // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
         // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
         // using the hadoopfs libraries.
         /* return updateS3Directory(parsedUri, op, credentials.get().getAwsTempCredentials()); */
-        return parsedUri;
-      } else if (parsedUri.getScheme().equals(URI_SCHEME_GS)) {
+        case S3 -> parsedUri;
+
         // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
         // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
         // using the hadoopfs libraries.
         /* return updateGcDirectory(parsedUri, op, credentials.get().getGcpOauthToken()); */
-        return parsedUri;
-      } else if (parsedUri.getScheme().equals(URI_SCHEME_ABFS)
-          || parsedUri.getScheme().equals(URI_SCHEME_ABFSS)) {
+        case GS -> parsedUri;
+
         // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
         // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
         // using the hadoopfs libraries.
         // return updateAbsDirectory(parsedUri, op, credentials.get().getAzureUserDelegationSas()
         // );
-        return parsedUri;
-      }
+        case ABFS, ABFSS -> parsedUri;
+      };
     } catch (Exception e) {
       throw new BaseException(
           ErrorCode.INTERNAL,
@@ -83,8 +79,6 @@ public class UriUtils {
               "Error attempting to %s URI %s: %s",
               op.name(), parsedUri.toString(), e.getMessage()));
     }
-    throw new BaseException(
-        ErrorCode.INVALID_ARGUMENT, "Unknown scheme detected: " + parsedUri.getScheme());
   }
 
   public static boolean isValidURI(String uri) {

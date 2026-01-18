@@ -22,6 +22,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.stream.Stream;
 import com.google.auth.oauth2.AccessToken;
+import io.unitycatalog.server.utils.UriScheme;
 import org.junit.jupiter.params.provider.Arguments;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mock;
@@ -76,7 +77,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
             .forEach(path -> doReturn(awsCredential)
                     .when(awsCredentialVendor)
                     .vendAwsCredentials(
-                            argThat(isCredentialContextForCloudPath("s3", path))));
+                            argThat(isCredentialContextForCloudPath(UriScheme.S3, path))));
   }
 
   private void setupAzureCredentials() {
@@ -91,7 +92,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
             .forEach(path -> doReturn(azureCredential)
                     .when(azureCredentialVendor)
                     .vendAzureCredential(
-                            argThat(isCredentialContextForCloudPath("abfs", path))));
+                            argThat(isCredentialContextForCloudPath(UriScheme.ABFS, path))));
   }
 
   private void setupGcpCredentials() {
@@ -106,11 +107,11 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
             .forEach(path -> doReturn(gcpCredential)
                     .when(gcpCredentialVendor)
                     .vendGcpToken(
-                            argThat(isCredentialContextForCloudPath("gs", path))));
+                            argThat(isCredentialContextForCloudPath(UriScheme.GS, path))));
   }
 
   private ArgumentMatcher<CredentialContext> isCredentialContextForCloudPath(
-      String scheme, String path) {
+      UriScheme scheme, String path) {
     return arg -> arg.getStorageScheme().equals(scheme)
         && arg.getStorageBase().contains(path);
   }

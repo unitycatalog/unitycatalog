@@ -7,6 +7,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
+import io.unitycatalog.server.utils.UriScheme;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.aws.AwsClientProperties;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
@@ -19,10 +20,6 @@ import java.util.Map;
 import java.util.Set;
 
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 
 public class TableConfigService {
 
@@ -37,15 +34,15 @@ public class TableConfigService {
 
   public Map<String, String> getTableConfig(TableMetadata tableMetadata) {
     URI locationURI = URI.create(tableMetadata.location());
-    String scheme = locationURI.getScheme();
+    UriScheme scheme = UriScheme.fromURI(locationURI);
 
     CredentialContext context = CredentialContext.create(locationURI, Set.of(SELECT));
 
     return switch(scheme) {
-      case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> getADLSConfig(context);
-      case URI_SCHEME_GS -> getGCSConfig(context);
-      case URI_SCHEME_S3 -> getS3Config(context);
-      default -> Map.of();
+      case ABFS, ABFSS -> getADLSConfig(context);
+      case GS -> getGCSConfig(context);
+      case S3 -> getS3Config(context);
+      case FILE, NULL -> Map.of();
     };
   }
 
