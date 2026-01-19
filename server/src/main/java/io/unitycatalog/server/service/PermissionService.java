@@ -13,7 +13,7 @@ import static io.unitycatalog.server.model.SecurableType.VOLUME;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -182,7 +182,7 @@ public class PermissionService {
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Patch("/metastore/{name}")
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateMetastoreAuthorization(
       @Param("name") String name, UpdatePermissions request) {
     return updateAuthorization(METASTORE, name, request);
@@ -191,9 +191,9 @@ public class PermissionService {
   @Patch("/catalog/{name}")
   @AuthorizeExpression(
       "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #catalog, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalogAuthorization(
-      @Param("name") @AuthorizeKey(CATALOG) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name, UpdatePermissions request) {
     return updateAuthorization(CATALOG, name, request);
   }
 
@@ -203,9 +203,9 @@ public class PermissionService {
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchemaAuthorization(
-      @Param("name") @AuthorizeKey(SCHEMA) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(SCHEMA) String name, UpdatePermissions request) {
     return updateAuthorization(SCHEMA, name, request);
   }
 
@@ -218,9 +218,9 @@ public class PermissionService {
           #authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #table, OWNER))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateTableAuthorization(
-      @Param("name") @AuthorizeKey(TABLE) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(TABLE) String name, UpdatePermissions request) {
     return updateAuthorization(TABLE, name, request);
   }
 
@@ -233,9 +233,9 @@ public class PermissionService {
           #authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #function, OWNER))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateFunctionAuthorization(
-      @Param("name") @AuthorizeKey(FUNCTION) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(FUNCTION) String name, UpdatePermissions request) {
     return updateAuthorization(FUNCTION, name, request);
   }
 
@@ -248,36 +248,38 @@ public class PermissionService {
           #authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #volume, OWNER))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolumeAuthorization(
-      @Param("name") @AuthorizeKey(VOLUME) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(VOLUME) String name, UpdatePermissions request) {
     return updateAuthorization(VOLUME, name, request);
   }
 
   @Patch("/registered_model/{name}")
   @AuthorizeExpression(
       "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #registered_model, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModelAuthorization(
-      @Param("name") @AuthorizeKey(REGISTERED_MODEL) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(REGISTERED_MODEL) String name,
+      UpdatePermissions request) {
     return updateAuthorization(REGISTERED_MODEL, name, request);
   }
 
   @Patch("/external_location/{name}")
   @AuthorizeExpression(
       "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #external_location, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateExternalLocationAuthorization(
-      @Param("name") @AuthorizeKey(EXTERNAL_LOCATION) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
+      UpdatePermissions request) {
     return updateAuthorization(EXTERNAL_LOCATION, name, request);
   }
 
   @Patch("/credential/{name}")
   @AuthorizeExpression(
       "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #credential, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCredentialAuthorization(
-      @Param("name") @AuthorizeKey(CREDENTIAL) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name, UpdatePermissions request) {
     return updateAuthorization(CREDENTIAL, name, request);
   }
 

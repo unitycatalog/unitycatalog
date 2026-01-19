@@ -6,7 +6,7 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateSchema;
@@ -50,9 +50,9 @@ public class SchemaService extends AuthorizedService {
       #authorize(#principal, #catalog, OWNER) ||
       #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse createSchema(
-      @AuthorizeKey(value = CATALOG, key = "catalog_name") CreateSchema createSchema) {
+      @AuthorizeResourceKey(value = CATALOG, key = "catalog_name") CreateSchema createSchema) {
     SchemaInfo schemaInfo = schemaRepository.createSchema(createSchema);
 
     CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
@@ -86,8 +86,8 @@ public class SchemaService extends AuthorizedService {
       (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
           #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
-  @AuthorizeKey(METASTORE)
-  public HttpResponse getSchema(@Param("full_name") @AuthorizeKey(SCHEMA) String fullName) {
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse getSchema(@Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName) {
     return HttpResponse.ofJson(schemaRepository.getSchema(fullName));
   }
 
@@ -99,9 +99,9 @@ public class SchemaService extends AuthorizedService {
       (#authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #catalog, USE_CATALOG))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchema(
-      @Param("full_name") @AuthorizeKey(SCHEMA) String fullName,
+      @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       UpdateSchema updateSchema) {
     // TODO: This method does not adhere to the complete access control rules of the Databricks
     // Unity Catalog
@@ -115,9 +115,9 @@ public class SchemaService extends AuthorizedService {
       (#authorize(#principal, #schema, OWNER) &&
           #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteSchema(
-      @Param("full_name") @AuthorizeKey(SCHEMA) String fullName,
+      @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       @Param("force") Optional<Boolean> force) {
     SchemaInfo schemaInfo = schemaRepository.getSchema(fullName);
     schemaRepository.deleteSchema(fullName, force.orElse(false));

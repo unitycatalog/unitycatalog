@@ -190,14 +190,13 @@ public class UnityCatalogServer {
     MetastoreService metastoreService = new MetastoreService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
-        new TemporaryTableCredentialsService(authorizer, cloudCredentialVendor, repositories);
+        new TemporaryTableCredentialsService(cloudCredentialVendor, repositories);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
-        new TemporaryVolumeCredentialsService(authorizer, cloudCredentialVendor, repositories);
+        new TemporaryVolumeCredentialsService(cloudCredentialVendor, repositories);
     TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
-        new TemporaryModelVersionCredentialsService(
-            authorizer, cloudCredentialVendor, repositories);
+        new TemporaryModelVersionCredentialsService(cloudCredentialVendor, repositories);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
-        new TemporaryPathCredentialsService(authorizer, cloudCredentialVendor, repositories);
+        new TemporaryPathCredentialsService(cloudCredentialVendor);
 
     JacksonRequestConverterFunction requestConverterFunction =
         new JacksonRequestConverterFunction(

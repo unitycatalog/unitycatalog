@@ -1,58 +1,65 @@
 package io.unitycatalog.server.auth.annotation;
 
-import io.unitycatalog.server.model.SecurableType;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Map a request parameter to a unity catalog resource key.
+ * Expose a request payload field as a variable in authorization expressions.
  *
- * <p>This annotation is used to map a request parameter to a unity catalog resource key. The
- * resource key is used to retrieve the resource identifier, which is then used to authorize the
- * request. As an example, suppose you are making a request the retrieve a schema, the parameter
- * that contains the schema name might be defined in the request as
+ * <p>Unlike {@code @AuthorizeResourceKey}, which annotates payload fields that reference to
+ * resources and maps them to resource identifiers (UUIDs), this class can annotate ANY payload
+ * fields whether they are resource or not. It does NOT do the resource ID mapping but exposes the
+ * raw payload value directly to the SpEL expression context, even if the payload field references a
+ * resource.
  *
- * <p>@Param("full_Name") String fullName
+ * <p>This generally should not be used to annotate any fields that refer to a resource, unless the
+ * expression just want to check if the field is set or not (like "#field==null").
  *
- * <p>This annotation would take the value of the fullName parameter and use it to retrieve the
- * schema resource identifier looking up the identifier from the persistence layer (database).
+ * <p>This is useful for conditional authorization based on any request parameters like operation
+ * types, flags, or if any field is set or null.
  *
- * <p>This annotation can be used multiple times per service method. The interpretation of the
- * annotation changes depending on how it is used.
+ * <p>The payload field value is exposed as a SpEL variable with the same name as the key, prefixed
+ * with '#'. For example, {@code @AuthorizeKey(key = "operation")} makes the operation value
+ * available as {@code #operation} in the expression.
  *
- * <p>Method level - When used at the method level, it maps a server-level attribute for the
- * request. Currently, the only server level attribute is the METASTORE. When used at the method
- * level, it is expected that the key is left unset.
+ * <p><b>Supported Types:</b>
  *
- * <p>Example:
+ * <ul>
+ *   <li>Primitives (String, Integer, Boolean, etc.)
+ *   <li>Enums - exposed as their string representation (via toString())
+ *   <li>Nested fields - use dot notation (e.g., "config.mode")
+ * </ul>
  *
- * <p>@AuthorizeKey(METASTORE) public void serviceMethod(...) { }
+ * <p><b>Example Usage:</b>
  *
- * <p>Method parameter level with Armeria @Param annotation - When used on a method parameter, and
- * the parameter also has annotated with the Armeria @Param annotation, the key is taken from
- * the @Param annotations value and that is what is used to retrieve the resource value. Since the
- * key is taken from the @Param, the key value in this annotation should be left unset.
+ * <pre>{@code
+ * @Post("")
+ * @AuthorizeExpression("""
+ *   #operation == 'READ'
+ *     ? #authorize(#principal, #table, SELECT)
+ *     : #authorize(#principal, #table, MODIFY)
+ *   """)
+ * public HttpResponse generateCredential(
+ *   @AuthorizeResourceKey(value = TABLE, key = "table_id")
+ *   @AuthorizeKey(key = "operation")
+ *   GenerateTemporaryTableCredential request) { ... }
+ * }</pre>
  *
- * <p>Example: Map the request "catalog" parameter to the CATALOG resource type.
+ * <p><b>Null Handling:</b> If the specified field doesn't exist or is null, the variable will be
+ * set to null in the SpEL context. Expressions should handle this using null checks: {@code
+ * #operation == null || #operation == 'READ'}
  *
- * <p>public void serviceMethod(@Param("catalog") @AuthorizeKey(CATALOG) String catalog) { }
- *
- * <p>Method parameter level on payload parameter - When used on a method parameter, and there is no
- * corresponding Armeria @Param annotation, the annotation key field is required. That key is used
- * to retrieve the resource value from corresponding field the request payload.
- *
- * <p>Example: Map the "catalog" field in the request payload to the CATALOG resource type.
- *
- * <p>public void serviceMethod(@AuthorizeKey(value = CATALOG, key = "catalog") CreateSchemaRequest
- * request) { }
+ * @see AuthorizeResourceKey for mapping payload fields to resource identifiers
+ * @see AuthorizeExpression for defining authorization expressions
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.METHOD, ElementType.PARAMETER})
+@Target(ElementType.PARAMETER)
 public @interface AuthorizeKey {
-
-  SecurableType value();
-
-  String key() default "";
+  /**
+   * The key path to extract from the request payload. Supports nested fields using dot notation
+   * (e.g., "config.operation").
+   */
+  String key();
 }
