@@ -10,7 +10,7 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateCatalog;
@@ -43,7 +43,7 @@ public class CatalogService extends AuthorizedService {
 
   @Post("")
   @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse createCatalog(CreateCatalog createCatalog) {
     CatalogInfo catalogInfo = catalogRepository.addCatalog(createCatalog);
     initializeBasicAuthorization(catalogInfo.getId());
@@ -72,8 +72,8 @@ public class CatalogService extends AuthorizedService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
       """)
-  @AuthorizeKey(METASTORE)
-  public HttpResponse getCatalog(@Param("name") @AuthorizeKey(CATALOG) String name) {
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse getCatalog(@Param("name") @AuthorizeResourceKey(CATALOG) String name) {
     return HttpResponse.ofJson(catalogRepository.getCatalog(name));
   }
 
@@ -81,9 +81,9 @@ public class CatalogService extends AuthorizedService {
   @AuthorizeExpression("""
       #authorize(#principal, #catalog, OWNER)
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalog(
-      @Param("name") @AuthorizeKey(CATALOG) String name,
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name,
       UpdateCatalog updateCatalog) {
     return HttpResponse.ofJson(catalogRepository.updateCatalog(name, updateCatalog));
   }
@@ -93,9 +93,9 @@ public class CatalogService extends AuthorizedService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCatalog(
-      @Param("name") @AuthorizeKey(CATALOG) String name,
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name,
       @Param("force") Optional<Boolean> force) {
     CatalogInfo catalogInfo = catalogRepository.getCatalog(name);
     catalogRepository.deleteCatalog(name, force.orElse(false));

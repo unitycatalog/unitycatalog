@@ -7,8 +7,8 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
-import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateFunctionRequest;
@@ -56,11 +56,11 @@ public class FunctionService extends AuthorizedService {
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse createFunction(
-      @AuthorizeKeys({
-        @AuthorizeKey(value = CATALOG, key = "function_info.catalog_name"),
-        @AuthorizeKey(value = SCHEMA, key = "function_info.schema_name")
+      @AuthorizeResourceKeys({
+        @AuthorizeResourceKey(value = CATALOG, key = "function_info.catalog_name"),
+        @AuthorizeResourceKey(value = SCHEMA, key = "function_info.schema_name")
       })
       CreateFunctionRequest createFunctionRequest) {
     FunctionInfo functionInfo = functionRepository.createFunction(createFunctionRequest);
@@ -96,7 +96,7 @@ public class FunctionService extends AuthorizedService {
   }
 
   @Get("/{name}")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
@@ -106,12 +106,12 @@ public class FunctionService extends AuthorizedService {
           #authorize(#principal, #schema, USE_SCHEMA) &&
           #authorizeAny(#principal, #function, OWNER, EXECUTE))
       """)
-  public HttpResponse getFunction(@Param("name") @AuthorizeKey(FUNCTION) String name) {
+  public HttpResponse getFunction(@Param("name") @AuthorizeResourceKey(FUNCTION) String name) {
     return HttpResponse.ofJson(functionRepository.getFunction(name));
   }
 
   @Delete("/{name}")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
       (#authorize(#principal, #function, OWNER) &&
@@ -119,7 +119,7 @@ public class FunctionService extends AuthorizedService {
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
       """)
   public HttpResponse deleteFunction(
-      @Param("name") @AuthorizeKey(FUNCTION) String name,
+      @Param("name") @AuthorizeResourceKey(FUNCTION) String name,
       @Param("force") Optional<Boolean> force) {
     FunctionInfo functionInfo = functionRepository.getFunction(name);
     functionRepository.deleteFunction(name, force.orElse(false));
