@@ -14,8 +14,8 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
-import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.ExternalLocationInfo;
@@ -49,9 +49,9 @@ public class ExternalLocationService extends AuthorizedService {
     (#authorize(#principal, #metastore, CREATE_EXTERNAL_LOCATION) &&
      #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION))
     """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse createExternalLocation(
-      @AuthorizeKeys({@AuthorizeKey(value = CREDENTIAL, key = "credential_name")})
+      @AuthorizeResourceKeys({@AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")})
           CreateExternalLocation createExternalLocation) {
     ExternalLocationInfo externalLocationInfo =
         externalLocationRepository.addExternalLocation(createExternalLocation);
@@ -78,9 +78,9 @@ public class ExternalLocationService extends AuthorizedService {
 
   @Get("/{name}")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse getExternalLocation(
-      @Param("name") @AuthorizeKey(EXTERNAL_LOCATION) String name) {
+      @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name) {
     return HttpResponse.ofJson(externalLocationRepository.getExternalLocation(name));
   }
 
@@ -91,10 +91,10 @@ public class ExternalLocationService extends AuthorizedService {
      (#credential == null ||
       #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION)))
     """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateExternalLocation(
-      @Param("name") @AuthorizeKey(EXTERNAL_LOCATION) String name,
-      @AuthorizeKeys({@AuthorizeKey(value = CREDENTIAL, key = "credential_name")})
+      @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
+      @AuthorizeResourceKeys({@AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")})
           UpdateExternalLocation updateRequest) {
     return HttpResponse.ofJson(
         externalLocationRepository.updateExternalLocation(name, updateRequest));
@@ -105,9 +105,9 @@ public class ExternalLocationService extends AuthorizedService {
     #authorize(#principal, #metastore, OWNER) ||
     #authorize(#principal, #external_location, OWNER)
     """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteExternalLocation(
-      @Param("name") @AuthorizeKey(EXTERNAL_LOCATION) String name,
+      @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
       @Param("force") Optional<Boolean> force) {
     ExternalLocationDAO externalLocationDAO =
         externalLocationRepository.deleteExternalLocation(name, force.orElse(false));

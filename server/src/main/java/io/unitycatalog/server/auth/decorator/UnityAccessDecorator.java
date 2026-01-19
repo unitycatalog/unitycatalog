@@ -14,8 +14,8 @@ import com.linecorp.armeria.server.SimpleDecoratingHttpService;
 import com.linecorp.armeria.server.annotation.Param;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
-import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
@@ -41,18 +41,18 @@ import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.SYSTEM;
 
 /**
  * Armeria access control Decorator.
- * <p>
- * This decorator provides the ability to protect Armeria service methods with per method access
+ *
+ * <p>This decorator provides the ability to protect Armeria service methods with per method access
  * control rules. This decorator is used in conjunction with two annotations, @AuthorizeExpression
- * and @AuthorizeKey to define authorization rules and identify requests parameters for objects
- * to authorize with.
- * <p>
- * {@code @AuthorizeExpression} - This defines a Spring Expression Language expression to evaluate
- * to make an authorization decision.
- * {@code @AuthorizeKey} - This annotation is used to define request and payload parameters for the
- * authorization context. These are typically things like catalog, schema and table names. This
- * annotation may be used at both the method and method parameter context. It may be specified
- * more than once per method to map parameters to object keys.
+ * and @AuthorizeResourceKey to define authorization rules and identify requests parameters for
+ * objects to authorize with.
+ *
+ * <p>{@code @AuthorizeExpression} - This defines a Spring Expression Language expression to
+ * evaluate to make an authorization decision. {@code @AuthorizeResourceKey} - This annotation is
+ * used to define request and payload parameters for the authorization context. These are typically
+ * things like catalog, schema and table names. This annotation may be used at both the method and
+ * method parameter context. It may be specified more than once per method to map parameters to
+ * object keys.
  */
 public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
@@ -228,7 +228,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     List<KeyLocator> locators = new ArrayList<>();
 
-    AuthorizeKey methodKey = method.getAnnotation(AuthorizeKey.class);
+    AuthorizeResourceKey methodKey = method.getAnnotation(AuthorizeResourceKey.class);
 
     // If resource is on the method, its source is from a global/system variable
     if (methodKey != null) {
@@ -236,14 +236,14 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     for (Parameter parameter : method.getParameters()) {
-      AuthorizeKey paramKey = parameter.getAnnotation(AuthorizeKey.class);
-      AuthorizeKeys paramKeys = parameter.getAnnotation(AuthorizeKeys.class);
+      AuthorizeResourceKey paramKey = parameter.getAnnotation(AuthorizeResourceKey.class);
+      AuthorizeResourceKeys paramKeys = parameter.getAnnotation(AuthorizeResourceKeys.class);
 
       if (paramKey != null && paramKeys != null) {
-        LOGGER.warn("Both AuthorizeKey and AuthorizeKeys present");
+        LOGGER.warn("Both AuthorizeResourceKey and AuthorizeResourceKeys present");
       }
 
-      List<AuthorizeKey> allKeys = new ArrayList<>();
+      List<AuthorizeResourceKey> allKeys = new ArrayList<>();
       if (paramKey != null) {
         allKeys.add(paramKey);
       }
@@ -251,7 +251,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         allKeys.addAll(Arrays.asList(paramKeys.value()));
       }
 
-      for (AuthorizeKey key : allKeys) {
+      for (AuthorizeResourceKey key : allKeys) {
         if (!key.key().isEmpty()) {
           // Explicitly declaring a key, so it's the source is from the payload data
           locators.add(KeyLocator.builder()

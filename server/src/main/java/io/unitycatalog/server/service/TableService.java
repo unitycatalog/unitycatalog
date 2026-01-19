@@ -7,8 +7,8 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
-import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateTable;
@@ -57,11 +57,11 @@ public class TableService extends AuthorizedService {
       (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
           #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse createTable(
-      @AuthorizeKeys({
-        @AuthorizeKey(value = SCHEMA, key = "schema_name"),
-        @AuthorizeKey(value = CATALOG, key = "catalog_name")
+      @AuthorizeResourceKeys({
+        @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
+        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
       })
       CreateTable createTable) {
     assert createTable != null;
@@ -83,8 +83,8 @@ public class TableService extends AuthorizedService {
           #authorize(#principal, #catalog, USE_CATALOG) &&
           #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
       """)
-  @AuthorizeKey(METASTORE)
-  public HttpResponse getTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse getTable(@Param("full_name") @AuthorizeResourceKey(TABLE) String fullName) {
     assert fullName != null;
     TableInfo tableInfo = tableRepository.getTable(fullName);
     return HttpResponse.ofJson(tableInfo);
@@ -128,7 +128,8 @@ public class TableService extends AuthorizedService {
           #authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #table, OWNER))
       """)
-  public HttpResponse deleteTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
+  public HttpResponse deleteTable(
+      @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName) {
     TableInfo tableInfo = tableRepository.getTable(fullName);
     tableRepository.deleteTable(fullName);
 
