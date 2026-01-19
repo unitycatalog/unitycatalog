@@ -10,10 +10,11 @@ import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.ByteArrayInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.FileVisitOption;
@@ -75,15 +76,15 @@ public class FileOperations {
     return modelStorageRoot;
   }
 
-  private String getModelDirectoryURI(String entityFullName) {
-    return getModelStorageRoot() + "/" + entityFullName.replace(".", "/");
+  private NormalizedURL getModelDirectoryURI(String entityFullName) {
+    return NormalizedURL.from(getModelStorageRoot() + "/" + entityFullName.replace(".", "/"));
   }
 
-  public String getModelStorageLocation(String catalogId, String schemaId, String modelId) {
+  public NormalizedURL getModelStorageLocation(String catalogId, String schemaId, String modelId) {
     return getModelDirectoryURI(catalogId + "." + schemaId + ".models." + modelId);
   }
 
-  public String getModelVersionStorageLocation(
+  public NormalizedURL getModelVersionStorageLocation(
       String catalogId, String schemaId, String modelId, String versionId) {
     return getModelDirectoryURI(
         catalogId + "." + schemaId + ".models." + modelId + ".versions." + versionId);
@@ -99,7 +100,7 @@ public class FileOperations {
 
   public void deleteDirectory(String path) {
     URI directoryUri = createURI(path);
-    validateURI(directoryUri);
+    UriUtils.validateURI(directoryUri);
     if (directoryUri.getScheme() == null || directoryUri.getScheme().equals("file")) {
       try {
         deleteLocalDirectory(Paths.get(directoryUri));
@@ -114,7 +115,7 @@ public class FileOperations {
     }
   }
 
-  private static void deleteLocalDirectory(Path dirPath) throws IOException {
+  public static void deleteLocalDirectory(Path dirPath) throws IOException {
     if (Files.exists(dirPath)) {
       try (Stream<Path> walk = Files.walk(dirPath, FileVisitOption.FOLLOW_LINKS)) {
         walk.sorted(Comparator.reverseOrder())
@@ -128,17 +129,17 @@ public class FileOperations {
                 });
       }
     } else {
-      throw new IOException("Directory does not exist: " + dirPath);
+      throw new FileNotFoundException("Directory does not exist: " + dirPath);
     }
   }
 
   private URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
     String bucketName = parsedUri.getHost();
     String path = parsedUri.getPath().substring(1); // Remove leading '/'
-    String accessKey = serverProperties.getProperty("aws.s3.accessKey");
-    String secretKey = serverProperties.getProperty("aws.s3.secretKey");
-    String sessionToken = serverProperties.getProperty("aws.s3.sessionToken");
-    String region = serverProperties.getProperty("aws.region");
+    String accessKey = serverProperties.get(Property.AWS_S3_ACCESS_KEY);
+    String secretKey = serverProperties.get(Property.AWS_S3_SECRET_KEY);
+    String sessionToken = serverProperties.get(Property.AWS_S3_SESSION_TOKEN);
+    String region = serverProperties.get(Property.AWS_REGION);
 
     BasicSessionCredentials sessionCredentials =
         new BasicSessionCredentials(accessKey, secretKey, sessionToken);
@@ -187,42 +188,20 @@ public class FileOperations {
     }
   }
 
-  private static URI adjustFileUri(URI fileUri) {
-    String uriString = fileUri.toString();
-    // Ensure the URI starts with "file:///" for absolute paths
-    if (uriString.startsWith("file:/") && !uriString.startsWith("file:///")) {
-      uriString = "file://" + uriString.substring(5);
-    }
-    return URI.create(uriString);
-  }
-
-  public static String convertRelativePathToURI(String url) {
-    if (url == null) {
-      return null;
-    }
-    if (isSupportedCloudStorageUri(url)) {
-      return url;
-    } else {
-      return adjustFileUri(createURI(url)).toString();
-    }
-  }
-
-  public static boolean isSupportedCloudStorageUri(String url) {
-    String scheme = URI.create(url).getScheme();
-    return scheme != null && Constants.SUPPORTED_SCHEMES.contains(scheme);
-  }
-
-  private static void validateURI(URI uri) {
-    if (uri.getScheme() == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid path: " + uri.getPath());
-    }
-    URI normalized = uri.normalize();
-    if (!normalized.getPath().startsWith(uri.getPath())) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Normalization failed: " + uri.getPath());
-    }
-  }
-
   public static void assertValidLocation(String location) {
-    validateURI(URI.create(location));
+    UriUtils.validateURI(URI.create(location));
+  }
+
+  private String getManagedTablesStorageRoot() {
+    // Use local tmp directory as default storage root
+    return serverProperties.get(Property.TABLE_STORAGE_ROOT);
+  }
+
+  /**
+   * This function does not actually create a directory. But it only returns the constructed path.
+   */
+  public NormalizedURL createTableDirectory(String tableId) {
+    String directoryUriString = getManagedTablesStorageRoot() + "/tables/" + tableId;
+    return NormalizedURL.from(directoryUriString);
   }
 }

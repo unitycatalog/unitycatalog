@@ -1,12 +1,9 @@
 package io.unitycatalog.cli.catalog;
 
-import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.cli.BaseCliOperations;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.UpdateCatalog;
@@ -16,18 +13,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public class CliCatalogOperations implements CatalogOperations {
-  private final ServerConfig config;
-  private final ObjectMapper objectMapper = new ObjectMapper();
+public class CliCatalogOperations extends BaseCliOperations implements CatalogOperations {
 
   public CliCatalogOperations(ServerConfig config) {
-    this.config = config;
+    super("catalog", config);
   }
 
   @Override
-  public CatalogInfo createCatalog(CreateCatalog createCatalog) {
-    List<String> argsList =
-        new ArrayList<>(List.of("catalog", "create", "--name", createCatalog.getName()));
+  public CatalogInfo createCatalog(CreateCatalog createCatalog) throws ApiException {
+    List<String> argsList = new ArrayList<>(List.of("--name", createCatalog.getName()));
     if (createCatalog.getComment() != null) {
       argsList.add("--comment");
       argsList.add(createCatalog.getComment());
@@ -40,33 +34,27 @@ public class CliCatalogOperations implements CatalogOperations {
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode catalogInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(catalogInfoJson, CatalogInfo.class);
+    return execute(CatalogInfo.class, "create", argsList);
   }
 
   @Override
-  public List<CatalogInfo> listCatalogs(Optional<String> pageToken) {
-    List<String> argsList = new ArrayList<>(List.of("catalog", "list"));
+  public List<CatalogInfo> listCatalogs(Optional<String> pageToken) throws ApiException {
+    List<String> argsList = new ArrayList<>();
     if (pageToken.isPresent()) {
       argsList.add("--page_token");
       argsList.add(pageToken.get());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode catalogList = executeCLICommand(args);
-    return objectMapper.convertValue(catalogList, new TypeReference<List<CatalogInfo>>() {});
+    return execute(new TypeReference<>() {}, "list", argsList);
   }
 
   @Override
-  public CatalogInfo getCatalog(String name) {
-    String[] args = addServerAndAuthParams(List.of("catalog", "get", "--name", name), config);
-    JsonNode catalogInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(catalogInfoJson, CatalogInfo.class);
+  public CatalogInfo getCatalog(String name) throws ApiException {
+    return execute(CatalogInfo.class, "get", List.of("--name", name));
   }
 
   @Override
-  public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
-    List<String> argsList = new ArrayList<>(List.of("catalog", "update", "--name", name));
+  public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) throws ApiException {
+    List<String> argsList = new ArrayList<>();
     if (updateCatalog.getNewName() != null) {
       argsList.add("--new_name");
       argsList.add(updateCatalog.getNewName());
@@ -83,24 +71,20 @@ public class CliCatalogOperations implements CatalogOperations {
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode updatedCatalogInfo = executeCLICommand(args);
-    return objectMapper.convertValue(updatedCatalogInfo, CatalogInfo.class);
+    return executeUpdate(
+        CatalogInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
+        List.of("--name", name),
+        argsList);
   }
 
   @Override
-  public void deleteCatalog(String name, Optional<Boolean> force) {
-    String[] args;
-    args =
-        force
-            .map(
-                aBoolean ->
-                    addServerAndAuthParams(
-                        List.of(
-                            "catalog", "delete", "--name", name, "--force", aBoolean.toString()),
-                        config))
-            .orElseGet(
-                () -> addServerAndAuthParams(List.of("catalog", "delete", "--name", name), config));
-    executeCLICommand(args);
+  public void deleteCatalog(String name, Optional<Boolean> force) throws ApiException {
+    List<String> argsList = new ArrayList<>(List.of("--name", name));
+    if (force.isPresent()) {
+      argsList.add("--force");
+      argsList.add(force.get().toString());
+    }
+    execute(Void.class, "delete", argsList);
   }
 }

@@ -1,3 +1,5 @@
+import Checkstyle._
+
 import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
@@ -21,6 +23,7 @@ lazy val scala213 = "2.13.16"
 
 lazy val deltaVersion = "4.0.0"
 lazy val sparkVersion = "4.0.0"
+lazy val hadoopVersion = "3.4.0"
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
@@ -114,15 +117,7 @@ useCoursier := true
 
 // Configure resolvers
 resolvers ++= Seq(
-  "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
   "Maven Central" at "https://repo1.maven.org/maven2/",
-)
-
-def javaCheckstyleSettings(configLocation: File) = Seq(
-  checkstyleConfigLocation := CheckstyleConfigLocation.File(configLocation.toString),
-  checkstyleSeverityLevel := Some(CheckstyleSeverityLevel.Error),
-  // (Compile / compile) := ((Compile / compile) dependsOn (Compile / checkstyle)).value,
-  // (Test / test) := ((Test / test) dependsOn (Test / checkstyle)).value,
 )
 
 // enforce java code style
@@ -132,7 +127,7 @@ def javafmtCheckSettings() = Seq(
 
 lazy val controlApi = (project in file("target/control/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(JavaFormatterPlugin)
+  .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-controlapi",
     commonSettings,
@@ -174,14 +169,16 @@ lazy val controlApi = (project in file("target/control/java"))
     }
   )
 
-lazy val client = (project in file("target/clients/java"))
+lazy val client = (project in file("clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(JavaFormatterPlugin)
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
     javaOnlyReleaseSettings,
     Compile / compile / javacOptions ++= javacRelease11,
+    javaCheckstyleTestOnlySettings("dev/checkstyle-config.xml"),
+    // Include generated OpenAPI sources
+    Compile / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "target" / "src" / "main" / "java"),
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -192,23 +189,30 @@ lazy val client = (project in file("target/clients/java"))
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
 
       // Test dependencies
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    
+    // Add custom test sources from clients/java directory
+    Test / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "src" / "test" / "java"),
 
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := (file("target") / "clients" / "java").toString,
+    openApiOutputDir := (file(".") / "clients" / "java" / "target").toString,
     openApiApiPackage := s"$orgName.client.api",
     openApiModelPackage := s"$orgName.client.model",
     openApiAdditionalProperties := Map(
       "library" -> "native",
       "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true",
-      "openApiNullable" -> "false"),
+      "openApiNullable" -> "false",
+      "enumUnknownDefaultCase" -> "true"),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
@@ -225,9 +229,9 @@ lazy val client = (project in file("target/clients/java"))
     },
     // Add VersionInfo in the same way like in server
     Compile / sourceGenerators += Def.task {
-      val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "cli" / "utils" / "VersionUtils.java"
+      val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "client" / "VersionUtils.java"
       IO.write(file,
-        s"""package io.unitycatalog.cli.utils;
+        s"""package io.unitycatalog.client;
           |
           |public class VersionUtils {
           |  public static String VERSION = "${version.value}";
@@ -241,6 +245,7 @@ lazy val prepareGeneration = taskKey[Unit]("Prepare the environment for OpenAPI 
 
 lazy val pythonClient = (project in file("clients/python"))
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-python-client",
     commonSettings,
@@ -279,6 +284,7 @@ lazy val pythonClient = (project in file("clients/python"))
 
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-docs",
     skipReleaseSettings,
@@ -300,19 +306,23 @@ lazy val server = (project in file("server"))
   // Server and control models are added as provided to avoid them being added as maven dependencies
   // This is because the server and control models are included in the server jar
   .dependsOn(serverModels % "provided", controlModels % "provided")
+  .dependsOn(controlApi % "test->compile")
+  .enablePlugins(CheckstylePlugin)
   .settings (
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings,
-    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= Seq(
       "-processor",
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "org.apache.commons" % "commons-lang3" % "3.19.0",
+
       // Netty dependencies
       "io.netty" % "netty-all" % "4.1.111.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
@@ -349,15 +359,18 @@ lazy val server = (project in file("server"))
       "org.apache.httpcomponents" % "httpclient" % "4.5.14",
 
       // Iceberg REST Catalog dependencies
-      "org.apache.iceberg" % "iceberg-core" % "1.9.1",
-      "org.apache.iceberg" % "iceberg-aws" % "1.9.1",
-      "org.apache.iceberg" % "iceberg-azure" % "1.9.1",
-      "org.apache.iceberg" % "iceberg-gcp" % "1.9.1",
+      "org.apache.iceberg" % "iceberg-core" % "1.9.2",
+      "org.apache.iceberg" % "iceberg-aws" % "1.9.2",
+      "org.apache.iceberg" % "iceberg-azure" % "1.9.2",
+      "org.apache.iceberg" % "iceberg-gcp" % "1.9.2",
       "software.amazon.awssdk" % "s3" % "2.24.0",
       "software.amazon.awssdk" % "sts" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
+
+      // Hadoop dependencies for ExternalLocationUtils
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
 
       // Auth dependencies
       "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
@@ -409,7 +422,7 @@ lazy val server = (project in file("server"))
 
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(JavaFormatterPlugin)
+  .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -445,7 +458,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
 
 lazy val controlModels = (project in file("server") / "target" / "controlmodels")
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(JavaFormatterPlugin)
+  .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-controlmodels",
     commonSettings,
@@ -484,13 +497,14 @@ lazy val cli = (project in file("examples") / "cli")
   .dependsOn(serverModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")
+  .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
     skipReleaseSettings,
     javafmtCheckSettings,
-    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
@@ -502,14 +516,14 @@ lazy val cli = (project in file("examples") / "cli")
       "io.delta" % "delta-kernel-api" % deltaVersion,
       "io.delta" % "delta-kernel-defaults" % deltaVersion,
       "io.delta" % "delta-storage" % deltaVersion,
-      "org.apache.hadoop" % "hadoop-client-api" % "3.4.0",
-      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
       "de.vandermeer" % "asciitable" % "0.3.2",
       // for s3 access
       "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
-      "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
-      "org.apache.hadoop" % "hadoop-azure" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion,
       "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
@@ -549,6 +563,7 @@ lazy val serverShaded = (project in file("server-shaded"))
 
 lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client)
+  .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",
     scalaVersion := scala213,
@@ -558,8 +573,21 @@ lazy val spark = (project in file("connectors/spark"))
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
-    javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease11,
+    Test / compile / javacOptions := {
+      // lombok is only a dependency of test. So its path needs to be added explicitly.
+      val lombokPath = (Test / dependencyClasspath).value
+        .files
+        .filter(_.getName.contains("lombok"))
+        .mkString(File.pathSeparator)
+      javacRelease11 ++ Seq(
+        "-processor",
+        "lombok.launch.AnnotationProcessorHider$AnnotationProcessor",
+        "-processorpath",
+        lombokPath
+      )
+    },
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
@@ -570,7 +598,8 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
-      "org.apache.hadoop" % "hadoop-azure" % "3.4.0" % Provided,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
+      "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
@@ -580,7 +609,10 @@ lazy val spark = (project in file("connectors/spark"))
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
+      "org.projectlombok" % "lombok" % "1.18.32" % Test,
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
       "io.delta" %% "delta-spark" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
@@ -617,6 +649,8 @@ lazy val spark = (project in file("connectors/spark"))
   )
 
 lazy val integrationTests = (project in file("integration-tests"))
+  .enablePlugins(CheckstylePlugin)
+  .dependsOn(spark)
   .settings(
     name := s"$artifactNamePrefix-integration-tests",
     commonSettings,
@@ -624,6 +658,8 @@ lazy val integrationTests = (project in file("integration-tests"))
     javaOptions ++= Seq(
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
+    javafmtCheckSettings,
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     skipReleaseSettings,
     libraryDependencies ++= Seq(
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
@@ -632,10 +668,9 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
       "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
       "io.delta" %% "delta-spark" % deltaVersion % Test,
-      "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
-      "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
@@ -645,7 +680,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
-      "org.apache.hadoop" % "hadoop-client-api" % "3.3.6",
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
     ),
     Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
   )

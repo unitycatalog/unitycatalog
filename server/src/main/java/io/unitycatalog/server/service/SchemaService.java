@@ -1,13 +1,9 @@
 package io.unitycatalog.server.service;
 
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Patch;
-import com.linecorp.armeria.server.annotation.Post;
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -17,17 +13,23 @@ import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.UpdateSchema;
-import io.unitycatalog.server.persist.*;
-import lombok.SneakyThrows;
-
+import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.SchemaRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
+import lombok.SneakyThrows;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class SchemaService extends AuthorizedService {
@@ -37,7 +39,7 @@ public class SchemaService extends AuthorizedService {
 
   @SneakyThrows
   public SchemaService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.schemaRepository = repositories.getSchemaRepository();
     this.catalogRepository = repositories.getCatalogRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
@@ -52,10 +54,10 @@ public class SchemaService extends AuthorizedService {
   public HttpResponse createSchema(
       @AuthorizeKey(value = CATALOG, key = "catalog_name") CreateSchema createSchema) {
     SchemaInfo schemaInfo = schemaRepository.createSchema(createSchema);
-    
+
     CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
     initializeHierarchicalAuthorization(schemaInfo.getSchemaId(), catalogInfo.getId());
-    
+
     return HttpResponse.ofJson(schemaInfo);
   }
 
@@ -70,7 +72,8 @@ public class SchemaService extends AuthorizedService {
     filterSchemas("""
         #authorize(#principal, #metastore, OWNER) ||
         #authorize(#principal, #catalog, OWNER) ||
-        (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+        (#authorize(#principal, #schema, USE_SCHEMA) &&
+            #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
         """,
         listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);
@@ -80,7 +83,8 @@ public class SchemaService extends AuthorizedService {
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
-      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, USE_CATALOG))
+      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getSchema(@Param("full_name") @AuthorizeKey(SCHEMA) String fullName) {
@@ -92,11 +96,13 @@ public class SchemaService extends AuthorizedService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #schema, OWNER) ||
       #authorizeAll(#principal, #catalog, USE_CATALOG, USE_SCHEMA) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+      (#authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateSchema(
-      @Param("full_name") @AuthorizeKey(SCHEMA) String fullName, UpdateSchema updateSchema) {
+      @Param("full_name") @AuthorizeKey(SCHEMA) String fullName,
+      UpdateSchema updateSchema) {
     // TODO: This method does not adhere to the complete access control rules of the Databricks
     // Unity Catalog
     return HttpResponse.ofJson(schemaRepository.updateSchema(fullName, updateSchema));
@@ -106,7 +112,8 @@ public class SchemaService extends AuthorizedService {
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorizeAny(#principal, #catalog, USE_CATALOG))
+      (#authorize(#principal, #schema, OWNER) &&
+          #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteSchema(
@@ -114,14 +121,14 @@ public class SchemaService extends AuthorizedService {
       @Param("force") Optional<Boolean> force) {
     SchemaInfo schemaInfo = schemaRepository.getSchema(fullName);
     schemaRepository.deleteSchema(fullName, force.orElse(false));
-    
+
     CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
-    
+
     // First remove any child table links
     authorizer.removeHierarchyChildren(UUID.fromString(schemaInfo.getSchemaId()));
     // Then remove schema from catalog and clear authorizations
     removeHierarchicalAuthorizations(schemaInfo.getSchemaId(), catalogInfo.getId());
-    
+
     return HttpResponse.of(HttpStatus.OK);
   }
 
@@ -145,3 +152,4 @@ public class SchemaService extends AuthorizedService {
         });
   }
 }
+

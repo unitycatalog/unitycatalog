@@ -31,7 +31,6 @@ public class ColumnUtils {
 
   static String getTypeJson(
       ColumnTypeName typeName, String columnName, boolean isNullable, String precisionAndScale) {
-
     return String.format(
         "{\"name\":\"%s\",\"type\":\"%s\",\"nullable\":%s,\"metadata\":{}}",
         columnName,

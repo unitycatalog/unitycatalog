@@ -37,7 +37,8 @@ public class FileIOFactory {
   private final CloudCredentialVendor cloudCredentialVendor;
   private final Map<String, S3StorageConfig> s3Configurations;
 
-  public FileIOFactory(CloudCredentialVendor cloudCredentialVendor, ServerProperties serverProperties) {
+  public FileIOFactory(CloudCredentialVendor cloudCredentialVendor,
+      ServerProperties serverProperties) {
     this.cloudCredentialVendor = cloudCredentialVendor;
     this.s3Configurations = serverProperties.getS3Configurations();
   }
@@ -56,11 +57,13 @@ public class FileIOFactory {
   protected ADLSFileIO getADLSFileIO(URI tableLocationUri) {
     CredentialContext credentialContext = getCredentialContextFromTableLocation(tableLocationUri);
     AzureCredential credential = cloudCredentialVendor.vendAzureCredential(credentialContext);
-    ADLSLocationUtils.ADLSLocationParts locationParts = ADLSLocationUtils.parseLocation(tableLocationUri.toString());
+    ADLSLocationUtils.ADLSLocationParts locationParts =
+        ADLSLocationUtils.parseLocation(tableLocationUri.toString());
 
     // NOTE: when fileio caching is implemented, need to set/deal with expiry here
     Map<String, String> properties =
-      Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(), credential.getSasToken());
+        Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(),
+            credential.getSasToken());
 
     ADLSFileIO result = new ADLSFileIO();
     result.initialize(properties);
@@ -74,8 +77,7 @@ public class FileIOFactory {
 
     // NOTE: when fileio caching is implemented, need to set/deal with expiry here
     Map<String, String> properties =
-      Map.of(
-        GCPProperties.GCS_OAUTH2_TOKEN, gcpToken.getTokenValue());
+        Map.of(GCPProperties.GCS_OAUTH2_TOKEN, gcpToken.getTokenValue());
 
     GCSFileIO result = new GCSFileIO();
     result.initialize(properties);
@@ -87,7 +89,8 @@ public class FileIOFactory {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
 
     S3FileIO s3FileIO =
-        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context), s3StorageConfig.getRegion()));
+        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context),
+            s3StorageConfig.getRegion()));
 
     s3FileIO.initialize(Map.of());
 
@@ -106,14 +109,20 @@ public class FileIOFactory {
     try {
       Credentials awsSessionCredentials = cloudCredentialVendor.vendAwsCredential(context);
       return StaticCredentialsProvider.create(
-        AwsSessionCredentials.create(awsSessionCredentials.accessKeyId(), awsSessionCredentials.secretAccessKey(), awsSessionCredentials.sessionToken()));
+          AwsSessionCredentials.create(
+              awsSessionCredentials.accessKeyId(),
+              awsSessionCredentials.secretAccessKey(),
+              awsSessionCredentials.sessionToken()));
     } catch (BaseException e) {
       return DefaultCredentialsProvider.create();
     }
   }
 
   private CredentialContext getCredentialContextFromTableLocation(URI tableLocationUri) {
-    // FIXME!! privileges are defaulted to READ only here for now as Iceberg REST impl doesn't support write
-    return CredentialContext.create(tableLocationUri, Set.of(CredentialContext.Privilege.SELECT));
+    // FIXME!! privileges are defaulted to READ only here for now as Iceberg REST impl doesn't
+    // support write
+    return CredentialContext.create(tableLocationUri,
+        Set.of(CredentialContext.Privilege.SELECT));
   }
 }
+

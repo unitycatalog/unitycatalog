@@ -70,7 +70,6 @@ public class SecurityContext {
   }
 
   public String createAccessToken(DecodedJWT decodedJWT) {
-
     String subject =
         decodedJWT
             .getClaims()

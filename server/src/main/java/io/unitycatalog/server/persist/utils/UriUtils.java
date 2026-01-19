@@ -8,6 +8,7 @@ import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -35,8 +36,16 @@ public class UriUtils {
     return updateDirectoryFromUri(uri, Operation.CREATE, Optional.empty()).toString();
   }
 
+  public static String createStorageLocationPath(NormalizedURL uri) {
+    return createStorageLocationPath(uri.toString());
+  }
+
   public static String deleteStorageLocationPath(String uri) {
     return updateDirectoryFromUri(uri, Operation.DELETE, Optional.empty()).toString();
+  }
+
+  public static String deleteStorageLocationPath(NormalizedURL uri) {
+    return deleteStorageLocationPath(uri.toString());
   }
 
   private static URI updateDirectoryFromUri(
@@ -63,18 +72,16 @@ public class UriUtils {
         // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
         // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
         // using the hadoopfs libraries.
-        /* return updateAbsDirectory(parsedUri, op, credentials.get().getAzureUserDelegationSas()); */
+        // return updateAbsDirectory(parsedUri, op, credentials.get().getAzureUserDelegationSas()
+        // );
         return parsedUri;
       }
     } catch (Exception e) {
       throw new BaseException(
           ErrorCode.INTERNAL,
-          "Error attempting to "
-              + op.name()
-              + " URI "
-              + parsedUri.toString()
-              + ": "
-              + e.getMessage());
+          String.format(
+              "Error attempting to %s URI %s: %s",
+              op.name(), parsedUri.toString(), e.getMessage()));
     }
     throw new BaseException(
         ErrorCode.INVALID_ARGUMENT, "Unknown scheme detected: " + parsedUri.getScheme());
@@ -129,7 +136,7 @@ public class UriUtils {
     return parsedUri;
   }
 
-  private static void validateURI(URI uri) {
+  public static void validateURI(URI uri) {
     if (uri.getScheme() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid path: " + uri.getPath());
     }

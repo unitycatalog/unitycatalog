@@ -4,14 +4,24 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.AwsIamRoleRequest;
+import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.model.CreateCredentialRequest;
+import io.unitycatalog.server.model.CredentialInfo;
+import io.unitycatalog.server.model.ListCredentialsResponse;
+import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -83,6 +93,14 @@ public class CredentialRepository {
         },
         "Failed to get storage credential",
         /* readOnly = */ true);
+  }
+
+  protected String getCredentialName(Session session, UUID id) {
+    CredentialDAO credentialDAO = session.get(CredentialDAO.class, id);
+    if (credentialDAO == null) {
+      throw new BaseException(ErrorCode.INTERNAL, "Credential not found: " + id);
+    }
+    return credentialDAO.getName();
   }
 
   protected CredentialDAO getCredentialDAO(Session session, String name) {
@@ -170,13 +188,26 @@ public class CredentialRepository {
     }
   }
 
-  public CredentialInfo deleteCredential(String name) {
+  public CredentialInfo deleteCredential(String name, boolean force) {
+    LOGGER.debug("Deleting storage credential {}", name);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           CredentialDAO existingCredential = getCredentialDAO(session, name);
           if (existingCredential == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Credential not found: " + name);
+          }
+          if (!force) {
+            // Check if it's still used by any external location.
+            ExternalLocationDAO externalLocationDAO =
+                getExternalLocationDAOUsingCredential(session, existingCredential.getId());
+            if (externalLocationDAO != null) {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  "Credential still used by external location '"
+                      + externalLocationDAO.getName()
+                      + "'");
+            }
           }
           // Convert to CredentialInfo before removing from database
           CredentialInfo credentialInfo = existingCredential.toCredentialInfo();
@@ -186,6 +217,16 @@ public class CredentialRepository {
         },
         "Failed to delete credential",
         /* readOnly = */ false);
+  }
+
+  protected ExternalLocationDAO getExternalLocationDAOUsingCredential(
+      Session session, UUID credentialId) {
+    Query<ExternalLocationDAO> query =
+        session.createQuery(
+            "FROM ExternalLocationDAO WHERE credentialId = :value", ExternalLocationDAO.class);
+    query.setParameter("value", credentialId);
+    query.setMaxResults(1);
+    return query.uniqueResult();
   }
 
   private static AwsIamRoleResponse fromAwsIamRoleRequest(AwsIamRoleRequest awsIamRoleRequest) {

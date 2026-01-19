@@ -11,10 +11,21 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.api.VolumesApi;
-import io.unitycatalog.client.model.*;
-import java.io.*;
+import io.unitycatalog.client.model.CreateVolumeRequestContent;
+import io.unitycatalog.client.model.GenerateTemporaryVolumeCredential;
+import io.unitycatalog.client.model.UpdateVolumeRequestContent;
+import io.unitycatalog.client.model.VolumeInfo;
+import io.unitycatalog.client.model.VolumeOperation;
+import io.unitycatalog.client.model.VolumeType;
+import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStreamWriter;
 import java.net.URI;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import org.apache.commons.cli.CommandLine;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -106,12 +117,10 @@ public class VolumeCli {
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
             baseURI,
-            tempCredApi
-                .generateTemporaryVolumeCredentials(
-                    new GenerateTemporaryVolumeCredential()
-                        .volumeId(volumeInfo.getVolumeId())
-                        .operation(VolumeOperation.WRITE_VOLUME))
-                .getAwsTempCredentials());
+            tempCredApi.generateTemporaryVolumeCredentials(
+                new GenerateTemporaryVolumeCredential()
+                    .volumeId(volumeInfo.getVolumeId())
+                    .operation(VolumeOperation.WRITE_VOLUME)));
     FileSystem fs =
         DeltaKernelUtils.getFileSystem(
             URI.create(DeltaKernelUtils.substituteSchemeForS3(volumeLocation)), conf);
@@ -167,12 +176,10 @@ public class VolumeCli {
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
             relativeURI,
-            tempCredApi
-                .generateTemporaryVolumeCredentials(
-                    new GenerateTemporaryVolumeCredential()
-                        .volumeId(volumeInfo.getVolumeId())
-                        .operation(VolumeOperation.READ_VOLUME))
-                .getAwsTempCredentials());
+            tempCredApi.generateTemporaryVolumeCredentials(
+                new GenerateTemporaryVolumeCredential()
+                    .volumeId(volumeInfo.getVolumeId())
+                    .operation(VolumeOperation.READ_VOLUME)));
     URI relativeURIWithS3AScheme =
         URI.create(DeltaKernelUtils.substituteSchemeForS3(relativeURI.toString()));
     FileSystem fs =
@@ -235,15 +242,7 @@ public class VolumeCli {
       throws JsonProcessingException, ApiException {
     String volumeFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     json.remove(CliParams.FULL_NAME.getServerParam());
-    if (json.length() == 0) {
-      List<CliParams> optionalParams =
-          CliUtils.cliOptions.get(CliUtils.VOLUME).get(CliUtils.UPDATE).getOptionalParams();
-      String errorMessage = "No parameters to update, please provide one of:";
-      for (CliParams param : optionalParams) {
-        errorMessage += "\n  --" + param.val();
-      }
-      throw new CliException(errorMessage);
-    }
+    CliUtils.validateUpdateParameters(json, CliUtils.VOLUME, CliUtils.UPDATE);
     UpdateVolumeRequestContent updateVolumeRequest =
         objectMapper.readValue(json.toString(), UpdateVolumeRequestContent.class);
     return objectWriter.writeValueAsString(

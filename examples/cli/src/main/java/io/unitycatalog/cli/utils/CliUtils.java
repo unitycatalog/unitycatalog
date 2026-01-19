@@ -10,10 +10,22 @@ import de.vandermeer.asciitable.AsciiTable;
 import de.vandermeer.asciitable.CWC_FixedWidth;
 import de.vandermeer.asciitable.CWC_LongestLine;
 import de.vandermeer.skb.interfaces.transformers.textformat.TextAlignment;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.VersionUtils;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.FunctionParameterInfo;
+import io.unitycatalog.client.model.FunctionParameterInfos;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -30,12 +42,14 @@ public class CliUtils {
   public static final String VOLUME = "volume";
   public static final String TABLE = "table";
   public static final String METASTORE = "metastore";
-
+  public static final String CREDENTIAL = "credential";
+  public static final String EXTERNAL_LOCATION = "external_location";
   public static final String FUNCTION = "function";
   public static final String REGISTERED_MODEL = "registered_model";
   public static final String MODEL_VERSION = "model_version";
   public static final String PERMISSION = "permission";
   public static final String USER = "user";
+
   public static final String CREATE = "create";
   public static final String LIST = "list";
   public static final String GET = "get";
@@ -163,9 +177,12 @@ public class CliUtils {
                   put(
                       CREATE,
                       new CliOptions(
+                          List.of(CliParams.FULL_NAME, CliParams.COLUMNS),
                           List.of(
-                              CliParams.FULL_NAME, CliParams.COLUMNS, CliParams.STORAGE_LOCATION),
-                          List.of(CliParams.DATA_SOURCE_FORMAT, CliParams.PROPERTIES)));
+                              CliParams.DATA_SOURCE_FORMAT,
+                              CliParams.PROPERTIES,
+                              CliParams.STORAGE_LOCATION,
+                              CliParams.TABLE_TYPE)));
                   put(
                       LIST,
                       new CliOptions(
@@ -324,6 +341,55 @@ public class CliUtils {
               new HashMap<String, CliOptions>() {
                 {
                   put(GET, new CliOptions(List.of(), List.of()));
+                }
+              });
+          put(
+              CREDENTIAL,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.COMMENT, CliParams.AWS_IAM_ROLE_ARN)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(), List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
+                  put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(
+                              CliParams.NEW_NAME, CliParams.COMMENT, CliParams.AWS_IAM_ROLE_ARN)));
+                  put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
+                }
+              });
+          put(
+              EXTERNAL_LOCATION,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME, CliParams.URL, CliParams.CREDENTIAL_NAME),
+                          List.of(CliParams.COMMENT)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(), List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
+                  put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(
+                              CliParams.NEW_NAME,
+                              CliParams.URL,
+                              CliParams.CREDENTIAL_NAME,
+                              CliParams.COMMENT)));
+                  put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
                 }
               });
         }
@@ -764,5 +830,17 @@ public class CliUtils {
     }
     json.remove(CliParams.INPUT_PARAMS.getServerParam());
     return new FunctionParameterInfos().parameters(parameterInfos);
+  }
+
+  public static void validateUpdateParameters(JSONObject json, String command, String subCommand) {
+    if (json.isEmpty()) {
+      List<CliParams> optionalParams =
+          CliUtils.cliOptions.get(command).get(subCommand).getOptionalParams();
+      String errorMessage = "No parameters to update, please provide one of:";
+      for (CliParams param : optionalParams) {
+        errorMessage += "\n  --" + param.val();
+      }
+      throw new CliException(errorMessage);
+    }
   }
 }

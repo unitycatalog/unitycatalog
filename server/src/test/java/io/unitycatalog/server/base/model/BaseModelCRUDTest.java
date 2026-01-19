@@ -1,17 +1,40 @@
 package io.unitycatalog.server.base.model;
 
-import static io.unitycatalog.server.utils.TestUtils.*;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME2;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NEW_NAME;
+import static io.unitycatalog.server.utils.TestUtils.COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.COMMON_ENTITY_NAME;
+import static io.unitycatalog.server.utils.TestUtils.MODEL_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.MODEL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.MODEL_NEW_COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.MODEL_NEW_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.MODEL_NEW_NAME;
+import static io.unitycatalog.server.utils.TestUtils.MV_COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.MV_RUNID;
+import static io.unitycatalog.server.utils.TestUtils.MV_SOURCE;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME2;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateModelVersion;
+import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.FinalizeModelVersion;
+import io.unitycatalog.client.model.ModelVersionInfo;
+import io.unitycatalog.client.model.ModelVersionStatus;
+import io.unitycatalog.client.model.RegisteredModelInfo;
+import io.unitycatalog.client.model.UpdateCatalog;
+import io.unitycatalog.client.model.UpdateModelVersion;
+import io.unitycatalog.client.model.UpdateRegisteredModel;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.utils.ServerProperties.Property;
-import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -184,8 +207,8 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(updatedRegisteredModelInfo2.getUpdatedAt()).isNotEqualTo(firstUpdatedAt);
 
     // Now update the parent catalog name
-    UpdateCatalog updateCatalog = new UpdateCatalog().newName(TestUtils.CATALOG_NEW_NAME);
-    catalogOperations.updateCatalog(TestUtils.CATALOG_NAME, updateCatalog);
+    UpdateCatalog updateCatalog = new UpdateCatalog().newName(CATALOG_NEW_NAME);
+    catalogOperations.updateCatalog(CATALOG_NAME, updateCatalog);
     RegisteredModelInfo updatedRegisteredModelInfo3 =
         modelOperations.getRegisteredModel(
             CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME);
@@ -225,12 +248,9 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
             .schemaName(SCHEMA_NAME)
             .comment(COMMENT);
     modelOperations.createRegisteredModel(createRm3);
-    catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
-    catalogOperations.deleteCatalog(TestUtils.CATALOG_NAME2, Optional.of(true));
-    assertThatThrownBy(
-            () ->
-                schemaOperations.getSchema(
-                    TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME))
+    catalogOperations.deleteCatalog(CATALOG_NEW_NAME, Optional.of(true));
+    catalogOperations.deleteCatalog(CATALOG_NAME2, Optional.of(true));
+    assertThatThrownBy(() -> schemaOperations.getSchema(CATALOG_NEW_NAME + "." + SCHEMA_NAME))
         .isInstanceOf(Exception.class);
     // MODEL VERSION TESTS
 

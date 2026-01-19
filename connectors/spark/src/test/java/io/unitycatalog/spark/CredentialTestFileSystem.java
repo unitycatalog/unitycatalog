@@ -1,14 +1,20 @@
 package io.unitycatalog.spark;
 
 import java.io.IOException;
-import org.apache.hadoop.fs.*;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.LocatedFileStatus;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.RawLocalFileSystem;
+import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.util.Progressable;
 
 // A wrapper over the local file system to test UC table credentials.
 public abstract class CredentialTestFileSystem extends RawLocalFileSystem {
   public static boolean credentialCheckEnabled = true;
 
-  abstract String scheme();
+  protected abstract String scheme();
 
   @Override
   protected void checkPath(Path path) {
@@ -75,5 +81,5 @@ public abstract class CredentialTestFileSystem extends RawLocalFileSystem {
     return new Path(f.toString().replaceAll(scheme() + "//.*?/", "file:///"));
   }
 
-  abstract void checkCredentials(Path f);
+  protected abstract void checkCredentials(Path f);
 }

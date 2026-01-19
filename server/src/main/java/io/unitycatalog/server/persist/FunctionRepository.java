@@ -2,7 +2,10 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CreateFunction;
+import io.unitycatalog.server.model.CreateFunctionRequest;
+import io.unitycatalog.server.model.FunctionInfo;
+import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -118,15 +121,6 @@ public class FunctionRepository {
     functionInfo.setFullName(catalogName + "." + schemaName + "." + functionInfo.getName());
   }
 
-  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
-    SchemaInfoDAO schemaInfo =
-        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-    }
-    return schemaInfo.getId();
-  }
-
   /**
    * Return the list of functions in ascending order of function name.
    *
@@ -144,7 +138,8 @@ public class FunctionRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID schemaId = getSchemaId(session, catalogName, schemaName);
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
           return listFunctions(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         },
         "Failed to list functions",
@@ -202,7 +197,8 @@ public class FunctionRepository {
 
   public FunctionInfoDAO getFunctionDAO(
       Session session, String catalogName, String schemaName, String functionName) {
-    UUID schemaId = getSchemaId(session, catalogName, schemaName);
+    UUID schemaId =
+        repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
     return getFunctionDAO(session, schemaId, functionName);
   }
 

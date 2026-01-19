@@ -2,7 +2,12 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.CreateCatalog;
+import io.unitycatalog.server.model.ListCatalogsResponse;
+import io.unitycatalog.server.model.ListSchemasResponse;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -15,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -120,6 +126,14 @@ public class CatalogRepository {
     query.setParameter("value", name);
     query.setMaxResults(1);
     return query.uniqueResult();
+  }
+
+  public UUID getCatalogId(Session session, String catalogName) {
+    CatalogInfoDAO catalogInfo = getCatalogDAO(session, catalogName);
+    if (catalogInfo == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
+    }
+    return catalogInfo.getId();
   }
 
   public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {

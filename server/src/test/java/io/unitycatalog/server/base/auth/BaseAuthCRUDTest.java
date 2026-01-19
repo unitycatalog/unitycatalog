@@ -5,6 +5,7 @@ import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,7 +18,7 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-    serverProperties.setProperty("server.authorization", "enable");
+    serverProperties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
   }
 
   @BeforeEach

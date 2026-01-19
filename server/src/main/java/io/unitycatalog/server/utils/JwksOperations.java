@@ -15,12 +15,10 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidClientException;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.security.SecurityContext;
-import java.net.URL;
+import java.net.URI;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Map;
-
-import io.unitycatalog.server.service.AuthService;
 import lombok.SneakyThrows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,8 +42,8 @@ public class JwksOperations {
 
     if (!"RSA".equalsIgnoreCase(jwk.getPublicKey().getAlgorithm())) {
       throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
-              String.format("Invalid algorithm '%s' for issuer '%s'",
-                      jwk.getPublicKey().getAlgorithm(), issuer));
+          String.format("Invalid algorithm '%s' for issuer '%s'",
+              jwk.getPublicKey().getAlgorithm(), issuer));
     }
 
     Algorithm algorithm = algorithmForJwk(jwk);
@@ -60,7 +58,7 @@ public class JwksOperations {
       case "RS384" -> Algorithm.RSA384((RSAPublicKey) jwk.getPublicKey(), null);
       case "RS512" -> Algorithm.RSA512((RSAPublicKey) jwk.getPublicKey(), null);
       default -> throw new OAuthInvalidClientException(ErrorCode.ABORTED,
-              String.format("Unsupported algorithm: %s", jwk.getAlgorithm()));
+          String.format("Unsupported algorithm: %s", jwk.getAlgorithm()));
     };
   }
 
@@ -90,23 +88,25 @@ public class JwksOperations {
       LOGGER.debug("path: {}", path);
 
       String response = webClient
-              .get(path)
-              .aggregate()
-              .join()
-              .contentUtf8();
+          .get(path)
+          .aggregate()
+          .join()
+          .contentUtf8();
 
       // TODO: We should cache this. No need to fetch it each time.
       Map<String, Object> configMap = mapper.readValue(response, new TypeReference<>() {});
 
       if (configMap == null || configMap.isEmpty()) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "Could not get issuer configuration");
+        throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
+            "Could not get issuer configuration");
       }
 
       String configIssuer = (String) configMap.get("issuer");
       String configJwksUri = (String) configMap.get("jwks_uri");
 
       if (!configIssuer.equals(issuer)) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "Issuer doesn't match configuration");
+        throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
+            "Issuer doesn't match configuration");
       }
 
       if (configJwksUri == null) {
@@ -114,7 +114,8 @@ public class JwksOperations {
       }
 
       // TODO: Or maybe just cache the provider for reuse.
-      return new JwkProviderBuilder(new URL(configJwksUri)).cached(false).build();
+      return new JwkProviderBuilder(URI.create(configJwksUri).toURL()).cached(false).build();
     }
   }
 }
+

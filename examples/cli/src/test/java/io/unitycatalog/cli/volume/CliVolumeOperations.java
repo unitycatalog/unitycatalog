@@ -1,11 +1,8 @@
 package io.unitycatalog.cli.volume;
 
-import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
-
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.cli.BaseCliOperations;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeInfo;
@@ -15,22 +12,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public class CliVolumeOperations implements VolumeOperations {
-
-  private final ServerConfig config;
-  private final ObjectMapper objectMapper = new ObjectMapper();
+public class CliVolumeOperations extends BaseCliOperations implements VolumeOperations {
 
   public CliVolumeOperations(ServerConfig config) {
-    this.config = config;
+    super("volume", config);
   }
 
   @Override
-  public VolumeInfo createVolume(CreateVolumeRequestContent createVolumeRequest) {
+  public VolumeInfo createVolume(CreateVolumeRequestContent createVolumeRequest)
+      throws ApiException {
     List<String> argsList =
         new ArrayList<>(
             List.of(
-                "volume",
-                "create",
                 "--full_name",
                 createVolumeRequest.getCatalogName()
                     + "."
@@ -43,39 +36,30 @@ public class CliVolumeOperations implements VolumeOperations {
       argsList.add("--comment");
       argsList.add(createVolumeRequest.getComment());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode volumeInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(volumeInfoJson, VolumeInfo.class);
+    return execute(VolumeInfo.class, "create", argsList);
   }
 
   @Override
   public List<VolumeInfo> listVolumes(
-      String catalogName, String schemaName, Optional<String> pageToken) {
+      String catalogName, String schemaName, Optional<String> pageToken) throws ApiException {
     List<String> argsList =
-        new ArrayList<>(
-            List.of("volume", "list", "--catalog", catalogName, "--schema", schemaName));
+        new ArrayList<>(List.of("--catalog", catalogName, "--schema", schemaName));
     if (pageToken.isPresent()) {
       argsList.add("--page_token");
       argsList.add(pageToken.get());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode volumeList = executeCLICommand(args);
-    return objectMapper.convertValue(volumeList, new TypeReference<List<VolumeInfo>>() {});
+    return execute(new TypeReference<>() {}, "list", argsList);
   }
 
   @Override
-  public VolumeInfo getVolume(String volumeFullName) {
-    String[] args =
-        addServerAndAuthParams(List.of("volume", "get", "--full_name", volumeFullName), config);
-    JsonNode volumeInfoJson = executeCLICommand(args);
-    return objectMapper.convertValue(volumeInfoJson, VolumeInfo.class);
+  public VolumeInfo getVolume(String volumeFullName) throws ApiException {
+    return execute(VolumeInfo.class, "get", List.of("--full_name", volumeFullName));
   }
 
   @Override
   public VolumeInfo updateVolume(
-      String volumeFullName, UpdateVolumeRequestContent updateVolumeRequest) {
-    List<String> argsList =
-        new ArrayList<>(List.of("volume", "update", "--full_name", volumeFullName));
+      String volumeFullName, UpdateVolumeRequestContent updateVolumeRequest) throws ApiException {
+    List<String> argsList = new ArrayList<>();
     if (updateVolumeRequest.getNewName() != null) {
       argsList.add("--new_name");
       argsList.add(updateVolumeRequest.getNewName());
@@ -84,15 +68,15 @@ public class CliVolumeOperations implements VolumeOperations {
       argsList.add("--comment");
       argsList.add(updateVolumeRequest.getComment());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode updatedVolumeInfo = executeCLICommand(args);
-    return objectMapper.convertValue(updatedVolumeInfo, VolumeInfo.class);
+    return executeUpdate(
+        VolumeInfo.class,
+        /* catchEmptyUpdateCliException= */ true,
+        List.of("--full_name", volumeFullName),
+        argsList);
   }
 
   @Override
-  public void deleteVolume(String volumeFullName) {
-    String[] args =
-        addServerAndAuthParams(List.of("volume", "delete", "--full_name", volumeFullName), config);
-    executeCLICommand(args);
+  public void deleteVolume(String volumeFullName) throws ApiException {
+    execute(Void.class, "delete", List.of("--full_name", volumeFullName));
   }
 }

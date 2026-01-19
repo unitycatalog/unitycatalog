@@ -12,6 +12,10 @@ import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
+import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
+import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialsGenerator;
+import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.Set;
@@ -48,7 +52,7 @@ public class CloudCredentialVendorTest {
     credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
     TemporaryCredentials s3TemporaryCredentials =
         credentialsOperations.vendCredential(
-            "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT));
+            NormalizedURL.from("s3://storageBase/abc"), Set.of(CredentialContext.Privilege.SELECT));
     assertThat(s3TemporaryCredentials.getAwsTempCredentials())
         .isEqualTo(
             new AwsCredentials()
@@ -72,7 +76,8 @@ public class CloudCredentialVendorTest {
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(
-                    "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT)))
+                    NormalizedURL.from("s3://storageBase/abc"),
+                    Set.of(CredentialContext.Privilege.SELECT)))
         .isInstanceOf(StsException.class);
   }
 
@@ -88,7 +93,8 @@ public class CloudCredentialVendorTest {
     credentialsOperations = new CloudCredentialVendor(null, azureCredentialVendor, null);
     TemporaryCredentials azureTemporaryCredentials =
         credentialsOperations.vendCredential(
-            "abfss://test@uctest.dfs.core.windows.net", Set.of(CredentialContext.Privilege.UPDATE));
+            NormalizedURL.from("abfss://test@uctest.dfs.core.windows.net"),
+            Set.of(CredentialContext.Privilege.UPDATE));
     assertThat(azureTemporaryCredentials.getAzureUserDelegationSas().getSasToken()).isNotNull();
 
     // Use datalake service client
@@ -107,30 +113,74 @@ public class CloudCredentialVendorTest {
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(
-                    "abfss://test@uctest", Set.of(CredentialContext.Privilege.UPDATE)))
+                    NormalizedURL.from("abfss://test@uctest"),
+                    Set.of(CredentialContext.Privilege.UPDATE)))
         .isInstanceOf(CompletionException.class);
   }
 
   @Test
   public void testGenerateGcpTemporaryCredentials() {
-    // Test mode used
+    // Test mode using a static generator supplied by the test suite
     when(serverProperties.getGcsConfigurations())
-        .thenReturn(Map.of("gs://uctest", "testing://test"));
+        .thenReturn(
+            Map.of(
+                "gs://uctest",
+                GcsStorageConfig.builder()
+                    .bucketPath("gs://uctest")
+                    .jsonKeyFilePath("")
+                    .credentialsGenerator(StaticTestingCredentialsGenerator.class.getName())
+                    .build()));
     GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
     TemporaryCredentials gcpTemporaryCredentials =
         credentialsOperations.vendCredential(
-            "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.UPDATE));
+            NormalizedURL.from("gs://uctest/abc/xyz"), Set.of(CredentialContext.Privilege.UPDATE));
     assertThat(gcpTemporaryCredentials.getGcpOauthToken().getOauthToken()).isNotNull();
 
-    // Use default creds
-    when(serverProperties.getGcsConfigurations()).thenReturn(Map.of("gs://uctest", ""));
+    // Testing shortcut using the legacy json key sentinel.
+    final String testingSentinel = "testing://sentinel";
+    when(serverProperties.getGcsConfigurations())
+        .thenReturn(
+            Map.of(
+                "gs://uctest",
+                GcsStorageConfig.builder()
+                    .bucketPath("gs://uctest")
+                    .jsonKeyFilePath(testingSentinel)
+                    .credentialsGenerator(TestingCredentialsGenerator.class.getName())
+                    .build()));
+    gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
+    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
+    TemporaryCredentials testingSentinelCredentials =
+        credentialsOperations.vendCredential(
+            NormalizedURL.from("gs://uctest/abc/xyz"), Set.of(CredentialContext.Privilege.SELECT));
+    assertThat(testingSentinelCredentials.getGcpOauthToken().getOauthToken())
+        .isEqualTo(testingSentinel);
+
+    // Use default creds (expected to fail without real GCP credentials)
+    when(serverProperties.getGcsConfigurations())
+        .thenReturn(
+            Map.of("gs://uctest", GcsStorageConfig.builder().bucketPath("gs://uctest").build()));
     gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(
-                    "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.UPDATE)))
+                    NormalizedURL.from("gs://uctest/abc/xyz"),
+                    Set.of(CredentialContext.Privilege.UPDATE)))
         .isInstanceOf(BaseException.class);
+  }
+
+  @Test
+  public void testMissingGcpBucketConfigurationFails() {
+    when(serverProperties.getGcsConfigurations()).thenReturn(Map.of());
+    GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
+    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
+    assertThatThrownBy(
+            () ->
+                credentialsOperations.vendCredential(
+                    NormalizedURL.from("gs://missing/abc"),
+                    Set.of(CredentialContext.Privilege.UPDATE)))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Unknown GCS storage configuration");
   }
 }

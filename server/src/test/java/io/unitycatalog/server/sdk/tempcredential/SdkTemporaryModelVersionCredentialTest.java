@@ -1,13 +1,28 @@
 package io.unitycatalog.server.sdk.tempcredential;
 
-import static io.unitycatalog.server.utils.TestUtils.*;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.MODEL_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.MODEL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.MV_COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.MV_RUNID;
+import static io.unitycatalog.server.utils.TestUtils.MV_RUNID2;
+import static io.unitycatalog.server.utils.TestUtils.MV_SOURCE;
+import static io.unitycatalog.server.utils.TestUtils.MV_SOURCE2;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateModelVersion;
+import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.GenerateTemporaryModelVersionCredential;
+import io.unitycatalog.client.model.ModelVersionOperation;
+import io.unitycatalog.client.model.RegisteredModelInfo;
+import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;

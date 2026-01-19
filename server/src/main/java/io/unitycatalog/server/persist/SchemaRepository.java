@@ -2,7 +2,18 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CreateSchema;
+import io.unitycatalog.server.model.FunctionInfo;
+import io.unitycatalog.server.model.ListFunctionsResponse;
+import io.unitycatalog.server.model.ListRegisteredModelsResponse;
+import io.unitycatalog.server.model.ListSchemasResponse;
+import io.unitycatalog.server.model.ListTablesResponse;
+import io.unitycatalog.server.model.ListVolumesResponseContent;
+import io.unitycatalog.server.model.RegisteredModelInfo;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.UpdateSchema;
+import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
@@ -12,7 +23,11 @@ import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -93,6 +108,14 @@ public class SchemaRepository {
     return query.uniqueResult();
   }
 
+  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
+    SchemaInfoDAO schemaInfo = getSchemaDAO(session, catalogName, schemaName);
+    if (schemaInfo == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
+    }
+    return schemaInfo.getId();
+  }
+
   public SchemaInfoDAO getSchemaDAO(Session session, String catalogName, String schemaName) {
     CatalogInfoDAO catalog =
         repositories.getCatalogRepository().getCatalogDAO(session, catalogName);
@@ -105,15 +128,6 @@ public class SchemaRepository {
   public SchemaInfoDAO getSchemaDAO(Session session, String fullName) {
     String[] namespace = fullName.split("\\.");
     return getSchemaDAO(session, namespace[0], namespace[1]);
-  }
-
-  public UUID getCatalogId(Session session, String catalogName) {
-    CatalogInfoDAO catalogInfo =
-        repositories.getCatalogRepository().getCatalogDAO(session, catalogName);
-    if (catalogInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
-    }
-    return catalogInfo.getId();
   }
 
   /**
@@ -129,7 +143,7 @@ public class SchemaRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID catalogId = getCatalogId(session, catalogName);
+          UUID catalogId = repositories.getCatalogRepository().getCatalogId(session, catalogName);
           return listSchemas(session, catalogId, catalogName, maxResults, pageToken);
         },
         "Failed to list schemas",
