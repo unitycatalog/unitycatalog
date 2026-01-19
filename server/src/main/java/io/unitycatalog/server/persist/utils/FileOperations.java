@@ -188,10 +188,6 @@ public class FileOperations {
     }
   }
 
-  public static void assertValidLocation(String location) {
-    UriUtils.validateURI(URI.create(location));
-  }
-
   private String getManagedTablesStorageRoot() {
     // Use local tmp directory as default storage root
     return serverProperties.get(Property.TABLE_STORAGE_ROOT);

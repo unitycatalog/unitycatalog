@@ -11,9 +11,11 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +38,7 @@ public class AwsPolicyGeneratorTest {
   public void testPolicySubstitution() {
     String bucket = "test-bucket";
     String prefix = "%s/%s".formatted(UUID.randomUUID(), UUID.randomUUID());
-    String location = "s3://%s/%s".formatted(bucket, prefix);
+    NormalizedURL location = NormalizedURL.from("s3://%s/%s".formatted(bucket, prefix));
 
     String policy = AwsPolicyGenerator.generatePolicy(Set.of(SELECT), List.of(location));
 
@@ -52,8 +54,10 @@ public class AwsPolicyGeneratorTest {
     String updatePolicy =
         AwsPolicyGenerator.generatePolicy(
             Set.of(SELECT, UPDATE),
-            List.of(
-                "s3://my-bucket1/path1/table1", "s3://profile-bucket2/", "s3://profile-bucket3"));
+            Stream.of(
+                    "s3://my-bucket1/path1/table1", "s3://profile-bucket2/", "s3://profile-bucket3")
+                .map(NormalizedURL::from)
+                .toList());
 
     assertThat(updatePolicy)
         .contains("s3:PutO*")
@@ -65,10 +69,12 @@ public class AwsPolicyGeneratorTest {
     String selectPolicy =
         AwsPolicyGenerator.generatePolicy(
             Set.of(SELECT),
-            List.of(
-                "s3://my-bucket1/path1/table1",
-                "s3://my-bucket2/path2/table2",
-                "s3://my-bucket1/path3/table3"));
+            Stream.of(
+                    "s3://my-bucket1/path1/table1",
+                    "s3://my-bucket2/path2/table2",
+                    "s3://my-bucket1/path3/table3")
+                .map(NormalizedURL::from)
+                .toList());
 
     assertThat(selectPolicy)
         .doesNotContain("s3:PutO*")

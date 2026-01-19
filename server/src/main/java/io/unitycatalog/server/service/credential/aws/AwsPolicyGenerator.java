@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.NormalizedURL;
 import lombok.SneakyThrows;
 import org.apache.iceberg.exceptions.NotAuthorizedException;
 
@@ -50,7 +51,7 @@ public class AwsPolicyGenerator {
   @SneakyThrows
   public static String generatePolicy(
       Set<CredentialContext.Privilege> privileges,
-      List<String> locations) {
+      List<NormalizedURL> locations) {
     JsonNode policyRoot = loadYaml(POLICY_STATEMENT);
     ArrayNode policyStatement = (ArrayNode) policyRoot.findPath("Statement");
     JsonNode operationsStatement = loadYaml(OPERATION_STATEMENT);
@@ -102,9 +103,9 @@ public class AwsPolicyGenerator {
     return JSON_MAPPER.writeValueAsString(policyRoot);
   }
 
-  private static Map<String, List<String>> getBucketToPathsMap(List<String> locations) {
+  private static Map<String, List<String>> getBucketToPathsMap(List<NormalizedURL> locations) {
     return locations.stream()
-        .map(URI::create)
+        .map(NormalizedURL::toUri)
         .collect(Collectors.toMap(
             URI::getHost,
             uri -> new LinkedList<>(List.of(uri.getPath())),

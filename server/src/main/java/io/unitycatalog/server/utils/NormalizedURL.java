@@ -214,4 +214,9 @@ public final class NormalizedURL {
 
     return path.substring(start, end);
   }
+
+  public NormalizedURL getStorageBase() {
+    URI uri = URI.create(url);
+    return NormalizedURL.from(uri.getScheme() + "://" + uri.getAuthority());
+  }
 }

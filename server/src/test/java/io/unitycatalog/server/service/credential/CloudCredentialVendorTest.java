@@ -42,7 +42,7 @@ public class CloudCredentialVendorTest {
     when(serverProperties.getS3Configurations())
         .thenReturn(
             Map.of(
-                "s3://storageBase",
+                NormalizedURL.from("s3://storageBase"),
                 S3StorageConfig.builder()
                     .accessKey(ACCESS_KEY)
                     .secretKey(SECRET_KEY)
@@ -64,7 +64,7 @@ public class CloudCredentialVendorTest {
     when(serverProperties.getS3Configurations())
         .thenReturn(
             Map.of(
-                "s3://storageBase",
+                NormalizedURL.from("s3://storageBase"),
                 S3StorageConfig.builder()
                     .accessKey(ACCESS_KEY)
                     .secretKey(SECRET_KEY)
@@ -124,7 +124,7 @@ public class CloudCredentialVendorTest {
     when(serverProperties.getGcsConfigurations())
         .thenReturn(
             Map.of(
-                "gs://uctest",
+                NormalizedURL.from("gs://uctest"),
                 GcsStorageConfig.builder()
                     .bucketPath("gs://uctest")
                     .jsonKeyFilePath("")
@@ -142,7 +142,7 @@ public class CloudCredentialVendorTest {
     when(serverProperties.getGcsConfigurations())
         .thenReturn(
             Map.of(
-                "gs://uctest",
+                NormalizedURL.from("gs://uctest"),
                 GcsStorageConfig.builder()
                     .bucketPath("gs://uctest")
                     .jsonKeyFilePath(testingSentinel)
@@ -159,7 +159,9 @@ public class CloudCredentialVendorTest {
     // Use default creds (expected to fail without real GCP credentials)
     when(serverProperties.getGcsConfigurations())
         .thenReturn(
-            Map.of("gs://uctest", GcsStorageConfig.builder().bucketPath("gs://uctest").build()));
+            Map.of(
+                NormalizedURL.from("gs://uctest"),
+                GcsStorageConfig.builder().bucketPath("gs://uctest").build()));
     gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
     assertThatThrownBy(

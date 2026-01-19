@@ -12,7 +12,6 @@ import com.azure.storage.file.datalake.models.UserDelegationKey;
 import com.azure.storage.file.datalake.sas.DataLakeServiceSasSignatureValues;
 import com.azure.storage.file.datalake.sas.PathSasPermission;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.Set;
 
@@ -77,7 +76,7 @@ public interface AzureCredentialsGenerator {
 
       // azure supports only downscoping to a single location for now
       // azure wants only the path
-      String path = URI.create(ctx.getLocations().get(0)).getPath();
+      String path = ctx.getLocations().get(0).toUri().getPath();
       // remove any preceding forward slashes or trailing forward slashes
       // hadoop ABFS strips trailing slash when preforming some operations so we need to vend
       // a cred for path without trailing slash

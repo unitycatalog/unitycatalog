@@ -2,11 +2,12 @@ package io.unitycatalog.server.service.iceberg;
 
 import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
-import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
+import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.UriScheme;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.aws.AwsClientProperties;
@@ -24,7 +25,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 public class TableConfigService {
 
   private final CloudCredentialVendor cloudCredentialVendor;
-  private final Map<String, S3StorageConfig> s3Configurations;
+  private final Map<NormalizedURL, S3StorageConfig> s3Configurations;
 
   public TableConfigService(CloudCredentialVendor cloudCredentialVendor,
       ServerProperties serverProperties) {
@@ -33,7 +34,8 @@ public class TableConfigService {
   }
 
   public Map<String, String> getTableConfig(TableMetadata tableMetadata) {
-    URI locationURI = URI.create(tableMetadata.location());
+    NormalizedURL location = NormalizedURL.from(tableMetadata.location());
+    URI locationURI = location.toUri();
     UriScheme scheme = UriScheme.fromURI(locationURI);
 
     CredentialContext context = CredentialContext.create(locationURI, Set.of(SELECT));

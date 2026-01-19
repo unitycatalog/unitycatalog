@@ -12,6 +12,7 @@ import com.google.common.base.CharMatcher;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.net.URI;
@@ -25,8 +26,8 @@ public class GcpCredentialVendor {
 
   public static final List<String> INITIAL_SCOPES =
       List.of("https://www.googleapis.com/auth/cloud-platform");
-  private final Map<String, GcsStorageConfig> gcsConfigurations;
-  private final Map<String, GcpCredentialsGenerator> credentialGenerators =
+  private final Map<NormalizedURL, GcsStorageConfig> gcsConfigurations;
+  private final Map<NormalizedURL, GcpCredentialsGenerator> credentialGenerators =
       new ConcurrentHashMap<>();
 
   public GcpCredentialVendor(ServerProperties serverProperties) {
@@ -34,7 +35,7 @@ public class GcpCredentialVendor {
   }
 
   public AccessToken vendGcpToken(CredentialContext credentialContext) {
-    String storageBase = credentialContext.getStorageBase();
+    NormalizedURL storageBase = credentialContext.getStorageBase();
     GcsStorageConfig storageConfig = gcsConfigurations.get(storageBase);
 
     if (storageConfig == null) {
@@ -83,7 +84,7 @@ public class GcpCredentialVendor {
         .getLocations()
         .forEach(
             location -> {
-              URI locationUri = URI.create(location);
+              URI locationUri = location.toUri();
               String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getPath());
 
               String resource =
