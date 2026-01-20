@@ -2,6 +2,7 @@ package io.unitycatalog.server.auth.annotation;
 
 import io.unitycatalog.server.model.SecurableType;
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
@@ -9,12 +10,13 @@ import java.lang.annotation.Target;
 /**
  * Map a request parameter to a unity catalog resource key.
  *
- * <p>This annotation is used to map a request parameter to a unity catalog resource key. The
- * resource key is used to retrieve the resource identifier, which is then used to authorize the
- * request. As an example, suppose you are making a request the retrieve a schema, the parameter
- * that contains the schema name might be defined in the request as
+ * <p>Unlike {@link AuthorizeKey} which only exposes the raw value of ANY request field, this class
+ * only annotates request fields that reference to resources and maps them to resource identifiers
+ * (UUIDs). The resource key is used to retrieve the resource identifier, which is then used to
+ * authorize the request. As an example, suppose you are making a request the retrieve a schema,
+ * the parameter that contains the schema name might be defined in the request as:
  *
- * <p>@Param("full_Name") String fullName
+ * <p>@AuthorizeResourceKey(SCHEMA) @Param("full_Name") String fullName
  *
  * <p>This annotation would take the value of the fullName parameter and use it to retrieve the
  * schema resource identifier looking up the identifier from the persistence layer (database).
@@ -52,6 +54,7 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.METHOD, ElementType.PARAMETER})
+@Repeatable(AuthorizeResourceKeys.class)
 public @interface AuthorizeResourceKey {
 
   SecurableType value();
