@@ -45,7 +45,6 @@ public class FileIOFactory {
       case ABFS, ABFSS -> getADLSFileIO(tableLocationUri);
       case GS -> getGCSFileIO(tableLocationUri);
       case S3 -> getS3FileIO(tableLocationUri);
-      // TODO: should we default/fallback to HadoopFileIO ?
       case FILE, NULL -> new SimpleLocalFileIO();
     };
   }
