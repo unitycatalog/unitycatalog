@@ -42,16 +42,20 @@ import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.SYSTEM;
  * Armeria access control Decorator.
  *
  * <p>This decorator provides the ability to protect Armeria service methods with per method access
- * control rules. This decorator is used in conjunction with two annotations, @AuthorizeExpression
- * and @AuthorizeResourceKey to define authorization rules and identify requests parameters for
- * objects to authorize with.
+ * control rules. This decorator is used in conjunction with following 3 annotations to define
+ * authorization rules and identify requests parameters for objects to authorize with:
  *
- * <p>{@code @AuthorizeExpression} - This defines a Spring Expression Language expression to
- * evaluate to make an authorization decision. {@code @AuthorizeResourceKey} - This annotation is
- * used to define request and payload parameters for the authorization context. These are typically
- * things like catalog, schema and table names. This annotation may be used at both the method and
- * method parameter context. It may be specified more than once per method to map parameters to
- * object keys.
+ * <p>1. {@code @AuthorizeExpression} - This defines a Spring Expression Language expression to
+ * evaluate to make an authorization decision.
+ *
+ * <p>2. {@code @AuthorizeResourceKey} - This annotation is used to define request and payload
+ * parameters for the authorization context. These are typically things like catalog, schema and
+ * table names. This annotation may be used at both the method and method parameter context. It may
+ * be specified more than once per method to map parameters to object keys.
+ *
+ * <p>3. {@code @AuthorizeKey} - This annotation is used to define request and payload parameters
+ * for that are usually not resources but parameters of the operation. For example, table_type,
+ * operation, etc.
  */
 public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
@@ -117,7 +121,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // we want to authorize against.
 
     Map<SecurableType, Object> resourceKeys = new HashMap<>();
-    Map<String, Object> otherKeys = new HashMap<>();
+    Map<String, Object> nonResourceValues = new HashMap<>();
 
     // Split up the locators by type, because we have to extract the value from the request
     // different ways for different types
@@ -143,7 +147,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       if (l.getType().isPresent()) {
         resourceKeys.put(l.getType().get(), value);
       } else {
-        otherKeys.put(l.getVariableName(), value);
+        nonResourceValues.put(l.getVariableName(), value);
       }
     });
 
@@ -151,7 +155,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       // If we don't have any PAYLOAD locators, we're ready to evaluate the authorization and allow
       // or deny the request.
       LOGGER.debug("Checking authorization before method.");
-      checkAuthorization(principal, expression, resourceKeys, otherKeys);
+      checkAuthorization(principal, expression, resourceKeys, nonResourceValues);
 
       return delegate.serve(ctx, req);
     } else {
@@ -163,7 +167,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
           req.contentType(),
           payloadLocators,
           resourceKeys,
-          otherKeys);
+          nonResourceValues);
 
       // Note that peekData only gets called for requests that actually have data (like PUT&POST)
 
@@ -171,7 +175,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         LOGGER.debug("Authorization peekData invoked.");
 
         if (peekDataHandler.processPeekData(data)) {
-          checkAuthorization(principal, expression, resourceKeys, otherKeys);
+          checkAuthorization(principal, expression, resourceKeys, nonResourceValues);
         }
       });
 
@@ -199,9 +203,9 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       UUID principal,
       String expression,
       Map<SecurableType, Object> resourceKeys,
-      Map<String, Object> otherKeys) {
+      Map<String, Object> nonResourceValues) {
     LOGGER.debug("resourceKeys = {}", resourceKeys);
-    LOGGER.debug("otherKeys = {}", otherKeys);
+    LOGGER.debug("nonResourceValues = {}", nonResourceValues);
 
     Map<SecurableType, Object> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
 
@@ -211,7 +215,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     LOGGER.debug("resourceIds = {}", resourceIds);
 
-    if (!evaluator.evaluate(principal, expression, resourceIds, otherKeys)) {
+    if (!evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
     }
   }
@@ -250,8 +254,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         locators.add(KeyLocator.from(key, parameter));
       }
 
-      AuthorizeKey[] allOtherKeys = parameter.getAnnotationsByType(AuthorizeKey.class);
-      for (AuthorizeKey key : allOtherKeys) {
+      AuthorizeKey[] allNonResourceKeys = parameter.getAnnotationsByType(AuthorizeKey.class);
+      for (AuthorizeKey key : allNonResourceKeys) {
         locators.add(KeyLocator.from(key, parameter));
       }
     }
@@ -297,18 +301,18 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     private final MediaType contentType;
     private final List<KeyLocator> payloadLocators;
     private final Map<SecurableType, Object> resourceKeys;
-    private final Map<String, Object> otherKeys;
+    private final Map<String, Object> nonResourceValues;
     private final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
 
     private PeekDataHandler(
         MediaType contentType,
         List<KeyLocator> payloadLocators,
         Map<SecurableType, Object> resourceKeys,
-        Map<String, Object> otherKeys) {
+        Map<String, Object> nonResourceValues) {
       this.contentType = contentType;
       this.payloadLocators = payloadLocators;
       this.resourceKeys = resourceKeys;
-      this.otherKeys = otherKeys;
+      this.nonResourceValues = nonResourceValues;
     }
 
     private boolean processPeekData(HttpData data) {
@@ -342,7 +346,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
                       // Convert enums to their string representation
                       value = value.toString();
                     }
-                    otherKeys.put(l.getVariableName(), value);
+                    nonResourceValues.put(l.getVariableName(), value);
                   }
                 });
 

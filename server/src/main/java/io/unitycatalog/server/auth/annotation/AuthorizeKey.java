@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 /**
  * Expose a request payload field as a variable in authorization expressions.
  *
- * <p>Unlike {@code @AuthorizeResourceKey}, which annotates payload fields that reference to
+ * <p>Unlike {@link AuthorizeResourceKey}, which annotates payload fields that reference to
  * resources and maps them to resource identifiers (UUIDs), this class can annotate ANY payload
  * fields whether they are resource or not. It does NOT do the resource ID mapping but exposes the
  * raw payload value directly to the SpEL expression context, even if the payload field references a

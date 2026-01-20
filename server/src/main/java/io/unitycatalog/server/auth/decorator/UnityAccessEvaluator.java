@@ -87,13 +87,13 @@ public class UnityAccessEvaluator {
    * @param principal The principal UUID
    * @param expression The SpEL authorization expression
    * @param resourceIds Map of resource types to their UUIDs
-   * @param otherKeys Map of parameter names to their values (from @AuthorizeKey)
+   * @param nonResourceValues Map of parameter names to their values (from @AuthorizeKey)
    */
   public boolean evaluate(
       UUID principal,
       String expression,
       Map<SecurableType, Object> resourceIds,
-      Map<String, Object> otherKeys) {
+      Map<String, Object> nonResourceValues) {
 
     StandardEvaluationContext context = new StandardEvaluationContext(Privileges.class);
 
@@ -107,7 +107,7 @@ public class UnityAccessEvaluator {
     context.setVariable("principal", principal);
 
     resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
-    otherKeys.forEach(context::setVariable);
+    nonResourceValues.forEach(context::setVariable);
 
     Boolean result = parser.parseExpression(expression).getValue(context, Boolean.class);
 
