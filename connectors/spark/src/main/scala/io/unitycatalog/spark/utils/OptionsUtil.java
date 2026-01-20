@@ -13,6 +13,9 @@ public class OptionsUtil {
   public static final String RENEW_CREDENTIAL_ENABLED = "renewCredential.enabled";
   public static final boolean DEFAULT_RENEW_CREDENTIAL_ENABLED = false;
 
+  public static final String ALLOW_EMPTY_CREDENTIALS = "allowEmptyCredentials.enabled";
+  public static final boolean DEFAULT_ALLOW_EMPTY_CREDENTIALS = false;
+
   public static boolean getBoolean(
       Map<String, String> props, String property, boolean defaultValue) {
     String value = props.get(property);
