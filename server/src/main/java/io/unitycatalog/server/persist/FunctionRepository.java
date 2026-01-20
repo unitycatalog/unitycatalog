@@ -86,10 +86,9 @@ public class FunctionRepository {
           String catalogName = createFunction.getCatalogName();
           String schemaName = createFunction.getSchemaName();
           SchemaInfoDAO schemaInfo =
-              repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-          if (schemaInfo == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-          }
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaDaoOrThrow(session, catalogName, schemaName);
           if (getFunctionDAO(session, catalogName, schemaName, createFunction.getName()) != null) {
             throw new BaseException(
                 ErrorCode.ALREADY_EXISTS, "Function already exists: " + createFunction.getName());
@@ -139,7 +138,9 @@ public class FunctionRepository {
         sessionFactory,
         session -> {
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           return listFunctions(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         },
         "Failed to list functions",
@@ -198,7 +199,7 @@ public class FunctionRepository {
   public FunctionInfoDAO getFunctionDAO(
       Session session, String catalogName, String schemaName, String functionName) {
     UUID schemaId =
-        repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
     return getFunctionDAO(session, schemaId, functionName);
   }
 
@@ -222,12 +223,11 @@ public class FunctionRepository {
             throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
           }
           String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
-          SchemaInfoDAO schemaInfo =
-              repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-          if (schemaInfo == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-          }
-          deleteFunction(session, schemaInfo.getId(), functionName);
+          UUID schemaId =
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
+          deleteFunction(session, schemaId, functionName);
           LOGGER.info("Deleted function: {}", functionName);
           return null;
         },

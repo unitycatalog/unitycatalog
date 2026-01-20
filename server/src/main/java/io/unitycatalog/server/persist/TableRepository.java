@@ -165,7 +165,7 @@ public class TableRepository {
   private TableInfoDAO findTable(
       Session session, String catalogName, String schemaName, String tableName) {
     UUID schemaId =
-        repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
     return findBySchemaIdAndName(session, schemaId, tableName);
   }
 
@@ -186,7 +186,9 @@ public class TableRepository {
           String catalogName = createTable.getCatalogName();
           String schemaName = createTable.getSchemaName();
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           NormalizedURL storageLocation = NormalizedURL.from(createTable.getStorageLocation());
 
           // Check if table already exists
@@ -301,7 +303,9 @@ public class TableRepository {
         sessionFactory,
         session -> {
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           return listTables(
               session,
               schemaId,
@@ -352,7 +356,9 @@ public class TableRepository {
           String schemaName = parts[1];
           String tableName = parts[2];
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           deleteTable(session, schemaId, tableName);
           return null;
         },

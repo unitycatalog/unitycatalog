@@ -93,7 +93,7 @@ public class StagingTableRepository {
           UUID schemaId =
               repositories
                   .getSchemaRepository()
-                  .getSchemaId(
+                  .getSchemaIdOrThrow(
                       session,
                       createStagingTable.getCatalogName(),
                       createStagingTable.getSchemaName());

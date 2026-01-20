@@ -7,11 +7,11 @@ import io.unitycatalog.server.model.ListVolumesResponseContent;
 import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
-import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -79,21 +79,13 @@ public class VolumeRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          SchemaInfoDAO schemaInfoDAO =
+          UUID schemaId =
               repositories
                   .getSchemaRepository()
-                  .getSchemaDAO(
+                  .getSchemaIdOrThrow(
                       session,
                       createVolumeRequest.getCatalogName(),
                       createVolumeRequest.getSchemaName());
-          if (schemaInfoDAO == null) {
-            throw new BaseException(
-                ErrorCode.NOT_FOUND,
-                "Schema not found: "
-                    + createVolumeRequest.getCatalogName()
-                    + "."
-                    + createVolumeRequest.getSchemaName());
-          }
           if (getVolumeDAO(
                   session,
                   createVolumeRequest.getCatalogName(),
@@ -103,7 +95,7 @@ public class VolumeRepository {
             throw new BaseException(
                 ErrorCode.ALREADY_EXISTS, "Volume already exists: " + volumeFullName);
           }
-          volumeInfoDAO.setSchemaId(schemaInfoDAO.getId());
+          volumeInfoDAO.setSchemaId(schemaId);
           session.persist(volumeInfoDAO);
           LOGGER.info("Added volume: {}", volumeInfo.getName());
           return convertFromDAO(
@@ -135,13 +127,9 @@ public class VolumeRepository {
 
   public VolumeInfoDAO getVolumeDAO(
       Session session, String catalogName, String schemaName, String volumeName) {
-    SchemaInfoDAO schemaInfo =
-        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(
-          ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
-    }
-    return getVolumeDAO(session, schemaInfo.getId(), volumeName);
+    UUID schemaId =
+        repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
+    return getVolumeDAO(session, schemaId, volumeName);
   }
 
   public VolumeInfoDAO getVolumeDAO(Session session, UUID schemaId, String volumeName) {
@@ -162,21 +150,11 @@ public class VolumeRepository {
           if (volumeInfoDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + volumeId);
           }
-          SchemaInfoDAO schemaInfoDAO =
-              session.get(SchemaInfoDAO.class, volumeInfoDAO.getSchemaId());
-          if (schemaInfoDAO == null) {
-            throw new BaseException(
-                ErrorCode.NOT_FOUND, "Schema not found: " + volumeInfoDAO.getSchemaId());
-          }
-          CatalogInfoDAO catalogInfoDAO =
-              session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
-          if (catalogInfoDAO == null) {
-            throw new BaseException(
-                ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
-          }
+          RepositoryUtils.CatalogAndSchemaNames catalogAndSchemaNames =
+              RepositoryUtils.getCatalogAndSchemaNames(session, volumeInfoDAO.getSchemaId());
           VolumeInfo volumeInfo = volumeInfoDAO.toVolumeInfo();
-          volumeInfo.setSchemaName(schemaInfoDAO.getName());
-          volumeInfo.setCatalogName(catalogInfoDAO.getName());
+          volumeInfo.setSchemaName(catalogAndSchemaNames.schemaName());
+          volumeInfo.setCatalogName(catalogAndSchemaNames.catalogName());
           return volumeInfo;
         },
         "Failed to get volume by ID",
@@ -209,7 +187,9 @@ public class VolumeRepository {
         sessionFactory,
         session -> {
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           return listVolumes(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         },
         "Failed to list volumes",
@@ -298,11 +278,7 @@ public class VolumeRepository {
           }
           String catalog = namespace[0], schema = namespace[1], volume = namespace[2];
           SchemaInfoDAO schemaInfo =
-              repositories.getSchemaRepository().getSchemaDAO(session, catalog, schema);
-          if (schemaInfo == null) {
-            throw new BaseException(
-                ErrorCode.NOT_FOUND, "Schema not found: " + catalog + "." + schema);
-          }
+              repositories.getSchemaRepository().getSchemaDaoOrThrow(session, catalog, schema);
           deleteVolume(session, schemaInfo.getId(), volume);
           return null;
         },
