@@ -329,10 +329,8 @@ private class UCProxy(
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
 
-    // Try to get credentials - may fail if user is not authorized (e.g., FGAC with row filters/column masks)
-    // If credentials cannot be obtained, return None to allow downstream code the opportunity to
-    // obtain credentials from elsewhere (e.g., a different endpoint) rather than throwing an exception
-    val temporaryCredentials: Option[TemporaryCredentials] = {
+    // Try to obtain temporary credentials with fallback: READ_WRITE -> READ -> None
+    val temporaryCredentials: Option[(TemporaryCredentials, TableOperation)] = {
       try {
         val creds = temporaryCredentialsApi
           .generateTemporaryTableCredentials(
@@ -342,7 +340,7 @@ private class UCProxy(
             //       for read or write, we can request the proper credential after fixing Spark.
             new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
           )
-        Some(creds)
+        Some((creds, TableOperation.READ_WRITE))
       } catch {
         case _: ApiException =>
           try {
@@ -350,30 +348,35 @@ private class UCProxy(
               .generateTemporaryTableCredentials(
                 new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ)
               )
-            Some(creds)
+            Some((creds, TableOperation.READ))
           } catch {
-            case _: ApiException =>
-              // Credentials not available (e.g., user not authorized due to FGAC row filter/column mask)
-              // Return None to allow downstream code the opportunity to obtain credentials from elsewhere
-              // (e.g., a different endpoint) rather than throwing an exception
-              None
+            case _: ApiException => None
           }
       }
     }
 
     val extraSerdeProps = temporaryCredentials match {
-      case Some(creds) =>
+      case Some((creds, operation)) =>
         CredPropsUtil.createTableCredProps(
           renewCredEnabled,
           locationUri.getScheme,
           uri.toString,
           tokenProvider,
           tableId,
-          TableOperation.READ_WRITE,
+          operation,
           creds,
         )
       case None =>
-        java.util.Collections.emptyMap[String, String]()
+        // TODO: In future versions, when Delta-Spark supports alternative credential mechanisms
+        // for FGAC tables (row filters/column masks), we can add a configuration flag to allow
+        // empty credentials instead of failing fast. For now, we fail fast to prevent security
+        // risks with Delta-Spark 4.0 which doesn't handle missing credentials.
+        // Configuration could be: spark.sql.catalog.<catalog>.allowEmptyCredentials=true
+        throw new ApiException(
+          s"Unable to load table ${identifier}: credential generation failed. " +
+          s"This may indicate insufficient permissions or fine-grained access control restrictions. " +
+          s"Please verify your permissions on this table."
+        )
     }
 
     val sparkTable = CatalogTable(
