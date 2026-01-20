@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service.credential;
 
+import io.unitycatalog.server.utils.UriScheme;
 import java.net.URI;
 import java.util.List;
 import java.util.Set;
@@ -14,7 +15,7 @@ public class CredentialContext {
     UPDATE
   }
 
-  private String storageScheme;
+  private UriScheme storageScheme;
   private String storageBase;
   private Set<Privilege> privileges;
   // This is a list of locations to be a little future-proofing when a table could
@@ -24,7 +25,7 @@ public class CredentialContext {
   public static CredentialContext create(URI locationURI, Set<Privilege> privileges) {
     return CredentialContext.builder()
         .privileges(privileges)
-        .storageScheme(locationURI.getScheme())
+        .storageScheme(UriScheme.fromURI(locationURI))
         .storageBase(locationURI.getScheme() + "://" + locationURI.getAuthority())
         .locations(List.of(locationURI.toString()))
         .build();

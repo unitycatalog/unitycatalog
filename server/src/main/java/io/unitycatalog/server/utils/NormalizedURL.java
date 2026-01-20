@@ -34,7 +34,7 @@ import lombok.EqualsAndHashCode;
  *
  * <p>This class is immutable and thread-safe.
  *
- * @see Constants#SUPPORTED_CLOUD_SCHEMES for supported cloud storage schemes
+ * @see UriScheme for supported URI schemes
  */
 @EqualsAndHashCode
 public final class NormalizedURL {
@@ -139,17 +139,13 @@ public final class NormalizedURL {
     } catch (URISyntaxException e) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported path: " + inputPath);
     }
-    if (uri.getScheme() == null) {
+    UriScheme scheme = UriScheme.fromURI(uri);
+    return switch (scheme) {
       // It's a local path without file://. Construct a file:// URI using Path.
-      uri = Paths.get(inputPath).toAbsolutePath().toUri().normalize();
-    }
-    if (Constants.URI_SCHEME_FILE.equals(uri.getScheme())) {
-      return localFileURIToString(uri);
-    } else if (Constants.SUPPORTED_CLOUD_SCHEMES.contains(uri.getScheme())) {
-      return removeExtraSlashes(uri.toString());
-    } else {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + inputPath);
-    }
+      case NULL -> localFileURIToString(Paths.get(inputPath).toAbsolutePath().toUri().normalize());
+      case FILE -> localFileURIToString(uri);
+      case S3, GS, ABFS, ABFSS -> removeExtraSlashes(uri.toString());
+    };
   }
 
   /**

@@ -8,6 +8,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
+import io.unitycatalog.server.utils.UriScheme;
 import lombok.SneakyThrows;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.azure.AzureProperties;
@@ -27,11 +28,6 @@ import java.net.URI;
 import java.util.Map;
 import java.util.Set;
 
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
-
 public class FileIOFactory {
 
   private final CloudCredentialVendor cloudCredentialVendor;
@@ -45,12 +41,11 @@ public class FileIOFactory {
 
   // TODO: Cache fileIOs
   public FileIO getFileIO(URI tableLocationUri) {
-    return switch (tableLocationUri.getScheme()) {
-      case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> getADLSFileIO(tableLocationUri);
-      case URI_SCHEME_GS -> getGCSFileIO(tableLocationUri);
-      case URI_SCHEME_S3 -> getS3FileIO(tableLocationUri);
-      // TODO: should we default/fallback to HadoopFileIO ?
-      default -> new SimpleLocalFileIO();
+    return switch (UriScheme.fromURI(tableLocationUri)) {
+      case ABFS, ABFSS -> getADLSFileIO(tableLocationUri);
+      case GS -> getGCSFileIO(tableLocationUri);
+      case S3 -> getS3FileIO(tableLocationUri);
+      case FILE, NULL -> new SimpleLocalFileIO();
     };
   }
 
