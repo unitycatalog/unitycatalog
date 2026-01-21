@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>These tests verify:
  * - Credential fallback chain: READ_WRITE → READ → None
- * - Configuration flag behavior: allowEmptyCredentials.enabled
+ * - Configuration flag behavior: acceptEmptyCredentials.enabled
  * - Default behavior (flag=false): Fail-fast with clear exception
  * - Opt-in behavior (flag=true): Allow empty credentials with warning logs
  * - Security: Ensure credentials are never bypassed unintentionally
@@ -166,7 +166,7 @@ public class UCSingleCatalogCredentialFallbackTest {
   @Test
   public void testCredentialFallback_BothFail_Disabled_ThrowsException() throws Exception {
     // Setup: Mock API to fail for both READ_WRITE and READ
-    // Default configuration: allowEmptyCredentials=false (not explicitly set)
+    // Default configuration: acceptEmptyCredentials=false (not explicitly set)
     TableInfo testTable = createTestTable("test_table", "test_schema", "s3://bucket/path");
 
     when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
@@ -182,23 +182,23 @@ public class UCSingleCatalogCredentialFallbackTest {
         .hasMessageContaining("Unable to load table")
         .hasMessageContaining("credential generation failed")
         .hasMessageContaining("insufficient permissions")
-        .hasMessageContaining("allowEmptyCredentials.enabled=true");
+        .hasMessageContaining("acceptEmptyCredentials.enabled=true");
 
     // Verify: Two API calls were made (both READ_WRITE and READ attempted)
     verify(mockCredentialsApi, times(2)).generateTemporaryTableCredentials(any());
   }
 
   @Test
-  public void testCredentialFallback_BothFail_AllowEmptyEnabled_ReturnsEmptyMap()
+  public void testCredentialFallback_BothFail_AcceptEmptyEnabled_ReturnsEmptyMap()
       throws Exception {
-    // Setup: Create catalog with allowEmptyCredentials=true
+    // Setup: Create catalog with acceptEmptyCredentials=true
     // Disable DeltaCatalog loading
     UCSingleCatalog$.MODULE$.LOAD_DELTA_CATALOG().set(false);
     UCSingleCatalog catalogWithEmptyCredsAllowed = new UCSingleCatalog();
     Map<String, String> options = new HashMap<>();
     options.put("uri", "http://localhost:8080");
     options.put("token", "test-token");
-    options.put("allowEmptyCredentials.enabled", "true");
+    options.put("acceptEmptyCredentials.enabled", "true");
     CaseInsensitiveStringMap config = new CaseInsensitiveStringMap(options);
     catalogWithEmptyCredsAllowed.initialize("unity", config);
 
@@ -280,15 +280,15 @@ public class UCSingleCatalogCredentialFallbackTest {
 
   @Test
   public void testCredentialFallback_ReadWriteSucceeds_FlagIgnored() throws Exception {
-    // Test that when READ_WRITE credentials succeed, the allowEmptyCredentials flag is irrelevant
-    // Create catalog with allowEmptyCredentials=true
+    // Test that when READ_WRITE credentials succeed, the acceptEmptyCredentials flag is irrelevant
+    // Create catalog with acceptEmptyCredentials=true
     // Disable DeltaCatalog loading
     UCSingleCatalog$.MODULE$.LOAD_DELTA_CATALOG().set(false);
     UCSingleCatalog catalogWithEmptyCredsAllowed = new UCSingleCatalog();
     Map<String, String> options = new HashMap<>();
     options.put("uri", "http://localhost:8080");
     options.put("token", "test-token");
-    options.put("allowEmptyCredentials.enabled", "true");
+    options.put("acceptEmptyCredentials.enabled", "true");
     CaseInsensitiveStringMap config = new CaseInsensitiveStringMap(options);
     catalogWithEmptyCredsAllowed.initialize("unity", config);
 
@@ -323,14 +323,14 @@ public class UCSingleCatalogCredentialFallbackTest {
   @Test
   public void testCredentialFallback_ReadSucceeds_FlagIgnored() throws Exception {
     // Test that when READ credentials succeed (after READ_WRITE fails), flag is irrelevant
-    // Create catalog with allowEmptyCredentials=true
+    // Create catalog with acceptEmptyCredentials=true
     // Disable DeltaCatalog loading
     UCSingleCatalog$.MODULE$.LOAD_DELTA_CATALOG().set(false);
     UCSingleCatalog catalogWithEmptyCredsAllowed = new UCSingleCatalog();
     Map<String, String> options = new HashMap<>();
     options.put("uri", "http://localhost:8080");
     options.put("token", "test-token");
-    options.put("allowEmptyCredentials.enabled", "true");
+    options.put("acceptEmptyCredentials.enabled", "true");
     CaseInsensitiveStringMap config = new CaseInsensitiveStringMap(options);
     catalogWithEmptyCredsAllowed.initialize("unity", config);
 

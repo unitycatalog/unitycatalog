@@ -36,7 +36,7 @@ class UCSingleCatalog
   private[this] var uri: URI = null
   private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
-  private[this] var allowEmptyCredentials: Boolean = false
+  private[this] var acceptEmptyCredentials: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
@@ -52,15 +52,15 @@ class UCSingleCatalog
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
-    allowEmptyCredentials = OptionsUtil.getBoolean(options,
-      OptionsUtil.ALLOW_EMPTY_CREDENTIALS,
-      OptionsUtil.DEFAULT_ALLOW_EMPTY_CREDENTIALS)
+    acceptEmptyCredentials = OptionsUtil.getBoolean(options,
+      OptionsUtil.ACCEPT_EMPTY_CREDENTIALS,
+      OptionsUtil.DEFAULT_ACCEPT_EMPTY_CREDENTIALS)
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
-    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, allowEmptyCredentials,
+    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, acceptEmptyCredentials,
       apiClient, tablesApi, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
@@ -284,7 +284,7 @@ private class UCProxy(
     uri: URI,
     tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
-    allowEmptyCredentials: Boolean,
+    acceptEmptyCredentials: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
     temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
@@ -369,24 +369,24 @@ private class UCProxy(
         )
       case None =>
         // Check configuration flag to determine behavior when credentials cannot be obtained
-        if (allowEmptyCredentials) {
+        if (acceptEmptyCredentials) {
           // Log warning for debugging and security auditing
           logWarning(
             s"Failed to obtain temporary credentials for table ${identifier}. " +
-            s"tableId=${tableId}, allowEmptyCredentials=true. " +
+            s"tableId=${tableId}, acceptEmptyCredentials=true. " +
             s"Proceeding with empty credentials. This may rely on alternative credential " +
             s"mechanisms (e.g., environment credentials, FGAC, or downstream credential providers). " +
             s"Ensure your Delta-Spark version properly handles missing UC credentials."
           )
-          // Return empty map as in original PR
+          // Return empty map
           java.util.Collections.emptyMap[String, String]()
         } else {
           // Default behavior - fail fast for safety
           throw new ApiException(
             s"Unable to load table ${identifier}: credential generation failed. " +
             s"This may indicate insufficient permissions or fine-grained access control restrictions. " +
-            s"To allow tables to load without UC credentials (for advanced use cases with newer " +
-            s"Delta-Spark versions), set spark.sql.catalog.${name()}.allowEmptyCredentials.enabled=true. " +
+            s"If the client can retrieve credentials from alternative sources, " +
+            s"set spark.sql.catalog.${name()}.acceptEmptyCredentials.enabled=true. " +
             s"Please verify your permissions on this table."
           )
         }
