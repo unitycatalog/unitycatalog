@@ -6,7 +6,6 @@ import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -45,9 +44,6 @@ public class CloudCredentialVendor {
   }
 
   public TemporaryCredentials vendCredential(CredentialContext context) {
-    String location = context.getLocations().get(0);
-    FileOperations.assertValidLocation(location);
-
     TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
 
     switch (context.getStorageScheme()) {

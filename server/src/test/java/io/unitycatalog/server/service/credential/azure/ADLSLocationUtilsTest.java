@@ -3,6 +3,7 @@ package io.unitycatalog.server.service.credential.azure;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.server.utils.NormalizedURL;
 import org.junit.jupiter.api.Test;
 
 public class ADLSLocationUtilsTest {
@@ -12,10 +13,11 @@ public class ADLSLocationUtilsTest {
 
   @Test
   public void testContainerInAuthority() {
-    String location =
-        format(
-            "abfs://%s@%s.dfs.core.windows.net/path/to/files",
-            TEST_CONTAINER, TEST_STORAGE_ACCOUNT);
+    NormalizedURL location =
+        NormalizedURL.from(
+            format(
+                "abfs://%s@%s.dfs.core.windows.net/path/to/files",
+                TEST_CONTAINER, TEST_STORAGE_ACCOUNT));
 
     ADLSLocationUtils.ADLSLocationParts parts = ADLSLocationUtils.parseLocation(location);
 
@@ -27,7 +29,9 @@ public class ADLSLocationUtilsTest {
 
   @Test
   public void testContainerNotInAuthority() {
-    String location = format("abfs://%s.dfs.core.windows.net/path/to/files", TEST_STORAGE_ACCOUNT);
+    NormalizedURL location =
+        NormalizedURL.from(
+            format("abfs://%s.dfs.core.windows.net/path/to/files", TEST_STORAGE_ACCOUNT));
 
     ADLSLocationUtils.ADLSLocationParts parts = ADLSLocationUtils.parseLocation(location);
 

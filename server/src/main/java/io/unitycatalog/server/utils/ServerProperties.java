@@ -253,8 +253,8 @@ public class ServerProperties {
   private void validateProperties() {
     for (Property property : Property.values()) {
       String value = get(property);
-      if (value == null || value.isBlank()) {
-        // null or empty values are OK.
+      if (value == null) {
+        // null means not set.
         continue;
       }
       property.validator.validate(property.key, value);
@@ -276,6 +276,11 @@ public class ServerProperties {
     if (path.toFile().exists()) {
       try (InputStream input = Files.newInputStream(path)) {
         properties.load(input);
+        // Remove empty values. In server.properties these lines are for demonstration purpose.
+        properties
+            .entrySet()
+            .removeIf(
+                entry -> entry.getValue() == null || entry.getValue().toString().trim().isEmpty());
         LOGGER.debug("Server properties loaded successfully: {}", path);
       } catch (IOException ex) {
         LOGGER.error("Exception during loading properties", ex);
@@ -283,8 +288,8 @@ public class ServerProperties {
     }
   }
 
-  public Map<String, S3StorageConfig> getS3Configurations() {
-    Map<String, S3StorageConfig> s3BucketConfigMap = new HashMap<>();
+  public Map<NormalizedURL, S3StorageConfig> getS3Configurations() {
+    Map<NormalizedURL, S3StorageConfig> s3BucketConfigMap = new HashMap<>();
     int i = 0;
     while (true) {
       String bucketPath = getProperty("s3.bucketPath." + i);
@@ -308,15 +313,15 @@ public class ServerProperties {
               .sessionToken(sessionToken)
               .credentialsGenerator(credentialsGenerator)
               .build();
-      s3BucketConfigMap.put(bucketPath, s3StorageConfig);
+      s3BucketConfigMap.put(NormalizedURL.from(bucketPath), s3StorageConfig);
       i++;
     }
 
     return s3BucketConfigMap;
   }
 
-  public Map<String, GcsStorageConfig> getGcsConfigurations() {
-    Map<String, GcsStorageConfig> gcsConfigMap = new HashMap<>();
+  public Map<NormalizedURL, GcsStorageConfig> getGcsConfigurations() {
+    Map<NormalizedURL, GcsStorageConfig> gcsConfigMap = new HashMap<>();
     int i = 0;
     while (true) {
       String bucketPath = getProperty("gcs.bucketPath." + i);
@@ -326,7 +331,7 @@ public class ServerProperties {
       String jsonKeyFilePath = getProperty("gcs.jsonKeyFilePath." + i);
       String credentialsGenerator = getProperty("gcs.credentialsGenerator." + i);
       gcsConfigMap.put(
-          bucketPath,
+          NormalizedURL.from(bucketPath),
           GcsStorageConfig.builder()
               .bucketPath(bucketPath)
               .jsonKeyFilePath(jsonKeyFilePath)

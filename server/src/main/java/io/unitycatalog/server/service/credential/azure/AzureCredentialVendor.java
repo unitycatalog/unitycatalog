@@ -1,13 +1,15 @@
 package io.unitycatalog.server.service.credential.azure;
 
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class AzureCredentialVendor {
   private final Map<String, ADLSStorageConfig> adlsConfigurations;
-  private final Map<String, AzureCredentialsGenerator> credGenerators = new ConcurrentHashMap<>();
+  private final Map<NormalizedURL, AzureCredentialsGenerator> credGenerators =
+      new ConcurrentHashMap<>();
 
   public AzureCredentialVendor(ServerProperties serverProperties) {
     this.adlsConfigurations = serverProperties.getAdlsConfigurations();
@@ -15,17 +17,12 @@ public class AzureCredentialVendor {
 
   public AzureCredential vendAzureCredential(CredentialContext ctx) {
     AzureCredentialsGenerator generator =
-        credGenerators.compute(
-            ctx.getStorageBase(),
-            (storageBase, credGenerator) ->
-                credGenerator == null
-                    ? createAzureCredentialsGenerator(storageBase)
-                    : credGenerator);
+        credGenerators.computeIfAbsent(ctx.getStorageBase(), this::createAzureCredentialsGenerator);
 
     return generator.generate(ctx);
   }
 
-  private AzureCredentialsGenerator createAzureCredentialsGenerator(String storageBase) {
+  private AzureCredentialsGenerator createAzureCredentialsGenerator(NormalizedURL storageBase) {
     ADLSLocationUtils.ADLSLocationParts locParts = ADLSLocationUtils.parseLocation(storageBase);
     ADLSStorageConfig config = adlsConfigurations.get(locParts.accountName());
 

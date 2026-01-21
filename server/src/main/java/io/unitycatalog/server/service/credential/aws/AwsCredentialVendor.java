@@ -3,6 +3,7 @@ package io.unitycatalog.server.service.credential.aws;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,8 +11,8 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class AwsCredentialVendor {
 
-  private final Map<String, S3StorageConfig> s3Configurations;
-  private final Map<String, CredentialsGenerator> credGenerators = new ConcurrentHashMap<>();
+  private final Map<NormalizedURL, S3StorageConfig> s3Configurations;
+  private final Map<NormalizedURL, CredentialsGenerator> credGenerators = new ConcurrentHashMap<>();
 
   public AwsCredentialVendor(ServerProperties serverProperties) {
     this.s3Configurations = serverProperties.getS3Configurations();
@@ -50,10 +51,8 @@ public class AwsCredentialVendor {
     }
 
     CredentialsGenerator generator =
-        credGenerators.compute(
-            context.getStorageBase(),
-            (storageBase, credGenerator) ->
-                credGenerator == null ? createCredentialsGenerator(config) : credGenerator);
+        credGenerators.computeIfAbsent(
+            context.getStorageBase(), storageBase -> createCredentialsGenerator(config));
 
     return generator.generate(context);
   }

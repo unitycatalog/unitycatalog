@@ -113,7 +113,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   private ArgumentMatcher<CredentialContext> isCredentialContextForCloudPath(
       UriScheme scheme, String path) {
     return arg -> arg.getStorageScheme().equals(scheme)
-        && arg.getStorageBase().contains(path);
+        && arg.getStorageBase().toString().contains(path);
   }
 
   /**
