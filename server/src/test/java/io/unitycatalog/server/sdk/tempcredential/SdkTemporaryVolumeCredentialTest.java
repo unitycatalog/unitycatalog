@@ -24,7 +24,9 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.volume.SdkVolumeOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.URI;
+import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -46,6 +48,7 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
     return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
   }
 
+  @SneakyThrows
   @BeforeEach
   @Override
   public void setUp() {
@@ -53,6 +56,7 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
     temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
     volumeOperations = createVolumeOperations(serverConfig);
     schemaOperations = createSchemaOperations(serverConfig);
+    createCatalogAndSchema();
   }
 
   protected void createCatalogAndSchema() throws ApiException {
@@ -68,7 +72,6 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
   @MethodSource("getArgumentsForParameterizedTests")
   public void testGenerateTemporaryCredentialsWhereConfIsProvided(
       String scheme, boolean isConfiguredPath) throws ApiException {
-    createCatalogAndSchema();
     String url = getTestCloudPath(scheme, isConfiguredPath);
 
     URI uri = URI.create(url);
@@ -98,5 +101,27 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
                       generateTemporaryVolumeCredential))
           .isInstanceOf(ApiException.class);
     }
+  }
+
+  @Test
+  public void testGenerateTemporaryCredentialsFromMasterRole() throws ApiException {
+    String volumeLocation = AWS_EXTERNAL_LOCATION_PATH + "/volume";
+    String volumeName = "testvolume-" + volumeLocation.hashCode();
+    CreateVolumeRequestContent createVolumeRequest =
+        new CreateVolumeRequestContent()
+            .name(volumeName)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation(volumeLocation);
+    VolumeInfo volumeInfo = volumeOperations.createVolume(createVolumeRequest);
+    GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential =
+        new GenerateTemporaryVolumeCredential()
+            .volumeId(volumeInfo.getVolumeId())
+            .operation(VolumeOperation.WRITE_VOLUME);
+    TemporaryCredentials temporaryCredentials =
+        temporaryCredentialsApi.generateTemporaryVolumeCredentials(
+            generateTemporaryVolumeCredential);
+    EchoAwsStsClient.assertAwsCredential(temporaryCredentials);
   }
 }

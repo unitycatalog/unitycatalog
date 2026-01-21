@@ -24,6 +24,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.net.URI;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -91,5 +92,22 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
                       generateTemporaryTableCredential))
           .isInstanceOf(ApiException.class);
     }
+  }
+
+  @Test
+  public void testGenerateTemporaryCredentialsFromMasterRole() throws ApiException {
+    createCatalogAndSchema();
+    String tableLocation = AWS_EXTERNAL_LOCATION_PATH + "/table";
+    String tableName = "testtable-" + tableLocation.hashCode();
+    TableInfo tableInfo =
+        BaseTableCRUDTest.createTestingTable(
+            tableName, TableType.EXTERNAL, Optional.of(tableLocation), tableOperations);
+    GenerateTemporaryTableCredential generateTemporaryTableCredential =
+        new GenerateTemporaryTableCredential()
+            .tableId(tableInfo.getTableId())
+            .operation(TableOperation.READ_WRITE);
+    TemporaryCredentials temporaryCredentials =
+        temporaryCredentialsApi.generateTemporaryTableCredentials(generateTemporaryTableCredential);
+    EchoAwsStsClient.assertAwsCredential(temporaryCredentials);
   }
 }

@@ -298,4 +298,21 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
           .isInstanceOf(ApiException.class);
     }
   }
+
+  @Test
+  public void testGenerateTemporaryCredentialsFromMasterRole() throws ApiException {
+    String modelVersionLocation = AWS_EXTERNAL_LOCATION_PATH + "/model";
+    createCommonResources(modelVersionLocation);
+    GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredential =
+        new GenerateTemporaryModelVersionCredential()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .modelName(MODEL_NAME)
+            .version(2L)
+            .operation(ModelVersionOperation.READ_WRITE_MODEL_VERSION);
+    TemporaryCredentials temporaryCredentials =
+        temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
+            generateTemporaryModelVersionCredential);
+    EchoAwsStsClient.assertAwsCredential(temporaryCredentials);
+  }
 }

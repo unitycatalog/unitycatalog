@@ -2,6 +2,8 @@ package io.unitycatalog.server.persist.dao;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.CreateCredentialRequest;
@@ -158,6 +160,16 @@ public class CredentialDAO extends IdentifiableDAO {
     return credentialInfo;
   }
 
+  private <T> T parseCredential(CredentialType credentialType, Class<T> clazz) {
+    if (getCredentialType() != credentialType) {
+      // Mismatch credential type.
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          String.format("Storage credential '%s' is not %s.", getName(), credentialType));
+    }
+    return parseCredential(clazz);
+  }
+
   private <T> T parseCredential(Class<T> clazz) {
     try {
       return objectMapper.readValue(credential, clazz);
@@ -186,5 +198,9 @@ public class CredentialDAO extends IdentifiableDAO {
     return new AwsIamRoleResponse()
         .roleArn(awsIamRoleRequest.getRoleArn())
         .externalId(UUID.randomUUID().toString());
+  }
+
+  public AwsIamRoleResponse getAwsIamRoleResponse() {
+    return parseCredential(CredentialType.AWS_IAM_ROLE, AwsIamRoleResponse.class);
   }
 }

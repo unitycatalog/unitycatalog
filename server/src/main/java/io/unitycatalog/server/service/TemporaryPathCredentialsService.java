@@ -9,8 +9,8 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
-import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 
 import java.util.Collections;
@@ -23,10 +23,10 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryPathCredentialsService {
-  private final CloudCredentialVendor cloudCredentialVendor;
+  private final StorageCredentialVendor storageCredentialVendor;
 
-  public TemporaryPathCredentialsService(CloudCredentialVendor cloudCredentialVendor) {
-    this.cloudCredentialVendor = cloudCredentialVendor;
+  public TemporaryPathCredentialsService(StorageCredentialVendor storageCredentialVendor) {
+    this.storageCredentialVendor = storageCredentialVendor;
   }
 
   private Set<CredentialContext.Privilege> pathOperationToPrivileges(PathOperation pathOperation) {
@@ -112,7 +112,7 @@ public class TemporaryPathCredentialsService {
       @AuthorizeKey(key = "operation")
       GenerateTemporaryPathCredential generateTemporaryPathCredential) {
     return HttpResponse.ofJson(
-        cloudCredentialVendor.vendCredential(
+        storageCredentialVendor.vendCredential(
             NormalizedURL.from(generateTemporaryPathCredential.getUrl()),
             pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
   }

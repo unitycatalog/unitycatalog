@@ -62,7 +62,7 @@ public abstract class BaseServerTest {
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
   }
 
-  protected void setUpCredentialOperations() {}
+  protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
   @SneakyThrows
   @BeforeEach
@@ -84,7 +84,7 @@ public abstract class BaseServerTest {
 
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
-      setUpCredentialOperations();
+      setUpCredentialOperations(initServerProperties);
       hibernateConfigurator = new HibernateConfigurator(initServerProperties);
       unityCatalogServer =
           UnityCatalogServer.builder()

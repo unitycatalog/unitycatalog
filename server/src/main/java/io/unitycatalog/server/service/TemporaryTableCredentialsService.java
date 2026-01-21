@@ -12,7 +12,7 @@ import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 
 import java.util.Collections;
@@ -26,11 +26,11 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryTableCredentialsService {
   private final TableRepository tableRepository;
-  private final CloudCredentialVendor cloudCredentialVendor;
+  private final StorageCredentialVendor storageCredentialVendor;
 
-  public TemporaryTableCredentialsService(CloudCredentialVendor cloudCredentialVendor,
+  public TemporaryTableCredentialsService(StorageCredentialVendor storageCredentialVendor,
                                           Repositories repositories) {
-    this.cloudCredentialVendor = cloudCredentialVendor;
+    this.storageCredentialVendor = storageCredentialVendor;
     this.tableRepository = repositories.getTableRepository();
   }
 
@@ -50,7 +50,7 @@ public class TemporaryTableCredentialsService {
     String tableId = generateTemporaryTableCredential.getTableId();
     NormalizedURL storageLocation = tableRepository.getStorageLocationForTableOrStagingTable(
         UUID.fromString(tableId));
-    return HttpResponse.ofJson(cloudCredentialVendor.vendCredential(storageLocation,
+    return HttpResponse.ofJson(storageCredentialVendor.vendCredential(storageLocation,
             tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
   }
 
@@ -63,4 +63,3 @@ public class TemporaryTableCredentialsService {
     };
   }
 }
-

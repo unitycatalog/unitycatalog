@@ -136,9 +136,9 @@ public class FileOperations {
   private URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
     String bucketName = parsedUri.getHost();
     String path = parsedUri.getPath().substring(1); // Remove leading '/'
-    String accessKey = serverProperties.get(Property.AWS_S3_ACCESS_KEY);
-    String secretKey = serverProperties.get(Property.AWS_S3_SECRET_KEY);
-    String sessionToken = serverProperties.get(Property.AWS_S3_SESSION_TOKEN);
+    String accessKey = serverProperties.get(Property.AWS_ACCESS_KEY);
+    String secretKey = serverProperties.get(Property.AWS_SECRET_KEY);
+    String sessionToken = serverProperties.get(Property.AWS_SESSION_TOKEN);
     String region = serverProperties.get(Property.AWS_REGION);
 
     BasicSessionCredentials sessionCredentials =

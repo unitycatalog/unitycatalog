@@ -1,13 +1,21 @@
 package io.unitycatalog.server.service.credential.aws;
 
+import io.unitycatalog.server.model.AwsIamRoleResponse;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.StsClientBuilder;
+import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 /**
@@ -31,10 +39,10 @@ public interface CredentialsGenerator {
     private final String secretKey;
     private final String sessionToken;
 
-    public StaticCredentialsGenerator(String accessKeyId, String secretKey, String sessionToken) {
-      this.accessKeyId = accessKeyId;
-      this.secretKey = secretKey;
-      this.sessionToken = sessionToken;
+    public StaticCredentialsGenerator(S3StorageConfig config) {
+      this.accessKeyId = config.getAccessKey();
+      this.secretKey = config.getSecretKey();
+      this.sessionToken = config.getSessionToken();
     }
 
     @Override
@@ -49,42 +57,60 @@ public interface CredentialsGenerator {
 
   class StsCredentialsGenerator implements CredentialsGenerator {
     private final StsClient stsClient;
-    private final String awsRoleArn;
+    // This is the role ARN to assume for the per-bucket config. Otherwise, the CredentialContext
+    // contains a CredentialDAO and it will assume the role ARN in CredentialDAO instead.
+    private final String staticAwsRoleArn;
 
-    public StsCredentialsGenerator(
-        String region, String accessKey, String secretKey, String awsRoleArn) {
-      this.stsClient =
-          StsClient.builder()
-              .region(Region.of(region))
-              .credentialsProvider(
-                  StaticCredentialsProvider.create(
-                      AwsBasicCredentials.create(accessKey, secretKey)))
-              .build();
-      this.awsRoleArn = awsRoleArn;
-    }
+    public StsCredentialsGenerator(StsClientBuilder builder, S3StorageConfig config) {
+      // Get STS region
+      Region region;
+      if (config.getRegion() != null && !config.getRegion().isEmpty()) {
+        region = Region.of(config.getRegion());
+      } else {
+        try {
+          region = DefaultAwsRegionProviderChain.builder().build().getRegion();
+        } catch (SdkClientException e) {
+          region = Region.AWS_GLOBAL;
+        }
+      }
 
-    public StsCredentialsGenerator(String region, String awsRoleArn) {
-      this.stsClient =
-          StsClient.builder()
-              .region(Region.of(region))
-              .credentialsProvider(DefaultCredentialsProvider.create())
-              .build();
-      this.awsRoleArn = awsRoleArn;
+      AwsCredentialsProvider credentialsProvider;
+      if (config.getAccessKey() != null && !config.getAccessKey().isEmpty()) {
+        // Build STS client using keys if they are specified in the config.
+        credentialsProvider =
+            StaticCredentialsProvider.create(
+                AwsBasicCredentials.create(config.getAccessKey(), config.getSecretKey()));
+      } else {
+        // Otherwise just defer to DefaultCredentialsProvider
+        credentialsProvider = DefaultCredentialsProvider.create();
+      }
+
+      this.stsClient = builder.region(region).credentialsProvider(credentialsProvider).build();
+      this.staticAwsRoleArn = config.getAwsRoleArn();
     }
 
     @Override
     public Credentials generate(CredentialContext ctx) {
+      Optional<AwsIamRoleResponse> awsIamRole =
+          ctx.getCredentialDAO().map(CredentialDAO::getAwsIamRoleResponse);
+      // Assume the role along with the externalId specified in CredentialDAO. If there's no
+      // CredentialDAO, assume staticAwsRoleArn from the per-bucket config.
+      String roleArn = awsIamRole.map(AwsIamRoleResponse::getRoleArn).orElse(staticAwsRoleArn);
+      // externalId is only from CredentialDAO. Per-bucket config does not need it.
+      Optional<String> externalId = awsIamRole.map(AwsIamRoleResponse::getExternalId);
+
       String awsPolicy = AwsPolicyGenerator.generatePolicy(ctx.getPrivileges(), ctx.getLocations());
       String roleSessionName = "uc-%s".formatted(UUID.randomUUID());
 
-      return stsClient
-          .assumeRole(
-              r ->
-                  r.roleArn(awsRoleArn)
-                      .policy(awsPolicy)
-                      .roleSessionName(roleSessionName)
-                      .durationSeconds((int) Duration.ofHours(1).toSeconds()))
-          .credentials();
+      AssumeRoleRequest.Builder roleRequestBuilder =
+          AssumeRoleRequest.builder()
+              .roleArn(roleArn)
+              .policy(awsPolicy)
+              .roleSessionName(roleSessionName)
+              .durationSeconds((int) Duration.ofHours(1).toSeconds());
+      externalId.ifPresent(roleRequestBuilder::externalId);
+
+      return stsClient.assumeRole(roleRequestBuilder.build()).credentials();
     }
   }
 }

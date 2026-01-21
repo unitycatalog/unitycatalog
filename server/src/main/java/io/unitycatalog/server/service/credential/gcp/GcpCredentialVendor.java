@@ -35,6 +35,15 @@ public class GcpCredentialVendor {
   }
 
   public AccessToken vendGcpToken(CredentialContext credentialContext) {
+    credentialContext
+        .getCredentialDAO()
+        .ifPresent(
+            c -> {
+              throw new BaseException(
+                  ErrorCode.UNIMPLEMENTED,
+                  "Storage credential/external location for GCP is not supported yet.");
+            });
+
     NormalizedURL storageBase = credentialContext.getStorageBase();
     GcsStorageConfig storageConfig = gcsConfigurations.get(storageBase);
 
