@@ -366,7 +366,7 @@ private class UCProxy(
       case None =>
         // Determine if server-side planning is enabled by checking SparkSession config
         val sspEnabled = try {
-          SparkSession.getActiveSession() match {
+          SparkSession.getActiveSession match {
             case Some(spark) =>
               val configValue = spark.conf.get(
                 "spark.databricks.delta.catalog.enableServerSidePlanning",

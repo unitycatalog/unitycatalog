@@ -63,7 +63,8 @@ public class UCSingleCatalogCredentialFallbackTest {
   /**
    * Helper method to create a minimal TableInfo for testing.
    */
-  private static TableInfo createTestTable(String tableName, String schemaName, String storageLocation) {
+  private static TableInfo createTestTable(
+      String tableName, String schemaName, String storageLocation) {
     TableInfo table = new TableInfo();
     table.setName(tableName);
     table.setSchemaName(schemaName);
