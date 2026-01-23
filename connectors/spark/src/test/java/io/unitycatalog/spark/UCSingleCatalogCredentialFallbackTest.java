@@ -21,403 +21,515 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.Table;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Unit tests for credential fallback behavior in UCSingleCatalog.
  *
- * <p>These tests verify:
- * - Credential fallback chain: READ_WRITE → READ → None
- * - Server-side planning (SSP) configuration behavior
- * - SSP disabled (default): Fail-fast with clear exception when credentials fail
- * - SSP enabled: Allow empty credentials with info logs when credentials fail
- * - Security: Ensure credentials are never bypassed unintentionally
+ * <h2>Test Coverage</h2>
  *
- * <p>Tests are organized into nested classes by SSP configuration:
- * - SSPDisabledTests: Tests with spark.databricks.delta.catalog.enableServerSidePlanning=false
- * - SSPEnabledTests: Tests with spark.databricks.delta.catalog.enableServerSidePlanning=true
+ * This test suite verifies the credential fallback chain when loading Unity Catalog tables:
  *
- * <p>Each nested class manages its own SparkSession lifecycle to ensure proper config isolation.
+ * <ol>
+ *   <li>First attempt: READ_WRITE credentials
+ *   <li>Fallback: READ credentials
+ *   <li>Final fallback: No credentials (behavior depends on SSP config)
+ * </ol>
+ *
+ * <h2>Test Matrix</h2>
+ *
+ * Tests cover all combinations of:
+ *
+ * <ul>
+ *   <li><b>Credential Scenarios:</b>
+ *       <ul>
+ *         <li>READ_WRITE succeeds (1 API call)
+ *         <li>READ_WRITE fails, READ succeeds (2 API calls)
+ *         <li>Both fail (2 API calls)
+ *       </ul>
+ *   <li><b>SSP Modes:</b>
+ *       <ul>
+ *         <li>Disabled (default): Fail-fast when credentials unavailable
+ *         <li>Enabled: Allow empty credentials for FGAC scenarios
+ *       </ul>
+ *   <li><b>Table Types:</b>
+ *       <ul>
+ *         <li>MANAGED tables
+ *         <li>EXTERNAL tables
+ *       </ul>
+ * </ul>
+ *
+ * <h2>Security Guarantees</h2>
+ *
+ * <ul>
+ *   <li>Default behavior (SSP disabled) is secure: fails fast without credentials
+ *   <li>Empty credentials only allowed when SSP explicitly enabled
+ *   <li>Clear error messages include table identifiers for debugging
+ * </ul>
+ *
+ * <h2>Test Architecture</h2>
+ *
+ * <ul>
+ *   <li>Uses mocking to simulate API failures without live server
+ *   <li>Separate SparkSession per SSP mode for proper isolation
+ *   <li>Parameterized tests to ensure complete matrix coverage
+ *   <li>Reflection-based mock injection for internal API testing
+ * </ul>
+ *
+ * @see UCSingleCatalog
+ * @see io.unitycatalog.spark.auth.CredPropsUtil
  */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Execution(ExecutionMode.SAME_THREAD)
 public class UCSingleCatalogCredentialFallbackTest {
 
-  /**
-   * Helper method to inject mocked APIs into an object using reflection.
-   */
-  private static void injectMockedApiIntoObject(Object target, String fieldName, Object mockApi)
-      throws Exception {
-    Field field = target.getClass().getDeclaredField(fieldName);
-    field.setAccessible(true);
-    field.set(target, mockApi);
+  private SparkSession createSparkSessionForMode(SspMode mode) {
+    return SparkSession.builder()
+        .master("local[*]")
+        .appName("test-ssp-" + mode.name().toLowerCase() + "-" + System.currentTimeMillis())
+        .config(
+            "spark.databricks.delta.catalog.enableServerSidePlanning",
+            String.valueOf(mode.configValue))
+        .getOrCreate();
   }
 
   /**
-   * Helper method to create a minimal TableInfo for testing.
+   * Parameterized test covering the full credential fallback matrix: - 3 credential scenarios (RW
+   * succeeds, RW fails/R succeeds, both fail) - 2 SSP modes (enabled, disabled) = 6 test
+   * combinations
    */
-  private static TableInfo createTestTable(
-      String tableName, String schemaName, String storageLocation) {
-    TableInfo table = new TableInfo();
-    table.setName(tableName);
-    table.setSchemaName(schemaName);
-    table.setCatalogName("unity");
-    table.setTableType(TableType.MANAGED);
-    table.setDataSourceFormat(DataSourceFormat.DELTA);
-    table.setStorageLocation(storageLocation);
-    table.setTableId(UUID.randomUUID().toString());
-    table.setColumns(Collections.emptyList());
-    table.setProperties(Collections.emptyMap());
-    table.setCreatedAt(System.currentTimeMillis());
-    return table;
-  }
+  @ParameterizedTest(name = "{0}, {1}")
+  @MethodSource("credentialFallbackScenarios")
+  @DisplayName("Credential fallback behavior")
+  void testCredentialFallback(SspMode sspMode, CredentialScenario scenario) throws Exception {
 
-  /**
-   * Helper method to create test temporary credentials.
-   */
-  private static TemporaryCredentials createTestCredentials(String token) {
-    TemporaryCredentials creds = new TemporaryCredentials();
+    // Create the correct SparkSession for this SSP mode
+    SparkSession session = createSparkSessionForMode(sspMode);
 
-    // Create AWS credentials
-    AwsCredentials awsCreds = new AwsCredentials();
-    awsCreds.setAccessKeyId("test-access-key");
-    awsCreds.setSecretAccessKey("test-secret-key");
-    awsCreds.setSessionToken(token);
-    creds.setAwsTempCredentials(awsCreds);
+    try {
+      // Create fresh catalog fixture
+      CatalogTestFixture fixture = CatalogTestFixture.create();
 
-    creds.setExpirationTime(System.currentTimeMillis() + 3600000);
-    return creds;
-  }
+      // Setup test data
+      TableInfo testTable =
+          TestData.createTable(
+              TestData.DEFAULT_TABLE_NAME,
+              TestData.DEFAULT_SCHEMA_NAME,
+              TestData.DEFAULT_STORAGE_LOCATION);
+      TemporaryCredentials rwCreds = TestData.createCredentials(TestData.RW_TOKEN);
+      TemporaryCredentials readCreds = TestData.createCredentials(TestData.READ_TOKEN);
 
-  /**
-   * Tests with server-side planning disabled (default behavior).
-   * When credentials fail, the catalog should throw an ApiException.
-   */
-  @Nested
-  @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  class SSPDisabledTests {
-    private SparkSession spark;
-    private UCSingleCatalog catalog;
-    private TemporaryCredentialsApi mockCredentialsApi;
-    private TablesApi mockTablesApi;
+      // Configure mocks based on scenario
+      when(fixture.mockTablesApi.getTable(any(), any(), any())).thenReturn(testTable);
+      scenario.configureMocks(fixture.mockCredentialsApi, rwCreds, readCreds);
 
-    @BeforeAll
-    void setupSession() {
-      spark = SparkSession.builder()
-          .master("local[*]")
-          .appName("test-ssp-disabled")
-          .config("spark.databricks.delta.catalog.enableServerSidePlanning", "false")
-          .getOrCreate();
-    }
+      // Execute and assert based on expected behavior
+      Identifier tableId =
+          TestData.tableIdentifier(TestData.DEFAULT_SCHEMA_NAME, TestData.DEFAULT_TABLE_NAME);
 
-    @BeforeEach
-    void setupCatalog() throws Exception {
-      // Disable DeltaCatalog loading to avoid unwanted dependencies
-      UCSingleCatalog$.MODULE$.LOAD_DELTA_CATALOG().set(false);
-
-      catalog = new UCSingleCatalog();
-      mockCredentialsApi = mock(TemporaryCredentialsApi.class);
-      mockTablesApi = mock(TablesApi.class);
-
-      Map<String, String> options = new HashMap<>();
-      options.put("uri", "http://localhost:8080");
-      options.put("token", "test-token");
-      catalog.initialize("unity", new CaseInsensitiveStringMap(options));
-
-      // Inject mocked APIs using reflection
-      Field delegateField = UCSingleCatalog.class.getDeclaredField("delegate");
-      delegateField.setAccessible(true);
-      Object delegate = delegateField.get(catalog);
-      injectMockedApiIntoObject(delegate, "temporaryCredentialsApi", mockCredentialsApi);
-      injectMockedApiIntoObject(delegate, "tablesApi", mockTablesApi);
-    }
-
-    @AfterAll
-    void teardownSession() {
-      if (spark != null) {
-        spark.stop();
+      if (shouldSucceed(scenario, sspMode)) {
+        // Table load should succeed
+        Table result = fixture.catalog.loadTable(tableId);
+        assertThat(result).isNotNull();
+      } else {
+        // Table load should throw exception (SSP disabled + both creds fail)
+        assertThatThrownBy(() -> fixture.catalog.loadTable(tableId))
+            .isInstanceOf(ApiException.class)
+            .hasMessageContaining("generateTemporaryTableCredentials failed");
       }
+
+      // Verify expected number of API calls
+      verify(fixture.mockCredentialsApi, times(scenario.expectedApiCalls))
+          .generateTemporaryTableCredentials(any());
+    } finally {
+      session.stop();
     }
+  }
 
-    @Test
-    public void testCredentialFallback_ReadWriteSucceeds() throws Exception {
-      // Setup: Mock API to return valid READ_WRITE credentials
-      TableInfo testTable = createTestTable("test_table", "test_schema", "s3://bucket/path");
-      TemporaryCredentials testCreds = createTestCredentials("rw-token");
-
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any())).thenReturn(testCreds);
-
-      // Execute: Load table
-      Identifier tableId = Identifier.of(new String[] {"test_schema"}, "test_table");
-      Table result = catalog.loadTable(tableId);
-
-      // Verify: Table loads successfully
-      assertThat(result).isNotNull();
-
-      // Verify: Only one API call was made (READ_WRITE succeeded)
-      verify(mockCredentialsApi, times(1)).generateTemporaryTableCredentials(any());
+  /** Determines if table load should succeed given scenario and SSP mode. */
+  private boolean shouldSucceed(CredentialScenario scenario, SspMode sspMode) {
+    // Always succeeds if credentials available
+    if (scenario.succeeds) {
+      return true;
     }
+    // When both creds fail: succeeds only if SSP enabled
+    return sspMode == SspMode.ENABLED;
+  }
 
-    @Test
-    public void testCredentialFallback_ReadWriteFailsReadSucceeds() throws Exception {
-      // Setup: Mock API to fail for READ_WRITE but succeed for READ
-      TableInfo testTable = createTestTable("test_table", "test_schema", "s3://bucket/path");
-      TemporaryCredentials readCreds = createTestCredentials("read-token");
+  /** Provides test parameters: all combinations of SSP mode and credential scenario. */
+  static Stream<Arguments> credentialFallbackScenarios() {
+    return Stream.of(SspMode.values())
+        .flatMap(
+            sspMode ->
+                Stream.of(CredentialScenario.values())
+                    .map(scenario -> Arguments.of(sspMode, scenario)));
+  }
 
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any()))
-          .thenThrow(new ApiException("Permission denied for READ_WRITE"))
-          .thenReturn(readCreds);
+  @ParameterizedTest
+  @EnumSource(SspMode.class)
+  @DisplayName("Exception message contains table identifier when credentials fail")
+  void testExceptionMessageContainsTableInfo(SspMode sspMode) throws Exception {
+    SparkSession session = createSparkSessionForMode(sspMode);
 
-      // Execute: Load table
-      Identifier tableId = Identifier.of(new String[] {"test_schema"}, "test_table");
-      Table result = catalog.loadTable(tableId);
+    try {
+      CatalogTestFixture fixture = CatalogTestFixture.create();
 
-      // Verify: Table loads successfully with READ credentials
-      assertThat(result).isNotNull();
+      // Use distinctive table name to verify it appears in error
+      String tableName = "important_table";
+      String schemaName = "sensitive_schema";
+      TableInfo testTable =
+          TestData.createTable(tableName, schemaName, TestData.DEFAULT_STORAGE_LOCATION);
 
-      // Verify: Two API calls were made (READ_WRITE failed, READ succeeded)
-      verify(mockCredentialsApi, times(2)).generateTemporaryTableCredentials(any());
+      when(fixture.mockTablesApi.getTable(any(), any(), any())).thenReturn(testTable);
+      when(fixture.mockCredentialsApi.generateTemporaryTableCredentials(any()))
+          .thenThrow(new ApiException("Permission denied"))
+          .thenThrow(new ApiException("Permission denied"));
+
+      Identifier tableId = TestData.tableIdentifier(schemaName, tableName);
+
+      if (sspMode == SspMode.DISABLED) {
+        // Should throw with table name in message
+        assertThatThrownBy(() -> fixture.catalog.loadTable(tableId))
+            .isInstanceOf(ApiException.class)
+            .hasMessageContaining(tableName);
+      } else {
+        // SSP enabled - succeeds with empty credentials, no exception
+        Table result = fixture.catalog.loadTable(tableId);
+        assertThat(result).isNotNull();
+      }
+    } finally {
+      session.stop();
     }
+  }
 
-    @Test
-    public void testCredentialFallback_BothFail_ThrowsException() throws Exception {
-      // Setup: Mock API to fail both credential attempts
-      TableInfo testTable = createTestTable("test_table", "test_schema", "s3://bucket/path");
+  /**
+   * Parameterized test covering credential fallback for all table types: - 2 table types (MANAGED,
+   * EXTERNAL) - 3 credential scenarios (RW succeeds, RW fails/R succeeds, both fail) - 2 SSP modes
+   * (enabled, disabled) = 12 test combinations
+   */
+  @ParameterizedTest(name = "{0} table, {1}, {2}")
+  @MethodSource("tableTypeScenarios")
+  @DisplayName("Credential fallback works for all table types")
+  void testCredentialFallbackByTableType(
+      TableTypeScenario tableType, SspMode sspMode, CredentialScenario scenario) throws Exception {
 
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any()))
-          .thenThrow(new ApiException("Permission denied for READ_WRITE"))
-          .thenThrow(new ApiException("Permission denied for READ"));
+    SparkSession session = createSparkSessionForMode(sspMode);
 
-      // Execute & Verify: Loading table throws exception (SSP disabled = fail-fast)
-      Identifier tableId = Identifier.of(new String[] {"test_schema"}, "test_table");
-      assertThatThrownBy(() -> catalog.loadTable(tableId))
+    try {
+      CatalogTestFixture fixture = CatalogTestFixture.create();
+
+      // Create table with specific type
+      TableInfo testTable =
+          TestData.createTable(
+              TestData.DEFAULT_TABLE_NAME,
+              TestData.DEFAULT_SCHEMA_NAME,
+              TestData.DEFAULT_STORAGE_LOCATION);
+      testTable.setTableType(tableType.tableType);
+
+      TemporaryCredentials rwCreds = TestData.createCredentials(TestData.RW_TOKEN);
+      TemporaryCredentials readCreds = TestData.createCredentials(TestData.READ_TOKEN);
+
+      // Configure mocks based on scenario
+      when(fixture.mockTablesApi.getTable(any(), any(), any())).thenReturn(testTable);
+      scenario.configureMocks(fixture.mockCredentialsApi, rwCreds, readCreds);
+
+      // Execute and assert based on expected behavior
+      Identifier tableId =
+          TestData.tableIdentifier(TestData.DEFAULT_SCHEMA_NAME, TestData.DEFAULT_TABLE_NAME);
+
+      if (shouldSucceed(scenario, sspMode)) {
+        // Table load should succeed
+        Table result = fixture.catalog.loadTable(tableId);
+        assertThat(result).isNotNull();
+      } else {
+        // Table load should throw exception (SSP disabled + both creds fail)
+        assertThatThrownBy(() -> fixture.catalog.loadTable(tableId))
+            .isInstanceOf(ApiException.class)
+            .hasMessageContaining("generateTemporaryTableCredentials failed");
+      }
+
+      // Verify expected number of API calls
+      verify(fixture.mockCredentialsApi, times(scenario.expectedApiCalls))
+          .generateTemporaryTableCredentials(any());
+    } finally {
+      session.stop();
+    }
+  }
+
+  static Stream<Arguments> tableTypeScenarios() {
+    return Stream.of(TableTypeScenario.values())
+        .flatMap(
+            tableType ->
+                Stream.of(SspMode.values())
+                    .flatMap(
+                        sspMode ->
+                            Stream.of(CredentialScenario.values())
+                                .map(scenario -> Arguments.of(tableType, sspMode, scenario))));
+  }
+
+  @Test
+  @DisplayName("Gracefully handle missing SparkSession")
+  void testMissingSparkSession() throws Exception {
+    // Clear active session to simulate edge case
+    SparkSession.clearActiveSession();
+
+    CatalogTestFixture fixture = CatalogTestFixture.create();
+
+    TableInfo testTable =
+        TestData.createTable(
+            TestData.DEFAULT_TABLE_NAME,
+            TestData.DEFAULT_SCHEMA_NAME,
+            TestData.DEFAULT_STORAGE_LOCATION);
+
+    when(fixture.mockTablesApi.getTable(any(), any(), any())).thenReturn(testTable);
+    when(fixture.mockCredentialsApi.generateTemporaryTableCredentials(any()))
+        .thenThrow(new ApiException("Permission denied"))
+        .thenThrow(new ApiException("Permission denied"));
+
+    Identifier tableId =
+        TestData.tableIdentifier(TestData.DEFAULT_SCHEMA_NAME, TestData.DEFAULT_TABLE_NAME);
+
+    // Should fail-fast when no SparkSession (defaults to SSP disabled)
+    assertThatThrownBy(() -> fixture.catalog.loadTable(tableId))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("generateTemporaryTableCredentials failed");
+  }
+
+  @Test
+  @DisplayName("Handle invalid SSP config value gracefully")
+  void testInvalidSspConfigValue() throws Exception {
+    // Create session with invalid config value
+    SparkSession invalidSession =
+        SparkSession.builder()
+            .master("local[*]")
+            .appName("test-invalid-config")
+            .config("spark.databricks.delta.catalog.enableServerSidePlanning", "invalid-value")
+            .getOrCreate();
+
+    try {
+      SparkSession.setActiveSession(invalidSession);
+
+      CatalogTestFixture fixture = CatalogTestFixture.create();
+
+      TableInfo testTable =
+          TestData.createTable(
+              TestData.DEFAULT_TABLE_NAME,
+              TestData.DEFAULT_SCHEMA_NAME,
+              TestData.DEFAULT_STORAGE_LOCATION);
+
+      when(fixture.mockTablesApi.getTable(any(), any(), any())).thenReturn(testTable);
+      when(fixture.mockCredentialsApi.generateTemporaryTableCredentials(any()))
+          .thenThrow(new ApiException("Permission denied"))
+          .thenThrow(new ApiException("Permission denied"));
+
+      Identifier tableId =
+          TestData.tableIdentifier(TestData.DEFAULT_SCHEMA_NAME, TestData.DEFAULT_TABLE_NAME);
+
+      // Should fail-fast when invalid config (defaults to SSP disabled)
+      assertThatThrownBy(() -> fixture.catalog.loadTable(tableId))
           .isInstanceOf(ApiException.class)
           .hasMessageContaining("generateTemporaryTableCredentials failed");
+    } finally {
+      invalidSession.stop();
+    }
+  }
 
-      // Verify: Two API calls were made (both READ_WRITE and READ attempted)
-      verify(mockCredentialsApi, times(2)).generateTemporaryTableCredentials(any());
+  /** Server-Side Planning configuration modes. */
+  enum SspMode {
+    ENABLED(true, "SSP enabled"),
+    DISABLED(false, "SSP disabled");
+
+    final boolean configValue;
+    final String displayName;
+
+    SspMode(boolean configValue, String displayName) {
+      this.configValue = configValue;
+      this.displayName = displayName;
     }
 
-    @Test
-    public void testCredentialFallback_ExceptionMessageContainsTableInfo() throws Exception {
-      // Setup: Mock API to fail both credential attempts
-      TableInfo testTable =
-          createTestTable("important_table", "sensitive_schema", "s3://bucket/path");
+    @Override
+    public String toString() {
+      return displayName;
+    }
+  }
 
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any()))
-          .thenThrow(new ApiException("Permission denied"))
-          .thenThrow(new ApiException("Permission denied"));
+  /** Credential generation scenarios for testing the fallback chain. */
+  enum CredentialScenario {
+    /** READ_WRITE credentials succeed on first attempt */
+    READ_WRITE_SUCCEEDS(
+        "RW succeeds",
+        1, // expected API calls
+        true, // succeeds
+        false // not read-only
+        ),
 
-      // Execute & Verify: Exception contains table identifier
-      Identifier tableId = Identifier.of(new String[] {"sensitive_schema"}, "important_table");
-      assertThatThrownBy(() -> catalog.loadTable(tableId))
-          .isInstanceOf(ApiException.class)
-          .hasMessageContaining("important_table");
+    /** READ_WRITE fails, READ succeeds on second attempt */
+    READ_WRITE_FAILS_READ_SUCCEEDS(
+        "RW fails, READ succeeds", 2, true, true // read-only
+        ),
+
+    /** Both READ_WRITE and READ fail */
+    BOTH_FAIL("Both fail", 2, false, false);
+
+    final String displayName;
+    final int expectedApiCalls;
+    final boolean succeeds;
+    final boolean readOnly;
+
+    CredentialScenario(
+        String displayName, int expectedApiCalls, boolean succeeds, boolean readOnly) {
+      this.displayName = displayName;
+      this.expectedApiCalls = expectedApiCalls;
+      this.succeeds = succeeds;
+      this.readOnly = readOnly;
     }
 
-    @Test
-    public void testCredentialFallback_ReadOnlyCredentialsSucceed() throws Exception {
-      // Setup: Mock API to fail READ_WRITE but succeed for READ
-      TableInfo testTable = createTestTable("readonly_table", "test_schema", "s3://bucket/path");
-      TemporaryCredentials readCreds = createTestCredentials("read-only-token");
+    /** Configure mocks for this scenario */
+    void configureMocks(
+        TemporaryCredentialsApi mockApi,
+        TemporaryCredentials rwCreds,
+        TemporaryCredentials readCreds)
+        throws ApiException {
+      switch (this) {
+        case READ_WRITE_SUCCEEDS:
+          when(mockApi.generateTemporaryTableCredentials(any())).thenReturn(rwCreds);
+          break;
+        case READ_WRITE_FAILS_READ_SUCCEEDS:
+          when(mockApi.generateTemporaryTableCredentials(any()))
+              .thenThrow(new ApiException("Permission denied for READ_WRITE"))
+              .thenReturn(readCreds);
+          break;
+        case BOTH_FAIL:
+          when(mockApi.generateTemporaryTableCredentials(any()))
+              .thenThrow(new ApiException("Permission denied for READ_WRITE"))
+              .thenThrow(new ApiException("Permission denied for READ"));
+          break;
+      }
+    }
 
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any()))
-          .thenThrow(new ApiException("Permission denied for READ_WRITE"))
-          .thenReturn(readCreds);
+    @Override
+    public String toString() {
+      return displayName;
+    }
+  }
 
-      // Execute: Load table (will get READ-only credentials)
-      Identifier tableId = Identifier.of(new String[] {"test_schema"}, "readonly_table");
-      Table result = catalog.loadTable(tableId);
+  /** Table type scenarios for testing. */
+  enum TableTypeScenario {
+    MANAGED(TableType.MANAGED),
+    EXTERNAL(TableType.EXTERNAL);
 
-      // Verify: Table loads successfully
-      assertThat(result).isNotNull();
+    final TableType tableType;
 
-      // Verify: Fallback to READ credentials worked
-      verify(mockCredentialsApi, times(2)).generateTemporaryTableCredentials(any());
+    TableTypeScenario(TableType tableType) {
+      this.tableType = tableType;
+    }
+
+    @Override
+    public String toString() {
+      return tableType.getValue();
     }
   }
 
   /**
-   * Tests with server-side planning enabled.
-   * When credentials fail, the catalog should proceed with empty credentials.
+   * Test fixture that encapsulates catalog setup and mock configuration. Handles the boilerplate of
+   * creating catalogs, injecting mocks, and managing lifecycle.
    */
-  @Nested
-  @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-  class SSPEnabledTests {
-    private SparkSession spark;
-    private UCSingleCatalog catalog;
-    private TemporaryCredentialsApi mockCredentialsApi;
-    private TablesApi mockTablesApi;
+  static class CatalogTestFixture {
+    final UCSingleCatalog catalog;
+    final TemporaryCredentialsApi mockCredentialsApi;
+    final TablesApi mockTablesApi;
 
-    @BeforeAll
-    void setupSession() {
-      spark = SparkSession.builder()
-          .master("local[*]")
-          .appName("test-ssp-enabled")
-          .config("spark.databricks.delta.catalog.enableServerSidePlanning", "true")
-          .getOrCreate();
-    }
-
-    @BeforeEach
-    void setupCatalog() throws Exception {
+    private CatalogTestFixture() throws Exception {
       // Disable DeltaCatalog loading to avoid unwanted dependencies
       UCSingleCatalog$.MODULE$.LOAD_DELTA_CATALOG().set(false);
 
-      catalog = new UCSingleCatalog();
-      mockCredentialsApi = mock(TemporaryCredentialsApi.class);
-      mockTablesApi = mock(TablesApi.class);
+      this.catalog = new UCSingleCatalog();
+      this.mockCredentialsApi = mock(TemporaryCredentialsApi.class);
+      this.mockTablesApi = mock(TablesApi.class);
 
+      // Initialize catalog
       Map<String, String> options = new HashMap<>();
       options.put("uri", "http://localhost:8080");
       options.put("token", "test-token");
       catalog.initialize("unity", new CaseInsensitiveStringMap(options));
 
       // Inject mocked APIs using reflection
+      injectMockedApis(catalog, mockCredentialsApi, mockTablesApi);
+    }
+
+    static CatalogTestFixture create() throws Exception {
+      return new CatalogTestFixture();
+    }
+
+    private static void injectMockedApis(
+        UCSingleCatalog catalog, TemporaryCredentialsApi credApi, TablesApi tablesApi)
+        throws Exception {
       Field delegateField = UCSingleCatalog.class.getDeclaredField("delegate");
       delegateField.setAccessible(true);
       Object delegate = delegateField.get(catalog);
-      injectMockedApiIntoObject(delegate, "temporaryCredentialsApi", mockCredentialsApi);
-      injectMockedApiIntoObject(delegate, "tablesApi", mockTablesApi);
+      injectMockedApiIntoObject(delegate, "temporaryCredentialsApi", credApi);
+      injectMockedApiIntoObject(delegate, "tablesApi", tablesApi);
     }
 
-    @AfterAll
-    void teardownSession() {
-      if (spark != null) {
-        spark.stop();
-      }
+    private static void injectMockedApiIntoObject(Object target, String fieldName, Object mockApi)
+        throws Exception {
+      Field field = target.getClass().getDeclaredField(fieldName);
+      field.setAccessible(true);
+      field.set(target, mockApi);
+    }
+  }
+
+  /** Test data constants and factory methods. */
+  interface TestData {
+    String DEFAULT_TABLE_NAME = "test_table";
+    String DEFAULT_SCHEMA_NAME = "test_schema";
+    String DEFAULT_CATALOG_NAME = "unity";
+    String DEFAULT_STORAGE_LOCATION = "s3://bucket/path";
+
+    String RW_TOKEN = "rw-token";
+    String READ_TOKEN = "read-token";
+
+    static Identifier tableIdentifier(String schema, String table) {
+      return Identifier.of(new String[] {schema}, table);
     }
 
-    @Test
-    public void testCredentialFallback_ReadWriteSucceeds() throws Exception {
-      // Setup: Mock API to return valid READ_WRITE credentials
-      TableInfo testTable = createTestTable("test_table", "test_schema", "s3://bucket/path");
-      TemporaryCredentials testCreds = createTestCredentials("rw-token");
-
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any())).thenReturn(testCreds);
-
-      // Execute: Load table
-      Identifier tableId = Identifier.of(new String[] {"test_schema"}, "test_table");
-      Table result = catalog.loadTable(tableId);
-
-      // Verify: Table loads successfully
-      assertThat(result).isNotNull();
-
-      // Verify: Only one API call was made (READ_WRITE succeeded)
-      verify(mockCredentialsApi, times(1)).generateTemporaryTableCredentials(any());
+    static TableInfo createTable(String tableName, String schemaName, String location) {
+      TableInfo table = new TableInfo();
+      table.setName(tableName);
+      table.setSchemaName(schemaName);
+      table.setCatalogName(DEFAULT_CATALOG_NAME);
+      table.setTableType(TableType.MANAGED);
+      table.setDataSourceFormat(DataSourceFormat.DELTA);
+      table.setStorageLocation(location);
+      table.setTableId(UUID.randomUUID().toString());
+      table.setColumns(Collections.emptyList());
+      table.setProperties(Collections.emptyMap());
+      table.setCreatedAt(System.currentTimeMillis());
+      return table;
     }
 
-    @Test
-    public void testCredentialFallback_ReadWriteFailsReadSucceeds() throws Exception {
-      // Setup: Mock API to fail for READ_WRITE but succeed for READ
-      TableInfo testTable = createTestTable("test_table", "test_schema", "s3://bucket/path");
-      TemporaryCredentials readCreds = createTestCredentials("read-token");
-
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any()))
-          .thenThrow(new ApiException("Permission denied for READ_WRITE"))
-          .thenReturn(readCreds);
-
-      // Execute: Load table
-      Identifier tableId = Identifier.of(new String[] {"test_schema"}, "test_table");
-      Table result = catalog.loadTable(tableId);
-
-      // Verify: Table loads successfully with READ credentials
-      assertThat(result).isNotNull();
-
-      // Verify: Two API calls were made (READ_WRITE failed, READ succeeded)
-      verify(mockCredentialsApi, times(2)).generateTemporaryTableCredentials(any());
-    }
-
-    @Test
-    public void testCredentialFallback_BothFail_ReturnsEmptyMap() throws Exception {
-      // Setup: Mock API to fail both credential attempts
-      TableInfo testTable = createTestTable("fgac_table", "test_schema", "s3://bucket/path");
-
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any()))
-          .thenThrow(new ApiException("Permission denied for READ_WRITE"))
-          .thenThrow(new ApiException("Permission denied for READ"));
-
-      // Execute: Load table (should succeed with empty credentials when SSP enabled)
-      Identifier tableId = Identifier.of(new String[] {"test_schema"}, "fgac_table");
-      Table result = catalog.loadTable(tableId);
-
-      // Verify: Table loads successfully even without credentials
-      assertThat(result).isNotNull();
-
-      // Verify: Two API calls were made (both READ_WRITE and READ attempted before fallback)
-      verify(mockCredentialsApi, times(2)).generateTemporaryTableCredentials(any());
-
-      // Note: When SSP is enabled, the catalog proceeds with empty credentials
-      // and logs an INFO message. Delta will handle file discovery and credential
-      // vending via server-side planning.
-    }
-
-    @Test
-    public void testCredentialFallback_ExceptionMessageWhenBothFail() throws Exception {
-      // Setup: Mock API to fail both credential attempts
-      TableInfo testTable =
-          createTestTable("important_table", "sensitive_schema", "s3://bucket/path");
-
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any()))
-          .thenThrow(new ApiException("Permission denied"))
-          .thenThrow(new ApiException("Permission denied"));
-
-      // Execute: Load table (should succeed with empty credentials when SSP enabled)
-      Identifier tableId = Identifier.of(new String[] {"sensitive_schema"}, "important_table");
-      Table result = catalog.loadTable(tableId);
-
-      // Verify: Table loads successfully
-      assertThat(result).isNotNull();
-
-      // With SSP enabled, no exception is thrown - empty credentials are used instead
-      verify(mockCredentialsApi, times(2)).generateTemporaryTableCredentials(any());
-    }
-
-    @Test
-    public void testCredentialFallback_ReadOnlyCredentialsSucceed() throws Exception {
-      // Setup: Mock API to fail READ_WRITE but succeed for READ
-      TableInfo testTable = createTestTable("readonly_table", "test_schema", "s3://bucket/path");
-      TemporaryCredentials readCreds = createTestCredentials("read-only-token");
-
-      when(mockTablesApi.getTable(any(String.class), any(Boolean.class), any(Boolean.class)))
-          .thenReturn(testTable);
-      when(mockCredentialsApi.generateTemporaryTableCredentials(any()))
-          .thenThrow(new ApiException("Permission denied for READ_WRITE"))
-          .thenReturn(readCreds);
-
-      // Execute: Load table (will get READ-only credentials)
-      Identifier tableId = Identifier.of(new String[] {"test_schema"}, "readonly_table");
-      Table result = catalog.loadTable(tableId);
-
-      // Verify: Table loads successfully
-      assertThat(result).isNotNull();
-
-      // Verify: Fallback to READ credentials worked
-      verify(mockCredentialsApi, times(2)).generateTemporaryTableCredentials(any());
+    static TemporaryCredentials createCredentials(String token) {
+      TemporaryCredentials creds = new TemporaryCredentials();
+      AwsCredentials awsCreds = new AwsCredentials();
+      awsCreds.setAccessKeyId("test-access-key");
+      awsCreds.setSecretAccessKey("test-secret-key");
+      awsCreds.setSessionToken(token);
+      creds.setAwsTempCredentials(awsCreds);
+      creds.setExpirationTime(System.currentTimeMillis() + 3600000);
+      return creds;
     }
   }
 }
