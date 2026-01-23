@@ -11,7 +11,7 @@ public class OptionsUtil {
   public static final String WAREHOUSE = "warehouse";
 
   public static final String RENEW_CREDENTIAL_ENABLED = "renewCredential.enabled";
-  public static final boolean DEFAULT_RENEW_CREDENTIAL_ENABLED = false;
+  public static final boolean DEFAULT_RENEW_CREDENTIAL_ENABLED = true;
 
   public static boolean getBoolean(
       Map<String, String> props, String property, boolean defaultValue) {
