@@ -1523,7 +1523,7 @@ components:
         name:
           type: string
           description: The name of the volume
-        "volume_type":
+        volume_type:
           "$ref": "#/components/schemas/VolumeType"
         comment:
           type: string
@@ -1538,7 +1538,6 @@ components:
         - schema_name
         - name
         - volume_type
-        - storage_location
     ListVolumesResponseContent:
       type: object
       properties:
@@ -1599,7 +1598,7 @@ components:
         volume_id:
           type: string
           description: Unique identifier of the volume
-        "volume_type":
+        volume_type:
           "$ref": "#/components/schemas/VolumeType"
         storage_location:
           type: string
@@ -1860,6 +1859,16 @@ components:
         schema_id:
           description: Unique identifier for the schema.
           type: string
+        storage_root:
+          description: Storage root URL for managed securables within schema. This can be set when
+            creating a schema.
+          type: string
+        storage_location:
+          description: Storage Location URL (full path) for managed securables within schema. This
+            is an automatically generated unique path under storage_root. If it's absent, managed
+            securables under this schema will try to use storage_location of the parent catalog
+            instead.
+          type: string
     CreateSchema:
       type: object
       properties:
@@ -1874,6 +1883,11 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        storage_root:
+          description: Storage root URL for managed securables within schema. If not set, managed
+            securables under this schema will try to use the storage_location of the parent catalog
+            instead.
+          type: string
       required:
         - name
         - catalog_name
@@ -1932,6 +1946,14 @@ components:
         id:
           description: Unique identifier for the catalog.
           type: string
+        storage_root:
+          description: Storage root URL for managed securables within catalog. This is set when
+            creating a catalog.
+          type: string
+        storage_location:
+          description: Storage Location URL (full path) for managed securables within catalog. This
+            is an automatically generated unique path under storage_root.
+          type: string
     CreateCatalog:
       type: object
       properties:
@@ -1943,6 +1965,9 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        storage_root:
+          description: Storage root URL for managed securables within catalog.
+          type: string
       required:
         - name
     UpdateCatalog:

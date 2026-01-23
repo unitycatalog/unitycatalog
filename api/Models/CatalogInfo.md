@@ -12,6 +12,8 @@
 | **updated\_at** | **Long** | Time at which this catalog was last modified, in epoch milliseconds. | [optional] [default to null] |
 | **updated\_by** | **String** | Username of user who last modified catalog. | [optional] [default to null] |
 | **id** | **String** | Unique identifier for the catalog. | [optional] [default to null] |
+| **storage\_root** | **String** | Storage root URL for managed securables within catalog. This is set when creating a catalog. | [optional] [default to null] |
+| **storage\_location** | **String** | Storage Location URL (full path) for managed securables within catalog. This is an automatically generated unique path under storage_root. | [optional] [default to null] |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 
