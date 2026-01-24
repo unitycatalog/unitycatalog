@@ -138,7 +138,6 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   @AfterEach
-  @Override
   public void cleanUp() {
     for (String catalogName : createdCatalogs) {
       try {
@@ -156,6 +155,5 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     } catch (Exception e) {
       // Ignore
     }
-    super.cleanUp();
   }
 }

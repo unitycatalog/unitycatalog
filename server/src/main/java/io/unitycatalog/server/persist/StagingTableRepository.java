@@ -6,6 +6,8 @@ import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -13,6 +15,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Date;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -84,19 +87,21 @@ public class StagingTableRepository {
     ValidationUtils.validateSqlObjectName(createStagingTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     UUID stagingTableId = UUID.randomUUID();
-    NormalizedURL stagingLocation =
-        repositories.getFileOperations().createTableDirectory(stagingTableId.toString());
 
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID schemaId =
+          RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
+              RepositoryUtils.getCatalogAndSchemaDaoOrThrow(
+                  session, createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
+          NormalizedURL storageRoot =
+              ExternalLocationUtils.getManagedStorageRoot(
+                  catalogAndSchemaDao, this::getDefaultManagedTablesStorageRoot);
+          NormalizedURL stagingLocation =
               repositories
-                  .getSchemaRepository()
-                  .getSchemaIdOrThrow(
-                      session,
-                      createStagingTable.getCatalogName(),
-                      createStagingTable.getSchemaName());
+                  .getFileOperations()
+                  .createManagedTableDirectory(storageRoot, stagingTableId);
+          UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 
           StagingTableDAO stagingTableDAO = new StagingTableDAO();
@@ -157,5 +162,18 @@ public class StagingTableRepository {
     stagingTableDAO.setAccessedAt(now);
     session.merge(stagingTableDAO);
     return stagingTableDAO;
+  }
+
+  /**
+   * Gets the default managed table storage root from server properties.
+   *
+   * <p>This is used as a fallback when neither the catalog nor schema has a managed storage
+   * location configured. It's being deprecated.
+   *
+   * @return optional containing the storage root URL if configured in server properties
+   */
+  private Optional<NormalizedURL> getDefaultManagedTablesStorageRoot() {
+    return Optional.ofNullable(serverProperties.get(ServerProperties.Property.TABLE_STORAGE_ROOT))
+        .map(NormalizedURL::from);
   }
 }

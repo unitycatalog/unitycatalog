@@ -238,7 +238,7 @@ public class ExternalLocationUtilsTest {
                 ExternalLocationUtils.getEntityDAOsWithURLOverlap(
                     null,
                     NormalizedURL.from("s3://bucket/path"),
-                    SecurableType.CATALOG,
+                    SecurableType.CREDENTIAL,
                     /* limit= */ 1,
                     /* includeParent= */ true,
                     /* includeSelf= */ true,
@@ -251,7 +251,7 @@ public class ExternalLocationUtilsTest {
                 ExternalLocationUtils.getEntityDAOsWithURLOverlap(
                     null,
                     NormalizedURL.from("s3://bucket/path"),
-                    SecurableType.SCHEMA,
+                    SecurableType.FUNCTION,
                     /* limit= */ 1,
                     /* includeParent= */ true,
                     /* includeSelf= */ true,
@@ -460,7 +460,7 @@ public class ExternalLocationUtilsTest {
         List.of("s3://bucket/path"),
         "s3://bucket/path/%");
 
-    // Test 9: URL from local path
+    // Test 10: URL from local path
     // The normalized URL will have file:/// prefix.
     Query<ExternalLocationDAO> query10 =
         ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
@@ -477,6 +477,25 @@ public class ExternalLocationUtilsTest {
         "FROM ExternalLocationDAO WHERE url IN (:matchPaths) OR url LIKE :likePattern "
             + "ESCAPE '\\' ORDER BY LENGTH(url) DESC",
         List.of("file:///tmp", "file:///", "file:///tmp/path"),
+        "file:///tmp/path/%");
+
+    // Test 11: look for uncommitted staging tables
+    Query<ExternalLocationDAO> query11 =
+        ExternalLocationUtils.generateEntitiesDAOsWithURLOverlapQuery(
+            session,
+            NormalizedURL.from("/tmp/path"),
+            ExternalLocationUtils.UNCOMMITTED_STAGING_TABLE_DAO_INFO,
+            /* limit= */ 10,
+            /* includeParent= */ false,
+            /* includeSelf= */ false,
+            /* includeSubdir= */ true);
+
+    validateQuery(
+        query11,
+        "FROM StagingTableDAO WHERE stageCommitted=false AND "
+            + "(stagingLocation LIKE :likePattern ESCAPE '\\') "
+            + "ORDER BY LENGTH(stagingLocation) DESC",
+        null,
         "file:///tmp/path/%");
   }
 }
