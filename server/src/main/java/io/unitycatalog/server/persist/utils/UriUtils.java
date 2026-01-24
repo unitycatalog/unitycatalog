@@ -29,12 +29,12 @@ public class UriUtils {
 
   private UriUtils() {}
 
-  public static String createStorageLocationPath(String uri) {
-    return updateDirectoryFromUri(uri, Operation.CREATE, Optional.empty()).toString();
+  public static void createStorageLocationPath(String uri) {
+    updateDirectoryFromUri(uri, Operation.CREATE, Optional.empty()).toString();
   }
 
-  public static String createStorageLocationPath(NormalizedURL uri) {
-    return createStorageLocationPath(uri.toString());
+  public static void createStorageLocationPath(NormalizedURL uri) {
+    createStorageLocationPath(uri.toString());
   }
 
   public static String deleteStorageLocationPath(String uri) {

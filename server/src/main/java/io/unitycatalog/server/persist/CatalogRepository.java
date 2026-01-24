@@ -10,11 +10,13 @@ import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
@@ -42,9 +44,10 @@ public class CatalogRepository {
     ValidationUtils.validateSqlObjectName(createCatalog.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     Long createTime = System.currentTimeMillis();
+    UUID catalogId = UUID.randomUUID();
     CatalogInfo catalogInfo =
         new CatalogInfo()
-            .id(java.util.UUID.randomUUID().toString())
+            .id(catalogId.toString())
             .comment(createCatalog.getComment())
             .name(createCatalog.getName())
             .owner(callerId)
@@ -53,6 +56,14 @@ public class CatalogRepository {
             .updatedAt(createTime)
             .updatedBy(callerId)
             .properties(createCatalog.getProperties());
+    NormalizedURL storageRoot = NormalizedURL.from(createCatalog.getStorageRoot());
+    if (storageRoot != null) {
+      ExternalLocationUtils.validateNotSameOrUnderManagedStorage(storageRoot);
+      NormalizedURL storageLocation =
+          repositories.getFileOperations().createManagedCatalogDirectory(storageRoot, catalogId);
+      catalogInfo.setStorageRoot(storageRoot.toString());
+      catalogInfo.storageLocation(storageLocation.toString());
+    }
 
     return TransactionManager.executeWithTransaction(
         sessionFactory,

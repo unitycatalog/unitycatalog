@@ -104,7 +104,7 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
     assertThat(managedTable.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
     assertThat(managedTable.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
     assertThat(managedTable.getStorageLocation())
-        .isEqualTo(tableStorageRoot + "/tables/" + managedTable.getTableId());
+        .isEqualTo(tableStorageRoot + "/__unitystorage/tables/" + managedTable.getTableId());
     assertThat(managedTable.getTableType()).isEqualTo(TableType.MANAGED);
     assertThat(managedTable.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
     assertThat(managedTable.getCreatedAt()).isNotNull();
