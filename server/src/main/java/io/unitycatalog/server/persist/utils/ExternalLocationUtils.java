@@ -92,7 +92,8 @@ public class ExternalLocationUtils {
       Stream.concat(Stream.of(SecurableType.EXTERNAL_LOCATION), DATA_SECURABLE_TYPES.stream())
           .toList();
 
-  private static final List<SecurableType> CATALOG_AND_SCHEMA_SECURABLE_TYPES =
+  /** Catalogs and schemas are containers of managed securables. */
+  private static final List<SecurableType> MANAGED_SECURABLE_TYPE_CONTAINERS =
       List.of(SecurableType.CATALOG, SecurableType.SCHEMA);
 
   /**
@@ -438,7 +439,7 @@ public class ExternalLocationUtils {
    * @throws BaseException with ErrorCode.INVALID_ARGUMENT if the URL contains the managed storage
    *     prefix
    */
-  public static void validateNotSameOrUnderManagedStorage(NormalizedURL url) {
+  public static void validateNotSameOrUnderManagedStoragePrefix(NormalizedURL url) {
     // url does not contain the reserved namespace `__unitystorage`
     if (url.toString().contains(Constants.MANAGED_STORAGE_PREFIX)) {
       throw new BaseException(
@@ -459,7 +460,7 @@ public class ExternalLocationUtils {
     if (!getAllEntityDAOsWithURLOverlap(
             session,
             url,
-            CATALOG_AND_SCHEMA_SECURABLE_TYPES,
+            MANAGED_SECURABLE_TYPE_CONTAINERS,
             /* limit= */ 1,
             /* includeParent= */ false,
             /* includeSelf= */ false,
@@ -512,7 +513,7 @@ public class ExternalLocationUtils {
    * @throws BaseException with ErrorCode.INVALID_ARGUMENT if the URL overlaps with managed storage
    */
   public static void validateNotOverlapWithManagedStorage(Session session, NormalizedURL url) {
-    validateNotSameOrUnderManagedStorage(url);
+    validateNotSameOrUnderManagedStoragePrefix(url);
     validateNotAboveManagedStorage(session, url);
   }
 
