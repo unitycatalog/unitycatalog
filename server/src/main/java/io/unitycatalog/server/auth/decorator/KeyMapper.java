@@ -305,7 +305,9 @@ public class KeyMapper {
     // External locations can be referenced by name (string) or UUID or path
     if (resourceKeys.containsKey(EXTERNAL_LOCATION)) {
       Object resourceObject = resourceKeys.get(EXTERNAL_LOCATION);
-      if (resourceObject instanceof UUID) {
+      if (resourceObject == null) {
+        // External location is explicitly null (not set), don't add to resourceIds
+      } else if (resourceObject instanceof UUID) {
         resourceIds.put(EXTERNAL_LOCATION, resourceObject);
       } else {
         String nameOrPath = (String) resourceObject;

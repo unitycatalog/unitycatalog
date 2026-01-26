@@ -10,6 +10,7 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
@@ -27,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
@@ -41,10 +43,34 @@ public class CatalogService extends AuthorizedService {
     this.metastoreRepository = repositories.getMetastoreRepository();
   }
 
+  /**
+   * Creating a catalog requires one of OWNER or CREATE_CATALOG permission on metastore.
+   * Additionally, if a {@code storage_root} is specified:
+   *
+   * <ul>
+   *   <li>The path has to map to an external_location, not anything else (tables, volumes, models),
+   *       to make sure the path isn't under any existing data securables.
+   *   <li>User needs to have OWNER or CREATE_MANAGED_STORAGE permission on the external location.
+   * </ul>
+   *
+   * {@code storage_root} is annotated as both a {@link AuthorizeResourceKey} (which maps to owning
+   * resource) and {@link AuthorizeKey} (which is simply the raw value of storage_root). This is
+   * done so that the expression can check both: 1. if parameter is specified, and 2. which external
+   * location (rather than tables etc.) owns the path.
+   */
   @Post("")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG)")
+  @AuthorizeExpression("""
+      #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG) &&
+      (#storage_root == null ||
+       (#table == null && #volume == null && #registered_model == null &&
+        #external_location != null &&
+        #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
+    """)
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse createCatalog(CreateCatalog createCatalog) {
+  public HttpResponse createCatalog(
+      @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
+      @AuthorizeKey(key = "storage_root")
+      CreateCatalog createCatalog) {
     CatalogInfo catalogInfo = catalogRepository.addCatalog(createCatalog);
     initializeBasicAuthorization(catalogInfo.getId());
     return HttpResponse.ofJson(catalogInfo);
