@@ -55,7 +55,8 @@ public class SchemaCli {
             .name(json.getString(CliParams.NAME.getServerParam()))
             .catalogName(json.getString(CliParams.CATALOG_NAME.getServerParam()))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
-            .properties(CliUtils.extractProperties(objectMapper, json));
+            .properties(CliUtils.extractProperties(objectMapper, json))
+            .storageRoot(json.optString(CliParams.STORAGE_ROOT.getServerParam(), null));
     SchemaInfo schemaInfo = schemasApi.createSchema(createSchema);
     return objectWriter.writeValueAsString(schemaInfo);
   }

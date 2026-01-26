@@ -57,7 +57,8 @@ public class CatalogCli {
         new CreateCatalog()
             .name(json.getString(CliParams.NAME.getServerParam()))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
-            .properties(CliUtils.extractProperties(objectMapper, json));
+            .properties(CliUtils.extractProperties(objectMapper, json))
+            .storageRoot(json.optString(CliParams.STORAGE_ROOT.getServerParam(), null));
     CatalogInfo catalogInfo = catalogsApi.createCatalog(createCatalog);
     return objectWriter.writeValueAsString(catalogInfo);
   }
