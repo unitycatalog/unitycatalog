@@ -65,11 +65,15 @@ public class TableService extends AuthorizedService {
    *       <ul>
    *         <li>The storage location must not overlap with any existing table, volume, or
    *             registered model
-   *         <li>If the storage location falls within a registered external location, the user
-   *             must have OWNER or CREATE_EXTERNAL_TABLE permission on that external location
-   *         <li>If the storage location does not fall within any registered external location,
-   *             the table can be created without additional external location permissions
+   *         <li>If the storage location falls within a registered external location, the user must
+   *             have OWNER or CREATE_EXTERNAL_TABLE permission on that external location
+   *         <li>If the storage location does not fall within any registered external location, the
+   *             table can be created without additional external location permissions
    *       </ul>
+   *   <li>MANAGED table creation delegates to catalog and schema for permission. Once the catalog
+   *       or schema is allowed to create under an external location with permission
+   *       CREATE_MANAGED_STORAGE, all managed entity creations under it no longer need to check for
+   *       external location again.
    * </ul>
    *
    * @param createTable the table creation request containing table metadata and storage info

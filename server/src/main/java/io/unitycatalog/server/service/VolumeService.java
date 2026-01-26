@@ -75,6 +75,10 @@ public class VolumeService extends AuthorizedService {
    *         <li>If the storage location does not fall within any registered external location,
    *             the volume can be created without additional external location permissions
    *       </ul>
+   *   <li>MANAGED volume creation delegates to catalog and schema for permission. Once the catalog
+   *       or schema is allowed to create under an external location with permission
+   *       CREATE_MANAGED_STORAGE, all managed entity creations under it no longer need to check for
+   *       external location again.
    * </ul>
    *
    * @param createVolumeRequest the volume creation request containing volume metadata and storage
