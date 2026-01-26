@@ -121,6 +121,8 @@ public abstract class BaseServerTest {
       session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
       session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
       session.createMutationQuery("delete from UserDAO").executeUpdate();
+      session.createMutationQuery("delete from ExternalLocationDAO").executeUpdate();
+      session.createMutationQuery("delete from CredentialDAO").executeUpdate();
       tx.commit();
       session.close();
 
