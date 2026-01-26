@@ -74,7 +74,7 @@ public class ExternalLocationRepository {
           }
 
           NormalizedURL url = NormalizedURL.from(createExternalLocation.getUrl());
-          ExternalLocationUtils.validateNotSameOrUnderManagedStorage(url);
+          ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(url);
           validateUrlNotUsedByAnyExternalLocation(session, url, Optional.empty());
 
           CredentialDAO credentialDAO =
