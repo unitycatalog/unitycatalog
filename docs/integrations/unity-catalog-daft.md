@@ -2,7 +2,7 @@
 
 This page shows you how to use Unity Catalog with Daft.
 
-[Daft](https://getdaft.io/) is a library for parallel and distributed processing of multimodal data.
+[Daft](https://www.daft.ai/) is a library for parallel and distributed processing of multimodal data.
 
 ## Set up
 
@@ -124,5 +124,5 @@ as_int   as_double
 ```
 
 Daft support for Unity Catalog is under rapid development. Refer to the
-[Daft documentation](https://www.getdaft.io/projects/docs/en/stable/integrations/unity_catalog/) for
+[Daft documentation](https://docs.daft.ai/en/stable/connectors/unity_catalog/) for
 more information.
