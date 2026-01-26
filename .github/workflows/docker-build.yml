@@ -3,7 +3,7 @@ name: Build and Push Docker Images - unitycatalog
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
     branches:
       - main
     paths:
@@ -15,6 +15,18 @@ on:
       - clients/python/**
       - version.sbt
       - build.sbt
+      - dev/**
+  pull_request:
+    branches:
+      - main
+    paths:
+      - build/**
+      - project/**
+      - server/**
+      - api/**
+      - version.sbt
+      - build.sbt
+      - dev/**
   workflow_dispatch: {}
 
 env:
@@ -36,7 +48,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
         # Will generate tags for the image
-        # For ref/tags/*: latest, <tag> 
+        # For ref/tags/*: latest, <tag>
         # For refs/heads/main: main, main-<short-sha>
       - name: Generate Metadata and Tags
         id: meta
