@@ -1860,14 +1860,16 @@ components:
           description: Unique identifier for the schema.
           type: string
         storage_root:
-          description: Storage root URL for managed securables within schema. This can be set when
-            creating a schema.
+          description: |
+            Storage root URL for managed storage location of schema. This can be set when creating a
+            schema. Example: s3://bucket/ucroot
           type: string
         storage_location:
-          description: Storage Location URL (full path) for managed securables within schema. This
-            is an automatically generated unique path under storage_root. If it's absent, managed
+          description: |
+            Storage Location URL (full path) for managed storage location of schema. This is an
+            automatically generated unique path under storage_root. If it is absent, managed
             securables under this schema will try to use storage_location of the parent catalog
-            instead.
+            instead. Example: s3://bucket/ucroot/__unitystorage/schemas/{schema_id}
           type: string
     CreateSchema:
       type: object
@@ -1884,9 +1886,10 @@ components:
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
         storage_root:
-          description: Storage root URL for managed securables within schema. If not set, managed
-            securables under this schema will try to use the storage_location of the parent catalog
-            instead.
+          description: |
+            Storage root URL for managed storage location of schema. If not set, managed securables
+            under this schema will try to use the storage_location of the parent catalog instead.
+            Example: s3://bucket/ucroot
           type: string
       required:
         - name
@@ -1947,12 +1950,15 @@ components:
           description: Unique identifier for the catalog.
           type: string
         storage_root:
-          description: Storage root URL for managed securables within catalog. This is set when
-            creating a catalog.
+          description: |
+            Storage root URL for managed storage location of catalog. This can be set when creating
+            a catalog. Example: s3://bucket/ucroot
           type: string
         storage_location:
-          description: Storage Location URL (full path) for managed securables within catalog. This
-            is an automatically generated unique path under storage_root.
+          description: |
+            Storage Location URL (full path) for managed storage location of catalog. This is an
+            automatically generated unique path under storage_root.
+            Example: s3://bucket/ucroot/__unitystorage/catalogs/{catalog_id}
           type: string
     CreateCatalog:
       type: object
@@ -1966,7 +1972,8 @@ components:
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
         storage_root:
-          description: Storage root URL for managed securables within catalog.
+          description: |
+            Storage root URL for managed storage location of catalog. Example: s3://bucket/ucroot
           type: string
       required:
         - name
