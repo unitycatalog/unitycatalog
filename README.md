@@ -244,7 +244,7 @@ Follow the instructions for [Eclipse](https://github.com/google/google-java-form
 The build script [checks for a lower bound on the JDK](./build.sbt#L14) but the [current SBT version](./project/build.properties)
 imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-lang.org/overviews/jdk-compatibility/overview.html) documentation for more information
 
-### Serving the documentation with mkdocs
+### Serving the documentation with Astro
 
 For an overview of how to contribute to the documentation, please see our introduction [here](./docs/README.md).
 For the official documentation, please take a look at [https://docs.unitycatalog.io/](https://docs.unitycatalog.io/).
