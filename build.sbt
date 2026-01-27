@@ -28,7 +28,7 @@ lazy val hadoopVersion = "3.4.2"
 // Library versions
 lazy val jacksonVersion = "2.17.0"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
-lazy val log4jVersion = "2.24.3"
+lazy val log4jVersion = "2.25.3"
 val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
@@ -324,7 +324,7 @@ lazy val server = (project in file("server"))
       "org.apache.commons" % "commons-lang3" % "3.19.0",
 
       // Netty dependencies
-      "io.netty" % "netty-all" % "4.1.111.Final",
+      "io.netty" % "netty-all" % "4.2.7.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -609,6 +609,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
@@ -623,6 +624,9 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
+      "io.netty" % "netty-all" % "4.2.7.Final",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
     licenseDepExclusions := {
@@ -681,6 +685,8 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
+      "io.netty" % "netty-all" % "4.2.7.Final",
     ),
     Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
   )
