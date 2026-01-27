@@ -23,7 +23,7 @@ lazy val scala213 = "2.13.16"
 
 lazy val deltaVersion = "4.0.0"
 lazy val sparkVersion = "4.1.0"
-lazy val hadoopVersion = "3.4.0"
+lazy val hadoopVersion = "3.4.1"
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
@@ -320,11 +320,11 @@ lazy val server = (project in file("server"))
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
-      "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "com.linecorp.armeria" %  "armeria" % "1.34.1",
       "org.apache.commons" % "commons-lang3" % "3.19.0",
 
       // Netty dependencies
-      "io.netty" % "netty-all" % "4.1.111.Final",
+      "io.netty" % "netty-all" % "4.2.9.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -626,6 +626,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4" % "4.13.1",
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
+      "io.netty" % "netty-all" % "4.2.9.Final",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
     licenseDepExclusions := {
@@ -685,6 +686,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.antlr" % "antlr4" % "4.13.1",
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
+      "io.netty" % "netty-all" % "4.2.9.Final",
     ),
     Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
   )
