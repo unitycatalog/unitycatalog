@@ -99,9 +99,7 @@ public class TemporaryPathCredentialsService {
           #authorizeAll(#principal, #external_location, READ_FILES, WRITE_FILES)))
       )
       : #operation == 'PATH_CREATE_TABLE' ? (
-        #volume == null &&
-        #table == null &&
-        #registered_model == null &&
+        #no_overlap_with_data_securable &&
         (#authorize(#principal, #metastore, OWNER) ||
          (#external_location != null &&
           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE)))

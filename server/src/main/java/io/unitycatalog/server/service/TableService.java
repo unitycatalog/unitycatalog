@@ -85,7 +85,7 @@ public class TableService extends AuthorizedService {
       (#authorize(#principal, #schema, OWNER) ||
         #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)) &&
       (#table_type != 'EXTERNAL' ||
-        (#table == null && #volume == null && #registered_model == null &&
+        (#no_overlap_with_data_securable &&
           (#external_location == null ||
            #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE))))
       """)
