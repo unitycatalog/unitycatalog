@@ -3,7 +3,7 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.auth.TokenProvider
-import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
 import io.unitycatalog.spark.utils.OptionsUtil
@@ -18,6 +18,7 @@ import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.sparkproject.guava.base.Preconditions
 
@@ -56,8 +57,8 @@ class UCSingleCatalog
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
-    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, apiClient, tablesApi,
-      temporaryCredentialsApi)
+    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled,
+      apiClient, tablesApi, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -282,7 +283,7 @@ private class UCProxy(
     renewCredEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
+    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
 
@@ -328,36 +329,82 @@ private class UCProxy(
     }.toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
-    var tableOp = TableOperation.READ_WRITE
-    val temporaryCredentials = {
+
+    // Try to obtain temporary credentials with fallback: READ_WRITE -> READ -> None
+    val temporaryCredentials: Option[TemporaryCredentials] = {
       try {
-        temporaryCredentialsApi
-          .generateTemporaryTableCredentials(
-            // TODO: at this time, we don't know if the table will be read or written. For now we always
-            //       request READ_WRITE credentials as the server doesn't distinguish between READ and
-            //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
-            //       for read or write, we can request the proper credential after fixing Spark.
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-          )
+        Some(temporaryCredentialsApi.generateTemporaryTableCredentials(
+          // TODO: at this time, we don't know if the table will be read or written. For now we always
+          //       request READ_WRITE credentials as the server doesn't distinguish between READ and
+          //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
+          //       for read or write, we can request the proper credential after fixing Spark.
+          new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
+        ))
       } catch {
         case _: ApiException =>
-          tableOp = TableOperation.READ
-          temporaryCredentialsApi
-            .generateTemporaryTableCredentials(
-              new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-            )
+          try {
+            Some(temporaryCredentialsApi.generateTemporaryTableCredentials(
+              new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ)
+            ))
+          } catch {
+            case _: ApiException => None
+          }
       }
     }
 
-    val extraSerdeProps = CredPropsUtil.createTableCredProps(
-      renewCredEnabled,
-      locationUri.getScheme,
-      uri.toString,
-      tokenProvider,
-      tableId,
-      tableOp,
-      temporaryCredentials,
-    )
+    val extraSerdeProps = temporaryCredentials match {
+      case Some(creds) =>
+        CredPropsUtil.createTableCredProps(
+          renewCredEnabled,
+          locationUri.getScheme,
+          uri.toString,
+          tokenProvider,
+          tableId,
+          TableOperation.READ_WRITE,
+          creds,
+        )
+      case None =>
+        // Determine if server-side planning is enabled by checking SparkSession config
+        val sspEnabled = try {
+          SparkSession.getActiveSession match {
+            case Some(spark) =>
+              val configValue = spark.conf.get(
+                "spark.databricks.delta.catalog.enableServerSidePlanning",
+                "false"
+              )
+              logDebug(s"SSP config for table ${identifier}: ${configValue}")
+              configValue.toBoolean
+            case None =>
+              logWarning(
+                s"No active SparkSession found when loading table ${identifier}. " +
+                s"Defaulting to SSP disabled. Table access may fail if credentials are required."
+              )
+              false
+          }
+        } catch {
+          case e: NoSuchElementException =>
+            logWarning(s"Failed to get active SparkSession for table ${identifier}: ${e.getMessage}. Defaulting to SSP disabled.")
+            false
+          case e: Exception =>
+            logWarning(s"Error reading SSP config for table ${identifier}: ${e.getMessage}. Defaulting to SSP disabled.")
+            false
+        }
+
+        if (sspEnabled) {
+          // Server-side planning enabled - proceed with empty credentials
+          // Delta will handle file discovery and credential vending via server-side planning
+          logInfo(
+            s"Server-side planning enabled for table ${identifier}. " +
+            s"Proceeding with empty credentials. Delta will use server-side planning for data access."
+          )
+          java.util.Collections.emptyMap[String, String]()
+        } else {
+          // Server-side planning not enabled - fail fast for security
+          throw new ApiException(
+            s"generateTemporaryTableCredentials failed for table ${identifier}"
+          )
+        }
+    }
 
     val sparkTable = CatalogTable(
       identifier,
