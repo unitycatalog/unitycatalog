@@ -371,7 +371,6 @@ lazy val server = (project in file("server"))
 
       // Hadoop dependencies for ExternalLocationUtils
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
-      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
 
       // Auth dependencies
       "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
