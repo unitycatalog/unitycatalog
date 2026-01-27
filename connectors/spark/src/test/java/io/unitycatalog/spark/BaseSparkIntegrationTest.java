@@ -18,6 +18,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.SneakyThrows;
 import org.apache.spark.sql.Row;
@@ -29,6 +30,11 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   protected ArrayList<String> createdCatalogs = new ArrayList<>();
   protected static final String SPARK_CATALOG = "spark_catalog";
+
+  // Property key to enable Delta Lake catalog updates in Spark
+  // see org.apache.spark.sql.delta.sources.DeltaSQLConf.DELTA_UPDATE_CATALOG_ENABLED
+  protected static final String DELTA_UPDATE_CATALOG_ENABLED_PROPERTY =
+          "spark.databricks.delta.catalog.update.enabled";
 
   private SchemaOperations schemaOperations;
   // Each test would create this session. It will be closed automatically.
@@ -44,16 +50,28 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   protected SparkSession createSparkSessionWithCatalogs(String... catalogs) {
-    return createSparkSessionWithCatalogs(false, catalogs);
+    return createSparkSessionWithCatalogs(Map.of(), catalogs);
+  }
+
+  protected SparkSession createSparkSessionWithCatalogs(
+      Map<String, Object> extraConfigs, String... catalogs) {
+    return createSparkSessionWithCatalogs(false, extraConfigs, catalogs);
   }
 
   protected SparkSession createSparkSessionWithCatalogs(boolean renewCred, String... catalogs) {
+    return createSparkSessionWithCatalogs(renewCred, Map.of(), catalogs);
+  }
+
+  protected SparkSession createSparkSessionWithCatalogs(
+      boolean renewCred, Map<String, Object> extraConfigs, String... catalogs) {
     SparkSession.Builder builder =
         SparkSession.builder()
             .appName("test")
             .master("local[*]")
+            .config("spark.driver.host", "127.0.0.1")
             .config("spark.sql.shuffle.partitions", "4")
-            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+            .config(extraConfigs);
     for (String catalog : catalogs) {
       String catalogConf = "spark.sql.catalog." + catalog;
       builder =
