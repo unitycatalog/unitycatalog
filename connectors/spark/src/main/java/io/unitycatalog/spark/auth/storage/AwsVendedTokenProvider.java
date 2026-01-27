@@ -27,11 +27,13 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
       String secretKey = conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY);
       String sessionToken = conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN);
 
-      long expiredTimeMillis = conf.getLong(
-          UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
-          Long.MAX_VALUE);
-      Preconditions.checkState(expiredTimeMillis > 0, "Expired time %s must be greater than 0, " +
-          "please check configure key '%s'", expiredTimeMillis, UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME);
+      long expiredTimeMillis =
+          conf.getLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, Long.MAX_VALUE);
+      Preconditions.checkState(
+          expiredTimeMillis > 0,
+          "Expired time %s must be greater than 0, " + "please check configure key '%s'",
+          expiredTimeMillis,
+          UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME);
 
       return GenericCredential.forAws(accessKey, secretKey, sessionToken, expiredTimeMillis);
     } else {
@@ -44,11 +46,10 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
     GenericCredential generic = accessCredentials();
 
     // Wrap the GenericCredential as an AwsCredentials.
-    io.unitycatalog.client.model.AwsCredentials awsTempCred = generic
-        .temporaryCredentials()
-        .getAwsTempCredentials();
-    Preconditions.checkNotNull(awsTempCred,
-        "AWS temp credential of generic credentials cannot be null");
+    io.unitycatalog.client.model.AwsCredentials awsTempCred =
+        generic.temporaryCredentials().getAwsTempCredentials();
+    Preconditions.checkNotNull(
+        awsTempCred, "AWS temp credential of generic credentials cannot be null");
 
     return AwsSessionCredentials.builder()
         .accessKeyId(awsTempCred.getAccessKeyId())

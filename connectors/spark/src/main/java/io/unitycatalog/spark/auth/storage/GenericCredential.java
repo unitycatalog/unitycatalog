@@ -1,10 +1,10 @@
 package io.unitycatalog.spark.auth.storage;
 
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.client.internal.Clock;
 import java.util.Objects;
 
 public class GenericCredential {
@@ -15,10 +15,7 @@ public class GenericCredential {
   }
 
   public static GenericCredential forAws(
-      String accessKey,
-      String secretKey,
-      String sessionToken,
-      long expiredTimeMillis) {
+      String accessKey, String secretKey, String sessionToken, long expiredTimeMillis) {
     // Initialize the aws credentials.
     AwsCredentials awsCredentials = new AwsCredentials();
     awsCredentials.setAccessKeyId(accessKey);
@@ -62,14 +59,14 @@ public class GenericCredential {
   /**
    * Decide whether it's time to renew the credential/token in advance.
    *
-   * @param clock                 to get the latest timestamp.
+   * @param clock to get the latest timestamp.
    * @param renewalLeadTimeMillis The amount of time before something expires when the renewal
-   *                              process should start.
+   *     process should start.
    * @return true if it's ready to renew.
    */
   public boolean readyToRenew(Clock clock, long renewalLeadTimeMillis) {
-    return tempCred.getExpirationTime() != null &&
-        tempCred.getExpirationTime() <= clock.now().toEpochMilli() + renewalLeadTimeMillis;
+    return tempCred.getExpirationTime() != null
+        && tempCred.getExpirationTime() <= clock.now().toEpochMilli() + renewalLeadTimeMillis;
   }
 
   @Override
