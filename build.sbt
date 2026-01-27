@@ -671,8 +671,6 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
       "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
       "io.delta" %% "delta-spark" % deltaVersion % Test,
-      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion % Test,
-      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
