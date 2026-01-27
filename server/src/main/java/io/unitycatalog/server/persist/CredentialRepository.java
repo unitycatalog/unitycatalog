@@ -192,7 +192,6 @@ public class CredentialRepository {
   }
 
   private Optional<String> getAwsS3MasterRoleArn() {
-    return Optional.ofNullable(
-        serverProperties.get(ServerProperties.Property.AWS_S3_MASTER_ROLE_ARN));
+    return Optional.ofNullable(serverProperties.get(ServerProperties.Property.AWS_MASTER_ROLE_ARN));
   }
 }

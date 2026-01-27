@@ -44,7 +44,7 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.setProperty(
-        ServerProperties.Property.AWS_S3_MASTER_ROLE_ARN.getKey(), S3_MASTER_ROLE_ARN);
+        ServerProperties.Property.AWS_MASTER_ROLE_ARN.getKey(), S3_MASTER_ROLE_ARN);
   }
 
   @BeforeEach
