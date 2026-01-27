@@ -217,8 +217,10 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     int tableNameCounter = 0;
     for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
       for (boolean withPartitionColumns : List.of(true, false)) {
-        for (boolean withCtas : List.of(true, false)) {
-          for (boolean replaceTable : List.of(true, false)) {
+        // TODO: Enable CTAS, once upgrade to delta 4.1.0.
+        for (boolean withCtas : List.of(/*true,*/ false)) {
+          // TODO: Enable RTAS, once delta support it.
+          for (boolean replaceTable : List.of(/*true,*/ false)) {
             String tableName = TEST_TABLE + tableNameCounter;
             tableNameCounter++;
             if (replaceTable) {
