@@ -43,39 +43,7 @@ public class VolumeRepository {
 
   public VolumeInfo createVolume(CreateVolumeRequestContent createVolumeRequest) {
     ValidationUtils.validateSqlObjectName(createVolumeRequest.getName());
-    String volumeFullName =
-        createVolumeRequest.getCatalogName()
-            + "."
-            + createVolumeRequest.getSchemaName()
-            + "."
-            + createVolumeRequest.getName();
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    Long createTime = System.currentTimeMillis();
-    VolumeInfo volumeInfo = new VolumeInfo();
-    volumeInfo.setVolumeId(UUID.randomUUID().toString());
-    volumeInfo.setCatalogName(createVolumeRequest.getCatalogName());
-    volumeInfo.setSchemaName(createVolumeRequest.getSchemaName());
-    volumeInfo.setName(createVolumeRequest.getName());
-    volumeInfo.setComment(createVolumeRequest.getComment());
-    volumeInfo.setFullName(volumeFullName);
-    volumeInfo.setOwner(callerId);
-    volumeInfo.setCreatedAt(createTime);
-    volumeInfo.setCreatedBy(callerId);
-    volumeInfo.setUpdatedAt(createTime);
-    volumeInfo.setUpdatedBy(callerId);
-    volumeInfo.setVolumeType(createVolumeRequest.getVolumeType());
-    if (VolumeType.MANAGED.equals(createVolumeRequest.getVolumeType())) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Managed volume creation is not supported");
-    }
-    if (createVolumeRequest.getStorageLocation() == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
-    }
-    volumeInfo.setStorageLocation(
-        NormalizedURL.normalize(createVolumeRequest.getStorageLocation()));
-    VolumeInfoDAO volumeInfoDAO = VolumeInfoDAO.from(volumeInfo);
-
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -86,22 +54,44 @@ public class VolumeRepository {
                       session,
                       createVolumeRequest.getCatalogName(),
                       createVolumeRequest.getSchemaName());
-          if (getVolumeDAO(
-                  session,
-                  createVolumeRequest.getCatalogName(),
-                  createVolumeRequest.getSchemaName(),
-                  createVolumeRequest.getName())
-              != null) {
+          if (getVolumeDAO(session, schemaId, createVolumeRequest.getName()) != null) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS, "Volume already exists: " + volumeFullName);
+                ErrorCode.ALREADY_EXISTS,
+                "Volume already exists: " + createVolumeRequest.getName());
           }
-          volumeInfoDAO.setSchemaId(schemaId);
+
+          UUID volumeId = UUID.randomUUID();
+          NormalizedURL storageLocation;
+          if (VolumeType.MANAGED.equals(createVolumeRequest.getVolumeType())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "Managed volume creation is not supported");
+          } else {
+            if (createVolumeRequest.getStorageLocation() == null) {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
+            }
+            storageLocation = NormalizedURL.from(createVolumeRequest.getStorageLocation());
+          }
+          Date now = new Date();
+
+          VolumeInfoDAO volumeInfoDAO =
+              VolumeInfoDAO.builder()
+                  .id(volumeId)
+                  .name(createVolumeRequest.getName())
+                  .schemaId(schemaId)
+                  .comment(createVolumeRequest.getComment())
+                  .storageLocation(storageLocation.toString())
+                  .owner(callerId)
+                  .createdAt(now)
+                  .createdBy(callerId)
+                  .updatedAt(now)
+                  .updatedBy(callerId)
+                  .volumeType(createVolumeRequest.getVolumeType().getValue())
+                  .build();
           session.persist(volumeInfoDAO);
-          LOGGER.info("Added volume: {}", volumeInfo.getName());
-          return convertFromDAO(
-              volumeInfoDAO,
-              createVolumeRequest.getCatalogName(),
-              createVolumeRequest.getSchemaName());
+          LOGGER.info("Added volume: {}", volumeInfoDAO.getName());
+          return volumeInfoDAO.toVolumeInfo(
+              createVolumeRequest.getCatalogName(), createVolumeRequest.getSchemaName());
         },
         "Failed to create volume",
         /* readOnly = */ false);
@@ -118,8 +108,8 @@ public class VolumeRepository {
           String catalogName = namespace[0];
           String schemaName = namespace[1];
           String volumeName = namespace[2];
-          return convertFromDAO(
-              getVolumeDAO(session, catalogName, schemaName, volumeName), catalogName, schemaName);
+          return getVolumeDAO(session, catalogName, schemaName, volumeName)
+              .toVolumeInfo(catalogName, schemaName);
         },
         "Failed to get volume",
         /* readOnly = */ true);
@@ -152,19 +142,13 @@ public class VolumeRepository {
           }
           RepositoryUtils.CatalogAndSchemaNames catalogAndSchemaNames =
               RepositoryUtils.getCatalogAndSchemaNames(session, volumeInfoDAO.getSchemaId());
-          VolumeInfo volumeInfo = volumeInfoDAO.toVolumeInfo();
-          volumeInfo.setSchemaName(catalogAndSchemaNames.schemaName());
-          volumeInfo.setCatalogName(catalogAndSchemaNames.catalogName());
+          VolumeInfo volumeInfo =
+              volumeInfoDAO.toVolumeInfo(
+                  catalogAndSchemaNames.catalogName(), catalogAndSchemaNames.schemaName());
           return volumeInfo;
         },
         "Failed to get volume by ID",
         /* readOnly = */ true);
-  }
-
-  private void addNamespaceData(VolumeInfo volumeInfo, String catalogName, String schemaName) {
-    volumeInfo.setCatalogName(catalogName);
-    volumeInfo.setSchemaName(schemaName);
-    volumeInfo.setFullName(catalogName + "." + schemaName + "." + volumeInfo.getName());
   }
 
   /**
@@ -208,20 +192,10 @@ public class VolumeRepository {
     String nextPageToken = LISTING_HELPER.getNextPageToken(volumeInfoDAOList, maxResults);
     List<VolumeInfo> result = new ArrayList<>();
     for (VolumeInfoDAO volumeInfoDAO : volumeInfoDAOList) {
-      VolumeInfo volumeInfo = volumeInfoDAO.toVolumeInfo();
-      addNamespaceData(volumeInfo, catalogName, schemaName);
+      VolumeInfo volumeInfo = volumeInfoDAO.toVolumeInfo(catalogName, schemaName);
       result.add(volumeInfo);
     }
     return new ListVolumesResponseContent().volumes(result).nextPageToken(nextPageToken);
-  }
-
-  private VolumeInfo convertFromDAO(
-      VolumeInfoDAO volumeInfoDAO, String catalogName, String schemaName) {
-    VolumeInfo volumeInfo = volumeInfoDAO.toVolumeInfo();
-    volumeInfo.setCatalogName(catalogName);
-    volumeInfo.setSchemaName(schemaName);
-    volumeInfo.setFullName(catalogName + "." + schemaName + "." + volumeInfo.getName());
-    return volumeInfo;
   }
 
   public VolumeInfo updateVolume(String name, UpdateVolumeRequestContent updateVolumeRequest) {
@@ -250,7 +224,7 @@ public class VolumeRepository {
           }
           if (updateVolumeRequest.getNewName() == null
               && updateVolumeRequest.getComment() == null) {
-            return convertFromDAO(volumeInfo, catalog, schema);
+            return volumeInfo.toVolumeInfo(catalog, schema);
           }
           if (updateVolumeRequest.getNewName() != null) {
             volumeInfo.setName(updateVolumeRequest.getNewName());
@@ -262,7 +236,7 @@ public class VolumeRepository {
           volumeInfo.setUpdatedBy(callerId);
           session.merge(volumeInfo);
           LOGGER.info("Updated volume: {}", volumeInfo.getName());
-          return convertFromDAO(volumeInfo, catalog, schema);
+          return volumeInfo.toVolumeInfo(catalog, schema);
         },
         "Failed to update volume",
         /* readOnly = */ false);
