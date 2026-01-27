@@ -78,7 +78,8 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
         continue;
       }
       for (boolean withPartitionColumns : List.of(true, false)) {
-        for (boolean withCtas : List.of(true, false)) {
+        // TODO: Enable CTAS, once upgrade the delta version to 4.1.0
+        for (boolean withCtas : List.of(/*true,*/ false)) {
           for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
             String tableName = TEST_TABLE + tableNameCounter;
             tableNameCounter++;

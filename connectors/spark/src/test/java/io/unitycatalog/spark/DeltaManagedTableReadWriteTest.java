@@ -98,7 +98,8 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     int counter = 0;
     final String comment = "This is comment.";
     for (boolean withPartition : List.of(true, false)) {
-      for (boolean ctas : List.of(true, false)) {
+      // TODO: Enable CTAS, once upgrade the delta version to 4.1.0
+      for (boolean ctas : List.of(/*true,*/ false)) {
         for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
           String tableName = DELTA_TABLE + counter;
           counter++;

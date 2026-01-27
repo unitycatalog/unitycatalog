@@ -29,7 +29,7 @@ import scala.language.existentials
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
  */
 class UCSingleCatalog
-  extends TableCatalog
+  extends StagingTableCatalog
   with SupportsNamespaces
   with Logging {
 
@@ -99,97 +99,119 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
-    val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
-    if (hasExternalClause && !hasLocationClause) {
+    validateCreateTableProperties(ident, properties)
+    delegate.createTable(ident, columns, partitions, prepareTableProperties(ident, properties))
+  }
+
+  /**
+   * Validates properties for table creation.
+   * - EXTERNAL tables must have a location.
+   * - Managed tables must have the delta managed marker and must not specify system properties.
+   */
+  private def validateCreateTableProperties(
+      ident: Identifier,
+      properties: util.Map[String, String]): Unit = {
+    if (properties.containsKey(TableCatalog.PROP_EXTERNAL) &&
+      !properties.containsKey(TableCatalog.PROP_LOCATION)) {
       throw new ApiException("Cannot create EXTERNAL TABLE without location.")
     }
-    def isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
+    if (getTableType(ident, properties) != ManagedTable) return
 
-    // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
-    // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
-    if (!hasExternalClause && !hasLocationClause && !isPathTable) {
-      // Check that caller shouldn't set some properties
-      List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
-        TableCatalog.PROP_IS_MANAGED_LOCATION)
-        .filter(properties.containsKey(_))
-        .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
-      // Setting the catalogManaged table feature is required for creating a managed table.
-      if (!properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) &&
-        !properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
-        throw new ApiException(
-          s"Managed table creation requires table property " +
-            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'=" +
-            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'" +
-            s" to be set.")
-      }
-      // Caller should not set these two table properties to values other than "supported". This is
-      // the only documented value.
-      List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
-        .foreach(k => {
-          Option(properties.get(k))
-            .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
-            .foreach(v => throw new ApiException(
-              s"Invalid property value '$v' for '$k'."))
-        })
+    // System-managed properties must not be user-specified.
+    List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
+      TableCatalog.PROP_IS_MANAGED_LOCATION)
+      .find(properties.containsKey)
+      .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
 
-      // Get staging table location and table id from UC
-      val createStagingTable = new CreateStagingTable()
-        .catalogName(name())
-        .schemaName(ident.namespace().head)
-        .name(ident.name())
-      val stagingTableInfo = tablesApi.createStagingTable(createStagingTable)
-      val stagingLocation = stagingTableInfo.getStagingLocation
-      val stagingTableId = stagingTableInfo.getId
+    // Require the delta catalog managed marker.
+    val managedKeys = List(
+      UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+      UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
+    if (!managedKeys.exists(properties.containsKey)) {
+      throw new ApiException(
+        s"Managed table creation requires table property " +
+          s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'=" +
+          s"'${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}' to be set.")
+    }
+    // Validate managed marker values.
+    managedKeys.foreach { k =>
+      Option(properties.get(k))
+        .filterNot(_ == UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
+        .foreach(v => throw new ApiException(s"Invalid property value '$v' for '$k'."))
+    }
+  }
 
-      val newProps = new util.HashMap[String, String]
-      newProps.putAll(properties)
-      newProps.put(TableCatalog.PROP_LOCATION, stagingTableInfo.getStagingLocation)
-      // Sets both the new and old table ID property while it's being renamed.
-      newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableInfo.getId)
-      newProps.put(UCTableProperties.UC_TABLE_ID_KEY_OLD, stagingTableInfo.getId)
-      // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
-      // user-specified but system-generated, which is exactly the case here.
-      newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+  /**
+   * Table type classification for property preparation.
+   */
+  private sealed trait TableType
+  private case object ManagedTable extends TableType
+  private case object LocationTable extends TableType
+  private case object PathTable extends TableType
 
-      val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
-        new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
-      val credentialProps = CredPropsUtil.createTableCredProps(
-        renewCredEnabled,
-        CatalogUtils.stringToURI(stagingLocation).getScheme,
-        uri.toString,
-        tokenProvider,
-        stagingTableId,
-        TableOperation.READ_WRITE,
-        temporaryCredentials,
-      )
-      UCSingleCatalog.setCredentialProps(newProps, credentialProps)
+  /**
+   * Determines table type based on identifier and properties.
+   */
+  private def getTableType(ident: Identifier, properties: util.Map[String, String]): TableType = {
+    if (properties.containsKey(TableCatalog.PROP_LOCATION)) LocationTable
+    else if (properties.containsKey(TableCatalog.PROP_EXTERNAL) ||
+      UCSingleCatalog.isPathTable(ident)) PathTable
+    else ManagedTable
+  }
 
-      delegate.createTable(ident, columns, partitions, newProps)
-    } else if (hasLocationClause) {
-      val location = properties.get(TableCatalog.PROP_LOCATION)
-      assert(location != null)
-      val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
-        new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
-      val newProps = new util.HashMap[String, String]
-      newProps.putAll(properties)
+  /** Sets managed table properties (location, table IDs, credentials). */
+  private def setManagedTableProperties(
+      properties: util.Map[String, String],
+      location: String,
+      tableId: String): util.Map[String, String] = {
+    val newProps = new util.HashMap[String, String](properties)
+    newProps.put(TableCatalog.PROP_LOCATION, location)
+    // Both keys are set during the property rename transition.
+    newProps.put(UCTableProperties.UC_TABLE_ID_KEY, tableId)
+    newProps.put(UCTableProperties.UC_TABLE_ID_KEY_OLD, tableId)
+    // Mark as managed since the location is system-generated, not user-specified.
+    newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+    val creds = temporaryCredentialsApi.generateTemporaryTableCredentials(
+      new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE))
+    UCSingleCatalog.setCredentialProps(newProps, CredPropsUtil.createTableCredProps(
+      renewCredEnabled,
+      CatalogUtils.stringToURI(location).getScheme,
+      uri.toString,
+      tokenProvider,
+      tableId,
+      TableOperation.READ_WRITE,
+      creds))
+    newProps
+  }
 
-      val credentialProps = CredPropsUtil.createPathCredProps(
-        renewCredEnabled,
-        CatalogUtils.stringToURI(location).getScheme,
-        uri.toString,
-        tokenProvider,
-        location,
-        PathOperation.PATH_CREATE_TABLE,
-        cred)
+  /** Prepares table properties with credentials based on table type. */
+  private def prepareTableProperties(
+      ident: Identifier,
+      properties: util.Map[String, String]): util.Map[String, String] = {
+    getTableType(ident, properties) match {
+      case ManagedTable =>
+        val staging = tablesApi.createStagingTable(new CreateStagingTable()
+          .catalogName(name())
+          .schemaName(ident.namespace().head)
+          .name(ident.name()))
+        setManagedTableProperties(properties, staging.getStagingLocation, staging.getId)
 
-      UCSingleCatalog.setCredentialProps(newProps, credentialProps)
-      delegate.createTable(ident, columns, partitions, newProps)
-    } else {
-      // TODO: for path-based tables, Spark should generate a location property using the qualified
-      //       path string.
-      delegate.createTable(ident, columns, partitions, properties)
+      case LocationTable =>
+        val location = properties.get(TableCatalog.PROP_LOCATION)
+        val newProps = new util.HashMap[String, String](properties)
+        val creds = temporaryCredentialsApi.generateTemporaryPathCredentials(
+          new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
+        UCSingleCatalog.setCredentialProps(newProps, CredPropsUtil.createPathCredProps(
+          renewCredEnabled,
+          CatalogUtils.stringToURI(location).getScheme,
+          uri.toString,
+          tokenProvider,
+          location,
+          PathOperation.PATH_CREATE_TABLE,
+          creds))
+        newProps
+
+      case PathTable => properties
     }
   }
 
@@ -230,6 +252,32 @@ class UCSingleCatalog
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
   }
+
+  override def stageReplace(
+      ident: Identifier,
+      schema: StructType,
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    throw new UnsupportedOperationException("stageReplace is not supported yet")
+  }
+
+  override def stageCreateOrReplace(
+      ident: Identifier,
+      schema: StructType,
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    throw new UnsupportedOperationException("stageCreateOrReplace is not supported yet")
+  }
+
+  override def stageCreate(
+      ident: Identifier,
+      schema: StructType,
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    val newProps = prepareTableProperties(ident, properties)
+    delegate.asInstanceOf[StagingTableCatalog].stageCreate(ident, schema, partitions, newProps)
+  }
 }
 
 object UCSingleCatalog {
@@ -245,6 +293,10 @@ object UCSingleCatalog {
     props.putAll(credentialProps.map {
       case (k, v) => (prefix + k, v)
     }.asJava)
+  }
+
+  def isPathTable(ident: Identifier): Boolean = {
+    ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
   }
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
