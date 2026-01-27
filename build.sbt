@@ -22,13 +22,13 @@ lazy val javacRelease17 = Seq("--release", "17")
 lazy val scala213 = "2.13.16"
 
 lazy val deltaVersion = "4.0.0"
-lazy val sparkVersion = "4.0.0"
+lazy val sparkVersion = "4.1.0"
 lazy val hadoopVersion = "3.4.0"
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
-lazy val log4jVersion = "2.24.3"
+lazy val log4jVersion = "2.25.3"
 val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
