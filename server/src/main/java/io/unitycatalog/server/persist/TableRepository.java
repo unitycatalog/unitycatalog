@@ -193,7 +193,7 @@ public class TableRepository {
 
           // Check if table already exists
           TableInfoDAO existingTable =
-              findBySchemaIdAndName(session, schemaId, createTable.getName());
+              findBySchemaIdAndNameAnyType(session, schemaId, createTable.getName());
           if (existingTable != null) {
             throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + fullName);
           }
@@ -260,6 +260,24 @@ public class TableRepository {
     query.setParameter("name", name);
     query.setParameter("viewType", TableType.VIEW.getValue());
     LOGGER.debug("Finding table by schemaId: {} and name: {}", schemaId, name);
+    return query.uniqueResult(); // Returns null if no result is found
+  }
+
+  /**
+   * Finds any entity (table or view) by schema ID and name, including views. Use this method when
+   * you need to check for name collisions across both tables and views.
+   *
+   * @param session the Hibernate session
+   * @param schemaId the schema UUID
+   * @param name the entity name
+   * @return the TableInfoDAO if found, null otherwise
+   */
+  protected TableInfoDAO findBySchemaIdAndNameAnyType(Session session, UUID schemaId, String name) {
+    String hql = "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
+    Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
+    query.setParameter("schemaId", schemaId);
+    query.setParameter("name", name);
+    LOGGER.debug("Finding table or view by schemaId: {} and name: {}", schemaId, name);
     return query.uniqueResult(); // Returns null if no result is found
   }
 

@@ -60,11 +60,12 @@ public class ViewRepository {
                   .getSchemaRepository()
                   .getSchemaIdOrThrow(session, catalogName, schemaName);
 
-          TableInfoDAO existingTable =
+          // Check for existing table OR view with the same name (use AnyType to include views)
+          TableInfoDAO existingEntity =
               repositories
                   .getTableRepository()
-                  .findBySchemaIdAndName(session, schemaId, createView.getName());
-          if (existingTable != null) {
+                  .findBySchemaIdAndNameAnyType(session, schemaId, createView.getName());
+          if (existingEntity != null) {
             throw new BaseException(
                 ErrorCode.ALREADY_EXISTS, "View or table already exists: " + fullName);
           }

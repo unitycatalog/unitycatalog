@@ -96,7 +96,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/views/{view}\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics\","
-                + "\"GET /v1/{prefix}/namespaces/{namespace}/tables\""
+                + "\"GET /v1/{prefix}/namespaces/{namespace}/tables\","
+                + "\"GET /v1/{prefix}/namespaces/{namespace}/views\""
                 + "]}");
 
     // not setting warehouse param should result in 400 BadRequestException

@@ -116,6 +116,7 @@ public abstract class BaseServerTest {
       session.createMutationQuery("delete from FunctionInfoDAO").executeUpdate();
       session.createMutationQuery("delete from VolumeInfoDAO").executeUpdate();
       session.createMutationQuery("delete from ColumnInfoDAO").executeUpdate();
+      session.createMutationQuery("delete from ViewRepresentationDAO").executeUpdate();
       session.createMutationQuery("delete from TableInfoDAO").executeUpdate();
       session.createMutationQuery("delete from StagingTableDAO").executeUpdate();
       session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
