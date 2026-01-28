@@ -36,7 +36,7 @@ public class CloudCredentialVendor {
   public TemporaryCredentials vendCredential(CredentialContext context) {
     return switch (context.getStorageScheme()) {
       case ABFS, ABFSS -> vendAzureCredential(context);
-      case GS -> vendGcpToken(context);
+      case GS -> vendGcpCredential(context);
       case S3 -> vendAwsCredential(context);
       // For local file system, we return empty credentials
       case FILE, NULL -> new TemporaryCredentials();
@@ -51,8 +51,8 @@ public class CloudCredentialVendor {
         .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
   }
 
-  private TemporaryCredentials vendGcpToken(CredentialContext context) {
-    AccessToken gcpToken = gcpCredentialVendor.vendGcpToken(context);
+  private TemporaryCredentials vendGcpCredential(CredentialContext context) {
+    AccessToken gcpToken = gcpCredentialVendor.vendGcpCredential(context);
     return new TemporaryCredentials()
         .gcpOauthToken(new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
         .expirationTime(gcpToken.getExpirationTime().getTime());

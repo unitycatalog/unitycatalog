@@ -234,42 +234,52 @@ public class ExternalLocationUtils {
    * @throws BaseException with FAILED_PRECONDITION if multiple external locations cover the path
    *     (invalid state) or if the credential referenced by the external location does not exist
    */
-  public Optional<CredentialDAO> getExternalLocationCredentialForPath(NormalizedURL url) {
+  public Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(NormalizedURL url) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> {
-          List<ExternalLocationDAO> externalLocationDAOs =
-              ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsWithURLOverlap(
-                      session,
-                      url,
-                      SecurableType.EXTERNAL_LOCATION,
-                      /* limit= */ 2,
-                      /* includeParent= */ true,
-                      /* includeSelf= */ true,
-                      /* includeSubdir= */ false)
-                  .stream()
-                  .toList();
-          if (externalLocationDAOs.isEmpty()) {
-            // Not found
-            return Optional.empty();
-          } else if (externalLocationDAOs.size() > 1) {
-            // This is a invalid internal state. We never allow external locations with
-            // overlapping URLs.
-            throw new BaseException(
-                ErrorCode.FAILED_PRECONDITION,
-                "More than one external location with URL '" + url + "' exist.");
-          }
-          UUID credentialId = externalLocationDAOs.get(0).getCredentialId();
-          CredentialDAO credentialDAO = session.get(CredentialDAO.class, credentialId);
-          if (credentialDAO == null) {
-            throw new BaseException(
-                ErrorCode.FAILED_PRECONDITION,
-                String.format("Credential %s for '%s' not found.", credentialId, url));
-          }
-          return Optional.of(credentialDAO);
-        },
+        session -> getExternalLocationCredentialDaoForPath(session, url),
         "Failed to get storage credential by URL",
         /* readOnly= */ true);
+  }
+
+  private Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(
+      Session session, NormalizedURL url) {
+    // Get the external location
+    // Find out the external location that covers the input URL. Either the external location is
+    // a parent path of input URL, or is the same URL.
+    // It also tries to find two instead of one. If two are found, that is an invalid state that
+    // should never happen and in that case server can't decide which external location to use.
+    List<ExternalLocationDAO> externalLocationDAOs =
+        ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsWithURLOverlap(
+                session,
+                url,
+                SecurableType.EXTERNAL_LOCATION,
+                /* limit= */ 2,
+                /* includeParent= */ true,
+                /* includeSelf= */ true,
+                /* includeSubdir= */ false)
+            .stream()
+            .toList();
+    if (externalLocationDAOs.isEmpty()) {
+      // Not found
+      return Optional.empty();
+    } else if (externalLocationDAOs.size() > 1) {
+      // This is an invalid internal state. We never allow external locations with
+      // overlapping URLs.
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          "More than one external location with URL '" + url + "' exist.");
+    }
+
+    // Get the credential that is assigned to the external location
+    UUID credentialId = externalLocationDAOs.get(0).getCredentialId();
+    CredentialDAO credentialDAO = session.get(CredentialDAO.class, credentialId);
+    if (credentialDAO == null) {
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          String.format("Credential %s for '%s' not found.", credentialId, url));
+    }
+    return Optional.of(credentialDAO);
   }
 
   /**

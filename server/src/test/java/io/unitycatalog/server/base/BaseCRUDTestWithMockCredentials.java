@@ -169,7 +169,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
             .map(e -> e.getValue().toString())
             .forEach(path -> doReturn(gcpCredential)
                     .when(gcpCredentialVendor)
-                    .vendGcpToken(
+                    .vendGcpCredential(
                             argThat(isCredentialContextForCloudPath(UriScheme.GS, path))));
   }
 

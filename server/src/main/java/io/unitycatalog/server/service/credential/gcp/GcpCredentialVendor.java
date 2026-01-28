@@ -34,7 +34,7 @@ public class GcpCredentialVendor {
     this.gcsConfigurations = serverProperties.getGcsConfigurations();
   }
 
-  public AccessToken vendGcpToken(CredentialContext credentialContext) {
+  public AccessToken vendGcpCredential(CredentialContext credentialContext) {
     credentialContext
         .getCredentialDAO()
         .ifPresent(

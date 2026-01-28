@@ -56,7 +56,7 @@ public class CloudCredentialVendorTest {
     // Assumes no external location (or credential)
     doReturn(Optional.empty())
         .when(externalLocationUtils)
-        .getExternalLocationCredentialForPath(any());
+        .getExternalLocationCredentialDaoForPath(any());
   }
 
   private TemporaryCredentials vendCredential(
@@ -229,7 +229,7 @@ public class CloudCredentialVendorTest {
     // Mock the external location utils to return this credential for the path
     doReturn(Optional.of(credentialDAO))
         .when(externalLocationUtils)
-        .getExternalLocationCredentialForPath(any());
+        .getExternalLocationCredentialDaoForPath(any());
 
     // No per-bucket configurations needed when using credential from external location
     when(serverProperties.getS3Configurations()).thenReturn(Map.of());

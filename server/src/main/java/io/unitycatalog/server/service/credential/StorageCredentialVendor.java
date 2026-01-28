@@ -50,7 +50,7 @@ public class StorageCredentialVendor {
 
     // Permission authorization is already done before calling this function.
     Optional<CredentialDAO> credentialDAO =
-        externalLocationUtils.getExternalLocationCredentialForPath(path);
+        externalLocationUtils.getExternalLocationCredentialDaoForPath(path);
     CredentialContext credentialContext = CredentialContext.create(path, privileges, credentialDAO);
     return cloudCredentialVendor.vendCredential(credentialContext);
   }
