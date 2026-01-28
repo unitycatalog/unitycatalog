@@ -94,9 +94,9 @@ public class CredentialService extends AuthorizedService {
   public HttpResponse deleteCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
       @Param("force") Optional<Boolean> force) {
-    CredentialInfo credentialInfo =
+    UUID deletedCredentialId =
         credentialRepository.deleteCredential(name, force.orElse(false));
-    removeAuthorizations(credentialInfo.getId());
+    removeAuthorizations(deletedCredentialId.toString());
     return HttpResponse.of(HttpStatus.OK);
   }
 
