@@ -20,6 +20,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -205,15 +206,25 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       Map<SecurableType, Object> resourceKeys,
       Map<String, Object> nonResourceValues) {
     LOGGER.debug("resourceKeys = {}", resourceKeys);
-    LOGGER.debug("nonResourceValues = {}", nonResourceValues);
 
     Map<SecurableType, Object> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
+
+    if (resourceKeys.containsKey(SecurableType.EXTERNAL_LOCATION)) {
+      // KeyMapper will try to map a path of EXTERNAL_LOCATION to any data securable if the path
+      // belongs to it, instead of just the external location. This new variable is introduced so
+      // that auth expression can easily check if the input path overlaps with any data securable.
+      boolean noOverlapWithDataSecurable =
+          ExternalLocationUtils.DATA_SECURABLE_TYPES.stream()
+              .allMatch(type -> resourceIds.get(type) == null);
+      nonResourceValues.put("no_overlap_with_data_securable", noOverlapWithDataSecurable);
+    }
 
     if (!resourceIds.keySet().containsAll(resourceKeys.keySet())) {
       LOGGER.warn("Some resource keys have unresolved ids.");
     }
 
     LOGGER.debug("resourceIds = {}", resourceIds);
+    LOGGER.debug("nonResourceValues = {}", nonResourceValues);
 
     if (!evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
