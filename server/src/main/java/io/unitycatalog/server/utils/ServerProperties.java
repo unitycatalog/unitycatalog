@@ -202,7 +202,11 @@ public class ServerProperties {
     AWS_S3_ACCESS_KEY("aws.s3.accessKey"),
     AWS_S3_SECRET_KEY("aws.s3.secretKey"),
     AWS_S3_SESSION_TOKEN("aws.s3.sessionToken"),
-    AWS_REGION("aws.region");
+    AWS_REGION("aws.region"),
+    UNIFORM_ICEBERG_ENABLED(
+        "server.uniform-iceberg.enabled",
+        "false",
+        BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
     // getS3Configurations.

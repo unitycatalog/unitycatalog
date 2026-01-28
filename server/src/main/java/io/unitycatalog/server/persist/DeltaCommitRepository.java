@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfos;
@@ -10,7 +12,9 @@ import io.unitycatalog.server.model.DeltaCommitMetadataProperties;
 import io.unitycatalog.server.model.DeltaGetCommits;
 import io.unitycatalog.server.model.DeltaGetCommitsResponse;
 import io.unitycatalog.server.model.DeltaMetadata;
+import io.unitycatalog.server.model.DeltaUniformIceberg;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.Uniform;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
@@ -285,6 +289,14 @@ public class DeltaCommitRepository {
     saveCommit(session, tableId, commitInfo);
     Optional.ofNullable(commit.getMetadata())
         .ifPresent(metadata -> updateTableMetadata(session, tableId, tableInfoDAO, metadata));
+    // Update uniform metadata if feature flag is enabled
+    if (ServerProperties.Property.UNIFORM_ICEBERG_ENABLED.getBoolean(
+        ServerProperties.getInstance().getProperty(
+            ServerProperties.Property.UNIFORM_ICEBERG_ENABLED.getKey()))) {
+      Optional.ofNullable(commit.getUniform())
+          .ifPresent(uniform -> updateTableUniformMetadata(tableInfoDAO, uniform));
+    }
+    session.merge(tableInfoDAO);
   }
 
   /**
@@ -390,6 +402,14 @@ public class DeltaCommitRepository {
     saveCommit(session, tableId, commitInfo);
     Optional.ofNullable(commit.getMetadata())
         .ifPresent(metadata -> updateTableMetadata(session, tableId, tableInfoDAO, metadata));
+    // Update uniform metadata if feature flag is enabled
+    if (ServerProperties.Property.UNIFORM_ICEBERG_ENABLED.getBoolean(
+        ServerProperties.getInstance().getProperty(
+            ServerProperties.Property.UNIFORM_ICEBERG_ENABLED.getKey()))) {
+      Optional.ofNullable(commit.getUniform())
+          .ifPresent(uniform -> updateTableUniformMetadata(tableInfoDAO, uniform));
+    }
+    session.merge(tableInfoDAO);
     latestBackfilledVersion.ifPresent(
         latestBackfilled ->
             backfillCommits(
@@ -725,6 +745,23 @@ public class DeltaCommitRepository {
   }
 
   /**
+   * Updates table uniform metadata from a commit.
+   *
+   * @param tableInfoDAO the table to update
+   * @param uniform the uniform metadata from the commit
+   */
+  private static void updateTableUniformMetadata(TableInfoDAO tableInfoDAO, Uniform uniform) {
+    if (uniform == null || uniform.getIceberg() == null) {
+      return;
+    }
+
+    DeltaUniformIceberg iceberg = uniform.getIceberg();
+    tableInfoDAO.setUniformIcebergMetadataLocation(iceberg.getMetadataLocation());
+    tableInfoDAO.setUniformIcebergConvertedDeltaVersion(iceberg.getConvertedDeltaVersion());
+    tableInfoDAO.setUniformIcebergConvertedDeltaTimestamp(iceberg.getConvertedDeltaTimestamp());
+  }
+
+  /**
    * Validates the structure and content of a commit request.
    *
    * <p>This method performs comprehensive validation including:
@@ -835,6 +872,9 @@ public class DeltaCommitRepository {
             ErrorCode.INVALID_ARGUMENT, "metadata shouldn't be set for backfill only commit");
       }
     }
+
+    // Validate uniform metadata
+    validateUniform(commit.getUniform());
   }
 
   /**
@@ -863,6 +903,48 @@ public class DeltaCommitRepository {
     if (tableInfoDAO.getUrl() == null) {
       throw new BaseException(
           ErrorCode.DATA_LOSS, "Managed table doesn't have a URI: " + tableInfoDAO.getId());
+    }
+  }
+
+  /**
+   * Validates the uniform metadata in a commit request.
+   *
+   * @param uniform the uniform metadata to validate
+   * @throws BaseException if validation fails
+   */
+  private static void validateUniform(Uniform uniform) {
+    if (uniform == null) {
+      return;
+    }
+
+    DeltaUniformIceberg iceberg = uniform.getIceberg();
+    if (iceberg == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "uniform.iceberg must be set if uniform is present");
+    }
+
+    // Validate required fields
+    if (iceberg.getMetadataLocation() == null || iceberg.getMetadataLocation().isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "uniform.iceberg.metadata_location is required");
+    }
+
+    if (iceberg.getConvertedDeltaVersion() == null || iceberg.getConvertedDeltaVersion() < 0) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "uniform.iceberg.converted_delta_version must be non-negative");
+    }
+
+    // Size limit check (1MB max)
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      String serialized = mapper.writeValueAsString(uniform);
+      if (serialized.length() > 1024 * 1024) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT, "uniform metadata exceeds maximum size of 1MB");
+      }
+    } catch (JsonProcessingException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Failed to serialize uniform metadata", e);
     }
   }
 

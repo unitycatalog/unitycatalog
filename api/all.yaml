@@ -1738,6 +1738,16 @@ components:
         table_id:
           description: Unique identifier for the table.
           type: string
+        uniform_iceberg_metadata_location:
+          description: URI to the latest Iceberg metadata file for this Delta table.
+          type: string
+        uniform_iceberg_converted_delta_version:
+          description: The latest Delta version converted to Iceberg.
+          type: integer
+          format: int64
+        uniform_iceberg_converted_delta_timestamp:
+          description: Timestamp of the latest Delta-to-Iceberg conversion.
+          type: string
     CreateTable:
       type: object
       properties:
@@ -2974,9 +2984,11 @@ components:
         table_uri:
           type: string
           description: |
-            The URI of the storage location of the table. If the table_id exists but the table_uri is 
+            The URI of the storage location of the table. If the table_id exists but the table_uri is
             different from the one previously registered (e.g., if the client moved the table), the request will fail.
             Example: s3://bucket-name/tables/some-table-id
+        uniform:
+          $ref: '#/components/schemas/Uniform'
         commit_info:
           $ref: '#/components/schemas/DeltaCommitInfo'
         latest_backfilled_version:
@@ -3045,6 +3057,37 @@ components:
         - file_name
         - file_size
         - file_modification_timestamp
+    DeltaUniformIceberg:
+      type: object
+      description: Metadata about the latest Iceberg conversion for a Delta Uniform table.
+      properties:
+        metadata_location:
+          type: string
+          format: uri
+          description: |
+            The latest Iceberg metadata location.
+            Example: s3://abc/def/metadata/v1.json
+        converted_delta_version:
+          type: integer
+          format: int64
+          description: |
+            The latest converted delta version.
+            Example: 1044
+        converted_delta_timestamp:
+          type: string
+          description: |
+            The timestamp when the latest conversion happens.
+            Example: 2025-01-04T03:13:11.423
+      required:
+        - metadata_location
+        - converted_delta_version
+        - converted_delta_timestamp
+    Uniform:
+      type: object
+      description: Container for uniform format conversion metadata.
+      properties:
+        iceberg:
+          $ref: '#/components/schemas/DeltaUniformIceberg'
     DeltaCommitResponse:
       type: object
       description: The response for the Delta commit action
