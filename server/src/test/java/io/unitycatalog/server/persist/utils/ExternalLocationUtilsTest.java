@@ -219,7 +219,7 @@ public class ExternalLocationUtilsTest {
 
   @Test
   public void testUnsupportedSecurableType() {
-    // METASTORE, CATALOG, SCHEMA, FUNCTION are not supported for URL overlap checks
+    // METASTORE, CREDENTIAL, FUNCTION are not supported for URL overlap checks
     assertThatThrownBy(
             () ->
                 ExternalLocationUtils.getEntityDAOsWithURLOverlap(

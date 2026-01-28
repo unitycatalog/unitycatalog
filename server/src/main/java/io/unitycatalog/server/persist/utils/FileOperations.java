@@ -71,11 +71,11 @@ public class FileOperations {
         String.join("/", List.of(storageRoot.toString(), prefix, entityId.toString())));
   }
 
-  public NormalizedURL createManagedSchemaDirectory(NormalizedURL storageRoot, UUID schemaId) {
+  public NormalizedURL createManagedLocationForSchema(NormalizedURL storageRoot, UUID schemaId) {
     return createManagedEntityDirectory(storageRoot, MANAGED_STORAGE_SCHEMA_PREFIX, schemaId);
   }
 
-  public NormalizedURL createManagedCatalogDirectory(NormalizedURL storageRoot, UUID catalogId) {
+  public NormalizedURL createManagedLocationForCatalog(NormalizedURL storageRoot, UUID catalogId) {
     return createManagedEntityDirectory(storageRoot, MANAGED_STORAGE_CATALOG_PREFIX, catalogId);
   }
 
@@ -83,15 +83,18 @@ public class FileOperations {
   // is expected to be the storageLocation of a catalog or schema, which already includes
   // the __unitystorage prefix.
 
-  public NormalizedURL createManagedTableDirectory(NormalizedURL storageRoot, UUID tableId) {
-    return createManagedEntityDirectory(storageRoot, "tables", tableId);
+  public NormalizedURL createManagedLocationForTable(
+      NormalizedURL parentStorageLocation, UUID tableId) {
+    return createManagedEntityDirectory(parentStorageLocation, "tables", tableId);
   }
 
-  public NormalizedURL createManagedVolumeDirectory(NormalizedURL storageRoot, UUID volumeId) {
-    return createManagedEntityDirectory(storageRoot, "volumes", volumeId);
+  public NormalizedURL createManagedLocationForVolume(
+      NormalizedURL parentStorageLocation, UUID volumeId) {
+    return createManagedEntityDirectory(parentStorageLocation, "volumes", volumeId);
   }
 
-  public NormalizedURL createManagedModelDirectory(NormalizedURL storageRoot, UUID modelId) {
-    return createManagedEntityDirectory(storageRoot, "models", modelId);
+  public NormalizedURL createManagedLocationForModel(
+      NormalizedURL parentStorageLocation, UUID modelId) {
+    return createManagedEntityDirectory(parentStorageLocation, "models", modelId);
   }
 }

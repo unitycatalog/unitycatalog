@@ -219,11 +219,11 @@ public class ModelRepository {
       String schemaName = registeredModelInfo.getSchemaName();
       RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
           RepositoryUtils.getCatalogAndSchemaDaoOrThrow(session, catalogName, schemaName);
-      NormalizedURL storageRoot =
-          ExternalLocationUtils.getManagedStorageRoot(
+      NormalizedURL parentStorageLocation =
+          ExternalLocationUtils.getManagedStorageLocation(
               catalogAndSchemaDao, this::getDefaultModelsStorageRoot);
       NormalizedURL storageLocation =
-          fileOperations.createManagedModelDirectory(storageRoot, modelId);
+          fileOperations.createManagedLocationForModel(parentStorageLocation, modelId);
       SchemaInfoDAO schemaInfoDAO = catalogAndSchemaDao.schemaInfoDAO();
       try {
         // Check if registered model already exists
@@ -239,7 +239,7 @@ public class ModelRepository {
         registeredModelInfoDAO.setSchemaId(schemaInfoDAO.getId());
         registeredModelInfoDAO.setMaxVersionNumber(0L);
         session.persist(registeredModelInfoDAO);
-        UriUtils.createStorageLocationPath(storageLocation);
+        UriUtils.createStorageLocationDir(storageLocation);
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
@@ -571,7 +571,7 @@ public class ModelRepository {
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);
         modelVersionInfoDAO.setRegisteredModelId(modelId);
         session.persist(modelVersionInfoDAO);
-        UriUtils.createStorageLocationPath(storageLocation);
+        UriUtils.createStorageLocationDir(storageLocation);
         // update the registered model
         existingRegisteredModel.setMaxVersionNumber(version);
         session.persist(existingRegisteredModel);

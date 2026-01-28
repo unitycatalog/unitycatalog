@@ -94,13 +94,13 @@ public class StagingTableRepository {
           RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
               RepositoryUtils.getCatalogAndSchemaDaoOrThrow(
                   session, createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
-          NormalizedURL storageRoot =
-              ExternalLocationUtils.getManagedStorageRoot(
+          NormalizedURL parentStorageLocation =
+              ExternalLocationUtils.getManagedStorageLocation(
                   catalogAndSchemaDao, this::getDefaultManagedTablesStorageRoot);
           NormalizedURL stagingLocation =
               repositories
                   .getFileOperations()
-                  .createManagedTableDirectory(storageRoot, stagingTableId);
+                  .createManagedLocationForTable(parentStorageLocation, stagingTableId);
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 

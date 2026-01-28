@@ -77,7 +77,7 @@ public class SchemaRepository {
             NormalizedURL storageLocation =
                 repositories
                     .getFileOperations()
-                    .createManagedSchemaDirectory(storageRoot, schemaId);
+                    .createManagedLocationForSchema(storageRoot, schemaId);
             schemaInfo.setStorageRoot(storageRoot.toString());
             schemaInfo.setStorageLocation(storageLocation.toString());
           }

@@ -35,6 +35,7 @@ import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.UUID;
@@ -84,7 +85,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
   public void afterEachTest() {
     try {
       // Clean up the newly created storage root
-      UriUtils.deleteStorageLocationPath("file:" + rootBase);
+      UriUtils.deleteStorageLocationDir(NormalizedURL.from(rootBase));
     } catch (Exception e) {
       // Ignore
     }
