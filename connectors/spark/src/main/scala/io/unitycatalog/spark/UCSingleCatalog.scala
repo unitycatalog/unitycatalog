@@ -28,7 +28,7 @@ import scala.language.existentials
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
  */
 class UCSingleCatalog
-  extends TableCatalog
+  extends StagingTableCatalog
   with SupportsNamespaces
   with Logging {
 
@@ -225,6 +225,26 @@ class UCSingleCatalog
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
+  }
+
+  override def stageReplace(ident: Identifier,
+                            schema: StructType,
+                            partitions: Array[Transform],
+                            properties: util.Map[String, String]): StagedTable = {
+    delegate.asInstanceOf[StagingTableCatalog].stageReplace(ident, schema, partitions, properties)
+  }
+
+  override def stageCreateOrReplace(ident: Identifier,
+                                    schema: StructType,
+                                    partitions: Array[Transform],
+                                    properties: util.Map[String, String]): StagedTable = {
+    delegate.asInstanceOf[StagingTableCatalog].stageCreateOrReplace(ident, schema,
+      partitions, properties)
+  }
+
+  override def stageCreate(ident: Identifier, schema: StructType, partitions: Array[Transform],
+                           properties: util.Map[String, String]): StagedTable = {
+    delegate.asInstanceOf[StagingTableCatalog].stageCreate(ident, schema, partitions, properties)
   }
 }
 
