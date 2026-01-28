@@ -60,7 +60,7 @@ public class CatalogRepository {
     if (storageRoot != null) {
       ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(storageRoot);
       NormalizedURL storageLocation =
-          repositories.getFileOperations().createManagedCatalogDirectory(storageRoot, catalogId);
+          repositories.getFileOperations().createManagedLocationForCatalog(storageRoot, catalogId);
       catalogInfo.setStorageRoot(storageRoot.toString());
       catalogInfo.storageLocation(storageLocation.toString());
     }

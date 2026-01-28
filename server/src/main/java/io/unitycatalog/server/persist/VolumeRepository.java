@@ -68,12 +68,12 @@ public class VolumeRepository {
                   ErrorCode.INVALID_ARGUMENT,
                   "Storage location should not be specified for managed volume");
             }
-            NormalizedURL storageRoot =
-                ExternalLocationUtils.getManagedStorageRoot(catalogAndSchemaDao);
+            NormalizedURL parentStorageLocation =
+                ExternalLocationUtils.getManagedStorageLocation(catalogAndSchemaDao);
             storageLocation =
                 repositories
                     .getFileOperations()
-                    .createManagedVolumeDirectory(storageRoot, volumeId);
+                    .createManagedLocationForVolume(parentStorageLocation, volumeId);
           } else {
             // EXTERNAL volume.
             if (createVolumeRequest.getStorageLocation() == null) {

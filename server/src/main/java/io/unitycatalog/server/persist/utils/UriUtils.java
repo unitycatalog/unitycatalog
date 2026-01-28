@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,20 +28,14 @@ public class UriUtils {
 
   private UriUtils() {}
 
-  public static void createStorageLocationPath(String uri) {
-    updateDirectoryFromUri(uri, Operation.CREATE, Optional.empty()).toString();
+  /** Create a directory for storage location. Note that currently it does nothing for cloud FS */
+  public static void createStorageLocationDir(NormalizedURL uri) {
+    updateDirectoryFromUri(uri.toString(), Operation.CREATE, Optional.empty());
   }
 
-  public static void createStorageLocationPath(NormalizedURL uri) {
-    createStorageLocationPath(uri.toString());
-  }
-
-  public static String deleteStorageLocationPath(String uri) {
-    return updateDirectoryFromUri(uri, Operation.DELETE, Optional.empty()).toString();
-  }
-
-  public static String deleteStorageLocationPath(NormalizedURL uri) {
-    return deleteStorageLocationPath(uri.toString());
+  /** Delete a directory for storage location. Note that currently it does nothing for cloud FS */
+  public static void deleteStorageLocationDir(NormalizedURL uri) {
+    updateDirectoryFromUri(uri.toString(), Operation.DELETE, Optional.empty());
   }
 
   private static URI updateDirectoryFromUri(
@@ -78,18 +71,6 @@ public class UriUtils {
           String.format(
               "Error attempting to %s URI %s: %s",
               op.name(), parsedUri.toString(), e.getMessage()));
-    }
-  }
-
-  public static boolean isValidURI(String uri) {
-    try {
-      URI testURI = new URI(uri);
-      if (testURI.getScheme() != null && testURI.getPath() != null) {
-        return true;
-      }
-      return false;
-    } catch (URISyntaxException e) {
-      return false;
     }
   }
 

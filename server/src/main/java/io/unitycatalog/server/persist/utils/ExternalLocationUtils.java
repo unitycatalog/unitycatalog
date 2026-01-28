@@ -518,8 +518,8 @@ public class ExternalLocationUtils {
   }
 
   /**
-   * Gets the managed storage root for creating child entities (tables, volumes, models) within a
-   * catalog/schema.
+   * Gets the managed storage location for creating child entities (tables, volumes, models)
+   * within a catalog/schema.
    *
    * <p>This method returns the storageLocation of the schema if set, otherwise falls back to the
    * catalog's storageLocation. If neither is set, throws an exception.
@@ -529,14 +529,14 @@ public class ExternalLocationUtils {
    * @throws BaseException with ErrorCode.FAILED_PRECONDITION if neither catalog nor schema has
    *     managed location configured
    */
-  public static NormalizedURL getManagedStorageRoot(
+  public static NormalizedURL getManagedStorageLocation(
       RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao) {
-    return getManagedStorageRoot(catalogAndSchemaDao, Optional::empty);
+    return getManagedStorageLocation(catalogAndSchemaDao, Optional::empty);
   }
 
   /**
-   * Gets the managed storage root for creating child entities (tables, volumes, models) within a
-   * catalog/schema, with a fallback option.
+   * Gets the managed storage location for creating child entities (tables, volumes, models)
+   * within a catalog/schema, with a fallback option.
    *
    * <p>The resolution order is:
    *
@@ -553,7 +553,7 @@ public class ExternalLocationUtils {
    * @return the storage location to use as root for child entity storage
    * @throws BaseException with ErrorCode.FAILED_PRECONDITION if no storage root is available
    */
-  public static NormalizedURL getManagedStorageRoot(
+  public static NormalizedURL getManagedStorageLocation(
       RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao,
       Supplier<Optional<NormalizedURL>> fallbackStorageRoot) {
     CatalogInfoDAO catalogInfoDAO = catalogAndSchemaDao.catalogInfoDAO();

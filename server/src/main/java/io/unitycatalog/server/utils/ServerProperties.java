@@ -196,6 +196,7 @@ public class ServerProperties {
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false", BOOLEAN_VALIDATOR),
+    // `storage-root.*` are replaced by managed storage locations of catalog and schema.
     MODEL_STORAGE_ROOT("storage-root.models", STORAGE_PATH_VALIDATOR), // Deprecated
     TABLE_STORAGE_ROOT("storage-root.tables", STORAGE_PATH_VALIDATOR), // Deprecated
     AWS_MASTER_ROLE_ARN("aws.masterRoleArn"),
