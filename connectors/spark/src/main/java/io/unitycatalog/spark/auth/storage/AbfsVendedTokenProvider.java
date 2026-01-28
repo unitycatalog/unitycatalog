@@ -2,15 +2,14 @@ package io.unitycatalog.spark.auth.storage;
 
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.spark.UCHadoopConf;
-import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
 import org.apache.hadoop.shaded.com.google.common.base.Preconditions;
 
 public class AbfsVendedTokenProvider extends GenericCredentialProvider implements SASTokenProvider {
   public static final String ACCESS_TOKEN_KEY = "fs.azure.sas.fixed.token";
 
-  public AbfsVendedTokenProvider() {
-  }
+  public AbfsVendedTokenProvider() {}
 
   @Override
   public void initialize(Configuration conf, String accountName) {
@@ -23,13 +22,17 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
         && conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME) != null) {
 
       String sasToken = conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN);
-      Preconditions.checkNotNull(sasToken, "Azure SAS token not set, please check " +
-          "'%s' in hadoop configuration", UCHadoopConf.AZURE_INIT_SAS_TOKEN);
+      Preconditions.checkNotNull(
+          sasToken,
+          "Azure SAS token not set, please check " + "'%s' in hadoop configuration",
+          UCHadoopConf.AZURE_INIT_SAS_TOKEN);
 
       long expiredTimeMillis = conf.getLong(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, 0L);
-      Preconditions.checkState(expiredTimeMillis > 0,
-          "Azure SAS token expired time must be greater than 0, please check '%s' in hadoop " +
-              "configuration", UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME);
+      Preconditions.checkState(
+          expiredTimeMillis > 0,
+          "Azure SAS token expired time must be greater than 0, please check '%s' in hadoop "
+              + "configuration",
+          UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME);
 
       return GenericCredential.forAzure(sasToken, expiredTimeMillis);
     } else {

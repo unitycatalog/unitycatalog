@@ -5,8 +5,7 @@ import io.unitycatalog.client.retry.RetryPolicy;
 import org.apache.hadoop.conf.Configuration;
 
 public class UCHadoopConf {
-  private UCHadoopConf() {
-  }
+  private UCHadoopConf() {}
 
   // Key for the AWS S3 credential provider, same as org.apache.hadoop.fs.s3a.Constants
   // #AWS_CREDENTIALS_PROVIDER, but defined here to avoid an extra hadoop-aws dependency.
@@ -108,22 +107,21 @@ public class UCHadoopConf {
       return builder.build();
     }
 
-    builder.maxAttempts(conf.getInt(
-        REQUEST_RETRY_MAX_ATTEMPTS_KEY,
-        JitterDelayRetryPolicy.DEFAULT_MAX_ATTEMPTS));
+    builder.maxAttempts(
+        conf.getInt(REQUEST_RETRY_MAX_ATTEMPTS_KEY, JitterDelayRetryPolicy.DEFAULT_MAX_ATTEMPTS));
 
-    builder.initDelayMs(conf.getLong(
-        REQUEST_RETRY_INITIAL_DELAY_KEY,
-        JitterDelayRetryPolicy.DEFAULT_INITIAL_DELAY_MS));
+    builder.initDelayMs(
+        conf.getLong(
+            REQUEST_RETRY_INITIAL_DELAY_KEY, JitterDelayRetryPolicy.DEFAULT_INITIAL_DELAY_MS));
 
-    builder.delayMultiplier(conf.getDouble(
-        REQUEST_RETRY_DELAY_MULTIPLIER_KEY,
-        JitterDelayRetryPolicy.DEFAULT_DELAY_MULTIPLIER));
+    builder.delayMultiplier(
+        conf.getDouble(
+            REQUEST_RETRY_DELAY_MULTIPLIER_KEY, JitterDelayRetryPolicy.DEFAULT_DELAY_MULTIPLIER));
 
-    builder.delayJitterFactor(conf.getDouble(
-        REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY,
-        JitterDelayRetryPolicy.DEFAULT_DELAY_JITTER_FACTOR
-    ));
+    builder.delayJitterFactor(
+        conf.getDouble(
+            REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY,
+            JitterDelayRetryPolicy.DEFAULT_DELAY_JITTER_FACTOR));
 
     return builder.build();
   }

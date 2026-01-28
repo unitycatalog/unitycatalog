@@ -1,13 +1,12 @@
 package io.unitycatalog.spark.auth.storage;
 
-import io.unitycatalog.spark.UCHadoopConf;
-import org.apache.hadoop.conf.Configuration;
-import org.sparkproject.guava.base.Preconditions;
-import io.unitycatalog.client.model.GcpOauthToken;
 import com.google.cloud.hadoop.util.AccessTokenProvider;
-
+import io.unitycatalog.client.model.GcpOauthToken;
+import io.unitycatalog.spark.UCHadoopConf;
 import java.io.IOException;
 import java.time.Instant;
+import org.apache.hadoop.conf.Configuration;
+import org.sparkproject.guava.base.Preconditions;
 
 public class GcsVendedTokenProvider extends GenericCredentialProvider
     implements AccessTokenProvider {
@@ -16,28 +15,30 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
   public static final String ACCESS_TOKEN_EXPIRATION_KEY = "fs.gs.auth.access.token.expiration";
   private Configuration conf;
 
-  public GcsVendedTokenProvider() {
-  }
+  public GcsVendedTokenProvider() {}
 
   @Override
   public GenericCredential initGenericCredential(Configuration conf) {
     if (conf.get(UCHadoopConf.GCS_INIT_OAUTH_TOKEN) != null) {
       String oauthToken = conf.get(UCHadoopConf.GCS_INIT_OAUTH_TOKEN);
-      Preconditions.checkNotNull(oauthToken, "GCS OAuth token not set, please check '%s' in hadoop "
-          + "configuration", UCHadoopConf.GCS_INIT_OAUTH_TOKEN);
+      Preconditions.checkNotNull(
+          oauthToken,
+          "GCS OAuth token not set, please check '%s' in hadoop " + "configuration",
+          UCHadoopConf.GCS_INIT_OAUTH_TOKEN);
 
-      long expiredTimeMillis = conf.getLong(
-            UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
-            Long.MAX_VALUE);
-      Preconditions.checkState(expiredTimeMillis > 0, "Expired time %s must be greater than 0, " +
-          "please check configure key '%s'", expiredTimeMillis, UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME);
+      long expiredTimeMillis =
+          conf.getLong(UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME, Long.MAX_VALUE);
+      Preconditions.checkState(
+          expiredTimeMillis > 0,
+          "Expired time %s must be greater than 0, " + "please check configure key '%s'",
+          expiredTimeMillis,
+          UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME);
 
       return GenericCredential.forGcs(oauthToken, expiredTimeMillis);
     } else {
       return null;
     }
   }
-
 
   @Override
   public AccessToken getAccessToken() {
@@ -50,9 +51,8 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
     Preconditions.checkNotNull(tokenValue, "GCS OAuth token value cannot be null");
 
     Long expirationMillis = generic.temporaryCredentials().getExpirationTime();
-    Instant expirationInstant = expirationMillis == null
-        ? null
-        : Instant.ofEpochMilli(expirationMillis);
+    Instant expirationInstant =
+        expirationMillis == null ? null : Instant.ofEpochMilli(expirationMillis);
     return new AccessToken(tokenValue, expirationInstant);
   }
 
@@ -74,4 +74,3 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
     return conf;
   }
 }
-

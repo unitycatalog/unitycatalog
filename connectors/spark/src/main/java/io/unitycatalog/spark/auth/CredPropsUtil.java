@@ -21,8 +21,7 @@ import org.sparkproject.guava.base.Preconditions;
 import org.sparkproject.guava.collect.ImmutableMap;
 
 public class CredPropsUtil {
-  private CredPropsUtil() {
-  }
+  private CredPropsUtil() {}
 
   private abstract static class PropsBuilder<T extends PropsBuilder<T>> {
     private final ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
@@ -40,7 +39,8 @@ public class CredPropsUtil {
     public T tokenProvider(TokenProvider tokenProvider) {
       // As we can only propagate the properties with prefix 'fs.*' to the FileSystem
       // implementation. So let's add the prefix here.
-      tokenProvider.configs()
+      tokenProvider
+          .configs()
           .forEach((key, value) -> builder.put(UCHadoopConf.UC_AUTH_PREFIX + key, value));
       return self();
     }
@@ -54,7 +54,8 @@ public class CredPropsUtil {
       Preconditions.checkArgument(
           UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(credType)
               || UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(credType),
-          "Invalid credential type '%s', must be either 'path' or 'table'.", credType);
+          "Invalid credential type '%s', must be either 'path' or 'table'.",
+          credType);
       builder.put(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, credType);
       return self();
     }
@@ -140,23 +141,22 @@ public class CredPropsUtil {
   }
 
   private static S3PropsBuilder s3TempCredPropsBuilder(
-      String uri,
-      TokenProvider tokenProvider,
-      TemporaryCredentials tempCreds) {
+      String uri, TokenProvider tokenProvider, TemporaryCredentials tempCreds) {
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
-    S3PropsBuilder builder = new S3PropsBuilder()
-        .set(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName())
-        .uri(uri)
-        .tokenProvider(tokenProvider)
-        .uid(UUID.randomUUID().toString())
-        .set(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
-        .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
-        .set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
+    S3PropsBuilder builder =
+        new S3PropsBuilder()
+            .set(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName())
+            .uri(uri)
+            .tokenProvider(tokenProvider)
+            .uid(UUID.randomUUID().toString())
+            .set(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
+            .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
+            .set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
 
     // For the static credential case, nullable expiration time is possible.
     if (tempCreds.getExpirationTime() != null) {
-      builder.set(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
-          String.valueOf(tempCreds.getExpirationTime()));
+      builder.set(
+          UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, String.valueOf(tempCreds.getExpirationTime()));
     }
 
     return builder;
@@ -190,32 +190,30 @@ public class CredPropsUtil {
 
   private static Map<String, String> gsFixedCredProps(TemporaryCredentials tempCreds) {
     GcpOauthToken gcpOauthToken = tempCreds.getGcpOauthToken();
-    Long expirationTime = tempCreds.getExpirationTime() == null
-        ? Long.MAX_VALUE
-        : tempCreds.getExpirationTime();
+    Long expirationTime =
+        tempCreds.getExpirationTime() == null ? Long.MAX_VALUE : tempCreds.getExpirationTime();
     return new GcsPropsBuilder()
         .set(GcsVendedTokenProvider.ACCESS_TOKEN_KEY, gcpOauthToken.getOauthToken())
-        .set(GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY,
-            String.valueOf(expirationTime))
+        .set(GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY, String.valueOf(expirationTime))
         .build();
   }
 
   private static GcsPropsBuilder gcsTempCredPropsBuilder(
-      String uri,
-      TokenProvider tokenProvider,
-      TemporaryCredentials tempCreds) {
+      String uri, TokenProvider tokenProvider, TemporaryCredentials tempCreds) {
     GcpOauthToken gcpToken = tempCreds.getGcpOauthToken();
-    GcsPropsBuilder builder = new GcsPropsBuilder()
-        .set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
-        .set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName())
-        .uri(uri)
-        .tokenProvider(tokenProvider)
-        .uid(UUID.randomUUID().toString())
-        .set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
+    GcsPropsBuilder builder =
+        new GcsPropsBuilder()
+            .set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
+            .set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName())
+            .uri(uri)
+            .tokenProvider(tokenProvider)
+            .uid(UUID.randomUUID().toString())
+            .set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
 
     // For the static credential case, nullable expiration time is possible.
     if (tempCreds.getExpirationTime() != null) {
-      builder.set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
+      builder.set(
+          UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
           String.valueOf(tempCreds.getExpirationTime()));
     }
 
@@ -256,20 +254,20 @@ public class CredPropsUtil {
   }
 
   private static AbfsPropsBuilder abfsTempCredPropsBuilder(
-      String uri,
-      TokenProvider tokenProvider,
-      TemporaryCredentials tempCreds) {
+      String uri, TokenProvider tokenProvider, TemporaryCredentials tempCreds) {
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
-    AbfsPropsBuilder builder = new AbfsPropsBuilder()
-        .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName())
-        .uri(uri)
-        .tokenProvider(tokenProvider)
-        .uid(UUID.randomUUID().toString())
-        .set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
+    AbfsPropsBuilder builder =
+        new AbfsPropsBuilder()
+            .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName())
+            .uri(uri)
+            .tokenProvider(tokenProvider)
+            .uid(UUID.randomUUID().toString())
+            .set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
 
     // For the static credential case, nullable expiration time is possible.
     if (tempCreds.getExpirationTime() != null) {
-      builder.set(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
+      builder.set(
+          UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
           String.valueOf(tempCreds.getExpirationTime()));
     }
 
