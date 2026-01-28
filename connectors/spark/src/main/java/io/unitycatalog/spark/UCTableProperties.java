@@ -1,8 +1,7 @@
 package io.unitycatalog.spark;
 
-import org.apache.spark.sql.connector.catalog.TableCatalog;
-
 import java.util.Set;
+import org.apache.spark.sql.connector.catalog.TableCatalog;
 
 public class UCTableProperties {
   private UCTableProperties() {}

@@ -11,8 +11,7 @@ public class AuthConfigUtils {
   private static final String STATIC_TYPE = "static";
   private static final String STATIC_TOKEN = "token";
 
-  private AuthConfigUtils() {
-  }
+  private AuthConfigUtils() {}
 
   public static Map<String, String> buildAuthConfigs(Map<String, String> configs) {
     Map<String, String> newConfigs = new HashMap<>();
@@ -31,7 +30,8 @@ public class AuthConfigUtils {
     // backward compatibility, we also copy the legacy 'token' key directly into the new config map.
     String token = configs.get(AuthConfigUtils.STATIC_TOKEN);
     if (token != null) {
-      Preconditions.checkArgument(!newConfigs.containsKey(AuthConfigUtils.STATIC_TOKEN),
+      Preconditions.checkArgument(
+          !newConfigs.containsKey(AuthConfigUtils.STATIC_TOKEN),
           "Static token was configured twice, choose only one: 'token' (legacy) or 'auth.token' (new-style).");
 
       newConfigs.put(TYPE, STATIC_TYPE);

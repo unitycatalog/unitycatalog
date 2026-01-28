@@ -3,8 +3,7 @@ package io.unitycatalog.spark.utils;
 import java.util.Map;
 
 public class OptionsUtil {
-  private OptionsUtil() {
-  }
+  private OptionsUtil() {}
 
   public static final String URI = "uri";
   public static final String TOKEN = "token";

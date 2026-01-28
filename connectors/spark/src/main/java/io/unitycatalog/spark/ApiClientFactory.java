@@ -8,17 +8,14 @@ import java.net.URI;
 
 public class ApiClientFactory {
 
-  private ApiClientFactory() {
-  }
+  private ApiClientFactory() {}
 
   public static ApiClient createApiClient(
       RetryPolicy retryPolicy, URI uri, TokenProvider tokenProvider) {
 
     // Create a new ApiClient Builder.
-    ApiClientBuilder builder = ApiClientBuilder.create()
-        .uri(uri)
-        .tokenProvider(tokenProvider)
-        .retryPolicy(retryPolicy);
+    ApiClientBuilder builder =
+        ApiClientBuilder.create().uri(uri).tokenProvider(tokenProvider).retryPolicy(retryPolicy);
 
     // Add Spark, Delta, Java, and Scala versions to User-Agent
     String sparkVersion = getSparkVersion();
@@ -59,8 +56,8 @@ public class ApiClientFactory {
       // Fall back to io.delta.VERSION constant (older versions)
       try {
         Class<?> packageClass = Class.forName("io.delta.package$");
-        Object versionObj = packageClass.getMethod("VERSION").invoke(
-            packageClass.getField("MODULE$").get(null));
+        Object versionObj =
+            packageClass.getMethod("VERSION").invoke(packageClass.getField("MODULE$").get(null));
         return versionObj != null ? versionObj.toString() : null;
       } catch (Exception e2) {
         // Delta not available or version not accessible
