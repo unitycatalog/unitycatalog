@@ -18,6 +18,7 @@ public class TestUtils {
   public static final String CATALOG_NAME2 = "uc_testcatalog2";
   public static final String SCHEMA_NAME2 = "uc_testschema2";
   public static final String TABLE_NAME = "uc_testtable";
+  public static final String VIEW_NAME = "uc_testview";
   public static final String VOLUME_NAME = "uc_testvolume";
   public static final String FUNCTION_NAME = "uc_testfunction";
   public static final String MODEL_NAME = "uc_testmodel";
@@ -27,6 +28,7 @@ public class TestUtils {
   public static final String SCHEMA_NEW_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NEW_NAME;
   public static final String SCHEMA_NEW_COMMENT = "new test comment";
   public static final String TABLE_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + TABLE_NAME;
+  public static final String VIEW_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + VIEW_NAME;
   public static final String VOLUME_FULL_NAME =
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NAME;
   public static final String FUNCTION_FULL_NAME =

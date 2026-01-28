@@ -13,6 +13,10 @@ tags:
     description: |
       A table resides in the third layer of Unity Catalog’s three-level namespace. It contains rows of data. 
       A table can be managed or external.
+  - name: Views
+    description: |
+      A table resides in the third layer of Unity Catalog’s three-level namespace. It contains rows of data. 
+      A table can be managed or external.
   - name: Volumes
     description: |
       Volumes are a Unity Catalog capability for accessing, storing, governing, organizing and processing files. Use cases include running machine learning on unstructured data such as image, audio, video, or PDF files, organizing data sets during the data exploration stages in data science, working with libraries that require access to the local file system on cluster machines, storing library and config files of arbitrary formats such as .whl or .txt centrally and providing secure access across workspaces to it, or transforming and querying non-tabular data files in ETL.
@@ -312,6 +316,102 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StagingTableInfo'
+  /views:
+    post:
+      operationId: createView
+      summary: |
+        Create a view. Only external table creation is supported.
+        WARNING: This API is experimental and will change in future versions.
+      tags:
+        - Views
+      description: |
+        Creates a new view.
+        WARNING: This API is experimental and will change in future versions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateView'
+      responses:
+        '200':
+          description: The new external view was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewInfo'
+    get:
+      operationId: listViews
+      summary: List views
+      tags:
+        - Views
+      description: |
+        Gets a list of views for a specific catalog and schema.
+      parameters:
+        - name: catalog_name
+          in: query
+          description: Name of the catalog.
+          required: true
+          schema:
+            type: string
+        - name: schema_name
+          in: query
+          description: Name of the schema.
+          required: true
+          schema:
+            type: string
+        - name: max_results
+          in: query
+          description: Maximum number of views to return.
+          schema:
+            type: integer
+            format: int32
+        - name: page_token
+          in: query
+          description: Opaque token to retrieve the next page of results.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The views were successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListViewsResponse'
+  /views/{full_name}:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the view.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Views
+      operationId: getView
+      summary: Get a table
+      description: |
+        Gets a view for a specific catalog and schema.
+      responses:
+        '200':
+          description: The table was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewInfo'
+    delete:
+      tags:
+        - Views
+      operationId: deleteView
+      summary: Delete a view
+      description: |
+        Deletes a view from the specified parent catalog and schema.
+      responses:
+        '200':
+          description: The view was successfully deleted.
+          content:
+            application/json:
+              schema: {}
   /tables:
     post:
       operationId: createTable
@@ -1676,6 +1776,7 @@ components:
       enum:
         - MANAGED
         - EXTERNAL
+        - VIEW
         - STREAMING_TABLE # Not yet fully implemented
         - MATERIALIZED_VIEW # Not yet fully implemented
     DataSourceFormat:
@@ -1738,6 +1839,63 @@ components:
         table_id:
           description: Unique identifier for the table.
           type: string
+    ViewRepresentation:
+      type: object
+      properties:
+        dialect:
+          description: SQL dialect of the representation (e.g., "spark", "trino").
+          type: string
+        sql:
+          description: SQL query defining the view in the specified dialect.
+          type: string
+    ViewInfo:
+      type: object
+      properties:
+        name:
+          description: Name of view, relative to parent schema.
+          type: string
+        view_id:
+          description: Unique identifier for the view.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        columns:
+          description: List of column definitions for this schema version.
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        representations:
+          description: List of SQL representations for this view.
+          type: array
+          items:
+            $ref: '#/components/schemas/ViewRepresentation'
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: Username of current owner of view.
+          type: string
+        created_at:
+          description: Time at which this view was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of view creator.
+          type: string
+        updated_at:
+          description: Time at which this view was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified the view.
+          type: string
+
     CreateTable:
       type: object
       properties:
@@ -1775,6 +1933,39 @@ components:
         - data_source_format
         - columns
         - storage_location
+    CreateView:
+      type: object
+      properties:
+        name:
+          description: Name of view, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        columns:
+          description: The array of __ColumnInfo__ definitions of the view's columns.
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+
+        view_definition:
+          description: View definition with SQL representations.
+          type: array
+          items:
+            $ref: '#/components/schemas/ViewRepresentation'
+      required:
+        - name
+        - catalog_name
+        - schema_name
+        - columns
     StagingTableInfo:
       type: object
       properties:
@@ -1821,6 +2012,18 @@ components:
           description: |
             Opaque token to retrieve the next page of results. Absent if there are no more pages.
             __page_token__ should be set to this value for the next request (for the next page of results).
+          type: string
+    ListViewsResponse:
+      type: object
+      properties:
+        views:
+          description: An array of view information objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/ViewInfo'
+        next_page_token:
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
           type: string
     SchemaInfo:
       type: object
@@ -2676,6 +2879,7 @@ components:
         - CREATE SCHEMA
         - USE SCHEMA
         - CREATE TABLE
+        - CREATE VIEW
         - SELECT
         - MODIFY
         - CREATE FUNCTION

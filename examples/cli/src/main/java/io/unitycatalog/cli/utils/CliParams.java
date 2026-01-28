@@ -66,7 +66,12 @@ public enum CliParams {
   URL("url", "The URL/path of the external location (e.g., s3://bucket/path)", "url"),
   CREDENTIAL_NAME("credential_name", "The name of the storage credential", "credential_name"),
   AWS_IAM_ROLE_ARN(
-      "aws_iam_role_arn", "The ARN of the AWS IAM role for credential", "aws_iam_role_arn");
+      "aws_iam_role_arn", "The ARN of the AWS IAM role for credential", "aws_iam_role_arn"),
+  VIEW_DEFINITION(
+      "view_definition",
+      "The SQL view definition. Should be a JSON array of ViewRepresentation objects with dialect and sql fields. For example: '[{\"dialect\":\"spark\",\"sql\":\"SELECT * FROM table\"}]'",
+      "view_definition");
+
   private final String value;
   private final String helpMessage;
   private final String serverParam;

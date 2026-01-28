@@ -56,6 +56,10 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *TemporaryCredentialsApi* | [**generateTemporaryPathCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarypathcredentials) | **POST** /temporary-path-credentials | Generate temporary path credentials. |
 *TemporaryCredentialsApi* | [**generateTemporaryTableCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarytablecredentials) | **POST** /temporary-table-credentials | Generate temporary table credentials. |
 *TemporaryCredentialsApi* | [**generateTemporaryVolumeCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporaryvolumecredentials) | **POST** /temporary-volume-credentials | Generate temporary volume credentials. |
+| *ViewsApi* | [**createView**](Apis/ViewsApi.md#createview) | **POST** /views | Create a view. Only external table creation is supported. WARNING: This API is experimental and will change in future versions.  |
+*ViewsApi* | [**deleteView**](Apis/ViewsApi.md#deleteview) | **DELETE** /views/{full_name} | Delete a view |
+*ViewsApi* | [**getView**](Apis/ViewsApi.md#getview) | **GET** /views/{full_name} | Get a table |
+*ViewsApi* | [**listViews**](Apis/ViewsApi.md#listviews) | **GET** /views | List views |
 | *VolumesApi* | [**createVolume**](Apis/VolumesApi.md#createvolume) | **POST** /volumes | Create a Volume |
 *VolumesApi* | [**deleteVolume**](Apis/VolumesApi.md#deletevolume) | **DELETE** /volumes/{name} | Delete a Volume |
 *VolumesApi* | [**getVolume**](Apis/VolumesApi.md#getvolume) | **GET** /volumes/{name} | Get a Volume |
@@ -84,6 +88,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [CreateSchema](./Models/CreateSchema.md)
  - [CreateStagingTable](./Models/CreateStagingTable.md)
  - [CreateTable](./Models/CreateTable.md)
+ - [CreateView](./Models/CreateView.md)
  - [CreateVolumeRequestContent](./Models/CreateVolumeRequestContent.md)
  - [CredentialInfo](./Models/CredentialInfo.md)
  - [CredentialPurpose](./Models/CredentialPurpose.md)
@@ -118,6 +123,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [ListRegisteredModelsResponse](./Models/ListRegisteredModelsResponse.md)
  - [ListSchemasResponse](./Models/ListSchemasResponse.md)
  - [ListTablesResponse](./Models/ListTablesResponse.md)
+ - [ListViewsResponse](./Models/ListViewsResponse.md)
  - [ListVolumesResponseContent](./Models/ListVolumesResponseContent.md)
  - [ModelVersionInfo](./Models/ModelVersionInfo.md)
  - [ModelVersionOperation](./Models/ModelVersionOperation.md)
@@ -145,6 +151,8 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [UpdateRegisteredModel](./Models/UpdateRegisteredModel.md)
  - [UpdateSchema](./Models/UpdateSchema.md)
  - [UpdateVolumeRequestContent](./Models/UpdateVolumeRequestContent.md)
+ - [ViewInfo](./Models/ViewInfo.md)
+ - [ViewRepresentation](./Models/ViewRepresentation.md)
  - [VolumeInfo](./Models/VolumeInfo.md)
  - [VolumeOperation](./Models/VolumeOperation.md)
  - [VolumeType](./Models/VolumeType.md)
