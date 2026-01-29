@@ -28,7 +28,7 @@ lazy val hadoopVersion = "3.4.0"
 // Library versions
 lazy val jacksonVersion = "2.17.0"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
-lazy val log4jVersion = "2.24.3"
+lazy val log4jVersion = "2.25.3"
 val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
