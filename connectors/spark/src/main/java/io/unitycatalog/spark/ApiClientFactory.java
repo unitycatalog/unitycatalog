@@ -76,12 +76,8 @@ public class ApiClientFactory {
 
   private static String getScalaVersion() {
     try {
-      // Use reflection to get Scala version from Spark's transitive dependency
-      Class<?> scalaPropertiesClass = Class.forName("scala.util.Properties");
-      Object moduleObj = scalaPropertiesClass.getField("MODULE$").get(null);
-      java.lang.reflect.Method versionMethod =
-          scalaPropertiesClass.getMethod("versionNumberString");
-      return (String) versionMethod.invoke(moduleObj);
+      // Get Scala version from scala-library (available as a dependency)
+      return scala.util.Properties.versionNumberString();
     } catch (Exception e) {
       // Scala not available or version not accessible
       return null;

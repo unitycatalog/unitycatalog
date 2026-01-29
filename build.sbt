@@ -568,6 +568,9 @@ lazy val spark = (project in file("connectors/spark"))
     name := s"$artifactNamePrefix-spark",
     commonSettings,
     javaOnlyReleaseSettings,
+    // Override autoScalaLibrary from commonSettings since Spark requires Scala runtime
+    autoScalaLibrary := true,
+    scalaVersion := scala213,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),

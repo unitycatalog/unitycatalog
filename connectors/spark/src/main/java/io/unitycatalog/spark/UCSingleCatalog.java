@@ -71,7 +71,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sparkproject.guava.base.Preconditions;
 import scala.Option;
-import scala.collection.JavaConverters;
+import scala.jdk.javaapi.CollectionConverters;
 
 /** A Spark catalog plugin to get/manage tables in Unity Catalog. */
 public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
@@ -551,15 +551,15 @@ public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
       storageProperties.putAll(extraSerdeProps);
 
       scala.collection.immutable.Map<String, String> storageProps =
-          JavaConverters.mapAsScalaMap(storageProperties)
-              .toMap(scala.Predef$.MODULE$.<scala.Tuple2<String, String>>conforms());
+          scala.collection.immutable.Map$.MODULE$.from(
+              CollectionConverters.asScala(storageProperties));
       scala.collection.immutable.Map<String, String> emptyMap =
-          JavaConverters.mapAsScalaMap(new HashMap<String, String>())
-              .toMap(scala.Predef$.MODULE$.<scala.Tuple2<String, String>>conforms());
+          scala.collection.immutable.Map$.MODULE$.from(
+              CollectionConverters.asScala(new HashMap<String, String>()));
       scala.collection.immutable.Seq<String> partitionColSeq =
-          JavaConverters.asScalaBuffer(partitionColumnNames).toList().toSeq();
+          CollectionConverters.asScala(partitionColumnNames).toSeq();
       scala.collection.immutable.Seq<String> emptySeq =
-          JavaConverters.asScalaBuffer(new ArrayList<String>()).toList().toSeq();
+          CollectionConverters.asScala(new ArrayList<String>()).toSeq();
 
       CatalogTable sparkTable =
           new CatalogTable(
