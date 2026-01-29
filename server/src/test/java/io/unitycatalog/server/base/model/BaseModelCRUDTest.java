@@ -34,6 +34,7 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.utils.UriUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.util.List;
 import java.util.Optional;
@@ -72,7 +73,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
   public void afterEachTest() {
     try {
       // Clean up the newly created storage root
-      UriUtils.deleteStorageLocationPath("file:" + rootBase);
+      UriUtils.deleteStorageLocationDir(NormalizedURL.from(rootBase));
     } catch (Exception e) {
       // Ignore
     }

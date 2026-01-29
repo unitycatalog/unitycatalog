@@ -132,8 +132,45 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
     }
   };
 
+  // Create an external location as admin
+  protected final List<Step> createExternalLocationSteps =
+      List.of(
+          Step.TokenStep.of(SUCCEED, "admin"),
+          Step.CommandStep.of(
+              SUCCEED,
+              "credential",
+              "create",
+              "--name",
+              "admin_cred",
+              "--aws_iam_role",
+              "fake_arn"),
+          Step.CommandStep.of(
+              SUCCEED,
+              "external_location",
+              "create",
+              "--name",
+              "admin_el",
+              "--url",
+              "file:///tmp/external_location",
+              "--credential_name",
+              "admin_cred"));
 
-
+  protected final List<Step> grantCreateManagedStoragePermissionSteps =
+      List.of(
+          Step.TokenStep.of(SUCCEED, "admin"),
+          Step.CommandStep.of(
+              SUCCEED,
+              1,
+              "permission",
+              "create",
+              "--securable_type",
+              "external_location",
+              "--name",
+              "admin_el",
+              "--principal",
+              "principal-1@localhost",
+              "--privilege",
+              "CREATE MANAGED STORAGE"));
 
   public void testSteps(List<Step> steps)
       throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {

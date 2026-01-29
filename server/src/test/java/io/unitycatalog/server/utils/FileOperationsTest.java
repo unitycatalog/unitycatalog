@@ -1,60 +1,57 @@
 package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.UriUtils;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 public class FileOperationsTest {
   @Test
-  public void testUriUtils() {
-    ServerProperties serverProperties = new ServerProperties();
-    serverProperties.set(ServerProperties.Property.MODEL_STORAGE_ROOT, "/tmp");
-    FileOperations fileOperations = new FileOperations(serverProperties);
-
+  public void testModelDirectory() {
+    // Test model directory creation with a given storage root
+    NormalizedURL parentStorageLocation = NormalizedURL.from("file:///tmp/storage");
+    UUID modelId = UUID.randomUUID();
     NormalizedURL modelPathUri =
-        fileOperations.getModelStorageLocation("catalog", "schema", "my-model");
-    NormalizedURL modelVersionPathUri =
-        fileOperations.getModelVersionStorageLocation("catalog", "schema", "my-model", "1");
-    String modelPath = UriUtils.createStorageLocationPath(modelPathUri);
-    String modelVersionPath = UriUtils.createStorageLocationPath(modelVersionPathUri);
+      FileOperations.getManagedLocationForModel(parentStorageLocation, modelId);
+    assertThat(modelPathUri.toString()).isEqualTo(parentStorageLocation + "/models/" + modelId);
 
-    assertThat(modelPath).isEqualTo("file:///tmp/catalog/schema/models/my-model");
-    assertThat(modelVersionPath).isEqualTo("file:///tmp/catalog/schema/models/my-model/versions/1");
+    UriUtils.createStorageLocationDir(modelPathUri);
+    UriUtils.deleteStorageLocationDir(modelPathUri);
 
-    UriUtils.deleteStorageLocationPath(modelVersionPathUri);
-    UriUtils.deleteStorageLocationPath(modelPathUri);
+    // cleanup the created storage directory
+    UriUtils.deleteStorageLocationDir(parentStorageLocation);
+  }
 
-    // cleanup the created catalog
-    UriUtils.deleteStorageLocationPath("file:/tmp/catalog");
+  @Test
+  public void testManagedLocation() {
+    NormalizedURL parentStorageLocation = NormalizedURL.from("file:///tmp/storage");
 
-    serverProperties = new ServerProperties();
-    serverProperties.set(ServerProperties.Property.MODEL_STORAGE_ROOT, "file:///tmp/random");
-    fileOperations = new FileOperations(serverProperties);
+    // Test table directory creation
+    UUID tableId = UUID.randomUUID();
+    NormalizedURL tablePathUri =
+        FileOperations.getManagedLocationForTable(parentStorageLocation, tableId);
+    assertThat(tablePathUri.toString()).isEqualTo("file:///tmp/storage/tables/" + tableId);
 
-    modelPathUri = fileOperations.getModelStorageLocation("catalog", "schema", "my-model");
-    modelVersionPathUri =
-        fileOperations.getModelVersionStorageLocation("catalog", "schema", "my-model", "1");
-    modelPath = UriUtils.createStorageLocationPath(modelPathUri);
-    modelVersionPath = UriUtils.createStorageLocationPath(modelVersionPathUri);
+    // Test volume directory creation
+    UUID volumeId = UUID.randomUUID();
+    NormalizedURL volumePathUri =
+        FileOperations.getManagedLocationForVolume(parentStorageLocation, volumeId);
+    assertThat(volumePathUri.toString()).isEqualTo("file:///tmp/storage/volumes/" + volumeId);
 
-    assertThat(modelPath).isEqualTo("file:///tmp/random/catalog/schema/models/my-model");
-    assertThat(modelVersionPath)
-        .isEqualTo("file:///tmp/random/catalog/schema/models/my-model/versions/1");
+    // Test catalog directory creation
+    UUID catalogId = UUID.randomUUID();
+    NormalizedURL catalogPathUri =
+        FileOperations.getManagedLocationForCatalog(parentStorageLocation, catalogId);
+    assertThat(catalogPathUri.toString())
+        .isEqualTo("file:///tmp/storage/__unitystorage/catalogs/" + catalogId);
 
-    UriUtils.deleteStorageLocationPath(modelVersionPathUri);
-    UriUtils.deleteStorageLocationPath(modelPathUri);
-
-    // cleanup the created catalog
-    UriUtils.deleteStorageLocationPath("file:/tmp/random");
-
-    assertThatThrownBy(() -> UriUtils.createStorageLocationPath(".."))
-        .isInstanceOf(BaseException.class);
-
-    assertThatThrownBy(() -> UriUtils.deleteStorageLocationPath(""))
-        .isInstanceOf(BaseException.class);
+    // Test schema directory creation
+    UUID schemaId = UUID.randomUUID();
+    NormalizedURL schemaPathUri =
+        FileOperations.getManagedLocationForSchema(parentStorageLocation, schemaId);
+    assertThat(schemaPathUri.toString())
+        .isEqualTo("file:///tmp/storage/__unitystorage/schemas/" + schemaId);
   }
 }

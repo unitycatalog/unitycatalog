@@ -261,8 +261,31 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
           // delete schema (regular-1) -> "catalog" owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(CommandStep.of(SUCCEED, "schema", "delete", "--full_name", "cat_pr1.sch_rg2"));
+
+          addAll(createExternalLocationSteps);
+          // Try to create a catalog at the location and fail
+          addAll(createSchemaWithLocationSteps(FAIL));
+          // Grant CREATE MANAGED STORAGE permission
+          addAll(grantCreateManagedStoragePermissionSteps);
+          // Then the catalog using external location as managed storage can be created
+          addAll(createSchemaWithLocationSteps(SUCCEED));
         }
       };
+
+  private List<Step> createSchemaWithLocationSteps(Step.Expect expect) {
+    return List.of(
+        TokenStep.of(SUCCEED, "principal-1@localhost"),
+        CommandStep.of(
+            expect,
+            "schema",
+            "create",
+            "--catalog",
+            "cat_pr1",
+            "--name",
+            "schema_with_location",
+            "--storage_root",
+            "file:///tmp/external_location"));
+  }
 
   @Test
   public void testSchemaAccess()

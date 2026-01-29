@@ -224,8 +224,29 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
           // delete a catalog -> owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(CommandStep.of(SUCCEED, "catalog", "delete", "--name", "catalog3"));
+
+          addAll(createExternalLocationSteps);
+          // Try to create a catalog at the location and fail
+          addAll(createCatalogWithLocationSteps(FAIL));
+          // Grant CREATE MANAGED STORAGE permission
+          addAll(grantCreateManagedStoragePermissionSteps);
+          // Then the catalog using external location as managed storage can be created
+          addAll(createCatalogWithLocationSteps(SUCCEED));
         }
       };
+
+  private List<Step> createCatalogWithLocationSteps(Step.Expect expect) {
+    return List.of(
+        TokenStep.of(SUCCEED, "principal-1@localhost"),
+        CommandStep.of(
+            expect,
+            "catalog",
+            "create",
+            "--name",
+            "catalog_with_location",
+            "--storage_root",
+            "file:///tmp/external_location"));
+  }
 
   @Test
   public void testCatalogAccess()
