@@ -62,7 +62,7 @@ public class CatalogService extends AuthorizedService {
   @AuthorizeExpression("""
       #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG) &&
       (#storage_root == null ||
-       (#table == null && #volume == null && #registered_model == null &&
+       (#no_overlap_with_data_securable &&
         #external_location != null &&
         #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
     """)
