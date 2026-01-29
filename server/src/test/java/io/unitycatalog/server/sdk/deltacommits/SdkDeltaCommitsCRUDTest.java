@@ -17,7 +17,9 @@ import io.unitycatalog.client.model.DeltaCommitMetadataProperties;
 import io.unitycatalog.client.model.DeltaGetCommits;
 import io.unitycatalog.client.model.DeltaGetCommitsResponse;
 import io.unitycatalog.client.model.DeltaMetadata;
+import io.unitycatalog.client.model.DeltaUniformIceberg;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.DeltaUniform;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -25,12 +27,16 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.DeltaCommitRepository;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -692,5 +698,265 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         5L,
         c -> c.setMetadata(new DeltaMetadata()),
         "At least one of description, properties, or schema must be set in commit.metadata");
+  }
+
+  @Test
+  public void testCommitWithUniform() throws ApiException {
+    String timestamp1 = Instant.now().toString();
+    DeltaUniform uniform = new DeltaUniform();
+    DeltaUniformIceberg icebergMetadata =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .convertedDeltaVersion(1L)  // Must match commit version
+            .convertedDeltaTimestamp(timestamp1);
+    uniform.setIceberg(icebergMetadata);
+
+    // Create a commit with uniform metadata
+    DeltaCommit commit1 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .uniform(uniform);
+    deltaCommitsApi.commit(commit1);
+
+    // Verify the commit was stored
+    verifyDeltaCommits(1, 1);
+
+    // Verify the table's uniform metadata was updated
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      TableInfoDAO tableInfoDAO =
+          session.get(
+              TableInfoDAO.class,
+              UUID.fromString(tableInfo.getTableId()));
+      assertNotNull(tableInfoDAO);
+      assertEquals("s3://my-bucket/metadata/v1.json",
+          tableInfoDAO.getUniformIcebergMetadataLocation());
+      assertEquals(1L, tableInfoDAO.getUniformIcebergConvertedDeltaVersion());
+      // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
+      assertEquals(Instant.parse(timestamp1).truncatedTo(ChronoUnit.MILLIS).toString(),
+          tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp() != null
+              ? tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp().toInstant().toString()
+              : null);
+    }
+
+    // Update uniform metadata with a new commit
+    String timestamp2 = Instant.now().toString();
+    DeltaUniformIceberg icebergMetadata2 =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v2.json"))
+            .convertedDeltaVersion(2L)  // Must match commit version
+            .convertedDeltaTimestamp(timestamp2);
+    DeltaUniform uniform2 = new DeltaUniform();
+    uniform2.setIceberg(icebergMetadata2);
+
+    DeltaCommit commit2 =
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
+            .uniform(uniform2);
+    deltaCommitsApi.commit(commit2);
+
+    // Verify the table's uniform metadata was updated to the latest
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      TableInfoDAO tableInfoDAO =
+          session.get(
+              TableInfoDAO.class,
+              UUID.fromString(tableInfo.getTableId()));
+      assertNotNull(tableInfoDAO);
+      assertEquals("s3://my-bucket/metadata/v2.json",
+          tableInfoDAO.getUniformIcebergMetadataLocation());
+      assertEquals(2L, tableInfoDAO.getUniformIcebergConvertedDeltaVersion());
+      // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
+      assertEquals(Instant.parse(timestamp2).truncatedTo(ChronoUnit.MILLIS).toString(),
+          tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp() != null
+              ? tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp().toInstant().toString()
+              : null);
+    }
+  }
+
+  @Test
+  public void testCommitWithMetadataAndUniform() throws ApiException {
+    String timestamp1 = Instant.now().toString();
+    DeltaUniform uniform = new DeltaUniform();
+    DeltaUniformIceberg icebergMetadata =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .convertedDeltaVersion(1L)  // Must match commit version
+            .convertedDeltaTimestamp(timestamp1);
+    uniform.setIceberg(icebergMetadata);
+
+    // Create metadata with description and properties
+    DeltaMetadata metadata = new DeltaMetadata();
+    metadata.setDescription("Test table with both metadata and uniform");
+    Map<String, String> properties = new HashMap<>();
+    properties.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties.put("custom.property", "custom.value");
+    metadata.setProperties(new DeltaCommitMetadataProperties().properties(properties));
+
+    // Create a commit with BOTH metadata and uniform
+    DeltaCommit commit1 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .metadata(metadata)
+            .uniform(uniform);
+    deltaCommitsApi.commit(commit1);
+
+    // Verify the commit was stored
+    verifyDeltaCommits(1, 1);
+
+    // Verify BOTH metadata and uniform were updated correctly
+    TableInfo updatedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+    assertEquals("Test table with both metadata and uniform", updatedTable.getComment());
+    assertNotNull(updatedTable.getProperties());
+    assertEquals("custom.value", updatedTable.getProperties().get("custom.property"));
+
+    // Also verify uniform metadata was stored in the database
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      TableInfoDAO tableInfoDAO =
+          session.get(
+              TableInfoDAO.class,
+              UUID.fromString(tableInfo.getTableId()));
+      assertNotNull(tableInfoDAO);
+
+      // Verify metadata fields
+      assertEquals("Test table with both metadata and uniform", tableInfoDAO.getComment());
+
+      // Verify uniform fields
+      assertEquals("s3://my-bucket/metadata/v1.json",
+          tableInfoDAO.getUniformIcebergMetadataLocation());
+      assertEquals(1L, tableInfoDAO.getUniformIcebergConvertedDeltaVersion());
+      // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
+      assertEquals(Instant.parse(timestamp1).truncatedTo(ChronoUnit.MILLIS).toString(),
+          tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp() != null
+              ? tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp().toInstant().toString()
+              : null);
+    }
+
+    // Now update with new metadata and uniform in a second commit
+    DeltaMetadata metadata2 = new DeltaMetadata();
+    metadata2.setDescription("Updated description");
+    Map<String, String> properties2 = new HashMap<>();
+    properties2.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties2.put("custom.property", "updated.value");
+    metadata2.setProperties(new DeltaCommitMetadataProperties().properties(properties2));
+
+    String timestamp2 = Instant.now().toString();
+    DeltaUniformIceberg icebergMetadata2 =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v2.json"))
+            .convertedDeltaVersion(2L)  // Must match commit version
+            .convertedDeltaTimestamp(timestamp2);
+    DeltaUniform uniform2 = new DeltaUniform();
+    uniform2.setIceberg(icebergMetadata2);
+
+    DeltaCommit commit2 =
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
+            .metadata(metadata2)
+            .uniform(uniform2);
+    deltaCommitsApi.commit(commit2);
+
+    // Verify both updates took effect
+    TableInfo updatedTable2 = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+    assertEquals("Updated description", updatedTable2.getComment());
+    assertEquals("updated.value", updatedTable2.getProperties().get("custom.property"));
+
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      TableInfoDAO tableInfoDAO =
+          session.get(
+              TableInfoDAO.class,
+              UUID.fromString(tableInfo.getTableId()));
+      assertNotNull(tableInfoDAO);
+
+      // Verify both metadata and uniform were updated to latest values
+      assertEquals("Updated description", tableInfoDAO.getComment());
+      assertEquals("s3://my-bucket/metadata/v2.json",
+          tableInfoDAO.getUniformIcebergMetadataLocation());
+      assertEquals(2L, tableInfoDAO.getUniformIcebergConvertedDeltaVersion());
+      // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
+      assertEquals(Instant.parse(timestamp2).truncatedTo(ChronoUnit.MILLIS).toString(),
+          tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp() != null
+              ? tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp().toInstant().toString()
+              : null);
+    }
+  }
+
+  @Test
+  public void testCommitWithInvalidUniform() throws ApiException {
+    // Test validation of uniform metadata
+    // Test 1: Missing metadata_location
+    DeltaUniformIceberg invalidIceberg1 =
+        new DeltaUniformIceberg()
+            .convertedDeltaVersion(100L)
+            .convertedDeltaTimestamp(Instant.now().toString());
+    DeltaUniform invalidUniform1 =
+        new DeltaUniform().iceberg(invalidIceberg1);
+    DeltaCommit commit1 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .uniform(invalidUniform1);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit1),
+        ErrorCode.INVALID_ARGUMENT,
+        "metadata_location");
+
+    // Test 2: Missing converted_delta_version
+    DeltaUniformIceberg invalidIceberg2 =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .convertedDeltaTimestamp(Instant.now().toString());
+    DeltaUniform invalidUniform2 =
+        new DeltaUniform().iceberg(invalidIceberg2);
+    DeltaCommit commit2 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .uniform(invalidUniform2);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit2),
+        ErrorCode.INVALID_ARGUMENT,
+        "converted_delta_version");
+
+    // Test 3: Missing converted_delta_timestamp
+    DeltaUniformIceberg invalidIceberg3 =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .convertedDeltaVersion(100L);
+    DeltaUniform invalidUniform3 =
+        new DeltaUniform().iceberg(invalidIceberg3);
+    DeltaCommit commit3 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .uniform(invalidUniform3);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit3),
+        ErrorCode.INVALID_ARGUMENT,
+        "converted_delta_timestamp");
+
+    // Test 4: Size exceeds limit
+    // Create a very long metadata location that exceeds the maximum allowed size
+    String longLocation =
+        "s3://my-bucket/metadata/"
+            + "x".repeat(DeltaCommitRepository.MAX_DELTA_UNIFORM_ICEBERG_SIZE);
+    DeltaUniformIceberg invalidIceberg4 =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create(longLocation))
+            .convertedDeltaVersion(1L)  // Must match commit version
+            .convertedDeltaTimestamp(Instant.now().toString());
+    DeltaUniform invalidUniform4 =
+        new DeltaUniform().iceberg(invalidIceberg4);
+    DeltaCommit commit4 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .uniform(invalidUniform4);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit4),
+        ErrorCode.INVALID_ARGUMENT,
+        "exceeds maximum allowed size");
+
+    // Test 5: converted_delta_version doesn't match commit version
+    DeltaUniformIceberg invalidIceberg5 =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .convertedDeltaVersion(999L)  // Wrong version - commit is version 1
+            .convertedDeltaTimestamp(Instant.now().toString());
+    DeltaUniform invalidUniform5 =
+        new DeltaUniform().iceberg(invalidIceberg5);
+    DeltaCommit commit5 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .uniform(invalidUniform5);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit5),
+        ErrorCode.INVALID_ARGUMENT,
+        "must equal commit version");
   }
 }
