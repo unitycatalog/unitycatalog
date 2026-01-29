@@ -67,7 +67,7 @@ public class SchemaService extends AuthorizedService {
       (#authorize(#principal, #catalog, OWNER) ||
        #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)) &&
       (#storage_root == null ||
-       (#table == null && #volume == null && #registered_model == null &&
+       (#no_overlap_with_data_securable &&
         #external_location != null &&
         #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
       """)
