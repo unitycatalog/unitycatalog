@@ -1,4 +1,5 @@
 import Checkstyle._
+import CrossSparkVersions._
 
 import java.nio.file.Files
 import java.io.File
@@ -21,9 +22,13 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.16"
 
-lazy val deltaVersion = "4.0.0"
-lazy val sparkVersion = "4.0.0"
-lazy val hadoopVersion = "3.4.0"
+// Get the Spark version specification
+lazy val sparkSpec = CrossSparkVersions.getSparkVersionSpec()
+
+// Version settings (now dynamically configured based on Spark version)
+lazy val deltaVersion = sparkSpec.deltaVersion
+lazy val sparkVersion = settingKey[String]("Spark version")
+lazy val hadoopVersion = sparkSpec.hadoopVersion
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
@@ -537,7 +542,7 @@ lazy val cli = (project in file("examples") / "cli")
   * It also includes the test classes from the server project.
   * It is used for the Spark connector project(the client is required as a compile dependency,
   * and the server(with tests) is required as a test dependency)
-  * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
+  * This was necessary because Spark has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
  */
 lazy val serverShaded = (project in file("server-shaded"))
   .dependsOn(server % "compile->compile, test->compile")
@@ -570,34 +575,32 @@ lazy val spark = (project in file("connectors/spark"))
     crossScalaVersions := Seq(scala213),
     commonSettings,
     scalaReleaseSettings,
+    // Apply cross-Spark version settings
+    sparkDependentSettings(sparkVersion),
+    sparkDependentModuleName(sparkVersion),
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
-    Compile / compile / javacOptions ++= javacRelease11,
+    // Test compile needs special handling for lombok
     Test / compile / javacOptions := {
       // lombok is only a dependency of test. So its path needs to be added explicitly.
       val lombokPath = (Test / dependencyClasspath).value
         .files
         .filter(_.getName.contains("lombok"))
         .mkString(File.pathSeparator)
-      javacRelease11 ++ Seq(
+      val javaRelease = if (sparkSpec.javacRelease == "11") javacRelease11 else javacRelease17
+      javaRelease ++ Seq(
         "-processor",
         "lombok.launch.AnnotationProcessorHider$AnnotationProcessor",
         "-processorpath",
         lombokPath
       )
     },
+    // Add Spark-specific dependencies from CrossSparkVersions
+    libraryDependencies ++= sparkDependencies(sparkSpec),
     libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.13.1",
-      "org.antlr" % "antlr4" % "4.13.1",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
       "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
@@ -614,17 +617,11 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.delta" %% "delta-spark" % deltaVersion % Test,
     ),
-    dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.13.1",
-      "org.antlr" % "antlr4" % "4.13.1",
-    ),
+    // Add Spark test dependencies from CrossSparkVersions
+    libraryDependencies ++= sparkTestDependencies(sparkSpec),
+    // Apply dependency overrides from CrossSparkVersions
+    dependencyOverrides ++= sparkDependencyOverrides(sparkSpec),
     Test / unmanagedJars += (serverShaded / assembly).value,
     licenseDepExclusions := {
       case DepModuleInfo("org.hibernate.orm", _, _) => true
@@ -656,6 +653,8 @@ lazy val integrationTests = (project in file("integration-tests"))
     name := s"$artifactNamePrefix-integration-tests",
     commonSettings,
     scalaVersion := scala213,
+    // Apply cross-Spark version settings
+    sparkDependentSettings(sparkVersion),
     javaOptions ++= Seq(
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
@@ -667,20 +666,14 @@ lazy val integrationTests = (project in file("integration-tests"))
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
-      "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
-      "io.delta" %% "delta-spark" % deltaVersion % Test,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
     ),
-    dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.13.1",
-      "org.antlr" % "antlr4" % "4.13.1",
+    // Add Spark test dependencies from CrossSparkVersions
+    libraryDependencies ++= sparkTestDependencies(sparkSpec),
+    // Apply dependency overrides from CrossSparkVersions
+    dependencyOverrides ++= sparkDependencyOverrides(sparkSpec) ++ Seq(
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
     ),
     Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
@@ -692,7 +685,9 @@ lazy val root = (project in file("."))
     name := s"$artifactNamePrefix",
     createTarballSettings(),
     commonSettings,
-    rootReleaseSettings
+    rootReleaseSettings,
+    // Add the cross-Spark build command
+    commands += runOnlyForSparkModulesCommand
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
