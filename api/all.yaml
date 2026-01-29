@@ -1678,6 +1678,7 @@ components:
         - EXTERNAL
         - STREAMING_TABLE # Not yet fully implemented
         - MATERIALIZED_VIEW # Not yet fully implemented
+        - VIEW
     DataSourceFormat:
       description: Data source format
       type: string
@@ -1738,6 +1739,22 @@ components:
         table_id:
           description: Unique identifier for the table.
           type: string
+        view_definition:
+          description: View definition SQL (when table_type is VIEW, MATERIALIZED_VIEW, or STREAMING_TABLE)
+          type: string
+        view_dependencies:
+          description: |
+            View dependencies (when table_type == VIEW or MATERIALIZED_VIEW, STREAMING_TABLE)
+            - when DependencyList is None, the dependency is not provided;
+            - when DependencyList is an empty list, the dependency is provided but is empty;
+            - when DependencyList is not an empty list, dependencies are provided and recorded.
+          type: object
+          properties:
+            dependencies:
+              description: Array of dependencies.
+              type: array
+              items:
+                "$ref": "#/components/schemas/Dependency"
     CreateTable:
       type: object
       properties:
