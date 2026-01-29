@@ -199,9 +199,9 @@ public class ServerProperties {
     MODEL_STORAGE_ROOT("storage-root.models", "file:///tmp/ucroot", STORAGE_PATH_VALIDATOR),
     TABLE_STORAGE_ROOT("storage-root.tables", "file:///tmp/ucroot", STORAGE_PATH_VALIDATOR),
     AWS_MASTER_ROLE_ARN("aws.masterRoleArn"),
-    AWS_S3_ACCESS_KEY("aws.s3.accessKey"),
-    AWS_S3_SECRET_KEY("aws.s3.secretKey"),
-    AWS_S3_SESSION_TOKEN("aws.s3.sessionToken"),
+    AWS_ACCESS_KEY("aws.accessKey"),
+    AWS_SECRET_KEY("aws.secretKey"),
+    AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region");
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -287,6 +287,17 @@ public class ServerProperties {
         LOGGER.error("Exception during loading properties", ex);
       }
     }
+  }
+
+  public S3StorageConfig getS3MasterRoleConfiguration() {
+    // These values may be null and that is OK. An empty config means AWS credential vending will
+    // use the default credential provider which is typically the same when running on AWS cloud.
+    return S3StorageConfig.builder()
+        .region(get(Property.AWS_REGION))
+        .accessKey(get(Property.AWS_ACCESS_KEY))
+        .secretKey(get(Property.AWS_SECRET_KEY))
+        // Does not take AWS_SESSION_TOKEN as it's only part of a temporary credential.
+        .build();
   }
 
   public Map<NormalizedURL, S3StorageConfig> getS3Configurations() {

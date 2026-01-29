@@ -47,6 +47,11 @@ public class TestUtils {
   public static final String MV_RUNID = "model version runId";
   public static final String MV_SOURCE2 = "model version source 2";
   public static final String MV_RUNID2 = "model version runId 2";
+  public static final String TEST_AWS_MASTER_ROLE_ARN =
+      "arn:aws:iam::1234567:role/UCMasterRole-EXAMPLE";
+  public static final String TEST_AWS_MASTER_ROLE_ACCESS_KEY = "masterRoleAccessKey";
+  public static final String TEST_AWS_MASTER_ROLE_SECRET_KEY = "masterRoleSecretKey";
+  public static final String TEST_AWS_REGION = "us-west-2";
 
   public static final Map<String, String> PROPERTIES =
       new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));

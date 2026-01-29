@@ -15,10 +15,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateModelVersion;
 import io.unitycatalog.client.model.CreateRegisteredModel;
-import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.GenerateTemporaryModelVersionCredential;
 import io.unitycatalog.client.model.ModelVersionOperation;
 import io.unitycatalog.client.model.RegisteredModelInfo;
@@ -49,7 +47,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMockCredentials {
-  private SchemaOperations schemaOperations;
   private ModelOperations modelOperations;
   private TemporaryCredentialsApi temporaryCredentialsApi;
 
@@ -58,6 +55,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
     return new SdkCatalogOperations(TestUtils.createApiClient(config));
   }
 
+  @Override
   protected SchemaOperations createSchemaOperations(ServerConfig config) {
     return new SdkSchemaOperations(TestUtils.createApiClient(config));
   }
@@ -78,7 +76,6 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
   @Override
   public void setUp() {
     super.setUp();
-    schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
     temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
   }
@@ -135,9 +132,6 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
   }
 
   protected void createCommonResources(String storageLocation) throws ApiException {
-    CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
-    catalogOperations.createCatalog(createCatalog);
-    schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
     CreateRegisteredModel createRm =
         new CreateRegisteredModel()
             .name(MODEL_NAME)
@@ -297,5 +291,22 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
                       generateCloudReadyCreds))
           .isInstanceOf(ApiException.class);
     }
+  }
+
+  @Test
+  public void testGenerateAwsTemporaryCredentialsFromMasterRole() throws ApiException {
+    String modelVersionLocation = AWS_EXTERNAL_LOCATION_PATH + "/model";
+    createCommonResources(modelVersionLocation);
+    GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredential =
+        new GenerateTemporaryModelVersionCredential()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .modelName(MODEL_NAME)
+            .version(2L)
+            .operation(ModelVersionOperation.READ_WRITE_MODEL_VERSION);
+    TemporaryCredentials temporaryCredentials =
+        temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
+            generateTemporaryModelVersionCredential);
+    EchoAwsStsClient.assertAwsCredential(temporaryCredentials);
   }
 }

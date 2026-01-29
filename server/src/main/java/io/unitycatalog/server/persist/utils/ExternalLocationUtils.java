@@ -4,6 +4,7 @@ import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
@@ -219,6 +220,66 @@ public class ExternalLocationUtils {
                     .map(entity -> Pair.<SecurableType, IdentifiableDAO>of(securableType, entity)))
         .limit(limit)
         .toList();
+  }
+
+  /**
+   * Finds the storage credential associated with the external location that covers the given path.
+   *
+   * <p>This method looks up external locations whose URL is a parent of or equals the given path,
+   * then returns the storage credential associated with that external location. The credential can
+   * be used to vend a temporary credential for data access.
+   *
+   * @param url the storage path to find credentials for (e.g., s3://bucket/path/to/data)
+   * @return the storage credential if an external location covers this path, empty otherwise
+   * @throws BaseException with FAILED_PRECONDITION if multiple external locations cover the path
+   *     (invalid state) or if the credential referenced by the external location does not exist
+   */
+  public Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(NormalizedURL url) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> getExternalLocationCredentialDaoForPath(session, url),
+        "Failed to get storage credential by URL",
+        /* readOnly= */ true);
+  }
+
+  private Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(
+      Session session, NormalizedURL url) {
+    // Get the external location
+    // Find out the external location that covers the input URL. Either the external location is
+    // a parent path of input URL, or is the same URL.
+    // It also tries to find two instead of one. If two are found, that is an invalid state that
+    // should never happen and in that case server can't decide which external location to use.
+    List<ExternalLocationDAO> externalLocationDAOs =
+        ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsWithURLOverlap(
+                session,
+                url,
+                SecurableType.EXTERNAL_LOCATION,
+                /* limit= */ 2,
+                /* includeParent= */ true,
+                /* includeSelf= */ true,
+                /* includeSubdir= */ false)
+            .stream()
+            .toList();
+    if (externalLocationDAOs.isEmpty()) {
+      // Not found
+      return Optional.empty();
+    } else if (externalLocationDAOs.size() > 1) {
+      // This is an invalid internal state. We never allow external locations with
+      // overlapping URLs.
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          "More than one external location with URL '" + url + "' exist.");
+    }
+
+    // Get the credential that is assigned to the external location
+    UUID credentialId = externalLocationDAOs.get(0).getCredentialId();
+    CredentialDAO credentialDAO = session.get(CredentialDAO.class, credentialId);
+    if (credentialDAO == null) {
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          String.format("Credential %s for '%s' not found.", credentialId, url));
+    }
+    return Optional.of(credentialDAO);
   }
 
   /**

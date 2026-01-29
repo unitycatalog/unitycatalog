@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.server.exception.BaseException;
 import java.util.UUID;
@@ -82,6 +83,10 @@ public class NormalizedURLTest {
 
     String uuid = UUID.randomUUID().toString();
     assertNormalizedURL("/tmp/tables/" + uuid, "file:///tmp/tables/" + uuid);
+
+    assertThrows(BaseException.class, () -> NormalizedURL.from(""));
+    assertThrows(BaseException.class, () -> NormalizedURL.from("  "));
+    assertThat(NormalizedURL.from(null)).isNull();
   }
 
   @Test

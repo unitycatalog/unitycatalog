@@ -20,7 +20,7 @@ import io.unitycatalog.server.model.ModelVersionStatus;
 import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
-import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Set;
@@ -31,11 +31,11 @@ import com.linecorp.armeria.server.annotation.Post;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryModelVersionCredentialsService {
   private final ModelRepository modelRepository;
-  private final CloudCredentialVendor cloudCredentialVendor;
+  private final StorageCredentialVendor storageCredentialVendor;
 
-  public TemporaryModelVersionCredentialsService(CloudCredentialVendor cloudCredentialVendor,
+  public TemporaryModelVersionCredentialsService(StorageCredentialVendor storageCredentialVendor,
                                                  Repositories repositories) {
-    this.cloudCredentialVendor = cloudCredentialVendor;
+    this.storageCredentialVendor = storageCredentialVendor;
     this.modelRepository = repositories.getModelRepository();
   }
 
@@ -88,7 +88,7 @@ public class TemporaryModelVersionCredentialsService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, errorMsg);
     }
     return HttpResponse.ofJson(
-        cloudCredentialVendor.vendCredential(
+        storageCredentialVendor.vendCredential(
             NormalizedURL.from(modelVersionInfo.getStorageLocation()),
             modelVersionOperationToPrivileges(requestedOperation)));
   }

@@ -74,15 +74,6 @@ public final class NormalizedURL {
   }
 
   /**
-   * Checks if the normalized URL is empty.
-   *
-   * @return true if the URL is an empty string, false otherwise
-   */
-  public boolean isEmpty() {
-    return url.isEmpty();
-  }
-
-  /**
    * Converts the normalized URL to a URI object.
    *
    * @return the URI representation of this normalized URL
@@ -127,6 +118,9 @@ public final class NormalizedURL {
    * </pre>
    */
   public static String normalize(String inputPath) {
+    if (inputPath == null || inputPath.isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Path cannot be null or empty");
+    }
     if (!inputPath.contains("/")) {
       // A path containing no / is very likely a malformed path or it's intended to be a name.
       // In any case we reject it.

@@ -28,6 +28,18 @@ import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Patch;
 import lombok.SneakyThrows;
 
+/**
+ * This service manages cloud provider credentials used to access cloud storage (S3, ADLS, GCS) for
+ * accessing external locations.
+ *
+ * <h2>Supported Cloud Providers</h2>
+ *
+ * <ul>
+ *   <li><b>AWS</b> - IAM Role-based credentials
+ *   <li><b>Azure</b> - Not implemented yet.
+ *   <li><b>GCP</b> - Not implemented yet.
+ * </ul>
+ */
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class CredentialService extends AuthorizedService {
   private final CredentialRepository credentialRepository;

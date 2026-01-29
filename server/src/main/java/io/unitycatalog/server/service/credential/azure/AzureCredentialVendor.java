@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service.credential.azure;
 
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -16,6 +18,13 @@ public class AzureCredentialVendor {
   }
 
   public AzureCredential vendAzureCredential(CredentialContext ctx) {
+    ctx.getCredentialDAO()
+        .ifPresent(
+            c -> {
+              throw new BaseException(
+                  ErrorCode.UNIMPLEMENTED,
+                  "Storage credential/external location for Azure is not supported yet.");
+            });
     AzureCredentialsGenerator generator =
         credGenerators.computeIfAbsent(ctx.getStorageBase(), this::createAzureCredentialsGenerator);
 
