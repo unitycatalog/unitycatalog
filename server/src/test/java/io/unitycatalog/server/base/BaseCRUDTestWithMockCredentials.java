@@ -16,12 +16,15 @@ import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.AwsIamRoleResponse;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
+import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateCredentialRequest;
 import io.unitycatalog.client.model.CreateExternalLocation;
+import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CredentialInfo;
 import io.unitycatalog.client.model.CredentialPurpose;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
@@ -53,6 +56,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   @Mock AwsCredentialVendor awsCredentialVendor;
   @Mock AzureCredentialVendor azureCredentialVendor;
   @Mock GcpCredentialVendor gcpCredentialVendor;
+  protected SchemaOperations schemaOperations;
   protected ExternalLocationsApi externalLocationsApi;
   protected CredentialsApi credentialsApi;
 
@@ -72,6 +76,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     ApiClient apiClient = TestUtils.createApiClient(serverConfig);
     externalLocationsApi = new ExternalLocationsApi(apiClient);
     credentialsApi = new CredentialsApi(apiClient);
+    schemaOperations = createSchemaOperations(serverConfig);
 
     // Setup AWS external location + credential
     awsCredentialInfo = credentialsApi.createCredential(
@@ -84,6 +89,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
             .name(AWS_EXTERNAL_LOCATION_NAME)
             .url(AWS_EXTERNAL_LOCATION_PATH)
             .credentialName(AWS_CREDENTIAL_NAME));
+    createCatalogAndSchema();
   }
 
   @Override
@@ -129,8 +135,21 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     );
   }
 
+  @SneakyThrows
+  private void createCatalogAndSchema() {
+    CreateCatalog createCatalog =
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    catalogOperations.createCatalog(createCatalog);
+
+    schemaOperations.createSchema(
+        new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NAME));
+  }
+
+  protected abstract SchemaOperations createSchemaOperations(ServerConfig config);
+
   private void setupAwsCredentials(ServerProperties serverProperties) {
-    // Mock StsClient.builder() to return a EchoStsClient
+    // Mock StsClient.builder() to return a EchoAwsStsClient. See EchoAwsStsClient in this file for
+    // more details.
     awsCredentialVendor =
         new AwsCredentialVendor(
             serverProperties,
@@ -240,6 +259,9 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
    * A mock STS client for testing that examines input parameters and echos back some of them back
    * in the response. It can be useful to verify that the right ARN and external is being used, and
    * test can further examine the content of session policy by checking its response.
+   * This directly replaces and mocks the real AWS so that in all the tests based on this file
+   * the entire AWS credential vending logic is exercised to the point of calling
+   * `stsClient.assumeRole()`.
    */
   protected class EchoAwsStsClient implements StsClient {
     public static final String RETURN_ACCESS_KEY = "assumedRoleAccessKey";

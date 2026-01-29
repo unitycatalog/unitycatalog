@@ -6,8 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.model.CreateCatalog;
-import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateVolumeRequestContent;
 import io.unitycatalog.client.model.GenerateTemporaryVolumeCredential;
 import io.unitycatalog.client.model.TemporaryCredentials;
@@ -33,7 +31,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCredentials {
   private TemporaryCredentialsApi temporaryCredentialsApi;
   private VolumeOperations volumeOperations;
-  private SchemaOperations schemaOperations;
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
@@ -44,6 +41,7 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
     return new SdkVolumeOperations(TestUtils.createApiClient(serverConfig));
   }
 
+  @Override
   protected SchemaOperations createSchemaOperations(ServerConfig serverConfig) {
     return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
   }
@@ -55,17 +53,6 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
     super.setUp();
     temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
     volumeOperations = createVolumeOperations(serverConfig);
-    schemaOperations = createSchemaOperations(serverConfig);
-    createCatalogAndSchema();
-  }
-
-  protected void createCatalogAndSchema() throws ApiException {
-    CreateCatalog createCatalog =
-        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
-    catalogOperations.createCatalog(createCatalog);
-
-    schemaOperations.createSchema(
-        new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NAME));
   }
 
   @ParameterizedTest
@@ -104,7 +91,7 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
   }
 
   @Test
-  public void testGenerateTemporaryCredentialsFromMasterRole() throws ApiException {
+  public void testGenerateAwsTemporaryCredentialsFromMasterRole() throws ApiException {
     String volumeLocation = AWS_EXTERNAL_LOCATION_PATH + "/volume";
     String volumeName = "testvolume-" + volumeLocation.hashCode();
     CreateVolumeRequestContent createVolumeRequest =

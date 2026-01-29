@@ -10,8 +10,10 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
+import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
+import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,11 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
     return new SdkCatalogOperations(TestUtils.createApiClient(serverConfig));
+  }
+
+  @Override
+  protected SchemaOperations createSchemaOperations(ServerConfig serverConfig) {
+    return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
   }
 
   @BeforeEach
@@ -55,7 +62,7 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
   }
 
   @Test
-  public void testGenerateTemporaryCredentialsFromMasterRole() throws ApiException {
+  public void testGenerateAwsTemporaryCredentialsFromMasterRole() throws ApiException {
     for (String url : List.of(AWS_EXTERNAL_LOCATION_PATH, AWS_EXTERNAL_LOCATION_PATH + "/table1")) {
       GenerateTemporaryPathCredential generateTemporaryPathCredential =
           new GenerateTemporaryPathCredential().url(url).operation(PathOperation.PATH_READ_WRITE);

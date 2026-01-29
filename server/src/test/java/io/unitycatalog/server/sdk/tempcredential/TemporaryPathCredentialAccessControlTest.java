@@ -87,7 +87,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
 
   // This is access control test. So it doesn't care about the actual credential vending. Just
   // mock with something that returns credential.
-  private void setupMockCloudCrednetialVendor() {
+  private void setupMockCloudCredentialVendor() {
     // Mock function needs the credential of `server.model` package.
     io.unitycatalog.server.model.TemporaryCredentials credential =
         new io.unitycatalog.server.model.TemporaryCredentials()
@@ -106,7 +106,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
   @BeforeEach
   @Override
   public void setUp() {
-    setupMockCloudCrednetialVendor();
+    setupMockCloudCredentialVendor();
     super.setUp();
     CredentialsApi adminCredentialsApi = new CredentialsApi(TestUtils.createApiClient(adminConfig));
     adminTempCredsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(adminConfig));
