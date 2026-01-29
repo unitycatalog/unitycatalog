@@ -597,14 +597,11 @@ public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
       // Spark separates table lookup and data source resolution. To support Spark native data
       // sources, here we return the `V1Table` which only contains the table metadata. Spark will
       // resolve the data source and create scan node later.
-      // Wrap the V1Table with UCTable to add V1_BATCH_WRITE capability for Spark 4.0 compatibility.
       try {
-        Table v1Table =
-            (Table)
-                Class.forName("org.apache.spark.sql.connector.catalog.V1Table")
-                    .getDeclaredConstructor(CatalogTable.class)
-                    .newInstance(sparkTable);
-        return new UCTable(v1Table);
+        return (Table)
+            Class.forName("org.apache.spark.sql.connector.catalog.V1Table")
+                .getDeclaredConstructor(CatalogTable.class)
+                .newInstance(sparkTable);
       } catch (Exception e) {
         throw new RuntimeException("Failed to create V1Table", e);
       }
