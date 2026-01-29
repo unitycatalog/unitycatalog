@@ -106,7 +106,8 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.NAME),
-                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
+                          List.of(
+                              CliParams.COMMENT, CliParams.PROPERTIES, CliParams.STORAGE_ROOT)));
                   put(
                       LIST,
                       new CliOptions(
@@ -128,7 +129,8 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME, CliParams.NAME),
-                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
+                          List.of(
+                              CliParams.COMMENT, CliParams.PROPERTIES, CliParams.STORAGE_ROOT)));
                   put(
                       LIST,
                       new CliOptions(
@@ -152,8 +154,11 @@ public class CliUtils {
                   put(
                       CREATE,
                       new CliOptions(
-                          List.of(CliParams.FULL_NAME, CliParams.STORAGE_LOCATION),
-                          List.of(CliParams.COMMENT)));
+                          List.of(CliParams.FULL_NAME),
+                          List.of(
+                              CliParams.STORAGE_LOCATION,
+                              CliParams.VOLUME_TYPE,
+                              CliParams.COMMENT)));
                   put(
                       LIST,
                       new CliOptions(

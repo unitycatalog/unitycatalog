@@ -143,8 +143,6 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
 
     // Close the session.
     callQuietly(() -> session.close());
-
-    super.cleanUp();
   }
 
   @AfterAll
