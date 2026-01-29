@@ -18,7 +18,6 @@ version.sbt @tdas
 
 # Docs
 /docs/ @dennyglee
-/mkdocs.yml @dennyglee
 /docs/ai/ @benwilson2
 
 # API
