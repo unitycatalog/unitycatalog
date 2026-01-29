@@ -79,6 +79,13 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
 
+  @OneToMany(
+      mappedBy = "table",
+      cascade = CascadeType.ALL,
+      orphanRemoval = true,
+      fetch = FetchType.LAZY)
+  private List<ViewRepresentationDAO> viewRepresentations;
+
   public static TableInfoDAO from(TableInfo tableInfo, UUID schemaId) {
     return TableInfoDAO.builder()
         .id(UUID.fromString(tableInfo.getTableId()))
