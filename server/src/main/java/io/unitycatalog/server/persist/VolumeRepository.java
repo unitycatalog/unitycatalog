@@ -71,7 +71,7 @@ public class VolumeRepository {
             NormalizedURL parentStorageLocation =
                 ExternalLocationUtils.getManagedStorageLocation(catalogAndSchemaDao);
             storageLocation =
-                FileOperations.getManagedLocationForVolume(parentStorageLocation, volumeId);
+                ExternalLocationUtils.getManagedLocationForVolume(parentStorageLocation, volumeId);
           } else {
             // EXTERNAL volume.
             if (createVolumeRequest.getStorageLocation() == null) {

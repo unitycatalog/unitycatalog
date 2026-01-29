@@ -11,7 +11,6 @@ import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -61,7 +60,7 @@ public class CatalogRepository {
     if (storageRoot != null) {
       ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(storageRoot);
       NormalizedURL storageLocation =
-          FileOperations.getManagedLocationForCatalog(storageRoot, catalogId);
+          ExternalLocationUtils.getManagedLocationForCatalog(storageRoot, catalogId);
       catalogInfo.setStorageRoot(storageRoot.toString());
       catalogInfo.storageLocation(storageLocation.toString());
     }

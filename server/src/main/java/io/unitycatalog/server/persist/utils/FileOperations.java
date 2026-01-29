@@ -2,7 +2,6 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -12,12 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
-import java.util.List;
-import java.util.UUID;
 import java.util.stream.Stream;
-
-import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_CATALOG_PREFIX;
-import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREFIX;
 
 public class FileOperations {
 
@@ -66,45 +60,5 @@ public class FileOperations {
     } else {
       throw new FileNotFoundException("Directory does not exist: " + dirPath);
     }
-  }
-
-  private static NormalizedURL getManagedLocationForEntity(
-      NormalizedURL storageRoot, String prefix, UUID entityId) {
-    return NormalizedURL.from(
-        String.join("/", List.of(storageRoot.toString(), prefix, entityId.toString())));
-  }
-
-  public static NormalizedURL getManagedLocationForSchema(
-      NormalizedURL storageRoot, UUID schemaId) {
-    return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_SCHEMA_PREFIX, schemaId);
-  }
-
-  public static NormalizedURL getManagedLocationForCatalog(
-      NormalizedURL storageRoot, UUID catalogId) {
-    return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_CATALOG_PREFIX, catalogId);
-  }
-
-  // The following methods do not add a __unitystorage prefix because the storageRoot
-  // is expected to be the storageLocation of a catalog or schema, which already includes
-  // the __unitystorage prefix.
-
-  public static NormalizedURL getManagedLocationForTable(
-      NormalizedURL parentStorageLocation, UUID tableId) {
-    return getManagedLocationForEntity(parentStorageLocation, "tables", tableId);
-  }
-
-  public static NormalizedURL getManagedLocationForVolume(
-      NormalizedURL parentStorageLocation, UUID volumeId) {
-    return getManagedLocationForEntity(parentStorageLocation, "volumes", volumeId);
-  }
-
-  public static NormalizedURL getManagedLocationForModel(
-      NormalizedURL parentStorageLocation, UUID modelId) {
-    return getManagedLocationForEntity(parentStorageLocation, "models", modelId);
-  }
-
-  public static NormalizedURL getManagedLocationForModelVersion(
-      NormalizedURL parentModelStorageLocation, UUID modelVersionId) {
-    return getManagedLocationForEntity(parentModelStorageLocation, "versions", modelVersionId);
   }
 }

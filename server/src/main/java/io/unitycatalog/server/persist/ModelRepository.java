@@ -16,7 +16,6 @@ import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.UriUtils;
@@ -221,7 +220,7 @@ public class ModelRepository {
           ExternalLocationUtils.getManagedStorageLocation(
               catalogAndSchemaDao, this::getDefaultModelsStorageRoot);
       NormalizedURL storageLocation =
-          FileOperations.getManagedLocationForModel(parentStorageLocation, modelId);
+          ExternalLocationUtils.getManagedLocationForModel(parentStorageLocation, modelId);
       SchemaInfoDAO schemaInfoDAO = catalogAndSchemaDao.schemaInfoDAO();
       try {
         // Check if registered model already exists
@@ -563,7 +562,7 @@ public class ModelRepository {
         UUID modelId = existingRegisteredModel.getId();
         Long version = existingRegisteredModel.getMaxVersionNumber() + 1;
         storageLocation =
-            FileOperations.getManagedLocationForModelVersion(
+            ExternalLocationUtils.getManagedLocationForModelVersion(
                 NormalizedURL.from(existingRegisteredModel.getUrl()), modelVersionId);
         modelVersionInfo.setVersion(version);
         modelVersionInfo.setStorageLocation(storageLocation.toString());

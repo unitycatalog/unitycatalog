@@ -9,6 +9,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Properties;
+import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -497,5 +498,36 @@ public class ExternalLocationUtilsTest {
             + "ORDER BY LENGTH(stagingLocation) DESC",
         null,
         "file:///tmp/path/%");
+  }
+
+  @Test
+  public void testManagedLocation() {
+    NormalizedURL parentStorageLocation = NormalizedURL.from("file:///tmp/storage");
+
+    // Test table path generation
+    UUID tableId = UUID.randomUUID();
+    NormalizedURL tablePathUri =
+        ExternalLocationUtils.getManagedLocationForTable(parentStorageLocation, tableId);
+    assertThat(tablePathUri.toString()).isEqualTo("file:///tmp/storage/tables/" + tableId);
+
+    // Test volume path generation
+    UUID volumeId = UUID.randomUUID();
+    NormalizedURL volumePathUri =
+        ExternalLocationUtils.getManagedLocationForVolume(parentStorageLocation, volumeId);
+    assertThat(volumePathUri.toString()).isEqualTo("file:///tmp/storage/volumes/" + volumeId);
+
+    // Test catalog path generation
+    UUID catalogId = UUID.randomUUID();
+    NormalizedURL catalogPathUri =
+        ExternalLocationUtils.getManagedLocationForCatalog(parentStorageLocation, catalogId);
+    assertThat(catalogPathUri.toString())
+        .isEqualTo("file:///tmp/storage/__unitystorage/catalogs/" + catalogId);
+
+    // Test schema path generation
+    UUID schemaId = UUID.randomUUID();
+    NormalizedURL schemaPathUri =
+        ExternalLocationUtils.getManagedLocationForSchema(parentStorageLocation, schemaId);
+    assertThat(schemaPathUri.toString())
+        .isEqualTo("file:///tmp/storage/__unitystorage/schemas/" + schemaId);
   }
 }
