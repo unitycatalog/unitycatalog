@@ -322,6 +322,7 @@ lazy val server = (project in file("server"))
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
       "org.apache.commons" % "commons-lang3" % "3.19.0",
+      "commons-io" % "commons-io" % "2.18.0",
 
       // Netty dependencies
       "io.netty" % "netty-all" % "4.1.111.Final",
