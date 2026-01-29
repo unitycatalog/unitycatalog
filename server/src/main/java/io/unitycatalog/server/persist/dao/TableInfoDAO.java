@@ -79,6 +79,12 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
 
+  @Column(name = "uniform_iceberg_converted_delta_version")
+  private Long uniformIcebergConvertedDeltaVersion;
+
+  @Column(name = "uniform_iceberg_converted_delta_timestamp", length = 255)
+  private String uniformIcebergConvertedDeltaTimestamp;
+
   public static TableInfoDAO from(TableInfo tableInfo, UUID schemaId) {
     return TableInfoDAO.builder()
         .id(UUID.fromString(tableInfo.getTableId()))
@@ -114,7 +120,10 @@ public class TableInfoDAO extends IdentifiableDAO {
             .createdAt(createdAt != null ? createdAt.getTime() : null)
             .createdBy(createdBy)
             .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
-            .updatedBy(updatedBy);
+            .updatedBy(updatedBy)
+            .uniformIcebergMetadataLocation(uniformIcebergMetadataLocation)
+            .uniformIcebergConvertedDeltaVersion(uniformIcebergConvertedDeltaVersion)
+            .uniformIcebergConvertedDeltaTimestamp(uniformIcebergConvertedDeltaTimestamp);
     if (fetchColumns) {
       tableInfo.columns(ColumnInfoDAO.toList(columns));
     }
