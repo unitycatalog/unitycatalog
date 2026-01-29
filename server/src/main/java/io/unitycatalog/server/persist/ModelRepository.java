@@ -40,7 +40,6 @@ public class ModelRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(ModelRepository.class);
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
-  private final FileOperations fileOperations;
   private final ServerProperties serverProperties;
   private static final PagedListingHelper<RegisteredModelInfoDAO> REGISTERED_MODEL_LISTING_HELPER =
       new PagedListingHelper<>(RegisteredModelInfoDAO.class);
@@ -49,7 +48,6 @@ public class ModelRepository {
       Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositories.getFileOperations();
     this.serverProperties = serverProperties;
   }
 
@@ -223,7 +221,7 @@ public class ModelRepository {
           ExternalLocationUtils.getManagedStorageLocation(
               catalogAndSchemaDao, this::getDefaultModelsStorageRoot);
       NormalizedURL storageLocation =
-          fileOperations.createManagedLocationForModel(parentStorageLocation, modelId);
+          FileOperations.getManagedLocationForModel(parentStorageLocation, modelId);
       SchemaInfoDAO schemaInfoDAO = catalogAndSchemaDao.schemaInfoDAO();
       try {
         // Check if registered model already exists
@@ -524,13 +522,13 @@ public class ModelRepository {
   public ModelVersionInfo createModelVersion(CreateModelVersion createModelVersion) {
     long createTime = System.currentTimeMillis();
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    String modelVersionId = UUID.randomUUID().toString();
+    UUID modelVersionId = UUID.randomUUID();
     String catalogName = createModelVersion.getCatalogName();
     String schemaName = createModelVersion.getSchemaName();
     String modelName = createModelVersion.getModelName();
     ModelVersionInfo modelVersionInfo =
         new ModelVersionInfo()
-            .id(modelVersionId)
+            .id(modelVersionId.toString())
             .modelName(createModelVersion.getModelName())
             .catalogName(createModelVersion.getCatalogName())
             .schemaName(createModelVersion.getSchemaName())
@@ -565,7 +563,8 @@ public class ModelRepository {
         UUID modelId = existingRegisteredModel.getId();
         Long version = existingRegisteredModel.getMaxVersionNumber() + 1;
         storageLocation =
-            NormalizedURL.from(existingRegisteredModel.getUrl() + "/versions/" + modelVersionId);
+            FileOperations.getManagedLocationForModelVersion(
+                NormalizedURL.from(existingRegisteredModel.getUrl()), modelVersionId);
         modelVersionInfo.setVersion(version);
         modelVersionInfo.setStorageLocation(storageLocation.toString());
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);

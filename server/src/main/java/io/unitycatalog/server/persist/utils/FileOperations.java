@@ -16,6 +16,9 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
+import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_CATALOG_PREFIX;
+import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREFIX;
+
 public class FileOperations {
 
   private final ServerProperties serverProperties;
@@ -65,36 +68,43 @@ public class FileOperations {
     }
   }
 
-  private NormalizedURL createManagedEntityDirectory(
+  private static NormalizedURL getManagedLocationForEntity(
       NormalizedURL storageRoot, String prefix, UUID entityId) {
     return NormalizedURL.from(
         String.join("/", List.of(storageRoot.toString(), prefix, entityId.toString())));
   }
 
-  public NormalizedURL createManagedLocationForSchema(NormalizedURL storageRoot, UUID schemaId) {
-    return createManagedEntityDirectory(storageRoot, MANAGED_STORAGE_SCHEMA_PREFIX, schemaId);
+  public static NormalizedURL getManagedLocationForSchema(
+      NormalizedURL storageRoot, UUID schemaId) {
+    return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_SCHEMA_PREFIX, schemaId);
   }
 
-  public NormalizedURL createManagedLocationForCatalog(NormalizedURL storageRoot, UUID catalogId) {
-    return createManagedEntityDirectory(storageRoot, MANAGED_STORAGE_CATALOG_PREFIX, catalogId);
+  public static NormalizedURL getManagedLocationForCatalog(
+      NormalizedURL storageRoot, UUID catalogId) {
+    return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_CATALOG_PREFIX, catalogId);
   }
 
   // The following methods do not add a __unitystorage prefix because the storageRoot
   // is expected to be the storageLocation of a catalog or schema, which already includes
   // the __unitystorage prefix.
 
-  public NormalizedURL createManagedLocationForTable(
+  public static NormalizedURL getManagedLocationForTable(
       NormalizedURL parentStorageLocation, UUID tableId) {
-    return createManagedEntityDirectory(parentStorageLocation, "tables", tableId);
+    return getManagedLocationForEntity(parentStorageLocation, "tables", tableId);
   }
 
-  public NormalizedURL createManagedLocationForVolume(
+  public static NormalizedURL getManagedLocationForVolume(
       NormalizedURL parentStorageLocation, UUID volumeId) {
-    return createManagedEntityDirectory(parentStorageLocation, "volumes", volumeId);
+    return getManagedLocationForEntity(parentStorageLocation, "volumes", volumeId);
   }
 
-  public NormalizedURL createManagedLocationForModel(
+  public static NormalizedURL getManagedLocationForModel(
       NormalizedURL parentStorageLocation, UUID modelId) {
-    return createManagedEntityDirectory(parentStorageLocation, "models", modelId);
+    return getManagedLocationForEntity(parentStorageLocation, "models", modelId);
+  }
+
+  public static NormalizedURL getManagedLocationForModelVersion(
+      NormalizedURL parentModelStorageLocation, UUID modelVersionId) {
+    return getManagedLocationForEntity(parentModelStorageLocation, "versions", modelVersionId);
   }
 }
