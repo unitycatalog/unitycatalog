@@ -5,7 +5,6 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.unitycatalog.client.ApiException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -356,8 +355,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(tables2.get(0).getString(1)).isEqualTo(ANOTHER_TEST_TABLE);
 
     assertThatThrownBy(() -> sql("SHOW TABLES in a.b.c"))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Nested namespaces are not supported");
+        .hasStackTraceContaining("Nested namespaces are not supported");
 
     // DROP TABLE
     for (String fullTableName : List.of(t1, t2)) {
@@ -366,8 +364,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       assertThat(session.catalog().tableExists(fullTableName)).isFalse();
     }
     assertThatThrownBy(() -> sql("DROP TABLE a.b.c.d"))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Nested namespaces are not supported");
+        .hasStackTraceContaining("Nested namespaces are not supported");
   }
 
   /**

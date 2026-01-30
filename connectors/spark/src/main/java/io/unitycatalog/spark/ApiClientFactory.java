@@ -76,7 +76,6 @@ public class ApiClientFactory {
 
   private static String getScalaVersion() {
     try {
-      // Get Scala version from scala-library (available as a dependency)
       return scala.util.Properties.versionNumberString();
     } catch (Exception e) {
       // Scala not available or version not accessible
