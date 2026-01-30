@@ -2,6 +2,7 @@ package io.unitycatalog.spark;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
@@ -42,7 +43,7 @@ import org.sparkproject.guava.base.Preconditions;
 
 /** A Spark catalog plugin to get/manage tables in Unity Catalog. */
 public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
-  private static final Logger log = LoggerFactory.getLogger(UCSingleCatalog.class);
+  private static final Logger LOG = LoggerFactory.getLogger(UCSingleCatalog.class);
 
   static final ThreadLocal<Boolean> LOAD_DELTA_CATALOG = ThreadLocal.withInitial(() -> true);
   static final ThreadLocal<Boolean> DELTA_CATALOG_LOADED = ThreadLocal.withInitial(() -> false);
@@ -50,9 +51,9 @@ public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
   private URI uri = null;
   private TokenProvider tokenProvider = null;
   private boolean renewCredEnabled = false;
-  private ApiClient apiClient = null;
-  private TemporaryCredentialsApi temporaryCredentialsApi = null;
+  private SchemasApi schemasApi = null;
   private TablesApi tablesApi = null;
+  private TemporaryCredentialsApi tempCredApi = null;
 
   private volatile TableCatalog delegate = null;
 
@@ -73,15 +74,20 @@ public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
             OptionsUtil.RENEW_CREDENTIAL_ENABLED,
             OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED);
 
-    apiClient =
+    // Initialize the ApiClient.
+    ApiClient apiClient =
         ApiClientFactory.createApiClient(
             JitterDelayRetryPolicy.builder().build(), uri, tokenProvider);
-    temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient);
+
+    // Initialize the UCProxy.
+    tempCredApi = new TemporaryCredentialsApi(apiClient);
+    schemasApi = new SchemasApi(apiClient);
     tablesApi = new TablesApi(apiClient);
     UCProxy proxy =
-        new UCProxy(
-            uri, tokenProvider, renewCredEnabled, apiClient, tablesApi, temporaryCredentialsApi);
+        new UCProxy(uri, tokenProvider, renewCredEnabled, schemasApi, tablesApi, tempCredApi);
     proxy.initialize(name, options);
+
+    // Initialize the delegate catalog.
     if (LOAD_DELTA_CATALOG.get()) {
       try {
         delegate =
@@ -93,7 +99,7 @@ public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
         delegate.initialize(name, options);
         DELTA_CATALOG_LOADED.set(true);
       } catch (ClassNotFoundException e) {
-        log.warn("DeltaCatalog is not available in the classpath", e);
+        LOG.warn("DeltaCatalog is not available in the classpath", e);
         delegate = proxy;
       } catch (Exception e) {
         throw new RuntimeException("Failed to initialize DeltaCatalog", e);
@@ -206,7 +212,7 @@ public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
       TemporaryCredentials temporaryCredentials;
       try {
         temporaryCredentials =
-            temporaryCredentialsApi.generateTemporaryTableCredentials(
+            tempCredApi.generateTemporaryTableCredentials(
                 new GenerateTemporaryTableCredential()
                     .tableId(stagingTableId)
                     .operation(TableOperation.READ_WRITE));
@@ -236,7 +242,7 @@ public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
       TemporaryCredentials cred;
       try {
         cred =
-            temporaryCredentialsApi.generateTemporaryPathCredentials(
+            tempCredApi.generateTemporaryPathCredentials(
                 new GenerateTemporaryPathCredential()
                     .url(location)
                     .operation(PathOperation.PATH_CREATE_TABLE));
@@ -342,8 +348,7 @@ public class UCSingleCatalog implements TableCatalog, SupportsNamespaces {
     props.putAll(credentialProps);
     // TODO: Delta requires the options to be set twice in the properties, with and without the
     //       `option.` prefix. We should revisit this in Delta.
-    String prefix = TableCatalog.OPTION_PREFIX;
-    credentialProps.forEach((k, v) -> props.put(prefix + k, v));
+    credentialProps.forEach((k, v) -> props.put(TableCatalog.OPTION_PREFIX + k, v));
   }
 
   static void checkUnsupportedNestedNamespace(String[] namespace) {

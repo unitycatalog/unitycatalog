@@ -3,12 +3,12 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.spark.UCSingleCatalog.checkUnsupportedNestedNamespace;
 import static io.unitycatalog.spark.UCSingleCatalog.fullTableNameForApi;
 
-import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateSchema;
@@ -60,15 +60,20 @@ import org.apache.spark.sql.types.TimestampNTZType;
 import org.apache.spark.sql.types.TimestampType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import scala.Option;
+import scala.collection.immutable.Seq$;
 import scala.jdk.javaapi.CollectionConverters;
 
 public class UCProxy implements TableCatalog, SupportsNamespaces {
+  private static final int HTTP_NOT_FOUND = 404;
+  private static final int HTTP_OK = 200;
+
   private final URI uri;
   private final TokenProvider tokenProvider;
   private final boolean renewCredEnabled;
-  private final ApiClient apiClient;
+  private final SchemasApi schemaApi;
   private final TablesApi tablesApi;
   private final TemporaryCredentialsApi temporaryCredentialsApi;
+
   private String name = null;
   private SchemasApi schemasApi = null;
 
@@ -76,13 +81,13 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
       URI uri,
       TokenProvider tokenProvider,
       boolean renewCredEnabled,
-      ApiClient apiClient,
+      SchemasApi schemasApi,
       TablesApi tablesApi,
       TemporaryCredentialsApi temporaryCredentialsApi) {
     this.uri = uri;
     this.tokenProvider = tokenProvider;
     this.renewCredEnabled = renewCredEnabled;
-    this.apiClient = apiClient;
+    this.schemasApi = schemasApi;
     this.tablesApi = tablesApi;
     this.temporaryCredentialsApi = temporaryCredentialsApi;
   }
@@ -90,20 +95,20 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
   @Override
   public void initialize(String name, CaseInsensitiveStringMap options) {
     this.name = name;
-    schemasApi = new SchemasApi(apiClient);
+    this.schemasApi = new SchemasApi(apiClient);
   }
 
   @Override
   public String name() {
-    assert this.name != null;
-    return this.name;
+    Preconditions.checkNotNull(name, "Catalog name cannot be null.");
+    return name;
   }
 
   @Override
   public Identifier[] listTables(String[] namespace) {
     checkUnsupportedNestedNamespace(namespace);
 
-    String catalogName = this.name;
+    String catalogName = name;
     String schemaName = namespace[0];
     int maxResults = 0;
     String pageToken = null;
@@ -128,14 +133,16 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
               /* readStreamingTableAsManaged = */ true,
               /* readMaterializedViewAsManaged = */ true);
     } catch (ApiException e) {
-      if (e.getCode() == 404) {
+      if (e.getCode() == HTTP_NOT_FOUND) {
         throw new NoSuchTableException(ident);
       }
       throw new RuntimeException("Failed to get table", e);
     }
+
     TableIdentifier identifier =
         new TableIdentifier(
             t.getName(), Option.apply(t.getSchemaName()), Option.apply(t.getCatalogName()));
+
     Map<String, Integer> partitionCols = new HashMap<>();
     List<StructField> fields = new ArrayList<>();
     for (ColumnInfo col : t.getColumns()) {
@@ -202,17 +209,6 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
     }
     storageProperties.putAll(extraSerdeProps);
 
-    scala.collection.immutable.Map<String, String> storageProps =
-        scala.collection.immutable.Map$.MODULE$.from(
-            CollectionConverters.asScala(storageProperties));
-    scala.collection.immutable.Map<String, String> emptyMap =
-        scala.collection.immutable.Map$.MODULE$.from(
-            CollectionConverters.asScala(new HashMap<String, String>()));
-    scala.collection.immutable.Seq<String> partitionColSeq =
-        CollectionConverters.asScala(partitionColumnNames).toSeq();
-    scala.collection.immutable.Seq<String> emptySeq =
-        CollectionConverters.asScala(new ArrayList<String>()).toSeq();
-
     CatalogTable sparkTable =
         new CatalogTable(
             identifier,
@@ -226,24 +222,24 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
                     Option.empty(),
                     Option.empty(),
                     false,
-                    storageProps),
+                    asScalaMap(storageProperties)),
             new StructType(fields.toArray(new StructField[0])),
             Option.apply(t.getDataSourceFormat().getValue().toLowerCase()),
-            partitionColSeq,
+            asScalaSeq(partitionColumnNames),
             Option.empty(),
             "", // owner
             t.getCreatedAt(),
             0L, // lastAccessTime
             "", // createVersion
-            emptyMap, // properties
+            asScalaMap(new HashMap<>()), // properties
             Option.empty(), // stats
             Option.empty(), // viewText
             Option.empty(), // comment
             Option.empty(), // unsupportedFeatures
-            emptySeq, // clusterByNames
+            asScalaSeq(new ArrayList<>()), // clusterByNames
             false, // tracksPartitionsInCatalog
             false, // schemaPreservesCase
-            emptyMap, // serdeProperties
+            asScalaMap(new HashMap<>()), // serdeProperties
             Option.empty());
 
     // Spark separates table lookup and data source resolution. To support Spark native data
@@ -321,11 +317,13 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
             .filter(e -> !UCTableProperties.V2_TABLE_PROPERTIES.contains(e.getKey()))
             .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     createTable.setProperties(propertiesToServer);
+
     try {
       tablesApi.createTable(createTable);
     } catch (ApiException e) {
       throw new RuntimeException("Failed to create table", e);
     }
+
     try {
       return loadTable(ident);
     } catch (NoSuchTableException e) {
@@ -389,13 +387,12 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
 
   @Override
   public boolean dropTable(Identifier ident) {
-    Object ret;
     try {
-      ret = tablesApi.deleteTable(fullTableNameForApi(this.name, ident));
+      Object code = tablesApi.deleteTable(fullTableNameForApi(this.name, ident));
+      return code != null && code.equals(HTTP_OK);
     } catch (ApiException e) {
       throw new RuntimeException("Failed to drop table", e);
     }
-    return ret != null && ret.equals(200);
   }
 
   @Override
@@ -428,11 +425,12 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
     try {
       schema = schemasApi.getSchema(name + "." + namespace[0]);
     } catch (ApiException e) {
-      if (e.getCode() == 404) {
+      if (e.getCode() == HTTP_NOT_FOUND) {
         throw new NoSuchNamespaceException(namespace);
       }
       throw new RuntimeException("Failed to load namespace metadata", e);
     }
+
     // flatten the schema properties to a map, with the key prefixed by
     // "properties:"
     Map<String, String> metadata = new HashMap<>();
@@ -483,5 +481,14 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
       throw new RuntimeException("Failed to drop namespace", e);
     }
     return true;
+  }
+
+  private static scala.collection.immutable.Map<String, String> asScalaMap(
+      Map<String, String> map) {
+    return scala.collection.immutable.Map$.MODULE$.from(CollectionConverters.asScala(map));
+  }
+
+  private static scala.collection.immutable.Seq<String> asScalaSeq(List<String> seq) {
+    return Seq$.MODULE$.from(CollectionConverters.asScala(seq));
   }
 }
