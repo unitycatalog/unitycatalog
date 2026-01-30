@@ -70,12 +70,11 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
   private final URI uri;
   private final TokenProvider tokenProvider;
   private final boolean renewCredEnabled;
-  private final SchemasApi schemaApi;
+  private final SchemasApi schemasApi;
   private final TablesApi tablesApi;
   private final TemporaryCredentialsApi temporaryCredentialsApi;
 
   private String name = null;
-  private SchemasApi schemasApi = null;
 
   UCProxy(
       URI uri,
@@ -95,7 +94,6 @@ public class UCProxy implements TableCatalog, SupportsNamespaces {
   @Override
   public void initialize(String name, CaseInsensitiveStringMap options) {
     this.name = name;
-    this.schemasApi = new SchemasApi(apiClient);
   }
 
   @Override
