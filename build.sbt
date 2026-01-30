@@ -568,8 +568,6 @@ lazy val spark = (project in file("connectors/spark"))
     name := s"$artifactNamePrefix-spark",
     commonSettings,
     javaOnlyReleaseSettings,
-    // Override autoScalaLibrary from commonSettings since Spark requires Scala runtime
-    autoScalaLibrary := true,
     scalaVersion := scala213,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
@@ -591,6 +589,7 @@ lazy val spark = (project in file("connectors/spark"))
       )
     },
     libraryDependencies ++= Seq(
+      "org.scala-lang" % "scala-library" % scala213 % Provided,
       "org.apache.spark" % "spark-sql_2.13" % sparkVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" % "jackson-module-scala_2.13" % "2.15.0",
