@@ -45,7 +45,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-// Split this into a base class, then one for catalog one for schema
 public abstract class BaseManagedLocationTest extends BaseCRUDTest {
 
   protected static final String MANAGED_VOLUME_NAME1 = "uc_managedvolume1";
