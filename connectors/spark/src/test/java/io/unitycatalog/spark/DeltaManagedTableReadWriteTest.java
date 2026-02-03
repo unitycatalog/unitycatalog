@@ -248,7 +248,12 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
             .config("fs.gs.impl", "io.unitycatalog.spark.GCSCredentialTestFileSystem")
             .config("fs.abfs.impl", "io.unitycatalog.spark.AzureCredentialTestFileSystem");
 
+    // Use getOrCreate() to create a new session with our configuration
+    // The old session was stopped above, so this will create a fresh one
     session = builder.getOrCreate();
+
+    // Make sure this session is set as the active session for Delta operations
+    org.apache.spark.sql.SparkSession.setActiveSession(session);
 
     // Now create managed table using SQL (requires active SparkSession)
     // Table will inherit catalog's unconfigured storage root
