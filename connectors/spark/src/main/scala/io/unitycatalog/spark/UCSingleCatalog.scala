@@ -12,6 +12,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types._
@@ -50,13 +51,16 @@ class UCSingleCatalog
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+    val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
+      OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
+      OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
-    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, apiClient, tablesApi,
-      temporaryCredentialsApi)
+    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, serverSidePlanningEnabled,
+      apiClient, tablesApi, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -279,9 +283,10 @@ private class UCProxy(
     uri: URI,
     tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
+    serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
+    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
 
@@ -340,11 +345,34 @@ private class UCProxy(
           )
       } catch {
         case _: ApiException =>
-          tableOp = TableOperation.READ
-          temporaryCredentialsApi
-            .generateTemporaryTableCredentials(
-              new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-            )
+          try {
+            tableOp = TableOperation.READ
+            temporaryCredentialsApi
+              .generateTemporaryTableCredentials(
+                new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
+              )
+          } catch {
+            case e: ApiException =>
+              if (serverSidePlanningEnabled) {
+                SparkSession.getActiveSession match {
+                  case Some(spark) =>
+                    spark.conf.set("spark.databricks.delta.catalog.enableServerSidePlanning", "true")
+                    logInfo(
+                      s"Server-side planning enabled for table $identifier. " +
+                      s"Set spark.databricks.delta.catalog.enableServerSidePlanning=true. " +
+                      s"Proceeding with empty credentials. Delta will use server-side planning for data access."
+                    )
+                  case None =>
+                    logWarning(
+                      s"Server-side planning enabled for table $identifier but no active SparkSession found. " +
+                      s"Cannot set Spark config. Table access may fail."
+                    )
+                }
+                null
+              } else {
+                throw e
+              }
+          }
       }
     }
 

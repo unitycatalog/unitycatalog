@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * This test suite exercise all tests in BaseTableReadWriteTest plus extra tests that are dedicated
@@ -196,6 +197,41 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
           }
         }
       }
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  public void testServerSidePlanningCredentialFallback(boolean sspEnabled) throws ApiException {
+    // Recreate session with appropriate SSP configuration
+    if (session != null) {
+      session.stop();
+    }
+
+    // Create managed table in catalog with unconfigured storage root
+    // This returns a table in a new catalog (catalog_no_creds) with no credentials
+    String tableName = "test_ssp_fallback";
+    String fullTableName = setupTableWithUnconfiguredStorage(tableName);
+
+    // Configure Spark session to include the unconfigured catalog
+    String unconfiguredCatalogName = "catalog_no_creds";
+    session =
+        sspEnabled
+            ? createSparkSessionWithSSP(CATALOG_NAME, unconfiguredCatalogName)
+            : createSparkSessionWithCatalogs(CATALOG_NAME, unconfiguredCatalogName);
+
+    if (sspEnabled) {
+      // SSP enabled: should succeed with empty credentials
+      assertThat(session.table(fullTableName)).isNotNull();
+
+      // Verify Spark config was set by UC catalog
+      assertThat(session.conf().get("spark.databricks.delta.catalog.enableServerSidePlanning"))
+          .isEqualTo("true");
+    } else {
+      // SSP disabled (default): should throw exception
+      assertThatThrownBy(() -> session.table(fullTableName))
+          .hasCauseInstanceOf(ApiException.class)
+          .hasMessageContaining("generateTemporaryTableCredentials failed");
     }
   }
 

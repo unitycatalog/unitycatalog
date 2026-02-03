@@ -188,6 +188,45 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   protected abstract String setupTable(TableSetupOptions options);
 
   /**
+   * Creates a managed table in a catalog with an unconfigured storage root. This is useful for
+   * testing credential fallback behavior when credentials are unavailable.
+   *
+   * <p>Creates a new catalog with storage root pointing to an unconfigured bucket (no credentials
+   * configured in the server), then creates a schema and managed table in that catalog. The managed
+   * table will inherit the catalog's storage root and trigger credential failure when accessed.
+   *
+   * @param tableName the table name
+   * @return the full table name
+   */
+  protected String setupTableWithUnconfiguredStorage(String tableName) throws ApiException {
+    // Create catalog with unconfigured storage root (no credentials for this bucket)
+    String unconfiguredCatalogName = "catalog_no_creds";
+    String unconfiguredStorageRoot = "s3://unconfigured-bucket-no-creds";
+
+    catalogOperations.createCatalog(
+        new io.unitycatalog.client.model.CreateCatalog()
+            .name(unconfiguredCatalogName)
+            .comment("Catalog with unconfigured storage for testing")
+            .storageRoot(unconfiguredStorageRoot));
+    createdCatalogs.add(unconfiguredCatalogName);
+
+    // Create schema in the unconfigured catalog
+    schemaOperations.createSchema(
+        new io.unitycatalog.client.model.CreateSchema()
+            .name(SCHEMA_NAME)
+            .catalogName(unconfiguredCatalogName));
+
+    // Create managed table - will use catalog's unconfigured storage root
+    String fullTableName =
+        String.format("%s.%s.%s", unconfiguredCatalogName, SCHEMA_NAME, tableName);
+    sql(
+        "CREATE TABLE %s (id INT, name STRING) USING DELTA %s",
+        fullTableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
+
+    return fullTableName;
+  }
+
+  /**
    * The table format to be tested. Subclasses override this function to test different table
    * formats.
    */
