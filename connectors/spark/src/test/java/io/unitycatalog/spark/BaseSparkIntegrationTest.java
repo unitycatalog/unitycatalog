@@ -33,11 +33,11 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   // Used for testing credential failure scenarios like SSP fallback.
   protected static final String NO_CREDS_BUCKET = "test-bucket-2-no-creds";
 
-  protected SchemaOperations schemaOperations;
+  private SchemaOperations schemaOperations;
   // Each test would create this session. It will be closed automatically.
   protected SparkSession session;
 
-  protected void createCommonResources() throws ApiException {
+  private void createCommonResources() throws ApiException {
     // Common setup operations such as creating a catalog and schema
     catalogOperations.createCatalog(
         new CreateCatalog().name(CATALOG_NAME).comment(TestUtils.COMMENT));
@@ -77,69 +77,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return builder.getOrCreate();
   }
 
-  protected SparkSession createSparkSessionWithSSP(String... catalogs) {
-    SparkSession.Builder builder =
-        SparkSession.builder()
-            .appName("test-ssp")
-            .master("local[*]")
-            .config("spark.sql.shuffle.partitions", "4")
-            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
-    for (String catalog : catalogs) {
-      String catalogConf = "spark.sql.catalog." + catalog;
-      builder =
-          builder
-              .config(catalogConf, UCSingleCatalog.class.getName())
-              .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
-              .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
-              .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
-              .config(catalogConf + "." + OptionsUtil.SERVER_SIDE_PLANNING_ENABLED, "true");
-      if (!List.of(SPARK_CATALOG, CATALOG_NAME).contains(catalog)) {
-        createTestCatalog(catalog);
-      }
-    }
-    // Use fake file system for cloud storage so that we can test credentials.
-    builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());
-    builder.config("fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
-    builder.config("fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
-    return builder.getOrCreate();
-  }
-
   protected List<Row> sql(String statement, Object... args) {
     return session.sql(String.format(statement, args)).collectAsList();
-  }
-
-  // Flag to indicate we want to use the no-creds bucket for TABLE_STORAGE_ROOT
-  private boolean useNoCredsBucket = false;
-
-  /**
-   * Restarts the server with TABLE_STORAGE_ROOT pointing to a bucket with no credentials
-   * configured. This causes credential API calls to fail, useful for testing SSP fallback.
-   *
-   * <p>After calling this method, managed tables will be stored at s3://test-bucket-2-no-creds/...
-   * The filesystem will allow access (maps to local files), but the credential API will fail since
-   * no credentials are configured for this bucket on the server.
-   */
-  protected void restartServerWithNoCredsStorage() {
-    // Clean up existing session and catalogs
-    if (session != null) {
-      try {
-        session.close();
-      } catch (Exception e) {
-        // Ignore
-      }
-      session = null;
-    }
-    createdCatalogs.clear();
-
-    // Stop existing server
-    tearDown();
-
-    // Set flag so setUpProperties() uses the no-creds bucket
-    useNoCredsBucket = true;
-
-    // Restart server with new config
-    // Note: setUp() already calls createCommonResources(), so we don't need to call it again
-    setUp();
   }
 
   @BeforeEach
@@ -161,15 +100,6 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-
-    // If flag is set, override TABLE_STORAGE_ROOT to use the no-creds bucket
-    if (useNoCredsBucket) {
-      String noCredsStorageRoot =
-          "s3://" + NO_CREDS_BUCKET + testDirectoryRoot.toAbsolutePath().normalize().toString();
-      serverProperties.setProperty(
-          io.unitycatalog.server.utils.ServerProperties.Property.TABLE_STORAGE_ROOT.getKey(),
-          noCredsStorageRoot);
-    }
 
     // Add credential configurations for test buckets (but NOT for test-bucket-2-no-creds)
     serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");

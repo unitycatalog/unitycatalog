@@ -376,15 +376,19 @@ private class UCProxy(
       }
     }
 
-    val extraSerdeProps = CredPropsUtil.createTableCredProps(
-      renewCredEnabled,
-      locationUri.getScheme,
-      uri.toString,
-      tokenProvider,
-      tableId,
-      tableOp,
-      temporaryCredentials,
-    )
+    val extraSerdeProps = if (temporaryCredentials == null) {
+      Map.empty[String, String].asJava
+    } else {
+      CredPropsUtil.createTableCredProps(
+        renewCredEnabled,
+        locationUri.getScheme,
+        uri.toString,
+        tokenProvider,
+        tableId,
+        tableOp,
+        temporaryCredentials,
+      )
+    }
 
     val sparkTable = CatalogTable(
       identifier,
