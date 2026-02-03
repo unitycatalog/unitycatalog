@@ -66,7 +66,11 @@ public enum CliParams {
   URL("url", "The URL/path of the external location (e.g., s3://bucket/path)", "url"),
   CREDENTIAL_NAME("credential_name", "The name of the storage credential", "credential_name"),
   AWS_IAM_ROLE_ARN(
-      "aws_iam_role_arn", "The ARN of the AWS IAM role for credential", "aws_iam_role_arn");
+      "aws_iam_role_arn", "The ARN of the AWS IAM role for credential", "aws_iam_role_arn"),
+  STORAGE_ROOT(
+      "storage_root",
+      "The storage root URL for managed tables/volumes within the catalog or schema.",
+      "storage_root");
   private final String value;
   private final String helpMessage;
   private final String serverParam;

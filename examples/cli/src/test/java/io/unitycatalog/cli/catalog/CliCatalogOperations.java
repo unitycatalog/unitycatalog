@@ -34,6 +34,10 @@ public class CliCatalogOperations extends BaseCliOperations implements CatalogOp
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
+    if (createCatalog.getStorageRoot() != null) {
+      argsList.add("--storage_root");
+      argsList.add(createCatalog.getStorageRoot());
+    }
     return execute(CatalogInfo.class, "create", argsList);
   }
 

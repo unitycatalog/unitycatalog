@@ -36,6 +36,10 @@ public class CliSchemaOperations extends BaseCliOperations implements SchemaOper
         throw new RuntimeException("Failed to serialize properties", e);
       }
     }
+    if (createSchema.getStorageRoot() != null) {
+      argsList.add("--storage_root");
+      argsList.add(createSchema.getStorageRoot());
+    }
     return execute(SchemaInfo.class, "create", argsList);
   }
 
