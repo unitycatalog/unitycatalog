@@ -119,7 +119,11 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   protected void restartServerWithNoCredsStorage() {
     // Clean up existing session and catalogs
     if (session != null) {
-      session.close();
+      try {
+        session.close();
+      } catch (Exception e) {
+        // Ignore
+      }
       session = null;
     }
     createdCatalogs.clear();
@@ -135,17 +139,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
         noCredsStorageRoot);
 
     // Restart server with new config
+    // Note: setUp() already calls createCommonResources(), so we don't need to call it again
     setUp();
-
-    // Recreate schema operations with new server config
-    schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
-
-    // Recreate common resources (catalogs, schemas)
-    try {
-      createCommonResources();
-    } catch (ApiException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   @BeforeEach
