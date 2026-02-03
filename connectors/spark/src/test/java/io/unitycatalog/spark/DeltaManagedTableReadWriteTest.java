@@ -20,6 +20,9 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.connector.catalog.CatalogPlugin;
+import org.apache.spark.sql.connector.catalog.Identifier;
+import org.apache.spark.sql.connector.catalog.Table;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.Assertions;
@@ -255,24 +258,28 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     }
     session = createSparkSessionWithSsp(sspEnabled);
 
-    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + tableName;
+    // Load table directly via catalog API (bypasses Spark analysis/Delta data access)
+    CatalogPlugin catalogPlugin = session.sessionState().catalogManager().catalog(CATALOG_NAME);
+    TableCatalog tableCatalog = (TableCatalog) catalogPlugin;
+    Identifier tableId = Identifier.of(new String[] {SCHEMA_NAME}, tableName);
 
     // Capture any exception thrown when loading the table
     Exception caughtException = null;
+    Table loadedTable = null;
     try {
-      session.table(fullTableName);
+      loadedTable = tableCatalog.loadTable(tableId);
     } catch (Exception e) {
       caughtException = e;
     }
 
     if (!sspEnabled) {
-      // SSP disabled (default): should throw ApiException because credential API fails
+      // SSP disabled (default): loadTable() throws ApiException because credential API fails
       assertThat(caughtException).isInstanceOf(ApiException.class);
     } else {
-      // SSP enabled: credential failure should NOT throw ApiException.
-      // SSP fallback returns empty credentials. Load may fail later
-      // (no actual data), but that's not an ApiException.
-      assertThat(caughtException).isNotInstanceOf(ApiException.class);
+      // SSP enabled: loadTable() succeeds with empty credentials (no ApiException)
+      // The SSP fallback logs: "Server-side planning enabled... Proceeding with empty credentials"
+      assertThat(caughtException).isNull();
+      assertThat(loadedTable).isNotNull();
     }
   }
 
