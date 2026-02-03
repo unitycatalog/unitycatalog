@@ -52,12 +52,15 @@ class UCSingleCatalog
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+    val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
+      OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
+      OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
-    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled,
+    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, serverSidePlanningEnabled,
       apiClient, tablesApi, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
@@ -281,6 +284,7 @@ private class UCProxy(
     uri: URI,
     tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
+    serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
     temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
@@ -364,39 +368,33 @@ private class UCProxy(
           creds,
         )
       case None =>
-        // Determine if server-side planning is enabled by checking SparkSession config
-        val sspEnabled = try {
-          SparkSession.getActiveSession match {
-            case Some(spark) =>
-              val configValue = spark.conf.get(
-                "spark.databricks.delta.catalog.enableServerSidePlanning",
-                "false"
-              )
-              logDebug(s"SSP config for table ${identifier}: ${configValue}")
-              configValue.toBoolean
-            case None =>
+        // Check catalog-level server-side planning configuration
+        if (serverSidePlanningEnabled) {
+          // Server-side planning enabled at catalog level
+          // Set Spark config to enable Delta SSP
+          try {
+            SparkSession.getActiveSession match {
+              case Some(spark) =>
+                spark.conf.set("spark.databricks.delta.catalog.enableServerSidePlanning", "true")
+                logInfo(
+                  s"Server-side planning enabled for table ${identifier}. " +
+                  s"Set spark.databricks.delta.catalog.enableServerSidePlanning=true. " +
+                  s"Proceeding with empty credentials. Delta will use server-side planning for data access."
+                )
+              case None =>
+                logWarning(
+                  s"Server-side planning enabled for table ${identifier} but no active SparkSession found. " +
+                  s"Cannot set Spark config. Table access may fail."
+                )
+            }
+          } catch {
+            case e: Exception =>
               logWarning(
-                s"No active SparkSession found when loading table ${identifier}. " +
-                s"Defaulting to SSP disabled. Table access may fail if credentials are required."
+                s"Server-side planning enabled for table ${identifier} but failed to set Spark config: ${e.getMessage}. " +
+                s"Table access may fail."
               )
-              false
           }
-        } catch {
-          case e: NoSuchElementException =>
-            logWarning(s"Failed to get active SparkSession for table ${identifier}: ${e.getMessage}. Defaulting to SSP disabled.")
-            false
-          case e: Exception =>
-            logWarning(s"Error reading SSP config for table ${identifier}: ${e.getMessage}. Defaulting to SSP disabled.")
-            false
-        }
-
-        if (sspEnabled) {
-          // Server-side planning enabled - proceed with empty credentials
-          // Delta will handle file discovery and credential vending via server-side planning
-          logInfo(
-            s"Server-side planning enabled for table ${identifier}. " +
-            s"Proceeding with empty credentials. Delta will use server-side planning for data access."
-          )
+          // Proceed with empty credentials - Delta will handle file discovery via SSP
           java.util.Collections.emptyMap[String, String]()
         } else {
           // Server-side planning not enabled - fail fast for security
