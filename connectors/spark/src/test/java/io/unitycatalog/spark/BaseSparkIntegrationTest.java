@@ -97,7 +97,6 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-
     serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
     serverProperties.put("s3.accessKey.0", "accessKey0");
     serverProperties.put("s3.secretKey.0", "secretKey0");

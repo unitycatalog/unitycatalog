@@ -238,7 +238,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   @ValueSource(booleans = {false, true})
   public void testServerSidePlanningCredentialFallback(boolean sspEnabled) throws Exception {
     // Create an EXTERNAL table via SDK API (bypasses Spark connector's credential check).
-    // The table points to a bucket with NO credentials configured on server.
+    // The table points to a bucket with no credentials configured on server.
     // This allows table metadata lookup to succeed, but credential vending will fail.
     // Pattern from SdkTemporaryTableCredentialTest.
     String tableName = "test_ssp_fallback_" + sspEnabled;
@@ -257,21 +257,22 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + tableName;
 
-    if (sspEnabled) {
-      // SSP enabled: credential failure should NOT throw ApiException.
-      // Instead, SSP fallback returns empty credentials.
-      // Delta may fail later (no actual data at location), but that's not an ApiException.
-      try {
-        session.table(fullTableName);
-      } catch (Exception e) {
-        // Verify it's NOT an ApiException - SSP fallback should have handled credentials
-        assertThat(e).isNotInstanceOf(ApiException.class);
-        // Any other exception (e.g., Delta can't find table data) is acceptable for this test
-      }
+    // Capture any exception thrown when loading the table
+    Exception caughtException = null;
+    try {
+      session.table(fullTableName);
+    } catch (Exception e) {
+      caughtException = e;
+    }
+
+    if (!sspEnabled) {
+      // SSP disabled (default): should throw ApiException because credential API fails
+      assertThat(caughtException).isInstanceOf(ApiException.class);
     } else {
-      // SSP disabled (default): loadTable() should throw exception
-      // because credential API fails (no credentials configured for this bucket)
-      assertThatThrownBy(() -> session.table(fullTableName)).isInstanceOf(ApiException.class);
+      // SSP enabled: credential failure should NOT throw ApiException.
+      // SSP fallback returns empty credentials. Load may fail later
+      // (no actual data), but that's not an ApiException.
+      assertThat(caughtException).isNotInstanceOf(ApiException.class);
     }
   }
 
