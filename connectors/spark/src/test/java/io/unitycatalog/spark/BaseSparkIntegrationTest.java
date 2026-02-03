@@ -108,6 +108,9 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return session.sql(String.format(statement, args)).collectAsList();
   }
 
+  // Flag to indicate we want to use the no-creds bucket for TABLE_STORAGE_ROOT
+  private boolean useNoCredsBucket = false;
+
   /**
    * Restarts the server with TABLE_STORAGE_ROOT pointing to a bucket with no credentials
    * configured. This causes credential API calls to fail, useful for testing SSP fallback.
@@ -131,12 +134,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     // Stop existing server
     tearDown();
 
-    // Update storage root to use the no-creds bucket
-    String noCredsStorageRoot =
-        "s3://" + NO_CREDS_BUCKET + testDirectoryRoot.toAbsolutePath().normalize().toString();
-    serverProperties.setProperty(
-        io.unitycatalog.server.utils.ServerProperties.Property.TABLE_STORAGE_ROOT.getKey(),
-        noCredsStorageRoot);
+    // Set flag so setUpProperties() uses the no-creds bucket
+    useNoCredsBucket = true;
 
     // Restart server with new config
     // Note: setUp() already calls createCommonResources(), so we don't need to call it again
@@ -162,6 +161,17 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
+
+    // If flag is set, override TABLE_STORAGE_ROOT to use the no-creds bucket
+    if (useNoCredsBucket) {
+      String noCredsStorageRoot =
+          "s3://" + NO_CREDS_BUCKET + testDirectoryRoot.toAbsolutePath().normalize().toString();
+      serverProperties.setProperty(
+          io.unitycatalog.server.utils.ServerProperties.Property.TABLE_STORAGE_ROOT.getKey(),
+          noCredsStorageRoot);
+    }
+
+    // Add credential configurations for test buckets (but NOT for test-bucket-2-no-creds)
     serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
     serverProperties.put("s3.accessKey.0", "accessKey0");
     serverProperties.put("s3.secretKey.0", "secretKey0");
