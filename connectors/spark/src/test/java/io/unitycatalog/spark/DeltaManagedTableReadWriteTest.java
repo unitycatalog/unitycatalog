@@ -220,6 +220,15 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
             .config("spark.sql.shuffle.partitions", "4")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
 
+    // Configure spark_catalog (required by Delta for table operations)
+    String sparkCatalogConf = "spark.sql.catalog." + SPARK_CATALOG;
+    builder =
+        builder
+            .config(sparkCatalogConf, "io.unitycatalog.spark.UCSingleCatalog")
+            .config(sparkCatalogConf + ".uri", serverConfig.getServerUrl())
+            .config(sparkCatalogConf + ".token", serverConfig.getAuthToken())
+            .config(sparkCatalogConf + ".warehouse", SPARK_CATALOG);
+
     // Configure CATALOG_NAME (standard test catalog)
     String catalogConf = "spark.sql.catalog." + CATALOG_NAME;
     builder =
