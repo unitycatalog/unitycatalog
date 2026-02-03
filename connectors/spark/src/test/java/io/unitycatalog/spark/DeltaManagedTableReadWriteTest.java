@@ -211,23 +211,44 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     // Create catalog and schema with unconfigured storage root (no credentials)
     String unconfiguredCatalogName = setupCatalogWithUnconfiguredStorage();
 
-    // Create SparkSession with only CATALOG_NAME
-    // We manually configure the unconfigured catalog below to avoid double-creation
-    session =
-        sspEnabled
-            ? createSparkSessionWithSSP(CATALOG_NAME)
-            : createSparkSessionWithCatalogs(CATALOG_NAME);
+    // Build SparkSession with the unconfigured catalog configured inline
+    // We can't use the helper methods because they try to create the catalog, which we already did
+    org.apache.spark.sql.SparkSession.Builder builder =
+        org.apache.spark.sql.SparkSession.builder()
+            .appName("test-ssp")
+            .master("local[*]")
+            .config("spark.sql.shuffle.partitions", "4")
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
 
-    // Manually configure the unconfigured catalog in the SparkSession
-    // (createSparkSession* helpers would try to create it, but we already did)
-    String catalogConf = "spark.sql.catalog." + unconfiguredCatalogName;
-    session.conf().set(catalogConf, "io.unitycatalog.spark.UCSingleCatalog");
-    session.conf().set(catalogConf + ".uri", serverConfig.getServerUrl());
-    session.conf().set(catalogConf + ".token", serverConfig.getAuthToken());
-    session.conf().set(catalogConf + ".warehouse", unconfiguredCatalogName);
+    // Configure CATALOG_NAME (standard test catalog)
+    String catalogConf = "spark.sql.catalog." + CATALOG_NAME;
+    builder =
+        builder
+            .config(catalogConf, "io.unitycatalog.spark.UCSingleCatalog")
+            .config(catalogConf + ".uri", serverConfig.getServerUrl())
+            .config(catalogConf + ".token", serverConfig.getAuthToken())
+            .config(catalogConf + ".warehouse", CATALOG_NAME);
+
+    // Configure unconfigured catalog with SSP if enabled
+    String unconfiguredCatalogConf = "spark.sql.catalog." + unconfiguredCatalogName;
+    builder =
+        builder
+            .config(unconfiguredCatalogConf, "io.unitycatalog.spark.UCSingleCatalog")
+            .config(unconfiguredCatalogConf + ".uri", serverConfig.getServerUrl())
+            .config(unconfiguredCatalogConf + ".token", serverConfig.getAuthToken())
+            .config(unconfiguredCatalogConf + ".warehouse", unconfiguredCatalogName);
     if (sspEnabled) {
-      session.conf().set(catalogConf + ".serverSidePlanning.enabled", "true");
+      builder = builder.config(unconfiguredCatalogConf + ".serverSidePlanning.enabled", "true");
     }
+
+    // Use fake file systems for cloud storage credential testing
+    builder =
+        builder
+            .config("fs.s3.impl", "io.unitycatalog.spark.S3CredentialTestFileSystem")
+            .config("fs.gs.impl", "io.unitycatalog.spark.GCSCredentialTestFileSystem")
+            .config("fs.abfs.impl", "io.unitycatalog.spark.AzureCredentialTestFileSystem");
+
+    session = builder.getOrCreate();
 
     // Now create managed table using SQL (requires active SparkSession)
     // Table will inherit catalog's unconfigured storage root
