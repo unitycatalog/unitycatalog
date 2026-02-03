@@ -211,11 +211,23 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     // Create catalog and schema with unconfigured storage root (no credentials)
     String unconfiguredCatalogName = setupCatalogWithUnconfiguredStorage();
 
-    // Create SparkSession with the unconfigured catalog configured
+    // Create SparkSession with only CATALOG_NAME
+    // We manually configure the unconfigured catalog below to avoid double-creation
     session =
         sspEnabled
-            ? createSparkSessionWithSSP(CATALOG_NAME, unconfiguredCatalogName)
-            : createSparkSessionWithCatalogs(CATALOG_NAME, unconfiguredCatalogName);
+            ? createSparkSessionWithSSP(CATALOG_NAME)
+            : createSparkSessionWithCatalogs(CATALOG_NAME);
+
+    // Manually configure the unconfigured catalog in the SparkSession
+    // (createSparkSession* helpers would try to create it, but we already did)
+    String catalogConf = "spark.sql.catalog." + unconfiguredCatalogName;
+    session.conf().set(catalogConf, "io.unitycatalog.spark.UCSingleCatalog");
+    session.conf().set(catalogConf + ".uri", serverConfig.getServerUrl());
+    session.conf().set(catalogConf + ".token", serverConfig.getAuthToken());
+    session.conf().set(catalogConf + ".warehouse", unconfiguredCatalogName);
+    if (sspEnabled) {
+      session.conf().set(catalogConf + ".serverSidePlanning.enabled", "true");
+    }
 
     // Now create managed table using SQL (requires active SparkSession)
     // Table will inherit catalog's unconfigured storage root
