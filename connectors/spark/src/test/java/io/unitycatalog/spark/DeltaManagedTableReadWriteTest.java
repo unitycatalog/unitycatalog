@@ -208,17 +208,23 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
       session.stop();
     }
 
-    // Create managed table in catalog with unconfigured storage root
-    // This returns a table in a new catalog (catalog_no_creds) with no credentials
-    String tableName = "test_ssp_fallback";
-    String fullTableName = setupTableWithUnconfiguredStorage(tableName);
+    // Create catalog and schema with unconfigured storage root (no credentials)
+    String unconfiguredCatalogName = setupCatalogWithUnconfiguredStorage();
 
-    // Configure Spark session to include the unconfigured catalog
-    String unconfiguredCatalogName = "catalog_no_creds";
+    // Create SparkSession with the unconfigured catalog configured
     session =
         sspEnabled
             ? createSparkSessionWithSSP(CATALOG_NAME, unconfiguredCatalogName)
             : createSparkSessionWithCatalogs(CATALOG_NAME, unconfiguredCatalogName);
+
+    // Now create managed table using SQL (requires active SparkSession)
+    // Table will inherit catalog's unconfigured storage root
+    String tableName = "test_ssp_fallback";
+    String fullTableName =
+        String.format("%s.%s.%s", unconfiguredCatalogName, SCHEMA_NAME, tableName);
+    sql(
+        "CREATE TABLE %s (id INT, name STRING) USING DELTA %s",
+        fullTableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
 
     if (sspEnabled) {
       // SSP enabled: should succeed with empty credentials

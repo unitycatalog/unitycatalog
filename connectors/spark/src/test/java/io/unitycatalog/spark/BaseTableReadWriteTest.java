@@ -188,17 +188,17 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   protected abstract String setupTable(TableSetupOptions options);
 
   /**
-   * Creates a managed table in a catalog with an unconfigured storage root. This is useful for
-   * testing credential fallback behavior when credentials are unavailable.
+   * Creates a catalog and schema with an unconfigured storage root. This is useful for testing
+   * credential fallback behavior when credentials are unavailable.
    *
    * <p>Creates a new catalog with storage root pointing to an unconfigured bucket (no credentials
-   * configured in the server), then creates a schema and managed table in that catalog. The managed
-   * table will inherit the catalog's storage root and trigger credential failure when accessed.
+   * configured in the server) and a schema in that catalog. The caller should create a SparkSession
+   * with this catalog configured, then create a managed table which will inherit the catalog's
+   * unconfigured storage root and trigger credential failure when accessed.
    *
-   * @param tableName the table name
-   * @return the full table name
+   * @return the catalog name
    */
-  protected String setupTableWithUnconfiguredStorage(String tableName) throws ApiException {
+  protected String setupCatalogWithUnconfiguredStorage() throws ApiException {
     // Create catalog with unconfigured storage root (no credentials for this bucket)
     String unconfiguredCatalogName = "catalog_no_creds";
     String unconfiguredStorageRoot = "s3://unconfigured-bucket-no-creds";
@@ -216,14 +216,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             .name(SCHEMA_NAME)
             .catalogName(unconfiguredCatalogName));
 
-    // Create managed table - will use catalog's unconfigured storage root
-    String fullTableName =
-        String.format("%s.%s.%s", unconfiguredCatalogName, SCHEMA_NAME, tableName);
-    sql(
-        "CREATE TABLE %s (id INT, name STRING) USING DELTA %s",
-        fullTableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
-
-    return fullTableName;
+    return unconfiguredCatalogName;
   }
 
   /**
