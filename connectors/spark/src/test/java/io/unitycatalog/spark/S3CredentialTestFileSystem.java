@@ -49,7 +49,7 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
           assertThat(credentials.secretAccessKey()).isEqualTo("secretKey1");
           assertThat(credentials.sessionToken()).isEqualTo("sessionToken1");
         }
-      } else if ("test-bucket-2-no-creds".equals(host)) {
+      } else if (BaseSparkIntegrationTest.NO_CREDS_BUCKET.equals(host)) {
         // No credential validation - allows SSP fallback testing with empty credentials.
       } else {
         throw new RuntimeException("invalid path: " + f);
