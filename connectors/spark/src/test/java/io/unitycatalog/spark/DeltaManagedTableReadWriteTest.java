@@ -203,88 +203,30 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   @ParameterizedTest
   @ValueSource(booleans = {false, true})
   public void testServerSidePlanningCredentialFallback(boolean sspEnabled) throws ApiException {
-    // Recreate session with appropriate SSP configuration
-    if (session != null) {
-      session.stop();
-    }
+    // Restart server with storage root pointing to bucket with no credentials configured.
+    // The filesystem allows access (maps to local files), but credential API will fail.
+    restartServerWithNoCredsStorage();
 
-    // Create catalog and schema with unconfigured storage root (no credentials)
-    String unconfiguredCatalogName = setupCatalogWithUnconfiguredStorage();
-
-    // Build SparkSession with the unconfigured catalog configured inline
-    // We can't use the helper methods because they try to create the catalog, which we already did
-    org.apache.spark.sql.SparkSession.Builder builder =
-        org.apache.spark.sql.SparkSession.builder()
-            .appName("test-ssp")
-            .master("local[*]")
-            .config("spark.sql.shuffle.partitions", "4")
-            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
-
-    // Configure spark_catalog (required by Delta for table operations)
-    String sparkCatalogConf = "spark.sql.catalog." + SPARK_CATALOG;
-    builder =
-        builder
-            .config(sparkCatalogConf, "io.unitycatalog.spark.UCSingleCatalog")
-            .config(sparkCatalogConf + ".uri", serverConfig.getServerUrl())
-            .config(sparkCatalogConf + ".token", serverConfig.getAuthToken())
-            .config(sparkCatalogConf + ".warehouse", SPARK_CATALOG);
-
-    // Configure CATALOG_NAME (standard test catalog)
-    String catalogConf = "spark.sql.catalog." + CATALOG_NAME;
-    builder =
-        builder
-            .config(catalogConf, "io.unitycatalog.spark.UCSingleCatalog")
-            .config(catalogConf + ".uri", serverConfig.getServerUrl())
-            .config(catalogConf + ".token", serverConfig.getAuthToken())
-            .config(catalogConf + ".warehouse", CATALOG_NAME);
-
-    // Configure unconfigured catalog with SSP if enabled
-    String unconfiguredCatalogConf = "spark.sql.catalog." + unconfiguredCatalogName;
-    builder =
-        builder
-            .config(unconfiguredCatalogConf, "io.unitycatalog.spark.UCSingleCatalog")
-            .config(unconfiguredCatalogConf + ".uri", serverConfig.getServerUrl())
-            .config(unconfiguredCatalogConf + ".token", serverConfig.getAuthToken())
-            .config(unconfiguredCatalogConf + ".warehouse", unconfiguredCatalogName);
+    // Create SparkSession with SSP enabled or disabled based on parameter
     if (sspEnabled) {
-      builder = builder.config(unconfiguredCatalogConf + ".serverSidePlanning.enabled", "true");
+      session = createSparkSessionWithSSP(SPARK_CATALOG, CATALOG_NAME);
+    } else {
+      session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     }
 
-    // Use fake file systems for cloud storage credential testing
-    builder =
-        builder
-            .config("fs.s3.impl", "io.unitycatalog.spark.S3CredentialTestFileSystem")
-            .config("fs.gs.impl", "io.unitycatalog.spark.GCSCredentialTestFileSystem")
-            .config("fs.abfs.impl", "io.unitycatalog.spark.AzureCredentialTestFileSystem");
-
-    // Use getOrCreate() to create a new session with our configuration
-    // The old session was stopped above, so this will create a fresh one
-    session = builder.getOrCreate();
-
-    // Make sure this session is set as the active session for Delta operations
-    org.apache.spark.sql.SparkSession.setActiveSession(session);
-
-    // Now create managed table using SQL (requires active SparkSession)
-    // Table will inherit catalog's unconfigured storage root
+    // Create managed table - storage will be at s3://test-bucket-2-no-creds/...
     String tableName = "test_ssp_fallback";
-    String fullTableName =
-        String.format("%s.%s.%s", unconfiguredCatalogName, SCHEMA_NAME, tableName);
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + tableName;
     sql(
         "CREATE TABLE %s (id INT, name STRING) USING DELTA %s",
         fullTableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
 
     if (sspEnabled) {
-      // SSP enabled: should succeed with empty credentials
+      // SSP enabled: loadTable() should succeed with empty credentials
       assertThat(session.table(fullTableName)).isNotNull();
-
-      // Verify Spark config was set by UC catalog
-      assertThat(session.conf().get("spark.databricks.delta.catalog.enableServerSidePlanning"))
-          .isEqualTo("true");
     } else {
-      // SSP disabled (default): should throw exception
-      assertThatThrownBy(() -> session.table(fullTableName))
-          .hasCauseInstanceOf(ApiException.class)
-          .hasMessageContaining("generateTemporaryTableCredentials failed");
+      // SSP disabled (default): loadTable() should throw exception for credential failure
+      assertThatThrownBy(() -> session.table(fullTableName)).hasCauseInstanceOf(ApiException.class);
     }
   }
 

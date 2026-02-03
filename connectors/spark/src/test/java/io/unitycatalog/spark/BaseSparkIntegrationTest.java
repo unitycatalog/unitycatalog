@@ -29,12 +29,15 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   protected ArrayList<String> createdCatalogs = new ArrayList<>();
   protected static final String SPARK_CATALOG = "spark_catalog";
+  // Bucket known by S3CredentialTestFileSystem but with NO credentials configured on server.
+  // Used for testing credential failure scenarios like SSP fallback.
+  protected static final String NO_CREDS_BUCKET = "test-bucket-2-no-creds";
 
   protected SchemaOperations schemaOperations;
   // Each test would create this session. It will be closed automatically.
   protected SparkSession session;
 
-  private void createCommonResources() throws ApiException {
+  protected void createCommonResources() throws ApiException {
     // Common setup operations such as creating a catalog and schema
     catalogOperations.createCatalog(
         new CreateCatalog().name(CATALOG_NAME).comment(TestUtils.COMMENT));
@@ -103,6 +106,46 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   protected List<Row> sql(String statement, Object... args) {
     return session.sql(String.format(statement, args)).collectAsList();
+  }
+
+  /**
+   * Restarts the server with TABLE_STORAGE_ROOT pointing to a bucket with no credentials
+   * configured. This causes credential API calls to fail, useful for testing SSP fallback.
+   *
+   * <p>After calling this method, managed tables will be stored at s3://test-bucket-2-no-creds/...
+   * The filesystem will allow access (maps to local files), but the credential API will fail since
+   * no credentials are configured for this bucket on the server.
+   */
+  protected void restartServerWithNoCredsStorage() {
+    // Clean up existing session and catalogs
+    if (session != null) {
+      session.close();
+      session = null;
+    }
+    createdCatalogs.clear();
+
+    // Stop existing server
+    tearDown();
+
+    // Update storage root to use the no-creds bucket
+    String noCredsStorageRoot =
+        "s3://" + NO_CREDS_BUCKET + testDirectoryRoot.toAbsolutePath().normalize().toString();
+    serverProperties.setProperty(
+        io.unitycatalog.server.utils.ServerProperties.Property.TABLE_STORAGE_ROOT.getKey(),
+        noCredsStorageRoot);
+
+    // Restart server with new config
+    setUp();
+
+    // Recreate schema operations with new server config
+    schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
+
+    // Recreate common resources (catalogs, schemas)
+    try {
+      createCommonResources();
+    } catch (ApiException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @BeforeEach

@@ -49,6 +49,10 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
           assertThat(credentials.secretAccessKey()).isEqualTo("secretKey1");
           assertThat(credentials.sessionToken()).isEqualTo("sessionToken1");
         }
+      } else if ("test-bucket-2-no-creds".equals(host)) {
+        // Bucket with NO credentials configured on server.
+        // Filesystem allows access (maps to local files), but credential API will fail.
+        // Used for testing SSP (server-side planning) credential fallback.
       } else {
         throw new RuntimeException("invalid path: " + f);
       }
