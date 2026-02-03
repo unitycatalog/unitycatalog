@@ -29,9 +29,6 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   protected ArrayList<String> createdCatalogs = new ArrayList<>();
   protected static final String SPARK_CATALOG = "spark_catalog";
-  // Bucket known by S3CredentialTestFileSystem but with NO credentials configured on server.
-  // Used for testing credential failure scenarios like SSP fallback.
-  protected static final String NO_CREDS_BUCKET = "test-bucket-2-no-creds";
 
   private SchemaOperations schemaOperations;
   // Each test would create this session. It will be closed automatically.
@@ -101,7 +98,6 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
 
-    // Add credential configurations for test buckets (but NOT for test-bucket-2-no-creds)
     serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
     serverProperties.put("s3.accessKey.0", "accessKey0");
     serverProperties.put("s3.secretKey.0", "secretKey0");

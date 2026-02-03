@@ -242,7 +242,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     // This allows table metadata lookup to succeed, but credential vending will fail.
     // Pattern from SdkTemporaryTableCredentialTest.
     String tableName = "test_ssp_fallback_" + sspEnabled;
-    String noCredsLocation = "s3://" + NO_CREDS_BUCKET + "/" + tableName;
+    String noCredsLocation = "s3://test-bucket-2-no-creds/" + tableName;
 
     TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
     io.unitycatalog.server.base.table.BaseTableCRUDTest.createTestingTable(
