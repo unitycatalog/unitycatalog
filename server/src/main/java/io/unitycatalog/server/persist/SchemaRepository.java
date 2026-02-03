@@ -17,12 +17,14 @@ import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.RepositoryUtils.CatalogAndSchemaNames;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
@@ -56,9 +58,10 @@ public class SchemaRepository {
                   .getCatalogDaoOrThrow(session, createSchema.getCatalogName());
           validateSchemaNotExistInCatalog(session, catalogDAO, createSchema.getName());
           Long createTime = System.currentTimeMillis();
+          UUID schemaId = UUID.randomUUID();
           SchemaInfo schemaInfo =
               new SchemaInfo()
-                  .schemaId(UUID.randomUUID().toString())
+                  .schemaId(schemaId.toString())
                   .name(createSchema.getName())
                   .catalogName(createSchema.getCatalogName())
                   .comment(createSchema.getComment())
@@ -68,6 +71,14 @@ public class SchemaRepository {
                   .updatedAt(createTime)
                   .updatedBy(callerId)
                   .properties(createSchema.getProperties());
+          NormalizedURL storageRoot = NormalizedURL.from(createSchema.getStorageRoot());
+          if (storageRoot != null) {
+            ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(storageRoot);
+            NormalizedURL storageLocation =
+                ExternalLocationUtils.getManagedLocationForSchema(storageRoot, schemaId);
+            schemaInfo.setStorageRoot(storageRoot.toString());
+            schemaInfo.setStorageLocation(storageLocation.toString());
+          }
           SchemaInfoDAO schemaInfoDAO = SchemaInfoDAO.from(schemaInfo);
           schemaInfoDAO.setCatalogId(catalogDAO.getId());
           PropertyDAO.from(schemaInfo.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)

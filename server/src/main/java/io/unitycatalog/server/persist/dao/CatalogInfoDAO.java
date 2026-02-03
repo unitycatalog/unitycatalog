@@ -42,6 +42,12 @@ public class CatalogInfoDAO extends IdentifiableDAO {
   @Column(name = "updated_by")
   private String updatedBy;
 
+  @Column(name = "storage_root")
+  private String storageRoot;
+
+  @Column(name = "storage_location")
+  private String storageLocation;
+
   public static CatalogInfoDAO from(CatalogInfo catalogInfo) {
     return CatalogInfoDAO.builder()
         .id(catalogInfo.getId() != null ? UUID.fromString(catalogInfo.getId()) : null)
@@ -58,6 +64,8 @@ public class CatalogInfoDAO extends IdentifiableDAO {
                 ? Date.from(Instant.ofEpochMilli(catalogInfo.getUpdatedAt()))
                 : null)
         .updatedBy(catalogInfo.getUpdatedBy())
+        .storageRoot(catalogInfo.getStorageRoot())
+        .storageLocation(catalogInfo.getStorageLocation())
         .build();
   }
 
@@ -70,6 +78,8 @@ public class CatalogInfoDAO extends IdentifiableDAO {
         .createdAt(createdAt.getTime())
         .createdBy(createdBy)
         .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
-        .updatedBy(updatedBy);
+        .updatedBy(updatedBy)
+        .storageRoot(storageRoot)
+        .storageLocation(storageLocation);
   }
 }

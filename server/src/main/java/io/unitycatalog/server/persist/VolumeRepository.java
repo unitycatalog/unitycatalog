@@ -9,6 +9,7 @@ import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
@@ -47,13 +48,12 @@ public class VolumeRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID schemaId =
-              repositories
-                  .getSchemaRepository()
-                  .getSchemaIdOrThrow(
-                      session,
-                      createVolumeRequest.getCatalogName(),
-                      createVolumeRequest.getSchemaName());
+          RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
+              RepositoryUtils.getCatalogAndSchemaDaoOrThrow(
+                  session,
+                  createVolumeRequest.getCatalogName(),
+                  createVolumeRequest.getSchemaName());
+          UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           if (getVolumeDAO(session, schemaId, createVolumeRequest.getName()) != null) {
             throw new BaseException(
                 ErrorCode.ALREADY_EXISTS,
@@ -62,15 +62,24 @@ public class VolumeRepository {
 
           UUID volumeId = UUID.randomUUID();
           NormalizedURL storageLocation;
-          if (VolumeType.MANAGED.equals(createVolumeRequest.getVolumeType())) {
-            throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT, "Managed volume creation is not supported");
+          if (createVolumeRequest.getVolumeType() == VolumeType.MANAGED) {
+            if (createVolumeRequest.getStorageLocation() != null) {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  "Storage location should not be specified for managed volume");
+            }
+            NormalizedURL parentStorageLocation =
+                ExternalLocationUtils.getManagedStorageLocation(catalogAndSchemaDao);
+            storageLocation =
+                ExternalLocationUtils.getManagedLocationForVolume(parentStorageLocation, volumeId);
           } else {
+            // EXTERNAL volume.
             if (createVolumeRequest.getStorageLocation() == null) {
               throw new BaseException(
                   ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
             }
             storageLocation = NormalizedURL.from(createVolumeRequest.getStorageLocation());
+            ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
           }
           Date now = new Date();
 

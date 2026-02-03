@@ -138,7 +138,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(stagingTableInfo.getId()).isNotNull();
     assertThat(stagingTableInfo.getStagingLocation()).isNotNull();
     assertThat(stagingTableInfo.getStagingLocation())
-        .isEqualTo(tableStorageRoot + "/tables/" + stagingTableInfo.getId());
+        .isEqualTo(tableStorageRoot + "/__unitystorage/tables/" + stagingTableInfo.getId());
 
     // Step 2: Create a managed table that's not DELTA
     CreateTable createTableRequestNotDelta =
@@ -187,7 +187,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(commitedStagingTableDAO).isNotNull();
     assertThat(commitedStagingTableDAO.getStagingLocation()).isNotNull();
     assertThat(commitedStagingTableDAO.getStagingLocation())
-        .isEqualTo(tableStorageRoot + "/tables/" + stagingTableInfo.getId());
+        .isEqualTo(tableStorageRoot + "/__unitystorage/tables/" + stagingTableInfo.getId());
     assertThat(commitedStagingTableDAO.isStageCommitted()).isEqualTo(true);
 
     // Clean up
