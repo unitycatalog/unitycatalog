@@ -74,6 +74,33 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return builder.getOrCreate();
   }
 
+  protected SparkSession createSparkSessionWithSSP(String... catalogs) {
+    SparkSession.Builder builder =
+        SparkSession.builder()
+            .appName("test-ssp")
+            .master("local[*]")
+            .config("spark.sql.shuffle.partitions", "4")
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
+    for (String catalog : catalogs) {
+      String catalogConf = "spark.sql.catalog." + catalog;
+      builder =
+          builder
+              .config(catalogConf, UCSingleCatalog.class.getName())
+              .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
+              .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
+              .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
+              .config(catalogConf + "." + OptionsUtil.SERVER_SIDE_PLANNING_ENABLED, "true");
+      if (!List.of(SPARK_CATALOG, CATALOG_NAME).contains(catalog)) {
+        createTestCatalog(catalog);
+      }
+    }
+    // Use fake file system for cloud storage so that we can test credentials.
+    builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());
+    builder.config("fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
+    builder.config("fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
+    return builder.getOrCreate();
+  }
+
   protected List<Row> sql(String statement, Object... args) {
     return session.sql(String.format(statement, args)).collectAsList();
   }

@@ -25,7 +25,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIf;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
   @TempDir protected File dataDir;
@@ -172,6 +174,44 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
     TableSetupOptions optionsWithoutAsSelect = options.withAsSelect(Optional.empty());
     sql(optionsWithoutAsSelect.createExternalTableSql(location));
     return options.fullTableName();
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  public void testServerSidePlanningCredentialFallback(boolean sspEnabled) {
+    // Recreate session with appropriate SSP configuration
+    if (session != null) {
+      session.stop();
+    }
+
+    session =
+        sspEnabled
+            ? createSparkSessionWithSSP(CATALOG_NAME)
+            : createSparkSessionWithCatalogs(CATALOG_NAME);
+
+    // Use unconfigured storage location to trigger credential failure
+    String tableName = "test_ssp_fallback";
+    String unconfiguredLocation = "s3://unconfigured-bucket-no-creds/data";
+    String fullTableName = String.format("%s.%s.%s", CATALOG_NAME, SCHEMA_NAME, tableName);
+
+    // Create external table pointing to unconfigured location
+    sql(
+        "CREATE EXTERNAL TABLE %s (id INT, name STRING) LOCATION '%s'",
+        fullTableName, unconfiguredLocation);
+
+    if (sspEnabled) {
+      // SSP enabled: should succeed with empty credentials
+      assertThat(session.table(fullTableName)).isNotNull();
+
+      // Verify Spark config was set by UC catalog
+      assertThat(session.conf().get("spark.databricks.delta.catalog.enableServerSidePlanning"))
+          .isEqualTo("true");
+    } else {
+      // SSP disabled (default): should throw exception
+      assertThatThrownBy(() -> session.table(fullTableName))
+          .hasCauseInstanceOf(ApiException.class)
+          .hasMessageContaining("generateTemporaryTableCredentials failed");
+    }
   }
 
   @BeforeEach
