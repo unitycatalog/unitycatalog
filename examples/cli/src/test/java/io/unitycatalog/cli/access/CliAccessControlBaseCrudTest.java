@@ -155,22 +155,24 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
               "--credential_name",
               "admin_cred"));
 
-  protected final List<Step> grantCreateManagedStoragePermissionSteps =
-      List.of(
-          Step.TokenStep.of(SUCCEED, "admin"),
-          Step.CommandStep.of(
-              SUCCEED,
-              1,
-              "permission",
-              "create",
-              "--securable_type",
-              "external_location",
-              "--name",
-              "admin_el",
-              "--principal",
-              "principal-1@localhost",
-              "--privilege",
-              "CREATE MANAGED STORAGE"));
+  protected final List<Step> grantExternalLocationPermissionSteps(
+      String principal, String permission) {
+    return List.of(
+        Step.TokenStep.of(SUCCEED, "admin"),
+        Step.CommandStep.of(
+            SUCCEED,
+            1,
+            "permission",
+            "create",
+            "--securable_type",
+            "external_location",
+            "--name",
+            "admin_el",
+            "--principal",
+            principal,
+            "--privilege",
+            permission));
+  }
 
   public void testSteps(List<Step> steps)
       throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
