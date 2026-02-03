@@ -200,7 +200,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
    */
   protected String setupCatalogWithUnconfiguredStorage() throws ApiException {
     // Create catalog with unconfigured storage root (no credentials for this bucket)
-    String unconfiguredCatalogName = "catalog_no_creds";
+    // Use timestamp to ensure unique catalog name across test runs
+    String unconfiguredCatalogName =
+        "catalog_no_creds_" + System.currentTimeMillis() + "_" + (int) (Math.random() * 10000);
     String unconfiguredStorageRoot = "s3://unconfigured-bucket-no-creds";
 
     catalogOperations.createCatalog(
