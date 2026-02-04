@@ -353,27 +353,14 @@ private class UCProxy(
               )
           } catch {
             case e: ApiException =>
-              if (serverSidePlanningEnabled) {
-                SparkSession.getActiveSession match {
-                  case Some(spark) =>
-                    spark.conf.set("spark.databricks.delta.catalog.enableServerSidePlanning", "true")
-                    logInfo(
-                      s"Server-side planning enabled for table $identifier. " +
-                      s"Set spark.databricks.delta.catalog.enableServerSidePlanning=true. " +
-                      s"Proceeding with empty credentials. Delta will use server-side planning for data access."
-                    )
-                  case None =>
-                    logWarning(
-                      s"Server-side planning enabled for table $identifier but no active SparkSession found. " +
-                      s"Cannot set Spark config. Table access may fail."
-                    )
-                }
-                null
-              } else {
-                throw e
-              }
+              if (serverSidePlanningEnabled) null else throw e
           }
       }
+    }
+
+    // Enable server-side planning config if credentials are null and SSP is enabled
+    if (temporaryCredentials == null && serverSidePlanningEnabled) {
+      enableServerSidePlanningConfig(identifier)
     }
 
     val extraSerdeProps = if (temporaryCredentials == null) {
@@ -494,6 +481,28 @@ private class UCProxy(
       case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
       case TimestampType => ColumnTypeName.TIMESTAMP
       case _ => throw new ApiException("DataType not supported: " + dataType.simpleString)
+    }
+  }
+
+  /**
+   * Enables server-side planning by setting the appropriate Spark config.
+   * Called when credential vending fails but SSP is enabled, allowing Delta
+   * to use server-side planning for data access instead of client-side credentials.
+   */
+  private def enableServerSidePlanningConfig(identifier: TableIdentifier): Unit = {
+    SparkSession.getActiveSession match {
+      case Some(spark) =>
+        spark.conf.set("spark.databricks.delta.catalog.enableServerSidePlanning", "true")
+        logInfo(
+          s"Server-side planning enabled for table $identifier. " +
+          s"Set spark.databricks.delta.catalog.enableServerSidePlanning=true. " +
+          s"Proceeding with empty credentials. Delta will use server-side planning for data access."
+        )
+      case None =>
+        logWarning(
+          s"Server-side planning enabled for table $identifier but no active SparkSession found. " +
+          s"Cannot set Spark config. Table access may fail."
+        )
     }
   }
 
