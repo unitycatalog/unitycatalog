@@ -73,6 +73,8 @@ public class SchemaRepository {
                   .properties(createSchema.getProperties());
           NormalizedURL storageRoot = NormalizedURL.from(createSchema.getStorageRoot());
           if (storageRoot != null) {
+            // storageRoot, if set, is already authorized as a valid external location by
+            // SchemaService.
             ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(storageRoot);
             NormalizedURL storageLocation =
                 ExternalLocationUtils.getManagedLocationForSchema(storageRoot, schemaId);

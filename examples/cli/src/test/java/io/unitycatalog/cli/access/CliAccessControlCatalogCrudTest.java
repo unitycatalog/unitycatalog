@@ -29,6 +29,9 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
                   "admincatalog1",
                   "--comment",
                   "(created from scratch)"));
+          add(
+              CommandStep.of(
+                  SUCCEED, "schema", "create", "--name", "default", "--catalog", "admincatalog1"));
 
           // give user CREATE CATALOG
           add(TokenStep.of(SUCCEED, "admin"));
@@ -224,8 +227,56 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
           // delete a catalog -> owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(CommandStep.of(SUCCEED, "catalog", "delete", "--name", "catalog3"));
+
+          // Try to create a catalog at the location before External Location is created would fail
+          addAll(createCatalogWithLocationSteps(FAIL, "catalog_with_location1"));
+          // Create the External Location
+          addAll(createExternalLocationSteps);
+          // Try to create a catalog at the location and still fail due to lack of permission
+          addAll(createCatalogWithLocationSteps(FAIL, "catalog_with_location1"));
+          // Grant CREATE MANAGED STORAGE permission
+          addAll(
+              grantExternalLocationPermissionSteps(
+                  "principal-1@localhost", "CREATE MANAGED STORAGE"));
+          // Then the catalog using external location as managed storage can be created
+          addAll(createCatalogWithLocationSteps(SUCCEED, "catalog_with_location1"));
+
+          // Create a table, then a catalog under the table. It should fail.
+          add(TokenStep.of(SUCCEED, "admin"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  "table",
+                  "create",
+                  "--full_name",
+                  "admincatalog1.default.tbl_pr1",
+                  "--columns",
+                  "id INT",
+                  "--storage_location",
+                  "file:///tmp/external_location/ext_table"));
+          addAll(
+              createCatalogWithLocationSteps(
+                  FAIL, "catalog_with_location2", "file:///tmp" + "/external_location/ext_table"));
         }
       };
+
+  private List<Step> createCatalogWithLocationSteps(Step.Expect expect, String catalogName) {
+    return createCatalogWithLocationSteps(expect, catalogName, "file:///tmp/external_location");
+  }
+
+  private List<Step> createCatalogWithLocationSteps(
+      Step.Expect expect, String catalogNameString, String location) {
+    return List.of(
+        TokenStep.of(SUCCEED, "principal-1@localhost"),
+        CommandStep.of(
+            expect,
+            "catalog",
+            "create",
+            "--name",
+            catalogNameString,
+            "--storage_root",
+            location));
+  }
 
   @Test
   public void testCatalogAccess()

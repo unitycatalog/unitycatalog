@@ -261,8 +261,61 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
           // delete schema (regular-1) -> "catalog" owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(CommandStep.of(SUCCEED, "schema", "delete", "--full_name", "cat_pr1.sch_rg2"));
+
+          // Try to create a schema at the location before External Location is created would fail
+          addAll(createSchemaWithLocationSteps(FAIL, "schema_with_location1"));
+          // Create the External Location
+          addAll(createExternalLocationSteps);
+          // Try to create a schema at the location and still fail due to lack of permission
+          addAll(createSchemaWithLocationSteps(FAIL, "schema_with_location1"));
+          // Grant CREATE MANAGED STORAGE permission
+          addAll(
+              grantExternalLocationPermissionSteps(
+                  "principal-1@localhost", "CREATE MANAGED STORAGE"));
+          // Then the schema using external location as managed storage can be created
+          addAll(createSchemaWithLocationSteps(SUCCEED, "schema_with_location1"));
+
+          // Create a table, then a schema under the table. It should fail.
+          addAll(
+              grantExternalLocationPermissionSteps(
+                  "principal-1@localhost", "CREATE EXTERNAL TABLE"));
+          add(TokenStep.of(SUCCEED, "principal-1@localhost"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  "table",
+                  "create",
+                  "--full_name",
+                  "cat_pr1.schema_with_location1.tbl_pr1",
+                  "--columns",
+                  "id INT",
+                  "--storage_location",
+                  "file:///tmp/external_location/ext_table"));
+          addAll(
+              createSchemaWithLocationSteps(
+                  FAIL, "schema_with_location2", "file:///tmp/external_location/ext_table"));
         }
       };
+
+  private List<Step> createSchemaWithLocationSteps(Step.Expect expect, String schemaName) {
+    return createSchemaWithLocationSteps(expect, schemaName, "file:///tmp/external_location");
+  }
+
+  private List<Step> createSchemaWithLocationSteps(
+      Step.Expect expect, String schemaName, String location) {
+    return List.of(
+        TokenStep.of(SUCCEED, "principal-1@localhost"),
+        CommandStep.of(
+            expect,
+            "schema",
+            "create",
+            "--catalog",
+            "cat_pr1",
+            "--name",
+            schemaName,
+            "--storage_root",
+            location));
+  }
 
   @Test
   public void testSchemaAccess()
