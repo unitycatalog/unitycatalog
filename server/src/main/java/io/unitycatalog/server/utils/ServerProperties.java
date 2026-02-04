@@ -311,7 +311,7 @@ public class ServerProperties {
       String accessKey = getProperty("s3.accessKey." + i);
       String secretKey = getProperty("s3.secretKey." + i);
       String sessionToken = getProperty("s3.sessionToken." + i);
-      String credentialsGenerator = getProperty("s3.credentialsGenerator." + i);
+      String credentialGenerator = getProperty("s3.credentialGenerator." + i);
       if ((bucketPath == null || region == null || awsRoleArn == null)
           && (accessKey == null || secretKey == null || sessionToken == null)) {
         break;
@@ -324,7 +324,7 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
-              .credentialsGenerator(credentialsGenerator)
+              .credentialGenerator(credentialGenerator)
               .build();
       s3BucketConfigMap.put(NormalizedURL.from(bucketPath), s3StorageConfig);
       i++;
@@ -342,13 +342,13 @@ public class ServerProperties {
         break;
       }
       String jsonKeyFilePath = getProperty("gcs.jsonKeyFilePath." + i);
-      String credentialsGenerator = getProperty("gcs.credentialsGenerator." + i);
+      String credentialGenerator = getProperty("gcs.credentialGenerator." + i);
       gcsConfigMap.put(
           NormalizedURL.from(bucketPath),
           GcsStorageConfig.builder()
               .bucketPath(bucketPath)
               .jsonKeyFilePath(jsonKeyFilePath)
-              .credentialsGenerator(credentialsGenerator)
+              .credentialGenerator(credentialGenerator)
               .build());
       i++;
     }
@@ -366,7 +366,7 @@ public class ServerProperties {
       String clientId = getProperty("adls.clientId." + i);
       String clientSecret = getProperty("adls.clientSecret." + i);
       String testMode = getProperty("adls.testMode." + i);
-      String credentialsGenerator = getProperty("adls.credentialsGenerator." + i);
+      String credentialGenerator = getProperty("adls.credentialGenerator." + i);
       if (storageAccountName == null
           || tenantId == null
           || clientId == null
@@ -381,7 +381,7 @@ public class ServerProperties {
               .clientId(clientId)
               .clientSecret(clientSecret)
               .testMode(testMode != null && testMode.equalsIgnoreCase("true"))
-              .credentialsGenerator(credentialsGenerator)
+              .credentialGenerator(credentialGenerator)
               .build());
       i++;
     }

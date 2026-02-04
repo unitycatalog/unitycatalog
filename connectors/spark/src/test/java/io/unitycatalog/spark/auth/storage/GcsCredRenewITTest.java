@@ -4,7 +4,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import com.google.auth.oauth2.AccessToken;
 import com.google.cloud.hadoop.util.AccessTokenProvider;
-import io.unitycatalog.server.service.credential.gcp.GcpCredentialsGenerator;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialGenerator;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
@@ -17,10 +17,10 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.put("gcs.bucketPath.0", "gs://" + BUCKET_NAME);
-    serverProperties.put("gcs.credentialsGenerator.0", CREDENTIALS_GENERATOR_CLASS);
+    serverProperties.put("gcs.credentialGenerator.0", CREDENTIALS_GENERATOR_CLASS);
     // Note: gcs.jsonKeyFilePath.0 is intentionally omitted because we're using a custom
-    // credentialsGenerator for testing. The generator is loaded first and jsonKeyFilePath
-    // is only used as a fallback for ServiceAccountCredentialsGenerator.
+    // credentialGenerator for testing. The generator is loaded first and jsonKeyFilePath
+    // is only used as a fallback for ServiceAccountCredentialGenerator.
   }
 
   @Override
@@ -36,7 +36,7 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
   }
 
   public static class GcsCredGenerator extends TimeBasedCredGenerator<AccessToken>
-      implements GcpCredentialsGenerator {
+      implements GcpCredentialGenerator {
     @Override
     protected AccessToken newTimeBasedCred(long ts) {
       Instant expiration = Instant.ofEpochMilli(ts + DEFAULT_INTERVAL_MILLIS);

@@ -24,22 +24,22 @@ import software.amazon.awssdk.services.sts.model.Credentials;
  * <p>Currently supported implementations include:
  *
  * <ul>
- *   <li>{@link StaticCredentialsGenerator}: returns fixed credentials defined in configuration.
- *   <li>{@link StsCredentialsGenerator}: retrieves temporary, expiring credentials from AWS STS.
+ *   <li>{@link StaticAwsCredentialGenerator}: returns fixed credentials defined in configuration.
+ *   <li>{@link StsAwsCredentialGenerator}: retrieves temporary, expiring credentials from AWS STS.
  * </ul>
  *
- * <p>Test scenarios can provide custom {@link CredentialsGenerator} implementations. For example, a
- * time-based generator can be used in end-to-end tests to validate credential renewal behavior.
+ * <p>Test scenarios can provide custom {@link AwsCredentialGenerator} implementations. For example,
+ * a time-based generator can be used in end-to-end tests to validate credential renewal behavior.
  */
-public interface CredentialsGenerator {
+public interface AwsCredentialGenerator {
   Credentials generate(CredentialContext ctx);
 
-  class StaticCredentialsGenerator implements CredentialsGenerator {
+  class StaticAwsCredentialGenerator implements AwsCredentialGenerator {
     private final String accessKeyId;
     private final String secretKey;
     private final String sessionToken;
 
-    public StaticCredentialsGenerator(S3StorageConfig config) {
+    public StaticAwsCredentialGenerator(S3StorageConfig config) {
       this.accessKeyId = config.getAccessKey();
       this.secretKey = config.getSecretKey();
       this.sessionToken = config.getSessionToken();
@@ -55,13 +55,13 @@ public interface CredentialsGenerator {
     }
   }
 
-  class StsCredentialsGenerator implements CredentialsGenerator {
+  class StsAwsCredentialGenerator implements AwsCredentialGenerator {
     private final StsClient stsClient;
     // This is the role ARN to assume for the per-bucket config. Otherwise, the CredentialContext
     // contains a CredentialDAO and it will assume the role ARN in CredentialDAO instead.
     private final String staticAwsRoleArn;
 
-    public StsCredentialsGenerator(StsClientBuilder builder, S3StorageConfig config) {
+    public StsAwsCredentialGenerator(StsClientBuilder builder, S3StorageConfig config) {
       // Get STS region
       Region region;
       if (config.getRegion() != null && !config.getRegion().isEmpty()) {
