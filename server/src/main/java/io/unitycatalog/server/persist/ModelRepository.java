@@ -16,9 +16,9 @@ import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
-import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -236,7 +236,7 @@ public class ModelRepository {
         registeredModelInfoDAO.setSchemaId(schemaInfoDAO.getId());
         registeredModelInfoDAO.setMaxVersionNumber(0L);
         session.persist(registeredModelInfoDAO);
-        UriUtils.createStorageLocationDir(storageLocation);
+        FileOperations.createStorageLocationDir(storageLocation);
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
@@ -569,7 +569,7 @@ public class ModelRepository {
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);
         modelVersionInfoDAO.setRegisteredModelId(modelId);
         session.persist(modelVersionInfoDAO);
-        UriUtils.createStorageLocationDir(storageLocation);
+        FileOperations.createStorageLocationDir(storageLocation);
         // update the registered model
         existingRegisteredModel.setMaxVersionNumber(version);
         session.persist(existingRegisteredModel);

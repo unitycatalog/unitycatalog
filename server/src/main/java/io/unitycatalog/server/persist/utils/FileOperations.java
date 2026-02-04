@@ -2,10 +2,12 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.UriScheme;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,30 +23,20 @@ public class FileOperations {
     this.serverProperties = serverProperties;
   }
 
-  private static URI createURI(String uri) {
-    if (uri.startsWith("s3://") || uri.startsWith("file:")) {
-      return URI.create(uri);
-    } else {
-      return Paths.get(uri).toUri();
+  /** Delete entire directory recursively. Note that currently it does nothing for cloud FS */
+  public static void deleteDirectory(NormalizedURL url) throws IOException {
+    switch (UriScheme.fromURI(url.toUri())) {
+      case FILE, NULL -> deleteLocalDirectory(url);
+      // Currently we can NOT delete the path in cloud storage. We will update this in future
+      // when UC OSS begins using the hadoopfs libraries.
+      case S3 -> {}
+      case GS -> {}
+      case ABFS, ABFSS -> {}
     }
   }
 
-  public void deleteDirectory(String path) {
-    URI directoryUri = createURI(path);
-    UriUtils.validateURI(directoryUri);
-    if (directoryUri.getScheme() == null || directoryUri.getScheme().equals("file")) {
-      try {
-        deleteLocalDirectory(Paths.get(directoryUri));
-      } catch (RuntimeException | IOException e) {
-        throw new BaseException(ErrorCode.INTERNAL, "Failed to delete directory: " + path, e);
-      }
-    } else {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + directoryUri.getScheme());
-    }
-  }
-
-  public static void deleteLocalDirectory(Path dirPath) throws IOException {
+  private static void deleteLocalDirectory(NormalizedURL url) throws IOException {
+    Path dirPath = Paths.get(url.toUri());
     if (Files.exists(dirPath)) {
       try (Stream<Path> walk = Files.walk(dirPath, FileVisitOption.FOLLOW_LINKS)) {
         walk.sorted(Comparator.reverseOrder())
@@ -59,6 +51,32 @@ public class FileOperations {
       }
     } else {
       throw new FileNotFoundException("Directory does not exist: " + dirPath);
+    }
+  }
+
+  /** Create a directory for storage location. Note that currently it does nothing for cloud FS */
+  public static void createStorageLocationDir(NormalizedURL url) {
+    switch (UriScheme.fromURI(url.toUri())) {
+      case FILE, NULL -> createLocalDirectory(url);
+      // Currently we can NOT create the directory in cloud storage. We will update this in future
+      // when UC OSS begins using the hadoopfs libraries.
+      case S3 -> {}
+      case GS -> {}
+      case ABFS, ABFSS -> {}
+    }
+  }
+
+  private static void createLocalDirectory(NormalizedURL url) {
+    Path dirPath = Paths.get(url.toUri());
+    // Check if directory already exists
+    if (Files.exists(dirPath)) {
+      throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + dirPath);
+    }
+    // Create the directory
+    try {
+      Files.createDirectories(dirPath);
+    } catch (IOException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + dirPath, e);
     }
   }
 }

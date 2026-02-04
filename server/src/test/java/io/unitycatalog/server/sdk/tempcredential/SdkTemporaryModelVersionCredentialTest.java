@@ -31,19 +31,18 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ModelVersionInfo;
 import io.unitycatalog.server.model.ModelVersionStatus;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
-import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
-import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
+import java.nio.file.Path;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -65,12 +64,12 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
     return new SdkModelOperations(TestUtils.createApiClient(config));
   }
 
-  String rootBase = "/tmp/" + UUID.randomUUID();
+  @TempDir Path rootBase;
 
   @Override
   public void setUpProperties() {
     super.setUpProperties();
-    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase);
+    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase.toString());
   }
 
   @BeforeEach
@@ -79,16 +78,6 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
     super.setUp();
     modelOperations = createModelOperations(serverConfig);
     temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
-  }
-
-  @AfterEach
-  public void afterEachTest() {
-    try {
-      // Clean up the newly created storage root
-      UriUtils.deleteStorageLocationDir(NormalizedURL.from(rootBase));
-    } catch (Exception e) {
-      // Ignore
-    }
   }
 
   protected void createNonFileModelVersion(
