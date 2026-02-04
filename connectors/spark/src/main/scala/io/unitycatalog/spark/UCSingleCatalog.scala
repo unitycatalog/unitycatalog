@@ -358,8 +358,9 @@ private class UCProxy(
       }
     }
 
-    // Enable server-side planning config if credentials are null and SSP is enabled
-    if (temporaryCredentials == null && serverSidePlanningEnabled) {
+    // If credentials are null here, it means serverSidePlanningEnabled 
+    // is true, so enable server side planning spark config
+    if (temporaryCredentials == null) {
       enableServerSidePlanningConfig(identifier)
     }
 
