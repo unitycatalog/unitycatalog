@@ -276,7 +276,7 @@ public class VolumeRepository {
     }
     if (VolumeType.MANAGED.getValue().equals(volumeInfoDAO.getVolumeType())) {
       try {
-        fileOperations.deleteDirectory(volumeInfoDAO.getStorageLocation());
+        FileOperations.deleteDirectory(NormalizedURL.from(volumeInfoDAO.getStorageLocation()));
       } catch (Exception e) {
         LOGGER.error("Error deleting volume directory", e);
       }
