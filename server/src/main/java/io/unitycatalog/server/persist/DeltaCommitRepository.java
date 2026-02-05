@@ -765,15 +765,11 @@ public class DeltaCommitRepository {
     if (uniform.getIceberg() != null) {
       DeltaUniformIceberg icebergMetadata = uniform.getIceberg();
       tableInfoDAO.setUniformIcebergMetadataLocation(
-          icebergMetadata.getMetadataLocation() != null
-              ? NormalizedURL.normalize(icebergMetadata.getMetadataLocation().toString())
-              : null);
+          NormalizedURL.normalize(icebergMetadata.getMetadataLocation().toString()));
       tableInfoDAO.setUniformIcebergConvertedDeltaVersion(
           icebergMetadata.getConvertedDeltaVersion());
       tableInfoDAO.setUniformIcebergConvertedDeltaTimestamp(
-          icebergMetadata.getConvertedDeltaTimestamp() != null
-              ? Date.from(java.time.Instant.parse(icebergMetadata.getConvertedDeltaTimestamp()))
-              : null);
+          Date.from(java.time.Instant.parse(icebergMetadata.getConvertedDeltaTimestamp())));
     }
   }
 
@@ -933,13 +929,10 @@ public class DeltaCommitRepository {
     }
 
     // We check the size of the Delta-to-Iceberg conversion information here to fail early if
-    // it exceeds the maximum size of 1MB. The size is not accurate in terms of the size of
+    // it exceeds the maximum size of DAO limit. The size is not accurate in terms of the size of
     // the object in the database but serves as a sanity check to ensure that we're not storing
     // excessively large objects.
-    int size =
-        iceberg.getMetadataLocation().toString().length()
-            + iceberg.getConvertedDeltaTimestamp().length();
-
+    int size = iceberg.getMetadataLocation().toString().length();
     ValidationUtils.checkArgument(
         size <= MAX_DELTA_UNIFORM_ICEBERG_SIZE,
         "Delta UniForm Iceberg metadata size (%d bytes) exceeds maximum allowed size (%d bytes)",
