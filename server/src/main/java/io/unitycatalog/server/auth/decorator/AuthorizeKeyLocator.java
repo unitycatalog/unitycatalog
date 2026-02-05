@@ -26,8 +26,8 @@ import org.slf4j.LoggerFactory;
  */
 @Builder
 @Getter
-public class KeyLocator {
-  private static final Logger LOGGER = LoggerFactory.getLogger(KeyLocator.class);
+public class AuthorizeKeyLocator {
+  private static final Logger LOGGER = LoggerFactory.getLogger(AuthorizeKeyLocator.class);
 
   public enum Source {
     SYSTEM,
@@ -53,23 +53,28 @@ public class KeyLocator {
     return lastDot >= 0 ? key.substring(lastDot + 1) : key;
   }
 
-  public static KeyLocator from(AuthorizeResourceKey key, Parameter parameter) {
+  public static AuthorizeKeyLocator from(AuthorizeResourceKey key, Parameter parameter) {
     return from(Optional.of(key.value()), key.key(), parameter);
   }
 
-  public static KeyLocator from(AuthorizeKey key, Parameter parameter) {
+  public static AuthorizeKeyLocator from(AuthorizeKey key, Parameter parameter) {
     return from(Optional.empty(), key.key(), parameter);
   }
 
-  private static KeyLocator from(Optional<SecurableType> type, String key, Parameter parameter) {
+  private static AuthorizeKeyLocator from(
+      Optional<SecurableType> type, String key, Parameter parameter) {
     if (!key.isEmpty()) {
       // Explicitly declaring a key, so it's the source is from the payload data
-      return KeyLocator.builder().source(Source.PAYLOAD).type(type).key(key).build();
+      return AuthorizeKeyLocator.builder().source(Source.PAYLOAD).type(type).key(key).build();
     } else {
       // No key defined so implicitly referencing an (annotated) (query) parameter
       Param param = parameter.getAnnotation(Param.class);
       if (param != null) {
-        return KeyLocator.builder().source(Source.PARAM).type(type).key(param.value()).build();
+        return AuthorizeKeyLocator.builder()
+            .source(Source.PARAM)
+            .type(type)
+            .key(param.value())
+            .build();
       } else {
         throw new RuntimeException(
             "Couldn't find param key for authorization key: " + parameter.getName());
