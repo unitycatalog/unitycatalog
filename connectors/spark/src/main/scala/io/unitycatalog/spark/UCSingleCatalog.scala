@@ -488,7 +488,7 @@ private class UCProxy(
   /**
    * Enables server-side planning by setting the appropriate Spark config.
    * Called when credential vending fails but SSP is enabled, allowing Delta
-   * to use server-side planning for data access instead of client-side credentials.
+   * to use server-side planning for data access instead of credentials from UC.
    */
   private def enableServerSidePlanningConfig(identifier: TableIdentifier): Unit = {
     SparkSession.getActiveSession match {
