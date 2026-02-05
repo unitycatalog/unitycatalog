@@ -107,7 +107,7 @@ public class ExternalLocationUtils {
    *   <li>If the URL is a parent path of one or more securable, we can not figure out the actual
    *       owner but have to deny the access
    *   <li>If the URL is under or the same path of any data securable, we'll figure out the UUID of
-   *       that data securable along with its catalog&schema UUIDs and return the result.
+   *       that data securable along with its catalog and schema UUIDs and return the result.
    *   <li>If the URL is not owned by any data securable but only by external locations, return UUID
    *       of that external location.
    *   <li>Lastly if no securable is found, return empty map.

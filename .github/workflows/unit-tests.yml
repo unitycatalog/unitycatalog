@@ -30,6 +30,9 @@ jobs:
     - name: Compile integration tests to verify compilation and checkstyle issues.
       run: build/sbt integrationTests/test:compile
 
+    - name: Build and verify the local deployment.
+      run: build/sbt clean package publishM2
+
     - name: Run tests with coverage
       run: build/sbt -J-Xmx2G +jacoco
 
