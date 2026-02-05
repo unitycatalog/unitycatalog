@@ -269,13 +269,7 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
     return List.of(
         TokenStep.of(SUCCEED, "principal-1@localhost"),
         CommandStep.of(
-            expect,
-            "catalog",
-            "create",
-            "--name",
-            catalogNameString,
-            "--storage_root",
-            location));
+            expect, "catalog", "create", "--name", catalogNameString, "--storage_root", location));
   }
 
   @Test
