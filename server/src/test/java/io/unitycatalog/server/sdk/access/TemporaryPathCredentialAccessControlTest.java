@@ -1,4 +1,4 @@
-package io.unitycatalog.server.sdk.tempcredential;
+package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.client.model.PathOperation.PATH_CREATE_TABLE;
 import static io.unitycatalog.client.model.PathOperation.PATH_READ;
@@ -41,7 +41,6 @@ import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.sdk.access.SdkAccessControlBaseCRUDTest;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.CredentialsGenerator;
