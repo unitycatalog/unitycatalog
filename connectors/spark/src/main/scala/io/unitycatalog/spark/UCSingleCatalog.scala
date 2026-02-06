@@ -105,9 +105,7 @@ class UCSingleCatalog
       throw new ApiException("Cannot create EXTERNAL TABLE without location.")
     }
 
-    // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
-    // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
-    if (!hasExternalClause && !hasLocationClause && !UCSingleCatalog.isPathTable(ident)) {
+    if (UCSingleCatalog.isManagedTable(properties, ident)) {
       // Check that caller shouldn't set some properties
       List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
         TableCatalog.PROP_IS_MANAGED_LOCATION)
@@ -133,7 +131,7 @@ class UCSingleCatalog
               s"Invalid property value '$v' for '$k'."))
         })
 
-      val newProps = prepareManagedTableProperties(ident, properties)
+      val newProps = stageManagedTableAndGetProps(ident, properties)
       delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
       val newProps = prepareLocationTableProperties(properties)
@@ -146,7 +144,7 @@ class UCSingleCatalog
   }
 
   /** Prepares properties for managed table creation (staging table + credentials). */
-  private def prepareManagedTableProperties(
+  private def stageManagedTableAndGetProps(
       ident: Identifier,
       properties: util.Map[String, String]): util.Map[String, String] = {
     // Get staging table location and table id from UC
@@ -269,12 +267,11 @@ class UCSingleCatalog
     if (!delegate.isInstanceOf[StagingTableCatalog]) {
       throw new UnsupportedOperationException("CREATE TABLE AS SELECT (CTAS) is not supported")
     }
-    val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
 
     val stagingCatalog = delegate.asInstanceOf[StagingTableCatalog]
-    if (!hasExternalClause && !hasLocationClause && !UCSingleCatalog.isPathTable(ident)) {
-      val newProps = prepareManagedTableProperties(ident, properties)
+    if (UCSingleCatalog.isManagedTable(properties, ident)) {
+      val newProps = stageManagedTableAndGetProps(ident, properties)
       stagingCatalog.stageCreate(ident, schema, partitions, newProps)
     } else if (hasLocationClause) {
       val newProps = prepareLocationTableProperties(properties)
@@ -300,8 +297,21 @@ object UCSingleCatalog {
     }.asJava)
   }
 
-  def isPathTable(ident: Identifier): Boolean = {
-    ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
+  /**
+   * Determines whether a table should be created as a managed table.
+   *
+   * A table is considered managed if it has no EXTERNAL clause, no LOCATION clause,
+   * and is not a path-based table (e.g., parquet.`/file/path`).
+   *
+   * @param properties the table properties from the CREATE TABLE command
+   * @param ident the table identifier
+   * @return true if the table should be managed, false otherwise
+   */
+  private def isManagedTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
+    val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
+    val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
+    val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
+    !hasExternalClause && !hasLocationClause && !isPathTable
   }
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
