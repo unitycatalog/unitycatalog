@@ -343,8 +343,9 @@ private class UCProxy(
             //       for read or write, we can request the proper credential after fixing Spark.
             new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
           )
-      } catch {
-        case _: ApiException =>
+      }       catch {
+        case e: ApiException =>
+          logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
           try {
             tableOp = TableOperation.READ
             temporaryCredentialsApi
@@ -353,14 +354,13 @@ private class UCProxy(
               )
           } catch {
             case e: ApiException =>
+              logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
               if (serverSidePlanningEnabled) null else throw e
           }
       }
     }
 
-    // If credentials are null here, it means serverSidePlanningEnabled 
-    // is true, so enable server side planning spark config
-    if (temporaryCredentials == null) {
+    if (serverSidePlanningEnabled && temporaryCredentials == null) {
       enableServerSidePlanningConfig(identifier)
     }
 
