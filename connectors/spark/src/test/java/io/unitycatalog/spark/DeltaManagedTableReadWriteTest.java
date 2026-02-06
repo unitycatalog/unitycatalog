@@ -98,8 +98,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     int counter = 0;
     final String comment = "This is comment.";
     for (boolean withPartition : List.of(true, false)) {
-      // TODO: Enable CTAS, once upgrade the delta version to 4.1.0
-      for (boolean ctas : List.of(/*true,*/ false)) {
+      for (boolean ctas : List.of(true, false)) {
         for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
           String tableName = DELTA_TABLE + counter;
           counter++;
@@ -116,6 +115,15 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
           if (ctas) {
             options.setAsSelect(1, "a");
           }
+
+          // TODO: Enable CTAS once upgraded to Delta 4.1+
+          if (ctas) {
+            assertThatThrownBy(() -> setupTable(options))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining("not supported with the current version of Delta");
+            continue;
+          }
+
           String fullTableName = setupTable(options);
           if (!ctas) {
             sql("INSERT INTO %s SELECT 1, 'a'", fullTableName);
