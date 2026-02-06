@@ -249,7 +249,7 @@ class UCSingleCatalog
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    throw new UnsupportedOperationException("stageReplace is not supported yet")
+    throw new UnsupportedOperationException("REPLACE TABLE is not supported")
   }
 
   override def stageCreateOrReplace(
@@ -257,7 +257,7 @@ class UCSingleCatalog
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    throw new UnsupportedOperationException("stageCreateOrReplace is not supported yet")
+    throw new UnsupportedOperationException("REPLACE TABLE AS SELECT (RTAS) is not supported")
   }
 
   override def stageCreate(
@@ -266,6 +266,9 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (!delegate.isInstanceOf[StagingTableCatalog]) {
+      throw new UnsupportedOperationException("CREATE TABLE AS SELECT (CTAS) is not supported")
+    }
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
 

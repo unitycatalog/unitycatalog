@@ -23,14 +23,11 @@ import org.junit.jupiter.api.Test;
 /** Tests that stageCreate delegates to the underlying StagingTableCatalog. */
 public class UCSingleCatalogStagingTableTest {
 
-  private static final Identifier IDENT =
-      Identifier.of(new String[] {"schema"}, "table");
-  private static final StructType SCHEMA =
-      new StructType().add("id", DataTypes.IntegerType, false);
+  private static final Identifier IDENT = Identifier.of(new String[] {"schema"}, "table");
+  private static final StructType SCHEMA = new StructType().add("id", DataTypes.IntegerType, false);
   private static final Transform[] PARTITIONS = new Transform[0];
   // PROP_EXTERNAL bypasses the managed-table path in prepareTableProperties.
-  private static final Map<String, String> PROPS =
-      Map.of(TableCatalog.PROP_EXTERNAL, "true");
+  private static final Map<String, String> PROPS = Map.of(TableCatalog.PROP_EXTERNAL, "true");
 
   private UCSingleCatalog catalog;
   private StagingTableCatalog mockDelegate;
@@ -43,18 +40,13 @@ public class UCSingleCatalogStagingTableTest {
   }
 
   @Test
-  public void testStageCreateDelegatesToUnderlyingCatalog()
-      throws Exception {
+  public void testStageCreateDelegatesToUnderlyingCatalog() throws Exception {
     StagedTable staged = mock(StagedTable.class);
-    when(mockDelegate.stageCreate(
-        eq(IDENT), eq(SCHEMA), any(), any()))
-        .thenReturn(staged);
+    when(mockDelegate.stageCreate(eq(IDENT), eq(SCHEMA), any(), any())).thenReturn(staged);
 
-    StagedTable result =
-        catalog.stageCreate(IDENT, SCHEMA, PARTITIONS, PROPS);
+    StagedTable result = catalog.stageCreate(IDENT, SCHEMA, PARTITIONS, PROPS);
 
-    verify(mockDelegate)
-        .stageCreate(eq(IDENT), eq(SCHEMA), any(), any());
+    verify(mockDelegate).stageCreate(eq(IDENT), eq(SCHEMA), any(), any());
     assertThat(result).isSameAs(staged);
   }
 
@@ -63,18 +55,14 @@ public class UCSingleCatalogStagingTableTest {
     UCSingleCatalog nonStagingCatalog = new UCSingleCatalog();
     setDelegate(nonStagingCatalog, mock(TableCatalog.class));
 
-    assertThatThrownBy(
-            () ->
-                nonStagingCatalog.stageCreate(
-                    IDENT, SCHEMA, PARTITIONS, PROPS))
-        .isInstanceOf(ClassCastException.class);
+    assertThatThrownBy(() -> nonStagingCatalog.stageCreate(IDENT, SCHEMA, PARTITIONS, PROPS))
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("not supported");
   }
 
-  private static void setDelegate(
-      UCSingleCatalog catalog, TableCatalog delegate) {
+  private static void setDelegate(UCSingleCatalog catalog, TableCatalog delegate) {
     try {
-      Field f =
-          UCSingleCatalog.class.getDeclaredField("delegate");
+      Field f = UCSingleCatalog.class.getDeclaredField("delegate");
       f.setAccessible(true);
       f.set(catalog, delegate);
     } catch (ReflectiveOperationException e) {
