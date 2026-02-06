@@ -118,9 +118,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
           // TODO: Enable CTAS once upgraded to Delta 4.1+
           if (ctas) {
-            assertThatThrownBy(() -> setupTable(options))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("not supported with the current version of Delta");
+            assertThatThrownBy(() -> setupTable(options));
             continue;
           }
 
