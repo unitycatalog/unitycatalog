@@ -2987,6 +2987,15 @@ components:
             needs to keep track of commits of versions <= this version.
         metadata:
           $ref: '#/components/schemas/DeltaMetadata'
+        uniform:
+          $ref: '#/components/schemas/DeltaUniform'
+          description: |
+            Optional UniForm metadata to be committed alongside this Delta commit.
+            Uniform enables Delta tables to be read by other table formats (e.g., Iceberg) without data conversion.
+            Typically set by UniForm conversion processes after converting a Delta commit.
+            Independent of the `metadata` field, both can be provided together or separately. 
+            When set, UC will atomically update the table's format-specific metadata (e.g. DeltaUniformIceberg),
+            keeping the conversion state synchronized with the Delta version.
       required:
         - table_id
         - table_uri
@@ -3048,6 +3057,54 @@ components:
     DeltaCommitResponse:
       type: object
       description: The response for the Delta commit action
+    DeltaUniform:
+      type: object
+      description: |
+        Uniform metadata that can be atomically committed alongside a Delta commit.
+        Uniform enables Delta tables to be read by other table formats (e.g. Iceberg)
+        without data conversion. When this message is provided in a Commit request,
+        UC will atomically update the table's format-specific metadata during the commit.
+      properties:
+        iceberg:
+          $ref: '#/components/schemas/DeltaUniformIceberg'
+          description: Metadata for Delta UniForm Iceberg conversion.
+    DeltaUniformIceberg:
+      type: object
+      description: |
+        Iceberg conversion metadata tracking the Delta-to-Iceberg conversion state.
+        It contains the metadata location pointer, converted Delta version, timestamp
+        , and optional base converted Delta version of the corresponding conversion.
+      properties:
+        metadata_location:
+          type: string
+          format: uri
+          description: |
+            The latest Iceberg metadata location.
+            Example: s3://abc/def/metadata/v1.json
+        converted_delta_version:
+          type: integer
+          format: int64
+          description: |
+            The converted Delta version corresponding to the metadata location.
+            It should match the Delta version in the commit info.
+            Example: 1044
+        converted_delta_timestamp:
+          type: string
+          description: |
+            The timestamp when the corresponding conversion happened.
+            The string must represent a valid instant in UTC with ISO 8601 format
+            Example: 2025-01-04T03:13:11.423Z
+        base_converted_delta_version:
+          type: integer
+          format: int64
+          description: |
+            Optional version indicating the converted Delta version for the last conversion
+            before the conversion corresponding to the metadata location.
+            Example: 1042
+      required:
+        - metadata_location
+        - converted_delta_version
+        - converted_delta_timestamp
     DeltaGetCommits:
       type: object
       properties:

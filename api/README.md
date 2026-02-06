@@ -94,6 +94,8 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [DeltaGetCommits](./Models/DeltaGetCommits.md)
  - [DeltaGetCommitsResponse](./Models/DeltaGetCommitsResponse.md)
  - [DeltaMetadata](./Models/DeltaMetadata.md)
+ - [DeltaUniform](./Models/DeltaUniform.md)
+ - [DeltaUniformIceberg](./Models/DeltaUniformIceberg.md)
  - [Dependency](./Models/Dependency.md)
  - [DependencyList](./Models/DependencyList.md)
  - [ExternalLocationInfo](./Models/ExternalLocationInfo.md)
