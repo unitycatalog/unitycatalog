@@ -43,7 +43,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.aws.CredentialsGenerator;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.time.Instant;
@@ -422,7 +422,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
     assertThat(volumeInfo).isNotNull();
   }
 
-  public static class TestAwsCredentialsGenerator implements CredentialsGenerator {
+  public static class TestAwsAwsCredentialGenerator implements AwsCredentialGenerator {
     @Override
     public Credentials generate(CredentialContext ctx) {
       return Credentials.builder()

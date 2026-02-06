@@ -7,6 +7,6 @@ import io.unitycatalog.server.service.credential.CredentialContext;
  * Pluggable contract for generating GCS OAuth tokens. Allows production code to load custom
  * implementations for integration tests without coupling to {@link GcpCredentialVendor}.
  */
-public interface GcpCredentialsGenerator {
+public interface GcpCredentialGenerator {
   AccessToken generate(CredentialContext context);
 }

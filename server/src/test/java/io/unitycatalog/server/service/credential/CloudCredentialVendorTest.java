@@ -22,8 +22,8 @@ import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
-import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialsGenerator;
-import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
+import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialGenerator;
+import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
@@ -156,7 +156,7 @@ public class CloudCredentialVendorTest {
                 GcsStorageConfig.builder()
                     .bucketPath("gs://uctest")
                     .jsonKeyFilePath("")
-                    .credentialsGenerator(StaticTestingCredentialsGenerator.class.getName())
+                    .credentialGenerator(StaticTestingCredentialGenerator.class.getName())
                     .build()));
     GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
@@ -173,7 +173,7 @@ public class CloudCredentialVendorTest {
                 GcsStorageConfig.builder()
                     .bucketPath("gs://uctest")
                     .jsonKeyFilePath(testingSentinel)
-                    .credentialsGenerator(TestingCredentialsGenerator.class.getName())
+                    .credentialGenerator(TestingCredentialGenerator.class.getName())
                     .build()));
     gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);

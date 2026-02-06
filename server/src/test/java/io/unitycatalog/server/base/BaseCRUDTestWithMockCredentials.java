@@ -31,7 +31,7 @@ import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
-import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
+import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.server.utils.UriScheme;
@@ -114,7 +114,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
 
     serverProperties.put("gcs.bucketPath.0", "gs://test-bucket0");
     serverProperties.put("gcs.jsonKeyFilePath.0", "testing://0");
-    serverProperties.put("gcs.credentialsGenerator.0", TestingCredentialsGenerator.class.getName());
+    serverProperties.put("gcs.credentialGenerator.0", TestingCredentialGenerator.class.getName());
 
     serverProperties.put("adls.storageAccountName.0", "test-bucket0");
     serverProperties.put("adls.tenantId.0", "tenantId0");

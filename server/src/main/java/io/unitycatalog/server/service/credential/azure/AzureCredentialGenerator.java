@@ -15,13 +15,13 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.OffsetDateTime;
 import java.util.Set;
 
-public interface AzureCredentialsGenerator {
+public interface AzureCredentialGenerator {
   AzureCredential generate(CredentialContext ctx);
 
-  class StaticAzureCredentialsGenerator implements AzureCredentialsGenerator {
+  class StaticAzureCredentialGenerator implements AzureCredentialGenerator {
     private final ADLSStorageConfig config;
 
-    public StaticAzureCredentialsGenerator(ADLSStorageConfig config) {
+    public StaticAzureCredentialGenerator(ADLSStorageConfig config) {
       this.config = config;
     }
 
@@ -37,10 +37,10 @@ public interface AzureCredentialsGenerator {
     }
   }
 
-  class DatalakeCredentialsGenerator implements AzureCredentialsGenerator {
+  class DatalakeCredentialGenerator implements AzureCredentialGenerator {
     private final TokenCredential tokenCredential;
 
-    public DatalakeCredentialsGenerator(ADLSStorageConfig config) {
+    public DatalakeCredentialGenerator(ADLSStorageConfig config) {
       if (config == null) {
         this.tokenCredential = new DefaultAzureCredentialBuilder().build();
       } else {

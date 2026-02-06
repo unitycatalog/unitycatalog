@@ -11,10 +11,10 @@ import java.util.Date;
  * <p>Used by {@link io.unitycatalog.server.service.credential.CloudCredentialVendorTest} to verify
  * basic GCS credential vending without requiring real GCP service accounts.
  */
-public class StaticTestingCredentialsGenerator implements GcpCredentialsGenerator {
+public class StaticTestingCredentialGenerator implements GcpCredentialGenerator {
   private final AccessToken staticToken;
 
-  public StaticTestingCredentialsGenerator() {
+  public StaticTestingCredentialGenerator() {
     this.staticToken =
         AccessToken.newBuilder()
             .setTokenValue("testing://static-token")

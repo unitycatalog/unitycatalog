@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class AzureCredentialVendor {
   private final Map<String, ADLSStorageConfig> adlsConfigurations;
-  private final Map<NormalizedURL, AzureCredentialsGenerator> credGenerators =
+  private final Map<NormalizedURL, AzureCredentialGenerator> credGenerators =
       new ConcurrentHashMap<>();
 
   public AzureCredentialVendor(ServerProperties serverProperties) {
@@ -25,33 +25,33 @@ public class AzureCredentialVendor {
                   ErrorCode.UNIMPLEMENTED,
                   "Storage credential/external location for Azure is not supported yet.");
             });
-    AzureCredentialsGenerator generator =
-        credGenerators.computeIfAbsent(ctx.getStorageBase(), this::createAzureCredentialsGenerator);
+    AzureCredentialGenerator generator =
+        credGenerators.computeIfAbsent(ctx.getStorageBase(), this::createAzureCredentialGenerator);
 
     return generator.generate(ctx);
   }
 
-  private AzureCredentialsGenerator createAzureCredentialsGenerator(NormalizedURL storageBase) {
+  private AzureCredentialGenerator createAzureCredentialGenerator(NormalizedURL storageBase) {
     ADLSLocationUtils.ADLSLocationParts locParts = ADLSLocationUtils.parseLocation(storageBase);
     ADLSStorageConfig config = adlsConfigurations.get(locParts.accountName());
 
     if (config == null) {
-      return new AzureCredentialsGenerator.DatalakeCredentialsGenerator(null);
+      return new AzureCredentialGenerator.DatalakeCredentialGenerator(null);
     }
 
-    if (config.getCredentialsGenerator() != null) {
+    if (config.getCredentialGenerator() != null) {
       try {
-        return (AzureCredentialsGenerator)
-            Class.forName(config.getCredentialsGenerator())
+        return (AzureCredentialGenerator)
+            Class.forName(config.getCredentialGenerator())
                 .getDeclaredConstructor(ADLSStorageConfig.class)
                 .newInstance(config);
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
     } else if (config.isTestMode()) {
-      return new AzureCredentialsGenerator.StaticAzureCredentialsGenerator(config);
+      return new AzureCredentialGenerator.StaticAzureCredentialGenerator(config);
     } else {
-      return new AzureCredentialsGenerator.DatalakeCredentialsGenerator(config);
+      return new AzureCredentialGenerator.DatalakeCredentialGenerator(config);
     }
   }
 }
