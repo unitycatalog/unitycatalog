@@ -108,7 +108,31 @@ class UCSingleCatalog
     // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
     // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
     if (!hasExternalClause && !hasLocationClause && !UCSingleCatalog.isPathTable(ident)) {
-      validateManagedTableProperties(properties)
+      // Check that caller shouldn't set some properties
+      List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
+        TableCatalog.PROP_IS_MANAGED_LOCATION)
+        .filter(properties.containsKey(_))
+        .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
+      // Setting the catalogManaged table feature is required for creating a managed table.
+      if (!properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) &&
+        !properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
+        throw new ApiException(
+          s"Managed table creation requires table property " +
+            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'=" +
+            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'" +
+            s" to be set.")
+      }
+      // Caller should not set these two table properties to values other than "supported". This is
+      // the only documented value.
+      List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
+        .foreach(k => {
+          Option(properties.get(k))
+            .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
+            .foreach(v => throw new ApiException(
+              s"Invalid property value '$v' for '$k'."))
+        })
+
       val newProps = prepareManagedTableProperties(ident, properties)
       delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
@@ -119,34 +143,6 @@ class UCSingleCatalog
       //       path string.
       delegate.createTable(ident, columns, partitions, properties)
     }
-  }
-
-  /** Validates that managed table properties are correctly specified. */
-  private def validateManagedTableProperties(properties: util.Map[String, String]): Unit = {
-    // Check that caller shouldn't set some properties
-    List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
-      TableCatalog.PROP_IS_MANAGED_LOCATION)
-      .filter(properties.containsKey(_))
-      .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
-    // Setting the catalogManaged table feature is required for creating a managed table.
-    if (!properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) &&
-      !properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
-      throw new ApiException(
-        s"Managed table creation requires table property " +
-          s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'=" +
-          s"'${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'" +
-          s" to be set.")
-    }
-    // Caller should not set these two table properties to values other than "supported". This is
-    // the only documented value.
-    List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-      UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
-      .foreach(k => {
-        Option(properties.get(k))
-          .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
-          .foreach(v => throw new ApiException(
-            s"Invalid property value '$v' for '$k'."))
-      })
   }
 
   /** Prepares properties for managed table creation (staging table + credentials). */
