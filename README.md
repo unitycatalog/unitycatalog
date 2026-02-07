@@ -165,6 +165,13 @@ yarn install
 yarn start
 ```
 
+### Spark Compatibility Matrix
+
+| Spark Version | Compatible UC Version |
+|---------------|-----------------------|
+| 3.5.x         | 0.3.0 and below       |
+| 4.0.1         | 0.3.1 and above       |
+
 ## CLI tutorial
 
 You can interact with a Unity Catalog server to create and manage catalogs, schemas and tables,
