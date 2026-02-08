@@ -40,11 +40,6 @@ object ReleaseSettings {
     autoScalaLibrary := false,
   )
 
-  lazy val scalaReleaseSettings = releaseSettings ++ Seq(
-    crossPaths := true,
-    releaseCrossBuild := true,
-  )
-
   private lazy val releaseSettings = Seq(
     publishMavenStyle := true,
     publishArtifact := true,

@@ -56,13 +56,13 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
   @Test
   @DisabledIf("testingDelta")
   public void testNoDeltaCatalog() {
-    UCSingleCatalog.LOAD_DELTA_CATALOG().set(false);
-    UCSingleCatalog.DELTA_CATALOG_LOADED().set(false);
+    UCSingleCatalog.LOAD_DELTA_CATALOG.set(false);
+    UCSingleCatalog.DELTA_CATALOG_LOADED.set(false);
     session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String fullTableName = setupTable(SPARK_CATALOG, TEST_TABLE);
     testTableReadWrite(fullTableName);
-    assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(false);
+    assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED.get()).isEqualTo(false);
     // LOAD_DELTA_CATALOG is reset in cleanUp() just in case this test fails it will still be
     // reset.
   }
@@ -184,7 +184,7 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
   @AfterEach
   @Override
   public void cleanUp() {
-    UCSingleCatalog.LOAD_DELTA_CATALOG().set(true);
+    UCSingleCatalog.LOAD_DELTA_CATALOG.set(true);
     super.cleanUp();
   }
 }

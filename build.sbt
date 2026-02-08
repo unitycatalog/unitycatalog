@@ -566,10 +566,9 @@ lazy val spark = (project in file("connectors/spark"))
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := scala213,
-    crossScalaVersions := Seq(scala213),
     commonSettings,
-    scalaReleaseSettings,
+    javaOnlyReleaseSettings,
+    scalaVersion := scala213,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
@@ -590,9 +589,10 @@ lazy val spark = (project in file("connectors/spark"))
       )
     },
     libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
+      "org.scala-lang" % "scala-library" % scala213 % Provided,
+      "org.apache.spark" % "spark-sql_2.13" % sparkVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.module" % "jackson-module-scala_2.13" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
@@ -614,11 +614,11 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.delta" %% "delta-spark" % deltaVersion % Test,
+      "io.delta" % "delta-spark_2.13" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.module" % "jackson-module-scala_2.13" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
@@ -655,7 +655,6 @@ lazy val integrationTests = (project in file("integration-tests"))
   .settings(
     name := s"$artifactNamePrefix-integration-tests",
     commonSettings,
-    scalaVersion := scala213,
     javaOptions ++= Seq(
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
@@ -667,15 +666,15 @@ lazy val integrationTests = (project in file("integration-tests"))
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
-      "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
-      "io.delta" %% "delta-spark" % deltaVersion % Test,
+      "org.apache.spark" % "spark-sql_2.13" % sparkVersion % Test,
+      "io.delta" % "delta-spark_2.13" % deltaVersion % Test,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.module" % "jackson-module-scala_2.13" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
