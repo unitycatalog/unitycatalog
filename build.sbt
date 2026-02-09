@@ -552,6 +552,7 @@ lazy val serverShaded = (project in file("server-shaded"))
     assembly / assemblyShadeRules := Seq(
       ShadeRule.rename("com.fasterxml.**" -> "shaded.@0").inAll,
       ShadeRule.rename("org.antlr.**" -> "shaded.@0").inAll,
+      ShadeRule.rename("io.netty.**" -> "shaded.@0").inAll,
     ),
     assemblyPackageScala / assembleArtifact := false,
     assembly / fullClasspath := {
