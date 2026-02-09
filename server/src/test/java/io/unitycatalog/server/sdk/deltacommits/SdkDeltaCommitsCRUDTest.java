@@ -175,6 +175,48 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     }
   }
 
+  /**
+   * Helper function to verify TableInfoDAO fields by opening a session, fetching the DAO,
+   * and executing custom assertions on it.
+   *
+   * @param assertions Consumer function that performs assertions on the TableInfoDAO
+   */
+  private void verifyTableInfoDAO(Consumer<TableInfoDAO> assertions) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      TableInfoDAO tableInfoDAO =
+          session.get(
+              TableInfoDAO.class,
+              UUID.fromString(tableInfo.getTableId()));
+      assertNotNull(tableInfoDAO);
+      assertions.accept(tableInfoDAO);
+    }
+  }
+
+  /**
+   * Helper function to verify the uniform iceberg fields on a TableInfoDAO.
+   * Handles timestamp truncation to milliseconds since DB only stores millisecond precision.
+   *
+   * @param dao The TableInfoDAO to verify
+   * @param expectedIcebergMetadataLocation Expected value for uniformIcebergMetadataLocation
+   * @param expectedConvertedDeltaVersion Expected value for uniformIcebergConvertedDeltaVersion
+   * @param expectedConvertedDeltaTimestamp Expected value for uniformIcebergConvertedDeltaTimestamp
+   *                          (ISO-8601 format)
+   */
+  private void verifyUniformFields(
+      TableInfoDAO dao,
+      String expectedIcebergMetadataLocation,
+      Long expectedConvertedDeltaVersion,
+      String expectedConvertedDeltaTimestamp) {
+    assertEquals(expectedIcebergMetadataLocation, dao.getUniformIcebergMetadataLocation());
+    assertEquals(expectedConvertedDeltaVersion, dao.getUniformIcebergConvertedDeltaVersion());
+    // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
+    assertEquals(
+        Instant.parse(expectedConvertedDeltaTimestamp).truncatedTo(ChronoUnit.MILLIS).toString(),
+        dao.getUniformIcebergConvertedDeltaTimestamp() != null
+            ? dao.getUniformIcebergConvertedDeltaTimestamp().toInstant().toString()
+            : null);
+  }
+
   @Test
   public void testBasicCoordinatedCommitsCRUD() throws ApiException {
     // Get commits on a table with no commits
@@ -721,21 +763,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     verifyDeltaCommits(1, 1);
 
     // Verify the table's uniform metadata was updated
-    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      TableInfoDAO tableInfoDAO =
-          session.get(
-              TableInfoDAO.class,
-              UUID.fromString(tableInfo.getTableId()));
-      assertNotNull(tableInfoDAO);
-      assertEquals("s3://my-bucket/metadata/v1.json",
-          tableInfoDAO.getUniformIcebergMetadataLocation());
-      assertEquals(1L, tableInfoDAO.getUniformIcebergConvertedDeltaVersion());
-      // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
-      assertEquals(Instant.parse(timestamp1).truncatedTo(ChronoUnit.MILLIS).toString(),
-          tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp() != null
-              ? tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp().toInstant().toString()
-              : null);
-    }
+    verifyTableInfoDAO(dao ->
+        verifyUniformFields(dao, "s3://my-bucket/metadata/v1.json", 1L, timestamp1));
 
     // Update uniform metadata with a new commit
     String timestamp2 = Instant.now().toString();
@@ -753,21 +782,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     deltaCommitsApi.commit(commit2);
 
     // Verify the table's uniform metadata was updated to the latest
-    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      TableInfoDAO tableInfoDAO =
-          session.get(
-              TableInfoDAO.class,
-              UUID.fromString(tableInfo.getTableId()));
-      assertNotNull(tableInfoDAO);
-      assertEquals("s3://my-bucket/metadata/v2.json",
-          tableInfoDAO.getUniformIcebergMetadataLocation());
-      assertEquals(2L, tableInfoDAO.getUniformIcebergConvertedDeltaVersion());
-      // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
-      assertEquals(Instant.parse(timestamp2).truncatedTo(ChronoUnit.MILLIS).toString(),
-          tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp() != null
-              ? tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp().toInstant().toString()
-              : null);
-    }
+    verifyTableInfoDAO(dao ->
+        verifyUniformFields(dao, "s3://my-bucket/metadata/v2.json", 2L, timestamp2));
   }
 
   @Test
@@ -799,33 +815,19 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // Verify the commit was stored
     verifyDeltaCommits(1, 1);
 
-    // Verify BOTH metadata and uniform were updated correctly
+    // Verify metadata were updated correctly
     TableInfo updatedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     assertEquals("Test table with both metadata and uniform", updatedTable.getComment());
     assertNotNull(updatedTable.getProperties());
     assertEquals("custom.value", updatedTable.getProperties().get("custom.property"));
 
-    // Also verify uniform metadata was stored in the database
-    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      TableInfoDAO tableInfoDAO =
-          session.get(
-              TableInfoDAO.class,
-              UUID.fromString(tableInfo.getTableId()));
-      assertNotNull(tableInfoDAO);
-
+    // Also verify metadata and uniform metadata was stored in the database
+    verifyTableInfoDAO(dao -> {
       // Verify metadata fields
-      assertEquals("Test table with both metadata and uniform", tableInfoDAO.getComment());
-
+      assertEquals("Test table with both metadata and uniform", dao.getComment());
       // Verify uniform fields
-      assertEquals("s3://my-bucket/metadata/v1.json",
-          tableInfoDAO.getUniformIcebergMetadataLocation());
-      assertEquals(1L, tableInfoDAO.getUniformIcebergConvertedDeltaVersion());
-      // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
-      assertEquals(Instant.parse(timestamp1).truncatedTo(ChronoUnit.MILLIS).toString(),
-          tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp() != null
-              ? tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp().toInstant().toString()
-              : null);
-    }
+      verifyUniformFields(dao, "s3://my-bucket/metadata/v1.json", 1L, timestamp1);
+    });
 
     // Now update with new metadata and uniform in a second commit
     DeltaMetadata metadata2 = new DeltaMetadata();
@@ -850,34 +852,32 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
             .uniform(uniform2);
     deltaCommitsApi.commit(commit2);
 
-    // Verify both updates took effect
+    // Verify metadata updates took effect
     TableInfo updatedTable2 = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     assertEquals("Updated description", updatedTable2.getComment());
     assertEquals("updated.value", updatedTable2.getProperties().get("custom.property"));
 
-    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      TableInfoDAO tableInfoDAO =
-          session.get(
-              TableInfoDAO.class,
-              UUID.fromString(tableInfo.getTableId()));
-      assertNotNull(tableInfoDAO);
-
+    // Also verify metadata and uniform metadata was stored in the databasemet
+    verifyTableInfoDAO(dao -> {
       // Verify both metadata and uniform were updated to latest values
-      assertEquals("Updated description", tableInfoDAO.getComment());
-      assertEquals("s3://my-bucket/metadata/v2.json",
-          tableInfoDAO.getUniformIcebergMetadataLocation());
-      assertEquals(2L, tableInfoDAO.getUniformIcebergConvertedDeltaVersion());
-      // Truncate expected timestamp to milliseconds since DB only stores millisecond precision
-      assertEquals(Instant.parse(timestamp2).truncatedTo(ChronoUnit.MILLIS).toString(),
-          tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp() != null
-              ? tableInfoDAO.getUniformIcebergConvertedDeltaTimestamp().toInstant().toString()
-              : null);
-    }
+      assertEquals("Updated description", dao.getComment());
+      verifyUniformFields(dao, "s3://my-bucket/metadata/v2.json", 2L, timestamp2);
+    });
   }
 
   @Test
   public void testCommitWithInvalidUniform() throws ApiException {
     // Test validation of uniform metadata
+    // Test 0: Uniform with null iceberg
+    DeltaUniform invalidUniform0 = new DeltaUniform().iceberg(null);
+    DeltaCommit commit0 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .uniform(invalidUniform0);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit0),
+        ErrorCode.INVALID_ARGUMENT,
+        "iceberg");
+
     // Test 1: Missing metadata_location
     DeltaUniformIceberg invalidIceberg1 =
         new DeltaUniformIceberg()

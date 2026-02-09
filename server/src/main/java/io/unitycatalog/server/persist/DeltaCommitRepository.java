@@ -762,15 +762,12 @@ public class DeltaCommitRepository {
    * @param uniform the uniform metadata containing conversion information
    */
   private static void updateTableUniform(TableInfoDAO tableInfoDAO, DeltaUniform uniform) {
-    if (uniform.getIceberg() != null) {
-      DeltaUniformIceberg icebergMetadata = uniform.getIceberg();
-      tableInfoDAO.setUniformIcebergMetadataLocation(
-          NormalizedURL.normalize(icebergMetadata.getMetadataLocation().toString()));
-      tableInfoDAO.setUniformIcebergConvertedDeltaVersion(
-          icebergMetadata.getConvertedDeltaVersion());
-      tableInfoDAO.setUniformIcebergConvertedDeltaTimestamp(
-          Date.from(java.time.Instant.parse(icebergMetadata.getConvertedDeltaTimestamp())));
-    }
+    DeltaUniformIceberg icebergMetadata = uniform.getIceberg();
+    tableInfoDAO.setUniformIcebergMetadataLocation(
+        NormalizedURL.normalize(icebergMetadata.getMetadataLocation().toString()));
+    tableInfoDAO.setUniformIcebergConvertedDeltaVersion(icebergMetadata.getConvertedDeltaVersion());
+    tableInfoDAO.setUniformIcebergConvertedDeltaTimestamp(
+        Date.from(java.time.Instant.parse(icebergMetadata.getConvertedDeltaTimestamp())));
   }
 
   /**
@@ -901,9 +898,13 @@ public class DeltaCommitRepository {
    * @throws BaseException if validation fails
    */
   private static void validateUniformIceberg(DeltaCommit commit, DeltaUniform uniform) {
-    if (uniform == null || uniform.getIceberg() == null) {
+    if (uniform == null) {
       return; // DeltaUniform is optional
     }
+
+    // If uniform is specified, iceberg must be set
+    ValidationUtils.checkArgument(
+        uniform.getIceberg() != null, "Field cannot be null in uniform: iceberg");
 
     DeltaUniformIceberg iceberg = uniform.getIceberg();
 

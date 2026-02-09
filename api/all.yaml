@@ -3068,6 +3068,8 @@ components:
         iceberg:
           $ref: '#/components/schemas/DeltaUniformIceberg'
           description: Metadata for Delta UniForm Iceberg conversion.
+      required:
+        iceberg
     DeltaUniformIceberg:
       type: object
       description: |
