@@ -29,6 +29,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   protected ArrayList<String> createdCatalogs = new ArrayList<>();
   protected static final String SPARK_CATALOG = "spark_catalog";
+  /** S3 bucket with no credentials configured on server - for testing SSP fallback. */
+  public static final String NO_CREDS_BUCKET = "test-bucket-2-no-creds";
 
   private SchemaOperations schemaOperations;
   // Each test would create this session. It will be closed automatically.
