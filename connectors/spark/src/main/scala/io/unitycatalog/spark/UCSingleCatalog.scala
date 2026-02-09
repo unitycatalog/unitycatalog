@@ -105,7 +105,7 @@ class UCSingleCatalog
       throw new ApiException("Cannot create EXTERNAL TABLE without location.")
     }
 
-    if (UCSingleCatalog.isManagedTable(properties, ident)) {
+    if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
       // Check that caller shouldn't set some properties
       List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
         TableCatalog.PROP_IS_MANAGED_LOCATION)
@@ -131,10 +131,10 @@ class UCSingleCatalog
               s"Invalid property value '$v' for '$k'."))
         })
 
-      val newProps = stageManagedTableAndGetProps(ident, properties)
+      val newProps = stageManagedDeltaTableAndGetProps(ident, properties)
       delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
-      val newProps = prepareLocationTableProperties(properties)
+      val newProps = prepareExternalTableProperties(properties)
       delegate.createTable(ident, columns, partitions, newProps)
     } else {
       // TODO: for path-based tables, Spark should generate a location property using the qualified
@@ -144,7 +144,7 @@ class UCSingleCatalog
   }
 
   /** Prepares properties for managed table creation (staging table + credentials). */
-  private def stageManagedTableAndGetProps(
+  private def stageManagedDeltaTableAndGetProps(
       ident: Identifier,
       properties: util.Map[String, String]): util.Map[String, String] = {
     // Get staging table location and table id from UC
@@ -181,8 +181,8 @@ class UCSingleCatalog
     newProps
   }
 
-  /** Prepares properties for location-based table creation (path credentials). */
-  private def prepareLocationTableProperties(
+  /** Prepares properties for external table creation (path credentials). */
+  private def prepareExternalTableProperties(
       properties: util.Map[String, String]): util.Map[String, String] = {
     val location = properties.get(TableCatalog.PROP_LOCATION)
     assert(location != null)
@@ -242,6 +242,7 @@ class UCSingleCatalog
     delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
   }
 
+  /** Only called for REPLACE TABLE and RTAS */
   override def stageReplace(
       ident: Identifier,
       schema: StructType,
@@ -250,6 +251,7 @@ class UCSingleCatalog
     throw new UnsupportedOperationException("REPLACE TABLE is not supported")
   }
 
+  /** Only called for CREATE OR REPLACE TABLE ... [AS SELECT] */
   override def stageCreateOrReplace(
       ident: Identifier,
       schema: StructType,
@@ -258,6 +260,7 @@ class UCSingleCatalog
     throw new UnsupportedOperationException("REPLACE TABLE AS SELECT (RTAS) is not supported")
   }
 
+  /** Only called for CTAS */
   override def stageCreate(
       ident: Identifier,
       schema: StructType,
@@ -269,11 +272,11 @@ class UCSingleCatalog
     }
 
     val stagingCatalog = delegate.asInstanceOf[StagingTableCatalog]
-    if (UCSingleCatalog.isManagedTable(properties, ident)) {
-      val newProps = stageManagedTableAndGetProps(ident, properties)
+    if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
+      val newProps = stageManagedDeltaTableAndGetProps(ident, properties)
       stagingCatalog.stageCreate(ident, schema, partitions, newProps)
     } else if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
-      val newProps = prepareLocationTableProperties(properties)
+      val newProps = prepareExternalTableProperties(properties)
       stagingCatalog.stageCreate(ident, schema, partitions, newProps)
     } else {
       stagingCatalog.stageCreate(ident, schema, partitions, properties)
@@ -306,7 +309,7 @@ object UCSingleCatalog {
    * @param ident the table identifier
    * @return true if the table should be managed, false otherwise
    */
-  private def isManagedTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
+  private def isManagedDeltaTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
