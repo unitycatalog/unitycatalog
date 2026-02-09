@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.api.DeltaCommitsApi;
@@ -180,14 +181,12 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
 
     // Attempt to post a commit as read user should fail with 403 Forbidden
     DeltaCommit commit1 = createCommitObject(1L);
-    assertApiException(
-        () -> readUserCommitsApi.commit(commit1), ErrorCode.PERMISSION_DENIED, "denied");
+    assertPermissionDenied(() -> readUserCommitsApi.commit(commit1));
     // Write user posts a commit successfully
     writeUserCommitsApi.commit(commit1);
 
     // No-access user attempts to get commits should fail with 403 Forbidden
-    assertApiException(
-        () -> getCommits(noAccessUserCommitsApi), ErrorCode.PERMISSION_DENIED, "denied");
+    assertPermissionDenied(() -> getCommits(noAccessUserCommitsApi));
 
     // read user can get commits
     DeltaGetCommitsResponse commits = getCommits(readUserCommitsApi);
@@ -197,8 +196,7 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
 
     // Read user attempts to backfill should fail with 403 Forbidden
     DeltaCommit backfillCommit = createBackfillOnlyCommitObject(1L);
-    assertApiException(
-        () -> readUserCommitsApi.commit(backfillCommit), ErrorCode.PERMISSION_DENIED, "denied");
+    assertPermissionDenied(() -> readUserCommitsApi.commit(backfillCommit));
 
     // Write user can backfill
     writeUserCommitsApi.commit(backfillCommit);
