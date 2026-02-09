@@ -29,5 +29,8 @@ jobs:
     - name: Install dependencies
       run: pip install requests pytest pytest-asyncio
 
+    - name: Build and publish Delta Lake locally
+      run: ./dev/build-delta-locally.sh
+
     - name: Generate the client library, install it, and run the tests
       run: ./clients/python/run-tests.sh

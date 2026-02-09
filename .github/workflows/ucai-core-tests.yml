@@ -68,6 +68,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install mlflow
+      - name: Build and publish Delta Lake locally
+        working-directory: .
+        run: ./dev/build-delta-locally.sh
       - name: Install Unity Catalog Python Libraries
         run: |
           dev/install_client.sh

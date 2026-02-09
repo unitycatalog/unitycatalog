@@ -25,6 +25,9 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    - name: Build and publish Delta Lake locally
+      run: ./dev/build-delta-locally.sh
+
       # 'integrationTests' is not in root project, since we avoid running it via `./build/sbt test`,
       # Here, we explicitly compile `integrationTests` to catch compilation issues early.
     - name: Compile integration tests to verify compilation and checkstyle issues.

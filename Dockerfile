@@ -13,7 +13,7 @@ WORKDIR $HOME
 
 COPY --parents dev/ build/ project/ examples/ server/ api/ clients/python/ version.sbt build.sbt ./
 
-RUN apk add --no-cache bash && ./build/sbt -info clean package
+RUN apk add --no-cache bash git && DELTA_CLEANUP=true ./dev/build-delta-locally.sh && ./build/sbt -info clean package
 
 # Small runtime image
 FROM alpine:${ALPINE_VERSION} as runtime
