@@ -2992,7 +2992,7 @@ components:
           description: |
             Optional UniForm metadata to be committed alongside this Delta commit.
             Uniform enables Delta tables to be read by other table formats (e.g., Iceberg) without data conversion.
-            Typically set by UniForm conversion processes after converting a Delta commit.
+            It is set by UniForm conversion processes after converting a Delta commit.
             Independent of the `metadata` field, both can be provided together or separately. 
             When set, UC will atomically update the table's format-specific metadata (e.g. DeltaUniformIceberg),
             keeping the conversion state synchronized with the Delta version.
@@ -3069,7 +3069,7 @@ components:
           $ref: '#/components/schemas/DeltaUniformIceberg'
           description: Metadata for Delta UniForm Iceberg conversion.
       required:
-        iceberg
+        - iceberg
     DeltaUniformIceberg:
       type: object
       description: |
