@@ -17,6 +17,7 @@ import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -58,6 +59,30 @@ public class UCSingleCatalogStagingTableTest {
     assertThatThrownBy(() -> nonStagingCatalog.stageCreate(IDENT, SCHEMA, PARTITIONS, PROPS))
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessageContaining("not supported");
+  }
+
+  /**
+   * When LOAD_DELTA_CATALOG is false, initialize() sets the delegate to UCProxy directly (a plain
+   * TableCatalog, not a StagingTableCatalog). Calling stageCreate should throw
+   * UnsupportedOperationException because UCProxy does not implement StagingTableCatalog.
+   */
+  @Test
+  public void testStageCreateFailWhenNoDeltaCatalog() {
+    UCSingleCatalog.LOAD_DELTA_CATALOG().set(false);
+    try {
+      UCSingleCatalog proxyCatalog = new UCSingleCatalog();
+
+      proxyCatalog.initialize(
+          "proxyCatalog",
+          new CaseInsensitiveStringMap(
+              Map.of("uri", "http://localhost:0", "token", "dummy-token")));
+
+      assertThatThrownBy(() -> proxyCatalog.stageCreate(IDENT, SCHEMA, PARTITIONS, PROPS))
+          .isInstanceOf(UnsupportedOperationException.class)
+          .hasMessageContaining("CREATE TABLE AS SELECT (CTAS) is not supported");
+    } finally {
+      UCSingleCatalog.LOAD_DELTA_CATALOG().set(true);
+    }
   }
 
   private static void setDelegate(UCSingleCatalog catalog, TableCatalog delegate) {

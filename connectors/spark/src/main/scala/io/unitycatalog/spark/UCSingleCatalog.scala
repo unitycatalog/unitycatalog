@@ -267,13 +267,12 @@ class UCSingleCatalog
     if (!delegate.isInstanceOf[StagingTableCatalog]) {
       throw new UnsupportedOperationException("CREATE TABLE AS SELECT (CTAS) is not supported")
     }
-    val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
 
     val stagingCatalog = delegate.asInstanceOf[StagingTableCatalog]
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
       val newProps = stageManagedTableAndGetProps(ident, properties)
       stagingCatalog.stageCreate(ident, schema, partitions, newProps)
-    } else if (hasLocationClause) {
+    } else if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
       val newProps = prepareLocationTableProperties(properties)
       stagingCatalog.stageCreate(ident, schema, partitions, newProps)
     } else {
