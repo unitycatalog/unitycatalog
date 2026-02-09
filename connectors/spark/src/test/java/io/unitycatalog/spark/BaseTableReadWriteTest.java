@@ -248,7 +248,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             // The exact exception varies by format: UnsupportedOperationException for Delta
             // (from UCSingleCatalog staging methods), AnalysisException for non-Delta formats
             // (Spark analysis rejects the fallback write path).
-            if (withCtas || replaceTable) {
+            if (!DeltaVersionUtils.isDeltaAtLeast("4.1.0") && (withCtas || replaceTable)) {
               assertThatThrownBy(() -> setupTable(options));
               continue;
             }

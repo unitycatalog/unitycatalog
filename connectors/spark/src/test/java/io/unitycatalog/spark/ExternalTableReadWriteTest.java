@@ -94,7 +94,7 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
             // TODO: Enable CTAS once upgraded to Delta 4.1+
             // When withExistingTable=true, CTAS is done through a Delta path table (not
             // through UCSingleCatalog's stageCreate), so it still works.
-            if (withCtas && !withExistingTable) {
+            if (!DeltaVersionUtils.isDeltaAtLeast("4.1.0") && withCtas && !withExistingTable) {
               assertThatThrownBy(() -> setupTable(options));
               continue;
             }
