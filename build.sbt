@@ -19,10 +19,10 @@ val artifactNamePrefix = "unitycatalog"
 lazy val javacRelease11 = Seq("--release", "11")
 lazy val javacRelease17 = Seq("--release", "17")
 
-lazy val scala213 = "2.13.16"
+lazy val scala213 = "2.13.17"
 
 lazy val deltaVersion = "4.1.0"
-lazy val sparkVersion = "4.0.0"
+lazy val sparkVersion = sys.props.getOrElse("sparkVersion", "4.0.0")
 lazy val sparkMajorMinorVersion = sparkVersion.split("\\.").take(2).mkString(".")
 lazy val hadoopVersion = "3.4.2"
 
@@ -553,6 +553,7 @@ lazy val serverShaded = (project in file("server-shaded"))
     assembly / assemblyShadeRules := Seq(
       ShadeRule.rename("com.fasterxml.**" -> "shaded.@0").inAll,
       ShadeRule.rename("org.antlr.**" -> "shaded.@0").inAll,
+      ShadeRule.rename("io.netty.**" -> "shaded.@0").inAll,
     ),
     assemblyPackageScala / assembleArtifact := false,
     assembly / fullClasspath := {
