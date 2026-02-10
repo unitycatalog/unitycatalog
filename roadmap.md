@@ -5,27 +5,21 @@ features may move in/out of milestones pending available resources and prioritie
 
 ## 0.5 Release priorities
 
-### Catalog managed commits
+### Managed Delta table support
 
-Catalog managed commits (CC) are the basis for many new and powerful client (Delta) and server side features.
-Supporting the table scan and commit APIs is a key priority for the upcoming release. Priority for 0.5 will be
-removing the experimental support introduced in 0.4.
+Catalog managed commits (CC) are the basis for many new and powerful client (Delta) and server side features and 
+were introduced as `experimental` in the 0.4 release. 
+* This release will introduce new Delta Catalog APIs as well as
+moving to non-experimental. 
+* In addition, we'll be providing Uniform support with this release.
 
-### Storage management
-
-By more tightly integrating the already released credential and external locations API with the rest of the server
-internals, the next release will allow for more fine-grained, dynamic, and online management of storage locations and their
-credentials. Furthermore, operators can delegate some storage management to the catalog via the managed locations
-for catalogs and schemas features.
+### Metric Views
+Metric views provide a new centralized way to define and manage consistent, reusable, and 
+governed core business metrics. 
 
 ### Authentication
 
 Modular authentication will allow you to reuse your existing auth to secure Unity Catalog.
-
-### End to end OAuth support
-
-OAuth support is important for cloud users and RBAC, and unity client plans to support common OAuth flows
-for authentication.
 
 ### UC Rust Client
 
