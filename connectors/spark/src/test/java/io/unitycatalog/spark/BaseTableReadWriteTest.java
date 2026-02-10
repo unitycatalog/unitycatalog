@@ -31,7 +31,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   protected static final String TBLPROPERTIES_CATALOG_OWNED_CLAUSE =
       String.format(
           "TBLPROPERTIES ('%s'='%s')",
-          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
           UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
 
   /**
