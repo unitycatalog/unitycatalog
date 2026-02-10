@@ -233,10 +233,14 @@ public class SparkCredentialRenewalTest {
                     tableType,
                     baseLocation,
                     Map.of(
-                        OptionsUtil.URI, SERVER_URL,
-                        UC_PROPS_TOKEN, AUTH_TOKEN,
-                        OptionsUtil.WAREHOUSE, CATALOG_NAME,
-                        OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
+                        OptionsUtil.URI,
+                        SERVER_URL,
+                        UC_PROPS_TOKEN,
+                        AUTH_TOKEN,
+                        OptionsUtil.WAREHOUSE,
+                        CATALOG_NAME,
+                        OptionsUtil.RENEW_CREDENTIAL_ENABLED,
+                        String.valueOf(RENEW_CRED_ENABLED))));
           }
 
           // Add the OAuth test case if specified in env vars.
@@ -246,13 +250,20 @@ public class SparkCredentialRenewalTest {
                     tableType,
                     baseLocation,
                     Map.of(
-                        OptionsUtil.URI, SERVER_URL,
-                        UC_PROPS_AUTH_TYPE, "oauth",
-                        UC_PROPS_OAUTH_URI, OAUTH_URI,
-                        UC_PROPS_OAUTH_CLIENT_ID, OAUTH_CLIENT_ID,
-                        UC_PROPS_OAUTH_CLIENT_SECRET, OAUTH_CLIENT_SECRET,
-                        OptionsUtil.WAREHOUSE, CATALOG_NAME,
-                        OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
+                        OptionsUtil.URI,
+                        SERVER_URL,
+                        UC_PROPS_AUTH_TYPE,
+                        "oauth",
+                        UC_PROPS_OAUTH_URI,
+                        OAUTH_URI,
+                        UC_PROPS_OAUTH_CLIENT_ID,
+                        OAUTH_CLIENT_ID,
+                        UC_PROPS_OAUTH_CLIENT_SECRET,
+                        OAUTH_CLIENT_SECRET,
+                        OptionsUtil.WAREHOUSE,
+                        CATALOG_NAME,
+                        OptionsUtil.RENEW_CREDENTIAL_ENABLED,
+                        String.valueOf(RENEW_CRED_ENABLED))));
           }
         }
       }
