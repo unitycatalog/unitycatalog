@@ -744,6 +744,13 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
   @Test
   public void testCommitWithUniform() throws ApiException {
+    // Enable uniform by setting the property
+    Map<String, String> properties1 = new HashMap<>();
+    properties1.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties1.put("universalFormat.enabledFormats", "iceberg");
+    DeltaMetadata metadata1 =
+        new DeltaMetadata().properties(new DeltaCommitMetadataProperties().properties(properties1));
+
     String timestamp1 = Instant.now().toString();
     DeltaUniform uniform = new DeltaUniform();
     DeltaUniformIceberg icebergMetadata =
@@ -756,6 +763,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // Create a commit with uniform metadata
     DeltaCommit commit1 =
         createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .metadata(metadata1)
             .uniform(uniform);
     deltaCommitsApi.commit(commit1);
 
@@ -767,6 +775,12 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         verifyUniformFields(dao, "s3://my-bucket/metadata/v1.json", 1L, timestamp1));
 
     // Update uniform metadata with a new commit
+    Map<String, String> properties2 = new HashMap<>();
+    properties2.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties2.put("universalFormat.enabledFormats", "iceberg");
+    DeltaMetadata metadata2 =
+        new DeltaMetadata().properties(new DeltaCommitMetadataProperties().properties(properties2));
+
     String timestamp2 = Instant.now().toString();
     DeltaUniformIceberg icebergMetadata2 =
         new DeltaUniformIceberg()
@@ -778,6 +792,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     DeltaCommit commit2 =
         createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
+            .metadata(metadata2)
             .uniform(uniform2);
     deltaCommitsApi.commit(commit2);
 
@@ -803,6 +818,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     Map<String, String> properties = new HashMap<>();
     properties.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
     properties.put("custom.property", "custom.value");
+    properties.put("universalFormat.enabledFormats", "iceberg");
     metadata.setProperties(new DeltaCommitMetadataProperties().properties(properties));
 
     // Create a commit with BOTH metadata and uniform
@@ -835,6 +851,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     Map<String, String> properties2 = new HashMap<>();
     properties2.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
     properties2.put("custom.property", "updated.value");
+    properties2.put("universalFormat.enabledFormats", "iceberg");
     metadata2.setProperties(new DeltaCommitMetadataProperties().properties(properties2));
 
     String timestamp2 = Instant.now().toString();
@@ -958,5 +975,112 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         () -> deltaCommitsApi.commit(commit5),
         ErrorCode.INVALID_ARGUMENT,
         "must equal commit version");
+  }
+
+  @Test
+  public void testUniformValidationWhenEnabled() throws ApiException {
+    // Enable uniform by setting the property
+    Map<String, String> properties = new HashMap<>();
+    properties.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties.put("universalFormat.enabledFormats", "iceberg");
+    DeltaCommitMetadataProperties metadataProperties =
+        new DeltaCommitMetadataProperties().properties(properties);
+    DeltaMetadata metadata = new DeltaMetadata().properties(metadataProperties);
+
+    String timestamp1 = Instant.now().toString();
+    DeltaUniform uniform = new DeltaUniform();
+    DeltaUniformIceberg icebergMetadata =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .convertedDeltaVersion(1L)
+            .convertedDeltaTimestamp(timestamp1);
+    uniform.setIceberg(icebergMetadata);
+
+    // Test 1: Enable uniform WITH uniform metadata - should succeed
+    DeltaCommit commit1 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .metadata(metadata)
+            .uniform(uniform);
+    deltaCommitsApi.commit(commit1);
+    verifyDeltaCommits(1, 1);
+
+    // Test 2: Uniform is enabled, commit without uniform metadata - should fail
+    Map<String, String> properties2 = new HashMap<>();
+    properties2.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties2.put("universalFormat.enabledFormats", "iceberg");
+    DeltaMetadata metadata2 =
+        new DeltaMetadata().properties(new DeltaCommitMetadataProperties().properties(properties2));
+    DeltaCommit commit2 =
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
+            .metadata(metadata2)
+            .uniform(null);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit2),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata must be set when UniForm is enabled");
+
+    // Test 3: Uniform is enabled, commit with metadata change but no uniform - should fail
+    Map<String, String> properties3 = new HashMap<>();
+    properties3.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties3.put("universalFormat.enabledFormats", "iceberg");
+    properties3.put("some.other.property", "value");
+    DeltaMetadata metadata3 =
+        new DeltaMetadata().properties(new DeltaCommitMetadataProperties().properties(properties3));
+    DeltaCommit commit3 =
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
+            .metadata(metadata3)
+            .uniform(null);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit3),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata must be set when UniForm is enabled");
+
+    // Test 4: Disable uniform without uniform metadata - should succeed
+    Map<String, String> properties4 = new HashMap<>();
+    properties4.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties4.put("universalFormat.enabledFormats", "delta");
+    DeltaMetadata metadata4 =
+        new DeltaMetadata().properties(new DeltaCommitMetadataProperties().properties(properties4));
+    DeltaCommit commit4 =
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
+            .metadata(metadata4)
+            .uniform(null);
+    deltaCommitsApi.commit(commit4);
+    verifyDeltaCommits(2, 2, 1);
+
+    // Test 5: Uniform is disabled, commit with uniform metadata - should fail
+    String timestamp5 = Instant.now().toString();
+    DeltaUniformIceberg icebergMetadata5 =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v3.json"))
+            .convertedDeltaVersion(3L)
+            .convertedDeltaTimestamp(timestamp5);
+    DeltaUniform uniform5 = new DeltaUniform().iceberg(icebergMetadata5);
+    DeltaCommit commit5 =
+        createCommitObject(tableInfo.getTableId(), 3L, tableInfo.getStorageLocation())
+            .uniform(uniform5);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit5),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata must be set when UniForm is enabled");
+  }
+
+  @Test
+  public void testUniformValidationWhenNotEnabled() throws ApiException {
+    // Test : No uniform property set, commit with uniform metadata - should fail
+    String timestamp1 = Instant.now().toString();
+    DeltaUniformIceberg icebergMetadata1 =
+        new DeltaUniformIceberg()
+            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .convertedDeltaVersion(2L)
+            .convertedDeltaTimestamp(timestamp1);
+    DeltaUniform uniform2 = new DeltaUniform().iceberg(icebergMetadata1);
+    DeltaCommit commit2 =
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
+            .uniform(uniform2);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit2),
+        ErrorCode.INVALID_ARGUMENT,
+        "Uniform metadata must be set when UniForm is enabled");
   }
 }

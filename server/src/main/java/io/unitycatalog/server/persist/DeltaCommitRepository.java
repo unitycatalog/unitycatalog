@@ -88,6 +88,9 @@ public class DeltaCommitRepository {
   /** The maximum size of the JSON that contains the Delta-to-Iceberg conversion information */
   public static final int MAX_DELTA_UNIFORM_ICEBERG_SIZE = 65535; // The limit from DAO
 
+  public static final String ICEBERG_FORMAT = "iceberg";
+  public static final String UNIFORM_ENABLED_FORMATS = "universalFormat.enabledFormats";
+
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
 
@@ -236,7 +239,7 @@ public class DeltaCommitRepository {
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + commit.getTableId());
           }
-          validateTableForCommit(commit, tableInfoDAO);
+          validateTableForCommit(session, commit, tableInfoDAO);
           List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
           if (firstAndLastCommits.isEmpty()) {
             handleOnboardingCommit(session, tableId, tableInfoDAO, commit);
@@ -977,11 +980,13 @@ public class DeltaCommitRepository {
    * the table URI specified in the commit request matches the table's registered URI. URIs are
    * standardized before comparison to handle format variations.
    *
+   * @param session the Hibernate session for database operations
    * @param commit the commit request containing the table URI
    * @param tableInfoDAO the table information data access object
    * @throws BaseException if validation fails or URIs don't match
    */
-  private static void validateTableForCommit(DeltaCommit commit, TableInfoDAO tableInfoDAO) {
+  private static void validateTableForCommit(
+      Session session, DeltaCommit commit, TableInfoDAO tableInfoDAO) {
     validateTable(tableInfoDAO);
     NormalizedURL commitTableUri = NormalizedURL.from(commit.getTableUri());
     NormalizedURL tableUri = NormalizedURL.from(tableInfoDAO.getUrl());
@@ -990,6 +995,37 @@ public class DeltaCommitRepository {
         "Table URI in commit %s does not match the table path %s",
         commit.getTableUri(),
         tableInfoDAO.getUrl());
+    validateUniformMetadataWhenEnabled(session, commit, tableInfoDAO);
+  }
+
+  /**
+   * Validates that uniform metadata is present when the uniform property is enabled and when it is
+   * not enabled, uniform metadata is not present
+   *
+   * @param session the Hibernate session for database operations
+   * @param commit the commit request that may contain uniform metadata
+   * @param tableInfoDAO the table information data access object
+   * @throws BaseException if uniform is enabled but no uniform metadata is present
+   */
+  private static void validateUniformMetadataWhenEnabled(
+      Session session, DeltaCommit commit, TableInfoDAO tableInfoDAO) {
+    Map<String, String> effectiveProperties;
+    if (commit.getMetadata() != null && commit.getMetadata().getProperties() != null) {
+      effectiveProperties = commit.getMetadata().getProperties().getProperties();
+    } else {
+      // Get current properties from database
+      List<PropertyDAO> properties =
+          PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE);
+      Map<String, String> propertyMap = PropertyDAO.toMap(properties);
+      effectiveProperties = propertyMap;
+    }
+    // Check if uniform is enabled after this commit
+    boolean uniformEnabled =
+        ICEBERG_FORMAT.equals(effectiveProperties.get(UNIFORM_ENABLED_FORMATS));
+    ValidationUtils.checkArgument(
+        (commit.getUniform() != null) == uniformEnabled,
+        "Uniform metadata must be set when UniForm is enabled on the table, "
+            + "or must not be set when UniForm is not enabled");
   }
 
   /**
