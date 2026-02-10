@@ -115,6 +115,13 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
           if (ctas) {
             options.setAsSelect(1, "a");
           }
+
+          // TODO: Enable CTAS once upgraded to Delta 4.1+
+          if (!DeltaVersionUtils.isDeltaAtLeast("4.1.0") && ctas) {
+            assertThatThrownBy(() -> setupTable(options));
+            continue;
+          }
+
           String fullTableName = setupTable(options);
           if (!ctas) {
             sql("INSERT INTO %s SELECT 1, 'a'", fullTableName);

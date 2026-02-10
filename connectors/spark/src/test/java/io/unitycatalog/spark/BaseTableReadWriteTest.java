@@ -228,8 +228,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
               }
               // First, create a different table to replace.
               sql(
-                  "CREATE TABLE %s.%s.%s USING DELTA %s AS SELECT 0.1 AS col1",
+                  "CREATE TABLE %s.%s.%s (col1 DOUBLE) USING DELTA %s",
                   catalogName, SCHEMA_NAME, tableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
+              sql("INSERT INTO %s.%s.%s (col1) VALUES (0.1)", catalogName, SCHEMA_NAME, tableName);
             }
             TableSetupOptions options =
                 new TableSetupOptions()
@@ -242,6 +243,16 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             if (withCtas) {
               options.setAsSelect(1, "a");
             }
+
+            // TODO: Enable CTAS and REPLACE TABLE once upgraded to Delta 4.1+
+            // The exact exception varies by format: UnsupportedOperationException for Delta
+            // (from UCSingleCatalog staging methods), AnalysisException for non-Delta formats
+            // (Spark analysis rejects the fallback write path).
+            if (!DeltaVersionUtils.isDeltaAtLeast("4.1.0") && (withCtas || replaceTable)) {
+              assertThatThrownBy(() -> setupTable(options));
+              continue;
+            }
+
             String t1 = setupTable(options);
             if (withCtas) {
               testTableReadWriteCreatedAsSelect(t1, Pair.of(1, "a"));
