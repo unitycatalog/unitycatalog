@@ -167,33 +167,23 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
           assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
           assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
           assertThat(tableInfo.getComment()).isEqualTo(comment);
-          // Currently we can not check these table properties on server because Delta doesn't
-          // send them yet. In the future this will be enabled.
-          // TODO: enable this check once the table properties are sent by Delta.
-          boolean deltaSendsServerTableProperties = false;
           Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
-          if (deltaSendsServerTableProperties) {
-            Assertions.assertTrue(
-                tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
-                    || tablePropertiesFromServer.containsKey(
-                        UCTableProperties.UC_TABLE_ID_KEY_OLD));
-            Assertions.assertTrue(
-                tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
-                    || tablePropertiesFromServer.containsKey(
-                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
-            assertThat(
-                    Optional.ofNullable(
-                            tablePropertiesFromServer.get(
-                                UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
-                        .orElseGet(
-                            () ->
-                                tablePropertiesFromServer.get(
-                                    UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)))
-                .isEqualTo(UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
-          } else {
-            // Because Delta doesn't send these properties, it's empty.
-            assertThat(tablePropertiesFromServer).isEmpty();
-          }
+          Assertions.assertTrue(
+              tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
+                  || tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY_OLD));
+          Assertions.assertTrue(
+              tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
+                  || tablePropertiesFromServer.containsKey(
+                      UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
+          assertThat(
+                  Optional.ofNullable(
+                          tablePropertiesFromServer.get(
+                              UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
+                      .orElseGet(
+                          () ->
+                              tablePropertiesFromServer.get(
+                                  UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)))
+              .isEqualTo(UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
         }
       }
     }
