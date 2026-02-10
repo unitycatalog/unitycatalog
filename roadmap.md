@@ -3,24 +3,34 @@
 This document outlines the roadmap for the Unity Catalog open source project. As always,
 features may move in/out of milestones pending available resources and priorities.
 
-## 0.4 Release priorities
+## 0.5 Release priorities
+
+### Catalog managed commits
+
+Catalog managed commits (CC) are the basis for many new and powerful client (Delta) and server side features.
+Supporting the table scan and commit APIs is a key priority for the upcoming release. Priority for 0.5 will be
+removing the experimental support introduced in 0.4.
 
 ### Storage management
 
 By more tightly integrating the already released credential and external locations API with the rest of the server
 internals, the next release will allow for more fine-grained, dynamic, and online management of storage locations and their
-credentials. Furthermore operators can delegate some storage management to the catalog via the managed locations
+credentials. Furthermore, operators can delegate some storage management to the catalog via the managed locations
 for catalogs and schemas features.
 
-### Catalog managed commits
+### Authentication
 
-Catalog managed commits are the basis for many new and powerful client (Delta) and server side features.
-Supporting the table scan and commit APIs is a key priority for the upcoming release.
+Modular authentication will allow you to reuse your existing auth to secure Unity Catalog.
 
 ### End to end OAuth support
 
 OAuth support is important for cloud users and RBAC, and unity client plans to support common OAuth flows
 for authentication.
+
+### UC Rust Client
+
+Official support for the Rust ecosystem is on its way. The new Rust based UC client will power Kernel and delta-rs 
+integrations.
 
 ## Full roadmap
 
@@ -506,6 +516,16 @@ for authentication.
   
   <tr>
     <td rowspan="1">Materialized views</td>
+    <td>API + Server</td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td align="center">🛠️</td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+  </tr>
+
+  <tr>
+    <td rowspan="1">Metric views</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
