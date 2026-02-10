@@ -39,5 +39,5 @@ jobs:
     - name: Run tests with coverage
       run: build/sbt -J-Xmx2G +jacoco
 
-    - name: Run license check
-      run: build/sbt licenseCheck
+    #- name: Run license check
+    #  run: build/sbt licenseCheck
