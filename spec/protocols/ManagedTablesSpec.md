@@ -3,6 +3,7 @@
 > **Status**: Draft  
 > **Version**: 0.1.0  
 > **Last Updated**: 2026-02-02
+
 ## Table of Contents
 
 - [Introduction](#introduction)
@@ -11,9 +12,9 @@
   - [Create a Staging Table](#create-a-staging-table)
   - [Create a Table](#create-a-table)
   - [Get a Table](#get-a-table)
-  - [Get commits](#get-commits)
-  - [Write a commit](#write-a-commit)
-  - [Write metrics](#write-metrics)
+  - [Get Commits](#get-commits)
+  - [Write a Commit](#write-a-commit)
+  - [Write Metrics](#write-metrics)
 ---
 
 ## Introduction
@@ -42,9 +43,9 @@ Auto-cleanup on drop | Yes | No
 Storage location | Assigned | User-specified
 
 
-## Terminologies
+## Terminology
 This section recaps key terminologies used in the catalog-managed tables specification:
-- **Commit**: A set of actions that moves a Delta table from version ` v−1` to `v`, stored either as a Delta log file or inline in the catalog.
+- **Commit**: A set of actions that moves a Delta table from version `v−1` to `v`, stored either as a Delta log file or inline in the catalog.
 - **Staged commit**: A commit written to `_delta_log/_staged_commits/<v>.<uuid>.json`, not yet guaranteed to be accepted; the catalog decides whether to ratify it.
 - **Ratified commit**: A proposed commit that the catalog has chosen as the winner for version `v`; it is part of the official history, whether or not it is already published.
 - **Published commit**: A ratified commit that has been written as `_delta_log/<v>.json`; the presence of this file proves that version `v` is ratified.
@@ -72,7 +73,7 @@ A Unity Catalog Managed table needs to be registered and used according to the f
   - The server verifies the version to commit equals to the last ratified commit version + 1 and accepts the commit. If the request contains the field `uniform/iceberg`, the field will be persisted as part of the table’s latest state in the catalog.
   - After the commit is successful, the client must publish the ratified commit by copying the committed file to the `_delta_log` folder, and inform the server that the file has been published by sending another backfill commit, as a `POST` request to the `commit` API.
   - The server verifies that the version is equal or less than the last ratified version and optionally removes the entries for the ratified commits.
-- **Metrics and running maintenance operations**: The client should send [metrics](#write-metrics) after each successful commit. These metrics may be used for Unity Catalog to schedule and manage maintenance operations. The Unity Catalog follows the maintenance operation policy on Catalog-managed Tables. By default it disallows clients to run all maintenance operations, including but not limit to metadata cleanup, OPTIMIZE, VACUUM, and REORG.
+- **Metrics and running maintenance operations**: The client should send [metrics](#write-metrics) after each successful commit. These metrics may be used for Unity Catalog to schedule and manage maintenance operations. The Unity Catalog follows the maintenance operation policy on Catalog-managed Tables. By default it disallows clients to run all maintenance operations, including but not limited to metadata cleanup, OPTIMIZE, VACUUM, and REORG.
 
 The rest of the specification outlines the APIs and detailed requirements.
 
@@ -187,7 +188,7 @@ columns | array of ColumnInfos | The array of ColumnInfo definitions of the tabl
 &nbsp;&nbsp;columnInfo.type_internal_type | string | Format of IntervalType. | optional
 &nbsp;&nbsp;columnInfo.position | int32 | Ordinal position of column (starting at position 0). | optional
 &nbsp;&nbsp;columnInfo.nullable | boolean | Whether the field may be Null. Default to true. | optional
-&nbsp;&nbsp;columnInfo.position | int32 | Partition index for column. | optional
+&nbsp;&nbsp;columnInfo.partition_index | int32 | Partition index for column. | optional
 storage_location | string | Storage root URL for table. | required
 properties | object | Table properties as key-value pairs. | optional
 
@@ -320,7 +321,7 @@ SCHEMA_DOES_NOT_EXIST | 404 | The specified schema doesn't exist.<br>The client 
 TABLE_ALREADY_EXISTS | 400 | A table with the same name already exists.<br>The client should provide a different table name.
 TABLE_DOES_NOT_EXIST | 404 | The specified staging table doesn't exist.<br>The client should check the spelling of the table or create the staged table first.
 PERMISSION_DENIED | 403 | User lacks necessary permissions (CREATE on schema, USAGE on catalog/schema).<br>The client should check with their Unity Catalog Admin to grant them the necessary rights to create a table.
-INVALID_PARAMETER_VALUE | 400 | Server side check failed for the Unity Catalog Managed Delta Table, which could include but not limit to (1) not a Delta Table, (2) missing required table features or properties.
+INVALID_PARAMETER_VALUE | 400 | Server side check failed for the Unity Catalog Managed Delta Table, which could include but not limited to (1) not a Delta Table, (2) missing required table features or properties.
 
 ### Get a Table
 
@@ -365,7 +366,7 @@ table_id | string | Unique identifier for the table.<br>Type: UUID string. | req
 
 Request-Response Samples
 
-Request: `POST .../tables/main.default.my_table`
+Request: `GET .../tables/main.default.my_table`
 ```json
 {}
 ```
@@ -551,11 +552,11 @@ Possible Errors on this API are listed below:
 
 Error Code | HTTP Status | Description
 -|-|-
-CATALOG_DOES_NOT_EXIST | 404 | The specified catalog doesn't exist.<br>The client should check the spelling of the catalog name or create the catalog first.
-SCHEMA_DOES_NOT_EXIST | 404 | The specified schema doesn't exist.<br>The client should check the spelling of the schema or create the schema first.
 TABLE_DOES_NOT_EXIST | 404 | The specified table doesn't exist.<br>The client should check the spelling of the table or create the table first.
 PERMISSION_DENIED | 403 | User lacks necessary permissions (SELECT on table).<br>The client should check with their Unity Catalog Admin to grant them the necessary rights to query commits.
-INVALID_PARAMETER_VALUE | 400 | Server side check failed for the Unity Catalog Managed Delta Table, which could include but not limit to (1) not a Delta Table, (2) missing required table features or properties.
+INVALID_PARAMETER_VALUE | 400 | Server side check failed to get commits for Unity Catalog Managed Tables.<br>The client has provided wrong inputs to the server. This could include but not limit to the following errors: (1) missing required fields, (2) provided fields are invalid such as the start version is negative, the start version is greater than the end version, etc.
+
+
 
 ### Write a Commit
 
@@ -585,14 +586,10 @@ metadata | Metadata | Delta metadata action if the commit changes table metadata
 &nbsp;&nbsp;metadata.format | Format | Object that contains format information. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;metadata.format.provider | string | The format of the files, e.g. "parquet". | optional
 &nbsp;&nbsp;&nbsp;&nbsp;metadata.format.options | object | Format-specific options as key-value pairs. | optional
-&nbsp;&nbsp;metadata.schema_string | array of ColumnInfos | The table schema as Unity Catalog defined by an array of `ColumnInfo` objects. | optional
+&nbsp;&nbsp;metadata.schema | array of ColumnInfos | The table schema defined by an array of `ColumnInfo` objects. | optional
 &nbsp;&nbsp;metadata.partition_columns | array of strings | The partition columns. | optional
 &nbsp;&nbsp;metadata.properties | object | Table properties as key-value pairs. When updating, always includes all the required [properties](#required-table-features-and-properties-on-a-unity-catalog-managed-table). | optional
-&nbsp;&nbsp;metadata.created_time | long | Timestamp when metadata was created in milliseconds since epoch. | optional
-&nbsp;&nbsp;protocol.min_reader_version | int32 | Minimum reader version required. | required
-&nbsp;&nbsp;protocol.min_writer_version | int32 | Minimum writer version required. | required
-&nbsp;&nbsp;protocol.reader_features | array of strings | Reader features enabled on the table. | required
-&nbsp;&nbsp;protocol.writer_features | array of strings | Writer features enabled on the table. | required
+&nbsp;&nbsp;metadata.created_time | long | Timestamp when metadata was created in milliseconds since epoch
 uniform | Uniform | UniForm conversion information related to this Delta commit. | optional
 &nbsp;&nbsp;uniform.iceberg | Iceberg | Uniform Iceberg info. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;uniform.iceberg.metadata_location | string | Iceberg metadata location converted up to the Delta version. | required
@@ -649,7 +646,7 @@ uniform | Uniform | UniForm conversion information related to this Delta commit.
           "provider": "parquet",
           "options": {}
         },
-        "schema_string": [
+        "schema": [
           {"name": "id", "type": "long", "nullable": false},
           {"name": "name", "type": "string", "nullable": true},
           {"name": "created_at", "type": "timestamp", "nullable": false}
@@ -664,9 +661,9 @@ uniform | Uniform | UniForm conversion information related to this Delta commit.
          "io.unitycatalog.tableId": "abcdef12-3456-7890-abcd-ef1234567890",
          "delta.lastUpdateVersion": "0",
          "delta.lastCommitTimestamp": "1704067400000"
-       }
-     },
-     "created_time": 1804067300000
+       },
+       "created_time": 1804067300000
+     }
     }
     ```
     Response: 200
@@ -706,7 +703,7 @@ uniform | Uniform | UniForm conversion information related to this Delta commit.
       },
       "uniform": {
         "iceberg": {
-          "metadata_location": "s3://my-bucket/warehouse/main.db/my_table/metadata/00042-xxxx.metadata.json" 
+          "metadata_location": "s3://my-bucket/warehouse/main.db/my_table/metadata/00042-xxxx.metadata.json",
           "converted_delta_version": 42,
           "converted_delta_timestamp": "2026-02-09T17:00:00.000000Z"
         }
@@ -726,7 +723,7 @@ Error Code | HTTP Status | Description
 -|-|-
 TABLE_DOES_NOT_EXIST | 404 | The specified table doesn't exist.<br>The client should check if the table ID is correct for this table.
 PERMISSION_DENIED | 403 | Insufficient permissions (MODIFY on table).<br>The client should check with their Unity Catalog Admin to grant them the necessary rights to write commits.
-INVALID_PARAMETER_VALUE | 400 | Server side check failed to write commits to Unity Catalog Managed Tables.<br>The client has provided wrong inputs to the server. This could include but not limit to the following errors: (1) missing required fields, (2) provided fields are invalid, such as version is not positive, timestamp is not positive, file name is missing, file size is not positive, file modification time is not positive, (3) commit version is not exactly `last_version + 1`, (4) last published version > current table version, etc.
+INVALID_PARAMETER_VALUE | 400 | Server side check failed to write commits to Unity Catalog Managed Tables.<br>The client has provided wrong inputs to the server. This could include but not limited to the following errors: (1) missing required fields, (2) provided fields are invalid, such as version is not positive, timestamp is not positive, file name is missing, file size is not positive, file modification time is not positive, (3) commit version is not exactly `last_version + 1`, (4) last published version > current table version, etc.
 ALREADY_EXISTS | 409 | Commit version already exists (concurrent write).<br>The client should follow the Delta protocol to rebuild the snapshot and retry the commit with a new version.
 
 
@@ -748,7 +745,7 @@ table_uri | string | The storage location of the Delta table.<br>Format: URI str
 report | Report | Contains information about which metrics are being sent. | optional
 &nbsp;&nbsp;report.commit_report | CommitReport | The commit report metrics. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_files_added | int64 | Number of files added by this commit. | optional
-&nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_bytes_added | string | Number of bytes added by this commit. | optional
+&nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_bytes_added | int64 | Number of bytes added by this commit. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_clustered_bytes_added | int64 | Number of clustered bytes added by this commit. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_files_removed | int64 | Number of files removed by this commit. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_bytes_removed | int64 | Number of bytes removed by this commit. | optional
@@ -783,7 +780,7 @@ Request:
       "num_bytes_removed": 8192,
       "num_clustered_bytes_removed": 4096,
       "file_size_histogram": {
-        "sorted_bin_boundaries": [1048576, 4194304, 16777216],
+        "sorted_bin_boundaries": [0, 1024, 2048],
         "file_counts": [100, 40, 5],
         "total_bytes": [104857600, 167772160, 83886080]
       },
@@ -808,7 +805,7 @@ Error Code | HTTP Status | Description
 -|-|-
 TABLE_DOES_NOT_EXIST | 404 | The specified table doesn't exist.<br>The client should check if the table ID is correct for this table.
 PERMISSION_DENIED | 403 | Insufficient permissions (SELECT on table).<br>The client should check with their Unity Catalog Admin to grant them the necessary rights to write commits.
-INVALID_PARAMETER_VALUE | 400 | Server side check failed to get commits for Unity Catalog Managed Tables.<br>The client has provided wrong inputs to the server. This could include but not limit to the following errors:(1) missing required fields, (2) provided fields are invalid such as the start version is negative, the start version is greater than the end version , etc.
+INVALID_PARAMETER_VALUE | 400 | Server side check failed to post metrics for Unity Catalog Managed Tables.<br>The client has provided wrong inputs to the server. This could include but not limited to the following errors:(1) missing required fields, (2) provided fields are invalid such as non-positive numbers, etc.
 
 ## API Reference
 
