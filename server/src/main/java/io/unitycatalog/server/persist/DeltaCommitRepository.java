@@ -1032,14 +1032,14 @@ public class DeltaCommitRepository {
       ValidationUtils.checkArgument(
           commit.getUniform() != null,
           "Uniform metadata must be set when table has UniForm enabled after the commit. "
-              + "UniForm is enabled when property '%s' has value property value '%s'",
+              + "UniForm is enabled when property '%s'='%s'",
           UNIFORM_ENABLED_FORMATS,
           ICEBERG_FORMAT);
     } else {
       ValidationUtils.checkArgument(
           commit.getUniform() == null,
           "Uniform metadata must not be set when table has UniForm disabled after the commit. "
-              + "UniForm is disabled when property '%s' does not have property value '%s'",
+              + "UniForm is disabled when table does not have property '%s'='%s'",
           UNIFORM_ENABLED_FORMATS,
           ICEBERG_FORMAT);
     }
