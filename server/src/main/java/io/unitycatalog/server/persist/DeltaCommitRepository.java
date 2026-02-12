@@ -89,7 +89,7 @@ public class DeltaCommitRepository {
   public static final int MAX_DELTA_UNIFORM_ICEBERG_SIZE = 65535; // The limit from DAO
 
   public static final String ICEBERG_FORMAT = "iceberg";
-  public static final String UNIFORM_ENABLED_FORMATS = "universalFormat.enabledFormats";
+  public static final String UNIFORM_ENABLED_FORMATS = "delta.universalFormat.enabledFormats";
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
