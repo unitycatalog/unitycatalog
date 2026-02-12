@@ -24,6 +24,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TableProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -995,37 +996,52 @@ public class DeltaCommitRepository {
         "Table URI in commit %s does not match the table path %s",
         commit.getTableUri(),
         tableInfoDAO.getUrl());
-    validateUniformMetadataWhenEnabled(session, commit, tableInfoDAO);
+    validateUniformMetadataPresence(session, commit, tableInfoDAO);
   }
 
   /**
-   * Validates that uniform metadata is present when the uniform property is enabled and when it is
-   * not enabled, uniform metadata is not present
+   * Validates the presence of uniform metadata inside commit If the table has Uniform enabled after
+   * incoming commit, uniform metadata must exist inside commit Otherwise, if the table doesn't have
+   * Uniform enabled after incoming commit, uniform metadata must not exist inside commit
    *
    * @param session the Hibernate session for database operations
    * @param commit the commit request that may contain uniform metadata
    * @param tableInfoDAO the table information data access object
    * @throws BaseException if uniform is enabled but no uniform metadata is present
    */
-  private static void validateUniformMetadataWhenEnabled(
+  private static void validateUniformMetadataPresence(
       Session session, DeltaCommit commit, TableInfoDAO tableInfoDAO) {
     Map<String, String> effectiveProperties;
+    // When properties are not null inside commit metadata, the incoming commit would update
+    // table properties
     if (commit.getMetadata() != null && commit.getMetadata().getProperties() != null) {
-      effectiveProperties = commit.getMetadata().getProperties().getProperties();
+      effectiveProperties =
+          Optional.ofNullable(commit.getMetadata().getProperties().getProperties())
+              .orElse(Collections.emptyMap());
     } else {
-      // Get current properties from database
+      // Incoming commit doesn't update table properties. Get current table properties from database
       List<PropertyDAO> properties =
           PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE);
-      Map<String, String> propertyMap = PropertyDAO.toMap(properties);
-      effectiveProperties = propertyMap;
+      effectiveProperties = PropertyDAO.toMap(properties);
     }
-    // Check if uniform is enabled after this commit
+    // Check if table has UniForm enabled after this commit
     boolean uniformEnabled =
         ICEBERG_FORMAT.equals(effectiveProperties.get(UNIFORM_ENABLED_FORMATS));
-    ValidationUtils.checkArgument(
-        (commit.getUniform() != null) == uniformEnabled,
-        "Uniform metadata must be set when UniForm is enabled on the table, "
-            + "or must not be set when UniForm is not enabled");
+    if (uniformEnabled) {
+      ValidationUtils.checkArgument(
+          commit.getUniform() != null,
+          "Uniform metadata must be set when table has UniForm enabled after the commit. "
+              + "UniForm is enabled when property '%s' has value property value '%s'",
+          UNIFORM_ENABLED_FORMATS,
+          ICEBERG_FORMAT);
+    } else {
+      ValidationUtils.checkArgument(
+          commit.getUniform() == null,
+          "Uniform metadata must not be set when table has UniForm disabled after the commit. "
+              + "UniForm is disabled when property '%s' does not have value property value '%s'",
+          UNIFORM_ENABLED_FORMATS,
+          ICEBERG_FORMAT);
+    }
   }
 
   /**
