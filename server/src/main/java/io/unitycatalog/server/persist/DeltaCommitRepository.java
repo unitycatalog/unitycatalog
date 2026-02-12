@@ -1000,11 +1000,11 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Validates the presence of uniform metadata inside commit.
-   * If the table has UniForm enabled after incoming commit,
-   *  uniform metadata must exist inside commit
-   * Otherwise, if the table doesn't have UniForm enabled after incoming commit,
-   *  uniform metadata must not exist inside commit
+   * Validates the presence of uniform metadata inside commit. If the table has UniForm enabled
+   * after incoming commit, uniform metadata must exist inside commit Otherwise, if the table
+   * doesn't have UniForm enabled after incoming commit, uniform metadata must not exist inside
+   * commit
+   *
    * @param session the Hibernate session for database operations
    * @param commit the commit request that may contain uniform metadata
    * @param tableInfoDAO the table information data access object
