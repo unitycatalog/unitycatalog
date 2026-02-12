@@ -1000,14 +1000,15 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Validates the presence of uniform metadata inside commit If the table has Uniform enabled after
-   * incoming commit, uniform metadata must exist inside commit Otherwise, if the table doesn't have
-   * Uniform enabled after incoming commit, uniform metadata must not exist inside commit
-   *
+   * Validates the presence of uniform metadata inside commit.
+   * If the table has UniForm enabled after incoming commit,
+   *  uniform metadata must exist inside commit
+   * Otherwise, if the table doesn't have UniForm enabled after incoming commit,
+   *  uniform metadata must not exist inside commit
    * @param session the Hibernate session for database operations
    * @param commit the commit request that may contain uniform metadata
    * @param tableInfoDAO the table information data access object
-   * @throws BaseException if uniform is enabled but no uniform metadata is present
+   * @throws BaseException if validation is violated
    */
   private static void validateUniformMetadataPresence(
       Session session, DeltaCommit commit, TableInfoDAO tableInfoDAO) {
@@ -1038,7 +1039,7 @@ public class DeltaCommitRepository {
       ValidationUtils.checkArgument(
           commit.getUniform() == null,
           "Uniform metadata must not be set when table has UniForm disabled after the commit. "
-              + "UniForm is disabled when property '%s' does not have value property value '%s'",
+              + "UniForm is disabled when property '%s' does not have property value '%s'",
           UNIFORM_ENABLED_FORMATS,
           ICEBERG_FORMAT);
     }
