@@ -22,6 +22,10 @@ public abstract class BaseAccessControlCRUDTest extends BaseCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
+    // Set up MODEL_STORAGE_ROOT for model tests
+    // TODO: change tests to use managed storage of catalog or schema
+    serverProperties.setProperty(
+        Property.MODEL_STORAGE_ROOT.getKey(), testDirectoryRoot + "/models");
   }
 
   @BeforeEach

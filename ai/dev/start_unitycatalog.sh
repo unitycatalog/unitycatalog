@@ -69,7 +69,8 @@ cleanup_on_failure() {
 }
 
 echo "Starting UC server..."
-bin/start-uc-server >"$LOG_FILE" 2>&1 &
+# TODO: deprecate storage-root.models with managed storage of catalog or schema
+env "storage-root.models=file:///tmp/ucroot" bin/start-uc-server >"$LOG_FILE" 2>&1 &
 UC_SERVER_PID=$!
 echo "$UC_SERVER_PID" > uc_server.pid
 echo "UC server started with PID $UC_SERVER_PID"

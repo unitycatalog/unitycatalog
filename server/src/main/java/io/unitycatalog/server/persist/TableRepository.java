@@ -12,6 +12,7 @@ import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
@@ -202,6 +203,7 @@ public class TableRepository {
           // on the type of table to create.
           String tableID;
           if (tableType == TableType.EXTERNAL) {
+            ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
             tableID = UUID.randomUUID().toString();
           } else if (tableType == TableType.MANAGED) {
             serverProperties.checkManagedTableEnabled();
@@ -373,7 +375,7 @@ public class TableRepository {
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {
-        fileOperations.deleteDirectory(tableInfoDAO.getUrl());
+        FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
       } catch (Throwable e) {
         LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }

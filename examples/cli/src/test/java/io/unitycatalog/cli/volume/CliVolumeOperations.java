@@ -29,9 +29,15 @@ public class CliVolumeOperations extends BaseCliOperations implements VolumeOper
                     + "."
                     + createVolumeRequest.getSchemaName()
                     + "."
-                    + createVolumeRequest.getName(),
-                "--storage_location",
-                createVolumeRequest.getStorageLocation()));
+                    + createVolumeRequest.getName()));
+    if (createVolumeRequest.getStorageLocation() != null) {
+      argsList.add("--storage_location");
+      argsList.add(createVolumeRequest.getStorageLocation());
+    }
+    if (createVolumeRequest.getVolumeType() != null) {
+      argsList.add("--volume_type");
+      argsList.add(createVolumeRequest.getVolumeType().getValue());
+    }
     if (createVolumeRequest.getComment() != null) {
       argsList.add("--comment");
       argsList.add(createVolumeRequest.getComment());

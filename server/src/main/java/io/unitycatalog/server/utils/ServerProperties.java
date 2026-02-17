@@ -196,12 +196,13 @@ public class ServerProperties {
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false", BOOLEAN_VALIDATOR),
-    MODEL_STORAGE_ROOT("storage-root.models", "file:///tmp/ucroot", STORAGE_PATH_VALIDATOR),
-    TABLE_STORAGE_ROOT("storage-root.tables", "file:///tmp/ucroot", STORAGE_PATH_VALIDATOR),
+    // `storage-root.*` are replaced by managed storage locations of catalog and schema.
+    MODEL_STORAGE_ROOT("storage-root.models", STORAGE_PATH_VALIDATOR), // Deprecated
+    TABLE_STORAGE_ROOT("storage-root.tables", STORAGE_PATH_VALIDATOR), // Deprecated
     AWS_MASTER_ROLE_ARN("aws.masterRoleArn"),
-    AWS_S3_ACCESS_KEY("aws.s3.accessKey"),
-    AWS_S3_SECRET_KEY("aws.s3.secretKey"),
-    AWS_S3_SESSION_TOKEN("aws.s3.sessionToken"),
+    AWS_ACCESS_KEY("aws.accessKey"),
+    AWS_SECRET_KEY("aws.secretKey"),
+    AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region");
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -289,6 +290,17 @@ public class ServerProperties {
     }
   }
 
+  public S3StorageConfig getS3MasterRoleConfiguration() {
+    // These values may be null and that is OK. An empty config means AWS credential vending will
+    // use the default credential provider which is typically the same when running on AWS cloud.
+    return S3StorageConfig.builder()
+        .region(get(Property.AWS_REGION))
+        .accessKey(get(Property.AWS_ACCESS_KEY))
+        .secretKey(get(Property.AWS_SECRET_KEY))
+        // Does not take AWS_SESSION_TOKEN as it's only part of a temporary credential.
+        .build();
+  }
+
   public Map<NormalizedURL, S3StorageConfig> getS3Configurations() {
     Map<NormalizedURL, S3StorageConfig> s3BucketConfigMap = new HashMap<>();
     int i = 0;
@@ -299,7 +311,7 @@ public class ServerProperties {
       String accessKey = getProperty("s3.accessKey." + i);
       String secretKey = getProperty("s3.secretKey." + i);
       String sessionToken = getProperty("s3.sessionToken." + i);
-      String credentialsGenerator = getProperty("s3.credentialsGenerator." + i);
+      String credentialGenerator = getProperty("s3.credentialGenerator." + i);
       if ((bucketPath == null || region == null || awsRoleArn == null)
           && (accessKey == null || secretKey == null || sessionToken == null)) {
         break;
@@ -312,7 +324,7 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
-              .credentialsGenerator(credentialsGenerator)
+              .credentialGenerator(credentialGenerator)
               .build();
       s3BucketConfigMap.put(NormalizedURL.from(bucketPath), s3StorageConfig);
       i++;
@@ -330,13 +342,13 @@ public class ServerProperties {
         break;
       }
       String jsonKeyFilePath = getProperty("gcs.jsonKeyFilePath." + i);
-      String credentialsGenerator = getProperty("gcs.credentialsGenerator." + i);
+      String credentialGenerator = getProperty("gcs.credentialGenerator." + i);
       gcsConfigMap.put(
           NormalizedURL.from(bucketPath),
           GcsStorageConfig.builder()
               .bucketPath(bucketPath)
               .jsonKeyFilePath(jsonKeyFilePath)
-              .credentialsGenerator(credentialsGenerator)
+              .credentialGenerator(credentialGenerator)
               .build());
       i++;
     }
@@ -354,7 +366,7 @@ public class ServerProperties {
       String clientId = getProperty("adls.clientId." + i);
       String clientSecret = getProperty("adls.clientSecret." + i);
       String testMode = getProperty("adls.testMode." + i);
-      String credentialsGenerator = getProperty("adls.credentialsGenerator." + i);
+      String credentialGenerator = getProperty("adls.credentialGenerator." + i);
       if (storageAccountName == null
           || tenantId == null
           || clientId == null
@@ -369,7 +381,7 @@ public class ServerProperties {
               .clientId(clientId)
               .clientSecret(clientSecret)
               .testMode(testMode != null && testMode.equalsIgnoreCase("true"))
-              .credentialsGenerator(credentialsGenerator)
+              .credentialGenerator(credentialGenerator)
               .build());
       i++;
     }

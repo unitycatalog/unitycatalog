@@ -2,7 +2,7 @@ package io.unitycatalog.spark.auth.storage;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
-import io.unitycatalog.server.service.credential.aws.CredentialsGenerator;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.time.Instant;
 import java.util.Map;
@@ -24,7 +24,7 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
     // Customize the test credential generator to issue a new credential every 30-second interval.
     // This allows us to verify whether credential renewal is functioning correctly by checking
     // if the current credential matches the expected time window.
-    serverProperties.put("s3.credentialsGenerator.0", CREDENTIALS_GENERATOR_CLASS);
+    serverProperties.put("s3.credentialGenerator.0", CREDENTIALS_GENERATOR_CLASS);
   }
 
   @Override
@@ -38,7 +38,7 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
   }
 
   public static class AwsCredGenerator extends TimeBasedCredGenerator<Credentials>
-      implements CredentialsGenerator {
+      implements AwsCredentialGenerator {
     @Override
     protected Credentials newTimeBasedCred(long ts) {
       return Credentials.builder()

@@ -10,6 +10,8 @@ import io.unitycatalog.server.model.DeltaCommitMetadataProperties;
 import io.unitycatalog.server.model.DeltaGetCommits;
 import io.unitycatalog.server.model.DeltaGetCommitsResponse;
 import io.unitycatalog.server.model.DeltaMetadata;
+import io.unitycatalog.server.model.DeltaUniform;
+import io.unitycatalog.server.model.DeltaUniformIceberg;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
@@ -82,6 +84,9 @@ public class DeltaCommitRepository {
    * configurable server property.
    */
   private static final int NUM_COMMITS_PER_BATCH = 20;
+
+  /** The maximum size of the JSON that contains the Delta-to-Iceberg conversion information */
+  public static final int MAX_DELTA_UNIFORM_ICEBERG_SIZE = 65535; // The limit from DAO
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
@@ -283,8 +288,7 @@ public class DeltaCommitRepository {
         "Field can not be null: %s in onboarding commit",
         DeltaCommit.JSON_PROPERTY_COMMIT_INFO);
     saveCommit(session, tableId, commitInfo);
-    Optional.ofNullable(commit.getMetadata())
-        .ifPresent(metadata -> updateTableMetadata(session, tableId, tableInfoDAO, metadata));
+    updateTableFromCommit(session, tableId, tableInfoDAO, commit);
   }
 
   /**
@@ -388,8 +392,7 @@ public class DeltaCommitRepository {
     checkCommitLimit(
         tableId, newCommitVersion, latestBackfilledVersion, firstCommitDAO, lastCommitDAO);
     saveCommit(session, tableId, commitInfo);
-    Optional.ofNullable(commit.getMetadata())
-        .ifPresent(metadata -> updateTableMetadata(session, tableId, tableInfoDAO, metadata));
+    updateTableFromCommit(session, tableId, tableInfoDAO, commit);
     latestBackfilledVersion.ifPresent(
         latestBackfilled ->
             backfillCommits(
@@ -674,6 +677,36 @@ public class DeltaCommitRepository {
   }
 
   /**
+   * Updates table with metadata and uniform information from a commit, then persists changes.
+   *
+   * @param session the Hibernate session for database operations
+   * @param tableId the unique identifier of the table
+   * @param tableInfoDAO the table information data access object to update
+   * @param commit the commit request containing optional metadata and uniform information
+   */
+  private static void updateTableFromCommit(
+      Session session, UUID tableId, TableInfoDAO tableInfoDAO, DeltaCommit commit) {
+    boolean hasUpdates = false;
+
+    if (commit.getMetadata() != null) {
+      updateTableMetadata(session, tableId, tableInfoDAO, commit.getMetadata());
+      hasUpdates = true;
+    }
+
+    if (commit.getUniform() != null) {
+      updateTableUniform(tableInfoDAO, commit.getUniform());
+      hasUpdates = true;
+    }
+
+    if (hasUpdates) {
+      String callerId = IdentityUtils.findPrincipalEmailAddress();
+      tableInfoDAO.setUpdatedBy(callerId);
+      tableInfoDAO.setUpdatedAt(new Date());
+      session.merge(tableInfoDAO);
+    }
+  }
+
+  /**
    * Updates table metadata including properties, schema (columns), and description based on the
    * metadata provided in a commit. This method handles:
    *
@@ -717,11 +750,24 @@ public class DeltaCommitRepository {
       // Update comment
       tableInfoDAO.setComment(metadata.getDescription());
     }
+  }
 
-    String callerId = IdentityUtils.findPrincipalEmailAddress();
-    tableInfoDAO.setUpdatedBy(callerId);
-    tableInfoDAO.setUpdatedAt(new Date());
-    session.merge(tableInfoDAO);
+  /**
+   * Updates table uniform metadata based on the uniform information provided in a commit.
+   *
+   * <p>This method updates the table's UniForm conversion metadata, including Iceberg metadata
+   * location, converted Delta version, and conversion timestamp.
+   *
+   * @param tableInfoDAO the table information data access object to update
+   * @param uniform the uniform metadata containing conversion information
+   */
+  private static void updateTableUniform(TableInfoDAO tableInfoDAO, DeltaUniform uniform) {
+    DeltaUniformIceberg icebergMetadata = uniform.getIceberg();
+    tableInfoDAO.setUniformIcebergMetadataLocation(
+        NormalizedURL.normalize(icebergMetadata.getMetadataLocation().toString()));
+    tableInfoDAO.setUniformIcebergConvertedDeltaVersion(icebergMetadata.getConvertedDeltaVersion());
+    tableInfoDAO.setUniformIcebergConvertedDeltaTimestamp(
+        Date.from(java.time.Instant.parse(icebergMetadata.getConvertedDeltaTimestamp())));
   }
 
   /**
@@ -738,6 +784,7 @@ public class DeltaCommitRepository {
    *       table ID
    *   <li>If commit info is absent: ensures this is a valid backfill-only commit with backfilled
    *       version set
+   *   <li>If uniform is present: validates required fields and size limits
    * </ul>
    *
    * @param commit the commit request to validate
@@ -835,6 +882,63 @@ public class DeltaCommitRepository {
             ErrorCode.INVALID_ARGUMENT, "metadata shouldn't be set for backfill only commit");
       }
     }
+
+    // Validate uniform metadata if present
+    if (commit.getUniform() != null) {
+      validateUniformIceberg(commit, commit.getUniform());
+    }
+  }
+
+  /**
+   * Validates Delta UniForm Iceberg metadata to ensure all required fields are present, the size is
+   * within limits, and the converted delta version matches the commit version.
+   *
+   * @param commit the commit containing version information
+   * @param uniform the uniform metadata to validate
+   * @throws BaseException if validation fails
+   */
+  private static void validateUniformIceberg(DeltaCommit commit, DeltaUniform uniform) {
+    if (uniform == null) {
+      return; // DeltaUniform is optional
+    }
+
+    // If uniform is specified, iceberg must be set
+    ValidationUtils.checkArgument(
+        uniform.getIceberg() != null, "Field cannot be null in uniform: iceberg");
+
+    DeltaUniformIceberg iceberg = uniform.getIceberg();
+
+    // Validate that all required fields are present
+    ValidationUtils.checkArgument(
+        iceberg.getMetadataLocation() != null,
+        "Field cannot be null in uniform.iceberg: metadata_location");
+    ValidationUtils.checkArgument(
+        iceberg.getConvertedDeltaVersion() != null,
+        "Field cannot be null in uniform.iceberg: converted_delta_version");
+    ValidationUtils.checkArgument(
+        iceberg.getConvertedDeltaTimestamp() != null
+            && !iceberg.getConvertedDeltaTimestamp().isEmpty(),
+        "Field cannot be null or empty in uniform.iceberg: converted_delta_timestamp");
+
+    // Validate that convertedDeltaVersion matches the commit version
+    if (commit.getCommitInfo() != null) {
+      ValidationUtils.checkArgument(
+          iceberg.getConvertedDeltaVersion().equals(commit.getCommitInfo().getVersion()),
+          "uniform.iceberg.converted_delta_version (%d) must equal commit version (%d)",
+          iceberg.getConvertedDeltaVersion(),
+          commit.getCommitInfo().getVersion());
+    }
+
+    // We check the size of the Delta-to-Iceberg conversion information here to fail early if
+    // it exceeds the maximum size of DAO limit. The size is not accurate in terms of the size of
+    // the object in the database but serves as a sanity check to ensure that we're not storing
+    // excessively large objects.
+    int size = iceberg.getMetadataLocation().toString().length();
+    ValidationUtils.checkArgument(
+        size <= MAX_DELTA_UNIFORM_ICEBERG_SIZE,
+        "Delta UniForm Iceberg metadata size (%d bytes) exceeds maximum allowed size (%d bytes)",
+        size,
+        MAX_DELTA_UNIFORM_ICEBERG_SIZE);
   }
 
   /**

@@ -14,7 +14,7 @@ import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeOperation;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.VolumeRepository;
-import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 
@@ -28,11 +28,11 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryVolumeCredentialsService {
   private final VolumeRepository volumeRepository;
-  private final CloudCredentialVendor cloudCredentialVendor;
+  private final StorageCredentialVendor storageCredentialVendor;
 
-  public TemporaryVolumeCredentialsService(CloudCredentialVendor cloudCredentialVendor,
+  public TemporaryVolumeCredentialsService(StorageCredentialVendor storageCredentialVendor,
                                            Repositories repositories) {
-    this.cloudCredentialVendor = cloudCredentialVendor;
+    this.storageCredentialVendor = storageCredentialVendor;
     this.volumeRepository = repositories.getVolumeRepository();
   }
 
@@ -54,7 +54,7 @@ public class TemporaryVolumeCredentialsService {
     }
     VolumeInfo volumeInfo = volumeRepository.getVolumeById(volumeId);
     return HttpResponse.ofJson(
-        cloudCredentialVendor.vendCredential(
+        storageCredentialVendor.vendCredential(
             NormalizedURL.from(volumeInfo.getStorageLocation()),
             volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
   }

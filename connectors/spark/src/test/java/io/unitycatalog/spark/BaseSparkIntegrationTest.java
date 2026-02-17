@@ -13,7 +13,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
-import io.unitycatalog.server.service.credential.gcp.TestingCredentialsGenerator;
+import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.ArrayList;
@@ -30,6 +30,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   protected ArrayList<String> createdCatalogs = new ArrayList<>();
   protected static final String SPARK_CATALOG = "spark_catalog";
+  /** S3 bucket with no credentials configured on server - for testing SSP fallback. */
+  public static final String NO_CREDS_BUCKET = "test-bucket-2-no-creds";
 
   // Property key to enable Delta Lake catalog updates in Spark
   // see org.apache.spark.sql.delta.sources.DeltaSQLConf.DELTA_UPDATE_CATALOG_ENABLED
@@ -126,10 +128,10 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
     serverProperties.put("gcs.bucketPath.0", "gs://test-bucket0");
     serverProperties.put("gcs.jsonKeyFilePath.0", "testing://0");
-    serverProperties.put("gcs.credentialsGenerator.0", TestingCredentialsGenerator.class.getName());
+    serverProperties.put("gcs.credentialGenerator.0", TestingCredentialGenerator.class.getName());
     serverProperties.put("gcs.bucketPath.1", "gs://test-bucket1");
     serverProperties.put("gcs.jsonKeyFilePath.1", "testing://1");
-    serverProperties.put("gcs.credentialsGenerator.1", TestingCredentialsGenerator.class.getName());
+    serverProperties.put("gcs.credentialGenerator.1", TestingCredentialGenerator.class.getName());
 
     serverProperties.put("adls.storageAccountName.0", "test-bucket0");
     serverProperties.put("adls.tenantId.0", "tenantId0");
@@ -156,7 +158,6 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   @AfterEach
-  @Override
   public void cleanUp() {
     for (String catalogName : createdCatalogs) {
       try {
@@ -174,6 +175,5 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     } catch (Exception e) {
       // Ignore
     }
-    super.cleanUp();
   }
 }

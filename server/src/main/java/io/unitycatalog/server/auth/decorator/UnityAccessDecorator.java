@@ -35,9 +35,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.PARAM;
-import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.PAYLOAD;
-import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.SYSTEM;
+import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PARAM;
+import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PAYLOAD;
+import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.SYSTEM;
 
 /**
  * Armeria access control Decorator.
@@ -89,7 +89,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
       // Find the authorization parameters to use for this service method.
       String expression = findAuthorizeExpression(method);
-      List<KeyLocator> locators = findAuthorizeKeys(method);
+      List<AuthorizeKeyLocator> locators = findAuthorizeKeys(method);
 
       if (expression != null) {
         if (!locators.isEmpty()) {
@@ -114,7 +114,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       ServiceRequestContext ctx,
       HttpRequest req,
       UUID principal,
-      List<KeyLocator> locators,
+      List<AuthorizeKeyLocator> locators,
       String expression) throws Exception {
     //
     // Based on the query and payload parameters defined on the service method (that
@@ -127,13 +127,13 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // Split up the locators by type, because we have to extract the value from the request
     // different ways for different types
 
-    List<KeyLocator> systemLocators = locators.stream()
+    List<AuthorizeKeyLocator> systemLocators = locators.stream()
         .filter(l -> l.getSource().equals(SYSTEM))
         .toList();
-    List<KeyLocator> paramLocators = locators.stream()
+    List<AuthorizeKeyLocator> paramLocators = locators.stream()
         .filter(l -> l.getSource().equals(PARAM))
         .toList();
-    List<KeyLocator> payloadLocators = locators.stream()
+    List<AuthorizeKeyLocator> payloadLocators = locators.stream()
         .filter(l -> l.getSource().equals(PAYLOAD))
         .toList();
 
@@ -245,29 +245,32 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  private static List<KeyLocator> findAuthorizeKeys(Method method) {
+  private static List<AuthorizeKeyLocator> findAuthorizeKeys(Method method) {
     // TODO: Cache this by method
 
-    List<KeyLocator> locators = new ArrayList<>();
+    List<AuthorizeKeyLocator> locators = new ArrayList<>();
 
     AuthorizeResourceKey methodKey = method.getAnnotation(AuthorizeResourceKey.class);
 
     // If resource is on the method, its source is from a global/system variable
     if (methodKey != null) {
       locators.add(
-          KeyLocator.builder().source(SYSTEM).type(Optional.of(methodKey.value())).build());
+          AuthorizeKeyLocator.builder()
+              .source(SYSTEM)
+              .type(Optional.of(methodKey.value()))
+              .build());
     }
 
     for (Parameter parameter : method.getParameters()) {
       AuthorizeResourceKey[] allResourceKeys =
           parameter.getAnnotationsByType(AuthorizeResourceKey.class);
       for (AuthorizeResourceKey key : allResourceKeys) {
-        locators.add(KeyLocator.from(key, parameter));
+        locators.add(AuthorizeKeyLocator.from(key, parameter));
       }
 
       AuthorizeKey[] allNonResourceKeys = parameter.getAnnotationsByType(AuthorizeKey.class);
       for (AuthorizeKey key : allNonResourceKeys) {
-        locators.add(KeyLocator.from(key, parameter));
+        locators.add(AuthorizeKeyLocator.from(key, parameter));
       }
     }
     return locators;
@@ -310,14 +313,14 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // the method call directly and extract the payload data from the method arguments.
 
     private final MediaType contentType;
-    private final List<KeyLocator> payloadLocators;
+    private final List<AuthorizeKeyLocator> payloadLocators;
     private final Map<SecurableType, Object> resourceKeys;
     private final Map<String, Object> nonResourceValues;
     private final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
 
     private PeekDataHandler(
         MediaType contentType,
-        List<KeyLocator> payloadLocators,
+        List<AuthorizeKeyLocator> payloadLocators,
         Map<SecurableType, Object> resourceKeys,
         Map<String, Object> nonResourceValues) {
       this.contentType = contentType;

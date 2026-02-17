@@ -4,24 +4,32 @@ import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.fs.Path;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
+
+import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_CATALOG_PREFIX;
+import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREFIX;
 
 /**
  * Utility class for performing path-based database queries on Unity Catalog entities.
@@ -49,14 +57,33 @@ public class ExternalLocationUtils {
     this.sessionFactory = sessionFactory;
   }
 
-  private record DaoClassInfo(Class<? extends IdentifiableDAO> clazz, String urlFieldName) {}
+  /**
+   * Internal record holding metadata about a DAO class for URL overlap queries.
+   *
+   * @param clazz the DAO class type
+   * @param urlFieldName the name of the field containing the URL in the DAO
+   * @param filterCondition additional HQL filter condition (empty string if none)
+   */
+  private record DaoClassInfo(
+      Class<? extends IdentifiableDAO> clazz, String urlFieldName, String filterCondition) {
+    DaoClassInfo(Class<? extends IdentifiableDAO> clazz, String urlFieldName) {
+      this(clazz, urlFieldName, "");
+    }
+  }
 
   private static final Map<SecurableType, DaoClassInfo> SECURABLE_TYPE_TO_DAO_MAP =
       Map.of(
           SecurableType.TABLE, new DaoClassInfo(TableInfoDAO.class, "url"),
           SecurableType.VOLUME, new DaoClassInfo(VolumeInfoDAO.class, "storageLocation"),
           SecurableType.REGISTERED_MODEL, new DaoClassInfo(RegisteredModelInfoDAO.class, "url"),
-          SecurableType.EXTERNAL_LOCATION, new DaoClassInfo(ExternalLocationDAO.class, "url"));
+          SecurableType.EXTERNAL_LOCATION, new DaoClassInfo(ExternalLocationDAO.class, "url"),
+          SecurableType.CATALOG, new DaoClassInfo(CatalogInfoDAO.class, "storageLocation"),
+          SecurableType.SCHEMA, new DaoClassInfo(SchemaInfoDAO.class, "storageLocation"));
+
+  // Uncommitted staging tables does not have a corresponding SecurableType.
+  @VisibleForTesting
+  static final DaoClassInfo UNCOMMITTED_STAGING_TABLE_DAO_INFO =
+      new DaoClassInfo(StagingTableDAO.class, "stagingLocation", "stageCommitted=false");
 
   /**
    * List of securable types that represent data objects (tables, volumes, registered models). Used
@@ -69,6 +96,10 @@ public class ExternalLocationUtils {
       Stream.concat(Stream.of(SecurableType.EXTERNAL_LOCATION), DATA_SECURABLE_TYPES.stream())
           .toList();
 
+  /** Catalogs and schemas are containers of managed securables. */
+  private static final List<SecurableType> MANAGED_SECURABLE_TYPE_CONTAINERS =
+      List.of(SecurableType.CATALOG, SecurableType.SCHEMA);
+
   /**
    * For a input URL, find out the actual owner securables of the URL.
    *
@@ -76,7 +107,7 @@ public class ExternalLocationUtils {
    *   <li>If the URL is a parent path of one or more securable, we can not figure out the actual
    *       owner but have to deny the access
    *   <li>If the URL is under or the same path of any data securable, we'll figure out the UUID of
-   *       that data securable along with its catalog&schema UUIDs and return the result.
+   *       that data securable along with its catalog and schema UUIDs and return the result.
    *   <li>If the URL is not owned by any data securable but only by external locations, return UUID
    *       of that external location.
    *   <li>Lastly if no securable is found, return empty map.
@@ -222,6 +253,66 @@ public class ExternalLocationUtils {
   }
 
   /**
+   * Finds the storage credential associated with the external location that covers the given path.
+   *
+   * <p>This method looks up external locations whose URL is a parent of or equals the given path,
+   * then returns the storage credential associated with that external location. The credential can
+   * be used to vend a temporary credential for data access.
+   *
+   * @param url the storage path to find credentials for (e.g., s3://bucket/path/to/data)
+   * @return the storage credential if an external location covers this path, empty otherwise
+   * @throws BaseException with FAILED_PRECONDITION if multiple external locations cover the path
+   *     (invalid state) or if the credential referenced by the external location does not exist
+   */
+  public Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(NormalizedURL url) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> getExternalLocationCredentialDaoForPath(session, url),
+        "Failed to get storage credential by URL",
+        /* readOnly= */ true);
+  }
+
+  private Optional<CredentialDAO> getExternalLocationCredentialDaoForPath(
+      Session session, NormalizedURL url) {
+    // Get the external location
+    // Find out the external location that covers the input URL. Either the external location is
+    // a parent path of input URL, or is the same URL.
+    // It also tries to find two instead of one. If two are found, that is an invalid state that
+    // should never happen and in that case server can't decide which external location to use.
+    List<ExternalLocationDAO> externalLocationDAOs =
+        ExternalLocationUtils.<ExternalLocationDAO>getEntityDAOsWithURLOverlap(
+                session,
+                url,
+                SecurableType.EXTERNAL_LOCATION,
+                /* limit= */ 2,
+                /* includeParent= */ true,
+                /* includeSelf= */ true,
+                /* includeSubdir= */ false)
+            .stream()
+            .toList();
+    if (externalLocationDAOs.isEmpty()) {
+      // Not found
+      return Optional.empty();
+    } else if (externalLocationDAOs.size() > 1) {
+      // This is an invalid internal state. We never allow external locations with
+      // overlapping URLs.
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          "More than one external location with URL '" + url + "' exist.");
+    }
+
+    // Get the credential that is assigned to the external location
+    UUID credentialId = externalLocationDAOs.get(0).getCredentialId();
+    CredentialDAO credentialDAO = session.get(CredentialDAO.class, credentialId);
+    if (credentialDAO == null) {
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION,
+          String.format("Credential %s for '%s' not found.", credentialId, url));
+    }
+    return Optional.of(credentialDAO);
+  }
+
+  /**
    * Finds entities of the specified type whose URLs overlap with the given URL. Refer to
    * generateEntitiesDAOsWithURLOverlapQuery for the details.
    *
@@ -287,13 +378,25 @@ public class ExternalLocationUtils {
       boolean includeParent,
       boolean includeSelf,
       boolean includeSubdir) {
-    assert (includeParent || includeSelf || includeSubdir);
     DaoClassInfo daoClassInfo = SECURABLE_TYPE_TO_DAO_MAP.get(securableType);
     if (daoClassInfo == null) {
       throw new IllegalArgumentException(
           "Unsupported securable type for URL overlap check: " + securableType);
     }
+    return generateEntitiesDAOsWithURLOverlapQuery(
+        session, url, daoClassInfo, limit, includeParent, includeSelf, includeSubdir);
+  }
 
+  @VisibleForTesting
+  static <T extends IdentifiableDAO> Query<T> generateEntitiesDAOsWithURLOverlapQuery(
+      Session session,
+      NormalizedURL url,
+      DaoClassInfo daoClassInfo,
+      int limit,
+      boolean includeParent,
+      boolean includeSelf,
+      boolean includeSubdir) {
+    assert (includeParent || includeSelf || includeSubdir);
     boolean hasInCondition = false;
     // parent paths + self
     List<NormalizedURL> matchPaths = includeParent ? getParentPathsList(url) : new ArrayList<>();
@@ -323,7 +426,15 @@ public class ExternalLocationUtils {
       condition = inCondition;
     } else if (hasLikeCondition) {
       condition = likeCondition;
+    } else {
+      // This is not supposed to happen unless there's a bug.
+      throw new RuntimeException("At least one condition must be provided");
     }
+
+    if (!daoClassInfo.filterCondition.isEmpty()) {
+      condition = String.format("%s AND (%s)", daoClassInfo.filterCondition, condition);
+    }
+
     String queryString =
         String.format(
             "FROM %s WHERE %s ORDER BY LENGTH(%s) DESC",
@@ -379,5 +490,191 @@ public class ExternalLocationUtils {
   static String escapeLikePattern(String value) {
     // Escape backslash first, then % and _
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+  }
+
+  /**
+   * Validates that a URL does not contain the reserved managed storage prefix.
+   *
+   * <p>This check ensures that user-specified paths (such as external location URLs or storage
+   * roots for catalogs/schemas) do not use or interfere with the reserved {@code __unitystorage}
+   * namespace used for managed entities.
+   *
+   * @param url the URL to validate
+   * @throws BaseException with ErrorCode.INVALID_ARGUMENT if the URL contains the managed storage
+   *     prefix
+   */
+  public static void validateNotSameOrUnderManagedStoragePrefix(NormalizedURL url) {
+    // url does not contain the reserved namespace `__unitystorage`
+    if (url.toString().contains(Constants.MANAGED_STORAGE_PREFIX)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "Input path '%s' contains managed storage prefix %s.",
+              url, Constants.MANAGED_STORAGE_PREFIX));
+    }
+  }
+
+  /**
+   * Validates that a URL is not a parent directory of any managed storage locations.
+   *
+   * <p>This prevents external locations from being created at paths that would encompass managed
+   * catalog/schema storage locations or uncommitted staging tables.
+   */
+  private static void validateNotAboveManagedStorage(Session session, NormalizedURL url) {
+    if (!getAllEntityDAOsWithURLOverlap(
+            session,
+            url,
+            MANAGED_SECURABLE_TYPE_CONTAINERS,
+            /* limit= */ 1,
+            /* includeParent= */ false,
+            /* includeSelf= */ false,
+            /* includeSubdir= */ true)
+        .isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Input path '" + url + "' overlaps with managed storage.");
+    }
+
+    // volumes, committed tables, and models are already checked by KeyMapper. Uncommitted staging
+    // tables aren't yet.
+    // In normal cases the staging tables are under catalogs or schemas so the above check already
+    // makes sure the input url doesn't cover any staging tables or tables. However, because the
+    // staging tables are not deleted synchronously when the catalog/schema is deleted, there can be
+    // orphaned uncommited staging tables remaining after the catalog/schema is gone. This check
+    // covers the corner cases.
+    if (generateEntitiesDAOsWithURLOverlapQuery(
+            session,
+            url,
+            UNCOMMITTED_STAGING_TABLE_DAO_INFO,
+            /* limit= */ 1,
+            /* includeParent= */ false,
+            /* includeSelf= */ false,
+            /* includeSubdir= */ true)
+        .stream()
+        .findAny()
+        .isPresent()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Input path '" + url + "' overlaps with staging table.");
+    }
+  }
+
+  /**
+   * Validates that a URL does not overlap with any managed storage locations.
+   *
+   * <p>This performs two checks:
+   *
+   * <ol>
+   *   <li>The URL does not contain the {@code __unitystorage} prefix (same or under managed
+   *       storage)
+   *   <li>The URL is not a parent directory that would contain managed storage locations (above
+   *       managed storage)
+   * </ol>
+   *
+   * <p>This validation should be called when creating external entities (tables, volumes) to ensure
+   * they don't interfere with managed storage.
+   *
+   * @param session the Hibernate session for database queries
+   * @param url the URL to validate
+   * @throws BaseException with ErrorCode.INVALID_ARGUMENT if the URL overlaps with managed storage
+   */
+  public static void validateNotOverlapWithManagedStorage(Session session, NormalizedURL url) {
+    validateNotSameOrUnderManagedStoragePrefix(url);
+    validateNotAboveManagedStorage(session, url);
+  }
+
+  /**
+   * Gets the managed storage location for creating child entities (tables, volumes, models)
+   * within a catalog/schema.
+   *
+   * <p>This method returns the storageLocation of the schema if set, otherwise falls back to the
+   * catalog's storageLocation. If neither is set, throws an exception.
+   *
+   * @param catalogAndSchemaDao the catalog and schema DAOs
+   * @return the storage location to use as root for child entity storage
+   * @throws BaseException with ErrorCode.FAILED_PRECONDITION if neither catalog nor schema has
+   *     managed location configured
+   */
+  public static NormalizedURL getManagedStorageLocation(
+      RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao) {
+    return getManagedStorageLocation(catalogAndSchemaDao, Optional::empty);
+  }
+
+  /**
+   * Gets the managed storage location for creating child entities (tables, volumes, models)
+   * within a catalog/schema, with a fallback option.
+   *
+   * <p>The resolution order is:
+   *
+   * <ol>
+   *   <li>Schema's storageLocation (if set)
+   *   <li>Catalog's storageLocation (if set)
+   *   <li>Fallback storage root with __unitystorage prefix added (if provided and present)
+   *   <li>Throws exception if none of the above are available
+   * </ol>
+   *
+   * @param catalogAndSchemaDao the catalog and schema DAOs
+   * @param fallbackStorageRoot supplier that provides an optional fallback storage root from
+   *                            server properties
+   * @return the storage location to use as root for child entity storage
+   * @throws BaseException with ErrorCode.FAILED_PRECONDITION if no storage root is available
+   */
+  public static NormalizedURL getManagedStorageLocation(
+      RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao,
+      Supplier<Optional<NormalizedURL>> fallbackStorageRoot) {
+    CatalogInfoDAO catalogInfoDAO = catalogAndSchemaDao.catalogInfoDAO();
+    SchemaInfoDAO schemaInfoDAO = catalogAndSchemaDao.schemaInfoDAO();
+    if (schemaInfoDAO.getStorageLocation() != null) {
+      return NormalizedURL.from(schemaInfoDAO.getStorageLocation());
+    } else if (catalogInfoDAO.getStorageLocation() != null) {
+      return NormalizedURL.from(catalogInfoDAO.getStorageLocation());
+    } else {
+      return fallbackStorageRoot
+          .get()
+          .map(fallback -> NormalizedURL.from(fallback + "/" + Constants.MANAGED_STORAGE_PREFIX))
+          .orElseThrow(
+              () ->
+                  new BaseException(
+                      ErrorCode.FAILED_PRECONDITION,
+                      "Neither catalog nor schema has managed location configured."));
+    }
+  }
+
+  private static NormalizedURL getManagedLocationForEntity(
+      NormalizedURL storageRoot, String prefix, UUID entityId) {
+    return NormalizedURL.from(
+        String.join("/", List.of(storageRoot.toString(), prefix, entityId.toString())));
+  }
+
+  public static NormalizedURL getManagedLocationForSchema(
+      NormalizedURL storageRoot, UUID schemaId) {
+    return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_SCHEMA_PREFIX, schemaId);
+  }
+
+  public static NormalizedURL getManagedLocationForCatalog(
+      NormalizedURL storageRoot, UUID catalogId) {
+    return getManagedLocationForEntity(storageRoot, MANAGED_STORAGE_CATALOG_PREFIX, catalogId);
+  }
+
+  // The following methods do not add a __unitystorage prefix because the storageRoot
+  // is expected to be the storageLocation of a catalog or schema, which already includes
+  // the __unitystorage prefix.
+
+  public static NormalizedURL getManagedLocationForTable(
+      NormalizedURL parentStorageLocation, UUID tableId) {
+    return getManagedLocationForEntity(parentStorageLocation, "tables", tableId);
+  }
+
+  public static NormalizedURL getManagedLocationForVolume(
+      NormalizedURL parentStorageLocation, UUID volumeId) {
+    return getManagedLocationForEntity(parentStorageLocation, "volumes", volumeId);
+  }
+
+  public static NormalizedURL getManagedLocationForModel(
+      NormalizedURL parentStorageLocation, UUID modelId) {
+    return getManagedLocationForEntity(parentStorageLocation, "models", modelId);
+  }
+
+  public static NormalizedURL getManagedLocationForModelVersion(
+      NormalizedURL parentModelStorageLocation, UUID modelVersionId) {
+    return getManagedLocationForEntity(parentModelStorageLocation, "versions", modelVersionId);
   }
 }

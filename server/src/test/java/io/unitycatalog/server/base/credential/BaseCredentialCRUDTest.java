@@ -2,6 +2,7 @@ package io.unitycatalog.server.base.credential;
 
 import static io.unitycatalog.server.utils.TestUtils.COMMENT;
 import static io.unitycatalog.server.utils.TestUtils.COMMENT2;
+import static io.unitycatalog.server.utils.TestUtils.TEST_AWS_MASTER_ROLE_ARN;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,7 +32,6 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
   private static final String NEW_ROLE_ARN = "arn:aws:iam::987654321098:role/new-role-name";
   private static final String EXTERNAL_LOCATION_NAME = "uc_testexternallocation";
   private static final String URL = "s3://unitycatalog-test";
-  private static final String S3_MASTER_ROLE_ARN = "arn:aws:iam::1234567:role/UCMasterRole-EXAMPLE";
   protected CredentialOperations credentialOperations;
   protected ExternalLocationOperations externalLocationOperations;
 
@@ -44,7 +44,7 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     serverProperties.setProperty(
-        ServerProperties.Property.AWS_MASTER_ROLE_ARN.getKey(), S3_MASTER_ROLE_ARN);
+        ServerProperties.Property.AWS_MASTER_ROLE_ARN.getKey(), TEST_AWS_MASTER_ROLE_ARN);
   }
 
   @BeforeEach
@@ -73,7 +73,7 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     assertThat(credentialInfo.getAwsIamRole().getExternalId()).isNotEmpty();
     assertDoesNotThrow(() -> UUID.fromString(credentialInfo.getAwsIamRole().getExternalId()));
     assertThat(credentialInfo.getAwsIamRole().getUnityCatalogIamArn())
-        .isEqualTo(S3_MASTER_ROLE_ARN);
+        .isEqualTo(TEST_AWS_MASTER_ROLE_ARN);
 
     // List storage credentials
     assertThat(credentialOperations.listCredentials(Optional.empty(), CredentialPurpose.STORAGE))
@@ -100,7 +100,7 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
     assertThat(updatedCredentialInfo.getAwsIamRole().getExternalId())
         .isNotEqualTo(credentialInfo.getAwsIamRole().getExternalId());
     assertThat(updatedCredentialInfo.getAwsIamRole().getUnityCatalogIamArn())
-        .isEqualTo(S3_MASTER_ROLE_ARN);
+        .isEqualTo(TEST_AWS_MASTER_ROLE_ARN);
 
     // Delete storage credential
     credentialOperations.deleteCredential(NEW_CREDENTIAL_NAME, Optional.empty());

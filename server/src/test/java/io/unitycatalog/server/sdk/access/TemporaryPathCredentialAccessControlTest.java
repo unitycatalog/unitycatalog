@@ -1,12 +1,16 @@
-package io.unitycatalog.server.sdk.tempcredential;
+package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.client.model.PathOperation.PATH_CREATE_TABLE;
 import static io.unitycatalog.client.model.PathOperation.PATH_READ;
 import static io.unitycatalog.client.model.PathOperation.PATH_READ_WRITE;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.TEST_AWS_MASTER_ROLE_ARN;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.api.CredentialsApi;
@@ -37,9 +41,10 @@ import io.unitycatalog.client.model.VolumeType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.sdk.access.SdkAccessControlBaseCRUDTest;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.aws.CredentialsGenerator;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.time.Instant;
 import java.util.List;
@@ -48,6 +53,7 @@ import lombok.Getter;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBaseCRUDTest {
@@ -69,23 +75,37 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
   private TemporaryCredentialsApi locationOwnerTempCredsApi;
   private ApiClient tableVolumeCreatorApiClient;
 
+  @Mock CloudCredentialVendor mockCloudCredentialVendor;
+
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-    // Configure S3 credentials with custom generator
-    // Note: access/secret keys are required even when using a credentials generator
-    serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
-    serverProperties.put("s3.accessKey.0", "accessKey0");
-    serverProperties.put("s3.secretKey.0", "secretKey0");
-    serverProperties.put("s3.sessionToken.0", "sessionToken0");
-    serverProperties.put("s3.credentialsGenerator.0", TestAwsCredentialsGenerator.class.getName());
+    serverProperties.put(
+        ServerProperties.Property.AWS_MASTER_ROLE_ARN.getKey(), TEST_AWS_MASTER_ROLE_ARN);
+  }
+
+  // This is access control test. So it doesn't care about the actual credential vending. Just
+  // mock with something that returns credential.
+  private void setupMockCloudCredentialVendor() {
+    // Mock function needs the credential of `server.model` package.
+    io.unitycatalog.server.model.TemporaryCredentials credential =
+        new io.unitycatalog.server.model.TemporaryCredentials()
+            .awsTempCredentials(
+                new io.unitycatalog.server.model.AwsCredentials()
+                    .accessKeyId("test-access-key-id")
+                    .secretAccessKey("test-secret-access-key")
+                    .sessionToken("test-session-token"))
+            .expirationTime(System.currentTimeMillis() + 6000);
+    mockCloudCredentialVendor = mock(CloudCredentialVendor.class);
+    doReturn(credential).when(mockCloudCredentialVendor).vendCredential(any());
+    cloudCredentialVendor = mockCloudCredentialVendor;
   }
 
   @SneakyThrows
   @BeforeEach
   @Override
   public void setUp() {
-    cloudCredentialVendor = null;
+    setupMockCloudCredentialVendor();
     super.setUp();
     CredentialsApi adminCredentialsApi = new CredentialsApi(TestUtils.createApiClient(adminConfig));
     adminTempCredsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(adminConfig));
@@ -402,7 +422,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
     assertThat(volumeInfo).isNotNull();
   }
 
-  public static class TestAwsCredentialsGenerator implements CredentialsGenerator {
+  public static class TestAwsAwsCredentialGenerator implements AwsCredentialGenerator {
     @Override
     public Credentials generate(CredentialContext ctx) {
       return Credentials.builder()
