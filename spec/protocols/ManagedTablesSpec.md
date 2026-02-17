@@ -574,15 +574,9 @@ commit_info | CommitInfo | Contains information about the new commit being regis
 &nbsp;&nbsp;commitInfo.file_modification_timestamp | int64 | Filesystem modification time in milliseconds since epoch. | required
 latest_published_version | int64 | Notifies UC that commits up to this version have been published. Constraint: At least one of `commit_info` or `latest_published_version` must be present. | optional
 metadata | Metadata | Delta metadata action if the commit changes table metadata. The posted metadata object is the desired final state, so all existing data that needs to be preserved must be included as well as the fields that changed. Any properties returned from Unity Catalog should be included. When to include: Schema changes, property updates, comment changes. Requires `commit_info`. | optional
-&nbsp;&nbsp;metadata.id | string | The internal table ID created by Delta. | required
-&nbsp;&nbsp;metadata.name | string | The table name. | optional
 &nbsp;&nbsp;metadata.description | string | The table comment. | optional
-&nbsp;&nbsp;metadata.provider | string | The format of the files, e.g. "parquet". | optional
-&nbsp;&nbsp;metadata.options | object | Format-specific options as key-value pairs. | optional
 &nbsp;&nbsp;metadata.schema | array of ColumnInfos | The table schema defined by an array of `ColumnInfo` objects. | optional
-&nbsp;&nbsp;metadata.partition_columns | array of strings | The partition columns. | optional
 &nbsp;&nbsp;metadata.properties | object | Table properties as key-value pairs. When updating, always includes all the required [properties](#required-table-features-and-properties-on-a-unity-catalog-managed-table). | optional
-&nbsp;&nbsp;metadata.created_time | int64 | Timestamp when metadata was created in milliseconds since epoch | optional
 uniform | Uniform | UniForm conversion information related to this Delta commit. | optional
 &nbsp;&nbsp;uniform.iceberg | Iceberg | Uniform Iceberg info. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;uniform.iceberg.metadata_location | string | Iceberg metadata location converted up to the Delta version. | required
@@ -633,13 +627,7 @@ uniform | Uniform | UniForm conversion information related to this Delta commit.
         "file_modification_timestamp": 1704067300000
       },
       "metadata": {
-        "id": "12345678-1234-5678-1234-567812345678",
-        "name": "my_table",
         "description": "Updated table description",
-        "format": {
-          "provider": "parquet",
-          "options": {}
-        },
         "schema": [
           {"name": "id", "type": "long", "nullable": false},
           {"name": "name", "type": "string", "nullable": true},
@@ -655,8 +643,7 @@ uniform | Uniform | UniForm conversion information related to this Delta commit.
          "io.unitycatalog.tableId": "abcdef12-3456-7890-abcd-ef1234567890",
          "delta.lastUpdateVersion": "0",
          "delta.lastCommitTimestamp": "1704067400000"
-       },
-       "created_time": 1804067300000
+       }
      }
     }
     ```
