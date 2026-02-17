@@ -1,8 +1,8 @@
 # Unity Catalog Managed Tables Specification
 
-> **Status**: Draft  
+> **Status**: Proposed  
 > **Version**: 0.1.0  
-> **Last Updated**: 2026-02-02
+> **Last Updated**: 2026-02-17
 
 ## Table of Contents
 
@@ -588,6 +588,7 @@ uniform | Uniform | UniForm conversion information related to this Delta commit.
 &nbsp;&nbsp;&nbsp;&nbsp;uniform.iceberg.metadata_location | string | Iceberg metadata location converted up to the Delta version. | required
 &nbsp;&nbsp;&nbsp;&nbsp;uniform.iceberg.converted_delta_version | int64 | The Delta version under conversion. | required
 &nbsp;&nbsp;&nbsp;&nbsp;uniform.iceberg.converted_delta_timestamp | string | Timestamp of the conversion in ISO 8601 timestamp which is 27 characters. | required
+&nbsp;&nbsp;&nbsp;&nbsp;uniform.iceberg.base_converted_delta_version | int64 | Optional Delta version used to incrementally convert Delta changes to Iceberg changes to produce the latest Iceberg metadata at the metadata_location. | optional
 
 #### Responses
 
