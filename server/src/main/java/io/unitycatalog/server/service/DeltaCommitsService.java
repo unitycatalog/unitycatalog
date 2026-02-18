@@ -8,12 +8,12 @@ import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
-import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.DeltaCommit;
 import io.unitycatalog.server.model.DeltaGetCommits;
 import io.unitycatalog.server.persist.DeltaCommitRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.utils.ServerProperties;
 import lombok.SneakyThrows;
 
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
@@ -28,8 +28,11 @@ public class DeltaCommitsService extends AuthorizedService {
   private final DeltaCommitRepository deltaCommitRepository;
 
   @SneakyThrows
-  public DeltaCommitsService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories);
+  public DeltaCommitsService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
     this.deltaCommitRepository = repositories.getDeltaCommitRepository();
   }
 
@@ -41,7 +44,7 @@ public class DeltaCommitsService extends AuthorizedService {
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse postCommit(
-      @AuthorizeResourceKeys({@AuthorizeResourceKey(value = TABLE, key = "table_id")})
+      @AuthorizeResourceKey(value = TABLE, key = "table_id")
       DeltaCommit commit) {
     deltaCommitRepository.postCommit(commit);
     return HttpResponse.of(HttpStatus.OK);
@@ -55,7 +58,7 @@ public class DeltaCommitsService extends AuthorizedService {
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getCommits(
-    @AuthorizeResourceKeys({@AuthorizeResourceKey(value = TABLE, key = "table_id")})
+    @AuthorizeResourceKey(value = TABLE, key = "table_id")
     DeltaGetCommits rpc) {
     return HttpResponse.ofJson(deltaCommitRepository.getCommits(rpc));
   }

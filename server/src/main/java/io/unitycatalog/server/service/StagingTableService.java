@@ -15,6 +15,7 @@ import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
+import io.unitycatalog.server.utils.ServerProperties;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
@@ -26,8 +27,11 @@ public class StagingTableService extends AuthorizedService {
   private final StagingTableRepository stagingTableRepository;
   private final SchemaRepository schemaRepository;
 
-  public StagingTableService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories);
+  public StagingTableService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
     this.stagingTableRepository = repositories.getStagingTableRepository();
     this.schemaRepository = repositories.getSchemaRepository();
   }
