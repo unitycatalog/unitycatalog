@@ -248,7 +248,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   public void testBasicCoordinatedCommitsCRUD() throws ApiException {
     // Get commits on a table with no commits
     verifyDeltaCommits(
-        /* expectedLatestTableVersion= */ -1);
+        /* expectedLatestTableVersion= */ 0);
 
     DeltaCommit commit1 =
         createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
