@@ -112,7 +112,7 @@ def start_server():
         success = False
         while i < 60 and not success:
             try:
-                response = requests.head("http://localhost:8081", timeout=60)
+                response = requests.head("http://localhost:8080", timeout=60)
                 if response.status_code == 200:
                     print("Server is running.")
                     success = True

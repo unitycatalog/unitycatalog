@@ -365,9 +365,6 @@ lazy val server = (project in file("server"))
       "org.apache.iceberg" % "iceberg-gcp" % "1.9.2",
       "software.amazon.awssdk" % "s3" % "2.24.0",
       "software.amazon.awssdk" % "sts" % "2.24.0",
-      "io.vertx" % "vertx-core" % "4.3.5",
-      "io.vertx" % "vertx-web" % "4.3.5",
-      "io.vertx" % "vertx-web-client" % "4.3.5",
 
       // Hadoop dependencies for ExternalLocationUtils
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
