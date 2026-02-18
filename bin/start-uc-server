@@ -6,6 +6,14 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 TARBALL_JAR_DIR="$ROOT_DIR/jars"
 SERVER_CLASS_FILE="$ROOT_DIR/server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
 
+# Use DEBUG env var to turn remote Java debugging (JDWP) on
+# DEBUG is the port that the JDWP agent listens to
+DEBUG_CMD=""
+if [[ -n "$DEBUG" ]]; then
+  echo "Remote Java debugging enabled on port $DEBUG"
+  DEBUG_CMD="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:$DEBUG"
+fi
+
 # This function generates the unity catalog jars using sbt
 generate_jar() {
   local GENERATE_JAR_COMMAND="$ROOT_DIR/build/sbt -info clean package"
@@ -15,7 +23,7 @@ generate_jar() {
 
 # This function starts the unity catalog server
 run_uc_server_java_command() {
-  SERVER_JAVA_COMMAND="java -cp $(cat "$1") io.unitycatalog.server.UnityCatalogServer"
+  SERVER_JAVA_COMMAND="java $DEBUG_CMD -cp $(cat "$1") io.unitycatalog.server.UnityCatalogServer"
   shift
   $SERVER_JAVA_COMMAND "$@" || exit
 }
@@ -23,10 +31,11 @@ run_uc_server_java_command() {
 # This function runs the server using the source code
 run_in_source_code() {
   SERVER_TARGET_DIR="$ROOT_DIR/server/target"
-  SERVER_JAR=$(find "$SERVER_TARGET_DIR" -name "unitycatalog-server*.jar" | head -n 1)
+  SERVER_VERSION=$(< "$ROOT_DIR/version.sbt" cut -d '"' -f2)
+  SERVER_JAR="$SERVER_TARGET_DIR/unitycatalog-server-$SERVER_VERSION.jar"
 
   if [ -z "$SERVER_JAR" ]; then
-      echo "Server JAR not found starting with 'unitycatalog-server*' in the target directory '$SERVER_TARGET_DIR'."
+      echo "'$SERVER_JAR' not found in the target directory '$SERVER_TARGET_DIR'."
       generate_jar
   fi
 
