@@ -44,6 +44,8 @@ jobs:
         run: |
           pip install mlflow
           pip install pytest
+      - name: Build and publish Delta Lake locally
+        run: ./dev/build-delta-locally.sh
       - name: Start Unity Catalog Server
         run: |
           ai/dev/start_unitycatalog.sh

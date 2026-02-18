@@ -33,6 +33,9 @@ jobs:
         pip install requests
         pip install duckdb==1.0.0
 
+    - name: Build and publish Delta Lake locally
+      run: ./dev/build-delta-locally.sh
+
     - name: Test Tutorial
       run: |
         source venv/bin/activate

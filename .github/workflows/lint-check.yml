@@ -40,6 +40,9 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Build and publish Delta Lake locally
+        run: ./dev/build-delta-locally.sh
+
       - name: Run Java format check
         run: |
           build/sbt javafmtCheck

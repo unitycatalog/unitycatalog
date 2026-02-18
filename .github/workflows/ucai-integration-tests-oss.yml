@@ -44,6 +44,9 @@ jobs:
           else
               pip install 'pydantic<3,>=2'
           fi
+      - name: Build and publish Delta Lake locally
+        working-directory: .
+        run: ./dev/build-delta-locally.sh
       - name: Install Unity Catalog Python Libraries
         run: |
           dev/install_client.sh
