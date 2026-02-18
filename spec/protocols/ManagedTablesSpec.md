@@ -7,7 +7,7 @@
 ## Table of Contents
 
 - [Introduction](#introduction)
-- [Terminologies](#terminologies)
+- [Terminology](#terminology)
 - [APIs](#apis)
   - [Create a Staging Table](#create-a-staging-table)
   - [Create a Table](#create-a-table)
@@ -18,7 +18,7 @@
 ---
 
 ## Introduction
-This specification defines how Unity Catalog will serve as the managing catalog for [Catalog-Managed Tables](https://github.com/delta-io/delta/blob/master/protocol_rfcs/catalog-managed.md).
+This specification defines how Unity Catalog will serve as the managing catalog for [Catalog-Managed Tables](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#catalog-managed-tables).
 Catalog-Managed Tables is a new Delta table feature which makes the catalog the source of truth for commits to a table.
 It defines a managing catalog to perform commits according to the Catalog-Managed Tables specification.
 
@@ -29,7 +29,7 @@ This specification defines the APIs to enable the following operations between t
 - Running maintenance operations.
 
 ### What is a Unity Catalog Managed Table?
-A Unity Catalog Managed table is a table whose data location and lifecycle (including deletion of files when dropped)
+A Unity Catalog managed table is a table whose data location and lifecycle (including deletion of files when dropped)
 are fully controlled by the Unity Catalog.
 It is different from external tables, where the catalog only stores metadata pointing to data in an externally managed
 location and does not delete the underlying files when the table is dropped.
@@ -44,7 +44,7 @@ Storage location | Assigned | User-specified
 
 
 ## Terminology
-This section recaps key terminologies used in the catalog-managed tables specification:
+This section recaps key terminologies used in the Catalog-Managed Tables specification:
 - **Commit**: A set of actions that moves a Delta table from version `v−1` to `v`, stored either as a Delta log file or inline in the catalog.
 - **Staged commit**: A commit written to `_delta_log/_staged_commits/<v>.<uuid>.json`, not yet guaranteed to be accepted; the catalog decides whether to ratify it.
 - **Ratified commit**: A proposed commit that the catalog has chosen as the winner for version `v`; it is part of the official history, whether or not it is already published.
@@ -53,14 +53,14 @@ This section recaps key terminologies used in the catalog-managed tables specifi
 For further details, refer to the [Catalog-Managed Tables](https://github.com/delta-io/delta/blob/master/protocol_rfcs/catalog-managed.md).
 
 ## APIs
-A Unity Catalog Managed table needs to be registered and used according to the following specification:
-- **Create a table**: A Unity Catalog Managed table needs to first be created.
-  - The client sends a `POST` request to the [`createStagingTable`](#create-a-staging-table) API to initiate the creation of a new Managed table in Unity Catalog.
+A Unity Catalog managed table needs to be registered and used according to the following specification:
+- **Create a table**: A Unity Catalog managed table needs to first be created.
+  - The client sends a `POST` request to the [`createStagingTable`](#create-a-staging-table) API to initiate the creation of a new managed table in Unity Catalog.
   - The server upon receiving the request to create a staging table, allocates a unique table ID and a path for the table.
   - The client writes the first commit `0.json` under the `_delta_log` in the assigned table path. The `0.json` file should include all the table features and properties required by this specification. See the full list in [Required Table Features and Properties on a Unity Catalog Managed Table](#required-table-features-and-properties-on-a-unity-catalog-managed-table). Then the client finishes the table creation by sending a `POST` request to the [`createTable`](#create-a-table) API.
     - For CTAS (Create Table As Select), the `0.json` file would also contain `AddFile` actions.
-    - For REPLACE, do not drop and recreate the table. Instead, add a new commit that updates the table metadata and removes all existing data files. This approach ensures atomicity, preserves the table ID and history. The replaced table remains to be a Unity Catalog Managed Table.
-  - When a create table request is received, the server first confirms the existence of a table with the specified table ID at the provided location. If the table has the Catalog Managed feature enabled, the server then validates that all necessary table features and properties are correctly configured. Finally, the server registers the table as created at commit version 0.
+    - For REPLACE, do not drop and recreate the table. Instead, add a new commit that updates the table metadata and removes all existing data files. This approach ensures atomicity, preserves the table ID and history. The replaced table remains to be a Unity Catalog managed table.
+  - When a create table request is received, the server first confirms the existence of a table with the specified table ID at the provided location. If the table has the Catalog-Managed feature enabled, the server then validates that all necessary table features and properties are correctly configured. Finally, the server registers the table as created at commit version `0`.
 - **Get the table**: After the table is created successfully, the client can use the three-part name (`catalog_name.schema_name.table_name`) to retrieve the table entry.
   - The client sends a `GET` call to the [`getTable`](#get-a-table) API by providing the fully qualified three-part name.
   - The server then responds with detailed information of the table entry, including the table ID, path etc.
@@ -72,7 +72,7 @@ A Unity Catalog Managed table needs to be registered and used according to the f
 - **Write to the table**:
   - The client should first write a staged commit file and then propose to the server to accept this commit by sending a `POST` to the [`commit`](#write-a-commit) API. If the commit contains table protocol or metadata changes, it must insert them as part of the `commit` request. This POST request could also contain an optional field `uniform/iceberg` for UniForm/Managed Iceberg tables.
   - The server verifies the version to commit equals to the last ratified commit version + 1 and accepts the commit. If the request contains the field `uniform/iceberg`, the field will be persisted as part of the table’s latest state in the catalog.
-  - After the commit is successful, the client must publish the ratified commit by copying the committed file to the `_delta_log` folder. After all the commits till this version has been published, the client should inform the server the commit has been published by sending another backfill commit, as a `POST` request to the `commit` API.
+  - After the commit is successful, the client must publish the ratified commit by copying the committed file to the `_delta_log` folder. After all commits up to this version have been published, the client should notify the server by sending a backfill commit via a `POST` request to the `commit` API.
   - The server verifies that the version is equal or less than the last ratified version and optionally removes the entries for the ratified commits.
 - **Metrics and running maintenance operations**: The client should send [metrics](#write-metrics) after each successful commit. These metrics may be used for Unity Catalog to schedule and manage maintenance operations. Unity Catalog enforces a maintenance policy for catalog‑managed tables. By default, clients are only allowed to run checkpoints, log compaction, and version checksum. All other maintenance operations, such as metadata cleanup, OPTIMIZE, VACUUM, and REORG, are disallowed.
 
@@ -86,7 +86,7 @@ POST .../staging-tables
 
 Proposes a staged table for Unity Catalog to allocate a table ID and path for the table.
 Once created, the table ID and path are not mutable.
-A staged table is not yet a real table, as a result, it cannot be used with table APIs such as the `GET tables` API.
+A staged table is not yet a real table, as a result, it cannot be used with table APIs such as the `getTable` API.
 
 #### Request body
 
@@ -140,7 +140,7 @@ PERMISSION_DENIED | 403 | User lacks necessary permissions (CREATE on schema, US
 POST .../tables
 ```
 
-Creates a new Unity Catalog Managed table in the specified catalog and schema. When creating the table, the `0.json` should contain all the following table features and properties.
+Creates a new Unity Catalog managed table in the specified catalog and schema. When creating the table, the `0.json` should contain all the following table features and properties.
 
 #### Required Table Features and Properties on a Unity Catalog Managed Table
 
@@ -173,20 +173,20 @@ Field Name | Data Type | Description | Optional/Required
 name | string | Name of the staging table, relative to parent schema. | required
 catalog_name | string | Name of the parent catalog where the staging table will be created. | required
 schema_name | string | Name of the parent schema relative to its parent catalog. | required
-table_type | string | The type of the table. For Unity Catalog Managed Tables. Must be set to “MANAGED”. | required
-data_source_format | string | Specify the format of the table.<br>For Unity Catalog Managed Tables, must be set to “DELTA” for delta tables. | required
-columns | array of ColumnInfos | The array of ColumnInfo definitions of the table's columns. | optional
+table_type | string | The type of the table. For Unity Catalog managed tables. Must be set to “MANAGED”. | required
+data_source_format | string | Specify the format of the table.<br>For Unity Catalog managed tables, must be set to “DELTA” for delta tables. | required
+columns | array of ColumnInfo | The array of `ColumnInfo` definitions of the table's columns. | optional
 &nbsp;&nbsp;columnInfo.name | string | Name of Column. | optional
 &nbsp;&nbsp;columnInfo.type_text | string | Full data type specification as SQL/catalogString text. | optional
 &nbsp;&nbsp;columnInfo.type_json | string | Full data type specification, JSON-serialized. | optional
 &nbsp;&nbsp;columnInfo.type_name | string | The type of the column. One of BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, CHAR, STRING, BINARY, INTERVAL, ARRAY, STRUCT, MAP, DECIMAL, etc. | optional
-&nbsp;&nbsp;columnInfo.type_precision | int32 | Digits of precision; required for DecimalTypes | optional
+&nbsp;&nbsp;columnInfo.type_precision | int32 | Digits of precision; required for DecimalTypes. | optional
 &nbsp;&nbsp;columnInfo.type_scale | int32 | Digits to the right of decimal; Required for DecimalTypes. | optional
 &nbsp;&nbsp;columnInfo.type_internal_type | string | Format of IntervalType. | optional
 &nbsp;&nbsp;columnInfo.position | int32 | Ordinal position of column (starting at position 0). | optional
 &nbsp;&nbsp;columnInfo.nullable | boolean | Whether the field may be Null. Default to true. | optional
 &nbsp;&nbsp;columnInfo.partition_index | int32 | Partition index for column. | optional
-storage_location | string | For Unity Catalog Managed Tables, this must be the staging_location of staging table. | required
+storage_location | string | For Unity Catalog managed tables, this must be the staging_location of staging table. | required
 properties | object | Table properties as key-value pairs. | optional
 
 #### Responses
@@ -339,20 +339,20 @@ Field Name | Data Type | Description | Optional/Required
 name | string | Name of the staging table, relative to parent schema. | required
 catalog_name | string | Name of the parent catalog where the staging table will be created. | required
 schema_name | string | Name of the parent schema relative to its parent catalog. | required
-table_type | string | The type of the table.<br>For Unity Catalog Managed Tables, set the value to be “MANAGED”. | required
-data_source_format | string | Specify the format of the table.<br>For Unity Catalog Managed Tables, set the value to be “DELTA” for delta tables. | required
-columns | array of ColumnInfos | The array of ColumnInfo definitions of the table's columns. | optional
+table_type | string | The type of the table.<br>For Unity Catalog managed tables, set the value to be “MANAGED”. | required
+data_source_format | string | Specify the format of the table.<br>For Unity Catalog managed tables, set the value to be “DELTA” for delta tables. | required
+columns | array of ColumnInfo | The array of `ColumnInfo` definitions of the table's columns. | optional
 &nbsp;&nbsp;columnInfo.name | string | Name of the column. | optional
 &nbsp;&nbsp;columnInfo.type_text | string | Full data type specification as SQL/catalogString text. | optional
 &nbsp;&nbsp;columnInfo.type_json | string | Full data type specification, JSON-serialized. | optional
 &nbsp;&nbsp;columnInfo.type_name | string | The type of the column. One of BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, CHAR, STRING, BINARY, INTERVAL, ARRAY, STRUCT, MAP, DECIMAL, etc. | optional
-&nbsp;&nbsp;columnInfo.type_precision | int32 | Digits of precision; required for DecimalTypes | optional
+&nbsp;&nbsp;columnInfo.type_precision | int32 | Digits of precision; required for DecimalTypes. | optional
 &nbsp;&nbsp;columnInfo.type_scale | int32 | Digits to the right of decimal; Required for DecimalTypes. | optional
 &nbsp;&nbsp;columnInfo.type_internal_type | string | Format of IntervalType. | optional
 &nbsp;&nbsp;columnInfo.position | int32 | Ordinal position of column (starting at position 0). | optional
 &nbsp;&nbsp;columnInfo.nullable | boolean | Whether the field may be Null. Default to true. | optional
 &nbsp;&nbsp;columnInfo.partition_index | int32 | Partition index for column. | optional
-storage_location | string | Storage root URL for table | required
+storage_location | string | Storage root URL for table. | required
 properties | object | Table properties as key-value pairs. | optional
 owner | string | Username of current owner of table. | required
 created_at | int64 | Time at which this table was created, in epoch milliseconds. | required
@@ -438,8 +438,8 @@ PERMISSION_DENIED | 403 | User lacks necessary permissions (SELECT on the table,
 ```
 GET .../delta/commits
 ```
-Retrieve all ratified commits from Unity Catalog.
-Note: Server implementations may choose to paginate responses. A paginated response is indicated by the highest returned version in the commits array being less than `latest_table_version`. In this case, the client should send another GET request with an adjusted `start_version` to retrieve any remaining commits.
+Retrieves all ratified commits from Unity Catalog.  
+Note: Server implementations may choose to paginate responses. A paginated response is indicated by the highest returned version in the commits array being less than `latest_table_version`. In this case, the client should send another request with an adjusted `start_version` to retrieve any remaining commits.
 
 #### Request body
 
@@ -462,7 +462,7 @@ commits | array of CommitInfo | List of ratified commit files tracked in Unity C
 &nbsp;&nbsp;commitInfo.file_name | string | Commit filename. | required
 &nbsp;&nbsp;commitInfo.file_size | int64 | Size of the commit file in bytes. | required
 &nbsp;&nbsp;commitInfo.file_modification_timestamp | int64 | Filesystem modification time in milliseconds since epoch. | required
-latest_table_version | int64 | The latest version tracked by UC for this table. This is the absolute latest version, regardless of `end_version` parameter. Clients can use this to know if they have all commits and cannot load a table version beyond this. 0 is returned for a newly created managed table before any commit is posted. -1 is returned if Unity Catalog does not manage this table. | required
+latest_table_version | int64 | The latest version tracked by Unity Catalog for this table. This is the absolute latest version, regardless of `end_version` parameter. Clients can use this to know if they have all commits and cannot load a table version beyond this. 0 is returned for a newly created managed table before any commit is posted. -1 is returned if Unity Catalog does not manage this table. | required
 
 #### Request-Response Samples
 
@@ -548,7 +548,7 @@ Error Code | HTTP Status | Description
 -|-|-
 TABLE_DOES_NOT_EXIST | 404 | The specified table doesn't exist.<br>The client should check the spelling of the table or create the table first.
 PERMISSION_DENIED | 403 | User lacks necessary permissions (SELECT on table).<br>The client should check with their Unity Catalog Admin to grant them the necessary rights to query commits.
-INVALID_PARAMETER_VALUE | 400 | Server side check failed to get commits for Unity Catalog Managed Tables.<br>The client has provided wrong inputs to the server. This could include but not limited to the following errors: (1) missing required fields, (2) provided fields are invalid such as the start version is negative, the start version is greater than the end version, etc.
+INVALID_PARAMETER_VALUE | 400 | Server side check failed to get commits for Unity Catalog managed tables.<br>The client has provided wrong inputs to the server. This could include but not limited to the following errors: (1) missing required fields, (2) provided fields are invalid such as the start version is negative, the start version is greater than the end version, etc.
 
 
 
@@ -572,11 +572,13 @@ commit_info | CommitInfo | Contains information about the new commit being regis
 &nbsp;&nbsp;commitInfo.file_name | string | UUID-based commit filename. | required
 &nbsp;&nbsp;commitInfo.file_size | int64 | Size of the commit file in bytes. | required
 &nbsp;&nbsp;commitInfo.file_modification_timestamp | int64 | Filesystem modification time in milliseconds since epoch. | required
-latest_published_version | int64 | Notifies UC that commits up to this version have been published. Constraint: At least one of `commit_info` or `latest_published_version` must be present. | optional
-metadata | Metadata | Delta metadata action if the commit changes table metadata. The posted metadata object is the desired final state, so all existing data that needs to be preserved must be included as well as the fields that changed. Any properties returned from Unity Catalog should be included. When to include: Schema changes, property updates, comment changes. Requires `commit_info`. | optional
+latest_published_version | int64 | Notifies Unity Catalog that commits up to this version have been published. Constraint: At least one of `commit_info` or `latest_published_version` must be present. | optional
+metadata | Metadata | Delta metadata action if the commit changes table metadata. The posted `Metadata` object is the desired final state, so all existing data that needs to be preserved must be included as well as the fields that changed. Any properties returned from Unity Catalog should be included. When to include: Schema changes, property updates, comment changes. Requires `commit_info`. | optional
 &nbsp;&nbsp;metadata.description | string | The table comment. | optional
-&nbsp;&nbsp;metadata.schema | array of ColumnInfos | The table schema defined by an array of `ColumnInfo` objects. | optional
-&nbsp;&nbsp;metadata.properties | object | Table properties as key-value pairs. When updating, always includes all the required [properties](#required-table-features-and-properties-on-a-unity-catalog-managed-table). | optional
+&nbsp;&nbsp;metadata.schema | Columns | The table schema defined by a `Columns` object. | optional
+&nbsp;&nbsp;&nbsp;&nbsp;metadata.schema.columns | array of ColumnInfo | The table schema defined by an array of `ColumnInfo` objects. | optional
+&nbsp;&nbsp;metadata.properties | Properties | Table properties defined by an `Properties` object. | optional
+&nbsp;&nbsp;&nbsp;&nbsp;metadata.properties.properties | object | Table properties as key-value pairs. When updating, always includes all the required [properties](#required-table-features-and-properties-on-a-unity-catalog-managed-table). | optional
 uniform | Uniform | UniForm conversion information related to this Delta commit. | optional
 &nbsp;&nbsp;uniform.iceberg | Iceberg | Uniform Iceberg info. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;uniform.iceberg.metadata_location | string | Iceberg metadata location converted up to the Delta version. | required
@@ -612,45 +614,49 @@ uniform | Uniform | UniForm conversion information related to this Delta commit.
     {}
     ```
 
-2. Propose a new staged commit with a Metadata change
+   2. Propose a new staged commit with a metadata change
 
-    Request:
-    ```json
-    {
-      "table_id": "abcdef12-3456-7890-abcd-ef1234567890",
-      "table_uri": "s3://my-bucket/main/default/my_table",
-      "commit_info": {
-        "version": 43,
-        "timestamp": 1704067300000,
-        "file_name": "v.uuid1.json",
-        "file_size": 3072,
-        "file_modification_timestamp": 1704067300000
-      },
-      "metadata": {
-        "description": "Updated table description",
-        "schema": [
-          {"name": "id", "type": "long", "nullable": false},
-          {"name": "name", "type": "string", "nullable": true},
-          {"name": "created_at", "type": "timestamp", "nullable": false}
-        ],
-       "properties": {
-         "delta.minReaderVersion": "3",
-         "delta.minWriterVersion": "7",
-         "delta.enableInCommitTimestamps": "true",
-         "delta.feature.inCommitTimestamp": "supported",
-         "delta.feature.vacuumProtocolCheck": "supported",
-         "delta.feature.catalogManaged": "supported",
-         "io.unitycatalog.tableId": "abcdef12-3456-7890-abcd-ef1234567890",
-         "delta.lastUpdateVersion": "0",
-         "delta.lastCommitTimestamp": "1704067400000"
-       }
-     }
-    }
-    ```
-    Response: 200
-    ```json
-    {}
-    ```
+       Request:
+       ```json
+       {
+         "table_id": "abcdef12-3456-7890-abcd-ef1234567890",
+         "table_uri": "s3://my-bucket/main/default/my_table",
+         "commit_info": {
+           "version": 43,
+           "timestamp": 1704067300000,
+           "file_name": "v.uuid1.json",
+           "file_size": 3072,
+           "file_modification_timestamp": 1704067300000
+         },
+         "metadata": {
+           "description": "Updated table description",
+           "schema": {
+             "columns":[
+               {"name": "id", "type_text": "long", "nullable": false},
+               {"name": "name", "type_text": "string", "nullable": true},
+               {"name": "created_at", "type_text": "timestamp", "nullable": false}
+             ]
+           },
+           "properties": {
+             "properties": {
+               "delta.minReaderVersion": "3",
+               "delta.minWriterVersion": "7",
+               "delta.enableInCommitTimestamps": "true",
+               "delta.feature.inCommitTimestamp": "supported",
+               "delta.feature.vacuumProtocolCheck": "supported",
+               "delta.feature.catalogManaged": "supported",
+               "io.unitycatalog.tableId": "abcdef12-3456-7890-abcd-ef1234567890",
+               "delta.lastUpdateVersion": "0",
+               "delta.lastCommitTimestamp": "1704067400000"
+             }
+           }
+         }
+      }
+       ```
+       Response: 200
+       ```json
+       {}
+       ```
 
 3. Update the latest published version
 
@@ -704,7 +710,7 @@ Error Code | HTTP Status | Description
 -|-|-
 TABLE_DOES_NOT_EXIST | 404 | The specified table doesn't exist.<br>The client should check if the table ID is correct for this table.
 PERMISSION_DENIED | 403 | Insufficient permissions (MODIFY on table).<br>The client should check with their Unity Catalog Admin to grant them the necessary rights to write commits.
-INVALID_PARAMETER_VALUE | 400 | Server side check failed to write commits to Unity Catalog Managed Tables.<br>The client has provided wrong inputs to the server. This could include but not limited to the following errors: (1) missing required fields, (2) provided fields are invalid, such as version is not positive, timestamp is not positive, file name is missing, file size is not positive, file modification time is not positive, (3) commit version is not exactly `last_version + 1`, (4) last published version > current table version, etc.
+INVALID_PARAMETER_VALUE | 400 | Server side check failed to write commits to Unity Catalog managed tables.<br>The client has provided wrong inputs to the server. This could include but not limited to the following errors: (1) missing required fields, (2) provided fields are invalid, such as version is not positive, timestamp is not positive, file name is missing, file size is not positive, file modification time is not positive, (3) commit version is not exactly `last_version + 1`, (4) last published version > current table version, etc.
 ALREADY_EXISTS | 409 | Commit version already exists (concurrent write).<br>The client should follow the Delta protocol to rebuild the snapshot and retry the commit with a new version.
 
 
@@ -715,7 +721,7 @@ ALREADY_EXISTS | 409 | Commit version already exists (concurrent write).<br>The 
 POST .../delta/metrics
 ```
 
-Publish metrics information for maintenance operations provided by the Unity Catalog.
+Publishes metrics information for maintenance operations provided by the Unity Catalog.
 
 #### Request body
 
@@ -786,7 +792,7 @@ Error Code | HTTP Status | Description
 -|-|-
 TABLE_DOES_NOT_EXIST | 404 | The specified table doesn't exist.<br>The client should check if the table ID is correct for this table.
 PERMISSION_DENIED | 403 | Insufficient permissions (SELECT on table).<br>The client should check with their Unity Catalog Admin to grant them the necessary rights to publish metrics.
-INVALID_PARAMETER_VALUE | 400 | Server side check failed to post metrics for Unity Catalog Managed Tables.<br>The client has provided wrong inputs to the server. This could include but not limited to the following errors:(1) missing required fields, (2) provided fields are invalid such as non-positive numbers, etc.
+INVALID_PARAMETER_VALUE | 400 | Server side check failed to post metrics for Unity Catalog managed tables.<br>The client has provided wrong inputs to the server. This could include but not limited to the following errors:(1) missing required fields, (2) provided fields are invalid such as non-positive numbers, etc.
 
 ## API Reference
 
