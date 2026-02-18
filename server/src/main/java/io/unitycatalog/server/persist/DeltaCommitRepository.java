@@ -140,7 +140,7 @@ public class DeltaCommitRepository {
    * removed from the database. If the latest commit is marked as backfilled, this method returns an
    * empty commit list but still returns the correct latestTableVersion.
    *
-   * <p><b>Empty table behavior:</b> If the table has no commits yet, returns latestTableVersion=-1
+   * <p><b>Empty table behavior:</b> If the table has no commits yet, returns latestTableVersion=0
    * with an empty commit list.
    *
    * <p>The returned commits are ordered by version in descending order (newest first).
@@ -170,9 +170,9 @@ public class DeltaCommitRepository {
           MAX_NUM_COMMITS_PER_TABLE);
     }
     if (commitCount == 0) {
-      // No commit exist yet. Not even any backfilled one. That means the table has never sent any
-      // commit coordinated by UC.
-      return new DeltaGetCommitsResponse().latestTableVersion(-1L);
+      // Table is validated as a managed Delta table. UC is the source of truth for
+      // managed tables, so a newly created table with no commits is at version 0.
+      return new DeltaGetCommitsResponse().latestTableVersion(0L);
     }
 
     // In case there's only one commit in database, firstCommitDAO and lastCommitDAO will be the
