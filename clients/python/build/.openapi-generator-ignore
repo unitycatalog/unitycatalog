@@ -6,6 +6,14 @@ README.md
 pyproject.toml
 setup.py
 
+## Do not generate irrelevant files
+requirements.txt
+test-requirements.txt
+tox.ini 
+.gitignore
+.gitlab-ci.yml
+.travis.yml
+
 ## Do not generate the root __init__.py file for shared namespace packages
 
 unitycatalog/__init__.py
