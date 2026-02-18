@@ -1,0 +1,51 @@
+{
+  "name": "unitycatalog-docs",
+  "private": true,
+  "type": "module",
+  "description": "",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "prepare": "husky",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "lint-staged": {
+    "**/*.{js,ts,tsx}": [
+      "eslint --fix"
+    ],
+    "**/*": "prettier --write --ignore-unknown"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@astrojs/check": "^0.9.6",
+    "@astrojs/starlight": "^0.36.3",
+    "astro": "^5.16.1",
+    "sharp": "^0.34.5",
+    "starlight-plausible": "^0.1.0",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@typescript-eslint/parser": "^8.48.0",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-astro": "^1.5.0",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "globals": "^16.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.6.2",
+    "prettier-plugin-astro": "^0.14.1",
+    "typescript-eslint": "^8.48.0"
+  },
+  "packageManager": "npm@11.6.4+sha512.1118cab46a05a50aee6bff5b1b4fa1df18afff89d57465620a3518035026955db87c5bdf9d207b07b7487d99f2490d450cb774655ad63ec2cba7bf1d0ad25d45"
+}
