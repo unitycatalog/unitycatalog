@@ -1,7 +1,7 @@
 # Unity Catalog Roadmap
 
 This document outlines the roadmap for the Unity Catalog open source project. As always,
-features may move in/out of milestones pending available resources and priorities.
+features may move in/out of milestones pending available resources, priorities, and community discussions.
 
 ## 0.5 Release priorities
 
