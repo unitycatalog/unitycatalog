@@ -46,7 +46,7 @@ public class ApiClientFactory {
     }
   }
 
-  private static String getDeltaVersion() {
+  static String getDeltaVersion() {
     // Try io.delta.Version.getVersion() first (preferred method)
     try {
       Class<?> versionClass = Class.forName("io.delta.Version");

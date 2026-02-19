@@ -3,7 +3,7 @@ name: Build and Push Docker Images - unitycatalog
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
     branches:
       - main
     paths:
@@ -12,16 +12,57 @@ on:
       - examples/**
       - server/**
       - api/**
-      - clients/python/**
+      - clients/**
       - version.sbt
       - build.sbt
+      - Dockerfile
+  pull_request:
+    branches:
+      - main
+    paths:
+      - build/**
+      - project/**
+      - examples/**
+      - server/**
+      - api/**
+      - clients/**
+      - version.sbt
+      - build.sbt
+      - Dockerfile
   workflow_dispatch: {}
 
 env:
   IMAGE: unitycatalog/unitycatalog
 
 jobs:
+  docker-cli-test:
+    name: Docker CLI Sanity Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: docker build -t unitycatalog-test:local .
+
+      - name: Start Container
+        run: docker run -d --name unitycatalog-test-container unitycatalog-test:local
+
+      - name: Wait for Container to be Ready
+        run: sleep 5
+
+      - name: Test CLI Command
+        run: docker exec unitycatalog-test-container ./bin/uc --help
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker stop unitycatalog-test-container || true
+          docker rm unitycatalog-test-container || true
+
   build-and-push:
+    needs: docker-cli-test
     runs-on: ubuntu-latest
 
     steps:
@@ -36,7 +77,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
         # Will generate tags for the image
-        # For ref/tags/*: latest, <tag> 
+        # For ref/tags/*: latest, <tag>
         # For refs/heads/main: main, main-<short-sha>
       - name: Generate Metadata and Tags
         id: meta
