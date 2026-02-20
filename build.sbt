@@ -23,7 +23,7 @@ lazy val scala213 = "2.13.16"
 
 lazy val deltaVersion = "4.0.1"
 lazy val sparkVersion = "4.0.0"
-lazy val hadoopVersion = "3.4.0"
+lazy val hadoopVersion = "3.4.2"
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
