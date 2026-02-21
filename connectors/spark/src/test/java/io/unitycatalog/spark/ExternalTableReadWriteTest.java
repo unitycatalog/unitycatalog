@@ -91,6 +91,12 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
               options.setAsSelect(1, "a");
             }
 
+            // CTAS is only supported for Delta format.
+            if (withCtas && !testingDelta() && !withExistingTable) {
+              assertThatThrownBy(() -> setupTable(options));
+              continue;
+            }
+
             String fullTableName;
             if (withExistingTable) {
               fullTableName = setupWithPathTable(options);

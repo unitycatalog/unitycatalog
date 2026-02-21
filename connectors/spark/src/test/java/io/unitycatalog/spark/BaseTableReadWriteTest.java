@@ -245,7 +245,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             }
 
             // TODO: Enable REPLACE TABLE once it is supported.
-            if (replaceTable) {
+            // CTAS is only supported for Delta format.
+            if (replaceTable || (withCtas && !testingDelta())) {
               assertThatThrownBy(() -> setupTable(options));
               continue;
             }
