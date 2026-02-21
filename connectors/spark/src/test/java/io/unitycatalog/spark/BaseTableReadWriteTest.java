@@ -244,11 +244,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
               options.setAsSelect(1, "a");
             }
 
-            // TODO: Enable CTAS and REPLACE TABLE once upgraded to Delta 4.1+
-            // The exact exception varies by format: UnsupportedOperationException for Delta
-            // (from UCSingleCatalog staging methods), AnalysisException for non-Delta formats
-            // (Spark analysis rejects the fallback write path).
-            if (!DeltaVersionUtils.isDeltaAtLeast("4.1.0") && (withCtas || replaceTable)) {
+            // TODO: Enable REPLACE TABLE once it is supported.
+            if (replaceTable) {
               assertThatThrownBy(() -> setupTable(options));
               continue;
             }
