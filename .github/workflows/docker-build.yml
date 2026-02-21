@@ -101,6 +101,9 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          # Set VERSION from git tag when a tag is pushed (e.g. v0.5.0 -> org.opencontainers.image.version)
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || '' }}
           # Push only tagged releases to registry. Eg. the git ref
           # "refs/tags/v0.2.0" would result the tagged image
           # "unitycatalog/unitycatalog:v0.2.0".
