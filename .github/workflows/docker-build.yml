@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Docker Image
-        run: docker build -t unitycatalog-test:local .
+        run: docker build --target runtime -t unitycatalog-test:local .
 
       - name: Start Container
         run: docker run -d --name unitycatalog-test-container unitycatalog-test:local
@@ -89,6 +89,16 @@ jobs:
             type=ref,event=tag
             type=sha,enable=${{ github.ref == 'refs/heads/main' }},prefix={{branch}}-
 
+      - name: Generate Metadata and Tags (distroless)
+        id: meta-distroless
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=branch,suffix=-distroless
+            type=ref,event=tag,suffix=-distroless
+            type=sha,enable=${{ github.ref == 'refs/heads/main' }},prefix={{branch}}-,suffix=-distroless
+
       - name: Login to Docker Hub
         if: ${{ contains(fromJSON('["push", "workflow_dispatch"]'), github.event_name) && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main') }}
         uses: docker/login-action@v3
@@ -96,20 +106,32 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push Docker Image
+      - name: Build and Push Docker Image (full)
         if: ${{ contains(fromJSON('["push", "workflow_dispatch"]'), github.event_name) && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main') }}
         uses: docker/build-push-action@v6
         with:
           context: .
-          # Push only tagged releases to registry. Eg. the git ref
-          # "refs/tags/v0.2.0" would result the tagged image
-          # "unitycatalog/unitycatalog:v0.2.0".
-          # See here for more info: https://tinyurl.com/yh8252m2
+          target: runtime
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || '' }}
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-          # Use github actions cache: https://docs.docker.com/build/cache/backends/gha/
+      - name: Build and Push Docker Image (distroless)
+        if: ${{ contains(fromJSON('["push", "workflow_dispatch"]'), github.event_name) && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main') }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: distroless
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta-distroless.outputs.tags }}
+          labels: ${{ steps.meta-distroless.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
