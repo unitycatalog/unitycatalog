@@ -21,8 +21,9 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.16"
 
-lazy val deltaVersion = "4.0.1"
+lazy val deltaVersion = "4.1.0"
 lazy val sparkVersion = "4.0.0"
+lazy val sparkMajorMinorVersion = sparkVersion.split("\\.").take(2).mkString(".")
 lazy val hadoopVersion = "3.4.2"
 
 // Library versions
@@ -614,7 +615,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.delta" %% "delta-spark" % deltaVersion % Test,
+      "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
@@ -668,7 +669,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
       "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
-      "io.delta" %% "delta-spark" % deltaVersion % Test,
+      "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
