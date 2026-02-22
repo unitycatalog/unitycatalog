@@ -9,10 +9,10 @@ services:
     volumes:
       - type: bind
         source: ./etc/conf
-        target: /home/unitycatalog/etc/conf
+        target: /app/etc/conf
       - type: volume
         source: unitycatalog_data
-        target: /home/unitycatalog/etc/data
+        target: /app/etc/data
   ui:
     build:
       context: ui/
