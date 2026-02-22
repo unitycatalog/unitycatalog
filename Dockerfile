@@ -24,9 +24,10 @@ RUN apk add --no-cache bash && ./build/sbt -info clean createTarball
 
 RUN mkdir -p $HOME/dist && tar -xzf target/unitycatalog-*.tar.gz -C $HOME/dist
 
-# Classpath order matters (e.g. ANTLR). Generate @args from tarball classpath instead of using jars/*
+# Classpath order matters (e.g. ANTLR). Rewrite classpath and args with container paths so both runtime (script) and distroless work.
 RUN cd $HOME/dist/jars && \
-    { echo '-cp'; awk -F: '{for(i=1;i<=NF;i++){n=split($i,a,"/"); printf "%s/opt/unitycatalog/jars/%s", (i>1?":":""), a[n];} print ""}' classpath; echo 'io.unitycatalog.server.UnityCatalogServer'; } > args
+    awk -F: -v home="$HOME" '{for(i=1;i<=NF;i++){n=split($i,a,"/"); printf "%s%s/jars/%s", (i>1?":":""), home, a[n];} print ""}' classpath > classpath.new && mv classpath.new classpath && \
+    { echo '-cp'; cat classpath; echo 'io.unitycatalog.server.UnityCatalogServer'; } > args
 
 # --- runtime (Alpine): full image with shell and HEALTHCHECK — docker build --target runtime
 FROM alpine:${ALPINE_VERSION} AS runtime
