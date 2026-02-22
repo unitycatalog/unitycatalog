@@ -49,7 +49,6 @@ lazy val commonSettings = Seq(
   Test / javaOptions ++= Seq (
     "-ea",
   ),
-  Test / unmanagedResourceDirectories += (ThisBuild / baseDirectory).value / "dev" / "test-resources",
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
