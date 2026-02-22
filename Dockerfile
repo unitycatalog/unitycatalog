@@ -1,6 +1,6 @@
 # syntax=docker.io/docker/dockerfile:1.7-labs
 # Single definition for app home (used in build and runtime stages)
-ARG HOME="/app"
+ARG HOME="/opt/unitycatalog"
 ARG ALPINE_VERSION="3.20"
 ARG VERSION=""
 
@@ -26,7 +26,7 @@ RUN mkdir -p $HOME/dist && tar -xzf target/unitycatalog-*.tar.gz -C $HOME/dist
 
 # Classpath order matters (e.g. ANTLR). Generate @args from tarball classpath instead of using jars/*
 RUN cd $HOME/dist/jars && \
-    { echo '-cp'; awk -F: '{for(i=1;i<=NF;i++){n=split($i,a,"/"); printf "%s/app/jars/%s", (i>1?":":""), a[n];} print ""}' classpath; echo 'io.unitycatalog.server.UnityCatalogServer'; } > args
+    { echo '-cp'; awk -F: '{for(i=1;i<=NF;i++){n=split($i,a,"/"); printf "%s/opt/unitycatalog/jars/%s", (i>1?":":""), a[n];} print ""}' classpath; echo 'io.unitycatalog.server.UnityCatalogServer'; } > args
 
 # --- runtime (Alpine): full image with shell and HEALTHCHECK — docker build --target runtime
 FROM alpine:${ALPINE_VERSION} AS runtime
@@ -71,4 +71,4 @@ LABEL org.opencontainers.image.title="Unity Catalog" \
       org.opencontainers.image.version="${VERSION}"
 
 EXPOSE 8080
-ENTRYPOINT ["java", "@/app/jars/args"]
+ENTRYPOINT ["java", "@/opt/unitycatalog/jars/args"]
