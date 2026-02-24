@@ -122,7 +122,11 @@ public class DeltaCommitRepository {
           return query.list();
         },
         "Failed to get latest commits",
-        /* readOnly= */ true);
+        /* readOnly= */ true,
+        // Use REPEATABLE_READ isolation to ensure consistent snapshot and prevent version numbers
+        // from appearing to go backwards during concurrent writes. This is critical for get
+        // commits that expect monotonic version progression after posting a commit.
+        Optional.of(java.sql.Connection.TRANSACTION_REPEATABLE_READ));
   }
 
   /**
