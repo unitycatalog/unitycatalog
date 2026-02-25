@@ -39,6 +39,7 @@ class UCSingleCatalog
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
+  private[this] var ucProxy: UCProxy = null
 
   @volatile private var delegate: TableCatalog = null
 
@@ -61,6 +62,7 @@ class UCSingleCatalog
     tablesApi = new TablesApi(apiClient)
     val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, serverSidePlanningEnabled,
       apiClient, tablesApi, temporaryCredentialsApi)
+    ucProxy = proxy
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -209,7 +211,19 @@ class UCSingleCatalog
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    val isMetastoreSyncUpdate = changes.exists {
+      case set: TableChange.SetProperty =>
+        UCSingleCatalog.METASTORE_SYNC_PROPERTIES.contains(set.property())
+      case remove: TableChange.RemoveProperty =>
+        UCSingleCatalog.METASTORE_SYNC_PROPERTIES.contains(remove.property())
+      case _ =>
+        false
+    }
+    if (isMetastoreSyncUpdate) {
+      ucProxy.alterTable(ident, changes: _*)
+    } else {
+      delegate.alterTable(ident, changes: _*)
+    }
   }
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
@@ -248,7 +262,43 @@ class UCSingleCatalog
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    throw new UnsupportedOperationException("REPLACE TABLE is not supported")
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (!delegate.isInstanceOf[StagingTableCatalog]) {
+      throw new UnsupportedOperationException("REPLACE TABLE is not supported")
+    }
+
+    val stagingCatalog = delegate.asInstanceOf[StagingTableCatalog]
+
+    // For REPLACE/RTAS, we should not create a staging table because:
+    // 1) REPLACE should keep the existing table location (Delta enforces this), and
+    // 2) users are not allowed to set/override UC table ID properties in REPLACE.
+    //
+    // We still vend fresh table credentials so the staged write can access storage.
+    val tableInfo = tablesApi.getTable(
+      UCSingleCatalog.fullTableNameForApi(name(), ident),
+      /* readStreamingTableAsManaged = */ true,
+      /* readMaterializedViewAsManaged = */ true)
+    val tableId = tableInfo.getTableId
+    val locationUri = CatalogUtils.stringToURI(tableInfo.getStorageLocation)
+    val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
+      new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE))
+
+    val newProps = new util.HashMap[String, String]
+    newProps.putAll(properties)
+    if (tableInfo.getTableType == TableType.MANAGED) {
+      newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+    }
+    val credentialProps = CredPropsUtil.createTableCredProps(
+      renewCredEnabled,
+      locationUri.getScheme,
+      uri.toString,
+      tokenProvider,
+      tableId,
+      TableOperation.READ_WRITE,
+      temporaryCredentials,
+    )
+    UCSingleCatalog.setCredentialProps(newProps, credentialProps)
+    stagingCatalog.stageReplace(ident, schema, partitions, newProps)
   }
 
   /** Only called for CREATE OR REPLACE TABLE ... [AS SELECT] */
@@ -287,6 +337,7 @@ class UCSingleCatalog
 object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
+  val METASTORE_SYNC_PROPERTIES = Set("delta.lastUpdateVersion", "delta.lastCommitTimestamp")
 
   def setCredentialProps(props: util.HashMap[String, String],
                          credentialProps: util.Map[String, String]): Unit = {
@@ -447,16 +498,26 @@ private class UCProxy(
       )
     }
 
+    val isManagedTable = t.getTableType == TableType.MANAGED
+    val tableProperties = {
+      val baseProperties = t.getProperties.asScala.toMap ++ extraSerdeProps
+      if (isManagedTable) {
+        baseProperties + (TableCatalog.PROP_IS_MANAGED_LOCATION -> "true")
+      } else {
+        baseProperties
+      }
+    }
+
     val sparkTable = CatalogTable(
       identifier,
-      tableType = if (t.getTableType == TableType.MANAGED) {
+      tableType = if (isManagedTable) {
         CatalogTableType.MANAGED
       } else {
         CatalogTableType.EXTERNAL
       },
       storage = CatalogStorageFormat.empty.copy(
         locationUri = Some(locationUri),
-        properties = t.getProperties.asScala.toMap ++ extraSerdeProps
+        properties = tableProperties
       ),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
@@ -577,7 +638,58 @@ private class UCProxy(
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
+    val tableInfo = try {
+      tablesApi.getTable(
+        fullName,
+        /* readStreamingTableAsManaged = */ true,
+        /* readMaterializedViewAsManaged = */ true)
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        throw new NoSuchTableException(ident)
+    }
+
+    val isMetastoreSyncUpdate = changes.exists {
+      case set: TableChange.SetProperty =>
+        UCSingleCatalog.METASTORE_SYNC_PROPERTIES.contains(set.property())
+      case remove: TableChange.RemoveProperty =>
+        UCSingleCatalog.METASTORE_SYNC_PROPERTIES.contains(remove.property())
+      case _ =>
+        false
+    }
+
+    val newProperties = new util.HashMap[String, String]
+    if (!isMetastoreSyncUpdate) {
+      Option(tableInfo.getProperties).foreach(newProperties.putAll)
+    }
+    var comment = tableInfo.getComment
+
+    changes.foreach {
+      case set: TableChange.SetProperty =>
+        val key = set.property()
+        if (key == TableCatalog.PROP_COMMENT) {
+          comment = set.value()
+        } else if (!UCTableProperties.V2_TABLE_PROPERTIES.contains(key)) {
+          newProperties.put(key, set.value())
+        }
+      case remove: TableChange.RemoveProperty =>
+        val key = remove.property()
+        if (key == TableCatalog.PROP_COMMENT) {
+          comment = null
+        } else if (!UCTableProperties.V2_TABLE_PROPERTIES.contains(key)) {
+          newProperties.remove(key)
+        }
+      case unsupported =>
+        throw new UnsupportedOperationException(
+          s"Unsupported table change for Unity Catalog table alter: ${unsupported.getClass.getSimpleName}")
+    }
+
+    val updateTable = new UpdateTable()
+    updateTable.setComment(comment)
+    updateTable.setProperties(newProperties)
+    tablesApi.updateTable(fullName, updateTable)
+    loadTable(ident)
   }
 
   override def dropTable(ident: Identifier): Boolean = {

@@ -8,6 +8,7 @@ import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
@@ -23,6 +24,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -168,6 +170,54 @@ public class TableRepository {
     UUID schemaId =
         repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
     return findBySchemaIdAndName(session, schemaId, tableName);
+  }
+
+  public TableInfo updateTable(String fullName, UpdateTable updateTable) {
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          String[] parts = fullName.split("\\.");
+          if (parts.length != 3) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+          }
+          String catalogName = parts[0];
+          String schemaName = parts[1];
+          String tableName = parts[2];
+          TableInfoDAO tableInfoDAO = findTable(session, catalogName, schemaName, tableName);
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
+          }
+
+          boolean hasCommentUpdate = updateTable.getComment() != null;
+          boolean hasPropertiesUpdate = updateTable.getProperties() != null;
+          if (!hasCommentUpdate && !hasPropertiesUpdate) {
+            TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
+            return RepositoryUtils.attachProperties(
+                tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+          }
+
+          if (hasCommentUpdate) {
+            tableInfoDAO.setComment(updateTable.getComment());
+          }
+          if (hasPropertiesUpdate) {
+            PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
+                .forEach(session::remove);
+            session.flush();
+            PropertyDAO.from(updateTable.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
+                .forEach(session::persist);
+          }
+
+          tableInfoDAO.setUpdatedAt(new Date());
+          tableInfoDAO.setUpdatedBy(callerId);
+          session.merge(tableInfoDAO);
+
+          TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
+          return RepositoryUtils.attachProperties(
+              tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+        },
+        "Failed to update table",
+        /* readOnly = */ false);
   }
 
   public TableInfo createTable(CreateTable createTable) {

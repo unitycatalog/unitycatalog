@@ -17,6 +17,7 @@ import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.UpdateTable;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
@@ -32,6 +33,7 @@ import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import lombok.SneakyThrows;
 
@@ -171,6 +173,21 @@ public class TableService extends AuthorizedService {
     removeHierarchicalAuthorizations(tableInfo.getTableId(), schemaInfo.getSchemaId());
 
     return HttpResponse.of(HttpStatus.OK);
+  }
+
+  @Patch("/{full_name}")
+  @AuthorizeExpression("""
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+      (#authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #table, OWNER))
+      """)
+  public HttpResponse updateTable(
+      @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName,
+      UpdateTable updateTable) {
+    assert updateTable != null;
+    return HttpResponse.ofJson(tableRepository.updateTable(fullName, updateTable));
   }
 
   public void filterTables(String expression, List<TableInfo> entries) {
