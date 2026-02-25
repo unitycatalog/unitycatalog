@@ -15,7 +15,7 @@ import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.types._
+import org.apache.spark.sql.types.{ArrayType, BinaryType, BooleanType, ByteType, CharType, DataType, DateType, DayTimeIntervalType, DecimalType, DoubleType, FloatType, IntegerType, LongType, MapType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType, VarcharType, YearMonthIntervalType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.sparkproject.guava.base.Preconditions
 
@@ -539,17 +539,32 @@ private class UCProxy(
 
   private def convertDataTypeToTypeName(dataType: DataType): ColumnTypeName = {
     dataType match {
-      case StringType => ColumnTypeName.STRING
-      case BooleanType => ColumnTypeName.BOOLEAN
+      // https://spark.apache.org/docs/latest/sql-ref-datatypes.html
+      // Numeric types
+      case ByteType => ColumnTypeName.BYTE
       case ShortType => ColumnTypeName.SHORT
       case IntegerType => ColumnTypeName.INT
       case LongType => ColumnTypeName.LONG
       case FloatType => ColumnTypeName.FLOAT
       case DoubleType => ColumnTypeName.DOUBLE
-      case ByteType => ColumnTypeName.BYTE
+      case _: DecimalType => ColumnTypeName.DECIMAL
+      // String type
+      case StringType => ColumnTypeName.STRING
+      case _: VarcharType => ColumnTypeName.STRING
+      case _: CharType => ColumnTypeName.CHAR
+      // Binary type
       case BinaryType => ColumnTypeName.BINARY
-      case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
+      // Boolean type
+      case BooleanType => ColumnTypeName.BOOLEAN
+      // Datetime type
+      case DateType => ColumnTypeName.DATE
       case TimestampType => ColumnTypeName.TIMESTAMP
+      case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
+      // Complex types
+      case _: ArrayType => ColumnTypeName.ARRAY
+      case _: MapType => ColumnTypeName.MAP
+      case _: StructType => ColumnTypeName.STRUCT
+      // Other types such as interval types are not supported in Delta
       case _ => throw new ApiException("DataType not supported: " + dataType.simpleString)
     }
   }
