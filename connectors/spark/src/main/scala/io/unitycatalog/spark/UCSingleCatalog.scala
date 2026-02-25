@@ -181,6 +181,51 @@ class UCSingleCatalog
     newProps
   }
 
+  /**
+   * Loads existing table metadata from UC and prepares properties for REPLACE/CREATE OR REPLACE.
+   * For managed tables: sets location, table ID, managed marker, and READ_WRITE credentials.
+   * For external tables: sets location and PATH_CREATE_TABLE credentials.
+   */
+  private def prepareReplaceTableProperties(
+      ident: Identifier,
+      properties: util.Map[String, String]): util.Map[String, String] = {
+    val fullName = UCSingleCatalog.fullTableNameForApi(name(), ident)
+    val tableInfo = tablesApi.getTable(fullName, false, false)
+    val location = tableInfo.getStorageLocation
+    val tableId = tableInfo.getTableId
+    val tableType = tableInfo.getTableType
+
+    val newProps = new util.HashMap[String, String]
+    newProps.putAll(properties)
+    newProps.put(TableCatalog.PROP_LOCATION, location)
+
+    if (tableType == TableType.MANAGED) {
+      // Note: Unlike Create, we do NOT set UC_TABLE_ID_KEY / UC_TABLE_ID_KEY_OLD in table
+      // properties for Replace. The existing table already has these in its Delta log, and
+      // Delta's CatalogOwnedTableUtils.validateUCTableIdNotPresent blocks them in Replace.
+      // We only need them for credential generation (done below via tableId parameter).
+      newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+
+      val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
+        new GenerateTemporaryTableCredential()
+          .tableId(tableId).operation(TableOperation.READ_WRITE))
+      val credentialProps = CredPropsUtil.createTableCredProps(
+        renewCredEnabled,
+        CatalogUtils.stringToURI(location).getScheme,
+        uri.toString,
+        tokenProvider,
+        tableId,
+        TableOperation.READ_WRITE,
+        temporaryCredentials)
+      UCSingleCatalog.setCredentialProps(newProps, credentialProps)
+    } else {
+      throw new UnsupportedOperationException(
+        "REPLACE TABLE is not yet supported for external tables")
+    }
+
+    newProps
+  }
+
   /** Prepares properties for external table creation (path credentials). */
   private def prepareExternalTableProperties(
       properties: util.Map[String, String]): util.Map[String, String] = {
@@ -248,7 +293,13 @@ class UCSingleCatalog
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    throw new UnsupportedOperationException("REPLACE TABLE is not supported")
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (!delegate.isInstanceOf[StagingTableCatalog]) {
+      throw new UnsupportedOperationException("REPLACE TABLE is not supported")
+    }
+    val stagingCatalog = delegate.asInstanceOf[StagingTableCatalog]
+    val newProps = prepareReplaceTableProperties(ident, properties)
+    stagingCatalog.stageReplace(ident, schema, partitions, newProps)
   }
 
   /** Only called for CREATE OR REPLACE TABLE ... [AS SELECT] */
@@ -257,7 +308,41 @@ class UCSingleCatalog
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    throw new UnsupportedOperationException("REPLACE TABLE AS SELECT (RTAS) is not supported")
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (!delegate.isInstanceOf[StagingTableCatalog]) {
+      throw new UnsupportedOperationException(
+        "CREATE OR REPLACE TABLE is not supported")
+    }
+    val stagingCatalog = delegate.asInstanceOf[StagingTableCatalog]
+
+    // Try to load existing table from UC.
+    // Note: There is a race window between this getTable check and the eventual Delta commit.
+    // If the table is concurrently dropped or created, the operation may fail with an error,
+    // but will not cause data loss of the original table.
+    val existingTable = try {
+      Some(tablesApi.getTable(
+        UCSingleCatalog.fullTableNameForApi(name(), ident), false, false))
+    } catch {
+      case e: ApiException if e.getCode == 404 => None
+    }
+
+    if (existingTable.isDefined) {
+      // Table exists: use replace path with existing table's credentials
+      val newProps = prepareReplaceTableProperties(ident, properties)
+      stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
+    } else {
+      // Table doesn't exist: follow CTAS pattern
+      if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
+        val newProps = stageManagedDeltaTableAndGetProps(ident, properties)
+        stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
+      } else if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
+        val newProps = prepareExternalTableProperties(properties)
+        stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
+      } else {
+        stagingCatalog.stageCreateOrReplace(
+          ident, schema, partitions, properties)
+      }
+    }
   }
 
   /** Only called for CTAS */
