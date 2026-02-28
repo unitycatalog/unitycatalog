@@ -28,14 +28,31 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: uc_http
                 codec_type: AUTO
+                generate_request_id: true
+                tracing:
+                  provider:
+                    name: envoy.tracers.opentelemetry
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig
+                      grpc_service:
+                        envoy_grpc:
+                          cluster_name: otel_collector
+                        timeout: 1s
+                      service_name: unity-catalog-envoy
                 route_config:
                   name: local_route
                   virtual_hosts:
                     - name: uc_service
                       domains: ["*"]
+
+                      # Strip headers that the proxy sets from trusted sources.
+                      # Prevents clients from spoofing identity by sending these
+                      # headers directly -- they will be re-added by the JWT filter
+                      # only after successful token validation.
                       request_headers_to_remove:
                         - x-auth-user-email
                         - x-jwt-payload
+
                       response_headers_to_add:
                         - header:
                             key: X-Content-Type-Options
@@ -53,6 +70,7 @@ static_resources:
                             key: Permissions-Policy
                             value: "camera=(), microphone=(), geolocation=()"
                           append_action: OVERWRITE_IF_EXISTS_OR_ADD
+
                       typed_per_filter_config:
                         envoy.filters.http.cors:
                           "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
@@ -63,11 +81,28 @@ static_resources:
                           expose_headers: "x-request-id"
                           max_age: "3600"
                           allow_credentials: true
+
                       routes:
+                        - match:
+                            prefix: "/api/"
+                          route:
+                            cluster: uc_cluster
+                        - match:
+                            path: "${OIDC_CALLBACK_PATH}"
+                          route:
+                            cluster: ui_cluster
+                        - match:
+                            path: "/signout"
+                          route:
+                            cluster: ui_cluster
+                        - match:
+                            prefix: "/jaeger"
+                          route:
+                            cluster: jaeger_ui
                         - match:
                             prefix: "/"
                           route:
-                            cluster: uc_cluster
+                            cluster: ui_cluster
                 http_filters:
                   - name: envoy.filters.http.jwt_authn
                     typed_config:
@@ -143,7 +178,7 @@ static_resources:
   clusters:
     - name: uc_cluster
       connect_timeout: 5s
-      type: STATIC
+      type: LOGICAL_DNS
       lb_policy: ROUND_ROBIN
       load_assignment:
         cluster_name: uc_cluster
@@ -152,8 +187,55 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: 127.0.0.1
-                      port_value: 8081
+                      address: server
+                      port_value: 8080
+
+    - name: ui_cluster
+      connect_timeout: 5s
+      type: LOGICAL_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: ui_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ui
+                      port_value: 3000
+
+    - name: jaeger_ui
+      connect_timeout: 5s
+      type: LOGICAL_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: jaeger_ui
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: jaeger
+                      port_value: 16686
+
+    - name: otel_collector
+      connect_timeout: 5s
+      type: LOGICAL_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: otel_collector
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: jaeger
+                      port_value: 4317
 
     - name: oidc_cluster
       connect_timeout: 5s
