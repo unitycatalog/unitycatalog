@@ -73,3 +73,32 @@ LABEL org.opencontainers.image.title="Unity Catalog" \
 
 EXPOSE 8080
 ENTRYPOINT ["java", "@/opt/unitycatalog/jars/args"]
+
+# --- jdk-debian: glibc-compatible JDK for use in the Ubuntu-based envoy image
+FROM eclipse-temurin:17-jre-jammy AS jdk-debian
+
+# --- all-in-one: UC + Envoy in a single container — docker build --target all-in-one
+#     The envoy base image sets ENV HOME=/home/envoy which shadows the global
+#     ARG HOME, so we use literal paths here to avoid the collision.
+FROM envoyproxy/envoy:v1.32-latest AS all-in-one
+ARG VERSION
+
+COPY --from=jdk-debian /opt/java/openjdk /opt/java/openjdk
+ENV HOME=/opt/unitycatalog JAVA_HOME=/opt/java/openjdk PATH="/opt/java/openjdk/bin:${PATH}"
+WORKDIR /opt/unitycatalog
+
+COPY --from=builder /opt/unitycatalog/dist/ /opt/unitycatalog/
+COPY bin/start-all-in-one /opt/unitycatalog/bin/start-all-in-one
+COPY etc/envoy/ /opt/unitycatalog/etc/envoy/
+
+RUN apt-get update && apt-get install -y --no-install-recommends wget gettext-base openssl && rm -rf /var/lib/apt/lists/* && \
+    chmod +x /opt/unitycatalog/bin/start-all-in-one /opt/unitycatalog/bin/start-uc-server && \
+    chown -R envoy:envoy /opt/unitycatalog
+
+LABEL org.opencontainers.image.title="Unity Catalog (All-in-One with Envoy)" \
+      org.opencontainers.image.version="${VERSION}"
+
+EXPOSE 8080 9901
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1
+CMD ["./bin/start-all-in-one"]
