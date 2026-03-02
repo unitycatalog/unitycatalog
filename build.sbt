@@ -628,6 +628,9 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4" % "4.13.1",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
+    // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy (used by sbt-license-report) cannot resolve.
+    // Exclude it so Ivy never attempts to fetch it; Coursier (used for normal builds) handles it fine.
+    excludeDependencies += ExclusionRule("io.netty", "netty-codec-native-quic"),
     licenseDepExclusions := {
       case DepModuleInfo("org.hibernate.orm", _, _) => true
       case DepModuleInfo("jakarta.annotation", "jakarta.annotation-api", _) => true
@@ -648,8 +651,6 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("org.glassfish", "javax.json", _) => true
       case DepModuleInfo("org.glassfish.hk2.external", "jakarta.inject", _) => true
       case DepModuleInfo("org.antlr", "ST4", _) => true
-      // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy cannot resolve
-      case DepModuleInfo("io.netty", "netty-codec-native-quic", _) => true
     }
   )
 
