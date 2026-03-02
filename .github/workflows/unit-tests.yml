@@ -17,6 +17,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    name: test (Spark ${{ matrix.spark-version }})
     strategy:
       matrix:
         spark-version: ["4.0.0", "4.1.0"]
