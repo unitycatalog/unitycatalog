@@ -8,6 +8,7 @@ import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.data.FilteredColumnarBatch;
 import io.delta.kernel.data.Row;
 import io.delta.kernel.engine.Engine;
+import io.delta.kernel.engine.FileReadResult;
 import io.delta.kernel.internal.InternalScanFileUtils;
 import io.delta.kernel.internal.data.ScanStateRow;
 import io.delta.kernel.types.BinaryType;
@@ -109,7 +110,7 @@ public class DeltaKernelReadUtils {
     CloseableIterator<FilteredColumnarBatch> scanFileIter = scan.getScanFiles(engine);
     int readRecordCount = 0;
     try {
-      StructType physicalReadSchema = ScanStateRow.getPhysicalDataReadSchema(engine, scanState);
+      StructType physicalReadSchema = ScanStateRow.getPhysicalDataReadSchema(scanState);
       outer:
       while (scanFileIter.hasNext()) {
         FilteredColumnarBatch scanFilesBatch = scanFileIter.next();
@@ -123,7 +124,8 @@ public class DeltaKernelReadUtils {
                     .readParquetFiles(
                         singletonCloseableIterator(fileStatus),
                         physicalReadSchema,
-                        Optional.empty());
+                        Optional.empty())
+                    .map(FileReadResult::getData);
             try (CloseableIterator<FilteredColumnarBatch> transformedData =
                 Scan.transformPhysicalData(engine, scanState, scanFileRow, physicalDataIter)) {
               while (transformedData.hasNext()) {
