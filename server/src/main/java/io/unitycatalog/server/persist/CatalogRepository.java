@@ -71,7 +71,8 @@ public class CatalogRepository {
         session -> {
           if (RepositoryUtils.getCatalogDaoOpt(session, createCatalog.getName()).isPresent()) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS, "Catalog already exists: " + createCatalog.getName());
+                ErrorCode.CATALOG_ALREADY_EXISTS,
+                "Catalog already exists: " + createCatalog.getName());
           }
           CatalogInfoDAO catalogInfoDAO = CatalogInfoDAO.from(catalogInfo);
           PropertyDAO.from(catalogInfo.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
@@ -160,7 +161,8 @@ public class CatalogRepository {
               && RepositoryUtils.getCatalogDaoOpt(session, updateCatalog.getNewName())
                   .isPresent()) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS, "Catalog already exists: " + updateCatalog.getNewName());
+                ErrorCode.CATALOG_ALREADY_EXISTS,
+                "Catalog already exists: " + updateCatalog.getNewName());
           }
           if (updateCatalog.getNewName() != null) {
             catalogInfoDAO.setName(updateCatalog.getNewName());
