@@ -87,7 +87,7 @@ public class TransactionManager {
         if (e instanceof BaseException) {
           throw (BaseException) e;
         }
-        throw new BaseException(ErrorCode.INTERNAL, errorMessage + ": " + e.getMessage());
+        throw new BaseException(ErrorCode.INTERNAL, errorMessage, e);
       } finally {
         // Restore original isolation level to avoid polluting connection pool
         if (isolationLevel.isPresent()) {
