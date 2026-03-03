@@ -5,8 +5,8 @@ import io.unitycatalog.server.model.ModelVersionStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.util.Date;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -19,8 +19,10 @@ import lombok.experimental.SuperBuilder;
 @Entity
 @Table(
     name = "uc_model_versions",
-    indexes = {
-      @Index(name = "idx_model_version", columnList = "registered_model_id,version"),
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uk_model_version_model_id_version",
+          columnNames = {"registered_model_id", "version"}),
     })
 // Lombok annotations
 @Getter

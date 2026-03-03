@@ -11,6 +11,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -27,6 +28,11 @@ import lombok.experimental.SuperBuilder;
     name = "uc_tables",
     indexes = {
       @Index(name = "idx_name", columnList = "name"),
+    },
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uk_table_schema_id_name",
+          columnNames = {"schema_id", "name"})
     })
 // Lombok annotations
 @Getter

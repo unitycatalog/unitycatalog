@@ -4,6 +4,7 @@ import io.unitycatalog.server.model.SchemaInfo;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
@@ -15,7 +16,13 @@ import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 @Entity
-@Table(name = "uc_schemas")
+@Table(
+    name = "uc_schemas",
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uk_schema_catalog_id_name",
+          columnNames = {"catalog_id", "name"})
+    })
 // Lombok
 @Getter
 @Setter
