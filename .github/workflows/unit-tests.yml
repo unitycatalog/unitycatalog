@@ -17,6 +17,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    name: test (Spark ${{ matrix.spark-version }})
+    strategy:
+      matrix:
+        spark-version: ["4.0.0", "4.1.0"]
+
     steps:
     - uses: actions/checkout@v4
     - name: Set up JDK 17
@@ -28,13 +33,13 @@ jobs:
       # 'integrationTests' is not in root project, since we avoid running it via `./build/sbt test`,
       # Here, we explicitly compile `integrationTests` to catch compilation issues early.
     - name: Compile integration tests to verify compilation and checkstyle issues.
-      run: build/sbt integrationTests/test:compile
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} integrationTests/test:compile
 
     - name: Build and verify the local deployment.
-      run: build/sbt clean package publishM2
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} clean package publishM2
 
     - name: Run tests with coverage
-      run: build/sbt -J-Xmx2G +jacoco
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -J-Xmx2G +jacoco
 
     - name: Run license check
-      run: build/sbt licenseCheck
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} licenseCheck
