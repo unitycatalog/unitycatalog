@@ -48,7 +48,7 @@ public class CredentialRepository {
         session -> {
           if (getCredentialDAO(session, createCredentialRequest.getName()) != null) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS,
+                ErrorCode.STORAGE_CREDENTIAL_ALREADY_EXISTS,
                 "Storage credential already exists: " + createCredentialRequest.getName());
           }
           session.persist(dao);
@@ -130,7 +130,7 @@ public class CredentialRepository {
             ValidationUtils.validateSqlObjectName(updateCredential.getNewName());
             if (getCredentialDAO(session, updateCredential.getNewName()) != null) {
               throw new BaseException(
-                  ErrorCode.ALREADY_EXISTS,
+                  ErrorCode.STORAGE_CREDENTIAL_ALREADY_EXISTS,
                   "Storage credential already exists: " + updateCredential.getNewName());
             }
             existingCredential.setName(updateCredential.getNewName());

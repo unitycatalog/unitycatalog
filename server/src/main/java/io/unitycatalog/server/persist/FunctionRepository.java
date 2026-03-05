@@ -91,7 +91,8 @@ public class FunctionRepository {
                   .getSchemaDaoOrThrow(session, catalogName, schemaName);
           if (getFunctionDAO(session, catalogName, schemaName, createFunction.getName()) != null) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS, "Function already exists: " + createFunction.getName());
+                ErrorCode.RESOURCE_ALREADY_EXISTS,
+                "Function already exists: " + createFunction.getName());
           }
           FunctionInfoDAO dao = FunctionInfoDAO.from(functionInfo);
           dao.setSchemaId(schemaInfo.getId());
