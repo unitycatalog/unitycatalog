@@ -499,6 +499,15 @@ private class UCProxy(
     }
     createTable.setStorageLocation(storageLocation)
 
+    val partitionColNames: Seq[String] = partitions
+      .filter(_.name() == "identity")
+      .map { t =>
+        val fieldNames = t.references().flatMap(_.fieldNames())
+        assert(fieldNames.length == 1,
+          s"Expected single-field partition reference but got: ${fieldNames.mkString(".")}")
+        fieldNames.head
+      }
+      .toSeq
     val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
       val column = new ColumnInfo()
       column.setName(field.name)
@@ -510,6 +519,8 @@ private class UCProxy(
       column.setTypeName(convertDataTypeToTypeName(field.dataType))
       column.setTypeJson(field.dataType.json)
       column.setPosition(i)
+      val partitionIdx = partitionColNames.indexOf(field.name)
+      if (partitionIdx >= 0) column.setPartitionIndex(partitionIdx)
       column
     }
     val comment = Option(properties.get(TableCatalog.PROP_COMMENT))
