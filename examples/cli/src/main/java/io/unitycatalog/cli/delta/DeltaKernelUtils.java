@@ -1,28 +1,33 @@
 package io.unitycatalog.cli.delta;
 
 import de.vandermeer.asciitable.AsciiTable;
-import io.delta.kernel.Operation;
 import io.delta.kernel.ScanBuilder;
 import io.delta.kernel.Snapshot;
 import io.delta.kernel.Table;
-import io.delta.kernel.Transaction;
-import io.delta.kernel.TransactionBuilder;
+import io.delta.kernel.TableManager;
 import io.delta.kernel.TransactionCommitResult;
 import io.delta.kernel.data.Row;
 import io.delta.kernel.defaults.engine.DefaultEngine;
 import io.delta.kernel.engine.Engine;
+import io.delta.kernel.internal.SnapshotImpl;
 import io.delta.kernel.types.BasePrimitiveType;
 import io.delta.kernel.types.DataType;
 import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.StructType;
+import io.delta.kernel.unitycatalog.UCCatalogManagedClient;
+import io.delta.kernel.unitycatalog.UnityCatalogUtils;
 import io.delta.kernel.utils.CloseableIterable;
+import io.delta.storage.commit.uccommitcoordinator.UCTokenBasedRestClient;
 import io.unitycatalog.cli.utils.Constants;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.net.URI;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.IntStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -40,31 +45,88 @@ import org.slf4j.LoggerFactory;
 public class DeltaKernelUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(DeltaKernelUtils.class);
 
-  public static void createDeltaTable(
-      String tablePath, List<ColumnInfo> columns, TemporaryCredentials temporaryCredentials) {
+  public static Map<String, String> createDeltaTable(
+      String tablePath,
+      List<ColumnInfo> columns,
+      TemporaryCredentials temporaryCredentials,
+      String tableId,
+      String serverUrl,
+      String authToken,
+      Map<String, String> userProperties) {
     try {
       URI tablePathUri = URI.create(tablePath);
       Engine engine = getEngine(tablePathUri, temporaryCredentials);
-      Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       // construct the schema
       StructType tableSchema = getSchema(columns);
-      TransactionBuilder txnBuilder =
-          table.createTransactionBuilder(engine, "UnityCatalogCli", Operation.CREATE_TABLE);
-      // Set the schema of the new table on the transaction builder
-      txnBuilder = txnBuilder.withSchema(engine, tableSchema);
-      // Build the transaction
-      Transaction txn = txnBuilder.build(engine);
-      // create an empty table
-      TransactionCommitResult commitResult = txn.commit(engine, CloseableIterable.emptyIterable());
-      if (commitResult.getVersion() >= 0) {
-        LOGGER.info("Table created successfully at: {}", tablePathUri);
+
+      TransactionCommitResult commitResult;
+      if (tableId != null) {
+        // Catalog-managed table: use UCCatalogManagedClient for coordinated commits.
+        // "type"="static" means a pre-configured bearer token; see TokenProvider.create() javadoc.
+        TokenProvider tokenProvider =
+            TokenProvider.create(Map.of("type", "static", "token", authToken));
+        UCTokenBasedRestClient ucClient =
+            new UCTokenBasedRestClient(serverUrl, tokenProvider, Map.of());
+        UCCatalogManagedClient ucCatalogManagedClient = new UCCatalogManagedClient(ucClient);
+        commitResult =
+            ucCatalogManagedClient
+                .buildCreateTableTransaction(tableId, tablePath, tableSchema, "uc-cli")
+                // TODO: temporary workaround — Delta Kernel should auto-enable all features
+                // required by catalogManaged. Remove once that is fixed in the kernel.
+                // User-specified properties are also passed here so the kernel writes them into
+                // the Delta log; the returned deltaTableProperties will reflect the actual state.
+                .withTableProperties(
+                    mergeProperties(
+                        Map.of("delta.feature.vacuumProtocolCheck", "supported"), userProperties))
+                .build(engine)
+                .commit(engine, CloseableIterable.emptyIterable() /* dataActions */);
+        LOGGER.info(
+            "Table created successfully at version {}: {}",
+            commitResult.getVersion(),
+            tablePathUri);
+        // UnityCatalogUtils.getPropertiesForCreate requires SnapshotImpl (an internal Delta
+        // Kernel class) to access protocol/table-property internals not exposed on the public
+        // Snapshot interface. The cast is safe here because the post-commit snapshot returned
+        // by Delta Kernel is always a SnapshotImpl at runtime.
+        SnapshotImpl postCreateSnapshot =
+            (SnapshotImpl)
+                commitResult
+                    .getPostCommitSnapshot()
+                    .orElseThrow(
+                        () ->
+                            new IllegalStateException(
+                                "Post-commit snapshot unavailable after table creation"));
+        return UnityCatalogUtils.getPropertiesForCreate(engine, postCreateSnapshot);
       } else {
-        throw new RuntimeException("Table creation failed");
+        // External table: write Delta log directly to storage, no UC commit coordination needed
+        commitResult =
+            TableManager.buildCreateTableTransaction(
+                    substituteSchemeForS3(tablePath), tableSchema, "UnityCatalogCli")
+                .build(engine)
+                .commit(engine, CloseableIterable.emptyIterable() /* dataActions */);
+        LOGGER.info(
+            "Table created successfully at version {}: {}",
+            commitResult.getVersion(),
+            tablePathUri);
+        return Map.of();
       }
     } catch (Exception e) {
       String errorMsg = String.format("Failed to create Delta table at '%s'", tablePath);
       throw new IllegalArgumentException(errorMsg, e);
     }
+  }
+
+  /** Merges two property maps, with the second map taking precedence on key conflicts. */
+  private static Map<String, String> mergeProperties(
+      Map<String, String> base, Map<String, String> overrides) {
+    Map<String, String> merged = new HashMap<>();
+    if (base != null) {
+      merged.putAll(base);
+    }
+    if (overrides != null) {
+      merged.putAll(overrides);
+    }
+    return merged;
   }
 
   public static String substituteSchemeForS3(String tablePath) {
