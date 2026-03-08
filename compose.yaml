@@ -3,7 +3,7 @@ name: unitycatalog
 services:
 
   server:
-    image: unitycatalog/unitycatalog:latest
+    image: unitycatalog/unitycatalog:local-distroless
     ports:
       - "8080:8080"
     volumes:
@@ -22,6 +22,27 @@ services:
     depends_on:
       - server
 
+  # all-in-one: UC + Envoy in a single container (build from source)
+  # all-in-one:
+  #   build:
+  #     context: .
+  #     target: all-in-one
+  #   ports:
+  #     - "8080:8080"
+  #     - "9901:9901"
+  #   volumes:
+  #     - type: bind
+  #       source: ./etc/conf
+  #       target: /opt/unitycatalog/etc/conf
+  #     - type: bind
+  #       source: ./etc/envoy
+  #       target: /opt/unitycatalog/etc/envoy
+  #     - type: volume
+  #       source: unitycatalog_data
+  #       target: /opt/unitycatalog/etc/data
+
 volumes:
   # Persist docker volume across container restarts
   unitycatalog_data:
+
+https://dev.to/gravitino/apache-gravitino-iceberg-rest-catalog-access-control-deployment-guide-4ck

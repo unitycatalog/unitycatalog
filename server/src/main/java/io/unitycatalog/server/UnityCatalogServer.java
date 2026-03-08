@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
@@ -46,6 +47,7 @@ import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
 import io.unitycatalog.server.service.TemporaryPathCredentialsService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
+import io.unitycatalog.server.service.TrustedHeaderAuthDecorator;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
@@ -302,7 +304,17 @@ public class UnityCatalogServer {
           .exclude(CONTROL_PATH + "auth/tokens")
           .build(accessDecorator);
 
-      AuthDecorator authDecorator = new AuthDecorator(securityContext, repositories);
+      DecoratingHttpServiceFunction authDecorator;
+      if (serverProperties.isTrustedHeaderAuthEnabled()) {
+        LOGGER.info(
+            "Using trusted-headers authentication (header: {}).",
+            serverProperties.getTrustedHeaderEmail());
+        authDecorator =
+            new TrustedHeaderAuthDecorator(serverProperties.getTrustedHeaderEmail(), repositories);
+      } else {
+        LOGGER.info("Using token-based (JWT) authentication.");
+        authDecorator = new AuthDecorator(securityContext, repositories);
+      }
       armeriaServerBuilder.routeDecorator().pathPrefix(BASE_PATH).build(authDecorator);
       armeriaServerBuilder
           .routeDecorator()

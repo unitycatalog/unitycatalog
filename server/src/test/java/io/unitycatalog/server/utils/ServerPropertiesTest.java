@@ -184,6 +184,35 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testAuthTypeValidator() {
+    testValidProperty(Property.AUTH_TYPE, "token");
+    testValidProperty(Property.AUTH_TYPE, "trusted-headers");
+    testValidProperty(Property.AUTH_TYPE, "TOKEN");
+    testValidProperty(Property.AUTH_TYPE, "Trusted-Headers");
+
+    testInvalidProperty(Property.AUTH_TYPE, "oauth", "Invalid value 'oauth'", "server.auth-type");
+  }
+
+  @Test
+  public void testTrustedHeaderAuthHelpers() {
+    Properties props = new Properties();
+    props.setProperty(Property.AUTH_TYPE.getKey(), "trusted-headers");
+    ServerProperties sp = new ServerProperties(props);
+    assertThat(sp.isTrustedHeaderAuthEnabled()).isTrue();
+    assertThat(sp.getTrustedHeaderEmail()).isEqualTo("x-auth-user-email");
+
+    Properties props2 = new Properties();
+    props2.setProperty(Property.AUTH_TYPE.getKey(), "token");
+    ServerProperties sp2 = new ServerProperties(props2);
+    assertThat(sp2.isTrustedHeaderAuthEnabled()).isFalse();
+
+    Properties props3 = new Properties();
+    props3.setProperty(Property.TRUSTED_HEADER_EMAIL.getKey(), "x-custom-email");
+    ServerProperties sp3 = new ServerProperties(props3);
+    assertThat(sp3.getTrustedHeaderEmail()).isEqualTo("x-custom-email");
+  }
+
+  @Test
   public void testDurationValidator() {
     // Valid values
     testValidProperty(Property.COOKIE_TIMEOUT, "P5D");

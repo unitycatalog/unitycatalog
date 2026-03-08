@@ -203,6 +203,8 @@ public class ServerProperties {
     AWS_ACCESS_KEY("aws.accessKey"),
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
+    AUTH_TYPE("server.auth-type", "token", new EnumValidator(true, "token", "trusted-headers")),
+    TRUSTED_HEADER_EMAIL("server.trusted-header-email", "x-auth-user-email", NOOP_VALIDATOR),
     AWS_REGION("aws.region");
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -432,6 +434,15 @@ public class ServerProperties {
 
   public boolean isAuthorizationEnabled() {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
+  }
+
+  public boolean isTrustedHeaderAuthEnabled() {
+    String authType = get(Property.AUTH_TYPE);
+    return authType != null && authType.equalsIgnoreCase("trusted-headers");
+  }
+
+  public String getTrustedHeaderEmail() {
+    return get(Property.TRUSTED_HEADER_EMAIL);
   }
 
   /**
