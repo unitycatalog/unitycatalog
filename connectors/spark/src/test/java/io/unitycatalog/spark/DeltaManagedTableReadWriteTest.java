@@ -40,6 +40,11 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   private static final String DELTA_TABLE = "test_delta";
 
   @Override
+  protected boolean supportsReplaceTable() {
+    return false;
+  }
+
+  @Override
   protected String tableFormat() {
     return "DELTA";
   }
@@ -188,6 +193,182 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
         }
       }
     }
+  }
+
+  @Test
+  public void testReplaceManagedDeltaTablePreservesUcProperties() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    TableSetupOptions options =
+        new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE);
+    String fullTableName = setupTable(options);
+
+    TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
+    TableInfo tableInfoBeforeReplace = tableOperations.getTable(fullTableName);
+    String expectedTableId = tableInfoBeforeReplace.getTableId();
+
+    for (boolean replaceAsSelect : List.of(true, false)) {
+      if (replaceAsSelect) {
+        sql("REPLACE TABLE %s USING DELTA AS SELECT 2 AS i, 'b' AS s", fullTableName);
+        validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(2, "b"));
+      } else {
+        sql("REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName);
+        validateTableEmpty(fullTableName);
+      }
+
+      TableInfo tableInfoAfterReplace = tableOperations.getTable(fullTableName);
+      Assertions.assertEquals(expectedTableId, tableInfoAfterReplace.getTableId());
+      Map<String, String> tablePropertiesFromServer = tableInfoAfterReplace.getProperties();
+      Assertions.assertTrue(
+          tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
+              || tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY_OLD));
+      boolean hasCatalogManaged =
+          tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
+              || tablePropertiesFromServer.containsKey(
+                  UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW);
+      Assertions.assertTrue(hasCatalogManaged);
+      String catalogManagedValue =
+          Optional.ofNullable(
+                  tablePropertiesFromServer.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
+              .orElseGet(
+                  () ->
+                      tablePropertiesFromServer.get(
+                          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
+      Assertions.assertEquals(UCTableProperties.DELTA_CATALOG_MANAGED_VALUE, catalogManagedValue);
+    }
+  }
+
+  @Test
+  public void testCreateOrReplaceManagedDeltaTablePreservesUcProperties() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    TableSetupOptions options =
+        new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE);
+    String fullTableName = setupTable(options);
+
+    TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
+    TableInfo tableInfoBeforeReplace = tableOperations.getTable(fullTableName);
+    String expectedTableId = tableInfoBeforeReplace.getTableId();
+
+    for (boolean replaceAsSelect : List.of(true, false)) {
+      if (replaceAsSelect) {
+        sql("CREATE OR REPLACE TABLE %s USING DELTA AS SELECT 2 AS i, 'b' AS s", fullTableName);
+        validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(2, "b"));
+      } else {
+        sql("CREATE OR REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName);
+        validateTableEmpty(fullTableName);
+      }
+
+      TableInfo tableInfoAfterReplace = tableOperations.getTable(fullTableName);
+      Assertions.assertEquals(expectedTableId, tableInfoAfterReplace.getTableId());
+      Map<String, String> tablePropertiesFromServer = tableInfoAfterReplace.getProperties();
+      Assertions.assertTrue(
+          tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
+              || tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY_OLD));
+      boolean hasCatalogManaged =
+          tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
+              || tablePropertiesFromServer.containsKey(
+                  UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW);
+      Assertions.assertTrue(hasCatalogManaged);
+      String catalogManagedValue =
+          Optional.ofNullable(
+                  tablePropertiesFromServer.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
+              .orElseGet(
+                  () ->
+                      tablePropertiesFromServer.get(
+                          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
+      Assertions.assertEquals(UCTableProperties.DELTA_CATALOG_MANAGED_VALUE, catalogManagedValue);
+    }
+  }
+
+  @Test
+  public void testCreateOrReplaceManagedDeltaTableCreatesWhenMissing() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + TEST_TABLE;
+    TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
+
+    sql(
+        "CREATE OR REPLACE TABLE %s (i INT, s STRING) USING DELTA %s",
+        fullTableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
+    validateTableEmpty(fullTableName);
+
+    TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
+    Assertions.assertTrue(
+        tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
+            || tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY_OLD));
+    Assertions.assertTrue(
+        tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
+            || tablePropertiesFromServer.containsKey(
+                UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
+  }
+
+  @Test
+  public void testCreateOrReplaceManagedDeltaTableAsSelectCreatesWhenMissing() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + TEST_TABLE;
+    TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
+
+    sql(
+        "CREATE OR REPLACE TABLE %s USING DELTA %s AS SELECT 2 AS i, 'b' AS s",
+        fullTableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(2, "b"));
+
+    TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
+    Assertions.assertTrue(
+        tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
+            || tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY_OLD));
+    Assertions.assertTrue(
+        tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
+            || tablePropertiesFromServer.containsKey(
+                UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
+  }
+
+  @Test
+  public void testManagedDeltaReplaceRejectsMetadataChanges() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    List<String> statements =
+        List.of(
+            String.format("REPLACE TABLE %s (i INT, renamed STRING) USING DELTA", fullTableName),
+            String.format(
+                "REPLACE TABLE %s (i INT, s STRING) USING DELTA PARTITIONED BY (s)", fullTableName),
+            String.format(
+                "CREATE OR REPLACE TABLE %s (i INT, s STRING) USING DELTA "
+                    + "TBLPROPERTIES ('delta.appendOnly' = 'true')",
+                fullTableName));
+
+    for (String statement : statements) {
+      assertThatThrownBy(() -> sql(statement))
+          .hasMessageContaining("Replacing a catalog-managed table");
+    }
+  }
+
+  @Test
+  public void testManagedDeltaReplaceAsSelectRejectsSchemaChanges() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    assertThatThrownBy(
+            () ->
+                sql("REPLACE TABLE %s USING DELTA AS SELECT 1 AS i, 2 AS extra_col", fullTableName))
+        .hasMessageContaining("Replacing a catalog-managed table");
+  }
+
+  @Test
+  public void testManagedCreateOrReplaceRejectsSchemaChanges() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    assertThatThrownBy(
+            () ->
+                sql("CREATE OR REPLACE TABLE %s (i INT, extra_col INT) USING DELTA", fullTableName))
+        .hasMessageContaining("Replacing a catalog-managed table");
   }
 
   @Override

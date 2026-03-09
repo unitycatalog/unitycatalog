@@ -228,6 +228,10 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     return !tableFormat().equalsIgnoreCase("DELTA") || DeltaVersionUtils.isDeltaAtLeast("4.1.1");
   }
 
+  protected boolean supportsReplaceTable() {
+    return true;
+  }
+
   /**
    * This test creates table in different ways:
    *
@@ -253,6 +257,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             String tableName = TEST_TABLE + tableNameCounter;
             tableNameCounter++;
             if (replaceTable) {
+              if (!supportsReplaceTable()) {
+                continue;
+              }
               if (withCtas && !testingDelta()) {
                 // "REPLACE TABLE AS SELECT" is only supported for Delta.
                 continue;
@@ -275,9 +282,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
               options.setAsSelect(1, "a");
             }
 
-            // TODO: Enable REPLACE TABLE once it is supported.
-            // CTAS is only supported for Delta format.
-            if (replaceTable || (withCtas && !testingDelta())) {
+            // REPLACE TABLE and CTAS are only supported for Delta format.
+            if (!testingDelta() && (replaceTable || withCtas)) {
               assertThatThrownBy(() -> setupTable(options));
               continue;
             }

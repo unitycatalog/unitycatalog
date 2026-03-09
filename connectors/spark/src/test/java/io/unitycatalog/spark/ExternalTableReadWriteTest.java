@@ -20,10 +20,17 @@ import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIf;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.provider.Arguments;
 
 public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
+
+  @Override
+  protected boolean supportsReplaceTable() {
+    return false;
+  }
+
   @TempDir protected File dataDir;
 
   // CredentialTestFileSystem provides two test buckets test-bucket0 and test-bucket1.
@@ -135,6 +142,21 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
             () ->
                 sql("CREATE EXTERNAL TABLE %s(name STRING) USING %s", fullTableName, tableFormat()))
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
+  }
+
+  @Test
+  @EnabledIf("testingDelta")
+  public void testReplaceExternalDeltaTableRejected() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    assertThatThrownBy(() -> sql("REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName))
+        .hasMessageContaining("REPLACE TABLE is only supported for UC-managed Delta tables");
+    assertThatThrownBy(
+            () -> sql("REPLACE TABLE %s USING DELTA AS SELECT 1 AS i, 'a' AS s", fullTableName))
+        .hasMessageContaining("REPLACE TABLE is only supported for UC-managed Delta tables");
   }
 
   /**
