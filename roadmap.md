@@ -18,13 +18,8 @@ Metric views provide a new centralized way to define and manage consistent, reus
 governed core business metrics. 
 
 ### Authentication
-
 Modular authentication will allow you to reuse your existing auth to secure Unity Catalog.
 
-### UC Rust Client
-
-Official support for the Rust ecosystem is on its way. The new Rust based UC client will power Kernel and delta-rs 
-integrations.
 
 ## Full roadmap
 
