@@ -499,15 +499,19 @@ private class UCProxy(
     }
     createTable.setStorageLocation(storageLocation)
 
-    val partitionColNames: Seq[String] = partitions
-      .filter(_.name() == "identity")
-      .map { t =>
-        val fieldNames = t.references().flatMap(_.fieldNames())
-        assert(fieldNames.length == 1,
-          s"Expected single-field partition reference but got: ${fieldNames.mkString(".")}")
-        fieldNames.head
+    val partitionColNames: Seq[String] = partitions.flatMap { t =>
+      t.name() match {
+        case "identity" =>
+          val fieldNames = t.references().flatMap(_.fieldNames())
+          require(fieldNames.length == 1,
+            s"Expected single-field partition reference but got: ${fieldNames.mkString(".")}")
+          Some(fieldNames.head)
+        case "cluster_by" =>
+          None
+        case other =>
+          throw new ApiException(s"Unsupported partition transform: $other")
       }
-      .toSeq
+    }.toSeq
     val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
       val column = new ColumnInfo()
       column.setName(field.name)
@@ -519,7 +523,7 @@ private class UCProxy(
       column.setTypeName(convertDataTypeToTypeName(field.dataType))
       column.setTypeJson(field.dataType.json)
       column.setPosition(i)
-      val partitionIdx = partitionColNames.indexOf(field.name)
+      val partitionIdx = partitionColNames.indexWhere(_.equalsIgnoreCase(field.name))
       if (partitionIdx >= 0) column.setPartitionIndex(partitionIdx)
       column
     }
