@@ -31,7 +31,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   protected static final String TBLPROPERTIES_CATALOG_OWNED_CLAUSE =
       String.format(
           "TBLPROPERTIES ('%s'='%s')",
-          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
           UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
 
   /**
@@ -228,8 +228,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
               }
               // First, create a different table to replace.
               sql(
-                  "CREATE TABLE %s.%s.%s USING DELTA %s AS SELECT 0.1 AS col1",
+                  "CREATE TABLE %s.%s.%s (col1 DOUBLE) USING DELTA %s",
                   catalogName, SCHEMA_NAME, tableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
+              sql("INSERT INTO %s.%s.%s (col1) VALUES (0.1)", catalogName, SCHEMA_NAME, tableName);
             }
             TableSetupOptions options =
                 new TableSetupOptions()
@@ -242,6 +243,14 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             if (withCtas) {
               options.setAsSelect(1, "a");
             }
+
+            // TODO: Enable REPLACE TABLE once it is supported.
+            // CTAS is only supported for Delta format.
+            if (replaceTable || (withCtas && !testingDelta())) {
+              assertThatThrownBy(() -> setupTable(options));
+              continue;
+            }
+
             String t1 = setupTable(options);
             if (withCtas) {
               testTableReadWriteCreatedAsSelect(t1, Pair.of(1, "a"));

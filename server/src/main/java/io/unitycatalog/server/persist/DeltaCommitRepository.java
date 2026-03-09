@@ -24,6 +24,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TableProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -88,6 +89,9 @@ public class DeltaCommitRepository {
   /** The maximum size of the JSON that contains the Delta-to-Iceberg conversion information */
   public static final int MAX_DELTA_UNIFORM_ICEBERG_SIZE = 65535; // The limit from DAO
 
+  public static final String ICEBERG_FORMAT = "iceberg";
+  public static final String UNIFORM_ENABLED_FORMATS = "delta.universalFormat.enabledFormats";
+
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
 
@@ -118,7 +122,11 @@ public class DeltaCommitRepository {
           return query.list();
         },
         "Failed to get latest commits",
-        /* readOnly= */ true);
+        /* readOnly= */ true,
+        // Use REPEATABLE_READ isolation to ensure consistent snapshot and prevent version numbers
+        // from appearing to go backwards during concurrent writes. This is critical for get
+        // commits that expect monotonic version progression after posting a commit.
+        Optional.of(java.sql.Connection.TRANSACTION_REPEATABLE_READ));
   }
 
   /**
@@ -136,7 +144,7 @@ public class DeltaCommitRepository {
    * removed from the database. If the latest commit is marked as backfilled, this method returns an
    * empty commit list but still returns the correct latestTableVersion.
    *
-   * <p><b>Empty table behavior:</b> If the table has no commits yet, returns latestTableVersion=-1
+   * <p><b>Empty table behavior:</b> If the table has no commits yet, returns latestTableVersion=0
    * with an empty commit list.
    *
    * <p>The returned commits are ordered by version in descending order (newest first).
@@ -166,9 +174,9 @@ public class DeltaCommitRepository {
           MAX_NUM_COMMITS_PER_TABLE);
     }
     if (commitCount == 0) {
-      // No commit exist yet. Not even any backfilled one. That means the table has never sent any
-      // commit coordinated by UC.
-      return new DeltaGetCommitsResponse().latestTableVersion(-1L);
+      // Table is validated as a managed Delta table. UC is the source of truth for
+      // managed tables, so a newly created table with no commits is at version 0.
+      return new DeltaGetCommitsResponse().latestTableVersion(0L);
     }
 
     // In case there's only one commit in database, firstCommitDAO and lastCommitDAO will be the
@@ -236,7 +244,7 @@ public class DeltaCommitRepository {
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + commit.getTableId());
           }
-          validateTableForCommit(commit, tableInfoDAO);
+          validateTableForCommit(session, commit, tableInfoDAO);
           List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
           if (firstAndLastCommits.isEmpty()) {
             handleOnboardingCommit(session, tableId, tableInfoDAO, commit);
@@ -977,11 +985,13 @@ public class DeltaCommitRepository {
    * the table URI specified in the commit request matches the table's registered URI. URIs are
    * standardized before comparison to handle format variations.
    *
+   * @param session the Hibernate session for database operations
    * @param commit the commit request containing the table URI
    * @param tableInfoDAO the table information data access object
    * @throws BaseException if validation fails or URIs don't match
    */
-  private static void validateTableForCommit(DeltaCommit commit, TableInfoDAO tableInfoDAO) {
+  private static void validateTableForCommit(
+      Session session, DeltaCommit commit, TableInfoDAO tableInfoDAO) {
     validateTable(tableInfoDAO);
     NormalizedURL commitTableUri = NormalizedURL.from(commit.getTableUri());
     NormalizedURL tableUri = NormalizedURL.from(tableInfoDAO.getUrl());
@@ -990,6 +1000,53 @@ public class DeltaCommitRepository {
         "Table URI in commit %s does not match the table path %s",
         commit.getTableUri(),
         tableInfoDAO.getUrl());
+    validateUniformMetadataPresence(session, commit, tableInfoDAO);
+  }
+
+  /**
+   * Validates the presence of uniform metadata inside commit. If the table has UniForm enabled
+   * after incoming commit, uniform metadata must exist inside commit Otherwise, if the table
+   * doesn't have UniForm enabled after incoming commit, uniform metadata must not exist inside
+   * commit
+   *
+   * @param session the Hibernate session for database operations
+   * @param commit the commit request that may contain uniform metadata
+   * @param tableInfoDAO the table information data access object
+   * @throws BaseException if validation is violated
+   */
+  private static void validateUniformMetadataPresence(
+      Session session, DeltaCommit commit, TableInfoDAO tableInfoDAO) {
+    Map<String, String> effectiveProperties;
+    // When properties are not null inside commit metadata, the incoming commit would update
+    // table properties
+    if (commit.getMetadata() != null && commit.getMetadata().getProperties() != null) {
+      effectiveProperties =
+          Optional.ofNullable(commit.getMetadata().getProperties().getProperties())
+              .orElse(Collections.emptyMap());
+    } else {
+      // Incoming commit doesn't update table properties. Get current table properties from database
+      List<PropertyDAO> properties =
+          PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE);
+      effectiveProperties = PropertyDAO.toMap(properties);
+    }
+    // Check if table has UniForm enabled after this commit
+    boolean uniformEnabled =
+        ICEBERG_FORMAT.equals(effectiveProperties.get(UNIFORM_ENABLED_FORMATS));
+    if (uniformEnabled) {
+      ValidationUtils.checkArgument(
+          commit.getUniform() != null,
+          "Uniform metadata must be set when table has UniForm enabled after the commit. "
+              + "UniForm is enabled when property '%s'='%s'",
+          UNIFORM_ENABLED_FORMATS,
+          ICEBERG_FORMAT);
+    } else {
+      ValidationUtils.checkArgument(
+          commit.getUniform() == null,
+          "Uniform metadata must not be set when table has UniForm disabled after the commit. "
+              + "UniForm is disabled when table does not have property '%s'='%s'",
+          UNIFORM_ENABLED_FORMATS,
+          ICEBERG_FORMAT);
+    }
   }
 
   /**
