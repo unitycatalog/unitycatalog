@@ -574,6 +574,7 @@ lazy val spark = (project in file("connectors/spark"))
     scalaReleaseSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
     ),
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
