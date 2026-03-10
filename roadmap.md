@@ -7,7 +7,7 @@ features may move in/out of milestones pending available resources, priorities, 
 
 ### Managed Delta table support
 
-Delta's Catalog managed commits are the basis for many new and powerful client (Delta) and server side features and 
+Delta's [Catalog managed commits](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#catalog-managed-tables) are the basis for many new and powerful client (Delta) and server side features and 
 were introduced as `experimental` in the 0.4 release. 
 * This release will introduce new Delta Catalog APIs as well as
 moving to non-experimental. 
