@@ -18,6 +18,15 @@ public class UCTableProperties {
   // can't set it yet.
   public static final String DELTA_CATALOG_MANAGED_KEY_NEW = "delta.feature.catalogManaged";
 
+  // Internal staged handoff keys for existing-table REPLACE/RTAS/CREATE OR REPLACE.
+  // These are transport-only and must never be persisted as Delta or catalog properties.
+  public static final String DELTA_REPLACE_EXISTING_TABLE_LOCATION_KEY =
+      "unitycatalog.internal.delta.replace.existingTableLocation";
+  public static final String DELTA_REPLACE_EXISTING_TABLE_TYPE_KEY =
+      "unitycatalog.internal.delta.replace.existingTableType";
+  public static final String DELTA_REPLACE_EXISTING_TABLE_ID_KEY =
+      "unitycatalog.internal.delta.replace.existingTableId";
+
   // These properties were added by `V1Table.addV2TableProperties` in package spark-catalyst.
   // They are used for constructing the CreateTable rpc.
   public static final Set<String> V2_TABLE_PROPERTIES =

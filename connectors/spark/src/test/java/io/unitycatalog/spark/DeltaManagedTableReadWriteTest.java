@@ -208,6 +208,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     String expectedTableId = tableInfoBeforeReplace.getTableId();
 
     for (boolean replaceAsSelect : List.of(true, false)) {
+      long versionBefore = latestDeltaVersion(fullTableName);
       if (replaceAsSelect) {
         sql("REPLACE TABLE %s USING DELTA AS SELECT 2 AS i, 'b' AS s", fullTableName);
         validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(2, "b"));
@@ -215,6 +216,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
         sql("REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName);
         validateTableEmpty(fullTableName);
       }
+      assertThat(latestDeltaVersion(fullTableName)).isEqualTo(versionBefore + 1);
 
       TableInfo tableInfoAfterReplace = tableOperations.getTable(fullTableName);
       Assertions.assertEquals(expectedTableId, tableInfoAfterReplace.getTableId());
@@ -251,6 +253,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     String expectedTableId = tableInfoBeforeReplace.getTableId();
 
     for (boolean replaceAsSelect : List.of(true, false)) {
+      long versionBefore = latestDeltaVersion(fullTableName);
       if (replaceAsSelect) {
         sql("CREATE OR REPLACE TABLE %s USING DELTA AS SELECT 2 AS i, 'b' AS s", fullTableName);
         validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(2, "b"));
@@ -258,6 +261,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
         sql("CREATE OR REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName);
         validateTableEmpty(fullTableName);
       }
+      assertThat(latestDeltaVersion(fullTableName)).isEqualTo(versionBefore + 1);
 
       TableInfo tableInfoAfterReplace = tableOperations.getTable(fullTableName);
       Assertions.assertEquals(expectedTableId, tableInfoAfterReplace.getTableId());
@@ -330,12 +334,17 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String fullTableName =
         setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+    sql("INSERT INTO %s VALUES (1, 'a')", fullTableName);
+    long versionBefore = latestDeltaVersion(fullTableName);
 
     List<String> statements =
         List.of(
             String.format("REPLACE TABLE %s (i INT, renamed STRING) USING DELTA", fullTableName),
             String.format(
                 "REPLACE TABLE %s (i INT, s STRING) USING DELTA PARTITIONED BY (s)", fullTableName),
+            String.format(
+                "REPLACE TABLE %s (i INT, s STRING) USING DELTA COMMENT 'new comment'",
+                fullTableName),
             String.format(
                 "CREATE OR REPLACE TABLE %s (i INT, s STRING) USING DELTA "
                     + "TBLPROPERTIES ('delta.appendOnly' = 'true')",
@@ -345,6 +354,9 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
       assertThatThrownBy(() -> sql(statement))
           .hasMessageContaining("Replacing a catalog-managed table");
     }
+
+    assertThat(latestDeltaVersion(fullTableName)).isEqualTo(versionBefore);
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "a"));
   }
 
   @Test
@@ -352,11 +364,16 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String fullTableName =
         setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+    sql("INSERT INTO %s VALUES (1, 'a')", fullTableName);
+    long versionBefore = latestDeltaVersion(fullTableName);
 
     assertThatThrownBy(
             () ->
                 sql("REPLACE TABLE %s USING DELTA AS SELECT 1 AS i, 2 AS extra_col", fullTableName))
         .hasMessageContaining("Replacing a catalog-managed table");
+
+    assertThat(latestDeltaVersion(fullTableName)).isEqualTo(versionBefore);
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "a"));
   }
 
   @Test
@@ -364,11 +381,57 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String fullTableName =
         setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+    sql("INSERT INTO %s VALUES (1, 'a')", fullTableName);
+    long versionBefore = latestDeltaVersion(fullTableName);
 
     assertThatThrownBy(
             () ->
                 sql("CREATE OR REPLACE TABLE %s (i INT, extra_col INT) USING DELTA", fullTableName))
         .hasMessageContaining("Replacing a catalog-managed table");
+
+    assertThat(latestDeltaVersion(fullTableName)).isEqualTo(versionBefore);
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "a"));
+  }
+
+  @Test
+  public void testManagedReplaceFailuresPreserveExistingDataAndVersion() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    TableSetupOptions options =
+        new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE);
+    String fullTableName = setupTable(options);
+    sql("INSERT INTO %s VALUES (1, 'a'), (2, 'b')", fullTableName);
+
+    TableInfo tableInfoBeforeFailure = tableOperations.getTable(fullTableName);
+    long versionBeforeRtasFailure = latestDeltaVersion(fullTableName);
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "REPLACE TABLE %s USING DELTA AS "
+                        + "SELECT i, IF(i = 2, CAST(raise_error('boom') AS STRING), s) AS s "
+                        + "FROM %s",
+                    fullTableName, fullTableName))
+        .isInstanceOf(Exception.class);
+    assertThat(latestDeltaVersion(fullTableName)).isEqualTo(versionBeforeRtasFailure);
+    validateRows(
+        sql("SELECT * FROM %s ORDER BY i", fullTableName), Pair.of(1, "a"), Pair.of(2, "b"));
+    assertThat(tableOperations.getTable(fullTableName).getTableId())
+        .isEqualTo(tableInfoBeforeFailure.getTableId());
+
+    long versionBeforeCtorFailure = latestDeltaVersion(fullTableName);
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE OR REPLACE TABLE %s USING DELTA AS "
+                        + "SELECT i, IF(i = 2, CAST(raise_error('boom') AS STRING), s) AS s "
+                        + "FROM %s",
+                    fullTableName, fullTableName))
+        .isInstanceOf(Exception.class);
+    assertThat(latestDeltaVersion(fullTableName)).isEqualTo(versionBeforeCtorFailure);
+    validateRows(
+        sql("SELECT * FROM %s ORDER BY i", fullTableName), Pair.of(1, "a"), Pair.of(2, "b"));
+    assertThat(tableOperations.getTable(fullTableName).getTableId())
+        .isEqualTo(tableInfoBeforeFailure.getTableId());
   }
 
   @Override

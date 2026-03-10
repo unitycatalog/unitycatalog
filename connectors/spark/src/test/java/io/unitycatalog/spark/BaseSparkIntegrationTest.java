@@ -80,6 +80,15 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return session.sql(String.format(statement, args)).collectAsList();
   }
 
+  protected long latestDeltaVersion(String fullTableName) {
+    List<Row> history = sql("DESCRIBE HISTORY %s", fullTableName);
+    if (history.isEmpty()) {
+      throw new IllegalStateException("No Delta history found for table: " + fullTableName);
+    }
+    Number version = history.get(0).getAs("version");
+    return version.longValue();
+  }
+
   @BeforeEach
   @Override
   public void setUp() {

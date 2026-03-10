@@ -628,6 +628,11 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
     ),
+    // Keep JaCoCo's offline-instrumented dependency cache keyed by the Spark/Delta stack under
+    // test. Without this, switching from a released Delta build to a local snapshot can leave old
+    // instrumented Delta classes ahead of the fresh jars on the test classpath.
+    jacocoInstrumentedDirectory :=
+      target.value / "jacoco" / s"instrumented-classes-spark-$sparkVersion-delta-$deltaVersion",
     Test / unmanagedJars += (serverShaded / assembly).value,
     // netty-codec-native-quic uses ${packaging.type} in its POM which Ivy (used by sbt-license-report) cannot resolve.
     // Exclude it so Ivy never attempts to fetch it; Coursier (used for normal builds) handles it fine.
