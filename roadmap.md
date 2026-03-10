@@ -7,7 +7,7 @@ features may move in/out of milestones pending available resources, priorities, 
 
 ### Managed Delta table support
 
-Catalog managed commits (CC) are the basis for many new and powerful client (Delta) and server side features and 
+Delta's Catalog managed commits are the basis for many new and powerful client (Delta) and server side features and 
 were introduced as `experimental` in the 0.4 release. 
 * This release will introduce new Delta Catalog APIs as well as
 moving to non-experimental. 
