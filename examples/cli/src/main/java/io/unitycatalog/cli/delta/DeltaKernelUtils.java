@@ -44,6 +44,7 @@ import org.slf4j.LoggerFactory;
  */
 public class DeltaKernelUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(DeltaKernelUtils.class);
+  private static final String ENGINE_INFO = "UnityCatalogCli";
 
   public static Map<String, String> createDeltaTable(
       String tablePath,
@@ -64,20 +65,22 @@ public class DeltaKernelUtils {
         // Catalog-managed table: use UCCatalogManagedClient for coordinated commits.
         // "type"="static" means a pre-configured bearer token; see TokenProvider.create() javadoc.
         TokenProvider tokenProvider =
-            TokenProvider.create(Map.of("type", "static", "token", authToken));
+            TokenProvider.create(
+                Map.of("type", "static", "token", authToken != null ? authToken : ""));
         UCTokenBasedRestClient ucClient =
             new UCTokenBasedRestClient(serverUrl, tokenProvider, Map.of());
         UCCatalogManagedClient ucCatalogManagedClient = new UCCatalogManagedClient(ucClient);
         commitResult =
             ucCatalogManagedClient
-                .buildCreateTableTransaction(tableId, tablePath, tableSchema, "uc-cli")
+                .buildCreateTableTransaction(
+                    tableId, substituteSchemeForS3(tablePath), tableSchema, ENGINE_INFO)
                 // TODO: temporary workaround — Delta Kernel should auto-enable all features
                 // required by catalogManaged. Remove once that is fixed in the kernel.
                 // User-specified properties are also passed here so the kernel writes them into
                 // the Delta log; the returned deltaTableProperties will reflect the actual state.
                 .withTableProperties(
                     mergeProperties(
-                        Map.of("delta.feature.vacuumProtocolCheck", "supported"), userProperties))
+                        userProperties, Map.of("delta.feature.vacuumProtocolCheck", "supported")))
                 .build(engine)
                 .commit(engine, CloseableIterable.emptyIterable() /* dataActions */);
         LOGGER.info(
@@ -87,7 +90,8 @@ public class DeltaKernelUtils {
         // UnityCatalogUtils.getPropertiesForCreate requires SnapshotImpl (an internal Delta
         // Kernel class) to access protocol/table-property internals not exposed on the public
         // Snapshot interface. The cast is safe here because the post-commit snapshot returned
-        // by Delta Kernel is always a SnapshotImpl at runtime.
+        // by Delta Kernel is always a SnapshotImpl at runtime. This should be fixed in the
+        // kernel by exposing the needed accessors on the public Snapshot interface.
         SnapshotImpl postCreateSnapshot =
             (SnapshotImpl)
                 commitResult
@@ -98,10 +102,11 @@ public class DeltaKernelUtils {
                                 "Post-commit snapshot unavailable after table creation"));
         return UnityCatalogUtils.getPropertiesForCreate(engine, postCreateSnapshot);
       } else {
-        // External table: write Delta log directly to storage, no UC commit coordination needed
+        // External table: write Delta log directly to storage, no UC commit coordination needed.
+        // commit() throws on failure, so no explicit version check is needed.
         commitResult =
             TableManager.buildCreateTableTransaction(
-                    substituteSchemeForS3(tablePath), tableSchema, "UnityCatalogCli")
+                    substituteSchemeForS3(tablePath), tableSchema, ENGINE_INFO)
                 .build(engine)
                 .commit(engine, CloseableIterable.emptyIterable() /* dataActions */);
         LOGGER.info(

@@ -183,5 +183,7 @@ public class CliTableCreationTest extends BaseServerTest {
                 DeltaKernelUtils.readDeltaTable(
                     tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100))
         .doesNotThrowAnyException();
+    // Table and directory cleanup is handled by @AfterEach via cascade-deleting the catalog.
+    // For managed tables, the temp directory is also cleaned up by JUnit @TempDir.
   }
 }
