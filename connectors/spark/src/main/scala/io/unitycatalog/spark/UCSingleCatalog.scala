@@ -280,11 +280,9 @@ class UCSingleCatalog
       tableLocation: String,
       tableType: TableType,
       tableId: String): Unit = {
-    if (UCSingleCatalog.shouldEmitExistingReplaceHandoff()) {
-      props.put(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_LOCATION_KEY, tableLocation)
-      props.put(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_TYPE_KEY, tableType.name())
-      props.put(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_ID_KEY, tableId)
-    }
+    props.put(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_LOCATION_KEY, tableLocation)
+    props.put(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_TYPE_KEY, tableType.name())
+    props.put(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_ID_KEY, tableId)
   }
 
   /** Prepares properties for external table creation (path credentials). */
@@ -586,11 +584,6 @@ class UCSingleCatalog
 }
 
 object UCSingleCatalog {
-  private val DeltaExistingReplaceHandoffEnabledProp =
-    "unitycatalog.delta.replace.handoff.enabled"
-  private val DeltaExistingReplaceHandoffMarkerClass =
-    "org.apache.spark.sql.delta.catalog.ExistingTableHandoffContext$"
-
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
@@ -619,18 +612,6 @@ object UCSingleCatalog {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     !hasExternalClause && !hasLocationClause && !isPathBasedTable(ident)
-  }
-
-  private[spark] def shouldEmitExistingReplaceHandoff(): Boolean = {
-    sys.props.get(DeltaExistingReplaceHandoffEnabledProp)
-      .map(_.toBoolean)
-      .getOrElse(supportsExistingReplaceHandoff())
-  }
-
-  private def supportsExistingReplaceHandoff(): Boolean = {
-    val classLoader = Option(Thread.currentThread().getContextClassLoader)
-      .getOrElse(getClass.getClassLoader)
-    Try(Class.forName(DeltaExistingReplaceHandoffMarkerClass, false, classLoader)).isSuccess
   }
 
   private def isPathBasedTable(ident: Identifier): Boolean = {

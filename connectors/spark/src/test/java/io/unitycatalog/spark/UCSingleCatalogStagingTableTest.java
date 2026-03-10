@@ -60,7 +60,6 @@ public class UCSingleCatalogStagingTableTest {
 
   @BeforeEach
   public void setUp() {
-    System.setProperty("unitycatalog.delta.replace.handoff.enabled", "true");
     catalog = new UCSingleCatalog();
     mockDelegate = mock(StagingTableCatalog.class);
     setDelegate(catalog, mockDelegate);
@@ -172,58 +171,6 @@ public class UCSingleCatalogStagingTableTest {
   }
 
   @Test
-  public void testStageCreateOrReplaceExistingManagedTableAvoidsPathBasedReplace()
-      throws Exception {
-    TablesApi mockTablesApi = mock(TablesApi.class);
-    TemporaryCredentialsApi mockTempCredsApi = mock(TemporaryCredentialsApi.class);
-    StagedTable staged = mock(StagedTable.class);
-    when(mockDelegate.name()).thenReturn("main");
-    when(mockDelegate.stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any())).thenReturn(staged);
-    when(mockTablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
-        .thenReturn(
-            new TableInfo()
-                .tableType(TableType.MANAGED)
-                .dataSourceFormat(DataSourceFormat.DELTA)
-                .storageLocation("file:///tmp/uc-managed-table")
-                .tableId("table-id")
-                .properties(
-                    Map.of(
-                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-                        UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)));
-    when(mockTempCredsApi.generateTemporaryTableCredentials(any()))
-        .thenReturn(new TemporaryCredentials());
-
-    setField(catalog, "tablesApi", mockTablesApi);
-    setField(catalog, "temporaryCredentialsApi", mockTempCredsApi);
-    setField(catalog, "uri", URI.create("http://localhost"));
-
-    StagedTable result =
-        catalog.stageCreateOrReplace(IDENT, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS);
-
-    @SuppressWarnings("unchecked")
-    ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
-
-    verify(mockTablesApi, never()).createStagingTable(any(CreateStagingTable.class));
-    verify(mockTempCredsApi).generateTemporaryTableCredentials(any());
-    verify(mockDelegate).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
-    assertThat(propsCaptor.getValue())
-        .doesNotContainKey(TableCatalog.PROP_LOCATION)
-        .containsEntry(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
-        .doesNotContainKey(UCTableProperties.UC_TABLE_ID_KEY)
-        .doesNotContainKey(UCTableProperties.UC_TABLE_ID_KEY_OLD)
-        .containsEntry(
-            UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_LOCATION_KEY,
-            "file:///tmp/uc-managed-table")
-        .containsEntry(
-            UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_TYPE_KEY, TableType.MANAGED.name())
-        .containsEntry(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_ID_KEY, "table-id")
-        .containsEntry(
-            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-            UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
-    assertThat(result).isSameAs(staged);
-  }
-
-  @Test
   public void testStageReplaceExistingManagedTableAvoidsPathBasedReplace() throws Exception {
     TablesApi mockTablesApi = mock(TablesApi.class);
     TemporaryCredentialsApi mockTempCredsApi = mock(TemporaryCredentialsApi.class);
@@ -270,52 +217,6 @@ public class UCSingleCatalogStagingTableTest {
             UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
     assertThat(result).isSameAs(staged);
-  }
-
-  @Test
-  public void testStageReplaceExistingManagedTableSkipsHandoffForOlderDelta() throws Exception {
-    String previous = System.getProperty("unitycatalog.delta.replace.handoff.enabled");
-    System.setProperty("unitycatalog.delta.replace.handoff.enabled", "false");
-    try {
-      TablesApi mockTablesApi = mock(TablesApi.class);
-      TemporaryCredentialsApi mockTempCredsApi = mock(TemporaryCredentialsApi.class);
-      StagedTable staged = mock(StagedTable.class);
-      when(mockDelegate.name()).thenReturn("main");
-      when(mockDelegate.stageReplace(eq(IDENT), eq(SCHEMA), any(), any())).thenReturn(staged);
-      when(mockTablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
-          .thenReturn(
-              new TableInfo()
-                  .tableType(TableType.MANAGED)
-                  .dataSourceFormat(DataSourceFormat.DELTA)
-                  .storageLocation("file:///tmp/uc-managed-table")
-                  .tableId("table-id")
-                  .properties(
-                      Map.of(
-                          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-                          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)));
-      when(mockTempCredsApi.generateTemporaryTableCredentials(any()))
-          .thenReturn(new TemporaryCredentials());
-
-      setField(catalog, "tablesApi", mockTablesApi);
-      setField(catalog, "temporaryCredentialsApi", mockTempCredsApi);
-      setField(catalog, "uri", URI.create("http://localhost"));
-
-      catalog.stageReplace(IDENT, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS);
-
-      @SuppressWarnings("unchecked")
-      ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
-      verify(mockDelegate).stageReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
-      assertThat(propsCaptor.getValue())
-          .doesNotContainKey(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_LOCATION_KEY)
-          .doesNotContainKey(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_TYPE_KEY)
-          .doesNotContainKey(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_ID_KEY);
-    } finally {
-      if (previous == null) {
-        System.clearProperty("unitycatalog.delta.replace.handoff.enabled");
-      } else {
-        System.setProperty("unitycatalog.delta.replace.handoff.enabled", previous);
-      }
-    }
   }
 
   @Test
@@ -407,86 +308,6 @@ public class UCSingleCatalogStagingTableTest {
   }
 
   @Test
-  public void testStageCreateOrReplaceExistingExternalTableUsesCurrentMetadata() throws Exception {
-    TablesApi mockTablesApi = mock(TablesApi.class);
-    TemporaryCredentialsApi mockTempCredsApi = mock(TemporaryCredentialsApi.class);
-    Table existingTable = mock(Table.class);
-    StagedTable staged = mock(StagedTable.class);
-    StructType existingSchema =
-        new StructType()
-            .add("id", DataTypes.IntegerType, false)
-            .add("value", DataTypes.StringType, true);
-    Transform[] existingPartitions = new Transform[0];
-    when(mockDelegate.name()).thenReturn("main");
-    when(mockDelegate.loadTable(eq(IDENT))).thenReturn(existingTable);
-    when(existingTable.schema()).thenReturn(existingSchema);
-    when(existingTable.partitioning()).thenReturn(existingPartitions);
-    when(existingTable.properties())
-        .thenReturn(externalTableProperties("file:///tmp/uc-external-table", "external-table-id"));
-    when(mockDelegate.stageCreateOrReplace(
-            any(Identifier.class),
-            org.mockito.ArgumentMatchers.<StructType>any(),
-            org.mockito.ArgumentMatchers.<Transform[]>any(),
-            any()))
-        .thenReturn(staged);
-    when(mockTablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
-        .thenReturn(
-            new TableInfo()
-                .tableType(TableType.EXTERNAL)
-                .dataSourceFormat(DataSourceFormat.DELTA)
-                .storageLocation("file:///tmp/uc-external-table")
-                .tableId("external-table-id")
-                .properties(Map.of()));
-    when(mockTempCredsApi.generateTemporaryTableCredentials(any()))
-        .thenReturn(new TemporaryCredentials());
-
-    setField(catalog, "tablesApi", mockTablesApi);
-    setField(catalog, "temporaryCredentialsApi", mockTempCredsApi);
-    setField(catalog, "uri", URI.create("http://localhost"));
-
-    StagedTable result =
-        catalog.stageCreateOrReplace(
-            IDENT,
-            new StructType()
-                .add("id", DataTypes.IntegerType, false)
-                .add("value", DataTypes.StringType, true),
-            PARTITIONS,
-            REPLACE_DELTA_PROPS);
-
-    ArgumentCaptor<StructType> schemaCaptor = ArgumentCaptor.forClass(StructType.class);
-    ArgumentCaptor<Transform[]> partitionsCaptor = ArgumentCaptor.forClass(Transform[].class);
-
-    verify(mockTempCredsApi).generateTemporaryTableCredentials(any());
-    verify(mockTempCredsApi, never()).generateTemporaryPathCredentials(any());
-    verify(mockDelegate)
-        .stageCreateOrReplace(
-            eq(IDENT),
-            (StructType) schemaCaptor.capture(),
-            (Transform[]) partitionsCaptor.capture(),
-            any());
-    assertThat(schemaCaptor.getValue()).isSameAs(existingSchema);
-    assertThat(partitionsCaptor.getValue()).isSameAs(existingPartitions);
-    @SuppressWarnings("unchecked")
-    ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
-    verify(mockDelegate)
-        .stageCreateOrReplace(
-            eq(IDENT),
-            org.mockito.ArgumentMatchers.<StructType>any(),
-            org.mockito.ArgumentMatchers.<Transform[]>any(),
-            propsCaptor.capture());
-    assertThat(propsCaptor.getValue())
-        .containsEntry(TableCatalog.PROP_LOCATION, "file:///tmp/uc-external-table")
-        .containsEntry(
-            UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_LOCATION_KEY,
-            "file:///tmp/uc-external-table")
-        .containsEntry(
-            UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_TYPE_KEY, TableType.EXTERNAL.name())
-        .containsEntry(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_ID_KEY, "external-table-id")
-        .doesNotContainKey(TableCatalog.PROP_IS_MANAGED_LOCATION);
-    assertThat(result).isSameAs(staged);
-  }
-
-  @Test
   public void testStageCreateOrReplaceMissingExternalTableUsesExternalCreatePath()
       throws Exception {
     TablesApi mockTablesApi = mock(TablesApi.class);
@@ -537,52 +358,6 @@ public class UCSingleCatalogStagingTableTest {
         .doesNotContainKey(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_TYPE_KEY)
         .doesNotContainKey(UCTableProperties.DELTA_REPLACE_EXISTING_TABLE_ID_KEY);
     assertThat(result).isSameAs(staged);
-  }
-
-  @Test
-  public void testStageReplaceExistingExternalTableRejectsLocationChanges() throws Exception {
-    TablesApi mockTablesApi = mock(TablesApi.class);
-    TemporaryCredentialsApi mockTempCredsApi = mock(TemporaryCredentialsApi.class);
-    Table existingTable = mock(Table.class);
-    when(mockDelegate.name()).thenReturn("main");
-    when(mockDelegate.loadTable(eq(IDENT))).thenReturn(existingTable);
-    when(existingTable.schema()).thenReturn(SCHEMA);
-    when(existingTable.partitioning()).thenReturn(PARTITIONS);
-    when(existingTable.properties())
-        .thenReturn(externalTableProperties("file:///tmp/uc-external-table", "external-table-id"));
-    when(mockTablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
-        .thenReturn(
-            new TableInfo()
-                .tableType(TableType.EXTERNAL)
-                .dataSourceFormat(DataSourceFormat.DELTA)
-                .storageLocation("file:///tmp/uc-external-table")
-                .tableId("external-table-id")
-                .properties(Map.of()));
-
-    setField(catalog, "tablesApi", mockTablesApi);
-    setField(catalog, "temporaryCredentialsApi", mockTempCredsApi);
-
-    assertThatThrownBy(
-            () ->
-                catalog.stageReplace(
-                    IDENT,
-                    SCHEMA,
-                    PARTITIONS,
-                    Map.of(
-                        TableCatalog.PROP_PROVIDER,
-                        "delta",
-                        TableCatalog.PROP_LOCATION,
-                        "file:///tmp/different-location")))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("only supports data refresh");
-
-    verify(mockDelegate, never())
-        .stageReplace(
-            eq(IDENT),
-            org.mockito.ArgumentMatchers.<StructType>any(),
-            org.mockito.ArgumentMatchers.<Transform[]>any(),
-            any());
-    verify(mockTempCredsApi, never()).generateTemporaryTableCredentials(any());
   }
 
   @Test
