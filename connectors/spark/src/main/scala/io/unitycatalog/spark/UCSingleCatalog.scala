@@ -553,7 +553,7 @@ private class UCProxy(
       case _: StringType | _: VarcharType => ColumnTypeName.STRING
       case _: BinaryType => ColumnTypeName.BINARY
       case _: DecimalType => ColumnTypeName.DECIMAL
-      case _: CalendarIntervalType | _: DayTimeIntervalType | _: YearMonthIntervalType =>
+      case _: DayTimeIntervalType | _: YearMonthIntervalType =>
         ColumnTypeName.INTERVAL
       case _: ArrayType => ColumnTypeName.ARRAY
       case _: StructType => ColumnTypeName.STRUCT
