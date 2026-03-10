@@ -115,6 +115,12 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
               assertThat(columns.get(0).getTypeName()).isEqualTo(ColumnTypeName.INT);
               assertThat(columns.get(1).getName()).isEqualTo("s");
               assertThat(columns.get(1).getTypeName()).isEqualTo(ColumnTypeName.STRING);
+              assertThat(columns.get(0).getPartitionIndex()).isNull();
+              if (withPartitionColumns) {
+                assertThat(columns.get(1).getPartitionIndex()).isEqualTo(0);
+              } else {
+                assertThat(columns.get(1).getPartitionIndex()).isNull();
+              }
             }
             validateTableSchema(
                 session.table(fullTableName).schema(),
