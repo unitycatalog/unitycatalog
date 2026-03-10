@@ -3,7 +3,6 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.auth.TokenProvider
 import io.unitycatalog.client.model._
-import io.unitycatalog.client.model.TableInfo
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
@@ -171,10 +170,7 @@ class UCSingleCatalog
    * with the coordinated-commit behavior expected for UC-managed Delta tables.
    */
   private def validateManagedDeltaCreateProperties(properties: util.Map[String, String]): Unit = {
-    List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
-      TableCatalog.PROP_IS_MANAGED_LOCATION)
-      .filter(properties.containsKey(_))
-      .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
+    rejectSystemManagedProperties(properties)
     if (!properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) &&
       !properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
       throw new ApiException(
@@ -212,10 +208,7 @@ class UCSingleCatalog
     logInfo(s"loadExistingManagedTablePropsForReplace: $fullTableName")
 
     // First, ensure the caller is not trying to override system-managed properties.
-    List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
-      TableCatalog.PROP_IS_MANAGED_LOCATION)
-      .filter(properties.containsKey(_))
-      .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
+    rejectSystemManagedProperties(properties)
 
     // Second, make sure UC says this is an existing managed Delta table and that the metadata we
     // need to reuse it for replace (storage location and table ID) is present.
@@ -243,6 +236,7 @@ class UCSingleCatalog
         .find(existingProps.containsKey)
         .foreach(key => newProps.put(key, existingProps.get(key)))
     }
+    // Location intentionally omitted; Delta resolves it from the existing table snapshot.
     newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
 
     // Finally, vend fresh READ_WRITE credentials for the existing table location.
@@ -262,6 +256,13 @@ class UCSingleCatalog
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     logInfo(s"Replace props prepared for $fullTableName")
     newProps
+  }
+
+  private def rejectSystemManagedProperties(properties: util.Map[String, String]): Unit = {
+    List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
+      TableCatalog.PROP_IS_MANAGED_LOCATION)
+      .filter(properties.containsKey(_))
+      .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
   }
 
   /** Prepares properties for external table creation (path credentials). */
@@ -331,29 +332,17 @@ class UCSingleCatalog
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    delegate match {
-      case stagingCatalog: StagingTableCatalog =>
-        if (!UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
-          throw new UnsupportedOperationException(s"REPLACE TABLE $ucManagedDeltaOnlyMsg")
-        }
-        val fullTableName = UCSingleCatalog.fullTableNameForApi(name(), ident)
-        val tableInfo = try {
-          tablesApi.getTable(fullTableName,
-            /* readStreamingTableAsManaged = */ false,
-            /* readMaterializedViewAsManaged = */ false)
-        } catch {
-          case e: ApiException if e.getCode == 404 => throw new NoSuchTableException(ident)
-        }
-        val newProps = loadExistingManagedTablePropsForReplace(
-          ident,
-          tableInfo,
-          properties,
-          "REPLACE TABLE")
-        stagingCatalog.stageReplace(ident, schema, partitions, newProps)
-      case _ =>
-        throw new UnsupportedOperationException("REPLACE TABLE is not supported")
-    }
+    val (stagingCatalog, existingTable) = prepareManagedDeltaReplaceOrCreateOrReplace(
+      ident,
+      properties,
+      "REPLACE TABLE",
+      allowMissingTable = false)
+    val newProps = loadExistingManagedTablePropsForReplace(
+      ident,
+      existingTable.get,
+      properties,
+      "REPLACE TABLE")
+    stagingCatalog.stageReplace(ident, schema, partitions, newProps)
   }
 
   /** Only called for CREATE OR REPLACE TABLE ... [AS SELECT] */
@@ -362,31 +351,50 @@ class UCSingleCatalog
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    delegate match {
-      case stagingCatalog: StagingTableCatalog =>
-        if (!UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
-          throw new UnsupportedOperationException(s"CREATE OR REPLACE TABLE $ucManagedDeltaOnlyMsg")
-        }
-        val fullTableName = UCSingleCatalog.fullTableNameForApi(name(), ident)
-        val existingTable = try {
-          Some(tablesApi.getTable(fullTableName, false, false))
-        } catch {
-          case e: ApiException if e.getCode == 404 => None
-        }
-        val newProps = existingTable.map(tableInfo => loadExistingManagedTablePropsForReplace(
-          ident,
-          tableInfo,
-          properties,
-          "CREATE OR REPLACE TABLE")).getOrElse {
-          validateManagedDeltaCreateProperties(properties)
-          stageManagedDeltaTableAndGetProps(ident, properties)
-        }
-        stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
-      case _ =>
-        throw new UnsupportedOperationException(
-          "CREATE OR REPLACE TABLE is not supported")
+    val (stagingCatalog, existingTable) = prepareManagedDeltaReplaceOrCreateOrReplace(
+      ident,
+      properties,
+      "CREATE OR REPLACE TABLE",
+      allowMissingTable = true)
+    val newProps = existingTable.map(tableInfo => loadExistingManagedTablePropsForReplace(
+      ident,
+      tableInfo,
+      properties,
+      "CREATE OR REPLACE TABLE")).getOrElse {
+      validateManagedDeltaCreateProperties(properties)
+      stageManagedDeltaTableAndGetProps(ident, properties)
     }
+    stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
+  }
+
+  private def prepareManagedDeltaReplaceOrCreateOrReplace(
+      ident: Identifier,
+      properties: util.Map[String, String],
+      operation: String,
+      allowMissingTable: Boolean): (StagingTableCatalog, Option[TableInfo]) = {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    val stagingCatalog = delegate match {
+      case catalog: StagingTableCatalog => catalog
+      case _ => throw new UnsupportedOperationException(s"$operation is not supported")
+    }
+
+    // On REPLACE paths the SQL properties only tell us that the command is targeting the managed
+    // table flow (no EXTERNAL clause, LOCATION clause, or path-based identifier). Whether an
+    // existing table is actually a UC-managed Delta table is checked after the UC lookup below.
+    if (!UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
+      throw new UnsupportedOperationException(s"$operation $ucManagedDeltaOnlyMsg")
+    }
+
+    val fullTableName = UCSingleCatalog.fullTableNameForApi(name(), ident)
+    val existingTable = try {
+      Some(tablesApi.getTable(fullTableName,
+        /* readStreamingTableAsManaged = */ false,
+        /* readMaterializedViewAsManaged = */ false))
+    } catch {
+      case e: ApiException if e.getCode == 404 && allowMissingTable => None
+      case e: ApiException if e.getCode == 404 => throw new NoSuchTableException(ident)
+    }
+    (stagingCatalog, existingTable)
   }
 
   /** Only called for CTAS */
