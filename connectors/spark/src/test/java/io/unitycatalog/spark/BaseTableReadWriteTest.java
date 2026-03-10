@@ -441,9 +441,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
-   * Specification for one column in testTableWithComplexTypes: its SQL DDL type, the SQL literal
-   * used in the INSERT, the expected toString() from the result row (null = byte-array ref check
-   * via startsWith("[B@")), and the expected UC catalog metadata fields.
+   * Specification for one column in testTableWithSupportedDataTypes: its SQL DDL type, the SQL
+   * literal used in the INSERT, the expected toString() from the result row (null = byte-array ref
+   * check via startsWith("[B@")), and the expected UC catalog metadata fields.
    */
   @AllArgsConstructor
   @Getter
@@ -580,6 +580,22 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "timestamp_ntz",
                 "\"timestamp_ntz\""),
             new ColSpec(
+                "col_daytime_interval",
+                "INTERVAL DAY TO SECOND",
+                "INTERVAL '1 00:00:00' DAY TO SECOND",
+                "PT24H",
+                ColumnTypeName.INTERVAL,
+                "interval day to second",
+                "\"interval day to second\""),
+            new ColSpec(
+                "col_yearmonth_interval",
+                "INTERVAL YEAR TO MONTH",
+                "INTERVAL '0-1' YEAR TO MONTH",
+                "P1M",
+                ColumnTypeName.INTERVAL,
+                "interval year to month",
+                "\"interval year to month\""),
+            new ColSpec(
                 "col_arr",
                 "ARRAY<INT>",
                 "array(1, 2, 3)",
@@ -606,6 +622,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String tableName = TEST_TABLE + "_complex_type";
+    List<String> partitionColumns = List.of("col_daytime_interval", "col_string", "col_bigint");
     String fullTableName =
         setupTable(
             new TableSetupOptions()
@@ -615,13 +632,16 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 .setColumns(
                     cols.stream()
                         .map(c -> Pair.of(c.getName(), c.getSqlType()))
-                        .collect(Collectors.toList())));
+                        .collect(Collectors.toList()))
+                .setPartitionColumns(partitionColumns));
+    String colNames = cols.stream().map(ColSpec::getName).collect(Collectors.joining(", "));
     sql(
-        "INSERT INTO %s VALUES (%s)",
+        "INSERT INTO %s (%s) VALUES (%s)",
         fullTableName,
+        colNames,
         cols.stream().map(ColSpec::getInsertValue).collect(Collectors.joining(", ")));
 
-    List<Row> queryResult = sql("SELECT * FROM %s", fullTableName);
+    List<Row> queryResult = sql("SELECT %s FROM %s", colNames, fullTableName);
     assertThat(queryResult).hasSize(1);
     List<String> row =
         IntStream.range(0, queryResult.get(0).length())
@@ -652,6 +672,12 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       assertThat(col.getTypeJson())
           .as("typeJson for %s", spec.getName())
           .isEqualTo(spec.getTypeJson());
+      int partitionIndex = partitionColumns.indexOf(col.getName());
+      if (partitionIndex != -1) {
+        assertThat(col.getPartitionIndex()).isEqualTo(partitionIndex);
+      } else {
+        assertThat(col.getPartitionIndex()).isNull();
+      }
     }
   }
 
