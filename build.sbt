@@ -198,7 +198,8 @@ lazy val client = (project in file("clients/java"))
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
-    
+    (Compile / doc) := ((Compile / doc) dependsOn generate).value,
+
     // Add custom test sources from clients/java directory
     Test / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "src" / "test" / "java"),
 
