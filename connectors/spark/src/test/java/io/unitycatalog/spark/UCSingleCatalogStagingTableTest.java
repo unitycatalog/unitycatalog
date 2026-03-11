@@ -43,6 +43,8 @@ public class UCSingleCatalogStagingTableTest {
       "unitycatalog.internal.delta.replace.existingTableType";
   private static final String EXISTING_TABLE_ID_KEY =
       "unitycatalog.internal.delta.replace.existingTableId";
+  private static final String CREATE_WHEN_MISSING_KEY =
+      "unitycatalog.internal.delta.replace.createWhenMissing";
   private static final Identifier IDENT = Identifier.of(new String[] {"schema"}, "table");
   private static final StructType SCHEMA = new StructType().add("id", DataTypes.IntegerType, false);
   private static final Transform[] PARTITIONS = new Transform[0];
@@ -137,6 +139,7 @@ public class UCSingleCatalogStagingTableTest {
     assertThat(propsCaptor.getValue())
         .containsEntry(TableCatalog.PROP_LOCATION, "file:///tmp/uc-staging")
         .containsEntry(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+        .containsEntry(CREATE_WHEN_MISSING_KEY, "true")
         .containsEntry(UCTableProperties.UC_TABLE_ID_KEY, "staging-id")
         .containsEntry(UCTableProperties.UC_TABLE_ID_KEY_OLD, "staging-id");
     assertThat(result).isSameAs(staged);
@@ -158,6 +161,97 @@ public class UCSingleCatalogStagingTableTest {
                     IDENT, SCHEMA, PARTITIONS, Map.of(TableCatalog.PROP_PROVIDER, "delta")))
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("Managed table creation requires table property");
+
+    verify(mockTablesApi, never()).createStagingTable(any(CreateStagingTable.class));
+    verify(mockDelegate, never()).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any());
+  }
+
+  @Test
+  public void testStageCreateOrReplaceRejectsUserSuppliedExistingTableHandoffProperties()
+      throws Exception {
+    TablesApi mockTablesApi = mock(TablesApi.class);
+    when(mockDelegate.name()).thenReturn("main");
+    when(mockTablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
+        .thenThrow(new ApiException(404, "not found"));
+
+    setField(catalog, "tablesApi", mockTablesApi);
+
+    assertThatThrownBy(
+            () ->
+                catalog.stageCreateOrReplace(
+                    IDENT,
+                    SCHEMA,
+                    PARTITIONS,
+                    Map.of(
+                        TableCatalog.PROP_PROVIDER,
+                        "delta",
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+                        UCTableProperties.DELTA_CATALOG_MANAGED_VALUE,
+                        EXISTING_TABLE_LOCATION_KEY,
+                        "file:///tmp/uc-managed-table")))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Cannot specify property '" + EXISTING_TABLE_LOCATION_KEY + "'");
+
+    verify(mockTablesApi, never()).createStagingTable(any(CreateStagingTable.class));
+    verify(mockDelegate, never()).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any());
+  }
+
+  @Test
+  public void testStageCreateOrReplaceRejectsOptionPrefixedExistingTableHandoffProperties()
+      throws Exception {
+    TablesApi mockTablesApi = mock(TablesApi.class);
+    when(mockDelegate.name()).thenReturn("main");
+    when(mockTablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
+        .thenThrow(new ApiException(404, "not found"));
+
+    setField(catalog, "tablesApi", mockTablesApi);
+
+    String optionKey = TableCatalog.OPTION_PREFIX + EXISTING_TABLE_ID_KEY;
+    assertThatThrownBy(
+            () ->
+                catalog.stageCreateOrReplace(
+                    IDENT,
+                    SCHEMA,
+                    PARTITIONS,
+                    Map.of(
+                        TableCatalog.PROP_PROVIDER,
+                        "delta",
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+                        UCTableProperties.DELTA_CATALOG_MANAGED_VALUE,
+                        optionKey,
+                        "table-id")))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Cannot specify property '" + optionKey + "'");
+
+    verify(mockTablesApi, never()).createStagingTable(any(CreateStagingTable.class));
+    verify(mockDelegate, never()).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any());
+  }
+
+  @Test
+  public void testStageCreateOrReplaceRejectsUserSuppliedCreateWhenMissingProperty()
+      throws Exception {
+    TablesApi mockTablesApi = mock(TablesApi.class);
+    when(mockDelegate.name()).thenReturn("main");
+    when(mockTablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
+        .thenThrow(new ApiException(404, "not found"));
+
+    setField(catalog, "tablesApi", mockTablesApi);
+
+    assertThatThrownBy(
+            () ->
+                catalog.stageCreateOrReplace(
+                    IDENT,
+                    SCHEMA,
+                    PARTITIONS,
+                    Map.of(
+                        TableCatalog.PROP_PROVIDER,
+                        "delta",
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+                        UCTableProperties.DELTA_CATALOG_MANAGED_VALUE,
+                        CREATE_WHEN_MISSING_KEY,
+                        "true")))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Cannot specify property '" + CREATE_WHEN_MISSING_KEY + "'");
 
     verify(mockTablesApi, never()).createStagingTable(any(CreateStagingTable.class));
     verify(mockDelegate, never()).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any());

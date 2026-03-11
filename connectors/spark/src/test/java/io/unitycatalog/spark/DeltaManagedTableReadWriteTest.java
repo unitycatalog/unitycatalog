@@ -38,6 +38,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteTest {
   private static final String DELTA_TABLE = "test_delta";
+  private static final String EXISTING_TABLE_ID_KEY =
+      "unitycatalog.internal.delta.replace.existingTableId";
 
   @Override
   protected String tableFormat() {
@@ -340,6 +342,21 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
       assertThatThrownBy(() -> sql(statement))
           .hasMessageContaining("Replacing a catalog-managed table");
     }
+  }
+
+  @Test
+  public void testManagedDeltaReplaceRejectsUserSuppliedExistingTableHandoffProperties() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE OR REPLACE TABLE %s USING DELTA "
+                        + "TBLPROPERTIES ('%s' = 'spoofed-id') AS SELECT 2 AS i, 'b' AS s",
+                    fullTableName, EXISTING_TABLE_ID_KEY))
+        .hasMessageContaining(String.format("Cannot specify property '%s'", EXISTING_TABLE_ID_KEY));
   }
 
   @Test

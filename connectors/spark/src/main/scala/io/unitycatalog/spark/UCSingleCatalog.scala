@@ -124,7 +124,8 @@ class UCSingleCatalog
   /** Prepares properties for managed table creation (staging table + credentials). */
   private def stageManagedDeltaTableAndGetProps(
       ident: Identifier,
-      properties: util.Map[String, String]): util.Map[String, String] = {
+      properties: util.Map[String, String],
+      createWhenMissing: Boolean = false): util.Map[String, String] = {
     // Get staging table location and table id from UC
     val createStagingTable = new CreateStagingTable()
       .catalogName(name())
@@ -143,6 +144,9 @@ class UCSingleCatalog
     // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
     // user-specified but system-generated, which is exactly the case here.
     newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+    if (createWhenMissing) {
+      newProps.put(UCSingleCatalog.CREATE_WHEN_MISSING_KEY, "true")
+    }
 
     val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
       new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
@@ -229,8 +233,15 @@ class UCSingleCatalog
   }
 
   private def rejectSystemManagedProperties(properties: util.Map[String, String]): Unit = {
-    List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
-      TableCatalog.PROP_IS_MANAGED_LOCATION)
+    List(
+      UCTableProperties.UC_TABLE_ID_KEY,
+      UCTableProperties.UC_TABLE_ID_KEY_OLD,
+      TableCatalog.PROP_IS_MANAGED_LOCATION,
+      UCSingleCatalog.CREATE_WHEN_MISSING_KEY,
+      UCSingleCatalog.EXISTING_TABLE_LOCATION_KEY,
+      UCSingleCatalog.EXISTING_TABLE_TYPE_KEY,
+      UCSingleCatalog.EXISTING_TABLE_ID_KEY
+    ).flatMap(key => Seq(key, TableCatalog.OPTION_PREFIX + key))
       .filter(properties.containsKey(_))
       .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
   }
@@ -332,7 +343,7 @@ class UCSingleCatalog
       properties,
       "CREATE OR REPLACE TABLE")).getOrElse {
       validateManagedDeltaCreateProperties(properties)
-      stageManagedDeltaTableAndGetProps(ident, properties)
+      stageManagedDeltaTableAndGetProps(ident, properties, createWhenMissing = true)
     }
     stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
   }
@@ -392,6 +403,7 @@ class UCSingleCatalog
 object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
+  val CREATE_WHEN_MISSING_KEY = "unitycatalog.internal.delta.replace.createWhenMissing"
   val EXISTING_TABLE_LOCATION_KEY = "unitycatalog.internal.delta.replace.existingTableLocation"
   val EXISTING_TABLE_TYPE_KEY = "unitycatalog.internal.delta.replace.existingTableType"
   val EXISTING_TABLE_ID_KEY = "unitycatalog.internal.delta.replace.existingTableId"
