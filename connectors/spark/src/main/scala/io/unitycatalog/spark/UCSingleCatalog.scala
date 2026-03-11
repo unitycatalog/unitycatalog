@@ -39,6 +39,7 @@ class UCSingleCatalog
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
+  private[this] var catalogName: String = null
 
   @volatile private var delegate: TableCatalog = null
 
@@ -47,6 +48,7 @@ class UCSingleCatalog
     Preconditions.checkArgument(urlStr != null,
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
+    catalogName = Option(options.get(OptionsUtil.WAREHOUSE)).getOrElse(name)
     tokenProvider = TokenProvider.create(AuthConfigUtils.buildAuthConfigs(options));
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
@@ -149,7 +151,7 @@ class UCSingleCatalog
       properties: util.Map[String, String]): util.Map[String, String] = {
     // Get staging table location and table id from UC
     val createStagingTable = new CreateStagingTable()
-      .catalogName(name())
+      .catalogName(catalogName)
       .schemaName(ident.namespace().head)
       .name(ident.name())
     val stagingTableInfo = tablesApi.createStagingTable(createStagingTable)
@@ -357,10 +359,12 @@ private class UCProxy(
     tablesApi: TablesApi,
     temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
   private[this] var name: String = null
+  private[this] var catalogName: String = null
   private[this] var schemasApi: SchemasApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
+    this.catalogName = Option(options.get(OptionsUtil.WAREHOUSE)).getOrElse(name)
     schemasApi = new SchemasApi(apiClient)
   }
 
@@ -372,7 +376,6 @@ private class UCProxy(
   override def listTables(namespace: Array[String]): Array[Identifier] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
 
-    val catalogName = this.name
     val schemaName = namespace.head
     val maxResults = 0
     val pageToken = null
@@ -383,14 +386,15 @@ private class UCProxy(
   override def loadTable(ident: Identifier): Table = {
     val t = try {
       tablesApi.getTable(
-        UCSingleCatalog.fullTableNameForApi(this.name, ident),
+        UCSingleCatalog.fullTableNameForApi(catalogName, ident),
         /* readStreamingTableAsManaged = */ true,
         /* readMaterializedViewAsManaged = */ true)
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchTableException(ident)
     }
-    val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
+    // Keep Spark facing identifiers in the configured catalog name for alias support
+    val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(name()))
     val partitionCols = scala.collection.mutable.ArrayBuffer.empty[(String, Int)]
     val fields = t.getColumns.asScala.map { col =>
       Option(col.getPartitionIndex).foreach { index =>
@@ -480,7 +484,7 @@ private class UCProxy(
     val createTable = new CreateTable()
     createTable.setName(ident.name())
     createTable.setSchemaName(ident.namespace().head)
-    createTable.setCatalogName(this.name)
+    createTable.setCatalogName(catalogName)
 
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
@@ -606,7 +610,7 @@ private class UCProxy(
   }
 
   override def dropTable(ident: Identifier): Boolean = {
-    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(catalogName, ident))
     if (ret == 200) true else false
   }
 
@@ -615,7 +619,7 @@ private class UCProxy(
   }
 
   override def listNamespaces(): Array[Array[String]] = {
-    schemasApi.listSchemas(name, 0, null).getSchemas.asScala.map { schema =>
+    schemasApi.listSchemas(catalogName, 0, null).getSchemas.asScala.map { schema =>
       Array(schema.getName)
     }.toArray
   }
@@ -627,7 +631,7 @@ private class UCProxy(
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     val schema = try {
-      schemasApi.getSchema(name + "." + namespace(0))
+      schemasApi.getSchema(catalogName + "." + namespace(0))
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchNamespaceException(namespace)
@@ -649,7 +653,7 @@ private class UCProxy(
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     val createSchema = new CreateSchema()
-    createSchema.setCatalogName(this.name)
+    createSchema.setCatalogName(catalogName)
     createSchema.setName(namespace.head)
     createSchema.setProperties(metadata)
     schemasApi.createSchema(createSchema)
@@ -661,7 +665,7 @@ private class UCProxy(
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
-    schemasApi.deleteSchema(name + "." + namespace.head, cascade)
+    schemasApi.deleteSchema(catalogName + "." + namespace.head, cascade)
     true
   }
 }
