@@ -21,6 +21,7 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.Map;
+import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.StagedTable;
 import org.apache.spark.sql.connector.catalog.StagingTableCatalog;
@@ -249,6 +250,21 @@ public class UCSingleCatalogStagingTableTest {
         .containsEntry(EXISTING_TABLE_TYPE_KEY, "MANAGED")
         .containsEntry(EXISTING_TABLE_ID_KEY, "table-id");
     assertThat(result).isSameAs(staged);
+  }
+
+  @Test
+  public void testStageReplaceMissingManagedTableThrowsNoSuchTable() throws Exception {
+    TablesApi mockTablesApi = mock(TablesApi.class);
+    when(mockDelegate.name()).thenReturn("main");
+    when(mockTablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
+        .thenThrow(new ApiException(404, "not found"));
+
+    setField(catalog, "tablesApi", mockTablesApi);
+
+    assertThatThrownBy(() -> catalog.stageReplace(IDENT, SCHEMA, PARTITIONS, REPLACE_DELTA_PROPS))
+        .isInstanceOf(NoSuchTableException.class);
+
+    verify(mockDelegate, never()).stageReplace(eq(IDENT), eq(SCHEMA), any(), any());
   }
 
   private static void setDelegate(UCSingleCatalog catalog, TableCatalog delegate) {

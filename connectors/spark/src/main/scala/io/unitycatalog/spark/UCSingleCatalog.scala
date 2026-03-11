@@ -181,7 +181,7 @@ class UCSingleCatalog
 
   private def loadExistingManagedTablePropsForReplace(
       ident: Identifier,
-      tableInfo: TableInfo,
+      tableInfo: io.unitycatalog.client.model.TableInfo,
       properties: util.Map[String, String],
       operation: String): util.Map[String, String] = {
     rejectSystemManagedProperties(properties)
@@ -309,7 +309,7 @@ class UCSingleCatalog
       allowMissingTable = false)
     val newProps = loadExistingManagedTablePropsForReplace(
       ident,
-      existingTable.get,
+      existingTable.getOrElse(throw new NoSuchTableException(ident)),
       properties,
       "REPLACE TABLE")
     stagingCatalog.stageReplace(ident, schema, partitions, newProps)
@@ -341,7 +341,7 @@ class UCSingleCatalog
       ident: Identifier,
       properties: util.Map[String, String],
       operation: String,
-      allowMissingTable: Boolean): (StagingTableCatalog, Option[TableInfo]) = {
+      allowMissingTable: Boolean): (StagingTableCatalog, Option[io.unitycatalog.client.model.TableInfo]) = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val stagingCatalog = delegate match {
       case catalog: StagingTableCatalog => catalog
