@@ -46,6 +46,9 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
       AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
 
+  public static final AttributeKey<String> PRINCIPAL_EMAIL_ATTR =
+      AttributeKey.valueOf(String.class, "PRINCIPAL_EMAIL");
+
   private final JwksOperations jwksOperations;
 
   public AuthDecorator(SecurityContext securityContext, Repositories repositories) {
@@ -97,6 +100,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     LOGGER.debug("Access allowed for subject: {}", subject);
 
     ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
+    ctx.setAttr(PRINCIPAL_EMAIL_ATTR, subject);
 
     return delegate.serve(ctx, req);
   }

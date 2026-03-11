@@ -1,0 +1,102 @@
+# Full Unity Catalog deployment with Envoy proxy, PostgreSQL, UI, and Jaeger tracing.
+#
+# Prerequisites:
+#   1. Copy .env.example to .env and fill in your OIDC provider values.
+#      See ../../etc/envoy/examples/ for provider-specific templates (Okta, Entra ID, Keycloak).
+#   2. Build the distroless image:  docker build -t unitycatalog/unitycatalog:local-distroless ../../
+#
+# Usage:
+#   docker compose up
+#
+# Endpoints (all via Envoy on :8080):
+#   UI + API:    http://localhost:8080
+#   Jaeger UI:   http://localhost:8080/jaeger
+#   Envoy admin: http://localhost:9901
+
+name: unitycatalog-full
+
+services:
+
+  postgres:
+    image: postgres:16.3
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ucdb
+      POSTGRES_USER: ${POSTGRES_USER:-uc_default_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uc_default_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-uc_default_user} -d ucdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    image: unitycatalog/unitycatalog:latest-distroless
+    volumes:
+      - type: bind
+        source: ./server.properties
+        target: /opt/unitycatalog/etc/conf/server.properties
+        read_only: true
+      - type: bind
+        source: ./hibernate.properties
+        target: /opt/unitycatalog/etc/conf/hibernate.properties
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ui:
+    build:
+      context: ../../ui/
+      dockerfile: Dockerfile
+      args:
+        PROXY_HOST: server
+    depends_on:
+      - server
+
+  envoy:
+    image: envoyproxy/envoy:v1.32-latest
+    ports:
+      - "8080:8080"
+      - "9901:9901"
+    env_file: .env
+    volumes:
+      - type: bind
+        source: ./envoy.yaml.tmpl
+        target: /etc/envoy/envoy.yaml.tmpl
+        read_only: true
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        OIDC_SCOPES="$${OIDC_SCOPES:-openid profile email}"
+        OIDC_CALLBACK_PATH="$${OIDC_CALLBACK_PATH:-/callback}"
+        export OIDC_SCOPES OIDC_CALLBACK_PATH
+
+        mkdir -p /tmp/envoy-secrets
+        printf '%s' "$$OIDC_CLIENT_SECRET" > /tmp/envoy-secrets/token
+        if [ -z "$${OIDC_HMAC_SECRET:-}" ]; then
+          head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /tmp/envoy-secrets/hmac
+        else
+          printf '%s' "$$OIDC_HMAC_SECRET" > /tmp/envoy-secrets/hmac
+        fi
+        chmod 600 /tmp/envoy-secrets/*
+
+        envsubst '$${OIDC_PROVIDER_DOMAIN} $${OIDC_AUTHORIZATION_ENDPOINT} $${OIDC_TOKEN_ENDPOINT} $${OIDC_JWKS_URI} $${OIDC_ISSUER} $${OIDC_CLIENT_ID} $${OIDC_SCOPES} $${OIDC_CALLBACK_PATH}' \
+          < /etc/envoy/envoy.yaml.tmpl > /tmp/envoy.yaml
+
+        exec envoy -c /tmp/envoy.yaml
+    depends_on:
+      - server
+      - ui
+      - jaeger
+
+  jaeger:
+    image: jaegertracing/jaeger:2
+    environment:
+      QUERY_BASE_PATH: /jaeger
+
+volumes:
+  postgres_data:
