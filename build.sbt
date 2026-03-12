@@ -21,7 +21,7 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.17"
 
-lazy val deltaVersion = "4.1.0"
+lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
 lazy val sparkVersion = sys.props.getOrElse("sparkVersion", "4.0.0")
 lazy val sparkMajorMinorVersion = sparkVersion.split("\\.").take(2).mkString(".")
 lazy val hadoopVersion = "3.4.2"
