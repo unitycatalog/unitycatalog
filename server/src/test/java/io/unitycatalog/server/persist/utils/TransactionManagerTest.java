@@ -101,7 +101,7 @@ public class TransactionManagerTest {
                     false))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(errorMessage)
-        .hasMessageContaining(testException.getMessage());
+        .hasCause(testException);
 
     verify(transaction).rollback();
     verify(transaction, never()).commit();
@@ -156,7 +156,7 @@ public class TransactionManagerTest {
                     /* readOnly = */ true))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(errorMessage)
-        .hasMessageContaining(hibernateException.getMessage());
+        .hasCause(hibernateException);
 
     // Verify the transaction was rolled back
     verify(transaction).rollback();
