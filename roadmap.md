@@ -1,26 +1,25 @@
 # Unity Catalog Roadmap
 
 This document outlines the roadmap for the Unity Catalog open source project. As always,
-features may move in/out of milestones pending available resources and priorities.
+features may move in/out of milestones pending available resources, priorities, and community discussions.
 
-## 0.4 Release priorities
+## 0.5 Release priorities
 
-### Storage management
+### Managed Delta table support
 
-By more tightly integrating the already released credential and external locations API with the rest of the server
-internals, the next release will allow for more fine-grained, dynamic, and online management of storage locations and their
-credentials. Furthermore operators can delegate some storage management to the catalog via the managed locations
-for catalogs and schemas features.
+Delta's [Catalog managed commits](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#catalog-managed-tables) are the basis for many new and powerful client (Delta) and server side features and 
+were introduced as `experimental` in the 0.4 release. 
+* This release will introduce new Delta Catalog APIs as well as
+moving to non-experimental. 
+* In addition, we'll be providing Uniform support with this release.
 
-### Catalog managed commits
+### Metric Views
+Metric views provide a new centralized way to define and manage consistent, reusable, and 
+governed core business metrics. 
 
-Catalog managed commits are the basis for many new and powerful client (Delta) and server side features.
-Supporting the table scan and commit APIs is a key priority for the upcoming release.
+### Authentication
+Modular authentication will allow you to reuse your existing auth to secure Unity Catalog.
 
-### End to end OAuth support
-
-OAuth support is important for cloud users and RBAC, and unity client plans to support common OAuth flows
-for authentication.
 
 ## Full roadmap
 
@@ -506,6 +505,16 @@ for authentication.
   
   <tr>
     <td rowspan="1">Materialized views</td>
+    <td>API + Server</td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td align="center">🛠️</td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+  </tr>
+
+  <tr>
+    <td rowspan="1">Metric views</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
