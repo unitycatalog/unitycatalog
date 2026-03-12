@@ -18,10 +18,27 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    name: test (Spark ${{ matrix.spark-version }})
+    name: test (Spark ${{ matrix.spark-version }}, Delta ${{ matrix.delta-version }})
+    continue-on-error: ${{ matrix.allow-failure || false }}
     strategy:
       matrix:
-        spark-version: ["4.0.0", "4.1.0"]
+        include:
+          - spark-version: "4.0.0"
+            delta-version: "4.1.0"
+            # Only one combo needs to run unit tests and license check since they
+            # don't depend on Spark/Delta versions.
+            run-unit-tests: true
+            allow-failure: false
+          - spark-version: "4.1.0"
+            delta-version: "4.1.0"
+            run-unit-tests: false
+            allow-failure: false
+          - spark-version: "4.1.0"
+            delta-version: "master-SNAPSHOT"
+            run-unit-tests: false
+            # Cross-version testing with Delta master is informational; failures
+            # indicate upcoming incompatibilities but should not block PRs.
+            allow-failure: true
 
     steps:
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -31,16 +48,56 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    - name: Resolve Delta master version and commit SHA
+      if: matrix.delta-version == 'master-SNAPSHOT'
+      id: delta-meta
+      run: |
+        DELTA_SHA=$(git ls-remote https://github.com/delta-io/delta.git HEAD | cut -f1)
+        DELTA_VER=$(curl -fsSL https://raw.githubusercontent.com/delta-io/delta/master/version.sbt \
+              | grep -oP '(?<=")[^"]*-SNAPSHOT(?=")')
+        echo "sha=$DELTA_SHA" >> $GITHUB_OUTPUT
+        echo "version=$DELTA_VER" >> $GITHUB_OUTPUT
+
+    - name: Cache Delta SNAPSHOT local Maven artifacts
+      if: matrix.delta-version == 'master-SNAPSHOT'
+      id: delta-cache
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.m2/repository/io/delta
+        key: delta-snapshot-${{ steps.delta-meta.outputs.sha }}
+
+    - name: Build Delta SNAPSHOT from master and publish to local Maven
+      if: matrix.delta-version == 'master-SNAPSHOT' && steps.delta-cache.outputs.cache-hit != 'true'
+      run: |
+        SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
+        git clone --depth=1 https://github.com/delta-io/delta.git /tmp/delta
+        cd /tmp/delta
+        build/sbt -DsparkVersion=$SPARK_MAJOR_MINOR publishM2
+
+    - name: Set effective Delta version
+      run: |
+        if [[ "${{ matrix.delta-version }}" == "master-SNAPSHOT" ]]; then
+          echo "DELTA_VERSION=${{ steps.delta-meta.outputs.version }}" >> $GITHUB_ENV
+        else
+          echo "DELTA_VERSION=${{ matrix.delta-version }}" >> $GITHUB_ENV
+        fi
+
       # 'integrationTests' is not in root project, since we avoid running it via `./build/sbt test`,
       # Here, we explicitly compile `integrationTests` to catch compilation issues early.
     - name: Compile integration tests to verify compilation and checkstyle issues.
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} integrationTests/test:compile
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION integrationTests/test:compile
 
     - name: Build and verify the local deployment.
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} clean package publishM2
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION clean package publishM2
 
-    - name: Run tests with coverage
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -J-Xmx2G +jacoco
+    - name: Run all tests with coverage
+      if: matrix.run-unit-tests
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G +jacoco
+
+    - name: Run integration tests with coverage
+      if: ${{ !matrix.run-unit-tests }}
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G spark/jacoco
 
     - name: Run license check
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} licenseCheck
+      if: matrix.run-unit-tests
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck
