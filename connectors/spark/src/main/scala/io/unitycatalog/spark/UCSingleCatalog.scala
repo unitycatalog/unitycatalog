@@ -505,10 +505,16 @@ private class UCProxy(
 
     val catalogName = this.name
     val schemaName = namespace.head
-    val maxResults = 0
-    val pageToken = null
-    val response: ListTablesResponse = tablesApi.listTables(catalogName, schemaName, maxResults, pageToken)
-    response.getTables.toSeq.map(table => Identifier.of(namespace, table.getName)).toArray
+    val tables = scala.collection.mutable.ArrayBuffer.empty[Identifier]
+    var pageToken: String = null
+    do {
+      val response = tablesApi.listTables(catalogName, schemaName, 0, pageToken)
+      response.getTables.asScala.foreach { table =>
+        tables += Identifier.of(namespace, table.getName)
+      }
+      pageToken = response.getNextPageToken
+    } while (pageToken != null)
+    tables.toArray
   }
 
   override def loadTable(ident: Identifier): Table = {
@@ -746,9 +752,16 @@ private class UCProxy(
   }
 
   override def listNamespaces(): Array[Array[String]] = {
-    schemasApi.listSchemas(name, 0, null).getSchemas.asScala.map { schema =>
-      Array(schema.getName)
-    }.toArray
+    val schemas = scala.collection.mutable.ArrayBuffer.empty[Array[String]]
+    var pageToken: String = null
+    do {
+      val response = schemasApi.listSchemas(name, 0, pageToken)
+      response.getSchemas.asScala.foreach { schema =>
+        schemas += Array(schema.getName)
+      }
+      pageToken = response.getNextPageToken
+    } while (pageToken != null)
+    schemas.toArray
   }
 
   override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
