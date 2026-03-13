@@ -215,7 +215,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     // Test 2: Duplicate name should be rejected
     assertApiException(
         () -> create(EXTERNAL_LOCATION_NAME, anotherTestUrl()),
-        ErrorCode.ALREADY_EXISTS,
+        ErrorCode.EXTERNAL_LOCATION_ALREADY_EXISTS,
         "already exist");
 
     // Test 3: Child URL should be rejected when parent exists
