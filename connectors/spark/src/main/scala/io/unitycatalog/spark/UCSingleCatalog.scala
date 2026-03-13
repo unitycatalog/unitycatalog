@@ -475,7 +475,11 @@ private class UCProxy(
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    assert(properties.get(TableCatalog.PROP_PROVIDER) != null)
+    if (properties.get(TableCatalog.PROP_PROVIDER) == null) {
+      throw new ApiException(
+        "A data source provider must be specified when creating a table " +
+          "(e.g., USING delta). Unity Catalog requires an explicit provider.")
+    }
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())
