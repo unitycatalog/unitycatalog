@@ -17,10 +17,16 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    name: test (Spark ${{ matrix.spark-version }})
+    name: test (Spark ${{ matrix.spark-version }}, Delta ${{ matrix.delta-version }})
     strategy:
       matrix:
-        spark-version: ["4.0.0", "4.1.0"]
+        include:
+          - spark-version: "4.0.0"
+            delta-version: "4.1.0"
+          - spark-version: "4.1.0"
+            delta-version: "4.1.0"
+          - spark-version: "4.1.0"
+            delta-version: "master-SNAPSHOT"
 
     steps:
     - uses: actions/checkout@v4
@@ -30,16 +36,50 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    - name: Resolve Delta master version and commit SHA
+      if: matrix.delta-version == 'master-SNAPSHOT'
+      id: delta-meta
+      run: |
+        DELTA_SHA=$(git ls-remote https://github.com/delta-io/delta.git HEAD | cut -f1)
+        DELTA_VER=$(curl -fsSL https://raw.githubusercontent.com/delta-io/delta/master/version.sbt \
+              | grep -oP '(?<=")[^"]*-SNAPSHOT(?=")')
+        echo "sha=$DELTA_SHA" >> $GITHUB_OUTPUT
+        echo "version=$DELTA_VER" >> $GITHUB_OUTPUT
+
+    - name: Cache Delta SNAPSHOT local Maven artifacts
+      if: matrix.delta-version == 'master-SNAPSHOT'
+      id: delta-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2/repository/io/delta
+        key: delta-snapshot-${{ steps.delta-meta.outputs.sha }}
+
+    - name: Build Delta SNAPSHOT from master and publish to local Maven
+      if: matrix.delta-version == 'master-SNAPSHOT' && steps.delta-cache.outputs.cache-hit != 'true'
+      run: |
+        SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
+        git clone --depth=1 https://github.com/delta-io/delta.git /tmp/delta
+        cd /tmp/delta
+        build/sbt -DsparkVersion=$SPARK_MAJOR_MINOR publishM2
+
+    - name: Set effective Delta version
+      run: |
+        if [[ "${{ matrix.delta-version }}" == "master-SNAPSHOT" ]]; then
+          echo "DELTA_VERSION=${{ steps.delta-meta.outputs.version }}" >> $GITHUB_ENV
+        else
+          echo "DELTA_VERSION=${{ matrix.delta-version }}" >> $GITHUB_ENV
+        fi
+
       # 'integrationTests' is not in root project, since we avoid running it via `./build/sbt test`,
       # Here, we explicitly compile `integrationTests` to catch compilation issues early.
     - name: Compile integration tests to verify compilation and checkstyle issues.
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} integrationTests/test:compile
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION integrationTests/test:compile
 
     - name: Build and verify the local deployment.
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} clean package publishM2
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION clean package publishM2
 
     - name: Run tests with coverage
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -J-Xmx2G +jacoco
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G +jacoco
 
     - name: Run license check
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} licenseCheck
+      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck
