@@ -92,8 +92,6 @@ public class CredPropsUtil {
     S3PropsBuilder() {
       // Common properties for S3.
       set("fs.s3a.path.style.access", "true");
-      set("fs.s3.impl.disable.cache", "true");
-      set("fs.s3a.impl.disable.cache", "true");
     }
 
     @Override
@@ -107,7 +105,6 @@ public class CredPropsUtil {
     GcsPropsBuilder() {
       // Common properties for GCS.
       set("fs.gs.create.items.conflict.check.enable", "true");
-      set("fs.gs.impl.disable.cache", "true");
     }
 
     @Override
@@ -121,8 +118,6 @@ public class CredPropsUtil {
     AbfsPropsBuilder() {
       set(FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, "SAS");
       set(FS_AZURE_ACCOUNT_IS_HNS_ENABLED, "true");
-      set("fs.abfs.impl.disable.cache", "true");
-      set("fs.abfss.impl.disable.cache", "true");
     }
 
     @Override
