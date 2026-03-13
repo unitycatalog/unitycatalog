@@ -15,8 +15,8 @@ import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.auth.storage.AbfsVendedTokenProvider;
 import io.unitycatalog.spark.auth.storage.AwsVendedTokenProvider;
 import io.unitycatalog.spark.auth.storage.GcsVendedTokenProvider;
+import io.unitycatalog.spark.auth.storage.UCFileSystem;
 import java.util.Map;
-import java.util.UUID;
 import org.sparkproject.guava.base.Preconditions;
 import org.sparkproject.guava.collect.ImmutableMap;
 
@@ -145,10 +145,11 @@ public class CredPropsUtil {
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     S3PropsBuilder builder =
         new S3PropsBuilder()
+            .set("fs.s3a.impl", UCFileSystem.class.getName())
+            .set("fs.s3.impl", UCFileSystem.class.getName())
             .set(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName())
             .uri(uri)
             .tokenProvider(tokenProvider)
-            .uid(UUID.randomUUID().toString())
             .set(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
             .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
             .set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
@@ -172,6 +173,7 @@ public class CredPropsUtil {
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
+        .uid(tableId + ":" + tableOp.getValue())
         .build();
   }
 
@@ -185,6 +187,7 @@ public class CredPropsUtil {
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
+        .uid(path + ":" + pathOp.getValue())
         .build();
   }
 
@@ -203,11 +206,11 @@ public class CredPropsUtil {
     GcpOauthToken gcpToken = tempCreds.getGcpOauthToken();
     GcsPropsBuilder builder =
         new GcsPropsBuilder()
+            .set("fs.gs.impl", UCFileSystem.class.getName())
             .set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
             .set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName())
             .uri(uri)
             .tokenProvider(tokenProvider)
-            .uid(UUID.randomUUID().toString())
             .set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
 
     // For the static credential case, nullable expiration time is possible.
@@ -230,6 +233,7 @@ public class CredPropsUtil {
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
+        .uid(tableId + ":" + tableOp.getValue())
         .build();
   }
 
@@ -243,6 +247,7 @@ public class CredPropsUtil {
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
+        .uid(path + ":" + pathOp.getValue())
         .build();
   }
 
@@ -258,10 +263,11 @@ public class CredPropsUtil {
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     AbfsPropsBuilder builder =
         new AbfsPropsBuilder()
+            .set("fs.abfs.impl", UCFileSystem.class.getName())
+            .set("fs.abfss.impl", UCFileSystem.class.getName())
             .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName())
             .uri(uri)
             .tokenProvider(tokenProvider)
-            .uid(UUID.randomUUID().toString())
             .set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
 
     // For the static credential case, nullable expiration time is possible.
@@ -284,6 +290,7 @@ public class CredPropsUtil {
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
+        .uid(tableId + ":" + tableOp.getValue())
         .build();
   }
 
@@ -297,6 +304,7 @@ public class CredPropsUtil {
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
+        .uid(path + ":" + pathOp.getValue())
         .build();
   }
 
