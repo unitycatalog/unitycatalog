@@ -198,7 +198,8 @@ lazy val client = (project in file("clients/java"))
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
-    
+    (Compile / doc) := ((Compile / doc) dependsOn generate).value,
+
     // Add custom test sources from clients/java directory
     Test / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "src" / "test" / "java"),
 
@@ -517,6 +518,7 @@ lazy val cli = (project in file("examples") / "cli")
       "io.delta" % "delta-kernel-api" % deltaVersion,
       "io.delta" % "delta-kernel-defaults" % deltaVersion,
       "io.delta" % "delta-storage" % deltaVersion,
+      "io.delta" % "delta-kernel-unitycatalog" % deltaVersion,
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
       "de.vandermeer" % "asciitable" % "0.3.2",
@@ -574,6 +576,7 @@ lazy val spark = (project in file("connectors/spark"))
     scalaReleaseSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
     ),
     javafmtCheckSettings(),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),

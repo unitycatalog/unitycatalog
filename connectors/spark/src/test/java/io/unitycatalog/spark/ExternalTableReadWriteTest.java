@@ -2,7 +2,6 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
-import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -10,8 +9,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.TableInfo;
-import io.unitycatalog.server.base.table.TableOperations;
-import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -21,7 +18,6 @@ import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIf;
 import org.junit.jupiter.api.io.TempDir;
@@ -34,8 +30,6 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
   // Tests in this class wants to use them alternating. So this variable will be changing between
   // 0 and 1 to construct the bucket name.
   private int bucketIndex = 0;
-
-  private TableOperations tableOperations;
 
   /**
    * This function provides a set of test parameters that cloud-aware tests should run for this
@@ -121,6 +115,12 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
               assertThat(columns.get(0).getTypeName()).isEqualTo(ColumnTypeName.INT);
               assertThat(columns.get(1).getName()).isEqualTo("s");
               assertThat(columns.get(1).getTypeName()).isEqualTo(ColumnTypeName.STRING);
+              assertThat(columns.get(0).getPartitionIndex()).isNull();
+              if (withPartitionColumns) {
+                assertThat(columns.get(1).getPartitionIndex()).isEqualTo(0);
+              } else {
+                assertThat(columns.get(1).getPartitionIndex()).isNull();
+              }
             }
             validateTableSchema(
                 session.table(fullTableName).schema(),
@@ -178,13 +178,6 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
     TableSetupOptions optionsWithoutAsSelect = options.withAsSelect(Optional.empty());
     sql(optionsWithoutAsSelect.createExternalTableSql(location));
     return options.fullTableName();
-  }
-
-  @BeforeEach
-  @Override
-  public void setUp() {
-    super.setUp();
-    tableOperations = new SdkTableOperations(createApiClient(serverConfig));
   }
 
   @AfterEach
