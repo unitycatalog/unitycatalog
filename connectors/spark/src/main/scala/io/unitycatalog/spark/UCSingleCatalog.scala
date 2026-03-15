@@ -539,7 +539,7 @@ private class UCProxy(
             //       for read or write, we can request the proper credential after fixing Spark.
             new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
           )
-      }       catch {
+      } catch {
         case e: ApiException =>
           logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
           try {
