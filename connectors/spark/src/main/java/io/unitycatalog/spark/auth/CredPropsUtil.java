@@ -15,6 +15,8 @@ import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.auth.storage.AbfsVendedTokenProvider;
 import io.unitycatalog.spark.auth.storage.AwsVendedTokenProvider;
 import io.unitycatalog.spark.auth.storage.GcsVendedTokenProvider;
+import io.unitycatalog.spark.fs.CredScopedFileSystem;
+import io.unitycatalog.spark.fs.CredScopedFs;
 import java.util.Map;
 import java.util.UUID;
 import org.sparkproject.guava.base.Preconditions;
@@ -91,6 +93,10 @@ public class CredPropsUtil {
 
     S3PropsBuilder() {
       // Common properties for S3.
+      set("fs.s3.impl", CredScopedFileSystem.class.getName());
+      set("fs.s3a.impl", CredScopedFileSystem.class.getName());
+      set("fs.AbstractFileSystem.s3.impl", CredScopedFs.class.getName());
+      set("fs.AbstractFileSystem.s3a.impl", CredScopedFs.class.getName());
       set("fs.s3a.path.style.access", "true");
       set("fs.s3.impl.disable.cache", "true");
       set("fs.s3a.impl.disable.cache", "true");
@@ -106,6 +112,8 @@ public class CredPropsUtil {
 
     GcsPropsBuilder() {
       // Common properties for GCS.
+      set("fs.gs.impl", CredScopedFileSystem.class.getName());
+      set("fs.AbstractFileSystem.gs.impl", CredScopedFs.class.getName());
       set("fs.gs.create.items.conflict.check.enable", "true");
       set("fs.gs.impl.disable.cache", "true");
     }
@@ -119,6 +127,10 @@ public class CredPropsUtil {
   private static class AbfsPropsBuilder extends PropsBuilder<AbfsPropsBuilder> {
 
     AbfsPropsBuilder() {
+      set("fs.abfs.impl", CredScopedFileSystem.class.getName());
+      set("fs.abfss.impl", CredScopedFileSystem.class.getName());
+      set("fs.AbstractFileSystem.abfs.impl", CredScopedFs.class.getName());
+      set("fs.AbstractFileSystem.abfss.impl", CredScopedFs.class.getName());
       set(FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, "SAS");
       set(FS_AZURE_ACCOUNT_IS_HNS_ENABLED, "true");
       set("fs.abfs.impl.disable.cache", "true");
