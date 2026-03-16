@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.BlockLocation;
 import org.apache.hadoop.fs.BlockStoragePolicySpi;
@@ -27,7 +28,8 @@ import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.Progressable;
-import org.sparkproject.guava.collect.Maps;
+import org.sparkproject.guava.cache.Cache;
+import org.sparkproject.guava.cache.CacheBuilder;
 
 /**
  * A Hadoop {@link FileSystem} wrapper that enables multiple credential scopes to coexist within a
@@ -71,7 +73,24 @@ import org.sparkproject.guava.collect.Maps;
  */
 public class CredScopedFileSystem extends FileSystem {
 
-  private static final Map<CredScopedKey, FileSystem> CACHE = Maps.newConcurrentMap();
+  /**
+   * LRU cache of real {@link FileSystem} instances keyed by credential scope. Evicted entries are
+   * closed to release connection pools and SDK thread pools (e.g. AWS sdk-ScheduledExecutor
+   * threads). The cache is bounded to prevent unbounded growth when many distinct credential scopes
+   * are accessed in a long-running session.
+   */
+  private static final Cache<CredScopedKey, FileSystem> CACHE =
+      CacheBuilder.newBuilder()
+          .maximumSize(100)
+          .<CredScopedKey, FileSystem>removalListener(
+              notification -> {
+                try {
+                  notification.getValue().close();
+                } catch (IOException e) {
+                  // ignore close failures on eviction
+                }
+              })
+          .build();
 
   private FileSystem delegate;
 
@@ -79,20 +98,33 @@ public class CredScopedFileSystem extends FileSystem {
     super.initialize(uri, conf);
 
     CredScopedKey key = CredScopedKey.create(uri, conf);
-    delegate = CACHE.computeIfAbsent(key, k -> newFileSystem(uri, conf));
+    try {
+      delegate = CACHE.get(key, () -> newFileSystem(uri, conf));
+    } catch (ExecutionException e) {
+      throw new IOException("Failed to initialize filesystem for key " + key, e.getCause());
+    }
   }
 
   private static FileSystem newFileSystem(URI uri, Configuration conf) {
     try {
       Configuration fsConf = new Configuration(conf);
 
-      // S3: restore impl to the real S3AFileSystem, overriding the CredScopedFileSystem set by
-      // CredPropsUtil. S3 requires explicit configuration because Hadoop does not discover
-      // S3AFileSystem via the service loader by default.
-      fsConf.set("fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
-      fsConf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
-      fsConf.set("fs.AbstractFileSystem.s3.impl", "org.apache.hadoop.fs.s3a.S3A");
-      fsConf.set("fs.AbstractFileSystem.s3a.impl", "org.apache.hadoop.fs.s3a.S3A");
+      // S3: restore impl using the side-channel key saved by CredPropsUtil before it overrode
+      // fs.<scheme>.impl with CredScopedFileSystem. The side-channel lets callers (including
+      // tests) substitute a custom implementation by setting fs.s3a.impl.original; the fallback
+      // is S3AFileSystem because Hadoop does not discover it via the service loader by default.
+      fsConf.set(
+          "fs.s3.impl",
+          fsConf.get("fs.s3.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem"));
+      fsConf.set(
+          "fs.s3a.impl",
+          fsConf.get("fs.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem"));
+      fsConf.set(
+          "fs.AbstractFileSystem.s3.impl",
+          fsConf.get("fs.AbstractFileSystem.s3.impl.original", "org.apache.hadoop.fs.s3a.S3A"));
+      fsConf.set(
+          "fs.AbstractFileSystem.s3a.impl",
+          fsConf.get("fs.AbstractFileSystem.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3A"));
       fsConf.set("fs.s3.impl.disable.cache", "true");
       fsConf.set("fs.s3a.impl.disable.cache", "true");
 
@@ -405,10 +437,5 @@ public class CredScopedFileSystem extends FileSystem {
   @Override
   public Collection<? extends BlockStoragePolicySpi> getAllStoragePolicies() throws IOException {
     return delegate.getAllStoragePolicies();
-  }
-
-  @Override
-  public void close() throws IOException {
-    super.close();
   }
 }

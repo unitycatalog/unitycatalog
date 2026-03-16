@@ -36,6 +36,7 @@ class UCSingleCatalog
   private[this] var uri: URI = null
   private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
+  private[this] var credScopedFsEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
@@ -51,6 +52,9 @@ class UCSingleCatalog
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+    credScopedFsEnabled = OptionsUtil.getBoolean(options,
+      OptionsUtil.CRED_SCOPED_FS_ENABLED,
+      OptionsUtil.DEFAULT_CRED_SCOPED_FS_ENABLED)
     val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
       OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
@@ -59,8 +63,8 @@ class UCSingleCatalog
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
-    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, serverSidePlanningEnabled,
-      apiClient, tablesApi, temporaryCredentialsApi)
+    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
+      serverSidePlanningEnabled, apiClient, tablesApi, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -145,6 +149,7 @@ class UCSingleCatalog
       new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
     val credentialProps = CredPropsUtil.createTableCredProps(
       renewCredEnabled,
+      credScopedFsEnabled,
       CatalogUtils.stringToURI(stagingLocation).getScheme,
       uri.toString,
       tokenProvider,
@@ -280,6 +285,7 @@ class UCSingleCatalog
 
     val credentialProps = CredPropsUtil.createPathCredProps(
       renewCredEnabled,
+      credScopedFsEnabled,
       CatalogUtils.stringToURI(location).getScheme,
       uri.toString,
       tokenProvider,
@@ -479,6 +485,7 @@ private class UCProxy(
     uri: URI,
     tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
+    credScopedFsEnabled: Boolean,
     serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
@@ -565,6 +572,7 @@ private class UCProxy(
     } else {
       CredPropsUtil.createTableCredProps(
         renewCredEnabled,
+        credScopedFsEnabled,
         locationUri.getScheme,
         uri.toString,
         tokenProvider,
