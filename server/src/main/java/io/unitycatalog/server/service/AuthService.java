@@ -103,6 +103,7 @@ public class AuthService {
    * @return The token exchange response
    */
   @Post("/tokens")
+  @com.linecorp.armeria.server.annotation.Blocking
   public HttpResponse grantToken(
       @Param("ext") Optional<TokenEndpointExtensionType> ext,
       @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form) {
