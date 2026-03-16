@@ -40,7 +40,11 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
   @Override
   protected List<TableDdlMode> supportedTableDdlModes() {
-    return List.of(TableDdlMode.CREATE);
+    return List.of(
+        TableDdlMode.CREATE,
+        TableDdlMode.REPLACE_EXISTING,
+        TableDdlMode.CREATE_OR_REPLACE_EXISTING,
+        TableDdlMode.CREATE_OR_REPLACE_MISSING);
   }
 
   @Override
@@ -204,6 +208,34 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
                 "CREATE OR REPLACE TABLE %s (i INT, extra_col INT) USING DELTA", fullTableName)));
   }
 
+  @Test
+  public void testManagedDeltaSameMetadataReplaceSucceeds() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    if (DeltaVersionUtils.isDeltaAtLeast("4.2.0")) {
+      // With catalog-aware Delta, same-metadata replace should succeed.
+      sql("REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName);
+      testTableReadWrite(fullTableName);
+
+      sql("CREATE OR REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName);
+      testTableReadWrite(fullTableName);
+    } else {
+      // Without catalog-aware Delta, replace is not supported at all.
+      assertThatThrownBy(() -> sql("REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName))
+          .satisfies(
+              t ->
+                  assertThat(t.getMessage())
+                      .containsAnyOf(
+                          "DELTA_OPERATION_NOT_ALLOWED",
+                          "DELTA_CANNOT_REPLACE_MISSING_TABLE",
+                          "DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG",
+                          "SCHEMA_NOT_FOUND"));
+    }
+  }
+
   @Override
   protected void prepareExistingTableForDdl(TableSetupOptions options) {
     TableSetupOptions existingOptions =
@@ -233,7 +265,35 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
   @Override
   protected List<String> expectedCreateFailureMessages(TableSetupOptions options) {
-    return super.expectedCreateFailureMessages(options);
+    List<String> baseFailure = super.expectedCreateFailureMessages(options);
+    if (baseFailure != null) {
+      return baseFailure;
+    }
+    if (DeltaVersionUtils.isDeltaAtLeast("4.2.0")) {
+      // With catalog-aware Delta, replace on an existing table fails because
+      // prepareExistingTableForDdl sets a comment that the replace drops, which is a
+      // metadata change. CREATE_OR_REPLACE on a missing table is just a create.
+      switch (options.getDdlMode()) {
+        case REPLACE_EXISTING:
+        case CREATE_OR_REPLACE_EXISTING:
+          return List.of("DELTA_OPERATION_NOT_ALLOWED");
+        default:
+          return null;
+      }
+    } else {
+      switch (options.getDdlMode()) {
+        case REPLACE_EXISTING:
+        case CREATE_OR_REPLACE_EXISTING:
+        case CREATE_OR_REPLACE_MISSING:
+          return List.of(
+              "DELTA_OPERATION_NOT_ALLOWED",
+              "DELTA_CANNOT_REPLACE_MISSING_TABLE",
+              "DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG",
+              "SCHEMA_NOT_FOUND");
+        default:
+          return null;
+      }
+    }
   }
 
   private TableInfo loadTableInfo(String fullTableName) throws ApiException {
