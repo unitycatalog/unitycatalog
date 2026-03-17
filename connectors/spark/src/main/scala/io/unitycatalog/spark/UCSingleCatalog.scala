@@ -21,6 +21,7 @@ import org.sparkproject.guava.base.Preconditions
 
 import java.net.URI
 import java.util
+import java.util.Locale
 import scala.collection.JavaConverters._
 import scala.collection.convert.ImplicitConversions._
 import scala.language.existentials
@@ -226,8 +227,16 @@ class UCSingleCatalog
         s"Invalid table metadata for $fullTableName: tableId must be set")
     }
     // Third, build the properties Delta needs in order to write back to the current managed table.
+    val existingProvider = tableInfo.getDataSourceFormat.getValue.toLowerCase(Locale.ROOT)
+    Option(properties.get(TableCatalog.PROP_PROVIDER))
+      .filterNot(_.equalsIgnoreCase(existingProvider))
+      .foreach(provider => throw new ApiException(
+        s"$operation on existing UC-managed Delta table $fullTableName cannot change provider " +
+          s"from ${existingProvider.toUpperCase(Locale.ROOT)} to " +
+          s"${provider.toUpperCase(Locale.ROOT)}."))
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
+    newProps.put(TableCatalog.PROP_PROVIDER, existingProvider)
     // Preserve the catalog-managed marker on the properties passed to Delta for replace.
     newProps.put(
       UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
