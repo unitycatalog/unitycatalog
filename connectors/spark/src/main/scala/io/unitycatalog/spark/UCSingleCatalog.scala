@@ -508,10 +508,8 @@ private class UCProxy(
     val tables = scala.collection.mutable.ArrayBuffer.empty[Identifier]
     var pageToken: String = null
     do {
-      val response = tablesApi.listTables(catalogName, schemaName, 0, pageToken)
-      response.getTables.asScala.foreach { table =>
-        tables += Identifier.of(namespace, table.getName)
-      }
+      val response = tablesApi.listTables(catalogName, schemaName, /* limit */ 0, pageToken)
+      tables ++= response.getTables.asScala.map(table => Identifier.of(namespace, table.getName))
       pageToken = response.getNextPageToken
     } while (pageToken != null)
     tables.toArray
@@ -755,10 +753,8 @@ private class UCProxy(
     val schemas = scala.collection.mutable.ArrayBuffer.empty[Array[String]]
     var pageToken: String = null
     do {
-      val response = schemasApi.listSchemas(name, 0, pageToken)
-      response.getSchemas.asScala.foreach { schema =>
-        schemas += Array(schema.getName)
-      }
+      val response = schemasApi.listSchemas(name, /* limit */ 0, pageToken)
+      schemas ++= response.getSchemas.asScala.map(schema => Array(schema.getName))
       pageToken = response.getNextPageToken
     } while (pageToken != null)
     schemas.toArray
