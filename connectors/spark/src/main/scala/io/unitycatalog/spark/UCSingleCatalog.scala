@@ -225,13 +225,9 @@ class UCSingleCatalog
       throw new ApiException(
         s"Invalid table metadata for $fullTableName: tableId must be set")
     }
-    // Third, build the minimal property set Delta needs in order to write back to the current
-    // managed table. Existing managed REPLACE does not forward arbitrary caller properties
-    // because metadata updates are not supported in this path yet.
+    // Third, build the properties Delta needs in order to write back to the current managed table.
     val newProps = new util.HashMap[String, String]
-    Option(properties.get(TableCatalog.PROP_PROVIDER)).foreach { provider =>
-      newProps.put(TableCatalog.PROP_PROVIDER, provider)
-    }
+    newProps.putAll(properties)
     // Preserve the catalog-managed marker on the properties passed to Delta for replace.
     newProps.put(
       UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
