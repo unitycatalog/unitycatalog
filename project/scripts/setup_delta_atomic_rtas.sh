@@ -4,7 +4,7 @@ set -euo pipefail
 
 DELTA_DIR="${DELTA_DIR:-/tmp/delta}"
 DELTA_REPO="${DELTA_REPO:-https://github.com/TimothyW553/delta.git}"
-DELTA_REF="${DELTA_REF:-a4dbb9e6c377d7e5a3b6d85406e81cdd03416ecc}"
+DELTA_REF="${DELTA_REF:-b2c2581e3238ba78eeb76b021e285f9f793e7c83}"
 DELTA_SPARK_VERSION="${DELTA_SPARK_VERSION:-4.0.1}"
 
 case "$DELTA_SPARK_VERSION" in
