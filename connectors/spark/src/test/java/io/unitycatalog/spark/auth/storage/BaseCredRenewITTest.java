@@ -57,7 +57,7 @@ import org.sparkproject.guava.collect.Iterators;
  */
 public abstract class BaseCredRenewITTest extends BaseCRUDTest {
   private static final String CLOCK_NAME = UUID.randomUUID().toString();
-  private static final String CATALOG_NAME = "CredRenewalCatalog";
+  protected static final String CATALOG_NAME = "CredRenewalCatalog";
   private static final String SCHEMA_NAME = "Default";
   private static final String TABLE_NAME = String.format("%s.%s.demo", CATALOG_NAME, SCHEMA_NAME);
   protected static final String BUCKET_NAME = "test-bucket";

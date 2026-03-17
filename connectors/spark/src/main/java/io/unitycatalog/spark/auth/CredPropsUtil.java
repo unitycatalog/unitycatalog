@@ -98,14 +98,10 @@ public class CredPropsUtil {
       set("fs.s3a.impl.disable.cache", "true");
 
       if (credScopedFsEnabled) {
-        // Save the default real impls as side-channel keys so that
-        // CredScopedFileSystem#newFileSystem
-        // can restore them precisely. Callers may override these keys (e.g. in tests) to substitute
-        // a custom filesystem implementation instead of the default S3AFileSystem.
-        set("fs.s3.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem");
-        set("fs.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem");
-        set("fs.AbstractFileSystem.s3.impl.original", "org.apache.hadoop.fs.s3a.S3A");
-        set("fs.AbstractFileSystem.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3A");
+        // Override the impl so Hadoop routes through CredScopedFileSystem. The original impl is
+        // intentionally NOT stored here; CredScopedFileSystem#newFileSystem reads it directly from
+        // the Hadoop conf at resolution time (falling back to S3AFileSystem), which lets callers
+        // and tests substitute a custom implementation via the session-level Hadoop conf.
         set("fs.s3.impl", CredScopedFileSystem.class.getName());
         set("fs.s3a.impl", CredScopedFileSystem.class.getName());
         set("fs.AbstractFileSystem.s3.impl", CredScopedFs.class.getName());

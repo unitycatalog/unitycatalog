@@ -79,7 +79,8 @@ public class CredScopedFileSystem extends FileSystem {
    * threads). The cache is bounded to prevent unbounded growth when many distinct credential scopes
    * are accessed in a long-running session.
    */
-  private static final Cache<CredScopedKey, FileSystem> CACHE =
+  /** Visible for testing. */
+  static final Cache<CredScopedKey, FileSystem> CACHE =
       CacheBuilder.newBuilder()
           .maximumSize(100)
           .<CredScopedKey, FileSystem>removalListener(
@@ -92,7 +93,13 @@ public class CredScopedFileSystem extends FileSystem {
               })
           .build();
 
-  private FileSystem delegate;
+  /** Visible for testing. */
+  FileSystem delegate;
+
+  /** Visible for testing only. Clears the static cache and closes all cached delegates. */
+  static void clearCacheForTesting() {
+    CACHE.invalidateAll();
+  }
 
   public void initialize(URI uri, Configuration conf) throws IOException {
     super.initialize(uri, conf);
