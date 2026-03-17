@@ -14,7 +14,6 @@ import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
@@ -40,6 +39,30 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   private static final String DELTA_TABLE = "test_delta";
 
   @Override
+  protected List<TableDdlMode> supportedTableDdlModes() {
+    return List.of(
+        TableDdlMode.CREATE,
+        TableDdlMode.REPLACE_EXISTING,
+        TableDdlMode.CREATE_OR_REPLACE_EXISTING,
+        TableDdlMode.CREATE_OR_REPLACE_MISSING);
+  }
+
+  @Override
+  protected List<String> supportedCatalogNames() {
+    return List.of(CATALOG_NAME);
+  }
+
+  @Override
+  protected List<String> sessionCatalogNames() {
+    return List.of(SPARK_CATALOG, CATALOG_NAME);
+  }
+
+  @Override
+  protected void initializeSessionForTableTests() {
+    ensureSparkCatalogSchemaExists();
+  }
+
+  @Override
   protected String tableFormat() {
     return "DELTA";
   }
@@ -47,6 +70,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   @Test
   public void testCreateManagedTableErrors() {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     assertThatThrownBy(
             () ->
@@ -54,27 +78,21 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
                     "CREATE TABLE %s(name STRING) USING parquet %s",
                     fullTableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE))
         .hasMessageContaining("not support non-Delta managed table");
-    for (String featureProperty :
-        List.of(
-            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
-      assertThatThrownBy(
-              () ->
-                  sql(
-                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
-                      fullTableName, featureProperty))
-          .hasMessageContaining(
-              String.format("Invalid property value 'disabled' for '%s'", featureProperty));
-    }
-    for (String ucTableIdProperty :
-        List.of(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD)) {
-      assertThatThrownBy(
-              () ->
-                  sql(
-                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
-                      fullTableName, ucTableIdProperty))
-          .hasMessageContaining(ucTableIdProperty);
-    }
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
+                    fullTableName, UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW))
+        .hasMessageContaining(
+            String.format(
+                "Invalid property value 'disabled' for '%s'",
+                UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
+    assertThatThrownBy(
+            () ->
+                sql(
+                    "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'some_id')",
+                    fullTableName, UCTableProperties.UC_TABLE_ID_KEY))
+        .hasMessageContaining(UCTableProperties.UC_TABLE_ID_KEY);
     assertThatThrownBy(
             () ->
                 sql(
@@ -94,6 +112,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   public void testCreateManagedDeltaTable(String scheme, boolean renewCredEnabled)
       throws ApiException {
     session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
 
     int counter = 0;
     final String comment = "This is comment.";
@@ -135,25 +154,14 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
           assertThat(describeResult.get("Provider")).isEqualToIgnoringCase("delta");
           assertThat(describeResult.get("Is_managed_location")).isEqualTo("true");
           assertThat(describeResult).containsKey("Table Properties");
-          // Check that it either has the old table ID key or the new one. Doesn't matter if it
-          // has both.
           String tableProperties = describeResult.get("Table Properties");
-          Assertions.assertTrue(
-              tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY)
-                  || tableProperties.contains(UCTableProperties.UC_TABLE_ID_KEY_OLD));
-          // Check that it either has the old feature name or the new one. We don't care if it
-          // has both but Delta won't allow that.
-          Assertions.assertTrue(
-              tableProperties.contains(
-                      String.format(
-                          "%s=%s",
-                          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-                          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE))
-                  || tableProperties.contains(
-                      String.format(
-                          "%s=%s",
-                          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
-                          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)));
+          assertThat(tableProperties).contains(UCTableProperties.UC_TABLE_ID_KEY);
+          assertThat(tableProperties)
+              .contains(
+                  String.format(
+                      "%s=%s",
+                      UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                      UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
           // Check schema of table
           validateTableSchema(
               session.table(fullTableName).schema(),
@@ -169,25 +177,158 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
           assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
           assertThat(tableInfo.getComment()).isEqualTo(comment);
           Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
-          Assertions.assertTrue(
-              tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY)
-                  || tablePropertiesFromServer.containsKey(UCTableProperties.UC_TABLE_ID_KEY_OLD));
-          Assertions.assertTrue(
-              tablePropertiesFromServer.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)
-                  || tablePropertiesFromServer.containsKey(
-                      UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
-          assertThat(
-                  Optional.ofNullable(
-                          tablePropertiesFromServer.get(
-                              UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
-                      .orElseGet(
-                          () ->
-                              tablePropertiesFromServer.get(
-                                  UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)))
-              .isEqualTo(UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
+          assertThat(tablePropertiesFromServer)
+              .containsEntry(UCTableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId())
+              .containsEntry(
+                  UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                  UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
         }
       }
     }
+  }
+
+  @Test
+  public void testManagedDeltaReplaceRejectsMetadataChanges() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    assertManagedReplaceRejected(
+        List.of(
+            String.format("REPLACE TABLE %s (i INT, renamed STRING) USING DELTA", fullTableName),
+            String.format(
+                "REPLACE TABLE %s (i INT, s STRING) USING DELTA PARTITIONED BY (s)", fullTableName),
+            String.format(
+                "CREATE OR REPLACE TABLE %s (i INT COMMENT 'new comment', s STRING) USING DELTA",
+                fullTableName),
+            String.format(
+                "REPLACE TABLE %s USING DELTA AS SELECT 1 AS i, 2 AS extra_col", fullTableName),
+            String.format(
+                "CREATE OR REPLACE TABLE %s (i INT, extra_col INT) USING DELTA", fullTableName)));
+  }
+
+  @Test
+  public void testManagedDeltaSameMetadataReplaceSucceeds() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    if (DeltaVersionUtils.isDeltaAtLeast("4.2.0")) {
+      // With catalog-aware Delta, same-metadata replace should succeed.
+      sql("REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName);
+      testTableReadWrite(fullTableName);
+
+      sql("CREATE OR REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName);
+      testTableReadWrite(fullTableName);
+    } else {
+      // Without catalog-aware Delta, replace is not supported at all.
+      assertThatThrownBy(() -> sql("REPLACE TABLE %s (i INT, s STRING) USING DELTA", fullTableName))
+          .satisfies(
+              t ->
+                  assertThat(t.getMessage())
+                      .containsAnyOf(
+                          "DELTA_OPERATION_NOT_ALLOWED",
+                          "DELTA_CANNOT_REPLACE_MISSING_TABLE",
+                          "DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG",
+                          "SCHEMA_NOT_FOUND"));
+    }
+  }
+
+  @Override
+  protected void prepareExistingTableForDdl(TableSetupOptions options) {
+    TableSetupOptions existingOptions =
+        new TableSetupOptions()
+            .setCatalogName(options.getCatalogName())
+            .setTableName(options.getTableName())
+            .setCloudScheme(options.getCloudScheme())
+            .setComment("existing table");
+    if (!options.getPartitionColumns().isEmpty()) {
+      existingOptions.setPartitionColumn(options.getPartitionColumns().get(0));
+    }
+    if (options.getAsSelect().isPresent()) {
+      existingOptions.setAsSelect(0, "existing");
+    }
+    String fullTableName = setupTable(existingOptions);
+    if (options.getAsSelect().isEmpty()) {
+      sql("INSERT INTO %s SELECT 0, 'existing'", fullTableName);
+    }
+  }
+
+  @Override
+  protected void validateCreatedTable(String fullTableName, TableSetupOptions options)
+      throws ApiException {
+    assertManagedTableHasUcProperties(
+        loadTableInfo(fullTableName), options.getExpectedTableId().orElse(null));
+  }
+
+  @Override
+  protected List<String> expectedCreateFailureMessages(TableSetupOptions options) {
+    List<String> baseFailure = super.expectedCreateFailureMessages(options);
+    if (baseFailure != null) {
+      return baseFailure;
+    }
+    if (DeltaVersionUtils.isDeltaAtLeast("4.2.0")) {
+      // With catalog-aware Delta, replace on an existing table fails because
+      // prepareExistingTableForDdl sets a comment that the replace drops, which is a
+      // metadata change. CREATE_OR_REPLACE on a missing table is just a create.
+      switch (options.getDdlMode()) {
+        case REPLACE_EXISTING:
+        case CREATE_OR_REPLACE_EXISTING:
+          return List.of("DELTA_OPERATION_NOT_ALLOWED");
+        default:
+          return null;
+      }
+    } else {
+      switch (options.getDdlMode()) {
+        case REPLACE_EXISTING:
+        case CREATE_OR_REPLACE_EXISTING:
+        case CREATE_OR_REPLACE_MISSING:
+          return List.of(
+              "DELTA_OPERATION_NOT_ALLOWED",
+              "DELTA_CANNOT_REPLACE_MISSING_TABLE",
+              "DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG",
+              "SCHEMA_NOT_FOUND");
+        default:
+          return null;
+      }
+    }
+  }
+
+  private TableInfo loadTableInfo(String fullTableName) throws ApiException {
+    TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
+    return tableOperations.getTable(fullTableName);
+  }
+
+  private void assertManagedTableHasUcProperties(TableInfo tableInfo, String expectedTableId) {
+    if (expectedTableId != null) {
+      Assertions.assertEquals(expectedTableId, tableInfo.getTableId());
+    }
+
+    Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
+    assertThat(tablePropertiesFromServer).containsKey(UCTableProperties.UC_TABLE_ID_KEY);
+    assertThat(tablePropertiesFromServer)
+        .containsEntry(
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+            UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
+  }
+
+  private void assertManagedReplaceRejected(List<String> statements) {
+    for (String statement : statements) {
+      Throwable thrown = org.assertj.core.api.Assertions.catchThrowable(() -> sql(statement));
+      assertThat(thrown).isNotNull();
+      assertThat(thrown.getMessage())
+          .containsAnyOf(
+              "DELTA_OPERATION_NOT_ALLOWED",
+              "DELTA_CANNOT_REPLACE_MISSING_TABLE",
+              "DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG",
+              "SCHEMA_NOT_FOUND");
+    }
+  }
+
+  private void ensureSparkCatalogSchemaExists() {
+    sql("CREATE DATABASE IF NOT EXISTS spark_catalog.%s", SCHEMA_NAME);
   }
 
   @Override
