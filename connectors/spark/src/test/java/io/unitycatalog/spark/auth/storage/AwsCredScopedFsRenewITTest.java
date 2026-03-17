@@ -8,9 +8,11 @@ import java.util.Map;
  * {@link io.unitycatalog.spark.fs.CredScopedFileSystem} wraps the delegate transparently and
  * credential renewal still works correctly end-to-end.
  *
- * <p>Sets {@code fs.s3.impl.original} at the session level so that {@code
- * CredScopedFileSystem#newFileSystem} restores {@link S3CredFileSystem} — rather than the default
- * {@code S3AFileSystem} — as the real delegate, exercising the side-channel restoration path.
+ * <p>Sets {@code fs.s3.impl} and {@code fs.s3a.impl} at the session level to {@link
+ * S3CredFileSystem} so that {@code CredPropsUtil} reads them as the original impls and saves them
+ * under {@code fs.s3.impl.original} / {@code fs.s3a.impl.original} before installing {@code
+ * CredScopedFileSystem}. This ensures the credential-checking logic in the parent test still runs
+ * through the real delegate.
  */
 public class AwsCredScopedFsRenewITTest extends AwsCredRenewITTest {
 
@@ -18,14 +20,11 @@ public class AwsCredScopedFsRenewITTest extends AwsCredRenewITTest {
   protected Map<String, String> catalogExtraProps() {
     String catalogKey = "spark.sql.catalog." + CATALOG_NAME;
     return Map.of(
-        // Enable CredScopedFileSystem wrapping for this catalog.
         catalogKey + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED,
         "true",
-        // Tell CredScopedFileSystem to restore S3CredFileSystem as the real delegate so the
-        // credential-checking logic in the parent test still runs.
-        "spark.hadoop.fs.s3.impl.original",
+        "spark.hadoop.fs.s3.impl",
         S3CredFileSystem.class.getName(),
-        "spark.hadoop.fs.s3a.impl.original",
+        "spark.hadoop.fs.s3a.impl",
         S3CredFileSystem.class.getName());
   }
 }

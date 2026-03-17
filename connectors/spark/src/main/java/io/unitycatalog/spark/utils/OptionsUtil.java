@@ -14,9 +14,10 @@ public class OptionsUtil {
 
   /**
    * When {@code true}, wraps the cloud filesystem with {@link
-   * io.unitycatalog.spark.fs.CredScopedFileSystem} to reuse underlying connection pools across
-   * requests that share the same credential scope, preventing AWS SDK v2 thread leaks (issue
-   * #1378). Disabled by default; will be enabled by default in a future release.
+   * io.unitycatalog.spark.fs.CredScopedFileSystem} to maintain a filesystem cache per credential
+   * scope. This allows full reuse of the existing credential-scoped filesystem instances, so a new
+   * filesystem is not created for every file access. Disabled by default; will be enabled by
+   * default in a future release.
    */
   public static final String CRED_SCOPED_FS_ENABLED = "credScopedFs.enabled";
 

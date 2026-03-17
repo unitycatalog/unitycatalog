@@ -9,46 +9,40 @@ import org.junit.jupiter.api.Test;
 
 class CredScopedKeyTest {
 
-  // ── PathCredScopedKey ────────────────────────────────────────────────────
-
   @Test
-  void pathKey_equalWhenSamePathAndOp() {
+  void pathKeyEqualWhenSamePathAndOp() {
     assertThat(new CredScopedKey.PathCredScopedKey("s3://b/p", "READ"))
         .isEqualTo(new CredScopedKey.PathCredScopedKey("s3://b/p", "READ"))
         .hasSameHashCodeAs(new CredScopedKey.PathCredScopedKey("s3://b/p", "READ"));
   }
 
   @Test
-  void pathKey_notEqualWhenDifferentOp() {
+  void pathKeyNotEqualWhenDifferentOp() {
     assertThat(new CredScopedKey.PathCredScopedKey("s3://b/p", "READ"))
         .isNotEqualTo(new CredScopedKey.PathCredScopedKey("s3://b/p", "WRITE"));
   }
 
   @Test
-  void pathKey_notEqualWhenDifferentPath() {
+  void pathKeyNotEqualWhenDifferentPath() {
     assertThat(new CredScopedKey.PathCredScopedKey("s3://b/a", "READ"))
         .isNotEqualTo(new CredScopedKey.PathCredScopedKey("s3://b/b", "READ"));
   }
 
-  // ── TableCredScopedKey ───────────────────────────────────────────────────
-
   @Test
-  void tableKey_equalWhenSameIdAndOp() {
+  void tableKeyEqualWhenSameIdAndOp() {
     assertThat(new CredScopedKey.TableCredScopedKey("tid-1", "READ_WRITE"))
         .isEqualTo(new CredScopedKey.TableCredScopedKey("tid-1", "READ_WRITE"))
         .hasSameHashCodeAs(new CredScopedKey.TableCredScopedKey("tid-1", "READ_WRITE"));
   }
 
   @Test
-  void tableKey_notEqualWhenDifferentId() {
+  void tableKeyNotEqualWhenDifferentId() {
     assertThat(new CredScopedKey.TableCredScopedKey("tid-1", "READ_WRITE"))
         .isNotEqualTo(new CredScopedKey.TableCredScopedKey("tid-2", "READ_WRITE"));
   }
 
-  // ── NoopCredScopedKey ────────────────────────────────────────────────────
-
   @Test
-  void noopKey_equalWhenSameSchemeAndAuthority() {
+  void noopKeyEqualWhenSameSchemeAndAuthority() {
     URI uri = URI.create("s3://my-bucket/path");
     assertThat(new CredScopedKey.NoopCredScopedKey(uri, new Configuration()))
         .isEqualTo(new CredScopedKey.NoopCredScopedKey(uri, new Configuration()))
@@ -56,17 +50,15 @@ class CredScopedKeyTest {
   }
 
   @Test
-  void noopKey_notEqualWhenDifferentAuthority() {
+  void noopKeyNotEqualWhenDifferentAuthority() {
     assertThat(
             new CredScopedKey.NoopCredScopedKey(URI.create("s3://bucket-a"), new Configuration()))
         .isNotEqualTo(
             new CredScopedKey.NoopCredScopedKey(URI.create("s3://bucket-b"), new Configuration()));
   }
 
-  // ── CredScopedKey.create() factory ──────────────────────────────────────
-
   @Test
-  void create_returnsTableKey() {
+  void createReturnsTableKey() {
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
     conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "tid");
@@ -78,7 +70,7 @@ class CredScopedKeyTest {
   }
 
   @Test
-  void create_returnsPathKey() {
+  void createReturnsPathKey() {
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
     conf.set(UCHadoopConf.UC_PATH_KEY, "s3://b/p");
@@ -90,7 +82,7 @@ class CredScopedKeyTest {
   }
 
   @Test
-  void create_returnsNoopKeyWhenNoType() {
+  void createReturnsNoopKeyWhenNoType() {
     assertThat(CredScopedKey.create(URI.create("s3://b"), new Configuration()))
         .isInstanceOf(CredScopedKey.NoopCredScopedKey.class);
   }

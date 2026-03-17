@@ -35,32 +35,35 @@ class CredScopedFileSystemCacheTest {
     conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
     conf.set(UCHadoopConf.UC_TABLE_ID_KEY, tableId);
     conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, op);
+    // Disable Hadoop's internal filesystem cache so newFileSystem() creates a fresh instance per
+    // credential scope, making it possible to assert identity inequality across scopes.
+    conf.set("fs.file.impl.disable.cache", "true");
     return conf;
   }
 
   @Test
-  void sameScope_reusesSameDelegate() throws Exception {
+  void sameScopeReusesSameDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
     Configuration conf = tableConf("tid-1", "READ");
 
     CredScopedFileSystem fs1 = init(uri, conf);
     CredScopedFileSystem fs2 = init(uri, conf);
 
-    assertThat(fs1.delegate).isSameAs(fs2.delegate);
+    assertThat(fs1.getDelegate()).isSameAs(fs2.getDelegate());
   }
 
   @Test
-  void differentScope_getsDifferentDelegate() throws Exception {
+  void differentScopeGetsDifferentDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
 
     CredScopedFileSystem fsRead = init(uri, tableConf("tid-1", "READ"));
     CredScopedFileSystem fsWrite = init(uri, tableConf("tid-1", "WRITE"));
 
-    assertThat(fsRead.delegate).isNotSameAs(fsWrite.delegate);
+    assertThat(fsRead.getDelegate()).isNotSameAs(fsWrite.getDelegate());
   }
 
   @Test
-  void evictedEntry_closesCachedDelegate() throws Exception {
+  void evictedEntryClosesCachedDelegate() throws Exception {
     // Pre-seed the cache with a mock delegate so we can verify close() is called.
     FileSystem mockFs = mock(FileSystem.class);
     CredScopedKey key = new CredScopedKey.TableCredScopedKey("tid-evict", "READ");

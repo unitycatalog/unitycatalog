@@ -150,6 +150,7 @@ class UCSingleCatalog
     val credentialProps = CredPropsUtil.createTableCredProps(
       renewCredEnabled,
       credScopedFsEnabled,
+      newProps,
       CatalogUtils.stringToURI(stagingLocation).getScheme,
       uri.toString,
       tokenProvider,
@@ -286,6 +287,7 @@ class UCSingleCatalog
     val credentialProps = CredPropsUtil.createPathCredProps(
       renewCredEnabled,
       credScopedFsEnabled,
+      newProps,
       CatalogUtils.stringToURI(location).getScheme,
       uri.toString,
       tokenProvider,
@@ -546,7 +548,7 @@ private class UCProxy(
             //       for read or write, we can request the proper credential after fixing Spark.
             new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
           )
-      } catch {
+      }       catch {
         case e: ApiException =>
           logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
           try {
@@ -573,6 +575,7 @@ private class UCProxy(
       CredPropsUtil.createTableCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
+        Map.empty[String, String].asJava,
         locationUri.getScheme,
         uri.toString,
         tokenProvider,

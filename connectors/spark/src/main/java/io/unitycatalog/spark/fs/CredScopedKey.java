@@ -45,6 +45,11 @@ public interface CredScopedKey {
     public int hashCode() {
       return Objects.hash(path, pathOperation);
     }
+
+    @Override
+    public String toString() {
+      return "PathCredScopedKey{path=" + path + ", op=" + pathOperation + "}";
+    }
   }
 
   class TableCredScopedKey implements CredScopedKey {
@@ -68,6 +73,11 @@ public interface CredScopedKey {
     @Override
     public int hashCode() {
       return Objects.hash(tableId, tableOperation);
+    }
+
+    @Override
+    public String toString() {
+      return "TableCredScopedKey{tableId=" + tableId + ", op=" + tableOperation + "}";
     }
   }
 
@@ -97,6 +107,11 @@ public interface CredScopedKey {
     @Override
     public int hashCode() {
       return Objects.hash(scheme, authority);
+    }
+
+    @Override
+    public String toString() {
+      return "NoopCredScopedKey{scheme=" + scheme + ", authority=" + authority + "}";
     }
   }
 }
