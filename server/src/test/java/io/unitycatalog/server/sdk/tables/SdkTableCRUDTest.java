@@ -138,7 +138,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(stagingTableInfo.getId()).isNotNull();
     assertThat(stagingTableInfo.getStagingLocation()).isNotNull();
     assertThat(stagingTableInfo.getStagingLocation())
-        .isEqualTo(tableStorageRoot + "/tables/" + stagingTableInfo.getId());
+        .isEqualTo(tableStorageRoot + "/__unitystorage/tables/" + stagingTableInfo.getId());
 
     // Step 2: Create a managed table that's not DELTA
     CreateTable createTableRequestNotDelta =
@@ -187,7 +187,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(commitedStagingTableDAO).isNotNull();
     assertThat(commitedStagingTableDAO.getStagingLocation()).isNotNull();
     assertThat(commitedStagingTableDAO.getStagingLocation())
-        .isEqualTo(tableStorageRoot + "/tables/" + stagingTableInfo.getId());
+        .isEqualTo(tableStorageRoot + "/__unitystorage/tables/" + stagingTableInfo.getId());
     assertThat(commitedStagingTableDAO.isStageCommitted()).isEqualTo(true);
 
     // Clean up
@@ -311,13 +311,14 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(tableInfo.getStorageLocation()).isEqualTo(stagingTableInfo.getStagingLocation());
     assertThat(tableInfo.getTableId()).isEqualTo(stagingTableInfo.getId());
 
-    // Create a 3rd staging table with the same name, and now it fails with ALREADY_EXISTS because
-    // the table has already been created using that name.
+    // Create a 3rd staging table with the same name, and now it fails with TABLE_ALREADY_EXISTS
+    // because the table has already been created using that name.
     assertThatExceptionOfType(ApiException.class)
         .isThrownBy(() -> localTablesApi.createStagingTable(createStagingTableRequest))
         .satisfies(
             ex ->
-                assertThat(ex.getCode()).isEqualTo(ErrorCode.ALREADY_EXISTS.getHttpStatus().code()))
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.TABLE_ALREADY_EXISTS.getHttpStatus().code()))
         .withMessageContaining("already exists");
   }
 

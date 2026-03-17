@@ -5,7 +5,7 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
@@ -28,6 +28,18 @@ import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Patch;
 import lombok.SneakyThrows;
 
+/**
+ * This service manages cloud provider credentials used to access cloud storage (S3, ADLS, GCS) for
+ * accessing external locations.
+ *
+ * <h2>Supported Cloud Providers</h2>
+ *
+ * <ul>
+ *   <li><b>AWS</b> - IAM Role-based credentials
+ *   <li><b>Azure</b> - Not implemented yet.
+ *   <li><b>GCP</b> - Not implemented yet.
+ * </ul>
+ */
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class CredentialService extends AuthorizedService {
   private final CredentialRepository credentialRepository;
@@ -35,7 +47,7 @@ public class CredentialService extends AuthorizedService {
 
   @SneakyThrows
   public CredentialService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.credentialRepository = repositories.getCredentialRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
   }
@@ -43,7 +55,7 @@ public class CredentialService extends AuthorizedService {
   @Post("")
   // NOTE: service credential and CREATE_SERVICE_CREDENTIAL are not supported.
   @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER, CREATE_STORAGE_CREDENTIAL)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse createCredential(CreateCredentialRequest createCredentialRequest) {
     CredentialInfo credentialInfo = credentialRepository.addCredential(createCredentialRequest);
     initializeBasicAuthorization(credentialInfo.getId());
@@ -68,8 +80,8 @@ public class CredentialService extends AuthorizedService {
 
   @Get("/{name}")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
-  @AuthorizeKey(METASTORE)
-  public HttpResponse getCredential(@Param("name") @AuthorizeKey(CREDENTIAL) String name) {
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse getCredential(@Param("name") @AuthorizeResourceKey(CREDENTIAL) String name) {
     return HttpResponse.ofJson(credentialRepository.getCredential(name));
   }
 
@@ -78,9 +90,9 @@ public class CredentialService extends AuthorizedService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #credential, OWNER)
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCredential(
-      @Param("name") @AuthorizeKey(CREDENTIAL) String name,
+      @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
       UpdateCredentialRequest updateRequest) {
     return HttpResponse.ofJson(credentialRepository.updateCredential(name, updateRequest));
   }
@@ -90,13 +102,13 @@ public class CredentialService extends AuthorizedService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #credential, OWNER)
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCredential(
-      @Param("name") @AuthorizeKey(CREDENTIAL) String name,
+      @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
       @Param("force") Optional<Boolean> force) {
-    CredentialInfo credentialInfo =
+    UUID deletedCredentialId =
         credentialRepository.deleteCredential(name, force.orElse(false));
-    removeAuthorizations(credentialInfo.getId());
+    removeAuthorizations(deletedCredentialId.toString());
     return HttpResponse.of(HttpStatus.OK);
   }
 

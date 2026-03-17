@@ -34,7 +34,7 @@ import lombok.EqualsAndHashCode;
  *
  * <p>This class is immutable and thread-safe.
  *
- * @see Constants#SUPPORTED_CLOUD_SCHEMES for supported cloud storage schemes
+ * @see UriScheme for supported URI schemes
  */
 @EqualsAndHashCode
 public final class NormalizedURL {
@@ -71,15 +71,6 @@ public final class NormalizedURL {
   @Override
   public String toString() {
     return url;
-  }
-
-  /**
-   * Checks if the normalized URL is empty.
-   *
-   * @return true if the URL is an empty string, false otherwise
-   */
-  public boolean isEmpty() {
-    return url.isEmpty();
   }
 
   /**
@@ -127,6 +118,14 @@ public final class NormalizedURL {
    * </pre>
    */
   public static String normalize(String inputPath) {
+    if (inputPath == null || inputPath.isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Path cannot be null or empty");
+    }
+    if (!inputPath.contains("/")) {
+      // A path containing no / is very likely a malformed path or it's intended to be a name.
+      // In any case we reject it.
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Ambiguous path: " + inputPath);
+    }
     // Check if the path is already a URI with a valid scheme
     URI uri;
     try {
@@ -134,17 +133,13 @@ public final class NormalizedURL {
     } catch (URISyntaxException e) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported path: " + inputPath);
     }
-    if (uri.getScheme() == null) {
+    UriScheme scheme = UriScheme.fromURI(uri);
+    return switch (scheme) {
       // It's a local path without file://. Construct a file:// URI using Path.
-      uri = Paths.get(inputPath).toAbsolutePath().toUri().normalize();
-    }
-    if (Constants.URI_SCHEME_FILE.equals(uri.getScheme())) {
-      return localFileURIToString(uri);
-    } else if (Constants.SUPPORTED_CLOUD_SCHEMES.contains(uri.getScheme())) {
-      return removeExtraSlashes(uri.toString());
-    } else {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + inputPath);
-    }
+      case NULL -> localFileURIToString(Paths.get(inputPath).toAbsolutePath().toUri().normalize());
+      case FILE -> localFileURIToString(uri);
+      case S3, GS, ABFS, ABFSS -> removeExtraSlashes(uri.toString());
+    };
   }
 
   /**
@@ -212,5 +207,10 @@ public final class NormalizedURL {
     end++;
 
     return path.substring(start, end);
+  }
+
+  public NormalizedURL getStorageBase() {
+    URI uri = URI.create(url);
+    return NormalizedURL.from(uri.getScheme() + "://" + uri.getAuthority());
   }
 }

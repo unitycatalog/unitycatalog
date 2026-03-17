@@ -10,5 +10,5 @@ import lombok.ToString;
 public class GcsStorageConfig {
   private final String bucketPath;
   private final String jsonKeyFilePath;
-  private final String credentialsGenerator;
+  private final String credentialGenerator;
 }

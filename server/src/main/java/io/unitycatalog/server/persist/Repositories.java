@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist;
 
+import io.unitycatalog.server.auth.decorator.KeyMapper;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.ServerProperties;
 import lombok.Getter;
@@ -13,6 +15,7 @@ import org.hibernate.SessionFactory;
 public class Repositories {
   private final SessionFactory sessionFactory;
   private final FileOperations fileOperations;
+  private final ExternalLocationUtils externalLocationUtils;
 
   private final CatalogRepository catalogRepository;
   private final SchemaRepository schemaRepository;
@@ -27,9 +30,12 @@ public class Repositories {
   private final ExternalLocationRepository externalLocationRepository;
   private final DeltaCommitRepository deltaCommitRepository;
 
+  private final KeyMapper keyMapper;
+
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
     this.fileOperations = new FileOperations(serverProperties);
+    this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
 
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
@@ -40,9 +46,12 @@ public class Repositories {
     this.userRepository = new UserRepository(this, sessionFactory);
     this.metastoreRepository = new MetastoreRepository(this, sessionFactory);
     this.functionRepository = new FunctionRepository(this, sessionFactory);
-    this.modelRepository = new ModelRepository(this, sessionFactory);
-    this.credentialRepository = new CredentialRepository(this, sessionFactory);
+    this.modelRepository = new ModelRepository(this, sessionFactory, serverProperties);
+    this.credentialRepository = new CredentialRepository(this, sessionFactory, serverProperties);
     this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
     this.deltaCommitRepository = new DeltaCommitRepository(sessionFactory, serverProperties);
+
+    // KeyMapper uses all the repositories above.
+    this.keyMapper = new KeyMapper(this);
   }
 }

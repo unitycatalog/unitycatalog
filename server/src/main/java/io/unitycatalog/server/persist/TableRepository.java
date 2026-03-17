@@ -12,6 +12,7 @@ import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
@@ -165,7 +166,7 @@ public class TableRepository {
   private TableInfoDAO findTable(
       Session session, String catalogName, String schemaName, String tableName) {
     UUID schemaId =
-        repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
     return findBySchemaIdAndName(session, schemaId, tableName);
   }
 
@@ -186,20 +187,24 @@ public class TableRepository {
           String catalogName = createTable.getCatalogName();
           String schemaName = createTable.getSchemaName();
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           NormalizedURL storageLocation = NormalizedURL.from(createTable.getStorageLocation());
 
           // Check if table already exists
           TableInfoDAO existingTable =
               findBySchemaIdAndName(session, schemaId, createTable.getName());
           if (existingTable != null) {
-            throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + fullName);
+            throw new BaseException(
+                ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
           // The table ID will either be a new random one or the id of staging table, depending
           // on the type of table to create.
           String tableID;
           if (tableType == TableType.EXTERNAL) {
+            ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
             tableID = UUID.randomUUID().toString();
           } else if (tableType == TableType.MANAGED) {
             serverProperties.checkManagedTableEnabled();
@@ -301,7 +306,9 @@ public class TableRepository {
         sessionFactory,
         session -> {
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           return listTables(
               session,
               schemaId,
@@ -352,7 +359,9 @@ public class TableRepository {
           String schemaName = parts[1];
           String tableName = parts[2];
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           deleteTable(session, schemaId, tableName);
           return null;
         },
@@ -367,7 +376,7 @@ public class TableRepository {
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {
-        fileOperations.deleteDirectory(tableInfoDAO.getUrl());
+        FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
       } catch (Throwable e) {
         LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }

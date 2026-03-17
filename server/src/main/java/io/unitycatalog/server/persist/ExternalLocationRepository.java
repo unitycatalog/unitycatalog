@@ -69,11 +69,12 @@ public class ExternalLocationRepository {
         session -> {
           if (getExternalLocationDAO(session, createExternalLocation.getName()) != null) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS,
+                ErrorCode.EXTERNAL_LOCATION_ALREADY_EXISTS,
                 "External location already exists: " + createExternalLocation.getName());
           }
 
           NormalizedURL url = NormalizedURL.from(createExternalLocation.getUrl());
+          ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(url);
           validateUrlNotUsedByAnyExternalLocation(session, url, Optional.empty());
 
           CredentialDAO credentialDAO =
@@ -168,7 +169,7 @@ public class ExternalLocationRepository {
             ValidationUtils.validateSqlObjectName(updateExternalLocation.getNewName());
             if (getExternalLocationDAO(session, updateExternalLocation.getNewName()) != null) {
               throw new BaseException(
-                  ErrorCode.ALREADY_EXISTS,
+                  ErrorCode.EXTERNAL_LOCATION_ALREADY_EXISTS,
                   "External location already exists: " + updateExternalLocation.getNewName());
             }
             existingLocation.setName(updateExternalLocation.getNewName());

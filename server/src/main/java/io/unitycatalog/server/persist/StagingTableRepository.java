@@ -6,6 +6,8 @@ import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -13,6 +15,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Date;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -44,7 +47,7 @@ public class StagingTableRepository {
     TableInfoDAO existingTable =
         repositories.getTableRepository().findBySchemaIdAndName(session, schemaId, tableName);
     if (existingTable != null) {
-      throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + tableName);
+      throw new BaseException(ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + tableName);
     }
     // Also ensure that no staging table exists at the same location. This is almost impossible as
     // the generated path contains a newly generated random UUID. But still check for it anyway.
@@ -52,7 +55,7 @@ public class StagingTableRepository {
         findByStagingLocation(session, stagingLocation);
     if (existingStagingTableAtLocation != null) {
       throw new BaseException(
-          ErrorCode.ALREADY_EXISTS, "Staging table already exists at: " + stagingLocation);
+          ErrorCode.TABLE_ALREADY_EXISTS, "Staging table already exists at: " + stagingLocation);
     }
   }
 
@@ -84,19 +87,20 @@ public class StagingTableRepository {
     ValidationUtils.validateSqlObjectName(createStagingTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     UUID stagingTableId = UUID.randomUUID();
-    NormalizedURL stagingLocation =
-        repositories.getFileOperations().createTableDirectory(stagingTableId.toString());
 
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID schemaId =
-              repositories
-                  .getSchemaRepository()
-                  .getSchemaId(
-                      session,
-                      createStagingTable.getCatalogName(),
-                      createStagingTable.getSchemaName());
+          RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
+              RepositoryUtils.getCatalogAndSchemaDaoOrThrow(
+                  session, createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
+          NormalizedURL parentStorageLocation =
+              ExternalLocationUtils.getManagedStorageLocation(
+                  catalogAndSchemaDao, this::getDefaultManagedTablesStorageRoot);
+          NormalizedURL stagingLocation =
+              ExternalLocationUtils.getManagedLocationForTable(
+                  parentStorageLocation, stagingTableId);
+          UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 
           StagingTableDAO stagingTableDAO = new StagingTableDAO();
@@ -157,5 +161,18 @@ public class StagingTableRepository {
     stagingTableDAO.setAccessedAt(now);
     session.merge(stagingTableDAO);
     return stagingTableDAO;
+  }
+
+  /**
+   * Gets the default managed table storage root from server properties.
+   *
+   * <p>This is used as a fallback when neither the catalog nor schema has a managed storage
+   * location configured. It's being deprecated.
+   *
+   * @return optional containing the storage root URL if configured in server properties
+   */
+  private Optional<NormalizedURL> getDefaultManagedTablesStorageRoot() {
+    return Optional.ofNullable(serverProperties.get(ServerProperties.Property.TABLE_STORAGE_ROOT))
+        .map(NormalizedURL::from);
   }
 }

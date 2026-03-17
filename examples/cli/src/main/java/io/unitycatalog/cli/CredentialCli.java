@@ -4,7 +4,6 @@ import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiClient;
@@ -97,15 +96,7 @@ public class CredentialCli {
       throws JsonProcessingException, ApiException {
     String name = json.getString(CliParams.NAME.getServerParam());
     json.remove(CliParams.NAME.getServerParam());
-    if (json.isEmpty()) {
-      List<CliParams> optionalParams =
-          CliUtils.cliOptions.get(CliUtils.CREDENTIAL).get(CliUtils.UPDATE).getOptionalParams();
-      String errorMessage = "No parameters to update, please provide one of:";
-      for (CliParams param : optionalParams) {
-        errorMessage += "\n  --" + param.val();
-      }
-      throw new CliException(errorMessage);
-    }
+    CliUtils.validateUpdateParameters(json, CliUtils.CREDENTIAL, CliUtils.UPDATE);
     UpdateCredentialRequest updateCredentialRequest =
         new UpdateCredentialRequest()
             .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))

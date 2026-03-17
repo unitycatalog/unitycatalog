@@ -20,11 +20,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 public abstract class BaseServerTest {
 
-  public static ServerConfig serverConfig = new ServerConfig("http://localhost", "");
-  protected static UnityCatalogServer unityCatalogServer;
-  protected static Properties serverProperties;
-  protected static HibernateConfigurator hibernateConfigurator;
-  protected static CloudCredentialVendor cloudCredentialVendor;
+  public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
+  protected UnityCatalogServer unityCatalogServer;
+  protected Properties serverProperties;
+  protected HibernateConfigurator hibernateConfigurator;
+  protected CloudCredentialVendor cloudCredentialVendor;
 
   // All test data should be written under this directory. It will be cleaned up.
   @TempDir protected Path testDirectoryRoot;
@@ -62,7 +62,7 @@ public abstract class BaseServerTest {
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
   }
 
-  protected void setUpCredentialOperations() {}
+  protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
   @SneakyThrows
   @BeforeEach
@@ -84,7 +84,7 @@ public abstract class BaseServerTest {
 
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
-      setUpCredentialOperations();
+      setUpCredentialOperations(initServerProperties);
       hibernateConfigurator = new HibernateConfigurator(initServerProperties);
       unityCatalogServer =
           UnityCatalogServer.builder()
@@ -121,6 +121,8 @@ public abstract class BaseServerTest {
       session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
       session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
       session.createMutationQuery("delete from UserDAO").executeUpdate();
+      session.createMutationQuery("delete from ExternalLocationDAO").executeUpdate();
+      session.createMutationQuery("delete from CredentialDAO").executeUpdate();
       tx.commit();
       session.close();
 

@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.server.exception.BaseException;
 import java.util.UUID;
@@ -82,5 +83,27 @@ public class NormalizedURLTest {
 
     String uuid = UUID.randomUUID().toString();
     assertNormalizedURL("/tmp/tables/" + uuid, "file:///tmp/tables/" + uuid);
+
+    assertThrows(BaseException.class, () -> NormalizedURL.from(""));
+    assertThrows(BaseException.class, () -> NormalizedURL.from("  "));
+    assertThat(NormalizedURL.from(null)).isNull();
+  }
+
+  @Test
+  public void testGetStorageBase() {
+    assertThat(NormalizedURL.from("s3://bucket/path").getStorageBase())
+        .isEqualTo(NormalizedURL.from("s3://bucket"));
+    assertThat(NormalizedURL.from("s3://bucket/path/to/file").getStorageBase())
+        .isEqualTo(NormalizedURL.from("s3://bucket"));
+    assertThat(NormalizedURL.from("gs://bucket/path").getStorageBase())
+        .isEqualTo(NormalizedURL.from("gs://bucket"));
+    assertThat(
+            NormalizedURL.from("abfs://container@account.dfs.core.windows.net/path")
+                .getStorageBase())
+        .isEqualTo(NormalizedURL.from("abfs://container@account.dfs.core.windows.net"));
+    assertThat(
+            NormalizedURL.from("abfss://container@account.dfs.core.windows.net/path")
+                .getStorageBase())
+        .isEqualTo(NormalizedURL.from("abfss://container@account.dfs.core.windows.net"));
   }
 }

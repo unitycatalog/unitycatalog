@@ -2,13 +2,21 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -19,6 +27,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.StructType;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -26,12 +35,44 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
+  protected enum TableDdlMode {
+    CREATE("CREATE", false),
+    REPLACE_EXISTING("REPLACE", true),
+    CREATE_OR_REPLACE_EXISTING("CREATE OR REPLACE", true),
+    CREATE_OR_REPLACE_MISSING("CREATE OR REPLACE", false);
+
+    private final String sql;
+    private final boolean withExistingTable;
+
+    TableDdlMode(String sql, boolean withExistingTable) {
+      this.sql = sql;
+      this.withExistingTable = withExistingTable;
+    }
+
+    public String sql() {
+      return sql;
+    }
+
+    public boolean withExistingTable() {
+      return withExistingTable;
+    }
+  }
+
   protected static final String TEST_TABLE = "test_table";
+  protected TableOperations tableOperations;
+
+  @BeforeEach
+  @Override
+  public void setUp() {
+    super.setUp();
+    tableOperations = new SdkTableOperations(createApiClient(serverConfig));
+  }
+
   protected static final String ANOTHER_TEST_TABLE = "test_table_another";
   protected static final String TBLPROPERTIES_CATALOG_OWNED_CLAUSE =
       String.format(
           "TBLPROPERTIES ('%s'='%s')",
-          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
           UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
 
   /**
@@ -48,10 +89,13 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     private String schemaName = SCHEMA_NAME;
     private String tableName;
     private String cloudScheme = managedStorageCloudScheme();
-    private Optional<String> partitionColumn = Optional.empty();
+    private List<Pair<String, String>> columns =
+        List.of(Pair.of("i", "INT"), Pair.of("s", "STRING"));
+    private List<String> partitionColumns = List.of();
     @With private Optional<Pair<Integer, String>> asSelect = Optional.empty();
     private Optional<String> comment = Optional.empty();
-    private boolean replaceTable = false;
+    private Optional<String> expectedTableId = Optional.empty();
+    private TableDdlMode ddlMode = TableDdlMode.CREATE;
 
     public TableSetupOptions setCatalogName(String name) {
       catalogName = quoteEntityName(name);
@@ -69,8 +113,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
 
     public TableSetupOptions setPartitionColumn(String column) {
-      assert List.of("i", "s").contains(column);
-      partitionColumn = Optional.of(column);
+      assert columns.stream().map(Pair::getLeft).anyMatch(column::equals);
+      partitionColumns = List.of(column);
       return this;
     }
 
@@ -85,12 +129,18 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
 
     public String partitionClause() {
-      return partitionColumn.map(c -> String.format("PARTITIONED BY (%s)", c)).orElse("");
+      if (partitionColumns.isEmpty()) {
+        return "";
+      } else {
+        return partitionColumns.stream().collect(Collectors.joining(", ", "PARTITIONED BY (", ")"));
+      }
     }
 
     public String columnsClause() {
       if (asSelect.isEmpty()) {
-        return "(i INT, s STRING)";
+        return columns.stream()
+            .map(p -> p.getLeft() + " " + p.getRight())
+            .collect(Collectors.joining(", ", "(", ")"));
       } else {
         // CTAS can't specify columns
         return "";
@@ -108,7 +158,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
 
     public String ddlCommand() {
-      return replaceTable ? "REPLACE" : "CREATE";
+      return ddlMode.sql();
     }
 
     public String createManagedTableSql() {
@@ -197,6 +247,52 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     return tableFormat().equalsIgnoreCase("DELTA");
   }
 
+  protected final boolean canUpdateColumnsToUC() {
+    // DELTA tables can't update columns to UC yet.
+    return !tableFormat().equalsIgnoreCase("DELTA") || DeltaVersionUtils.isDeltaAtLeast("4.2.0");
+  }
+
+  protected List<TableDdlMode> supportedTableDdlModes() {
+    return List.of(TableDdlMode.CREATE);
+  }
+
+  protected List<String> supportedCatalogNames() {
+    return List.of(SPARK_CATALOG, CATALOG_NAME);
+  }
+
+  protected List<String> sessionCatalogNames() {
+    return List.of(SPARK_CATALOG, CATALOG_NAME);
+  }
+
+  protected void prepareExistingTableForDdl(TableSetupOptions options) {
+    throw new UnsupportedOperationException("Existing-table DDL setup is not supported");
+  }
+
+  protected void validateCreatedTable(String fullTableName, TableSetupOptions options)
+      throws ApiException {}
+
+  protected String qualifiedTableName(String catalogName, String tableName) {
+    return String.join(".", catalogName, SCHEMA_NAME, tableName);
+  }
+
+  /**
+   * Returns the expected failure messages for a table setup attempt.
+   *
+   * @return {@code null} if success is expected, an empty list to expect any failure without
+   *     checking the message, or a non-empty list to expect a failure whose message contains at
+   *     least one of the strings.
+   */
+  protected List<String> expectedCreateFailureMessages(TableSetupOptions options) {
+    // Non-Delta tables only support plain CREATE TABLE.
+    if (!testingDelta()
+        && (options.getDdlMode() != TableDdlMode.CREATE || options.getAsSelect().isPresent())) {
+      return List.of();
+    }
+    return null;
+  }
+
+  protected void initializeSessionForTableTests() {}
+
   /**
    * This test creates table in different ways:
    *
@@ -210,44 +306,60 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
    * For all the 16 (2^4) tables it does a simple read and write test to make sure they all work.
    */
   @Test
-  public void testTableCreateReadWrite() {
+  public void testTableCreateReadWrite() throws ApiException {
     // Test both `spark_catalog` and other catalog names.
-    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    session = createSparkSessionWithCatalogs(sessionCatalogNames().toArray(new String[0]));
+    initializeSessionForTableTests();
 
     int tableNameCounter = 0;
-    for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
+    for (String catalogName : supportedCatalogNames()) {
       for (boolean withPartitionColumns : List.of(true, false)) {
         for (boolean withCtas : List.of(true, false)) {
-          for (boolean replaceTable : List.of(true, false)) {
+          for (TableDdlMode ddlMode : supportedTableDdlModes()) {
             String tableName = TEST_TABLE + tableNameCounter;
             tableNameCounter++;
-            if (replaceTable) {
-              if (withCtas && !testingDelta()) {
-                // "REPLACE TABLE AS SELECT" is only supported for Delta.
-                continue;
-              }
-              // First, create a different table to replace.
-              sql(
-                  "CREATE TABLE %s.%s.%s USING DELTA %s AS SELECT 0.1 AS col1",
-                  catalogName, SCHEMA_NAME, tableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
-            }
             TableSetupOptions options =
                 new TableSetupOptions()
                     .setCatalogName(catalogName)
                     .setTableName(tableName)
-                    .setReplaceTable(replaceTable);
+                    .setDdlMode(ddlMode);
             if (withPartitionColumns) {
               options.setPartitionColumn("s");
             }
             if (withCtas) {
               options.setAsSelect(1, "a");
             }
+            List<String> expectedFailureMessages = expectedCreateFailureMessages(options);
+            if (ddlMode.withExistingTable()) {
+              prepareExistingTableForDdl(options);
+              options.setExpectedTableId(
+                  Optional.of(
+                      tableOperations
+                          .getTable(qualifiedTableName(catalogName, tableName))
+                          .getTableId()));
+            }
+
+            if (expectedFailureMessages != null) {
+              if (expectedFailureMessages.isEmpty()) {
+                assertThatThrownBy(() -> setupTable(options));
+              } else {
+                List<String> expected = expectedFailureMessages;
+                assertThatThrownBy(() -> setupTable(options))
+                    .satisfies(
+                        t ->
+                            assertThat(t.getMessage())
+                                .containsAnyOf(expected.toArray(new CharSequence[0])));
+              }
+              continue;
+            }
+
             String t1 = setupTable(options);
             if (withCtas) {
               testTableReadWriteCreatedAsSelect(t1, Pair.of(1, "a"));
             } else {
               testTableReadWrite(t1);
             }
+            validateCreatedTable(t1, options);
           }
         }
       }
@@ -398,6 +510,247 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     sql("DROP TABLE %s", fullTableName);
     List<Row> tables2 = sql("SHOW TABLES in `%s`.`%s`", catalogName, schemaName);
     assertThat(tables2).isEmpty();
+  }
+
+  /**
+   * Specification for one column in testTableWithSupportedDataTypes: its SQL DDL type, the SQL
+   * literal used in the INSERT, the expected toString() from the result row (null = byte-array ref
+   * check via startsWith("[B@")), and the expected UC catalog metadata fields.
+   */
+  @AllArgsConstructor
+  @Getter
+  private static final class ColSpec {
+    private final String name;
+    private final String sqlType;
+    private final String insertValue;
+    private final String rowValue; // null = byte-array object ref, checked with startsWith
+    private final ColumnTypeName typeName;
+    private final String typeText;
+    private final String typeJson;
+  }
+
+  // Currently this test only works for non-Delta tables. Later it will work for more.
+  @Test
+  @EnabledIf("canUpdateColumnsToUC")
+  public void testTableWithSupportedDataTypes() throws ApiException {
+    // All data types to test
+    String arrJson = "{\"type\":\"array\",\"elementType\":\"integer\",\"containsNull\":true}";
+    String mapJson =
+        "{\"type\":\"map\",\"keyType\":\"string\","
+            + "\"valueType\":\"integer\",\"valueContainsNull\":true}";
+    String structJson =
+        "{\"type\":\"struct\",\"fields\":["
+            + "{\"name\":\"a\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}},"
+            + "{\"name\":\"b\",\"type\":\"string\",\"nullable\":true,\"metadata\":{}}]}";
+    List<ColSpec> cols =
+        List.of(
+            new ColSpec(
+                "col_tinyint",
+                "TINYINT",
+                "CAST(1 AS TINYINT)",
+                "1",
+                ColumnTypeName.BYTE,
+                "tinyint",
+                "\"byte\""),
+            new ColSpec(
+                "col_smallint",
+                "SMALLINT",
+                "CAST(100 AS SMALLINT)",
+                "100",
+                ColumnTypeName.SHORT,
+                "smallint",
+                "\"short\""),
+            new ColSpec("col_int", "INT", "1000", "1000", ColumnTypeName.INT, "int", "\"integer\""),
+            new ColSpec(
+                "col_bigint",
+                "BIGINT",
+                "100000",
+                "100000",
+                ColumnTypeName.LONG,
+                "bigint",
+                "\"long\""),
+            new ColSpec(
+                "col_float", "FLOAT", "2.5", "2.5", ColumnTypeName.FLOAT, "float", "\"float\""),
+            new ColSpec(
+                "col_double",
+                "DOUBLE",
+                "1.5",
+                "1.5",
+                ColumnTypeName.DOUBLE,
+                "double",
+                "\"double\""),
+            new ColSpec(
+                "col_decimal",
+                "DECIMAL(10,2)",
+                "123.45",
+                "123.45",
+                ColumnTypeName.DECIMAL,
+                "decimal(10,2)",
+                "\"decimal(10,2)\""),
+            new ColSpec(
+                "col_string",
+                "STRING",
+                "'test'",
+                "test",
+                ColumnTypeName.STRING,
+                "string",
+                "\"string\""),
+            new ColSpec(
+                "col_char",
+                "CHAR(10)",
+                "'char_test'",
+                "char_test ",
+                ColumnTypeName.CHAR,
+                "char(10)",
+                "\"char(10)\""),
+            new ColSpec(
+                "col_varchar",
+                "VARCHAR(20)",
+                "'varchar_test'",
+                "varchar_test",
+                ColumnTypeName.STRING,
+                "varchar(20)",
+                "\"varchar(20)\""),
+            new ColSpec(
+                "col_binary",
+                "BINARY",
+                "X'CAFEBABE'",
+                null,
+                ColumnTypeName.BINARY,
+                "binary",
+                "\"binary\""),
+            new ColSpec(
+                "col_boolean",
+                "BOOLEAN",
+                "true",
+                "true",
+                ColumnTypeName.BOOLEAN,
+                "boolean",
+                "\"boolean\""),
+            new ColSpec(
+                "col_date",
+                "DATE",
+                "DATE'2025-01-01'",
+                "2025-01-01",
+                ColumnTypeName.DATE,
+                "date",
+                "\"date\""),
+            new ColSpec(
+                "col_timestamp",
+                "TIMESTAMP",
+                "TIMESTAMP'2025-01-01 12:00:00'",
+                "2025-01-01 12:00:00.0",
+                ColumnTypeName.TIMESTAMP,
+                "timestamp",
+                "\"timestamp\""),
+            new ColSpec(
+                "col_timestamp_ntz",
+                "TIMESTAMP_NTZ",
+                "TIMESTAMP_NTZ'2025-01-01 12:00:00'",
+                "2025-01-01T12:00",
+                ColumnTypeName.TIMESTAMP_NTZ,
+                "timestamp_ntz",
+                "\"timestamp_ntz\""),
+            new ColSpec(
+                "col_daytime_interval",
+                "INTERVAL DAY TO SECOND",
+                "INTERVAL '1 00:00:00' DAY TO SECOND",
+                "PT24H",
+                ColumnTypeName.INTERVAL,
+                "interval day to second",
+                "\"interval day to second\""),
+            new ColSpec(
+                "col_yearmonth_interval",
+                "INTERVAL YEAR TO MONTH",
+                "INTERVAL '0-1' YEAR TO MONTH",
+                "P1M",
+                ColumnTypeName.INTERVAL,
+                "interval year to month",
+                "\"interval year to month\""),
+            new ColSpec(
+                "col_arr",
+                "ARRAY<INT>",
+                "array(1, 2, 3)",
+                "ArraySeq(1, 2, 3)",
+                ColumnTypeName.ARRAY,
+                "array<int>",
+                arrJson),
+            new ColSpec(
+                "col_map",
+                "MAP<STRING, INT>",
+                "map('key1', 10, 'key2', 20)",
+                "Map(key1 -> 10, key2 -> 20)",
+                ColumnTypeName.MAP,
+                "map<string,int>",
+                mapJson),
+            new ColSpec(
+                "col_struct",
+                "STRUCT<a: INT, b: STRING>",
+                "struct(42, 'test')",
+                "[42,test]",
+                ColumnTypeName.STRUCT,
+                "struct<a:int,b:string>",
+                structJson));
+
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String tableName = TEST_TABLE + "_complex_type";
+    List<String> partitionColumns = List.of("col_daytime_interval", "col_string", "col_bigint");
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setSchemaName(SCHEMA_NAME)
+                .setTableName(tableName)
+                .setColumns(
+                    cols.stream()
+                        .map(c -> Pair.of(c.getName(), c.getSqlType()))
+                        .collect(Collectors.toList()))
+                .setPartitionColumns(partitionColumns));
+    String colNames = cols.stream().map(ColSpec::getName).collect(Collectors.joining(", "));
+    sql(
+        "INSERT INTO %s (%s) VALUES (%s)",
+        fullTableName,
+        colNames,
+        cols.stream().map(ColSpec::getInsertValue).collect(Collectors.joining(", ")));
+
+    List<Row> queryResult = sql("SELECT %s FROM %s", colNames, fullTableName);
+    assertThat(queryResult).hasSize(1);
+    List<String> row =
+        IntStream.range(0, queryResult.get(0).length())
+            .mapToObj(
+                i -> queryResult.get(0).isNullAt(i) ? null : queryResult.get(0).get(i).toString())
+            .collect(Collectors.toList());
+
+    TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    List<ColumnInfo> columns = tableInfo.getColumns();
+    assertThat(columns).hasSize(cols.size());
+
+    for (int i = 0; i < cols.size(); i++) {
+      ColSpec spec = cols.get(i);
+      if (spec.getTypeName() == ColumnTypeName.BINARY) {
+        // BINARY: row value is a Java byte array — toString() produces a ref like "[B@..."
+        assertThat(row.get(i)).as("row value for %s", spec.getName()).startsWith("[B@");
+      } else {
+        assertThat(row.get(i)).as("row value for %s", spec.getName()).isEqualTo(spec.getRowValue());
+      }
+      ColumnInfo col = columns.get(i);
+      assertThat(col.getName()).as("name[%d]", i).isEqualTo(spec.getName());
+      assertThat(col.getTypeName())
+          .as("typeName for %s", spec.getName())
+          .isEqualTo(spec.getTypeName());
+      assertThat(col.getTypeText())
+          .as("typeText for %s", spec.getName())
+          .isEqualTo(spec.getTypeText());
+      assertThat(col.getTypeJson())
+          .as("typeJson for %s", spec.getName())
+          .isEqualTo(spec.getTypeJson());
+      int partitionIndex = partitionColumns.indexOf(col.getName());
+      if (partitionIndex != -1) {
+        assertThat(col.getPartitionIndex()).isEqualTo(partitionIndex);
+      } else {
+        assertThat(col.getPartitionIndex()).isNull();
+      }
+    }
   }
 
   protected String quoteEntityName(String entityName) {

@@ -1,6 +1,6 @@
 package io.unitycatalog.server.service.iceberg;
 
-import java.net.URI;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.concurrent.CompletableFuture;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
@@ -15,9 +15,8 @@ public class MetadataService {
   }
 
   public TableMetadata readTableMetadata(String metadataLocation) {
-    URI metadataLocationUri = URI.create(metadataLocation);
     // TODO: cache fileIO
-    FileIO fileIO = fileIOFactory.getFileIO(metadataLocationUri);
+    FileIO fileIO = fileIOFactory.getFileIO(NormalizedURL.from(metadataLocation));
 
     return CompletableFuture.supplyAsync(() -> TableMetadataParser.read(fileIO, metadataLocation))
         .join();

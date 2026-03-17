@@ -2,9 +2,11 @@ package io.unitycatalog.server.base.credential;
 
 import static io.unitycatalog.server.utils.TestUtils.COMMENT;
 import static io.unitycatalog.server.utils.TestUtils.COMMENT2;
+import static io.unitycatalog.server.utils.TestUtils.TEST_AWS_MASTER_ROLE_ARN;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
@@ -17,7 +19,9 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.externallocation.ExternalLocationOperations;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -36,6 +40,13 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
   protected abstract ExternalLocationOperations createExternalLocationOperations(
       ServerConfig config);
 
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty(
+        ServerProperties.Property.AWS_MASTER_ROLE_ARN.getKey(), TEST_AWS_MASTER_ROLE_ARN);
+  }
+
   @BeforeEach
   @Override
   public void setUp() {
@@ -47,37 +58,49 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
   @Test
   public void testStorageCredentialCRUD() throws ApiException {
     // Create a storage credential
-    CreateCredentialRequest CreateCredentialRequest =
+    CreateCredentialRequest createCredentialRequest =
         new CreateCredentialRequest()
             .name(CREDENTIAL_NAME)
             .comment(COMMENT)
             .purpose(CredentialPurpose.STORAGE)
             .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN));
 
-    CredentialInfo CredentialInfo = credentialOperations.createCredential(CreateCredentialRequest);
-    assertThat(CredentialInfo.getName()).isEqualTo(CREDENTIAL_NAME);
-    assertThat(CredentialInfo.getComment()).isEqualTo(COMMENT);
-    assertThat(CredentialInfo.getPurpose()).isEqualTo(CredentialPurpose.STORAGE);
+    CredentialInfo credentialInfo = credentialOperations.createCredential(createCredentialRequest);
+    assertThat(credentialInfo.getName()).isEqualTo(CREDENTIAL_NAME);
+    assertThat(credentialInfo.getComment()).isEqualTo(COMMENT);
+    assertThat(credentialInfo.getPurpose()).isEqualTo(CredentialPurpose.STORAGE);
+    assertThat(credentialInfo.getAwsIamRole().getRoleArn()).isEqualTo(DUMMY_ROLE_ARN);
+    assertThat(credentialInfo.getAwsIamRole().getExternalId()).isNotEmpty();
+    assertDoesNotThrow(() -> UUID.fromString(credentialInfo.getAwsIamRole().getExternalId()));
+    assertThat(credentialInfo.getAwsIamRole().getUnityCatalogIamArn())
+        .isEqualTo(TEST_AWS_MASTER_ROLE_ARN);
 
     // List storage credentials
     assertThat(credentialOperations.listCredentials(Optional.empty(), CredentialPurpose.STORAGE))
-        .contains(CredentialInfo);
+        .contains(credentialInfo);
 
     // Get storage credential
-    assertThat(credentialOperations.getCredential(CREDENTIAL_NAME)).isEqualTo(CredentialInfo);
+    assertThat(credentialOperations.getCredential(CREDENTIAL_NAME)).isEqualTo(credentialInfo);
 
     // Update storage credential
-    UpdateCredentialRequest UpdateCredentialRequest =
+    UpdateCredentialRequest updateCredentialRequest =
         new UpdateCredentialRequest()
             .newName(NEW_CREDENTIAL_NAME)
             .comment(COMMENT2)
             .awsIamRole(new AwsIamRoleRequest().roleArn(NEW_ROLE_ARN));
 
     CredentialInfo updatedCredentialInfo =
-        credentialOperations.updateCredential(CREDENTIAL_NAME, UpdateCredentialRequest);
+        credentialOperations.updateCredential(CREDENTIAL_NAME, updateCredentialRequest);
     assertThat(updatedCredentialInfo.getName()).isEqualTo(NEW_CREDENTIAL_NAME);
     assertThat(updatedCredentialInfo.getComment()).isEqualTo(COMMENT2);
     assertThat(updatedCredentialInfo.getAwsIamRole().getRoleArn()).isEqualTo(NEW_ROLE_ARN);
+    assertThat(updatedCredentialInfo.getAwsIamRole().getExternalId()).isNotEmpty();
+    assertDoesNotThrow(
+        () -> UUID.fromString(updatedCredentialInfo.getAwsIamRole().getExternalId()));
+    assertThat(updatedCredentialInfo.getAwsIamRole().getExternalId())
+        .isNotEqualTo(credentialInfo.getAwsIamRole().getExternalId());
+    assertThat(updatedCredentialInfo.getAwsIamRole().getUnityCatalogIamArn())
+        .isEqualTo(TEST_AWS_MASTER_ROLE_ARN);
 
     // Delete storage credential
     credentialOperations.deleteCredential(NEW_CREDENTIAL_NAME, Optional.empty());

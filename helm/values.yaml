@@ -83,6 +83,7 @@ auth:
   users:
 
   # -- (string) OAuth provider
+  # @default -- google
   # @raw
   #
   # Supported values: `google`, `other`
@@ -92,7 +93,7 @@ auth:
   provider: google
 
   # -- (string) OAuth authorization URL
-  # @default -- not set
+  # @default -- https://accounts.google.com/o/oauth2/auth
   # @raw
   #
   # Example: `https://accounts.google.com/o/oauth2/auth`
@@ -100,7 +101,7 @@ auth:
   authorizationUrl: https://accounts.google.com/o/oauth2/auth
 
   # -- (string) OAuth token URL
-  # @default -- not set
+  # @default -- https://oauth2.googleapis.com/token
   # @raw
   #
   # Example: `https://oauth2.googleapis.com/token`
@@ -116,6 +117,27 @@ auth:
   # - `clientSecret`: OAuth client secret
   #
   clientSecretName:
+
+  # -- (string) Comma-separated list of allowed token issuers
+  # @default -- https://accounts.google.com
+  # @raw
+  #
+  # When authorization is enabled, tokens will only be accepted from issuers in this list.
+  #
+  # Example for Google: `https://accounts.google.com`
+  # Example for Microsoft Entra ID: `https://login.microsoftonline.com/{tenant-id}/v2.0`
+  #
+  allowedIssuers: https://accounts.google.com
+
+  # -- (string) Comma-separated list of expected JWT audience values
+  # @default -- not set
+  # @raw
+  #
+  # When authorization is enabled, tokens must contain one of these audience values.
+  # This ensures tokens are intended for this Unity Catalog instance.
+  # Typically your application's client ID or API identifier.
+  #
+  audiences:
 
   # -- (int) OAuth redirect port
   # @default -- not set
