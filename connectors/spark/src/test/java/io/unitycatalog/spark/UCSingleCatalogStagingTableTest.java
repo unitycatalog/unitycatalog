@@ -196,7 +196,7 @@ public class UCSingleCatalogStagingTableTest {
   }
 
   @Test
-  public void testStageReplaceExistingManagedTableDropsUserProperties() throws Exception {
+  public void testStageReplaceExistingManagedTablePreservesUserProperties() throws Exception {
     ManagedReplaceMocks mocks = mockExistingManagedReplace(false);
 
     catalog.stageReplace(
@@ -211,7 +211,7 @@ public class UCSingleCatalogStagingTableTest {
     verify(mockDelegate).stageReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
     assertThat(propsCaptor.getValue())
         .containsEntry(TableCatalog.PROP_PROVIDER, "delta")
-        .doesNotContainKey("delta.appendOnly");
+        .containsEntry("delta.appendOnly", "true");
     verify(mocks.tempCredsApi).generateTemporaryTableCredentials(any());
   }
 
