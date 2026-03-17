@@ -102,57 +102,47 @@ public class CredScopedFileSystem extends FilterFileSystem {
     }
   }
 
+  /**
+   * Restores {@code key} from its {@code key.original} side-channel saved by {@link
+   * io.unitycatalog.spark.auth.CredPropsUtil}, falling back to {@code defaultImpl} when the
+   * side-channel is absent.
+   */
+  private static void restoreImpl(Configuration fsConf, String key, String defaultImpl) {
+    fsConf.set(key, fsConf.get(key + ".original", defaultImpl));
+  }
+
   private static FileSystem newFileSystem(URI uri, Configuration conf) {
     try {
       Configuration fsConf = new Configuration(conf);
 
       // S3: restore impl using the side-channel key saved by CredPropsUtil before it overrode
       // fs.<scheme>.impl with CredScopedFileSystem. Falls back to S3AFileSystem if not set.
-      fsConf.set(
-          "fs.s3.impl",
-          fsConf.get("fs.s3.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem"));
-      fsConf.set(
-          "fs.s3a.impl",
-          fsConf.get("fs.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem"));
-      fsConf.set(
-          "fs.AbstractFileSystem.s3.impl",
-          fsConf.get("fs.AbstractFileSystem.s3.impl.original", "org.apache.hadoop.fs.s3a.S3A"));
-      fsConf.set(
-          "fs.AbstractFileSystem.s3a.impl",
-          fsConf.get("fs.AbstractFileSystem.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3A"));
+      restoreImpl(fsConf, "fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
+      restoreImpl(fsConf, "fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
+      restoreImpl(fsConf, "fs.AbstractFileSystem.s3.impl", "org.apache.hadoop.fs.s3a.S3A");
+      restoreImpl(fsConf, "fs.AbstractFileSystem.s3a.impl", "org.apache.hadoop.fs.s3a.S3A");
       fsConf.set("fs.s3.impl.disable.cache", "true");
       fsConf.set("fs.s3a.impl.disable.cache", "true");
 
       // GCS: restore impl using the side-channel key. Falls back to GoogleHadoopFileSystem if not
       // set (registered via the Java service loader).
-      fsConf.set(
-          "fs.gs.impl",
-          fsConf.get(
-              "fs.gs.impl.original", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem"));
-      fsConf.set(
+      restoreImpl(
+          fsConf, "fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
+      restoreImpl(
+          fsConf,
           "fs.AbstractFileSystem.gs.impl",
-          fsConf.get(
-              "fs.AbstractFileSystem.gs.impl.original",
-              "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS"));
+          "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS");
       fsConf.set("fs.gs.impl.disable.cache", "true");
 
       // Azure: restore impl using the side-channel key. Falls back to AzureBlobFileSystem /
       // SecureAzureBlobFileSystem if not set (registered via the Java service loader).
-      fsConf.set(
-          "fs.abfs.impl",
-          fsConf.get("fs.abfs.impl.original", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem"));
-      fsConf.set(
-          "fs.abfss.impl",
-          fsConf.get(
-              "fs.abfss.impl.original", "org.apache.hadoop.fs.azurebfs.SecureAzureBlobFileSystem"));
-      fsConf.set(
-          "fs.AbstractFileSystem.abfs.impl",
-          fsConf.get(
-              "fs.AbstractFileSystem.abfs.impl.original", "org.apache.hadoop.fs.azurebfs.Abfs"));
-      fsConf.set(
-          "fs.AbstractFileSystem.abfss.impl",
-          fsConf.get(
-              "fs.AbstractFileSystem.abfss.impl.original", "org.apache.hadoop.fs.azurebfs.Abfss"));
+      restoreImpl(
+          fsConf, "fs.abfs.impl", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem");
+      restoreImpl(
+          fsConf, "fs.abfss.impl", "org.apache.hadoop.fs.azurebfs.SecureAzureBlobFileSystem");
+      restoreImpl(fsConf, "fs.AbstractFileSystem.abfs.impl", "org.apache.hadoop.fs.azurebfs.Abfs");
+      restoreImpl(
+          fsConf, "fs.AbstractFileSystem.abfss.impl", "org.apache.hadoop.fs.azurebfs.Abfss");
       fsConf.set("fs.abfs.impl.disable.cache", "true");
       fsConf.set("fs.abfss.impl.disable.cache", "true");
 

@@ -429,8 +429,10 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
   @ParameterizedTest
   @MethodSource("cloudParameters")
-  public void testTableOperations(String scheme, boolean renewCredEnabled) {
-    session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
+  public void testTableOperations(
+      String scheme, boolean renewCredEnabled, boolean credScopedFsEnabled) {
+    session =
+        createSparkSessionWithCatalogs(renewCredEnabled, credScopedFsEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     // t1 has (1, 'a')
     String t1 = setupTable(scheme, SPARK_CATALOG, TEST_TABLE);
