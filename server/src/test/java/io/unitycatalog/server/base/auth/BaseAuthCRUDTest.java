@@ -17,6 +17,7 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
@@ -73,6 +74,15 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
     // Use the JDK built-in HttpServer instead of Armeria to avoid shared
     // event-loop threads that prevent the forked test JVM from exiting.
     mockOidcServer = HttpServer.create(new InetSocketAddress(0), 0);
+    // The executor must use daemon threads so the JVM can exit even if
+    // stop() does not fully terminate all internal threads.
+    mockOidcServer.setExecutor(
+        Executors.newCachedThreadPool(
+            r -> {
+              Thread t = new Thread(r);
+              t.setDaemon(true);
+              return t;
+            }));
 
     mockOidcServer.createContext(
         "/.well-known/openid-configuration",
