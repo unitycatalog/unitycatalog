@@ -6,6 +6,7 @@ import io.unitycatalog.client.model.{TableInfo, _}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
+import io.unitycatalog.spark.fs.CredScopedFileSystem
 import io.unitycatalog.spark.utils.OptionsUtil
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
@@ -426,25 +427,31 @@ object UCSingleCatalog {
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
   /**
-   * Returns a snapshot of the current session's Hadoop filesystem impl settings.
+   * Returns any user-configured {@code fs.<scheme>.impl} values from the current Spark session.
    *
-   * This map is passed as {@code existingProps} to {@link
-   * io.unitycatalog.spark.auth.CredPropsUtil} so that {@code saveAndOverride()} can preserve the
-   * original {@code fs.<scheme>.impl} value (e.g. a custom S3 filesystem configured in the Spark
-   * session) before {@code CredPropsUtil} overrides it with {@link
-   * io.unitycatalog.spark.fs.CredScopedFileSystem}. Without this, {@code fs.<scheme>.impl.original}
-   * would always fall back to the hardcoded default, causing {@code CredScopedFileSystem} to
-   * instantiate the wrong delegate.
+   * Passed to {@link io.unitycatalog.spark.auth.CredPropsUtil#saveAndOverride} so it can stash the
+   * original impl under {@code fs.<scheme>.impl.original} before replacing it with
+   * {@link io.unitycatalog.spark.fs.CredScopedFileSystem}. Without this, the stashed value would
+   * default to Hadoop's built-in class, causing {@code CredScopedFileSystem} to ignore any custom
+   * filesystem the user configured (e.g. a test double or alternative S3 driver).
    */
   def sessionHadoopFsImplProps(): util.Map[String, String] = {
+    val conf = SparkSession.active.conf
+    val credScopedFsClass = classOf[CredScopedFileSystem].getName
     val fsImplKeys = Set(
       "fs.s3.impl", "fs.s3a.impl", "fs.gs.impl", "fs.abfs.impl", "fs.abfss.impl",
       "fs.AbstractFileSystem.s3.impl", "fs.AbstractFileSystem.s3a.impl",
       "fs.AbstractFileSystem.gs.impl", "fs.AbstractFileSystem.abfs.impl",
       "fs.AbstractFileSystem.abfss.impl")
-    val result = new util.HashMap[String, String]()
-    for ((k, v) <- SparkSession.active.conf.getAll if fsImplKeys.contains(k)) result.put(k, v)
-    result
+    fsImplKeys
+      .flatMap { key =>
+        // Check both forms: unprefixed and spark.hadoop.-prefixed. Avoid hadoopConf.get(),
+        // which returns Hadoop built-in defaults even when the user never set the key.
+        conf.getOption(key).orElse(conf.getOption("spark.hadoop." + key))
+          .filter(_ != credScopedFsClass) // skip if already CredScopedFileSystem (prevents recursive wrapping)
+          .map(key -> _)
+      }
+      .toMap.asJava
   }
 
   def setCredentialProps(props: util.HashMap[String, String],
