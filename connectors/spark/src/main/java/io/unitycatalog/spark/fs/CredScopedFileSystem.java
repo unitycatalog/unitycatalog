@@ -126,18 +126,14 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
       // GCS: restore impl using the side-channel key. Falls back to GoogleHadoopFileSystem if not
       // set (registered via the Java service loader).
+      restoreImpl(fsConf, "fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
       restoreImpl(
-          fsConf, "fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
-      restoreImpl(
-          fsConf,
-          "fs.AbstractFileSystem.gs.impl",
-          "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS");
+          fsConf, "fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS");
       fsConf.set("fs.gs.impl.disable.cache", "true");
 
       // Azure: restore impl using the side-channel key. Falls back to AzureBlobFileSystem /
       // SecureAzureBlobFileSystem if not set (registered via the Java service loader).
-      restoreImpl(
-          fsConf, "fs.abfs.impl", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem");
+      restoreImpl(fsConf, "fs.abfs.impl", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem");
       restoreImpl(
           fsConf, "fs.abfss.impl", "org.apache.hadoop.fs.azurebfs.SecureAzureBlobFileSystem");
       restoreImpl(fsConf, "fs.AbstractFileSystem.abfs.impl", "org.apache.hadoop.fs.azurebfs.Abfs");

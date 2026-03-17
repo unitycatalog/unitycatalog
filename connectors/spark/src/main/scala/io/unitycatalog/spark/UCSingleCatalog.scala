@@ -150,7 +150,7 @@ class UCSingleCatalog
     val credentialProps = CredPropsUtil.createTableCredProps(
       renewCredEnabled,
       credScopedFsEnabled,
-      newProps,
+      UCSingleCatalog.sessionHadoopFsImplProps(),
       CatalogUtils.stringToURI(stagingLocation).getScheme,
       uri.toString,
       tokenProvider,
@@ -248,6 +248,8 @@ class UCSingleCatalog
     val tableUriScheme = new Path(tableLocation).toUri.getScheme
     val credentialProps = CredPropsUtil.createTableCredProps(
       renewCredEnabled,
+      credScopedFsEnabled,
+      UCSingleCatalog.sessionHadoopFsImplProps(),
       tableUriScheme,
       uri.toString,
       tokenProvider,
@@ -287,7 +289,7 @@ class UCSingleCatalog
     val credentialProps = CredPropsUtil.createPathCredProps(
       renewCredEnabled,
       credScopedFsEnabled,
-      newProps,
+      UCSingleCatalog.sessionHadoopFsImplProps(),
       CatalogUtils.stringToURI(location).getScheme,
       uri.toString,
       tokenProvider,
@@ -422,6 +424,28 @@ class UCSingleCatalog
 object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
+
+  /**
+   * Returns a snapshot of the current session's Hadoop filesystem impl settings.
+   *
+   * This map is passed as {@code existingProps} to {@link
+   * io.unitycatalog.spark.auth.CredPropsUtil} so that {@code saveAndOverride()} can preserve the
+   * original {@code fs.<scheme>.impl} value (e.g. a custom S3 filesystem configured in the Spark
+   * session) before {@code CredPropsUtil} overrides it with {@link
+   * io.unitycatalog.spark.fs.CredScopedFileSystem}. Without this, {@code fs.<scheme>.impl.original}
+   * would always fall back to the hardcoded default, causing {@code CredScopedFileSystem} to
+   * instantiate the wrong delegate.
+   */
+  def sessionHadoopFsImplProps(): util.Map[String, String] = {
+    val fsImplKeys = Set(
+      "fs.s3.impl", "fs.s3a.impl", "fs.gs.impl", "fs.abfs.impl", "fs.abfss.impl",
+      "fs.AbstractFileSystem.s3.impl", "fs.AbstractFileSystem.s3a.impl",
+      "fs.AbstractFileSystem.gs.impl", "fs.AbstractFileSystem.abfs.impl",
+      "fs.AbstractFileSystem.abfss.impl")
+    val result = new util.HashMap[String, String]()
+    for ((k, v) <- SparkSession.active.conf.getAll if fsImplKeys.contains(k)) result.put(k, v)
+    result
+  }
 
   def setCredentialProps(props: util.HashMap[String, String],
                          credentialProps: util.Map[String, String]): Unit = {
@@ -575,7 +599,7 @@ private class UCProxy(
       CredPropsUtil.createTableCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
-        Map.empty[String, String].asJava,
+        UCSingleCatalog.sessionHadoopFsImplProps(),
         locationUri.getScheme,
         uri.toString,
         tokenProvider,
