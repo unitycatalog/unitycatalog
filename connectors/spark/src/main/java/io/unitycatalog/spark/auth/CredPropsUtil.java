@@ -320,8 +320,7 @@ public class CredPropsUtil {
       String tableId,
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
-    return gcsTempCredPropsBuilder(
-            credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
+    return gcsTempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
@@ -336,8 +335,7 @@ public class CredPropsUtil {
       String path,
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
-    return gcsTempCredPropsBuilder(
-            credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
+    return gcsTempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
@@ -387,8 +385,7 @@ public class CredPropsUtil {
       String tableId,
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
-    return abfsTempCredPropsBuilder(
-            credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
+    return abfsTempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
@@ -403,8 +400,7 @@ public class CredPropsUtil {
       String path,
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
-    return abfsTempCredPropsBuilder(
-            credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
+    return abfsTempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)

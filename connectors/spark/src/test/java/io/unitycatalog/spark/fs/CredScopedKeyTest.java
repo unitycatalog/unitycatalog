@@ -52,9 +52,11 @@ class CredScopedKeyTest {
   @Test
   void defaultKeyNotEqualWhenDifferentAuthority() {
     assertThat(
-            new CredScopedKey.DefaultCredScopedKey(URI.create("s3://bucket-a"), new Configuration()))
+            new CredScopedKey.DefaultCredScopedKey(
+                URI.create("s3://bucket-a"), new Configuration()))
         .isNotEqualTo(
-            new CredScopedKey.DefaultCredScopedKey(URI.create("s3://bucket-b"), new Configuration()));
+            new CredScopedKey.DefaultCredScopedKey(
+                URI.create("s3://bucket-b"), new Configuration()));
   }
 
   @Test
