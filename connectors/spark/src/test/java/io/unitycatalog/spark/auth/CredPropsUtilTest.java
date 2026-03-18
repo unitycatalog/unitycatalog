@@ -26,14 +26,14 @@ class CredPropsUtilTest {
 
   @Test
   void s3OriginalImplPreservedFromExistingProps() {
-    Map<String, String> existingProps =
+    Map<String, String> fsImplProps =
         Map.of("fs.s3.impl", CUSTOM_S3_IMPL, "fs.s3a.impl", CUSTOM_S3_IMPL);
 
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             true,
-            existingProps,
+            fsImplProps,
             "s3",
             "http://uc",
             null,
@@ -67,13 +67,13 @@ class CredPropsUtilTest {
 
   @Test
   void gsOriginalImplPreservedFromExistingProps() {
-    Map<String, String> existingProps = Map.of("fs.gs.impl", CUSTOM_GS_IMPL);
+    Map<String, String> fsImplProps = Map.of("fs.gs.impl", CUSTOM_GS_IMPL);
 
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             true,
-            existingProps,
+            fsImplProps,
             "gs",
             "http://uc",
             null,
@@ -86,14 +86,14 @@ class CredPropsUtilTest {
 
   @Test
   void abfsOriginalImplPreservedFromExistingProps() {
-    Map<String, String> existingProps =
+    Map<String, String> fsImplProps =
         Map.of("fs.abfs.impl", CUSTOM_ABFS_IMPL, "fs.abfss.impl", CUSTOM_ABFSS_IMPL);
 
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             true,
-            existingProps,
+            fsImplProps,
             "abfs",
             "http://uc",
             null,
