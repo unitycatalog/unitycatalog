@@ -256,9 +256,57 @@ public class UCSingleCatalogStagingTableTest {
                         UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
                         UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)))
         .isInstanceOf(ApiException.class)
-        .hasMessageContaining("cannot change provider from DELTA to PARQUET");
+        .hasMessageContaining("requires USING DELTA")
+        .hasMessageContaining("Cannot change table format from DELTA to PARQUET");
 
     verify(mockDelegate, never()).stageReplace(eq(IDENT), eq(SCHEMA), any(), any());
+  }
+
+  @Test
+  public void testStageCreateOrReplaceExistingManagedTableInjectsDeltaProviderWhenOmitted()
+      throws Exception {
+    ManagedReplaceMocks mocks = mockExistingManagedReplace(true);
+
+    catalog.stageCreateOrReplace(
+        IDENT,
+        SCHEMA,
+        PARTITIONS,
+        Map.of(
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+            UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
+
+    verify(mockDelegate).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
+    assertThat(propsCaptor.getValue())
+        .containsEntry(TableCatalog.PROP_PROVIDER, "delta")
+        .containsEntry(
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+            UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
+    verify(mocks.tempCredsApi).generateTemporaryTableCredentials(any());
+  }
+
+  @Test
+  public void testStageCreateOrReplaceExistingManagedTableRejectsProviderChange() throws Exception {
+    mockExistingManagedReplace(true);
+
+    assertThatThrownBy(
+            () ->
+                catalog.stageCreateOrReplace(
+                    IDENT,
+                    SCHEMA,
+                    PARTITIONS,
+                    Map.of(
+                        TableCatalog.PROP_PROVIDER,
+                        "parquet",
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                        UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("requires USING DELTA")
+        .hasMessageContaining("Cannot change table format from DELTA to PARQUET");
+
+    verify(mockDelegate, never()).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any());
   }
 
   private void assertExistingManagedTableReplaceUsesManagedProps(boolean createOrReplace)

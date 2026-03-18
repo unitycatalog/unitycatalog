@@ -231,9 +231,10 @@ class UCSingleCatalog
     Option(properties.get(TableCatalog.PROP_PROVIDER))
       .filterNot(_.equalsIgnoreCase(existingProvider))
       .foreach(provider => throw new ApiException(
-        s"$operation on existing UC-managed Delta table $fullTableName cannot change provider " +
-          s"from ${existingProvider.toUpperCase(Locale.ROOT)} to " +
-          s"${provider.toUpperCase(Locale.ROOT)}."))
+        s"$operation is only supported for Unity Catalog managed Delta tables and requires " +
+          s"USING DELTA. Cannot change table format from " +
+          s"${existingProvider.toUpperCase(Locale.ROOT)} to " +
+          s"${provider.toUpperCase(Locale.ROOT)} for $fullTableName."))
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
     newProps.put(TableCatalog.PROP_PROVIDER, existingProvider)
@@ -351,7 +352,7 @@ class UCSingleCatalog
       existingTable.get,
       properties,
       "REPLACE TABLE")
-    assertProviderSpecified("REPLACE TABLE", newProps)
+    UCSingleCatalog.requireProviderSpecified("REPLACE TABLE", newProps)
     stagingCatalog.stageReplace(ident, schema, partitions, newProps)
   }
 
@@ -375,7 +376,7 @@ class UCSingleCatalog
       validateManagedDeltaCreateProperties(properties)
       stageManagedDeltaTableAndGetProps(ident, properties)
     }
-    assertProviderSpecified("CREATE OR REPLACE TABLE", newProps)
+    UCSingleCatalog.requireProviderSpecified("CREATE OR REPLACE TABLE", newProps)
     stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
   }
 
@@ -420,16 +421,6 @@ class UCSingleCatalog
       stagingCatalog.stageCreate(ident, schema, partitions, properties)
     }
   }
-
-  private def assertProviderSpecified(
-      operation: String,
-      properties: util.Map[String, String]): Unit = {
-    Preconditions.checkArgument(
-      properties.get(TableCatalog.PROP_PROVIDER) != null,
-      "%s requires '%s' to be set",
-      operation,
-      TableCatalog.PROP_PROVIDER)
-  }
 }
 
 object UCSingleCatalog {
@@ -445,6 +436,15 @@ object UCSingleCatalog {
     props.putAll(credentialProps.map {
       case (k, v) => (prefix + k, v)
     }.asJava)
+  }
+
+  def requireProviderSpecified(
+      operation: String,
+      properties: util.Map[String, String]): Unit = {
+    Preconditions.checkArgument(
+      properties.get(TableCatalog.PROP_PROVIDER) != null,
+      "%s requires USING <format> (for example, USING DELTA)",
+      operation)
   }
 
   /**
@@ -623,11 +623,7 @@ private class UCProxy(
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    Preconditions.checkArgument(
-      properties.get(TableCatalog.PROP_PROVIDER) != null,
-      "%s requires '%s' to be set",
-      "CREATE TABLE",
-      TableCatalog.PROP_PROVIDER)
+    UCSingleCatalog.requireProviderSpecified("CREATE TABLE", properties)
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())
