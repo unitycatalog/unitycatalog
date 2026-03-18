@@ -6,6 +6,20 @@ import java.util.Objects;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 
+/**
+ * Cache key that identifies a credential scope for {@link CredScopedFileSystem}.
+ *
+ * <p>There are three implementations:
+ *
+ * <ul>
+ *   <li>{@link TableCredScopedKey} — keyed by table ID and operation; used for table-level
+ *       temporary credentials.
+ *   <li>{@link PathCredScopedKey} — keyed by path and operation; used for path-level temporary
+ *       credentials.
+ *   <li>{@link DefaultCredScopedKey} — keyed by URI scheme and authority; used as a fallback when
+ *       no Unity Catalog credential type is present in the configuration.
+ * </ul>
+ */
 public interface CredScopedKey {
 
   static CredScopedKey create(URI uri, Configuration conf) {
