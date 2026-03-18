@@ -21,7 +21,7 @@ public interface CredScopedKey {
       return new TableCredScopedKey(tableId, tableOperation);
     }
 
-    return new NoopCredScopedKey(uri, conf);
+    return new DefaultCredScopedKey(uri, conf);
   }
 
   class PathCredScopedKey implements CredScopedKey {
@@ -81,11 +81,11 @@ public interface CredScopedKey {
     }
   }
 
-  class NoopCredScopedKey implements CredScopedKey {
+  class DefaultCredScopedKey implements CredScopedKey {
     private final String scheme;
     private final String authority;
 
-    public NoopCredScopedKey(URI uri, Configuration conf) {
+    public DefaultCredScopedKey(URI uri, Configuration conf) {
       if (uri.getScheme() == null && uri.getAuthority() == null) {
         URI defaultUri = FileSystem.getDefaultUri(conf);
         this.scheme = defaultUri.getScheme();
@@ -99,8 +99,8 @@ public interface CredScopedKey {
     @Override
     public boolean equals(Object o) {
       if (this == o) return true;
-      if (!(o instanceof NoopCredScopedKey)) return false;
-      NoopCredScopedKey that = (NoopCredScopedKey) o;
+      if (!(o instanceof DefaultCredScopedKey)) return false;
+      DefaultCredScopedKey that = (DefaultCredScopedKey) o;
       return Objects.equals(scheme, that.scheme) && Objects.equals(authority, that.authority);
     }
 
@@ -111,7 +111,7 @@ public interface CredScopedKey {
 
     @Override
     public String toString() {
-      return "NoopCredScopedKey{scheme=" + scheme + ", authority=" + authority + "}";
+      return "DefaultCredScopedKey{scheme=" + scheme + ", authority=" + authority + "}";
     }
   }
 }

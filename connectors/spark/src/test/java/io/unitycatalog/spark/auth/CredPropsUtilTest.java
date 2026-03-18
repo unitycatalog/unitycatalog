@@ -106,6 +106,44 @@ class CredPropsUtilTest {
   }
 
   @Test
+  void gsDefaultOriginalImplWhenNotInExistingProps() {
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false,
+            true,
+            Collections.emptyMap(),
+            "gs",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            gcsCreds());
+
+    assertThat(props.get("fs.gs.impl.original"))
+        .isEqualTo("com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
+  }
+
+  @Test
+  void abfsDefaultOriginalImplWhenNotInExistingProps() {
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false,
+            true,
+            Collections.emptyMap(),
+            "abfs",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            abfsCreds());
+
+    assertThat(props.get("fs.abfs.impl.original"))
+        .isEqualTo("org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem");
+    assertThat(props.get("fs.abfss.impl.original"))
+        .isEqualTo("org.apache.hadoop.fs.azurebfs.SecureAzureBlobFileSystem");
+  }
+
+  @Test
   void originalImplNotSetWhenCredScopedFsDisabled() {
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(

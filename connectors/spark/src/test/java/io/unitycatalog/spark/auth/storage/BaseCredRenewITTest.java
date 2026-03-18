@@ -199,8 +199,9 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
                 row -> {
                   Configuration conf = serialConf.value();
                   FileSystem rawFs = FileSystem.get(new URI(location), conf);
-                  // When credScopedFsEnabled=true, CredPropsUtil wraps the delegate with
-                  // CredScopedFileSystem; unwrap it to access the underlying CredRenewFileSystem.
+                  // When credScopedFsEnabled=true, unwrap CredScopedFileSystem to get the real
+                  // delegate. Exactly one level: newFileSystem() always restores the original impl
+                  // via fs.<scheme>.impl.original, so the delegate is never CredScopedFileSystem.
                   CredRenewFileSystem<?> fs =
                       (CredRenewFileSystem<?>)
                           (rawFs instanceof CredScopedFileSystem

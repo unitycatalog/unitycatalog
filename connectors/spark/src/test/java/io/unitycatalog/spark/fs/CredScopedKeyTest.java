@@ -42,19 +42,19 @@ class CredScopedKeyTest {
   }
 
   @Test
-  void noopKeyEqualWhenSameSchemeAndAuthority() {
+  void defaultKeyEqualWhenSameSchemeAndAuthority() {
     URI uri = URI.create("s3://my-bucket/path");
-    assertThat(new CredScopedKey.NoopCredScopedKey(uri, new Configuration()))
-        .isEqualTo(new CredScopedKey.NoopCredScopedKey(uri, new Configuration()))
-        .hasSameHashCodeAs(new CredScopedKey.NoopCredScopedKey(uri, new Configuration()));
+    assertThat(new CredScopedKey.DefaultCredScopedKey(uri, new Configuration()))
+        .isEqualTo(new CredScopedKey.DefaultCredScopedKey(uri, new Configuration()))
+        .hasSameHashCodeAs(new CredScopedKey.DefaultCredScopedKey(uri, new Configuration()));
   }
 
   @Test
-  void noopKeyNotEqualWhenDifferentAuthority() {
+  void defaultKeyNotEqualWhenDifferentAuthority() {
     assertThat(
-            new CredScopedKey.NoopCredScopedKey(URI.create("s3://bucket-a"), new Configuration()))
+            new CredScopedKey.DefaultCredScopedKey(URI.create("s3://bucket-a"), new Configuration()))
         .isNotEqualTo(
-            new CredScopedKey.NoopCredScopedKey(URI.create("s3://bucket-b"), new Configuration()));
+            new CredScopedKey.DefaultCredScopedKey(URI.create("s3://bucket-b"), new Configuration()));
   }
 
   @Test
@@ -82,8 +82,8 @@ class CredScopedKeyTest {
   }
 
   @Test
-  void createReturnsNoopKeyWhenNoType() {
+  void createReturnsDefaultKeyWhenNoType() {
     assertThat(CredScopedKey.create(URI.create("s3://b"), new Configuration()))
-        .isInstanceOf(CredScopedKey.NoopCredScopedKey.class);
+        .isInstanceOf(CredScopedKey.DefaultCredScopedKey.class);
   }
 }
