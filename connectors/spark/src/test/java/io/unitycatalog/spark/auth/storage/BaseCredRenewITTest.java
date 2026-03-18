@@ -16,6 +16,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.spark.CredentialTestFileSystem;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.UCSingleCatalog;
+import io.unitycatalog.spark.fs.CredScopedFileSystem;
 import java.io.File;
 import java.net.URI;
 import java.time.Duration;
@@ -197,8 +198,14 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
             .map(
                 row -> {
                   Configuration conf = serialConf.value();
+                  FileSystem rawFs = FileSystem.get(new URI(location), conf);
+                  // When credScopedFsEnabled=true, CredPropsUtil wraps the delegate with
+                  // CredScopedFileSystem; unwrap it to access the underlying CredRenewFileSystem.
                   CredRenewFileSystem<?> fs =
-                      (CredRenewFileSystem<?>) FileSystem.get(new URI(location), conf);
+                      (CredRenewFileSystem<?>)
+                          (rawFs instanceof CredScopedFileSystem
+                              ? ((CredScopedFileSystem) rawFs).getRawFileSystem()
+                              : rawFs);
 
                   for (int refreshIndex = 0; refreshIndex < 10; refreshIndex += 1) {
                     // Pre-check before the credential renewal.

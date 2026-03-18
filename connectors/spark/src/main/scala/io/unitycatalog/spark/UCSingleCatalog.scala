@@ -436,22 +436,26 @@ object UCSingleCatalog {
    * filesystem the user configured (e.g. a test double or alternative S3 driver).
    */
   def sessionHadoopFsImplProps(): util.Map[String, String] = {
-    val conf = SparkSession.active.conf
-    val credScopedFsClass = classOf[CredScopedFileSystem].getName
-    val fsImplKeys = Set(
-      "fs.s3.impl", "fs.s3a.impl", "fs.gs.impl", "fs.abfs.impl", "fs.abfss.impl",
-      "fs.AbstractFileSystem.s3.impl", "fs.AbstractFileSystem.s3a.impl",
-      "fs.AbstractFileSystem.gs.impl", "fs.AbstractFileSystem.abfs.impl",
-      "fs.AbstractFileSystem.abfss.impl")
-    fsImplKeys
-      .flatMap { key =>
-        // Check both forms: unprefixed and spark.hadoop.-prefixed. Avoid hadoopConf.get(),
-        // which returns Hadoop built-in defaults even when the user never set the key.
-        conf.getOption(key).orElse(conf.getOption("spark.hadoop." + key))
-          .filter(_ != credScopedFsClass) // skip if already CredScopedFileSystem (prevents recursive wrapping)
-          .map(key -> _)
-      }
-      .toMap.asJava
+    SparkSession.getActiveSession match {
+      case None => new util.HashMap[String, String]()
+      case Some(session) =>
+        val conf = session.conf
+        val credScopedFsClass = classOf[CredScopedFileSystem].getName
+        val fsImplKeys = Set(
+          "fs.s3.impl", "fs.s3a.impl", "fs.gs.impl", "fs.abfs.impl", "fs.abfss.impl",
+          "fs.AbstractFileSystem.s3.impl", "fs.AbstractFileSystem.s3a.impl",
+          "fs.AbstractFileSystem.gs.impl", "fs.AbstractFileSystem.abfs.impl",
+          "fs.AbstractFileSystem.abfss.impl")
+        fsImplKeys
+          .flatMap { key =>
+            // Check both forms: unprefixed and spark.hadoop.-prefixed. Avoid hadoopConf.get(),
+            // which returns Hadoop built-in defaults even when the user never set the key.
+            conf.getOption(key).orElse(conf.getOption("spark.hadoop." + key))
+              .filter(_ != credScopedFsClass) // skip if already CredScopedFileSystem (prevents recursive wrapping)
+              .map(key -> _)
+          }
+          .toMap.asJava
+    }
   }
 
   def setCredentialProps(props: util.HashMap[String, String],
