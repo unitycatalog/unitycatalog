@@ -424,8 +424,11 @@ class UCSingleCatalog
   private def assertProviderSpecified(
       operation: String,
       properties: util.Map[String, String]): Unit = {
-    assert(properties.get(TableCatalog.PROP_PROVIDER) != null,
-      s"$operation requires '${TableCatalog.PROP_PROVIDER}' to be set")
+    Preconditions.checkArgument(
+      properties.get(TableCatalog.PROP_PROVIDER) != null,
+      "%s requires '%s' to be set",
+      operation,
+      TableCatalog.PROP_PROVIDER)
   }
 }
 
@@ -620,7 +623,11 @@ private class UCProxy(
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    assert(properties.get(TableCatalog.PROP_PROVIDER) != null)
+    Preconditions.checkArgument(
+      properties.get(TableCatalog.PROP_PROVIDER) != null,
+      "%s requires '%s' to be set",
+      "CREATE TABLE",
+      TableCatalog.PROP_PROVIDER)
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())
