@@ -351,6 +351,7 @@ class UCSingleCatalog
       existingTable.get,
       properties,
       "REPLACE TABLE")
+    assertProviderSpecified("REPLACE TABLE", newProps)
     stagingCatalog.stageReplace(ident, schema, partitions, newProps)
   }
 
@@ -374,6 +375,7 @@ class UCSingleCatalog
       validateManagedDeltaCreateProperties(properties)
       stageManagedDeltaTableAndGetProps(ident, properties)
     }
+    assertProviderSpecified("CREATE OR REPLACE TABLE", newProps)
     stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
   }
 
@@ -417,6 +419,13 @@ class UCSingleCatalog
     } else {
       stagingCatalog.stageCreate(ident, schema, partitions, properties)
     }
+  }
+
+  private def assertProviderSpecified(
+      operation: String,
+      properties: util.Map[String, String]): Unit = {
+    assert(properties.get(TableCatalog.PROP_PROVIDER) != null,
+      s"$operation requires '${TableCatalog.PROP_PROVIDER}' to be set")
   }
 }
 
