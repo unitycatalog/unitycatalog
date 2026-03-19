@@ -21,6 +21,7 @@ import org.sparkproject.guava.base.Preconditions
 
 import java.net.URI
 import java.util
+import java.util.Locale
 import scala.collection.JavaConverters._
 import scala.collection.convert.ImplicitConversions._
 import scala.language.existentials
@@ -226,8 +227,17 @@ class UCSingleCatalog
         s"Invalid table metadata for $fullTableName: tableId must be set")
     }
     // Third, build the properties Delta needs in order to write back to the current managed table.
+    val existingProvider = tableInfo.getDataSourceFormat.getValue.toLowerCase(Locale.ROOT)
+    Option(properties.get(TableCatalog.PROP_PROVIDER))
+      .filterNot(_.equalsIgnoreCase(existingProvider))
+      .foreach(provider => throw new ApiException(
+        s"$operation is only supported for Unity Catalog managed Delta tables and requires " +
+          s"USING DELTA. Cannot change table format from " +
+          s"${existingProvider.toUpperCase(Locale.ROOT)} to " +
+          s"${provider.toUpperCase(Locale.ROOT)} for $fullTableName."))
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
+    newProps.put(TableCatalog.PROP_PROVIDER, existingProvider)
     // Preserve the catalog-managed marker on the properties passed to Delta for replace.
     newProps.put(
       UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
@@ -342,6 +352,7 @@ class UCSingleCatalog
       existingTable.get,
       properties,
       "REPLACE TABLE")
+    UCSingleCatalog.requireProviderSpecified("REPLACE TABLE", newProps)
     stagingCatalog.stageReplace(ident, schema, partitions, newProps)
   }
 
@@ -365,6 +376,7 @@ class UCSingleCatalog
       validateManagedDeltaCreateProperties(properties)
       stageManagedDeltaTableAndGetProps(ident, properties)
     }
+    UCSingleCatalog.requireProviderSpecified("CREATE OR REPLACE TABLE", newProps)
     stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
   }
 
@@ -424,6 +436,15 @@ object UCSingleCatalog {
     props.putAll(credentialProps.map {
       case (k, v) => (prefix + k, v)
     }.asJava)
+  }
+
+  def requireProviderSpecified(
+      operation: String,
+      properties: util.Map[String, String]): Unit = {
+    Preconditions.checkArgument(
+      properties.get(TableCatalog.PROP_PROVIDER) != null,
+      "%s requires USING <format> (for example, USING DELTA)",
+      operation)
   }
 
   /**
@@ -602,7 +623,7 @@ private class UCProxy(
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    assert(properties.get(TableCatalog.PROP_PROVIDER) != null)
+    UCSingleCatalog.requireProviderSpecified("CREATE TABLE", properties)
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())

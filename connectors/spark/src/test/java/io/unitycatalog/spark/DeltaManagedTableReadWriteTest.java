@@ -204,6 +204,25 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
                 "CREATE OR REPLACE TABLE %s (i INT, extra_col INT) USING DELTA", fullTableName)));
   }
 
+  @Test
+  public void testManagedDeltaReplaceRejectsProviderChangeWithoutDroppingTable()
+      throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+    sql("INSERT INTO %s SELECT 1, 'old'", fullTableName);
+    String originalTableId = loadTableInfo(fullTableName).getTableId();
+
+    assertThatThrownBy(
+            () -> sql("REPLACE TABLE %s USING PARQUET AS SELECT 2 AS i, 'new' AS s", fullTableName))
+        .hasMessageContaining("requires USING DELTA")
+        .hasMessageContaining("Cannot change table format from DELTA to PARQUET");
+
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "old"));
+    assertManagedTableHasUcProperties(loadTableInfo(fullTableName), originalTableId);
+  }
+
   @Override
   protected void prepareExistingTableForDdl(TableSetupOptions options) {
     TableSetupOptions existingOptions =
