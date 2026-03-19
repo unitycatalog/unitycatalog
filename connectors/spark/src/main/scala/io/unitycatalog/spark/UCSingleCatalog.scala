@@ -6,6 +6,7 @@ import io.unitycatalog.client.model.{TableInfo, _}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
+import io.unitycatalog.spark.fs.CredScopedFileSystem
 import io.unitycatalog.spark.utils.OptionsUtil
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
@@ -37,6 +38,7 @@ class UCSingleCatalog
   private[this] var uri: URI = null
   private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
+  private[this] var credScopedFsEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
@@ -52,6 +54,9 @@ class UCSingleCatalog
     renewCredEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+    credScopedFsEnabled = OptionsUtil.getBoolean(options,
+      OptionsUtil.CRED_SCOPED_FS_ENABLED,
+      OptionsUtil.DEFAULT_CRED_SCOPED_FS_ENABLED)
     val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
       OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
@@ -60,8 +65,8 @@ class UCSingleCatalog
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
-    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, serverSidePlanningEnabled,
-      apiClient, tablesApi, temporaryCredentialsApi)
+    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
+      serverSidePlanningEnabled, apiClient, tablesApi, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -146,6 +151,8 @@ class UCSingleCatalog
       new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
     val credentialProps = CredPropsUtil.createTableCredProps(
       renewCredEnabled,
+      credScopedFsEnabled,
+      UCSingleCatalog.sessionHadoopFsImplProps(),
       CatalogUtils.stringToURI(stagingLocation).getScheme,
       uri.toString,
       tokenProvider,
@@ -252,6 +259,8 @@ class UCSingleCatalog
     val tableUriScheme = new Path(tableLocation).toUri.getScheme
     val credentialProps = CredPropsUtil.createTableCredProps(
       renewCredEnabled,
+      credScopedFsEnabled,
+      UCSingleCatalog.sessionHadoopFsImplProps(),
       tableUriScheme,
       uri.toString,
       tokenProvider,
@@ -290,6 +299,8 @@ class UCSingleCatalog
 
     val credentialProps = CredPropsUtil.createPathCredProps(
       renewCredEnabled,
+      credScopedFsEnabled,
+      UCSingleCatalog.sessionHadoopFsImplProps(),
       CatalogUtils.stringToURI(location).getScheme,
       uri.toString,
       tokenProvider,
@@ -427,6 +438,38 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
+  /**
+   * Returns any user-configured {@code fs.<scheme>.impl} values from the current Spark session.
+   *
+   * Passed to {@link io.unitycatalog.spark.auth.CredPropsUtil#saveAndOverride} so it can stash the
+   * original impl under {@code fs.<scheme>.impl.original} before replacing it with
+   * {@link io.unitycatalog.spark.fs.CredScopedFileSystem}. Without this, the stashed value would
+   * default to Hadoop's built-in class, causing {@code CredScopedFileSystem} to ignore any custom
+   * filesystem the user configured (e.g. a test double or alternative S3 driver).
+   */
+  def sessionHadoopFsImplProps(): util.Map[String, String] = {
+    SparkSession.getActiveSession match {
+      case None => new util.HashMap[String, String]()
+      case Some(session) =>
+        val conf = session.conf
+        val credScopedFsClass = classOf[CredScopedFileSystem].getName
+        val fsImplKeys = Set(
+          "fs.s3.impl", "fs.s3a.impl", "fs.gs.impl", "fs.abfs.impl", "fs.abfss.impl",
+          "fs.AbstractFileSystem.s3.impl", "fs.AbstractFileSystem.s3a.impl",
+          "fs.AbstractFileSystem.gs.impl", "fs.AbstractFileSystem.abfs.impl",
+          "fs.AbstractFileSystem.abfss.impl")
+        fsImplKeys
+          .flatMap { key =>
+            // Check both forms: unprefixed and spark.hadoop.-prefixed. Avoid hadoopConf.get(),
+            // which returns Hadoop built-in defaults even when the user never set the key.
+            conf.getOption(key).orElse(conf.getOption("spark.hadoop." + key))
+              .filter(_ != credScopedFsClass) // skip if already CredScopedFileSystem (prevents recursive wrapping)
+              .map(key -> _)
+          }
+          .toMap.asJava
+    }
+  }
+
   def setCredentialProps(props: util.HashMap[String, String],
                          credentialProps: util.Map[String, String]): Unit = {
     props.putAll(credentialProps)
@@ -500,6 +543,7 @@ private class UCProxy(
     uri: URI,
     tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
+    credScopedFsEnabled: Boolean,
     serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
@@ -586,6 +630,8 @@ private class UCProxy(
     } else {
       CredPropsUtil.createTableCredProps(
         renewCredEnabled,
+        credScopedFsEnabled,
+        UCSingleCatalog.sessionHadoopFsImplProps(),
         locationUri.getScheme,
         uri.toString,
         tokenProvider,
