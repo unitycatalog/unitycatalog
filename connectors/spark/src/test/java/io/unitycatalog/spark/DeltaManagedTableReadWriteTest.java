@@ -105,9 +105,11 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
   @ParameterizedTest
   @MethodSource("cloudParameters")
-  public void testCreateManagedDeltaTable(String scheme, boolean renewCredEnabled)
-      throws ApiException {
-    session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
+  public void testCreateManagedDeltaTable(
+      String scheme, boolean renewCredEnabled, boolean credScopedFsEnabled) throws ApiException {
+    session =
+        createSparkSessionWithCatalogs(
+            renewCredEnabled, credScopedFsEnabled, SPARK_CATALOG, CATALOG_NAME);
     ensureSparkCatalogSchemaExists();
 
     int counter = 0;

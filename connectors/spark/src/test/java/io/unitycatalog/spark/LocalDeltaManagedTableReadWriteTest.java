@@ -11,10 +11,11 @@ public class LocalDeltaManagedTableReadWriteTest extends DeltaManagedTableReadWr
    * This function provides a set of test parameters that cloud-aware tests should run for this
    * class.
    *
-   * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled)
+   * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled, boolean
+   *     credScopedFsEnabled)
    */
   protected static Stream<Arguments> cloudParameters() {
-    return Stream.of(Arguments.of("file", false));
+    return Stream.of(Arguments.of("file", false, false), Arguments.of("file", false, true));
   }
 
   @Override
