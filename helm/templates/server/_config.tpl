@@ -94,16 +94,3 @@ org.hibernate.SQL=INFO
 org.hibernate.type.descriptor.sql.BasicBinder=TRACE
 {{- end }}
 
-{{- define "unitycatalog.server.log4j2ConfigTemplate" -}}
-status=warn
-appenders=console
-
-appender.console.type=Console
-appender.console.name=Console
-appender.console.layout.type=PatternLayout
-appender.console.layout.pattern=%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n
-
-rootLogger.level={{ .Values.server.logLevel }}
-rootLogger.appenderRefs=console
-rootLogger.appenderRef.console.ref=Console
-{{- end }}

@@ -13,7 +13,7 @@ spec:
       annotations:
         checksum/serverConfig: {{ include "unitycatalog.server.configTemplate" . | sha256sum | quote }}
         checksum/hibernateConfig: {{ include "unitycatalog.server.hibernateConfigTemplate" . | sha256sum | quote }}
-        checksum/log4j2Config: {{ include "unitycatalog.server.log4j2ConfigTemplate" . | sha256sum | quote }}
+
       {{- with .Values.server.deployment.extraPodAnnotations }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -43,7 +43,6 @@ spec:
             - |-
               apk add --no-cache envsubst openssl curl
               envsubst < /home/unitycatalog/etc/confTemplates/server.properties.template > /home/unitycatalog/etc/conf/server.properties
-              envsubst < /home/unitycatalog/etc/confTemplates/server.log4j2.properties.template > /home/unitycatalog/etc/conf/server.log4j2.properties
               envsubst < /home/unitycatalog/etc/confTemplates/hibernate.properties.template > /home/unitycatalog/etc/conf/hibernate.properties
 
               echo "Generating DER format keys (private_key.der and public_key.der) if they do not exist..."
@@ -167,6 +166,9 @@ spec:
           {{- end }}
           image: "{{ .Values.server.deployment.image.repository }}:{{ .Values.server.deployment.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.server.deployment.image.pullPolicy | quote }}
+          env:
+            - name: JAVA_OPTS
+              value: "-Duc.log.level={{ .Values.server.logLevel }}"
           ports:
             - name: api
               containerPort: {{ .Values.server.deployment.port }}

@@ -17,14 +17,8 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.logging.log4j.core.config.Configurator;
 
 public class UnityCatalogCli {
-
-  static {
-    System.setProperty("log4j.configurationFile", "etc/conf/cli.log4j2.properties");
-    Configurator.initialize(null, "etc/conf/cli.log4j2.properties");
-  }
 
   public static void main(String[] args) {
     // Create Options object
