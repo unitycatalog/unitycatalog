@@ -11,6 +11,7 @@ import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.time.Instant;
 import java.util.List;
@@ -480,6 +481,22 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     assertThatThrownBy(() -> sql("DROP TABLE a.b.c.d"))
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("Nested namespaces are not supported");
+  }
+
+  @Test
+  public void testListTablesPagination() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    Integer originalPageSize = PagedListingHelper.DEFAULT_PAGE_SIZE;
+    try {
+      PagedListingHelper.DEFAULT_PAGE_SIZE = 2;
+      setupTable(SPARK_CATALOG, "pagination_table_1");
+      setupTable(SPARK_CATALOG, "pagination_table_2");
+      setupTable(SPARK_CATALOG, "pagination_table_3");
+      List<Row> tables = sql("SHOW TABLES in %s.%s", SPARK_CATALOG, SCHEMA_NAME);
+      assertThat(tables).hasSize(3);
+    } finally {
+      PagedListingHelper.DEFAULT_PAGE_SIZE = originalPageSize;
+    }
   }
 
   /**

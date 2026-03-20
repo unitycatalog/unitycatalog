@@ -5,6 +5,7 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import org.apache.spark.sql.Row;
@@ -62,5 +63,21 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
 
     assertThatThrownBy(() -> sql("DESC NAMESPACE NonExist"))
         .isInstanceOf(NoSuchNamespaceException.class);
+  }
+
+  @Test
+  public void testListSchemasPagination() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    Integer originalPageSize = PagedListingHelper.DEFAULT_PAGE_SIZE;
+    try {
+      PagedListingHelper.DEFAULT_PAGE_SIZE = 2;
+      // Default schema already exists from setUp, create 2 more for 3 total
+      sql("CREATE DATABASE %s.pagination_schema_1", SPARK_CATALOG);
+      sql("CREATE DATABASE %s.pagination_schema_2", SPARK_CATALOG);
+      List<Row> schemas = sql("SHOW SCHEMAS IN %s", SPARK_CATALOG);
+      assertThat(schemas).hasSize(3);
+    } finally {
+      PagedListingHelper.DEFAULT_PAGE_SIZE = originalPageSize;
+    }
   }
 }
