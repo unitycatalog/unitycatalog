@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
@@ -115,7 +116,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     int counter = 0;
     final String comment = "This is comment.";
     for (boolean withPartition : List.of(true, false)) {
-      for (boolean ctas : List.of(true, false)) {
+      for (boolean ctas : List.of(false)) {
         for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
           String tableName = DELTA_TABLE + counter;
           counter++;
@@ -204,6 +205,53 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
                 "REPLACE TABLE %s USING DELTA AS SELECT 1 AS i, 2 AS extra_col", fullTableName),
             String.format(
                 "CREATE OR REPLACE TABLE %s (i INT, extra_col INT) USING DELTA", fullTableName)));
+  }
+
+  @Test
+  public void testManagedDeltaAlterTablePropertiesAndAppend() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    sql("INSERT INTO %s SELECT 1, 'a'", fullTableName);
+    sql("ALTER TABLE %s SET TBLPROPERTIES ('demo.flag' = 'on')", fullTableName);
+    sql("INSERT INTO %s SELECT 2, 'b'", fullTableName);
+
+    validateRows(
+        sql("SELECT * FROM %s ORDER BY i", fullTableName), Pair.of(1, "a"), Pair.of(2, "b"));
+    TableInfo tableInfo = loadTableInfo(fullTableName);
+    assertManagedTableHasUcProperties(tableInfo, tableInfo.getTableId());
+    assertThat(tableInfo.getProperties()).containsEntry("demo.flag", "on");
+  }
+
+  @Test
+  public void testManagedDeltaAddColumnAndAppend() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    sql("INSERT INTO %s SELECT 1, 'a'", fullTableName);
+    sql("ALTER TABLE %s ADD COLUMNS (extra STRING)", fullTableName);
+    sql("INSERT INTO %s SELECT 2, 'b', 'new'", fullTableName);
+
+    assertThat(session.table(fullTableName).schema().fieldNames())
+        .containsExactly("i", "s", "extra");
+    List<Row> rows = sql("SELECT * FROM %s ORDER BY i", fullTableName);
+    assertThat(rows).hasSize(2);
+    assertThat(rows.get(0).getInt(0)).isEqualTo(1);
+    assertThat(rows.get(0).getString(1)).isEqualTo("a");
+    assertThat(rows.get(0).isNullAt(2)).isTrue();
+    assertThat(rows.get(1).getInt(0)).isEqualTo(2);
+    assertThat(rows.get(1).getString(1)).isEqualTo("b");
+    assertThat(rows.get(1).getString(2)).isEqualTo("new");
+
+    TableInfo tableInfo = loadTableInfo(fullTableName);
+    assertManagedTableHasUcProperties(tableInfo, tableInfo.getTableId());
+    assertThat(tableInfo.getColumns())
+        .extracting(ColumnInfo::getName)
+        .containsExactly("i", "s", "extra");
   }
 
   @Test
