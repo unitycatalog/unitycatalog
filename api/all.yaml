@@ -1631,6 +1631,7 @@ components:
         - 'NULL'
         - USER_DEFINED_TYPE
         - TABLE_TYPE
+        - VARIANT
     ColumnInfo:
       type: object
       properties:
