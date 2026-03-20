@@ -494,6 +494,13 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       setupTable(SPARK_CATALOG, "pagination_table_3");
       List<Row> tables = sql("SHOW TABLES in %s.%s", SPARK_CATALOG, SCHEMA_NAME);
       assertThat(tables).hasSize(3);
+      List<String> tableNames =
+          tables.stream()
+              .map(row -> row.getString(1))
+              .sorted()
+              .collect(java.util.stream.Collectors.toList());
+      assertThat(tableNames)
+          .containsExactly("pagination_table_1", "pagination_table_2", "pagination_table_3");
     } finally {
       PagedListingHelper.DEFAULT_PAGE_SIZE = originalPageSize;
     }

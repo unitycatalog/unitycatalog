@@ -76,6 +76,13 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
       sql("CREATE DATABASE %s.pagination_schema_2", SPARK_CATALOG);
       List<Row> schemas = sql("SHOW SCHEMAS IN %s", SPARK_CATALOG);
       assertThat(schemas).hasSize(3);
+      List<String> schemaNames =
+          schemas.stream()
+              .map(row -> row.getString(0))
+              .sorted()
+              .collect(java.util.stream.Collectors.toList());
+      assertThat(schemaNames)
+          .containsExactly("pagination_schema_1", "pagination_schema_2", SCHEMA_NAME);
     } finally {
       PagedListingHelper.DEFAULT_PAGE_SIZE = originalPageSize;
     }
