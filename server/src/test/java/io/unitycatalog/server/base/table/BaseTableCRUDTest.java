@@ -175,20 +175,24 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
             .storageLocation(testDirectoryRoot + "/variant_table");
 
     TableInfo tableInfo = tableOperations.createTable(createTableRequest);
-    assertThat(tableInfo.getName()).isEqualTo("variant_table");
+    try {
+      assertThat(tableInfo.getName()).isEqualTo("variant_table");
 
-    List<ColumnInfo> returnedColumns = tableInfo.getColumns();
-    assertThat(returnedColumns).hasSize(2);
+      List<ColumnInfo> returnedColumns = tableInfo.getColumns();
+      assertThat(returnedColumns).hasSize(2);
 
-    ColumnInfo variantCol = getColumnByName(returnedColumns, "data");
-    assertThat(variantCol.getTypeName()).isEqualTo(ColumnTypeName.VARIANT);
-    assertThat(variantCol.getTypeText()).isEqualToIgnoringCase("variant");
-
-    tableOperations.deleteTable(
-        TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".variant_table");
+      ColumnInfo variantCol = getColumnByName(returnedColumns, "data");
+      assertThat(variantCol.getTypeName()).isEqualTo(ColumnTypeName.VARIANT);
+      assertThat(variantCol.getTypeText()).isEqualTo("variant");
+      assertThat(variantCol.getTypeJson())
+          .isEqualTo("{\"name\":\"data\",\"type\":\"variant\",\"nullable\":true,\"metadata\":{}}");
+    } finally {
+      tableOperations.deleteTable(
+          TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".variant_table");
+    }
   }
 
-  private static ColumnInfo getColumnByName(List<ColumnInfo> columns, String name) {
+  protected static ColumnInfo getColumnByName(List<ColumnInfo> columns, String name) {
     return columns.stream().filter(c -> c.getName().equals(name)).findFirst().orElseThrow();
   }
 

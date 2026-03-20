@@ -791,6 +791,36 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
   }
 
+  // Verifies the full round-trip for VARIANT columns: Spark creates a table with a VARIANT column
+  // (UC stores typeName=VARIANT, typeText="variant"), then Spark reads the schema back from UC and
+  // reconstructs the correct DataType via DataType.fromDDL("variant").
+  @Test
+  @EnabledIf("canUpdateColumnsToUC")
+  public void testVariantColumnSchemaRoundTrip() throws ApiException {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String fullTableName =
+        setupTable(
+            new TableSetupOptions()
+                .setCatalogName(CATALOG_NAME)
+                .setTableName(TEST_TABLE + "_variant")
+                .setColumns(List.of(Pair.of("id", "INT"), Pair.of("data", "VARIANT"))));
+
+    // Verify UC metadata (write direction: Spark → UC)
+    TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    ColumnInfo variantCol =
+        tableInfo.getColumns().stream()
+            .filter(c -> c.getName().equals("data"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(variantCol.getTypeName()).isEqualTo(ColumnTypeName.VARIANT);
+    assertThat(variantCol.getTypeText()).isEqualTo("variant");
+    assertThat(variantCol.getTypeJson()).isEqualTo("\"variant\"");
+
+    // Verify Spark schema reconstruction (read direction: UC → Spark StructType)
+    StructType schema = session.table(fullTableName).schema();
+    assertThat(schema.apply("data").dataType().catalogString()).isEqualTo("variant");
+  }
+
   protected String quoteEntityName(String entityName) {
     return entityName.contains("-") ? String.format("`%s`", entityName) : entityName;
   }
