@@ -85,6 +85,8 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
           .containsExactly("pagination_schema_1", "pagination_schema_2", SCHEMA_NAME);
     } finally {
       PagedListingHelper.DEFAULT_PAGE_SIZE = originalPageSize;
+      sql("DROP DATABASE IF EXISTS %s.pagination_schema_1", SPARK_CATALOG);
+      sql("DROP DATABASE IF EXISTS %s.pagination_schema_2", SPARK_CATALOG);
     }
   }
 }

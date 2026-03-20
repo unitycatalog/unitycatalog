@@ -503,6 +503,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
           .containsExactly("pagination_table_1", "pagination_table_2", "pagination_table_3");
     } finally {
       PagedListingHelper.DEFAULT_PAGE_SIZE = originalPageSize;
+      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_1", SPARK_CATALOG, SCHEMA_NAME);
+      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_2", SPARK_CATALOG, SCHEMA_NAME);
+      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_3", SPARK_CATALOG, SCHEMA_NAME);
     }
   }
 
