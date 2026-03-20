@@ -1627,11 +1627,11 @@ components:
         - ARRAY
         - STRUCT
         - MAP
+        - VARIANT
         - CHAR
         - 'NULL'
         - USER_DEFINED_TYPE
         - TABLE_TYPE
-        - VARIANT
     ColumnInfo:
       type: object
       properties:

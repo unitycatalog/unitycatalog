@@ -149,7 +149,7 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
         List.of(
             new ColumnInfo()
                 .name("id")
-                .typeText("int")
+                .typeText("INTEGER")
                 .typeJson(
                     "{\"name\":\"id\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}}")
                 .typeName(ColumnTypeName.INT)
