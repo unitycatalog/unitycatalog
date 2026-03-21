@@ -603,7 +603,7 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
-      "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
+      "com.google.cloud.bigdataoss" % "util-hadoop" % "hadoop3-2.2.27" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
       "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
     ),
@@ -618,7 +618,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
-      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "hadoop3-2.2.27" % Test classifier "shaded",
       "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
@@ -679,7 +679,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
-      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "hadoop3-2.2.27" % Test classifier "shaded",
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",

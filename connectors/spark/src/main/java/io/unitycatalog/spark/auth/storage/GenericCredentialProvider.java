@@ -79,11 +79,19 @@ public abstract class GenericCredentialProvider {
 
   public GenericCredential accessCredentials() {
     if (credential == null || credential.readyToRenew(clock, renewalLeadTimeMillis)) {
+      System.out.println(
+          "[UC-REFRESH] credential "
+              + (credential == null ? "is null" : "needs refresh")
+              + " (leadTimeMillis="
+              + renewalLeadTimeMillis
+              + ")");
       synchronized (this) {
         if (credential == null || credential.readyToRenew(clock, renewalLeadTimeMillis)) {
           try {
             credential = renewCredential();
+            System.out.println("[UC-REFRESH] renewal SUCCEEDED");
           } catch (ApiException e) {
+            System.out.println("[UC-REFRESH] renewal FAILED: " + e.getMessage());
             throw new RuntimeException(e);
           }
         }

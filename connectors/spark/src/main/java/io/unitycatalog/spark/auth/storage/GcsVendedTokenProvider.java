@@ -4,7 +4,6 @@ import com.google.cloud.hadoop.util.AccessTokenProvider;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.io.IOException;
-import java.time.Instant;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
 
@@ -51,9 +50,7 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
     Preconditions.checkNotNull(tokenValue, "GCS OAuth token value cannot be null");
 
     Long expirationMillis = generic.temporaryCredentials().getExpirationTime();
-    Instant expirationInstant =
-        expirationMillis == null ? null : Instant.ofEpochMilli(expirationMillis);
-    return new AccessToken(tokenValue, expirationInstant);
+    return new AccessToken(tokenValue, expirationMillis);
   }
 
   @Override
