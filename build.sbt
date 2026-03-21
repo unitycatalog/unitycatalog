@@ -307,7 +307,7 @@ lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
   // Server and control models are added as provided to avoid them being added as maven dependencies
   // This is because the server and control models are included in the server jar
-  .dependsOn(serverModels % "provided", controlModels % "provided")
+  .dependsOn(serverModels % "provided", controlModels % "provided", deltaRestServerModels % "provided")
   .dependsOn(controlApi % "test->compile")
   .enablePlugins(CheckstylePlugin)
   .settings (
@@ -419,7 +419,8 @@ lazy val server = (project in file("server"))
     // This will allow us to have a single maven artifact and not 3 (server, server models, control models)
     Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
       (serverModels / Compile / packageBin / mappings).value ++
-      (controlModels / Compile / packageBin / mappings).value
+      (controlModels / Compile / packageBin / mappings).value ++
+      (deltaRestServerModels / Compile / packageBin / mappings).value
   )
 
 lazy val serverModels = (project in file("server") / "target" / "models")
@@ -494,10 +495,94 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
     }
   )
 
+lazy val deltaRestServerModels = (project in file("server") / "target" / "deltarestmodels")
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
+  .settings(
+    name := s"$artifactNamePrefix-deltarestservermodels",
+    commonSettings,
+    javaOnlyReleaseSettings,
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    Compile / compile / javacOptions ++= javacRelease17,
+    libraryDependencies ++= Seq(
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+    ),
+    // OpenAPI generation configs for generating model codes from the Delta REST Catalog spec
+    openApiInputSpec := (file(".") / "api" / "delta-rest.yaml").toString,
+    openApiGeneratorName := "java",
+    openApiOutputDir := (file("server") / "target" / "deltarestmodels").toString,
+    openApiValidateSpec := SettingEnabled,
+    openApiGenerateMetadata := SettingDisabled,
+    openApiModelPackage := s"$orgName.server.model.deltarest",
+    openApiAdditionalProperties := Map(
+      "library" -> "resteasy", // resteasy generates the most minimal models
+      "useJakartaEe" -> "true",
+      "hideGenerationTimestamp" -> "true"
+    ),
+    openApiGlobalProperties := Map("models" -> ""),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+    // Define the simple generate command to generate model codes
+    generate := {
+      val _ = openApiGenerate.value
+    }
+  )
+
+lazy val deltaRestClient = (project in file("clients/delta-rest"))
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .settings(
+    name := s"$artifactNamePrefix-deltarest-client",
+    commonSettings,
+    javaOnlyReleaseSettings,
+    Compile / compile / javacOptions ++= javacRelease11,
+    // Include generated OpenAPI sources
+    Compile / unmanagedSourceDirectories += (file(".") / "clients" / "delta-rest" / "target" / "src" / "main" / "java"),
+    libraryDependencies ++= Seq(
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+      "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
+      "com.google.code.findbugs" % "jsr305" % "3.0.2",
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+    ),
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    // OpenAPI generation specs
+    openApiInputSpec := (file(".") / "api" / "delta-rest.yaml").toString,
+    openApiGeneratorName := "java",
+    openApiOutputDir := (file(".") / "clients" / "delta-rest" / "target").toString,
+    openApiApiPackage := s"$orgName.client.deltarest.api",
+    openApiModelPackage := s"$orgName.client.deltarest.model",
+    openApiAdditionalProperties := Map(
+      "library" -> "native",
+      "useJakartaEe" -> "true",
+      "hideGenerationTimestamp" -> "true",
+      "openApiNullable" -> "false",
+      "enumUnknownDefaultCase" -> "true"),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+    // Define the simple generate command to generate full client codes
+    generate := {
+      val _ = openApiGenerate.value
+      // Delete the generated build.sbt file so that it is not used for our sbt config
+      val buildSbtFile = file(openApiOutputDir.value) / "build.sbt"
+      if (buildSbtFile.exists()) {
+        buildSbtFile.delete()
+      }
+    },
+  )
+
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "test->test")
   .dependsOn(serverModels)
+  .dependsOn(deltaRestServerModels)
   .dependsOn(client % "compile->compile;test->test")
+  .dependsOn(deltaRestClient)
   .dependsOn(controlApi % "compile->compile")
   .enablePlugins(CheckstylePlugin)
   .settings(
@@ -566,7 +651,7 @@ lazy val serverShaded = (project in file("server-shaded"))
   )
 
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(client)
+  .dependsOn(client, deltaRestClient)
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",
@@ -695,7 +780,7 @@ lazy val integrationTests = (project in file("integration-tests"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, pythonClient, server, cli, spark, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, cli, spark, controlApi, controlModels, deltaRestServerModels, deltaRestClient, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),

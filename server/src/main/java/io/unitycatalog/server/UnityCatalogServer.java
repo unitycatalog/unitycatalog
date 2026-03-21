@@ -49,6 +49,7 @@ import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.deltarest.DeltaRestCatalogService;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
@@ -248,6 +249,7 @@ public class UnityCatalogServer {
         schemaService,
         tableService,
         repositories);
+    addDeltaRestApiServices(armeriaServerBuilder, storageCredentialVendor, repositories);
   }
 
   private void addIcebergApiServices(
@@ -282,6 +284,35 @@ public class UnityCatalogServer {
             repositories),
         icebergRequestConverter,
         icebergResponseConverter);
+  }
+
+  private void addDeltaRestApiServices(
+      ServerBuilder armeriaServerBuilder,
+      StorageCredentialVendor storageCredentialVendor,
+      Repositories repositories) {
+    LOGGER.info("Adding Delta REST Catalog services...");
+
+    // Create a Jackson ObjectMapper that handles the delta-rest JSON conventions
+    // (hyphenated field names, lenient deserialization)
+    ObjectMapper deltaRestMapper =
+        JsonMapper.builder()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .serializationInclusion(JsonInclude.Include.NON_NULL)
+            .build();
+
+    JacksonRequestConverterFunction deltaRestRequestConverter =
+        new JacksonRequestConverterFunction(deltaRestMapper);
+    JacksonResponseConverterFunction deltaRestResponseConverter =
+        new JacksonResponseConverterFunction(deltaRestMapper);
+
+    DeltaRestCatalogService deltaRestService =
+        new DeltaRestCatalogService(repositories, storageCredentialVendor);
+
+    armeriaServerBuilder.annotatedService(
+        BASE_PATH + "delta",
+        deltaRestService,
+        deltaRestRequestConverter,
+        deltaRestResponseConverter);
   }
 
   private void addSecurityDecorators(
