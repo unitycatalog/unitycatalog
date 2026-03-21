@@ -1,3 +1,16 @@
+# Publishes SNAPSHOT artifacts from the main branch to the Sonatype snapshots repository.
+#
+# Triggers:
+#   - Automatically: daily at 02:00 UTC and on every push to main
+#   - Manually: via the "Run workflow" button in the Actions tab, or:
+#       gh workflow run publish-snapshot.yml --ref main
+#
+# Required GitHub secrets (Settings → Secrets and variables → Actions):
+#   SONATYPE_USER     - Sonatype Central username
+#   SONATYPE_PASSWORD - Sonatype Central password or user token
+#
+# Published artifacts land at:
+#   https://central.sonatype.com/repository/maven-snapshots/io/unitycatalog/
 name: Publish Snapshot
 
 on:
@@ -7,12 +20,15 @@ on:
   push:
     branches:
       - main
+  # Allows manual triggering from the Actions tab or via the gh CLI
   workflow_dispatch:
 
 jobs:
   publish-snapshot:
     runs-on: ubuntu-latest
-    # Only publish from the main branch
+    # Guard: only publish when running on the main branch.
+    # This prevents snapshot publishes from forks or feature branches,
+    # even if workflow_dispatch is triggered on a non-main branch.
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +39,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # Safety check: abort if the current version is not a SNAPSHOT.
+      # This prevents accidentally overwriting a release artifact in the
+      # snapshots repository (e.g. if version.sbt was updated to a release
+      # version but the release workflow hasn't run yet).
       - name: Verify version is a SNAPSHOT
         run: |
           VERSION=$(./build/sbt -mem 4096 "show version" 2>/dev/null | tail -1 | tr -d '[:space:]')
@@ -32,8 +52,12 @@ jobs:
             exit 1
           fi
 
+      # Publishes all cross-Scala-version artifacts using the `+publish` command.
+      # Credentials are read by ReleaseSettings.scala via SONATYPE_USERNAME and
+      # SONATYPE_PASSWORD environment variables — secrets are never echoed in logs.
       - name: Publish snapshot artifacts to Sonatype
         env:
+          # SONATYPE_USER secret is mapped to the env var name the build expects
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USER }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         run: ./build/sbt -mem 4096 +publish
