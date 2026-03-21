@@ -1,0 +1,39 @@
+name: Publish Snapshot
+
+on:
+  schedule:
+    # Runs every day at 02:00 UTC
+    - cron: '0 2 * * *'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  publish-snapshot:
+    runs-on: ubuntu-latest
+    # Only publish from the main branch
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Verify version is a SNAPSHOT
+        run: |
+          VERSION=$(./build/sbt -mem 4096 "show version" 2>/dev/null | tail -1 | tr -d '[:space:]')
+          echo "Detected version: $VERSION"
+          if [[ "$VERSION" != *"-SNAPSHOT" ]]; then
+            echo "ERROR: Version '$VERSION' is not a SNAPSHOT version. Aborting."
+            exit 1
+          fi
+
+      - name: Publish snapshot artifacts to Sonatype
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USER }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+        run: ./build/sbt -mem 4096 +publish
