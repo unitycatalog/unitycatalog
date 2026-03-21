@@ -458,6 +458,53 @@ public class CredPropsUtil {
   }
 
   /**
+   * Creates table credential properties from a delta-rest StorageCredential. This converts the
+   * generic config map from the new API into Hadoop FS properties.
+   */
+  public static Map<String, String> createTableCredPropsFromStorageCredential(
+      boolean renewCredEnabled,
+      String scheme,
+      String uri,
+      TokenProvider tokenProvider,
+      String tableId,
+      io.unitycatalog.client.deltarest.model.StorageCredential cred) {
+    if (cred == null || cred.getConfig() == null || cred.getConfig().isEmpty()) {
+      return ImmutableMap.of();
+    }
+    // Convert StorageCredential to TemporaryCredentials and delegate
+    Map<String, String> config = cred.getConfig();
+    TemporaryCredentials tempCreds = new TemporaryCredentials();
+    if (config.containsKey("s3.access-key-id")) {
+      AwsCredentials aws = new AwsCredentials();
+      aws.setAccessKeyId(config.get("s3.access-key-id"));
+      aws.setSecretAccessKey(config.get("s3.secret-access-key"));
+      aws.setSessionToken(config.get("s3.session-token"));
+      tempCreds.setAwsTempCredentials(aws);
+    } else if (config.containsKey("gcs.oauth-token")) {
+      GcpOauthToken gcp = new GcpOauthToken();
+      gcp.setOauthToken(config.get("gcs.oauth-token"));
+      tempCreds.setGcpOauthToken(gcp);
+    } else if (config.containsKey("azure.sas-token")) {
+      AzureUserDelegationSAS azure = new AzureUserDelegationSAS();
+      azure.setSasToken(config.get("azure.sas-token"));
+      tempCreds.setAzureUserDelegationSas(azure);
+    }
+    if (cred.getExpirationTimeMs() != null) {
+      tempCreds.setExpirationTime(cred.getExpirationTimeMs());
+    }
+    return createTableCredProps(
+        renewCredEnabled,
+        false,
+        new java.util.HashMap<>(),
+        scheme,
+        uri,
+        tokenProvider,
+        tableId,
+        TableOperation.READ_WRITE,
+        tempCreds);
+  }
+
+  /**
    * Builds the Hadoop configuration properties needed to access an external storage path.
    *
    * @param renewCredEnabled when {@code true}, configures a vended-token provider that
