@@ -929,9 +929,14 @@ private class UCProxy(
   }
 
   override def listNamespaces(): Array[Array[String]] = {
-    schemasApi.listSchemas(name, 0, null).getSchemas.asScala.map { schema =>
-      Array(schema.getName)
-    }.toArray
+    val schemas = scala.collection.mutable.ArrayBuffer.empty[Array[String]]
+    var pageToken: String = null
+    do {
+      val response = schemasApi.listSchemas(name, /* limit */ 0, pageToken)
+      schemas ++= response.getSchemas.asScala.map(schema => Array(schema.getName))
+      pageToken = response.getNextPageToken
+    } while (pageToken != null)
+    schemas.toArray
   }
 
   override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
