@@ -45,7 +45,7 @@ jobs:
       # version but the release workflow hasn't run yet).
       - name: Verify version is a SNAPSHOT
         run: |
-          VERSION=$(grep -oP '(?<=")[^"]+(?=")' version.sbt)
+          VERSION=$(sed -n 's/.*version := "\(.*\)".*/\1/p' version.sbt)
           echo "Detected version: $VERSION"
           if [[ "$VERSION" != *"-SNAPSHOT" ]]; then
             echo "ERROR: Version '$VERSION' is not a SNAPSHOT version. Aborting."
