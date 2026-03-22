@@ -67,6 +67,10 @@ public class SparkCredentialRenewalTest {
   // Define the CREDENTIAL_RENEWAL_TEST_RENEWAL_ENABLED environment variable.
   private static final boolean RENEW_CRED_ENABLED = envAsBoolean(PREFIX + "RENEWAL_ENABLED", true);
 
+  // Define the CREDENTIAL_RENEWAL_TEST_CRED_SCOPED_FS_ENABLED environment variable.
+  private static final boolean CRED_SCOPED_FS_ENABLED =
+      envAsBoolean(PREFIX + "CRED_SCOPED_FS_ENABLED", false);
+
   // Define the CREDENTIAL_RENEWAL_TEST_DURATION_SECONDS environment variable, which control how
   // long will the test run. 90 minutes by default.
   private static final long DURATION_SECONDS = envAsLong(PREFIX + "DURATION_SECONDS", 5400L);
@@ -233,10 +237,16 @@ public class SparkCredentialRenewalTest {
                     tableType,
                     baseLocation,
                     Map.of(
-                        OptionsUtil.URI, SERVER_URL,
-                        UC_PROPS_TOKEN, AUTH_TOKEN,
-                        OptionsUtil.WAREHOUSE, CATALOG_NAME,
-                        OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
+                        OptionsUtil.URI,
+                        SERVER_URL,
+                        UC_PROPS_TOKEN,
+                        AUTH_TOKEN,
+                        OptionsUtil.WAREHOUSE,
+                        CATALOG_NAME,
+                        OptionsUtil.RENEW_CREDENTIAL_ENABLED,
+                        String.valueOf(RENEW_CRED_ENABLED),
+                        OptionsUtil.CRED_SCOPED_FS_ENABLED,
+                        String.valueOf(CRED_SCOPED_FS_ENABLED))));
           }
 
           // Add the OAuth test case if specified in env vars.
@@ -246,13 +256,22 @@ public class SparkCredentialRenewalTest {
                     tableType,
                     baseLocation,
                     Map.of(
-                        OptionsUtil.URI, SERVER_URL,
-                        UC_PROPS_AUTH_TYPE, "oauth",
-                        UC_PROPS_OAUTH_URI, OAUTH_URI,
-                        UC_PROPS_OAUTH_CLIENT_ID, OAUTH_CLIENT_ID,
-                        UC_PROPS_OAUTH_CLIENT_SECRET, OAUTH_CLIENT_SECRET,
-                        OptionsUtil.WAREHOUSE, CATALOG_NAME,
-                        OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
+                        OptionsUtil.URI,
+                        SERVER_URL,
+                        UC_PROPS_AUTH_TYPE,
+                        "oauth",
+                        UC_PROPS_OAUTH_URI,
+                        OAUTH_URI,
+                        UC_PROPS_OAUTH_CLIENT_ID,
+                        OAUTH_CLIENT_ID,
+                        UC_PROPS_OAUTH_CLIENT_SECRET,
+                        OAUTH_CLIENT_SECRET,
+                        OptionsUtil.WAREHOUSE,
+                        CATALOG_NAME,
+                        OptionsUtil.RENEW_CREDENTIAL_ENABLED,
+                        String.valueOf(RENEW_CRED_ENABLED),
+                        OptionsUtil.CRED_SCOPED_FS_ENABLED,
+                        String.valueOf(CRED_SCOPED_FS_ENABLED))));
           }
         }
       }
