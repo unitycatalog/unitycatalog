@@ -32,7 +32,7 @@ jobs:
     # Guard: only publish from the official repository, never from forks.
     # This prevents snapshot publishes even if workflow_dispatch is triggered
     # on a fork that has the secrets configured.
-    if: github.repository == 'unitycatalog/unitycatalog'
+    if: github.repository == 'openinx/unitycatalog'
     runs-on: ubuntu-latest
     permissions:
       contents: read
