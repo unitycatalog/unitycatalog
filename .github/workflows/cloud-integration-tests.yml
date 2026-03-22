@@ -1,0 +1,160 @@
+# Runs integration tests under integration-tests/ against all three cloud vendors:
+# AWS (S3), GCP (GCS), and Azure (ABFSS).
+#
+# Each vendor runs as an independent matrix job so one vendor's failure does not
+# block the others. The UC server is started locally using the credentials from
+# GitHub secrets, then the tests are run against the real cloud storage.
+#
+# Triggers:
+#   - Automatically: daily at 03:00 UTC
+#   - Manually: via the "Run workflow" button in the Actions tab, or:
+#       gh workflow run cloud-integration-tests.yml -f vendors='["s3","gcs","abfss"]'
+#
+# Required GitHub secrets (Settings → Secrets and variables → Actions):
+#
+#   AWS (S3):
+#     S3_BUCKET_PATH         - e.g. s3://my-bucket/path/
+#     S3_REGION              - e.g. us-east-1
+#     S3_AWS_ROLE_ARN        - e.g. arn:aws:iam::123456789:role/my-role
+#     S3_ACCESS_KEY          - AWS access key ID
+#     S3_SECRET_KEY          - AWS secret access key
+#     S3_BASE_LOCATION       - base path for test data (e.g. s3://my-bucket/integration-tests/)
+#
+#   GCP (GCS):
+#     GCS_BUCKET_PATH        - e.g. gs://my-bucket/path/
+#     GCS_JSON_KEY           - service account JSON key file content (base64 encoded)
+#     GS_BASE_LOCATION       - base path for test data (e.g. gs://my-bucket/integration-tests/)
+#
+#   Azure (ABFSS):
+#     ADLS_STORAGE_ACCOUNT_NAME - Azure storage account name
+#     ADLS_TENANT_ID            - Azure AD tenant ID
+#     ADLS_CLIENT_ID            - Azure AD client/app ID
+#     ADLS_CLIENT_SECRET        - Azure AD client secret
+#     ABFSS_BASE_LOCATION       - base path for test data (e.g. abfss://container@account.dfs.core.windows.net/path/)
+name: Cloud Integration Tests
+
+on:
+  schedule:
+    # Runs every day at 03:00 UTC
+    - cron: '0 3 * * *'
+  # Allows manual triggering with a configurable list of vendors from the
+  # Actions tab or via: gh workflow run cloud-integration-tests.yml -f vendors='["s3","gcs","abfss"]'
+  workflow_dispatch:
+    inputs:
+      vendors:
+        description: 'list of cloud vendors to test (JSON): s3, gcs, abfss'
+        required: true
+        # keep in sync with default value of strategy matrix 'vendor'
+        default: '["s3", "gcs", "abfss"]'
+
+jobs:
+  integration-test:
+    # Guard: only run from the official repository, never from forks.
+    if: github.repository == 'unitycatalog/unitycatalog'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # keep in sync with default value of workflow_dispatch input 'vendors'
+        vendor: ${{ fromJSON(inputs.vendors || '["s3", "gcs", "abfss"]') }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # Build all modules and publish the Spark connector to the local Maven
+      # cache so the integration tests can resolve it as a dependency.
+      - name: Build and publish locally
+        run: ./build/sbt -mem 4096 clean package publishLocal
+
+      # Populate server.properties with S3 credentials before starting the server.
+      # Credentials are passed via env vars so their values are masked in logs.
+      - name: Configure S3 credentials
+        if: matrix.vendor == 's3'
+        env:
+          S3_BUCKET_PATH: ${{ secrets.S3_BUCKET_PATH }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+          S3_AWS_ROLE_ARN: ${{ secrets.S3_AWS_ROLE_ARN }}
+          S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+        run: |
+          sed -i "s|s3.bucketPath.0=|s3.bucketPath.0=${S3_BUCKET_PATH}|" integration-tests/etc/conf/server.properties
+          sed -i "s|s3.region.0=|s3.region.0=${S3_REGION}|" integration-tests/etc/conf/server.properties
+          sed -i "s|s3.awsRoleArn.0=|s3.awsRoleArn.0=${S3_AWS_ROLE_ARN}|" integration-tests/etc/conf/server.properties
+          sed -i "s|s3.accessKey.0=|s3.accessKey.0=${S3_ACCESS_KEY}|" integration-tests/etc/conf/server.properties
+          sed -i "s|s3.secretKey.0=|s3.secretKey.0=${S3_SECRET_KEY}|" integration-tests/etc/conf/server.properties
+
+      # Write the GCS service account key file from the base64-encoded secret,
+      # then point server.properties at it.
+      - name: Configure GCS credentials
+        if: matrix.vendor == 'gcs'
+        env:
+          GCS_BUCKET_PATH: ${{ secrets.GCS_BUCKET_PATH }}
+          GCS_JSON_KEY: ${{ secrets.GCS_JSON_KEY }}
+        run: |
+          echo "${GCS_JSON_KEY}" | base64 --decode > /tmp/gcs-key.json
+          sed -i "s|gcs.bucketPath.0=|gcs.bucketPath.0=${GCS_BUCKET_PATH}|" integration-tests/etc/conf/server.properties
+          sed -i "s|gcs.jsonKeyFilePath.0=|gcs.jsonKeyFilePath.0=/tmp/gcs-key.json|" integration-tests/etc/conf/server.properties
+
+      # Populate server.properties with Azure ADLS credentials.
+      - name: Configure Azure credentials
+        if: matrix.vendor == 'abfss'
+        env:
+          ADLS_STORAGE_ACCOUNT_NAME: ${{ secrets.ADLS_STORAGE_ACCOUNT_NAME }}
+          ADLS_TENANT_ID: ${{ secrets.ADLS_TENANT_ID }}
+          ADLS_CLIENT_ID: ${{ secrets.ADLS_CLIENT_ID }}
+          ADLS_CLIENT_SECRET: ${{ secrets.ADLS_CLIENT_SECRET }}
+        run: |
+          sed -i "s|adls.storageAccountName.0=|adls.storageAccountName.0=${ADLS_STORAGE_ACCOUNT_NAME}|" integration-tests/etc/conf/server.properties
+          sed -i "s|adls.tenantId.0=|adls.tenantId.0=${ADLS_TENANT_ID}|" integration-tests/etc/conf/server.properties
+          sed -i "s|adls.clientId.0=|adls.clientId.0=${ADLS_CLIENT_ID}|" integration-tests/etc/conf/server.properties
+          sed -i "s|adls.clientSecret.0=|adls.clientSecret.0=${ADLS_CLIENT_SECRET}|" integration-tests/etc/conf/server.properties
+
+      # Start the UC server from the integration-tests directory so it picks up
+      # the test server.properties. Poll the health endpoint until it's ready.
+      - name: Start UC server
+        run: |
+          cd integration-tests
+          ../bin/start-uc-server &
+          echo "Waiting for UC server to be ready..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/api/2.1/unity-catalog/catalogs > /dev/null 2>&1; then
+              echo "UC server is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "ERROR: UC server did not start within 60 seconds."
+          exit 1
+
+      # Create the catalog that the integration tests expect to exist.
+      - name: Create test catalog
+        run: bin/uc catalog create --name unity
+
+      # Run integration tests against AWS S3.
+      - name: Run S3 integration tests
+        if: matrix.vendor == 's3'
+        env:
+          S3_BASE_LOCATION: ${{ secrets.S3_BASE_LOCATION }}
+        run: ./build/sbt -mem 4096 integrationTests/test
+
+      # Run integration tests against Google Cloud Storage.
+      - name: Run GCS integration tests
+        if: matrix.vendor == 'gcs'
+        env:
+          GS_BASE_LOCATION: ${{ secrets.GS_BASE_LOCATION }}
+        run: ./build/sbt -mem 4096 integrationTests/test
+
+      # Run integration tests against Azure Data Lake Storage.
+      - name: Run Azure integration tests
+        if: matrix.vendor == 'abfss'
+        env:
+          ABFSS_BASE_LOCATION: ${{ secrets.ABFSS_BASE_LOCATION }}
+        run: ./build/sbt -mem 4096 integrationTests/test
