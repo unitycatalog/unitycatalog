@@ -140,10 +140,6 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
         .isInstanceOf(Exception.class);
   }
 
-  protected static ColumnInfo getColumnByName(List<ColumnInfo> columns, String name) {
-    return columns.stream().filter(c -> c.getName().equals(name)).findFirst().orElseThrow();
-  }
-
   protected List<TableInfo> createMultipleTestingTables(int numberOfTables) {
     List<TableInfo> createdTables = new ArrayList<>();
     for (int i = numberOfTables; i > 0; i--) {
