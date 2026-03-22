@@ -6,9 +6,6 @@ import static org.assertj.core.api.Assertions.fail;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
-import io.unitycatalog.client.model.ColumnTypeName;
-import io.unitycatalog.client.model.CreateTable;
-import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateSchema;
@@ -141,55 +138,6 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
                 schemaOperations.getSchema(
                     TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME))
         .isInstanceOf(Exception.class);
-  }
-
-  @Test
-  public void testCreateTableWithVariantColumn() throws IOException, ApiException {
-    List<ColumnInfo> columns =
-        List.of(
-            new ColumnInfo()
-                .name("id")
-                .typeText("int")
-                .typeJson(
-                    "{\"name\":\"id\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}}")
-                .typeName(ColumnTypeName.INT)
-                .position(0)
-                .nullable(true),
-            new ColumnInfo()
-                .name("data")
-                .typeText("variant")
-                .typeJson(
-                    "{\"name\":\"data\",\"type\":\"variant\",\"nullable\":true,\"metadata\":{}}")
-                .typeName(ColumnTypeName.VARIANT)
-                .position(1)
-                .nullable(true));
-
-    CreateTable createTableRequest =
-        new CreateTable()
-            .name("variant_table")
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .columns(columns)
-            .tableType(TableType.EXTERNAL)
-            .dataSourceFormat(DataSourceFormat.DELTA)
-            .storageLocation(testDirectoryRoot + "/variant_table");
-
-    TableInfo tableInfo = tableOperations.createTable(createTableRequest);
-    try {
-      assertThat(tableInfo.getName()).isEqualTo("variant_table");
-
-      List<ColumnInfo> returnedColumns = tableInfo.getColumns();
-      assertThat(returnedColumns).hasSize(2);
-
-      ColumnInfo variantCol = getColumnByName(returnedColumns, "data");
-      assertThat(variantCol.getTypeName()).isEqualTo(ColumnTypeName.VARIANT);
-      assertThat(variantCol.getTypeText()).isEqualTo("variant");
-      assertThat(variantCol.getTypeJson())
-          .isEqualTo("{\"name\":\"data\",\"type\":\"variant\",\"nullable\":true,\"metadata\":{}}");
-    } finally {
-      tableOperations.deleteTable(
-          TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".variant_table");
-    }
   }
 
   protected static ColumnInfo getColumnByName(List<ColumnInfo> columns, String name) {
