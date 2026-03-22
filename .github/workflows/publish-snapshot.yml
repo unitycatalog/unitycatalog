@@ -52,16 +52,13 @@ jobs:
             exit 1
           fi
 
-      # Runs openApiGenerate and +publish in a single sbt session.
-      # openApiGenerate must run first to produce ApiClient and other generated
-      # Java sources that the client module depends on. Running both in one
-      # session avoids sbt re-loading the project after generation, which would
-      # otherwise cause it to discover and fail on the generated build.sbt in
-      # target/control/java/.
+      # Publishes all cross-Scala-version artifacts using the `+publish` command.
+      # clean ensures a fresh build; package triggers source generation (including
+      # OpenAPI-generated classes) and compilation before publishing.
       # Credentials are read by ReleaseSettings.scala via SONATYPE_USERNAME and
       # SONATYPE_PASSWORD environment variables — secrets are never echoed in logs.
       - name: Publish snapshot artifacts to Sonatype
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: ./build/sbt -mem 4096 "openApiGenerate; +publish"
+        run: ./build/sbt -mem 4096 "clean; package; +publish"
