@@ -120,32 +120,14 @@ public class SparkCredentialRenewalTest {
     spark = builder.getOrCreate();
 
     sql("CREATE SCHEMA IF NOT EXISTS %s.%s", CATALOG_NAME, SCHEMA_NAME);
-    if (MANAGED_TABLE_TYPE.equals(tableType)) {
-      // TODO: SQL-based managed table creation is not supported yet.
-      // Until that lands, the tables must be created manually in the external Unity Catalog.
-      //
-      // Example:
-      //
-      // CREATE TABLE main.demo.managedSrcCredRenewal (id INT)
-      //   USING delta
-      //   PARTITIONED BY (partition INT)
-      //   TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported');
-      //
-      // CREATE TABLE main.demo.managedDstCredRenewal (id INT)
-      //   USING delta
-      //   TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported');
-      sql("DELETE FROM %s", srcTable(tableType));
-      sql("DELETE FROM %s", dstTable(tableType));
-    } else {
-      sql("DROP TABLE IF EXISTS %s", srcTable(tableType));
-      sql("DROP TABLE IF EXISTS %s", dstTable(tableType));
-      sql(
-          "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",
-          srcTable(tableType), baseLocation, UUID.randomUUID());
-      sql(
-          "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s'",
-          dstTable(tableType), baseLocation, UUID.randomUUID());
-    }
+    sql("DROP TABLE IF EXISTS %s", srcTable(tableType));
+    sql("DROP TABLE IF EXISTS %s", dstTable(tableType));
+    sql(
+        "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",
+        srcTable(tableType), baseLocation, UUID.randomUUID());
+    sql(
+        "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s'",
+        dstTable(tableType), baseLocation, UUID.randomUUID());
   }
 
   @AfterEach
