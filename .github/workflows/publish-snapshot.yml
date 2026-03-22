@@ -52,18 +52,16 @@ jobs:
             exit 1
           fi
 
-      # Generate OpenAPI client sources before publishing.
-      # The client module depends on generated sources (e.g. ApiClient) that
-      # must exist before compilation. Without this step, +publish fails with
-      # "cannot find symbol" errors on the generated classes.
-      - name: Generate OpenAPI sources
-        run: ./build/sbt -mem 4096 openApiGenerate
-
-      # Publishes all cross-Scala-version artifacts using the `+publish` command.
+      # Runs openApiGenerate and +publish in a single sbt session.
+      # openApiGenerate must run first to produce ApiClient and other generated
+      # Java sources that the client module depends on. Running both in one
+      # session avoids sbt re-loading the project after generation, which would
+      # otherwise cause it to discover and fail on the generated build.sbt in
+      # target/control/java/.
       # Credentials are read by ReleaseSettings.scala via SONATYPE_USERNAME and
       # SONATYPE_PASSWORD environment variables — secrets are never echoed in logs.
       - name: Publish snapshot artifacts to Sonatype
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: ./build/sbt -mem 4096 +publish
+        run: ./build/sbt -mem 4096 "openApiGenerate; +publish"
