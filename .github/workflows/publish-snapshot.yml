@@ -52,22 +52,6 @@ jobs:
             exit 1
           fi
 
-      # Verify that Sonatype credentials are configured before attempting to publish.
-      - name: Verify Sonatype credentials are set
-        env:
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: |
-          if [ -z "$SONATYPE_USERNAME" ]; then
-            echo "ERROR: SONATYPE_USERNAME secret is not set."
-            exit 1
-          fi
-          if [ -z "$SONATYPE_PASSWORD" ]; then
-            echo "ERROR: SONATYPE_PASSWORD secret is not set."
-            exit 1
-          fi
-          echo "Sonatype credentials are configured."
-
       # Publishes all cross-Scala-version artifacts using the `+publish` command.
       # clean ensures a fresh build; package triggers source generation (including
       # OpenAPI-generated classes) and compilation before publishing.
