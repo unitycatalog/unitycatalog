@@ -6,7 +6,7 @@
 #       gh workflow run publish-snapshot.yml --ref main
 #
 # Required GitHub secrets (Settings → Secrets and variables → Actions):
-#   SONATYPE_USER     - Sonatype Central username
+#   SONATYPE_USERNAME - Sonatype Central username
 #   SONATYPE_PASSWORD - Sonatype Central password or user token
 #
 # Published artifacts land at:
@@ -64,7 +64,6 @@ jobs:
       # SONATYPE_PASSWORD environment variables — secrets are never echoed in logs.
       - name: Publish snapshot artifacts to Sonatype
         env:
-          # SONATYPE_USER secret is mapped to the env var name the build expects
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USER }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         run: ./build/sbt -mem 4096 +publish
