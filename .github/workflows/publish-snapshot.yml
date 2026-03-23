@@ -34,6 +34,10 @@ jobs:
     # on a fork that has the secrets configured.
     if: github.repository == 'unitycatalog/unitycatalog'
     runs-on: ubuntu-latest
+    # The environment restricts secret injection to allowed branches (e.g. main)
+    # server-side. This prevents a workflow_dispatch on a rogue branch from
+    # accessing publishing credentials even if the workflow file is modified.
+    environment: sonatype-publish
     permissions:
       contents: read
     strategy:
@@ -60,6 +64,10 @@ jobs:
       - name: Verify version is a SNAPSHOT
         run: |
           VERSION=$(sed -n 's/.*version := "\(.*\)".*/\1/p' version.sbt)
+          if [[ -z "$VERSION" ]]; then
+            echo "ERROR: Could not parse version from version.sbt"
+            exit 1
+          fi
           echo "Detected version: $VERSION"
           if [[ "$VERSION" != *"-SNAPSHOT" ]]; then
             echo "ERROR: Version '$VERSION' is not a SNAPSHOT version. Aborting."
