@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linecorp.armeria.common.HttpData;
+import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
@@ -18,22 +20,39 @@ import com.linecorp.armeria.server.annotation.ProducesJson;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
+import io.unitycatalog.server.model.ColumnInfos;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.DeltaCommit;
+import io.unitycatalog.server.model.DeltaCommitInfo;
+import io.unitycatalog.server.model.DeltaCommitMetadataProperties;
 import io.unitycatalog.server.model.DeltaGetCommits;
 import io.unitycatalog.server.model.DeltaGetCommitsResponse;
+import io.unitycatalog.server.model.DeltaMetadata;
+import io.unitycatalog.server.model.DeltaUniform;
+import io.unitycatalog.server.model.DeltaUniformIceberg;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.DeltaCommitRepository;
+import io.unitycatalog.server.persist.PropertyRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,6 +60,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.SneakyThrows;
+import org.hibernate.query.MutationQuery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,13 +83,33 @@ public class DeltaRestCatalogService {
       List.of(
           "GET /v1/config",
           "POST /v1/catalogs/{catalog}/schemas/{schema}/staging-tables",
+          "GET /v1/catalogs/{catalog}/schemas/{schema}/staging-tables/{table_id}/credentials",
+          "GET /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials",
           "POST /v1/catalogs/{catalog}/schemas/{schema}/tables",
           "GET /v1/catalogs/{catalog}/schemas/{schema}/tables",
           "GET /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}",
           "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}",
           "DELETE /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}",
           "HEAD /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}",
-          "GET /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials");
+          "POST /v1/catalogs/{catalog}/tables/rename",
+          "GET /v1/temporary-path-credentials",
+          "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics");
+
+  private static final double MAX_SUPPORTED_PROTOCOL_VERSION = 1.1d;
+  private static final Set<String> REQUIRED_READER_FEATURES =
+      Set.of("deletionVectors", "vacuumProtocolCheck");
+  private static final Set<String> REQUIRED_WRITER_FEATURES =
+      Set.of(
+          "catalogManaged",
+          "deletionVectors",
+          "inCommitTimestamp",
+          "v2Checkpoint",
+          "vacuumProtocolCheck");
+  private static final Set<String> SUGGESTED_READER_FEATURES = Set.of("typeWidening");
+  private static final Set<String> SUGGESTED_WRITER_FEATURES =
+      Set.of("domainMetadata", "rowTracking", "typeWidening");
+  private static final Map<String, String> REQUIRED_PROPERTIES_TEMPLATE =
+      Map.of("delta.checkpointPolicy", "v2");
 
   private final Repositories repositories;
   private final StorageCredentialVendor storageCredentialVendor;
@@ -97,11 +137,20 @@ public class DeltaRestCatalogService {
         catalog.orElse(null),
         protocolVersions.orElse(null));
 
+    if (catalog.isEmpty() || catalog.get().isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Query parameter 'catalog' is required");
+    }
+    if (protocolVersions.isEmpty() || protocolVersions.get().isBlank()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Query parameter 'protocol-versions' is required");
+    }
+
+    double negotiatedVersion = negotiateProtocolVersion(protocolVersions.get());
     ObjectNode response = MAPPER.createObjectNode();
     ArrayNode endpoints = MAPPER.createArrayNode();
     SUPPORTED_ENDPOINTS.forEach(endpoints::add);
     response.set("endpoints", endpoints);
-    response.put("protocol-version", 1);
+    response.put("protocol-version", negotiatedVersion);
 
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON, MAPPER.writeValueAsString(response));
   }
@@ -134,17 +183,30 @@ public class DeltaRestCatalogService {
     io.unitycatalog.server.model.StagingTableInfo stagingTableInfo =
         repositories.getStagingTableRepository().createStagingTable(createStagingTable);
 
-    // Build delta-rest response
+    Map<String, String> requiredProperties = new LinkedHashMap<>(REQUIRED_PROPERTIES_TEMPLATE);
+    requiredProperties.put("io.unitycatalog.tableId", stagingTableInfo.getId().toString());
+
     ObjectNode response = MAPPER.createObjectNode();
     response.put("table-id", stagingTableInfo.getId().toString());
     response.put("table-type", "MANAGED");
     response.put("location", stagingTableInfo.getStagingLocation());
+    response.set(
+        "storage-credentials",
+        vendCredentialsArray(
+            NormalizedURL.from(stagingTableInfo.getStagingLocation()),
+            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE)));
+    response.set(
+        "required-protocol",
+        protocolNode(3, 7, REQUIRED_READER_FEATURES, REQUIRED_WRITER_FEATURES));
+    response.set(
+        "suggested-protocol",
+        protocolNode(3, 7, SUGGESTED_READER_FEATURES, SUGGESTED_WRITER_FEATURES));
+    response.set("required-properties", MAPPER.valueToTree(requiredProperties));
 
-    // Add required protocol (minimal defaults)
-    ObjectNode requiredProtocol = MAPPER.createObjectNode();
-    requiredProtocol.put("min-reader-version", 1);
-    requiredProtocol.put("min-writer-version", 2);
-    response.set("required-protocol", requiredProtocol);
+    ObjectNode suggestedPropertiesNode = MAPPER.createObjectNode();
+    suggestedPropertiesNode.putNull("delta.rowTracking.materializedRowIdColumnName");
+    suggestedPropertiesNode.putNull("delta.rowTracking.materializedRowCommitVersionColumnName");
+    response.set("suggested-properties", suggestedPropertiesNode);
 
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON, MAPPER.writeValueAsString(response));
   }
@@ -167,23 +229,13 @@ public class DeltaRestCatalogService {
     NormalizedURL storageLocation =
         tableRepository.getStorageLocationForTableOrStagingTable(UUID.fromString(tableId));
 
-    try {
-      var credentials =
-          storageCredentialVendor.vendCredential(
-              storageLocation,
-              Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
-
-      return HttpResponse.of(
-          HttpStatus.OK,
-          MediaType.JSON,
-          MAPPER.writeValueAsString(convertCredentialsToResponse(storageLocation, credentials)));
-    } catch (Exception e) {
-      LOGGER.warn("Could not vend credentials for staging table {}: {}", tableId, e.getMessage());
-      // Return empty credentials for POC when no credential provider is configured
-      ObjectNode response = MAPPER.createObjectNode();
-      response.set("storage-credentials", MAPPER.createArrayNode());
-      return HttpResponse.of(HttpStatus.OK, MediaType.JSON, MAPPER.writeValueAsString(response));
-    }
+    return HttpResponse.of(
+        HttpStatus.OK,
+        MediaType.JSON,
+        MAPPER.writeValueAsString(
+            credentialsResponse(
+                storageLocation,
+                Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE))));
   }
 
   // ---- Tables ----
@@ -198,8 +250,8 @@ public class DeltaRestCatalogService {
 
     String name = requestBody.path("name").asText(null);
     String location = requestBody.path("location").asText(null);
-    String tableTypeStr = requestBody.path("table-type").asText("EXTERNAL");
-    String formatStr = requestBody.path("data-source-format").asText("DELTA");
+    String tableTypeStr = requestBody.path("table-type").asText(null);
+    String formatStr = requestBody.path("data-source-format").asText(null);
     String comment = requestBody.path("comment").asText(null);
 
     if (name == null || name.isEmpty()) {
@@ -208,44 +260,37 @@ public class DeltaRestCatalogService {
     if (location == null || location.isEmpty()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Table location is required");
     }
-
-    // Convert delta-rest columns to UC ColumnInfo
-    List<ColumnInfo> columns = new ArrayList<>();
-    JsonNode columnsNode = requestBody.path("columns");
-    if (columnsNode.isArray()) {
-      int position = 0;
-      for (JsonNode col : columnsNode) {
-        ColumnInfo columnInfo = new ColumnInfo();
-        columnInfo.setName(col.path("name").asText());
-        // Convert the type field to typeText (handle both primitive and complex types)
-        JsonNode typeNode = col.path("type");
-        String typeText;
-        if (typeNode.isTextual()) {
-          typeText = typeNode.asText();
-        } else {
-          typeText = typeNode.toString();
-        }
-        columnInfo.setTypeText(typeText);
-        columnInfo.setTypeJson(MAPPER.writeValueAsString(col));
-        columnInfo.setTypeName(
-            io.unitycatalog.server.model.ColumnTypeName.fromValue(mapDeltaTypeToUCType(typeText)));
-        columnInfo.setNullable(col.path("nullable").asBoolean(true));
-        columnInfo.setPosition(position++);
-
-        // Extract comment from metadata if present
-        JsonNode metadata = col.path("metadata");
-        if (metadata.has("comment")) {
-          columnInfo.setComment(metadata.path("comment").asText());
-        }
-        columns.add(columnInfo);
-      }
+    if (tableTypeStr == null || tableTypeStr.isEmpty()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Table type is required");
+    }
+    if (formatStr == null || formatStr.isEmpty()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Data source format is required");
+    }
+    if (!requestBody.has("columns") || !requestBody.path("columns").isArray()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Columns are required");
+    }
+    if (!requestBody.has("properties") || !requestBody.path("properties").isObject()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Properties are required");
+    }
+    if (!requestBody.has("protocol") || !requestBody.path("protocol").isObject()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Protocol is required");
     }
 
-    // Convert properties
-    Map<String, String> properties = new HashMap<>();
-    JsonNode propsNode = requestBody.path("properties");
-    if (propsNode.isObject()) {
-      propsNode.fields().forEachRemaining(e -> properties.put(e.getKey(), e.getValue().asText()));
+    List<ColumnInfo> columns =
+        convertDeltaColumns(requestBody.path("columns"), requestBody.path("partition-columns"));
+
+    Map<String, String> properties = collectPropertiesObject(requestBody.path("properties"));
+    applyProtocolToProperties(properties, requestBody.path("protocol"));
+    applyDomainMetadataToProperties(properties, requestBody.path("domain-metadata"));
+    if (requestBody.has("last-commit-version")) {
+      properties.put(
+          "delta.lastUpdateVersion",
+          String.valueOf(requestBody.path("last-commit-version").asLong()));
+    }
+    if (requestBody.has("last-commit-timestamp-ms")) {
+      properties.put(
+          "delta.lastCommitTimestamp",
+          String.valueOf(requestBody.path("last-commit-timestamp-ms").asLong()));
     }
 
     // Build UC CreateTable
@@ -263,22 +308,20 @@ public class DeltaRestCatalogService {
 
     TableInfo tableInfo = tableRepository.createTable(createTable);
 
-    // Handle initial commit info if provided
-    Long lastCommitVersion = null;
-    Long lastCommitTimestamp = null;
-    if (requestBody.has("last-commit-version")) {
-      lastCommitVersion = requestBody.path("last-commit-version").asLong();
-    }
-    if (requestBody.has("last-commit-timestamp-ms")) {
-      lastCommitTimestamp = requestBody.path("last-commit-timestamp-ms").asLong();
-    }
-
     return HttpResponse.of(
         HttpStatus.OK,
         MediaType.JSON,
         MAPPER.writeValueAsString(
             buildLoadTableResponse(
-                tableInfo, catalog, schema, lastCommitVersion, lastCommitTimestamp)));
+                tableInfo,
+                catalog,
+                schema,
+                requestBody.has("last-commit-version")
+                    ? requestBody.path("last-commit-version").asLong()
+                    : null,
+                requestBody.has("last-commit-timestamp-ms")
+                    ? requestBody.path("last-commit-timestamp-ms").asLong()
+                    : null)));
   }
 
   @Get("/v1/catalogs/{catalog}/schemas/{schema}/tables")
@@ -332,56 +375,30 @@ public class DeltaRestCatalogService {
     String fullName = catalog + "." + schema + "." + table;
     TableInfo tableInfo = tableRepository.getTable(fullName);
 
-    // Fetch unbackfilled commits from DeltaCommitRepository
-    Long latestTableVersion = null;
-    List<Map<String, Object>> commitsList = new ArrayList<>();
-    if (tableInfo.getTableType() == TableType.MANAGED && tableInfo.getTableId() != null) {
-      try {
-        DeltaGetCommits getCommitsReq = new DeltaGetCommits();
-        getCommitsReq.setTableId(tableInfo.getTableId());
-        getCommitsReq.setStartVersion(0L);
-        DeltaGetCommitsResponse commitsResp = deltaCommitRepository.getCommits(getCommitsReq);
-        if (commitsResp != null) {
-          latestTableVersion = commitsResp.getLatestTableVersion();
-          if (commitsResp.getCommits() != null) {
-            for (var c : commitsResp.getCommits()) {
-              Map<String, Object> cm = new LinkedHashMap<>();
-              cm.put("version", c.getVersion());
-              cm.put("timestamp", c.getTimestamp());
-              cm.put("file-name", c.getFileName());
-              cm.put("file-size", c.getFileSize());
-              cm.put("file-modification-timestamp", c.getFileModificationTimestamp());
-              commitsList.add(cm);
-            }
-          }
-        }
-      } catch (Exception e) {
-        LOGGER.warn("Could not fetch commits for table {}: {}", fullName, e.getMessage());
-      }
-    }
+    TableCommitState commitState = getTableCommitState(tableInfo, fullName);
 
     Map<String, Object> response =
-        buildLoadTableResponse(tableInfo, catalog, schema, latestTableVersion, null);
+        buildLoadTableResponse(
+            tableInfo,
+            catalog,
+            schema,
+            commitState.latestTableVersion,
+            commitState.latestTimestamp);
     // Override commits and latest-table-version with actual data
-    response.put("commits", commitsList);
-    if (latestTableVersion != null) {
-      response.put("latest-table-version", latestTableVersion);
+    response.put("commits", commitState.commitsList);
+    if (commitState.latestTableVersion != null) {
+      response.put("latest-table-version", commitState.latestTableVersion);
     }
 
     // Add credentials if requested
     if (withCredentials.orElse(false) && tableInfo.getStorageLocation() != null) {
-      try {
-        NormalizedURL storageLocation = NormalizedURL.from(tableInfo.getStorageLocation());
-        var credentials =
-            storageCredentialVendor.vendCredential(
-                storageLocation,
-                Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
-        response.put(
-            "storage-credentials",
-            convertCredentialsToResponse(storageLocation, credentials).get("storage-credentials"));
-      } catch (Exception e) {
-        LOGGER.warn("Could not vend credentials for table {}: {}", fullName, e.getMessage());
-      }
+      NormalizedURL storageLocation = NormalizedURL.from(tableInfo.getStorageLocation());
+      response.put(
+          "storage-credentials",
+          credentialsResponse(
+                  storageLocation,
+                  Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE))
+              .get("storage-credentials"));
     }
 
     return HttpResponse.of(HttpStatus.OK, MediaType.JSON, MAPPER.writeValueAsString(response));
@@ -404,6 +421,7 @@ public class DeltaRestCatalogService {
 
     String fullName = catalog + "." + schema + "." + table;
     TableInfo tableInfo = tableRepository.getTable(fullName);
+    TableUpdateAccumulator accumulator = new TableUpdateAccumulator(tableInfo);
 
     // Process requirements
     JsonNode requirements = requestBody.path("requirements");
@@ -422,10 +440,19 @@ public class DeltaRestCatalogService {
             }
             break;
           case "assert-etag":
-            // For the POC, we use updatedAt as a simple etag
             String expectedEtag = req.path("etag").asText();
-            String currentEtag =
-                tableInfo.getUpdatedAt() != null ? String.valueOf(tableInfo.getUpdatedAt()) : "0";
+            TableCommitState currentCommitState = getTableCommitState(tableInfo, fullName);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> currentMetadata =
+                (Map<String, Object>)
+                    buildLoadTableResponse(
+                            tableInfo,
+                            catalog,
+                            schema,
+                            currentCommitState.latestTableVersion,
+                            currentCommitState.latestTimestamp)
+                        .get("metadata");
+            String currentEtag = (String) currentMetadata.get("etag");
             if (!expectedEtag.equals(currentEtag)) {
               throw new BaseException(
                   ErrorCode.ABORTED,
@@ -438,107 +465,64 @@ public class DeltaRestCatalogService {
       }
     }
 
-    // Process updates
-    Long lastCommitVersion = null;
-    Long lastCommitTimestamp = null;
+    Long latestBackfilledVersion = null;
+    DeltaCommitInfo commitInfo = null;
+    DeltaUniform uniform = null;
     JsonNode updates = requestBody.path("updates");
     if (updates.isArray()) {
       for (JsonNode update : updates) {
         String action = update.path("action").asText();
         switch (action) {
           case "set-properties":
-            // For POC, log the properties update
-            LOGGER.info("set-properties update: {}", update.path("updates"));
+            accumulator.properties.putAll(collectPropertiesObject(update.path("updates")));
             break;
           case "remove-properties":
-            LOGGER.info("remove-properties update: {}", update.path("removals"));
+            update.path("removals").forEach(v -> accumulator.properties.remove(v.asText()));
             break;
           case "set-protocol":
-            LOGGER.info("set-protocol update: {}", update.path("protocol"));
+            applyProtocolToProperties(accumulator.properties, update.path("protocol"));
             break;
           case "set-columns":
-            LOGGER.info("set-columns update: {}", update.path("columns"));
+            accumulator.columns = convertDeltaColumns(update.path("columns"), null);
             break;
           case "set-partition-columns":
-            LOGGER.info("set-partition-columns update: {}", update.path("partition-columns"));
+            accumulator.columns =
+                applyPartitionColumns(
+                    accumulator.columns != null
+                        ? accumulator.columns
+                        : accumulator.currentColumns(),
+                    update.path("partition-columns"));
             break;
           case "set-table-comment":
-            LOGGER.info("set-table-comment update: {}", update.path("comment"));
+            accumulator.comment = update.path("comment").asText(null);
             break;
           case "set-domain-metadata":
-            LOGGER.info("set-domain-metadata update: domain={}", update.path("domain").asText());
+            applyDomainMetadataToProperties(
+                accumulator.properties,
+                update.path("domain").asText(),
+                update.path("configuration"));
             break;
           case "remove-domain-metadata":
-            LOGGER.info("remove-domain-metadata update: {}", update.path("domains"));
+            removeDomainMetadataFromProperties(accumulator.properties, update.path("domains"));
             break;
           case "add-commit":
-            JsonNode commit = update.path("commit");
-            LOGGER.info("add-commit update: version={}", commit.path("version").asLong());
-
-            // Post the commit through the existing DeltaCommitRepository
-            io.unitycatalog.server.model.DeltaCommitInfo commitInfo =
-                new io.unitycatalog.server.model.DeltaCommitInfo()
-                    .version(commit.path("version").asLong())
-                    .timestamp(commit.path("timestamp").asLong())
-                    .fileName(commit.path("file-name").asText())
-                    .fileSize(commit.path("file-size").asLong())
-                    .fileModificationTimestamp(commit.path("file-modification-timestamp").asLong());
-
-            io.unitycatalog.server.model.DeltaCommit deltaCommit =
-                new io.unitycatalog.server.model.DeltaCommit()
-                    .tableId(tableInfo.getTableId())
-                    .tableUri(tableInfo.getStorageLocation())
-                    .commitInfo(commitInfo);
-
-            // Handle uniform metadata if present
-            JsonNode uniformNode = update.path("uniform");
-            if (!uniformNode.isMissingNode() && uniformNode.has("iceberg")) {
-              JsonNode icebergNode = uniformNode.path("iceberg");
-              String metadataLoc = icebergNode.path("metadata-location").asText(null);
-              io.unitycatalog.server.model.DeltaUniformIceberg icebergInfo =
-                  new io.unitycatalog.server.model.DeltaUniformIceberg()
-                      .metadataLocation(
-                          metadataLoc != null ? java.net.URI.create(metadataLoc) : null)
-                      .convertedDeltaVersion(
-                          icebergNode.has("converted-delta-version")
-                              ? icebergNode.path("converted-delta-version").asLong()
-                              : null)
-                      .convertedDeltaTimestamp(
-                          icebergNode.has("converted-delta-timestamp")
-                              ? icebergNode.path("converted-delta-timestamp").asText(null)
-                              : null);
-              io.unitycatalog.server.model.DeltaUniform ucUniform =
-                  new io.unitycatalog.server.model.DeltaUniform().iceberg(icebergInfo);
-              deltaCommit.uniform(ucUniform);
-            }
-
-            LOGGER.info(
-                "Posting commit: tableId={}, tableUri={}, version={}",
-                deltaCommit.getTableId(),
-                deltaCommit.getTableUri(),
-                commitInfo.getVersion());
-            deltaCommitRepository.postCommit(deltaCommit);
-            lastCommitVersion = commit.path("version").asLong();
-            lastCommitTimestamp = commit.path("timestamp").asLong();
+            commitInfo = toDeltaCommitInfo(update.path("commit"));
+            accumulator.properties.put(
+                "delta.lastUpdateVersion", String.valueOf(commitInfo.getVersion()));
+            accumulator.properties.put(
+                "delta.lastCommitTimestamp", String.valueOf(commitInfo.getTimestamp()));
+            uniform = toUniform(update.path("uniform"));
             break;
           case "set-latest-backfilled-version":
-            long latestPublishedVersion = update.path("latest-published-version").asLong();
-            LOGGER.info("set-latest-backfilled-version: version={}", latestPublishedVersion);
-            // Delegate to DeltaCommitRepository for backfilling
-            io.unitycatalog.server.model.DeltaCommit backfillCommit =
-                new io.unitycatalog.server.model.DeltaCommit()
-                    .tableId(tableInfo.getTableId())
-                    .tableUri(tableInfo.getStorageLocation())
-                    .latestBackfilledVersion(latestPublishedVersion);
-            deltaCommitRepository.postCommit(backfillCommit);
+            latestBackfilledVersion = update.path("latest-published-version").asLong();
             break;
           case "update-snapshot-version":
-            lastCommitVersion = update.path("last-commit-version").asLong();
-            lastCommitTimestamp = update.path("last-commit-timestamp-ms").asLong();
-            LOGGER.info(
-                "update-snapshot-version: version={}, timestamp={}",
-                lastCommitVersion,
-                lastCommitTimestamp);
+            accumulator.properties.put(
+                "delta.lastUpdateVersion",
+                String.valueOf(update.path("last-commit-version").asLong()));
+            accumulator.properties.put(
+                "delta.lastCommitTimestamp",
+                String.valueOf(update.path("last-commit-timestamp-ms").asLong()));
             break;
           default:
             LOGGER.warn("Unknown update action: {}", action);
@@ -546,15 +530,52 @@ public class DeltaRestCatalogService {
       }
     }
 
-    // Re-read the table to get updated state
-    tableInfo = tableRepository.getTable(fullName);
+    if (commitInfo != null) {
+      DeltaCommit deltaCommit =
+          new DeltaCommit()
+              .tableId(tableInfo.getTableId())
+              .tableUri(tableInfo.getStorageLocation())
+              .commitInfo(commitInfo)
+              .latestBackfilledVersion(latestBackfilledVersion);
+      if (accumulator.hasMetadataChanges()) {
+        deltaCommit.metadata(accumulator.toDeltaMetadata());
+      }
+      if (uniform != null) {
+        deltaCommit.uniform(uniform);
+      }
+      deltaCommitRepository.postCommit(deltaCommit);
+    } else {
+      if (accumulator.hasMetadataChanges()) {
+        applyMetadataOnlyUpdate(tableInfo, accumulator);
+      }
+      if (latestBackfilledVersion != null) {
+        deltaCommitRepository.postCommit(
+            new DeltaCommit()
+                .tableId(tableInfo.getTableId())
+                .tableUri(tableInfo.getStorageLocation())
+                .latestBackfilledVersion(latestBackfilledVersion));
+      }
+    }
+
+    Long responseLastCommitVersion =
+        commitInfo != null
+            ? commitInfo.getVersion()
+            : parseLongOrNull(accumulator.properties.get("delta.lastUpdateVersion"));
+    Long responseLastCommitTimestamp =
+        commitInfo != null
+            ? commitInfo.getTimestamp()
+            : parseLongOrNull(accumulator.properties.get("delta.lastCommitTimestamp"));
 
     return HttpResponse.of(
         HttpStatus.OK,
         MediaType.JSON,
         MAPPER.writeValueAsString(
             buildLoadTableResponse(
-                tableInfo, catalog, schema, lastCommitVersion, lastCommitTimestamp)));
+                tableRepository.getTable(fullName),
+                catalog,
+                schema,
+                responseLastCommitVersion,
+                responseLastCommitTimestamp)));
   }
 
   @Delete("/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
@@ -565,7 +586,7 @@ public class DeltaRestCatalogService {
     LOGGER.info("Delta REST deleteTable: catalog={}, schema={}, table={}", catalog, schema, table);
     String fullName = catalog + "." + schema + "." + table;
     tableRepository.deleteTable(fullName);
-    return HttpResponse.of(HttpStatus.OK, MediaType.JSON, "{}");
+    return noContentResponse();
   }
 
   @Head("/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
@@ -576,11 +597,13 @@ public class DeltaRestCatalogService {
     String fullName = catalog + "." + schema + "." + table;
     try {
       tableRepository.getTable(fullName);
-      return HttpResponse.of(
-          ResponseHeaders.builder(HttpStatus.OK).contentType(MediaType.JSON).build());
+      return noContentResponse();
     } catch (BaseException e) {
       if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
-        return HttpResponse.of(ResponseHeaders.of(HttpStatus.NOT_FOUND));
+        return HttpResponse.of(
+            ResponseHeaders.builder(HttpStatus.NOT_FOUND)
+                .addInt(HttpHeaderNames.CONTENT_LENGTH, 0)
+                .build());
       }
       throw e;
     }
@@ -598,41 +621,49 @@ public class DeltaRestCatalogService {
     LOGGER.info(
         "Delta REST getTableCredentials: catalog={}, schema={}, table={}", catalog, schema, table);
 
-    String fullName = catalog + "." + schema + "." + table;
-    TableInfo tableInfo = tableRepository.getTable(fullName);
-
-    if (tableInfo.getStorageLocation() == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Table has no storage location");
-    }
-
-    NormalizedURL storageLocation = NormalizedURL.from(tableInfo.getStorageLocation());
-    try {
-      var credentials =
-          storageCredentialVendor.vendCredential(
-              storageLocation,
-              Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
-
-      return HttpResponse.of(
-          HttpStatus.OK,
-          MediaType.JSON,
-          MAPPER.writeValueAsString(convertCredentialsToResponse(storageLocation, credentials)));
-    } catch (Exception e) {
-      LOGGER.warn("Could not vend credentials for table {}: {}", fullName, e.getMessage());
-      // Return empty credentials for POC
-      ObjectNode response = MAPPER.createObjectNode();
-      response.set("storage-credentials", MAPPER.createArrayNode());
-      return HttpResponse.of(HttpStatus.OK, MediaType.JSON, MAPPER.writeValueAsString(response));
-    }
+    NormalizedURL storageLocation = resolveTableOrStagingLocation(catalog, schema, table);
+    return HttpResponse.of(
+        HttpStatus.OK,
+        MediaType.JSON,
+        MAPPER.writeValueAsString(
+            credentialsResponse(
+                storageLocation,
+                Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE))));
   }
 
   // ---- Rename Table ----
 
   @Post("/v1/catalogs/{catalog}/tables/rename")
-  @ProducesJson
   public HttpResponse renameTable(@Param("catalog") String catalog, JsonNode requestBody) {
-    // Not implemented for POC
     LOGGER.info("Delta REST renameTable: catalog={}, body={}", catalog, requestBody);
-    throw new BaseException(ErrorCode.UNIMPLEMENTED, "Table rename is not yet implemented");
+    JsonNode source = requestBody.path("source");
+    JsonNode destination = requestBody.path("destination");
+    String sourceCatalog = source.path("catalog").asText(null);
+    String sourceSchema = source.path("schema").asText(null);
+    String sourceName = source.path("name").asText(null);
+    String destinationName = destination.path("name").asText(null);
+    if (sourceCatalog == null
+        || sourceSchema == null
+        || sourceName == null
+        || destinationName == null
+        || sourceCatalog.isBlank()
+        || sourceSchema.isBlank()
+        || sourceName.isBlank()
+        || destinationName.isBlank()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Rename source and destination are required");
+    }
+    if (!catalog.equals(sourceCatalog)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Rename source catalog must match the request path catalog");
+    }
+    if (destination.has("catalog") || destination.has("schema")) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Rename can only change the table name within the same schema");
+    }
+    renameTableInPlace(sourceCatalog, sourceSchema, sourceName, destinationName);
+    return noContentResponse();
   }
 
   // ---- Temporary Path Credentials ----
@@ -665,7 +696,7 @@ public class DeltaRestCatalogService {
       return HttpResponse.of(
           HttpStatus.OK,
           MediaType.JSON,
-          MAPPER.writeValueAsString(convertCredentialsToResponse(storageLocation, credentials)));
+          MAPPER.writeValueAsString(credentialsResponse(storageLocation, privileges)));
     } catch (Exception e) {
       LOGGER.warn("Could not vend credentials for path {}: {}", location, e.getMessage());
       ObjectNode response = MAPPER.createObjectNode();
@@ -685,10 +716,494 @@ public class DeltaRestCatalogService {
     LOGGER.info(
         "Delta REST reportMetrics: catalog={}, schema={}, table={}", catalog, schema, table);
     // For POC, just acknowledge receipt
-    return HttpResponse.of(HttpStatus.NO_CONTENT);
+    return noContentResponse();
   }
 
   // ---- Helper Methods ----
+
+  private double negotiateProtocolVersion(String protocolVersions) {
+    double best = -1d;
+    for (String candidate : protocolVersions.split(",")) {
+      String trimmed = candidate.trim();
+      if (trimmed.isEmpty()) {
+        continue;
+      }
+      try {
+        double parsed = Double.parseDouble(trimmed);
+        int major = (int) parsed;
+        if (major == 1) {
+          best = Math.max(best, Math.min(parsed, MAX_SUPPORTED_PROTOCOL_VERSION));
+        }
+      } catch (NumberFormatException e) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Invalid protocol version '" + trimmed + "' in 'protocol-versions'");
+      }
+    }
+    if (best < 0) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "No mutually supported protocol version found in 'protocol-versions'");
+    }
+    return best;
+  }
+
+  private ObjectNode protocolNode(
+      int minReaderVersion,
+      int minWriterVersion,
+      Set<String> readerFeatures,
+      Set<String> writerFeatures) {
+    ObjectNode protocol = MAPPER.createObjectNode();
+    protocol.put("min-reader-version", minReaderVersion);
+    protocol.put("min-writer-version", minWriterVersion);
+    ArrayNode readerArray = MAPPER.createArrayNode();
+    readerFeatures.forEach(readerArray::add);
+    protocol.set("reader-features", readerArray);
+    ArrayNode writerArray = MAPPER.createArrayNode();
+    writerFeatures.forEach(writerArray::add);
+    protocol.set("writer-features", writerArray);
+    return protocol;
+  }
+
+  private Map<String, String> collectPropertiesObject(JsonNode node) {
+    Map<String, String> properties = new LinkedHashMap<>();
+    if (node != null && node.isObject()) {
+      node.fields()
+          .forEachRemaining(e -> properties.put(e.getKey(), jsonValueToString(e.getValue())));
+    }
+    return properties;
+  }
+
+  private String jsonValueToString(JsonNode value) {
+    if (value == null || value.isNull()) {
+      return null;
+    }
+    if (value.isTextual()) {
+      return value.asText();
+    }
+    if (value.isNumber() || value.isBoolean()) {
+      return value.asText();
+    }
+    return value.toString();
+  }
+
+  private void applyProtocolToProperties(Map<String, String> properties, JsonNode protocolNode) {
+    if (protocolNode == null || !protocolNode.isObject()) {
+      return;
+    }
+    if (protocolNode.has("min-reader-version")) {
+      properties.put(
+          "delta.minReaderVersion",
+          String.valueOf(protocolNode.path("min-reader-version").asInt()));
+    }
+    if (protocolNode.has("min-writer-version")) {
+      properties.put(
+          "delta.minWriterVersion",
+          String.valueOf(protocolNode.path("min-writer-version").asInt()));
+    }
+    Set<String> desiredFeatures = new LinkedHashSet<>();
+    protocolNode.path("reader-features").forEach(v -> desiredFeatures.add(v.asText()));
+    protocolNode.path("writer-features").forEach(v -> desiredFeatures.add(v.asText()));
+    properties.entrySet().removeIf(e -> e.getKey().startsWith("delta.feature."));
+    for (String feature : desiredFeatures) {
+      properties.put("delta.feature." + feature, "supported");
+      maybeApplyFeatureActivationProperty(properties, feature, true);
+    }
+  }
+
+  private void maybeApplyFeatureActivationProperty(
+      Map<String, String> properties, String feature, boolean enabled) {
+    String enabledValue = enabled ? "true" : "false";
+    switch (feature) {
+      case "deletionVectors":
+        properties.put("delta.enableDeletionVectors", enabledValue);
+        break;
+      case "rowTracking":
+        properties.put("delta.enableRowTracking", enabledValue);
+        break;
+      case "inCommitTimestamp":
+        properties.put("delta.enableInCommitTimestamps", enabledValue);
+        break;
+      case "v2Checkpoint":
+        properties.put("delta.checkpointPolicy", enabled ? "v2" : "classic");
+        break;
+      default:
+        break;
+    }
+  }
+
+  private void applyDomainMetadataToProperties(
+      Map<String, String> properties, JsonNode domainsNode) {
+    if (domainsNode == null || !domainsNode.isObject()) {
+      return;
+    }
+    domainsNode
+        .fields()
+        .forEachRemaining(
+            e -> applyDomainMetadataToProperties(properties, e.getKey(), e.getValue()));
+  }
+
+  private void applyDomainMetadataToProperties(
+      Map<String, String> properties, String domain, JsonNode configuration) {
+    if (domain == null || configuration == null || configuration.isMissingNode()) {
+      return;
+    }
+    switch (domain) {
+      case "delta.clustering":
+        JsonNode clusteringColumns = configuration.path("clusteringColumns");
+        if (!clusteringColumns.isMissingNode()) {
+          properties.put("clusteringColumns", clusteringColumns.toString());
+        }
+        break;
+      case "delta.rowTracking":
+        properties.put("delta.rowTracking", configuration.toString());
+        if (configuration.has("rowIdHighWaterMark")) {
+          properties.put(
+              "delta.rowTracking.rowIdHighWaterMark",
+              configuration.path("rowIdHighWaterMark").asText());
+        }
+        maybeApplyFeatureActivationProperty(properties, "rowTracking", true);
+        break;
+      default:
+        properties.put("delta.domainMetadata." + domain, configuration.toString());
+        break;
+    }
+  }
+
+  private void removeDomainMetadataFromProperties(
+      Map<String, String> properties, JsonNode domainsNode) {
+    if (domainsNode == null || !domainsNode.isArray()) {
+      return;
+    }
+    domainsNode.forEach(domain -> removeDomainMetadataFromProperties(properties, domain.asText()));
+  }
+
+  private void removeDomainMetadataFromProperties(Map<String, String> properties, String domain) {
+    switch (domain) {
+      case "delta.clustering":
+        properties.remove("clusteringColumns");
+        break;
+      case "delta.rowTracking":
+        properties.remove("delta.rowTracking");
+        properties.remove("delta.rowTracking.rowIdHighWaterMark");
+        break;
+      default:
+        properties.remove("delta.domainMetadata." + domain);
+        break;
+    }
+  }
+
+  private List<ColumnInfo> convertDeltaColumns(JsonNode columnsNode, JsonNode partitionColumnsNode)
+      throws Exception {
+    List<ColumnInfo> columns = new ArrayList<>();
+    if (columnsNode == null || !columnsNode.isArray()) {
+      return columns;
+    }
+    Map<String, Integer> partitionPositions = new LinkedHashMap<>();
+    if (partitionColumnsNode != null && partitionColumnsNode.isArray()) {
+      int idx = 0;
+      for (JsonNode partitionColumn : partitionColumnsNode) {
+        partitionPositions.put(partitionColumn.asText(), idx++);
+      }
+    }
+    int position = 0;
+    for (JsonNode col : columnsNode) {
+      ColumnInfo columnInfo = new ColumnInfo();
+      columnInfo.setName(col.path("name").asText());
+      JsonNode typeNode = col.path("type");
+      String typeText = typeNode.isTextual() ? typeNode.asText() : typeNode.toString();
+      columnInfo.setTypeText(typeText);
+      columnInfo.setTypeJson(MAPPER.writeValueAsString(col));
+      columnInfo.setTypeName(
+          io.unitycatalog.server.model.ColumnTypeName.fromValue(mapDeltaTypeToUCType(typeText)));
+      columnInfo.setNullable(col.path("nullable").asBoolean(true));
+      columnInfo.setPosition(position++);
+      if (partitionPositions.containsKey(columnInfo.getName())) {
+        columnInfo.setPartitionIndex(partitionPositions.get(columnInfo.getName()));
+      }
+      JsonNode metadata = col.path("metadata");
+      if (metadata.has("comment")) {
+        columnInfo.setComment(metadata.path("comment").asText());
+      }
+      columns.add(columnInfo);
+    }
+    return columns;
+  }
+
+  private List<ColumnInfo> applyPartitionColumns(
+      List<ColumnInfo> columns, JsonNode partitionColumnsNode) {
+    Map<String, Integer> partitionPositions = new LinkedHashMap<>();
+    if (partitionColumnsNode != null && partitionColumnsNode.isArray()) {
+      int idx = 0;
+      for (JsonNode partitionColumn : partitionColumnsNode) {
+        partitionPositions.put(partitionColumn.asText(), idx++);
+      }
+    }
+    for (ColumnInfo column : columns) {
+      column.setPartitionIndex(partitionPositions.get(column.getName()));
+    }
+    return columns;
+  }
+
+  private DeltaCommitInfo toDeltaCommitInfo(JsonNode commitNode) {
+    return new DeltaCommitInfo()
+        .version(commitNode.path("version").asLong())
+        .timestamp(commitNode.path("timestamp").asLong())
+        .fileName(commitNode.path("file-name").asText())
+        .fileSize(commitNode.path("file-size").asLong())
+        .fileModificationTimestamp(commitNode.path("file-modification-timestamp").asLong());
+  }
+
+  private DeltaUniform toUniform(JsonNode uniformNode) {
+    if (uniformNode == null || uniformNode.isMissingNode() || !uniformNode.has("iceberg")) {
+      return null;
+    }
+    JsonNode icebergNode = uniformNode.path("iceberg");
+    String metadataLocation = icebergNode.path("metadata-location").asText(null);
+    return new DeltaUniform()
+        .iceberg(
+            new DeltaUniformIceberg()
+                .metadataLocation(
+                    metadataLocation != null ? java.net.URI.create(metadataLocation) : null)
+                .convertedDeltaVersion(
+                    icebergNode.has("converted-delta-version")
+                        ? icebergNode.path("converted-delta-version").asLong()
+                        : null)
+                .convertedDeltaTimestamp(
+                    icebergNode.has("converted-delta-timestamp")
+                        ? icebergNode.path("converted-delta-timestamp").asText(null)
+                        : null));
+  }
+
+  private void applyMetadataOnlyUpdate(TableInfo tableInfo, TableUpdateAccumulator accumulator) {
+    TransactionManager.executeWithTransaction(
+        repositories.getSessionFactory(),
+        session -> {
+          TableInfoDAO tableInfoDAO =
+              session.get(TableInfoDAO.class, UUID.fromString(tableInfo.getTableId()));
+          if (tableInfoDAO == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "Table not found: " + tableInfo.getTableId());
+          }
+          PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
+              .forEach(session::remove);
+          session.flush();
+          PropertyDAO.from(accumulator.properties, tableInfoDAO.getId(), Constants.TABLE)
+              .forEach(session::persist);
+          List<ColumnInfoDAO> newColumns = ColumnInfoDAO.fromList(accumulator.columns);
+          tableInfoDAO.getColumns().clear();
+          session.flush();
+          newColumns.forEach(
+              c -> {
+                c.setId(UUID.randomUUID());
+                c.setTable(tableInfoDAO);
+              });
+          tableInfoDAO.getColumns().addAll(newColumns);
+          tableInfoDAO.setComment(accumulator.comment);
+          tableInfoDAO.setUpdatedBy(IdentityUtils.findPrincipalEmailAddress());
+          tableInfoDAO.setUpdatedAt(new Date());
+          session.merge(tableInfoDAO);
+          return null;
+        },
+        "Failed to update Delta REST table metadata",
+        false);
+  }
+
+  private NormalizedURL resolveTableOrStagingLocation(
+      String catalog, String schema, String tableRef) {
+    try {
+      return tableRepository.getStorageLocationForTableOrStagingTable(UUID.fromString(tableRef));
+    } catch (IllegalArgumentException | BaseException ignored) {
+      TableInfo tableInfo = tableRepository.getTable(catalog + "." + schema + "." + tableRef);
+      if (tableInfo.getStorageLocation() == null) {
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Table has no storage location");
+      }
+      return NormalizedURL.from(tableInfo.getStorageLocation());
+    }
+  }
+
+  private Map<String, Object> credentialsResponse(
+      NormalizedURL storageLocation, Set<CredentialContext.Privilege> privileges) {
+    try {
+      var credentials = storageCredentialVendor.vendCredential(storageLocation, privileges);
+      return convertCredentialsToResponse(storageLocation, credentials);
+    } catch (Exception e) {
+      LOGGER.warn("Could not vend credentials for {}: {}", storageLocation, e.getMessage());
+      Map<String, Object> response = new LinkedHashMap<>();
+      response.put("storage-credentials", Collections.emptyList());
+      return response;
+    }
+  }
+
+  private ArrayNode vendCredentialsArray(
+      NormalizedURL storageLocation, Set<CredentialContext.Privilege> privileges) {
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> credentials =
+        (List<Map<String, Object>>)
+            credentialsResponse(storageLocation, privileges).get("storage-credentials");
+    return MAPPER.valueToTree(credentials);
+  }
+
+  private HttpResponse noContentResponse() {
+    return HttpResponse.of(
+        ResponseHeaders.builder(HttpStatus.NO_CONTENT)
+            .addInt(HttpHeaderNames.CONTENT_LENGTH, 0)
+            .build(),
+        HttpData.empty());
+  }
+
+  private TableInfo getTableWithRetry(String fullName) {
+    BaseException lastException = null;
+    for (int attempt = 0; attempt < 20; attempt++) {
+      try {
+        return tableRepository.getTable(fullName);
+      } catch (BaseException e) {
+        if (e.getErrorCode() != ErrorCode.NOT_FOUND) {
+          throw e;
+        }
+        lastException = e;
+      }
+      try {
+        Thread.sleep(100L);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new BaseException(
+            ErrorCode.INTERNAL, "Interrupted while waiting for table visibility: " + fullName);
+      }
+    }
+    throw lastException;
+  }
+
+  private void renameTableInPlace(
+      String catalog, String schema, String sourceName, String destinationName) {
+    TableInfo sourceTable = getTableWithRetry(catalog + "." + schema + "." + sourceName);
+    TransactionManager.executeWithTransaction(
+        repositories.getSessionFactory(),
+        session -> {
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
+          TableInfoDAO destination =
+              tableRepository.findBySchemaIdAndName(session, schemaId, destinationName);
+          if (destination != null) {
+            throw new BaseException(
+                ErrorCode.TABLE_ALREADY_EXISTS,
+                "Table already exists: " + catalog + "." + schema + "." + destinationName);
+          }
+          MutationQuery query =
+              session.createMutationQuery(
+                  "UPDATE TableInfoDAO t "
+                      + "SET t.name = :destinationName, "
+                      + "t.updatedBy = :updatedBy, "
+                      + "t.updatedAt = :updatedAt "
+                      + "WHERE t.id = :tableId");
+          query.setParameter("destinationName", destinationName);
+          query.setParameter("updatedBy", IdentityUtils.findPrincipalEmailAddress());
+          query.setParameter("updatedAt", new Date());
+          query.setParameter("tableId", UUID.fromString(sourceTable.getTableId()));
+          if (query.executeUpdate() != 1) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND,
+                "Table not found: " + catalog + "." + schema + "." + sourceName);
+          }
+          return null;
+        },
+        "Failed to rename Delta REST table",
+        false);
+  }
+
+  private Long parseLongOrNull(String value) {
+    if (value == null) {
+      return null;
+    }
+    try {
+      return Long.parseLong(value);
+    } catch (NumberFormatException e) {
+      return null;
+    }
+  }
+
+  private TableCommitState getTableCommitState(TableInfo tableInfo, String fullName) {
+    Long latestTableVersion = null;
+    Long latestTimestamp = null;
+    List<Map<String, Object>> commitsList = new ArrayList<>();
+    if (tableInfo.getTableType() == TableType.MANAGED && tableInfo.getTableId() != null) {
+      try {
+        DeltaGetCommits getCommitsReq = new DeltaGetCommits();
+        getCommitsReq.setTableId(tableInfo.getTableId());
+        getCommitsReq.setStartVersion(0L);
+        DeltaGetCommitsResponse commitsResp = deltaCommitRepository.getCommits(getCommitsReq);
+        if (commitsResp != null) {
+          latestTableVersion = commitsResp.getLatestTableVersion();
+          if (commitsResp.getCommits() != null) {
+            for (var c : commitsResp.getCommits()) {
+              Map<String, Object> cm = new LinkedHashMap<>();
+              cm.put("version", c.getVersion());
+              cm.put("timestamp", c.getTimestamp());
+              cm.put("file-name", c.getFileName());
+              cm.put("file-size", c.getFileSize());
+              cm.put("file-modification-timestamp", c.getFileModificationTimestamp());
+              commitsList.add(cm);
+            }
+            if (!commitsResp.getCommits().isEmpty()) {
+              latestTimestamp = commitsResp.getCommits().get(0).getTimestamp();
+            }
+          }
+        }
+      } catch (Exception e) {
+        LOGGER.warn("Could not fetch commits for table {}: {}", fullName, e.getMessage());
+      }
+    }
+    return new TableCommitState(latestTableVersion, latestTimestamp, commitsList);
+  }
+
+  private final class TableUpdateAccumulator {
+    private final TableInfo current;
+    private final Map<String, String> properties;
+    private List<ColumnInfo> columns;
+    private String comment;
+
+    private TableUpdateAccumulator(TableInfo current) {
+      this.current = current;
+      this.properties =
+          current.getProperties() != null
+              ? new LinkedHashMap<>(current.getProperties())
+              : new LinkedHashMap<>();
+      this.columns =
+          current.getColumns() != null ? new ArrayList<>(current.getColumns()) : new ArrayList<>();
+      this.comment = current.getComment();
+    }
+
+    private List<ColumnInfo> currentColumns() {
+      return columns != null ? columns : List.of();
+    }
+
+    private boolean hasMetadataChanges() {
+      return !properties.equals(
+              current.getProperties() != null ? current.getProperties() : Collections.emptyMap())
+          || !Objects.equals(comment, current.getComment())
+          || !sameColumns(columns, current.getColumns());
+    }
+
+    private DeltaMetadata toDeltaMetadata() {
+      return new DeltaMetadata()
+          .description(comment)
+          .properties(new DeltaCommitMetadataProperties().properties(properties))
+          .schema(new ColumnInfos().columns(columns));
+    }
+  }
+
+  private static final class TableCommitState {
+    private final Long latestTableVersion;
+    private final Long latestTimestamp;
+    private final List<Map<String, Object>> commitsList;
+
+    private TableCommitState(
+        Long latestTableVersion, Long latestTimestamp, List<Map<String, Object>> commitsList) {
+      this.latestTableVersion = latestTableVersion;
+      this.latestTimestamp = latestTimestamp;
+      this.commitsList = commitsList;
+    }
+  }
 
   /** Builds a LoadTableResponse map from a UC TableInfo. */
   private Map<String, Object> buildLoadTableResponse(
@@ -860,6 +1375,27 @@ public class DeltaRestCatalogService {
     return response;
   }
 
+  private boolean sameColumns(List<ColumnInfo> left, List<ColumnInfo> right) {
+    List<ColumnInfo> lhs = left != null ? left : List.of();
+    List<ColumnInfo> rhs = right != null ? right : List.of();
+    if (lhs.size() != rhs.size()) {
+      return false;
+    }
+    for (int i = 0; i < lhs.size(); i++) {
+      ColumnInfo a = lhs.get(i);
+      ColumnInfo b = rhs.get(i);
+      if (!Objects.equals(a.getName(), b.getName())
+          || !Objects.equals(a.getTypeText(), b.getTypeText())
+          || !Objects.equals(a.getTypeJson(), b.getTypeJson())
+          || !Objects.equals(a.getNullable(), b.getNullable())
+          || !Objects.equals(a.getPartitionIndex(), b.getPartitionIndex())
+          || !Objects.equals(a.getComment(), b.getComment())) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /** Known reader-writer features (appear in both reader-features and writer-features). */
   private static final Set<String> READER_FEATURES =
       Set.of(
@@ -890,13 +1426,13 @@ public class DeltaRestCatalogService {
     if (credentials.getAwsTempCredentials() != null) {
       var aws = credentials.getAwsTempCredentials();
       if (aws.getAccessKeyId() != null) {
-        config.put("aws.access-key-id", aws.getAccessKeyId());
+        config.put("s3.access-key-id", aws.getAccessKeyId());
       }
       if (aws.getSecretAccessKey() != null) {
-        config.put("aws.secret-access-key", aws.getSecretAccessKey());
+        config.put("s3.secret-access-key", aws.getSecretAccessKey());
       }
       if (aws.getSessionToken() != null) {
-        config.put("aws.session-token", aws.getSessionToken());
+        config.put("s3.session-token", aws.getSessionToken());
       }
     }
     if (credentials.getAzureUserDelegationSas() != null) {

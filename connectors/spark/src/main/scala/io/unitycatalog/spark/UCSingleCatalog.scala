@@ -15,6 +15,8 @@ import io.unitycatalog.client.deltarest.model.{
   DeltaProtocol => DRDeltaProtocol,
   DataSourceFormat => DRDataSourceFormat,
   LoadTableResponse => DRLoadTableResponse,
+  RenameTableRequest => DRRenameTableRequest,
+  TableIdentifier => DRTableIdentifier,
   TableMetadata => DRTableMetadata
 }
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
@@ -163,6 +165,11 @@ class UCSingleCatalog
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
     newProps.put(TableCatalog.PROP_LOCATION, stagingLocation)
+    Option(stagingResponse.getRequiredProperties).foreach(_.asScala.foreach {
+      case (k, v) if v != null => newProps.put(k, String.valueOf(v))
+      case _ =>
+    })
+    applyProtocolProperties(newProps, stagingResponse.getRequiredProtocol)
     // Set the UC-assigned table ID so Delta can preserve table identity.
     newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableId)
     // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
@@ -202,6 +209,30 @@ class UCSingleCatalog
       UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     }
     newProps
+  }
+
+  private def applyProtocolProperties(
+      properties: util.Map[String, String],
+      protocol: DRDeltaProtocol): Unit = {
+    if (protocol == null) {
+      return
+    }
+    Option(protocol.getMinReaderVersion)
+      .foreach(v => properties.put("delta.minReaderVersion", v.toString))
+    Option(protocol.getMinWriterVersion)
+      .foreach(v => properties.put("delta.minWriterVersion", v.toString))
+    Option(protocol.getReaderFeatures).foreach(_.asScala.foreach { feature =>
+      properties.put(s"delta.feature.$feature", UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
+    })
+    Option(protocol.getWriterFeatures).foreach(_.asScala.foreach { feature =>
+      properties.put(s"delta.feature.$feature", UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
+      feature match {
+        case "deletionVectors" => properties.put("delta.enableDeletionVectors", "true")
+        case "inCommitTimestamp" => properties.put("delta.enableInCommitTimestamps", "true")
+        case "v2Checkpoint" => properties.put("delta.checkpointPolicy", "v2")
+        case _ =>
+      }
+    })
   }
 
   /**
@@ -357,13 +388,13 @@ class UCSingleCatalog
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    delegate.alterTable(ident, changes: _*)
   }
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
-    throw new UnsupportedOperationException("Renaming a table is not supported yet")
+    delegate.renameTable(oldIdent, newIdent)
   }
 
   override def listNamespaces(): Array[Array[String]] = {
@@ -810,11 +841,6 @@ private class UCProxy(
       col
     }.asJava
 
-    // Build protocol with default versions
-    val protocol = new DRDeltaProtocol()
-    protocol.setMinReaderVersion(1)
-    protocol.setMinWriterVersion(2)
-
     // Build CreateTableRequest using OpenAPI-generated model
     val request = new DRCreateTableRequest()
     request.setName(ident.name())
@@ -822,7 +848,7 @@ private class UCProxy(
     request.setTableType(tableType)
     request.setDataSourceFormat(convertDatasourceFormatDR(format))
     request.setColumns(deltaColumns)
-    request.setProtocol(protocol)
+    request.setProtocol(buildProtocolFromProperties(properties))
     if (partitionColNames.nonEmpty) {
       request.setPartitionColumns(partitionColNames.asJava)
     }
@@ -833,6 +859,10 @@ private class UCProxy(
       properties.asScala.view
         .filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_)).toMap
     request.setProperties(propertiesToServer.asJava)
+    extractDomainMetadata(propertiesToServer).foreach(request.setDomainMetadata)
+    parseLongProperty(propertiesToServer, "delta.lastUpdateVersion").foreach(request.setLastCommitVersion)
+    parseLongProperty(propertiesToServer, "delta.lastCommitTimestamp")
+      .foreach(request.setLastCommitTimestampMs)
 
     deltaRestTablesApi.createTable(this.name, ident.namespace().head, request)
     loadTable(ident)
@@ -925,7 +955,86 @@ private class UCProxy(
   }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
-    throw new UnsupportedOperationException("Renaming a table is not supported yet")
+    UCSingleCatalog.checkUnsupportedNestedNamespace(oldIdent.namespace())
+    UCSingleCatalog.checkUnsupportedNestedNamespace(newIdent.namespace())
+    if (oldIdent.namespace().sameElements(newIdent.namespace()) && oldIdent.name() == newIdent.name()) {
+      return
+    }
+    if (!oldIdent.namespace().sameElements(newIdent.namespace())) {
+      throw new UnsupportedOperationException(
+        "Renaming a table across schemas is not supported")
+    }
+    val request = new DRRenameTableRequest()
+    request.setSource(new DRTableIdentifier()
+      .catalog(this.name)
+      .schema(oldIdent.namespace().head)
+      .name(oldIdent.name()))
+    request.setDestination(new DRTableIdentifier().name(newIdent.name()))
+    deltaRestTablesApi.renameTable(this.name, request)
+  }
+
+  private def buildProtocolFromProperties(
+      properties: util.Map[String, String]): DRDeltaProtocol = {
+    val protocol = new DRDeltaProtocol()
+    val minReaderVersion: java.lang.Integer = Option(properties.get("delta.minReaderVersion"))
+      .flatMap(parseInt)
+      .map(java.lang.Integer.valueOf)
+      .getOrElse(java.lang.Integer.valueOf(1))
+    val minWriterVersion: java.lang.Integer = Option(properties.get("delta.minWriterVersion"))
+      .flatMap(parseInt)
+      .map(java.lang.Integer.valueOf)
+      .getOrElse(java.lang.Integer.valueOf(2))
+    protocol.setMinReaderVersion(minReaderVersion)
+    protocol.setMinWriterVersion(minWriterVersion)
+    val features = properties.asScala.collect {
+      case (k, v) if k.startsWith("delta.feature.") && v == "supported" =>
+        k.stripPrefix("delta.feature.")
+    }.toSeq.sorted
+    val readerFeatures = features.filter(isReaderFeature)
+    if (readerFeatures.nonEmpty) {
+      protocol.setReaderFeatures(readerFeatures.asJava)
+    }
+    if (features.nonEmpty) {
+      protocol.setWriterFeatures(features.asJava)
+    }
+    protocol
+  }
+
+  private def extractDomainMetadata(
+      properties: Map[String, String]): Option[util.Map[String, util.Map[String, Object]]] = {
+    val domains = new util.LinkedHashMap[String, util.Map[String, Object]]()
+    properties.get("clusteringColumns").foreach { clusteringColumns =>
+      val value = new com.fasterxml.jackson.databind.ObjectMapper()
+        .readValue(clusteringColumns, classOf[Object])
+      val clustering = new util.LinkedHashMap[String, Object]()
+      clustering.put("clusteringColumns", value)
+      domains.put("delta.clustering", clustering)
+    }
+    properties.get("delta.rowTracking.rowIdHighWaterMark").foreach { highWatermark =>
+      val rowTracking = new util.LinkedHashMap[String, Object]()
+      rowTracking.put("rowIdHighWaterMark", java.lang.Long.valueOf(highWatermark))
+      domains.put("delta.rowTracking", rowTracking)
+    }
+    Option.when(!domains.isEmpty)(domains)
+  }
+
+  private def parseLongProperty(properties: Map[String, String], key: String): Option[java.lang.Long] = {
+    properties.get(key).flatMap(v => scala.util.Try(java.lang.Long.valueOf(v)).toOption)
+  }
+
+  private def parseInt(value: String): Option[Int] = {
+    scala.util.Try(value.toInt).toOption
+  }
+
+  private def isReaderFeature(feature: String): Boolean = {
+    Set(
+      "catalogManaged",
+      "columnMapping",
+      "deletionVectors",
+      "timestampNtz",
+      "typeWidening",
+      "v2Checkpoint",
+      "vacuumProtocolCheck").contains(feature)
   }
 
   override def listNamespaces(): Array[Array[String]] = {
