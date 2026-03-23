@@ -67,6 +67,10 @@ public class SparkCredentialRenewalTest {
   // Define the CREDENTIAL_RENEWAL_TEST_RENEWAL_ENABLED environment variable.
   private static final boolean RENEW_CRED_ENABLED = envAsBoolean(PREFIX + "RENEWAL_ENABLED", true);
 
+  // Define the CREDENTIAL_RENEWAL_TEST_CRED_SCOPED_FS_ENABLED environment variable.
+  private static final boolean CRED_SCOPED_FS_ENABLED =
+      envAsBoolean(PREFIX + "CRED_SCOPED_FS_ENABLED", false);
+
   // Define the CREDENTIAL_RENEWAL_TEST_DURATION_SECONDS environment variable, which control how
   // long will the test run. 90 minutes by default.
   private static final long DURATION_SECONDS = envAsLong(PREFIX + "DURATION_SECONDS", 5400L);
@@ -116,25 +120,18 @@ public class SparkCredentialRenewalTest {
     spark = builder.getOrCreate();
 
     sql("CREATE SCHEMA IF NOT EXISTS %s.%s", CATALOG_NAME, SCHEMA_NAME);
+    sql("DROP TABLE IF EXISTS %s", srcTable(tableType));
+    sql("DROP TABLE IF EXISTS %s", dstTable(tableType));
     if (MANAGED_TABLE_TYPE.equals(tableType)) {
-      // TODO: SQL-based managed table creation is not supported yet.
-      // Until that lands, the tables must be created manually in the external Unity Catalog.
-      //
-      // Example:
-      //
-      // CREATE TABLE main.demo.managedSrcCredRenewal (id INT)
-      //   USING delta
-      //   PARTITIONED BY (partition INT)
-      //   TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported');
-      //
-      // CREATE TABLE main.demo.managedDstCredRenewal (id INT)
-      //   USING delta
-      //   TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported');
-      sql("DELETE FROM %s", srcTable(tableType));
-      sql("DELETE FROM %s", dstTable(tableType));
+      sql(
+          "CREATE TABLE %s (id INT) USING delta PARTITIONED BY (partition INT)"
+              + " TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')",
+          srcTable(tableType));
+      sql(
+          "CREATE TABLE %s (id INT) USING delta"
+              + " TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')",
+          dstTable(tableType));
     } else {
-      sql("DROP TABLE IF EXISTS %s", srcTable(tableType));
-      sql("DROP TABLE IF EXISTS %s", dstTable(tableType));
       sql(
           "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",
           srcTable(tableType), baseLocation, UUID.randomUUID());
@@ -233,10 +230,16 @@ public class SparkCredentialRenewalTest {
                     tableType,
                     baseLocation,
                     Map.of(
-                        OptionsUtil.URI, SERVER_URL,
-                        UC_PROPS_TOKEN, AUTH_TOKEN,
-                        OptionsUtil.WAREHOUSE, CATALOG_NAME,
-                        OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
+                        OptionsUtil.URI,
+                        SERVER_URL,
+                        UC_PROPS_TOKEN,
+                        AUTH_TOKEN,
+                        OptionsUtil.WAREHOUSE,
+                        CATALOG_NAME,
+                        OptionsUtil.RENEW_CREDENTIAL_ENABLED,
+                        String.valueOf(RENEW_CRED_ENABLED),
+                        OptionsUtil.CRED_SCOPED_FS_ENABLED,
+                        String.valueOf(CRED_SCOPED_FS_ENABLED))));
           }
 
           // Add the OAuth test case if specified in env vars.
@@ -246,13 +249,22 @@ public class SparkCredentialRenewalTest {
                     tableType,
                     baseLocation,
                     Map.of(
-                        OptionsUtil.URI, SERVER_URL,
-                        UC_PROPS_AUTH_TYPE, "oauth",
-                        UC_PROPS_OAUTH_URI, OAUTH_URI,
-                        UC_PROPS_OAUTH_CLIENT_ID, OAUTH_CLIENT_ID,
-                        UC_PROPS_OAUTH_CLIENT_SECRET, OAUTH_CLIENT_SECRET,
-                        OptionsUtil.WAREHOUSE, CATALOG_NAME,
-                        OptionsUtil.RENEW_CREDENTIAL_ENABLED, String.valueOf(RENEW_CRED_ENABLED))));
+                        OptionsUtil.URI,
+                        SERVER_URL,
+                        UC_PROPS_AUTH_TYPE,
+                        "oauth",
+                        UC_PROPS_OAUTH_URI,
+                        OAUTH_URI,
+                        UC_PROPS_OAUTH_CLIENT_ID,
+                        OAUTH_CLIENT_ID,
+                        UC_PROPS_OAUTH_CLIENT_SECRET,
+                        OAUTH_CLIENT_SECRET,
+                        OptionsUtil.WAREHOUSE,
+                        CATALOG_NAME,
+                        OptionsUtil.RENEW_CREDENTIAL_ENABLED,
+                        String.valueOf(RENEW_CRED_ENABLED),
+                        OptionsUtil.CRED_SCOPED_FS_ENABLED,
+                        String.valueOf(CRED_SCOPED_FS_ENABLED))));
           }
         }
       }
