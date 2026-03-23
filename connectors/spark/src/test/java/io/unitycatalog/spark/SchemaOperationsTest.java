@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.junit.jupiter.api.Test;
@@ -77,10 +78,7 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
       List<Row> schemas = sql("SHOW SCHEMAS IN %s", SPARK_CATALOG);
       assertThat(schemas).hasSize(3);
       List<String> schemaNames =
-          schemas.stream()
-              .map(row -> row.getString(0))
-              .sorted()
-              .collect(java.util.stream.Collectors.toList());
+          schemas.stream().map(row -> row.getString(0)).sorted().collect(Collectors.toList());
       assertThat(schemaNames)
           .containsExactly("pagination_schema_1", "pagination_schema_2", SCHEMA_NAME);
     } finally {
