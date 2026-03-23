@@ -122,12 +122,23 @@ public class SparkCredentialRenewalTest {
     sql("CREATE SCHEMA IF NOT EXISTS %s.%s", CATALOG_NAME, SCHEMA_NAME);
     sql("DROP TABLE IF EXISTS %s", srcTable(tableType));
     sql("DROP TABLE IF EXISTS %s", dstTable(tableType));
-    sql(
-        "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",
-        srcTable(tableType), baseLocation, UUID.randomUUID());
-    sql(
-        "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s'",
-        dstTable(tableType), baseLocation, UUID.randomUUID());
+    if (MANAGED_TABLE_TYPE.equals(tableType)) {
+      sql(
+          "CREATE TABLE %s (id INT) USING delta PARTITIONED BY (partition INT)"
+              + " TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')",
+          srcTable(tableType));
+      sql(
+          "CREATE TABLE %s (id INT) USING delta"
+              + " TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')",
+          dstTable(tableType));
+    } else {
+      sql(
+          "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",
+          srcTable(tableType), baseLocation, UUID.randomUUID());
+      sql(
+          "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s'",
+          dstTable(tableType), baseLocation, UUID.randomUUID());
+    }
   }
 
   @AfterEach
