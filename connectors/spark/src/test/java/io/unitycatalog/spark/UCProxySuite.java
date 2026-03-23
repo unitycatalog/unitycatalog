@@ -31,7 +31,16 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** Tests that UCProxy correctly paginates through listTables and listNamespaces responses. */
+/**
+ * Unit tests for UCProxy pagination using mocked API responses.
+ *
+ * <p>UCProxy is a private Scala class, so Java cannot instantiate it directly. We use reflection
+ * with dynamic arg resolution to handle constructor changes across branches.
+ *
+ * <p>End-to-end integration tests that exercise pagination through UCSingleCatalog and a real UC
+ * server are in {@link BaseTableReadWriteTest#testListTablesPagination} and {@link
+ * SchemaOperationsTest#testListSchemasPagination}.
+ */
 public class UCProxySuite {
 
   private static final String CATALOG_NAME = "test_catalog";
@@ -51,7 +60,9 @@ public class UCProxySuite {
     TokenProvider mockTokenProvider = mock(TokenProvider.class);
     TemporaryCredentialsApi mockTempCredApi = mock(TemporaryCredentialsApi.class);
 
-    // Build constructor args dynamically to handle evolving UCProxy constructor
+    // UCProxy is a private Scala class — Java cannot call `new UCProxy(...)` directly.
+    // We use reflection with dynamic arg resolution so the test adapts when the
+    // constructor gains or loses boolean flags across branches.
     Map<Class<?>, Object> argsByType = new HashMap<>();
     argsByType.put(URI.class, new URI("http://localhost:8080"));
     argsByType.put(TokenProvider.class, mockTokenProvider);
@@ -103,8 +114,8 @@ public class UCProxySuite {
     Identifier[] result = proxy.listTables(NAMESPACE);
 
     assertThat(result).hasSize(2);
-    assertThat(result[0].name()).isEqualTo("table1");
-    assertThat(result[1].name()).isEqualTo("table2");
+    assertThat(result[0]).isEqualTo(Identifier.of(NAMESPACE, "table1"));
+    assertThat(result[1]).isEqualTo(Identifier.of(NAMESPACE, "table2"));
   }
 
   @Test
@@ -126,9 +137,9 @@ public class UCProxySuite {
     Identifier[] result = proxy.listTables(NAMESPACE);
 
     assertThat(result).hasSize(3);
-    assertThat(result[0].name()).isEqualTo("table1");
-    assertThat(result[1].name()).isEqualTo("table2");
-    assertThat(result[2].name()).isEqualTo("table3");
+    assertThat(result[0]).isEqualTo(Identifier.of(NAMESPACE, "table1"));
+    assertThat(result[1]).isEqualTo(Identifier.of(NAMESPACE, "table2"));
+    assertThat(result[2]).isEqualTo(Identifier.of(NAMESPACE, "table3"));
 
     verify(mockTablesApi).listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull());
     verify(mockTablesApi).listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1"));
@@ -144,6 +155,19 @@ public class UCProxySuite {
     Identifier[] result = proxy.listTables(NAMESPACE);
 
     assertThat(result).isEmpty();
+  }
+
+  @Test
+  public void testListTablesEmptyStringPageTokenStopsPagination() throws Exception {
+    ListTablesResponse response =
+        new ListTablesResponse().tables(List.of(new TableInfo().name("table1"))).nextPageToken("");
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    Identifier[] result = proxy.listTables(NAMESPACE);
+
+    assertThat(result).hasSize(1);
+    assertThat(result[0]).isEqualTo(Identifier.of(NAMESPACE, "table1"));
   }
 
   // -- listNamespaces tests --
@@ -186,5 +210,19 @@ public class UCProxySuite {
 
     verify(mockSchemasApi).listSchemas(eq(CATALOG_NAME), eq(0), isNull());
     verify(mockSchemasApi).listSchemas(eq(CATALOG_NAME), eq(0), eq("token1"));
+  }
+
+  @Test
+  public void testListNamespacesEmptyStringPageTokenStopsPagination() throws Exception {
+    ListSchemasResponse response =
+        new ListSchemasResponse()
+            .schemas(List.of(new SchemaInfo().name("schema1")))
+            .nextPageToken("");
+    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(response);
+
+    String[][] result = proxyNs.listNamespaces();
+
+    assertThat(result).hasNumberOfRows(1);
+    assertThat(result[0]).containsExactly("schema1");
   }
 }
