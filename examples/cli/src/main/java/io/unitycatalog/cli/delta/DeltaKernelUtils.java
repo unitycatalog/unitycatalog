@@ -14,6 +14,7 @@ import io.delta.kernel.types.BasePrimitiveType;
 import io.delta.kernel.types.DataType;
 import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.StructType;
+import io.delta.kernel.types.VariantType;
 import io.delta.kernel.unitycatalog.UCCatalogManagedClient;
 import io.delta.kernel.unitycatalog.UnityCatalogUtils;
 import io.delta.kernel.utils.CloseableIterable;
@@ -244,6 +245,9 @@ public class DeltaKernelUtils {
       case "BINARY":
       case "DECIMAL":
         dataType = BasePrimitiveType.createPrimitive(typeText.toLowerCase(Locale.ROOT));
+        break;
+      case "VARIANT":
+        dataType = VariantType.VARIANT;
         break;
       default:
         throw new IllegalArgumentException("Unsupported basic data type: " + typeText);

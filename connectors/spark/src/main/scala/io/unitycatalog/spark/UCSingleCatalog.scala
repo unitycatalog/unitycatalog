@@ -773,6 +773,7 @@ private class UCProxy(
       case _: MapType => ColumnTypeName.MAP
       case _: NullType => ColumnTypeName.NULL
       case _: UserDefinedType[_] => ColumnTypeName.USER_DEFINED_TYPE
+      case _: VariantType => ColumnTypeName.VARIANT
       case _ => ColumnTypeName.UNKNOWN_DEFAULT_OPEN_API
     }
   }
