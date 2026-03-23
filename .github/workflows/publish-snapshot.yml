@@ -5,9 +5,11 @@
 #   - Manually: via the "Run workflow" button in the Actions tab, or:
 #       gh workflow run publish-snapshot.yml -f branches='["main"]'
 #
-# Required GitHub secrets (Settings → Secrets and variables → Actions):
-#   SONATYPE_USERNAME - Sonatype Central username
-#   SONATYPE_PASSWORD - Sonatype Central password or user token
+# Required GitHub environment (Settings → Environments → sonatype-publish):
+#   - Deployment branches: restricted to "main" (enforced server-side by GitHub)
+#   - Secrets:
+#     SONATYPE_USERNAME - Sonatype Central username
+#     SONATYPE_PASSWORD - Sonatype Central password or user token
 #
 # Published artifacts land at:
 #   https://central.sonatype.com/repository/maven-snapshots/io/unitycatalog/
