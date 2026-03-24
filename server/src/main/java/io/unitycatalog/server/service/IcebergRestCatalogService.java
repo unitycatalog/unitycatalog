@@ -11,14 +11,17 @@ import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
+import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +65,7 @@ public class IcebergRestCatalogService {
   private final MetadataService metadataService;
   private final TableRepository tableRepository;
   private final SessionFactory sessionFactory;
+  private final ServerProperties serverProperties;
 
   public IcebergRestCatalogService(
       CatalogService catalogService,
@@ -69,7 +73,8 @@ public class IcebergRestCatalogService {
       TableService tableService,
       TableConfigService tableConfigService,
       MetadataService metadataService,
-      Repositories repositories) {
+      Repositories repositories,
+      ServerProperties serverProperties) {
     this.catalogService = catalogService;
     this.schemaService = schemaService;
     this.tableService = tableService;
@@ -77,6 +82,7 @@ public class IcebergRestCatalogService {
     this.metadataService = metadataService;
     this.tableRepository = repositories.getTableRepository();
     this.sessionFactory = repositories.getSessionFactory();
+    this.serverProperties = serverProperties;
   }
 
   // Config APIs
@@ -148,13 +154,17 @@ public class IcebergRestCatalogService {
       @Param("table") String table) {
     try (Session session = sessionFactory.openSession()) {
       tableRepository.getTable(catalog + "." + namespace + "." + table);
-      String metadataLocation =
-          tableRepository.getTableUniformMetadataLocation(session, catalog, namespace, table);
-      if (metadataLocation == null) {
-        throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
-      } else {
+      TableInfoDAO dao = tableRepository.getTableDAO(session, catalog, namespace, table);
+      String metadataLocation = dao.getUniformIcebergMetadataLocation();
+
+      if (metadataLocation == null && isIcebergAutoResolvable(dao)) {
         return HttpResponse.of(HttpStatus.OK);
       }
+
+      if (metadataLocation == null) {
+        throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
+      }
+      return HttpResponse.of(HttpStatus.OK);
     }
   }
 
@@ -167,8 +177,12 @@ public class IcebergRestCatalogService {
     String metadataLocation;
     try (Session session = sessionFactory.openSession()) {
       tableRepository.getTable(catalog + "." + namespace + "." + table);
-      metadataLocation =
-          tableRepository.getTableUniformMetadataLocation(session, catalog, namespace, table);
+      TableInfoDAO dao = tableRepository.getTableDAO(session, catalog, namespace, table);
+      metadataLocation = dao.getUniformIcebergMetadataLocation();
+
+      if (metadataLocation == null && isIcebergAutoResolvable(dao)) {
+        metadataLocation = metadataService.resolveMetadataLocationFromStorage(dao.getUrl());
+      }
     }
 
     if (metadataLocation == null) {
@@ -230,7 +244,12 @@ public class IcebergRestCatalogService {
                     String metadataLocation =
                         tableRepository.getTableUniformMetadataLocation(
                             session, catalog, namespace, tableInfo.getName());
-                    return metadataLocation != null;
+                    if (metadataLocation != null) {
+                      return true;
+                    }
+                    return serverProperties.isIcebergAutoResolveEnabled()
+                        && tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG
+                        && tableInfo.getStorageLocation() != null;
                   })
               .map(
                   tableInfo ->
@@ -242,5 +261,11 @@ public class IcebergRestCatalogService {
     return org.apache.iceberg.rest.responses.ListTablesResponse.builder()
         .addAll(filteredTables)
         .build();
+  }
+
+  private boolean isIcebergAutoResolvable(TableInfoDAO dao) {
+    return serverProperties.isIcebergAutoResolveEnabled()
+        && "ICEBERG".equals(dao.getDataSourceFormat())
+        && dao.getUrl() != null;
   }
 }

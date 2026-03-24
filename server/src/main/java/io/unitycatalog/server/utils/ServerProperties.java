@@ -197,6 +197,16 @@ public class ServerProperties {
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false", BOOLEAN_VALIDATOR),
+    ICEBERG_AUTO_RESOLVE_ENABLED("server.iceberg-auto-resolve.enabled", "false", BOOLEAN_VALIDATOR),
+    ICEBERG_METADATA_FOLDER(
+        "server.iceberg-auto-resolve.metadata-folder",
+        "metadata", NOOP_VALIDATOR),
+    ICEBERG_VERSION_HINT_FILENAME(
+        "server.iceberg-auto-resolve.version-hint-filename",
+        "version-hint.text", NOOP_VALIDATOR),
+    ICEBERG_METADATA_FILE_PATTERN(
+        "server.iceberg-auto-resolve.metadata-file-pattern",
+        "v%d.metadata.json", NOOP_VALIDATOR),
     // `storage-root.*` are replaced by managed storage locations of catalog and schema.
     MODEL_STORAGE_ROOT("storage-root.models", STORAGE_PATH_VALIDATOR), // Deprecated
     TABLE_STORAGE_ROOT("storage-root.tables", STORAGE_PATH_VALIDATOR), // Deprecated
@@ -446,6 +456,10 @@ public class ServerProperties {
           "MANAGED table is an experimental feature and is currently disabled. "
               + "To enable it, set 'server.managed-table.enabled=true' in server.properties");
     }
+  }
+
+  public boolean isIcebergAutoResolveEnabled() {
+    return isTrueOrEnable(get(Property.ICEBERG_AUTO_RESOLVE_ENABLED));
   }
 
   /**

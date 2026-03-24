@@ -163,6 +163,11 @@ public class TableRepository {
     return dao.getUniformIcebergMetadataLocation();
   }
 
+  public TableInfoDAO getTableDAO(
+      Session session, String catalogName, String schemaName, String tableName) {
+    return findTable(session, catalogName, schemaName, tableName);
+  }
+
   private TableInfoDAO findTable(
       Session session, String catalogName, String schemaName, String tableName) {
     UUID schemaId =

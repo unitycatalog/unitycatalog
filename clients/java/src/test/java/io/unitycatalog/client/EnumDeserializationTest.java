@@ -55,8 +55,7 @@ public class EnumDeserializationTest {
   @Test
   public void testDataSourceFormatUnknownValueDeserialization() {
     // Test that an unknown DataSourceFormat value deserializes to UNKNOWN
-    // Using ICEBERG as an example of a format not in the current API spec
-    String unknownFormat = "\"ICEBERG\"";
+    String unknownFormat = "\"CUSTOM_FORMAT\"";
     assertThatCode(
             () -> {
               DataSourceFormat format =
@@ -64,6 +63,20 @@ public class EnumDeserializationTest {
               assertThat(format).isNotNull();
               assertThat(format).isEqualTo(DataSourceFormat.UNKNOWN_DEFAULT_OPEN_API);
               assertThat(format.toString()).isEqualTo("unknown_default_open_api");
+            })
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void testIcebergDataSourceFormatDeserialization() {
+    String icebergFormat = "\"ICEBERG\"";
+    assertThatCode(
+            () -> {
+              DataSourceFormat format =
+                  objectMapper.readValue(icebergFormat, DataSourceFormat.class);
+              assertThat(format).isNotNull();
+              assertThat(format).isEqualTo(DataSourceFormat.ICEBERG);
+              assertThat(format.toString()).isEqualTo("ICEBERG");
             })
         .doesNotThrowAnyException();
   }
@@ -194,7 +207,7 @@ public class EnumDeserializationTest {
             + "\"table_type\": \"TEMPORARY_VIEW\","
             + "\"catalog_name\": \"main\","
             + "\"schema_name\": \"default\","
-            + "\"data_source_format\": \"ICEBERG\","
+            + "\"data_source_format\": \"CUSTOM_FORMAT\","
             + "\"created_at\": 1234567890"
             + "}";
 

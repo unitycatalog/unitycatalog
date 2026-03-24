@@ -266,8 +266,10 @@ public class UnityCatalogServer {
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
+    FileIOFactory fileIOFactory =
+        new FileIOFactory(storageCredentialVendor, serverProperties);
     MetadataService metadataService =
-        new MetadataService(new FileIOFactory(storageCredentialVendor, serverProperties));
+        new MetadataService(fileIOFactory, serverProperties);
     TableConfigService tableConfigService =
         new TableConfigService(storageCredentialVendor, serverProperties);
 
@@ -279,7 +281,8 @@ public class UnityCatalogServer {
             tableService,
             tableConfigService,
             metadataService,
-            repositories),
+            repositories,
+            serverProperties),
         icebergRequestConverter,
         icebergResponseConverter);
   }
