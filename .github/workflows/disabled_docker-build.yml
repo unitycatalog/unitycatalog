@@ -22,6 +22,7 @@ env:
 
 jobs:
   build-and-push:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
 
     steps:
