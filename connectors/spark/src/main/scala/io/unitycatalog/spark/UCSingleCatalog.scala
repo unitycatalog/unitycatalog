@@ -199,6 +199,36 @@ object UCSingleCatalog {
       Map.empty
     }
   }
+
+  def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
+    if (namespace.length > 1) {
+      throw new ApiException("Nested namespaces are not supported: " + namespace.mkString("."))
+    }
+  }
+
+  /**
+   * Constructs a fully qualified table name for Unity Catalog API calls.
+   *
+   * This method creates a three-part name in the format `catalog.schema.table` by combining
+   * the catalog name with the schema name (from the identifier's namespace) and table name.
+   * It is NOT backtick quoted like what is usually used in SQL statements even if the names have
+   * special characters like hyphens.
+   *
+   * Example:
+   * catalogName=catalog, ident=(schema, table): it returns "catalog.schema.table"
+   * catalogName=cata-log, ident=(sche-ma, ta-ble): it returns "cata-log.sche-ma.ta-ble" (no quote)
+   * catalogName=catalog, ident=((schema1, schema2), table): it throws
+   *   ApiException(Nested namespace not supported)
+   *
+   * @param catalogName the name of the catalog
+   * @param ident the table identifier containing the namespace (schema) and table name
+   * @return a fully qualified table name in the format "catalog.schema.table"
+   * @throws ApiException if the identifier contains nested namespaces (more than one level)
+   */
+  def fullTableNameForApi(catalogName: String, ident: Identifier): String = {
+    checkUnsupportedNestedNamespace(ident.namespace())
+    Seq(catalogName, ident.namespace()(0), ident.name()).mkString(".")
+  }
 }
 
 // An internal proxy to talk to the UC client.
@@ -221,7 +251,7 @@ private class UCProxy(
   }
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
-    checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
 
     val catalogName = this.name
     val schemaName = namespace.head
@@ -234,7 +264,7 @@ private class UCProxy(
 
   override def loadTable(ident: Identifier): Table = {
     val t = try {
-      tablesApi.getTable(name + "." + ident.toString)
+      tablesApi.getTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchTableException(ident)
@@ -295,7 +325,7 @@ private class UCProxy(
   }
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
-    checkUnsupportedNestedNamespace(ident.namespace())
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     assert(properties.get("provider") != null)
 
     val createTable = new CreateTable()
@@ -369,19 +399,11 @@ private class UCProxy(
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
 
   override def dropTable(ident: Identifier): Boolean = {
-    checkUnsupportedNestedNamespace(ident.namespace())
-    val ret =
-      tablesApi.deleteTable(Seq(this.name, ident.namespace()(0), ident.name()).mkString("."))
+    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
     if (ret == 200) true else false
   }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
-
-  private def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
-    if (namespace.length > 1) {
-      throw new ApiException("Nested namespaces are not supported:  " + namespace.mkString("."))
-    }
-  }
 
   override def listNamespaces(): Array[Array[String]] = {
     schemasApi.listSchemas(name, 0, null).getSchemas.asScala.map { schema =>
@@ -394,7 +416,7 @@ private class UCProxy(
   }
 
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
-    checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     val schema = try {
       schemasApi.getSchema(name + "." + namespace(0))
     } catch {
@@ -416,7 +438,7 @@ private class UCProxy(
   }
 
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
-    checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     val createSchema = new CreateSchema()
     createSchema.setCatalogName(this.name)
     createSchema.setName(namespace.head)
@@ -427,7 +449,7 @@ private class UCProxy(
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
-    checkUnsupportedNestedNamespace(namespace)
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     schemasApi.deleteSchema(name + "." + namespace.head, cascade)
     true
   }
