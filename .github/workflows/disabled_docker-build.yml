@@ -37,6 +37,7 @@ env:
 jobs:
   docker-cli-test:
     name: Docker CLI Sanity Check
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
 
     steps:
@@ -63,6 +64,7 @@ jobs:
 
   build-and-push:
     needs: docker-cli-test
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
 
     steps:
