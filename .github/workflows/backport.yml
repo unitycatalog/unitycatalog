@@ -46,7 +46,17 @@ jobs:
     # https://github.com/backport-action bot user (user id: 97796249). Note that if you use your
     # own PAT as `github_token`, that you should replace this id with yours.
     # https://github.com/korthout/backport-action for more details.
-    if: false  # Disabled to prevent supply chain attacks
+    if: false  # Disabled to prevent supply chain attacks; re-enable the block below to restore
+    # if: >
+    #   (
+    #     github.event_name == 'pull_request_target' &&
+    #     github.event.pull_request.merged
+    #   ) || (
+    #     github.event_name == 'issue_comment' &&
+    #     github.event.issue.pull_request &&
+    #     github.event.comment.user.id != 97796249 &&
+    #     startsWith(github.event.comment.body, '/backport')
+    #   )
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

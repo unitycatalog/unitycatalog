@@ -34,7 +34,8 @@ jobs:
     # Guard: only publish from the official repository, never from forks.
     # This prevents snapshot publishes even if workflow_dispatch is triggered
     # on a fork that has the secrets configured.
-    if: false  # Disabled to prevent supply chain attacks
+    if: false  # Disabled to prevent supply chain attacks; re-enable the line below to restore
+    # if: github.repository == 'unitycatalog/unitycatalog'
     runs-on: ubuntu-latest
     # The environment restricts secret injection to allowed branches (e.g. main)
     # server-side. This prevents a workflow_dispatch on a rogue branch from

@@ -12,7 +12,8 @@ permissions:
 jobs:
   auto-assign:
     runs-on: ubuntu-latest
-    if: false  # Disabled to prevent supply chain attacks
+    if: false  # Disabled to prevent supply chain attacks; re-enable the line below to restore
+    # if: (!github.event.issue.pull_request) && github.event.comment.body == 'take'
     concurrency:
       # Only run one a time per user
       group: ${{ github.actor }}-auto-assign-issue
