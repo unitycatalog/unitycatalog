@@ -46,10 +46,15 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   protected SparkSession createSparkSessionWithCatalogs(String... catalogs) {
-    return createSparkSessionWithCatalogs(false, catalogs);
+    return createSparkSessionWithCatalogs(false, false, catalogs);
   }
 
   protected SparkSession createSparkSessionWithCatalogs(boolean renewCred, String... catalogs) {
+    return createSparkSessionWithCatalogs(renewCred, false, catalogs);
+  }
+
+  protected SparkSession createSparkSessionWithCatalogs(
+      boolean renewCred, boolean credScopedFsEnabled, String... catalogs) {
     SparkSession.Builder builder =
         SparkSession.builder()
             .appName("test")
@@ -64,15 +69,16 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
               .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
               .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
               .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
-              .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred);
+              .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred)
+              .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFsEnabled);
       if (!List.of(SPARK_CATALOG, CATALOG_NAME).contains(catalog)) {
         createTestCatalog(catalog);
       }
     }
     // Use fake file system for cloud storage so that we can test credentials.
-    builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());
-    builder.config("fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
-    builder.config("fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
+    builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
+    builder.config("spark.hadoop.fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
+    builder.config("spark.hadoop.fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
     return builder.getOrCreate();
   }
 

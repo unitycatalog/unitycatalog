@@ -11,6 +11,7 @@ import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.time.Instant;
 import java.util.List;
@@ -34,6 +35,29 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
+
+  protected enum TableDdlMode {
+    CREATE("CREATE", false),
+    REPLACE_EXISTING("REPLACE", true),
+    CREATE_OR_REPLACE_EXISTING("CREATE OR REPLACE", true),
+    CREATE_OR_REPLACE_MISSING("CREATE OR REPLACE", false);
+
+    private final String sql;
+    private final boolean withExistingTable;
+
+    TableDdlMode(String sql, boolean withExistingTable) {
+      this.sql = sql;
+      this.withExistingTable = withExistingTable;
+    }
+
+    public String sql() {
+      return sql;
+    }
+
+    public boolean withExistingTable() {
+      return withExistingTable;
+    }
+  }
 
   protected static final String TEST_TABLE = "test_table";
   protected TableOperations tableOperations;
@@ -71,7 +95,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     private List<String> partitionColumns = List.of();
     @With private Optional<Pair<Integer, String>> asSelect = Optional.empty();
     private Optional<String> comment = Optional.empty();
-    private boolean replaceTable = false;
+    private Optional<String> expectedTableId = Optional.empty();
+    private TableDdlMode ddlMode = TableDdlMode.CREATE;
 
     public TableSetupOptions setCatalogName(String name) {
       catalogName = quoteEntityName(name);
@@ -134,7 +159,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     }
 
     public String ddlCommand() {
-      return replaceTable ? "REPLACE" : "CREATE";
+      return ddlMode.sql();
     }
 
     public String createManagedTableSql() {
@@ -225,8 +250,49 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
   protected final boolean canUpdateColumnsToUC() {
     // DELTA tables can't update columns to UC yet.
-    return !tableFormat().equalsIgnoreCase("DELTA") || DeltaVersionUtils.isDeltaAtLeast("4.1.1");
+    return !tableFormat().equalsIgnoreCase("DELTA") || DeltaVersionUtils.isDeltaAtLeast("4.2.0");
   }
+
+  protected List<TableDdlMode> supportedTableDdlModes() {
+    return List.of(TableDdlMode.CREATE);
+  }
+
+  protected List<String> supportedCatalogNames() {
+    return List.of(SPARK_CATALOG, CATALOG_NAME);
+  }
+
+  protected List<String> sessionCatalogNames() {
+    return List.of(SPARK_CATALOG, CATALOG_NAME);
+  }
+
+  protected void prepareExistingTableForDdl(TableSetupOptions options) {
+    throw new UnsupportedOperationException("Existing-table DDL setup is not supported");
+  }
+
+  protected void validateCreatedTable(String fullTableName, TableSetupOptions options)
+      throws ApiException {}
+
+  protected String qualifiedTableName(String catalogName, String tableName) {
+    return String.join(".", catalogName, SCHEMA_NAME, tableName);
+  }
+
+  /**
+   * Returns the expected failure messages for a table setup attempt.
+   *
+   * @return {@code null} if success is expected, an empty list to expect any failure without
+   *     checking the message, or a non-empty list to expect a failure whose message contains at
+   *     least one of the strings.
+   */
+  protected List<String> expectedCreateFailureMessages(TableSetupOptions options) {
+    // Non-Delta tables only support plain CREATE TABLE.
+    if (!testingDelta()
+        && (options.getDdlMode() != TableDdlMode.CREATE || options.getAsSelect().isPresent())) {
+      return List.of();
+    }
+    return null;
+  }
+
+  protected void initializeSessionForTableTests() {}
 
   /**
    * This test creates table in different ways:
@@ -241,44 +307,50 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
    * For all the 16 (2^4) tables it does a simple read and write test to make sure they all work.
    */
   @Test
-  public void testTableCreateReadWrite() {
+  public void testTableCreateReadWrite() throws ApiException {
     // Test both `spark_catalog` and other catalog names.
-    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    session = createSparkSessionWithCatalogs(sessionCatalogNames().toArray(new String[0]));
+    initializeSessionForTableTests();
 
     int tableNameCounter = 0;
-    for (String catalogName : List.of(SPARK_CATALOG, CATALOG_NAME)) {
+    for (String catalogName : supportedCatalogNames()) {
       for (boolean withPartitionColumns : List.of(true, false)) {
         for (boolean withCtas : List.of(true, false)) {
-          for (boolean replaceTable : List.of(true, false)) {
+          for (TableDdlMode ddlMode : supportedTableDdlModes()) {
             String tableName = TEST_TABLE + tableNameCounter;
             tableNameCounter++;
-            if (replaceTable) {
-              if (withCtas && !testingDelta()) {
-                // "REPLACE TABLE AS SELECT" is only supported for Delta.
-                continue;
-              }
-              // First, create a different table to replace.
-              sql(
-                  "CREATE TABLE %s.%s.%s (col1 DOUBLE) USING DELTA %s",
-                  catalogName, SCHEMA_NAME, tableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE);
-              sql("INSERT INTO %s.%s.%s (col1) VALUES (0.1)", catalogName, SCHEMA_NAME, tableName);
-            }
             TableSetupOptions options =
                 new TableSetupOptions()
                     .setCatalogName(catalogName)
                     .setTableName(tableName)
-                    .setReplaceTable(replaceTable);
+                    .setDdlMode(ddlMode);
             if (withPartitionColumns) {
               options.setPartitionColumn("s");
             }
             if (withCtas) {
               options.setAsSelect(1, "a");
             }
+            List<String> expectedFailureMessages = expectedCreateFailureMessages(options);
+            if (ddlMode.withExistingTable()) {
+              prepareExistingTableForDdl(options);
+              options.setExpectedTableId(
+                  Optional.of(
+                      tableOperations
+                          .getTable(qualifiedTableName(catalogName, tableName))
+                          .getTableId()));
+            }
 
-            // TODO: Enable REPLACE TABLE once it is supported.
-            // CTAS is only supported for Delta format.
-            if (replaceTable || (withCtas && !testingDelta())) {
-              assertThatThrownBy(() -> setupTable(options));
+            if (expectedFailureMessages != null) {
+              if (expectedFailureMessages.isEmpty()) {
+                assertThatThrownBy(() -> setupTable(options));
+              } else {
+                List<String> expected = expectedFailureMessages;
+                assertThatThrownBy(() -> setupTable(options))
+                    .satisfies(
+                        t ->
+                            assertThat(t.getMessage())
+                                .containsAnyOf(expected.toArray(new CharSequence[0])));
+              }
               continue;
             }
 
@@ -288,6 +360,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             } else {
               testTableReadWrite(t1);
             }
+            validateCreatedTable(t1, options);
           }
         }
       }
@@ -357,8 +430,11 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
   @ParameterizedTest
   @MethodSource("cloudParameters")
-  public void testTableOperations(String scheme, boolean renewCredEnabled) {
-    session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
+  public void testTableOperations(
+      String scheme, boolean renewCredEnabled, boolean credScopedFsEnabled) {
+    session =
+        createSparkSessionWithCatalogs(
+            renewCredEnabled, credScopedFsEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     // t1 has (1, 'a')
     String t1 = setupTable(scheme, SPARK_CATALOG, TEST_TABLE);
@@ -408,6 +484,31 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     assertThatThrownBy(() -> sql("DROP TABLE a.b.c.d"))
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("Nested namespaces are not supported");
+  }
+
+  // With page size 2 and 3 tables, pagination must occur (2 API calls) for all 3 to be returned.
+  // Asserting all 3 names proves pagination worked end-to-end.
+  @Test
+  public void testListTablesPagination() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    Integer originalPageSize = PagedListingHelper.DEFAULT_PAGE_SIZE;
+    try {
+      PagedListingHelper.DEFAULT_PAGE_SIZE = 2;
+      setupTable(SPARK_CATALOG, "pagination_table_1");
+      setupTable(SPARK_CATALOG, "pagination_table_2");
+      setupTable(SPARK_CATALOG, "pagination_table_3");
+      List<Row> tables = sql("SHOW TABLES in %s.%s", SPARK_CATALOG, SCHEMA_NAME);
+      assertThat(tables).hasSize(3);
+      List<String> tableNames =
+          tables.stream().map(row -> row.getString(1)).sorted().collect(Collectors.toList());
+      assertThat(tableNames)
+          .containsExactly("pagination_table_1", "pagination_table_2", "pagination_table_3");
+    } finally {
+      PagedListingHelper.DEFAULT_PAGE_SIZE = originalPageSize;
+      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_1", SPARK_CATALOG, SCHEMA_NAME);
+      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_2", SPARK_CATALOG, SCHEMA_NAME);
+      sql("DROP TABLE IF EXISTS %s.%s.pagination_table_3", SPARK_CATALOG, SCHEMA_NAME);
+    }
   }
 
   /**
@@ -618,7 +719,15 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "[42,test]",
                 ColumnTypeName.STRUCT,
                 "struct<a:int,b:string>",
-                structJson));
+                structJson),
+            new ColSpec(
+                "col_variant",
+                "VARIANT",
+                "parse_json('1')",
+                "1",
+                ColumnTypeName.VARIANT,
+                "variant",
+                "\"variant\""));
 
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String tableName = TEST_TABLE + "_complex_type";

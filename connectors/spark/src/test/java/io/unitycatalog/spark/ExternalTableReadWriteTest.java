@@ -35,16 +35,19 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
    * This function provides a set of test parameters that cloud-aware tests should run for this
    * class.
    *
-   * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled)
+   * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled, boolean
+   *     credScopedFsEnabled)
    */
   protected static Stream<Arguments> cloudParameters() {
     return Stream.of(
-        Arguments.of("file", false),
-        Arguments.of("s3", false),
-        Arguments.of("s3", true),
-        Arguments.of("gs", false),
-        Arguments.of("abfs", false),
-        Arguments.of("abfs", true));
+        Arguments.of("file", false, false),
+        Arguments.of("s3", false, false),
+        Arguments.of("s3", true, false),
+        Arguments.of("s3", false, true),
+        Arguments.of("gs", false, false),
+        Arguments.of("abfs", false, false),
+        Arguments.of("abfs", true, false),
+        Arguments.of("abfs", false, true));
   }
 
   @Test
