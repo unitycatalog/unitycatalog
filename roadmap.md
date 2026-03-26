@@ -13,6 +13,14 @@ were introduced as `experimental` in the 0.4 release.
 moving to non-experimental. 
 * In addition, we'll be providing Uniform support with this release.
 
+### Metric Views
+
+Metric views provide a centralized way to define and manage consistent, reusable, and governed core business metrics. 
+This will enable Unity Catalog to abstract your complex business logic into centralized definitions, enabling 
+you to have a single source of metric truth for your key performance indicators.
+
+* This release will provide an experimental preview of this new capability.
+
 ### Authentication
 Modular authentication will allow you to reuse your existing auth to secure Unity Catalog.
 
@@ -507,6 +515,16 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td align="center">🛠️</td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+  </tr>
+
+  <tr>
+    <td rowspan="1">Metric views</td>
+    <td>API + Server</td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td align="center">🛠️</td>
   </tr>
   
   <tr>
