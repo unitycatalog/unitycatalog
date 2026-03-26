@@ -68,7 +68,7 @@ public class ResultFilter {
   private final Map<SecurableType, UUID> resourceIds;
   private final Map<String, Object> nonResourceValues;
   private final KeyMapper keyMapper;
-  private boolean called = false;
+  private volatile boolean called = false;
 
   public ResultFilter(
       UnityAccessEvaluator evaluator,

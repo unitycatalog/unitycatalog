@@ -5,6 +5,8 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.auth.decorator.ResultFilter;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
@@ -99,6 +101,11 @@ public abstract class AuthorizedService {
     if (serverProperties.isAuthorizationEnabled()) {
       ResultFilter resultFilter =
           ServiceRequestContext.current().attr(UnityAccessDecorator.RESULT_FILTER_ATTR);
+      if (resultFilter == null) {
+        throw new BaseException(
+            ErrorCode.INTERNAL,
+            "Authorization filter not initialized — ensure the request goes through UnityAccessDecorator.");
+      }
       resultFilter.filter(securableType, items);
     }
   }

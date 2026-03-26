@@ -31,6 +31,7 @@ import io.unitycatalog.control.model.OAuthTokenExchangeInfo;
 import io.unitycatalog.control.model.TokenEndpointExtensionType;
 import io.unitycatalog.control.model.TokenType;
 import io.unitycatalog.control.model.User;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
@@ -213,6 +214,7 @@ public class AuthService {
   }
 
   @Post("/logout")
+  @AuthorizeExpression("#principal != null")
   public HttpResponse logout(HttpRequest request) {
     return request.headers().cookies().stream()
         .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))

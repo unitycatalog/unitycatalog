@@ -107,16 +107,9 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     if (expression == null) {
       throw new RuntimeException("No authorization expression found.");
     }
-    if (!locators.isEmpty()) {
-      UUID principal = userRepository.findPrincipalId();
-      return authorizeByRequest(
-          delegate, ctx, method, req, principal, locators, expression, filterAnnotation);
-    } else {
-      LOGGER.warn("No authorization resource(s) found.");
-      // going to assume the expression is just #deny or #permit
-    }
-
-    return delegate.serve(ctx, req);
+    UUID principal = userRepository.findPrincipalId();
+    return authorizeByRequest(
+        delegate, ctx, method, req, principal, locators, expression, filterAnnotation);
   }
 
   private HttpResponse authorizeByRequest(
@@ -167,7 +160,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     AbstractEvaluationAction evaluateAction =
         filterAnnotation
             .<AbstractEvaluationAction>map(x -> new ResultFilterAction(ctx, method))
-            .orElseGet(() -> new RequestEvaluationAction(method));
+            .orElseGet(RequestEvaluationAction::new);
 
     if (payloadLocators.isEmpty()) {
       Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
@@ -216,57 +209,22 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   }
 
   private abstract static class AbstractEvaluationAction {
-    private boolean beforeRequestWasCalled = false;
-    protected Method method;
     protected static final String ERR_AUTH_NOT_EXECUTED =
         "Authorization required but failed to execute";
 
-    AbstractEvaluationAction(Method method) {
-      this.method = method;
-    }
-
-    void beforeRequest(
-        UUID principal,
-        String expression,
-        Map<SecurableType, UUID> resourceIds,
-        Map<String, Object> nonResourceValues) {
-      beforeRequestWasCalled = true;
-      evaluateBeforeRequest(principal, expression, resourceIds, nonResourceValues);
-    }
-
-    abstract void evaluateBeforeRequest(
+    abstract void beforeRequest(
         UUID principal,
         String expression,
         Map<SecurableType, UUID> resourceIds,
         Map<String, Object> nonResourceValues);
 
-    HttpResponse afterRequest(HttpResponse response) {
-      return HttpResponse.of(response.aggregate().thenApply(
-        aggregated -> {
-          if (aggregated.status().isSuccess()) {
-            if (!beforeRequestWasCalled) {
-              LOGGER.error(
-                  "SECURITY VIOLATION: Method {} did not execute evaluateAction",
-                  method.getName());
-              throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
-            }
-            evaluateAfterRequest();
-          }
-          return aggregated.toHttpResponse();
-        }));
-    }
-
-    abstract void evaluateAfterRequest();
+    abstract HttpResponse afterRequest(HttpResponse response);
   }
 
   private class RequestEvaluationAction extends AbstractEvaluationAction {
 
-    RequestEvaluationAction(Method method) {
-      super(method);
-    }
-
     @Override
-    public void evaluateBeforeRequest(
+    void beforeRequest(
         UUID principal,
         String expression,
         Map<SecurableType, UUID> resourceIds,
@@ -277,20 +235,23 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     @Override
-    public void evaluateAfterRequest() {}
+    HttpResponse afterRequest(HttpResponse response) {
+      return response;
+    }
   }
 
   private class ResultFilterAction extends AbstractEvaluationAction {
     private final ServiceRequestContext ctx;
-    private ResultFilter resultFilter = null;
+    private final Method method;
+    private volatile ResultFilter resultFilter = null;
 
     ResultFilterAction(ServiceRequestContext ctx, Method method) {
-      super(method);
       this.ctx = ctx;
+      this.method = method;
     }
 
     @Override
-    public void evaluateBeforeRequest(
+    void beforeRequest(
         UUID principal,
         String expression,
         Map<SecurableType, UUID> resourceIds,
@@ -302,14 +263,26 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     @Override
-    public void evaluateAfterRequest() {
-      if (!resultFilter.wasCalled()) {
-        LOGGER.error(
-            "SECURITY VIOLATION: Method {} with @ResponseAuthorizeFilter did not call "
-                + "applyResponseFilter(). This is a security vulnerability!",
-            method.getName());
-        throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
-      }
+    HttpResponse afterRequest(HttpResponse response) {
+      return HttpResponse.of(response.aggregate().thenApply(
+        aggregated -> {
+          if (aggregated.status().isSuccess()) {
+            if (resultFilter == null) {
+              LOGGER.error(
+                  "SECURITY VIOLATION: Method {} did not execute evaluateAction",
+                  method.getName());
+              throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
+            }
+            if (!resultFilter.wasCalled()) {
+              LOGGER.error(
+                  "SECURITY VIOLATION: Method {} with @ResponseAuthorizeFilter did not call "
+                      + "applyResponseFilter(). This is a security vulnerability!",
+                  method.getName());
+              throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
+            }
+          }
+          return aggregated.toHttpResponse();
+        }));
     }
   }
 
