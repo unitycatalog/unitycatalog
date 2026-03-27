@@ -7,9 +7,9 @@ name: Unit Tests
 
 on:
   push:
-    branches: [ "main", "branch-0.1", "branch-0.2", "branch-0.3", "branch-0.4" ]
+    branches: [ "main", "branch-*" ]
   pull_request:
-    branches: [ "main", "branch-0.1", "branch-0.2", "branch-0.3", "branch-0.4" ]
+    branches: [ "main", "branch-*" ]
 
 permissions:
   contents: read
