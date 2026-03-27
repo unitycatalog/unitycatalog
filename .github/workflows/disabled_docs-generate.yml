@@ -8,6 +8,7 @@ on:
 
 jobs:
   docs-generate:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-22.04
     steps:
       - name: Check out
@@ -25,6 +26,7 @@ jobs:
           mkdocs build --strict
 
   openapi-docs-validation:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
 
     steps:
