@@ -44,11 +44,11 @@ jobs:
           pytest integrations/crewai/tests --ignore=integrations/crewai/tests/test_crewai_toolkit_oss.py
 
   langchain_test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.10']
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     timeout-minutes: 20
     defaults:
       run:
@@ -71,11 +71,11 @@ jobs:
           pytest integrations/langchain/tests --ignore=integrations/langchain/tests/test_langchain_toolkit_oss.py
 
   anthropic_test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.9', '3.10']
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     timeout-minutes: 20
     defaults:
       run:
@@ -98,11 +98,11 @@ jobs:
           pytest integrations/anthropic/tests --ignore=integrations/anthropic/tests/test_anthropic_toolkit_oss.py
 
   llamaindex_test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.10']
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     timeout-minutes: 20
     defaults:
       run:
@@ -125,11 +125,11 @@ jobs:
           pytest integrations/llama_index/tests --ignore=integrations/llama_index/tests/test_llama_index_toolkit_oss.py
 
   openai_test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.9', '3.10']
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     timeout-minutes: 20
     defaults:
       run:
@@ -152,11 +152,11 @@ jobs:
           pytest integrations/openai/tests --ignore=integrations/openai/tests/test_openai_toolkit_oss.py
 
   autogen_test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.10']
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     timeout-minutes: 20
     defaults:
       run:
@@ -179,11 +179,11 @@ jobs:
           pytest integrations/autogen/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py
 
   gemini_test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.9', '3.10']
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     timeout-minutes: 20
     defaults:
       run:
@@ -206,11 +206,11 @@ jobs:
           pytest integrations/gemini/tests --ignore=integrations/gemini/tests/test_gemini_toolkit_oss.py
 
   litellm_test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.9', '3.10']
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     timeout-minutes: 20
     defaults:
       run:
@@ -233,11 +233,11 @@ jobs:
           pytest integrations/litellm/tests --ignore=integrations/litellm/tests/test_litellm_toolkit_oss.py
 
   dspy_test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.10']
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     timeout-minutes: 20
     defaults:
       run:
