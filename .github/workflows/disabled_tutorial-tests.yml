@@ -1,4 +1,4 @@
-name: Python Client Tests
+name: Tutorial Tests
 
 on:
   push:
@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
 
     steps:
@@ -24,10 +25,16 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
       with:
-        python-version: '3.9'
+        python-version: '3.8'
 
     - name: Install dependencies
-      run: pip install requests pytest pytest-asyncio
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install requests
+        pip install duckdb==1.0.0
 
-    - name: Generate the client library, install it, and run the tests
-      run: ./clients/python/run-tests.sh
+    - name: Test Tutorial
+      run: |
+        source venv/bin/activate
+        python tests/test_tutorial.py
