@@ -16,7 +16,7 @@ jobs:
     #   (github.event.pull_request.state == 'open' || github.event.issue.state == 'open') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: alex-page/github-project-automation-plus@v0.8.3
+      - uses: alex-page/github-project-automation-plus@7ffb872c64bd809d23563a130a0a97d01dfa8f43 # v0.8.3
         with:
           project: PRs and Issues Board
           column: Needs Review
