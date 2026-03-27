@@ -23,6 +23,7 @@ env:
 
 jobs:
   uc-oss-integration-test:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:

@@ -14,6 +14,7 @@ on:
 
 jobs:
   lint:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -37,6 +38,7 @@ jobs:
         run: yamllint .
 
   core_tests:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
