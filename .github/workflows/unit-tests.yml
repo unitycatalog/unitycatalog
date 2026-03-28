@@ -7,8 +7,9 @@ name: Unit Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "branch-*" ]
   pull_request:
+    branches: [ "main", "branch-*" ]
 
 permissions:
   contents: read
