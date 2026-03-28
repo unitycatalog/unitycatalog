@@ -59,7 +59,6 @@ import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
-import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,11 +71,6 @@ public class UnityCatalogServer {
   private final Server server;
   private final ServerProperties serverProperties;
   private final SecurityContext securityContext;
-
-  static {
-    System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
-    Configurator.initialize(null, "etc/conf/server.log4j2.properties");
-  }
 
   private UnityCatalogServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     setDefaults(unityCatalogServerBuilder);

@@ -52,9 +52,9 @@ lazy val commonSettings = Seq(
   ),
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
-    "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
     "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
-    "org.apache.logging.log4j" % "log4j-api" % log4jVersion
+    "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
+    "org.apache.logging.log4j" % "log4j-core" % log4jVersion
   ),
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")

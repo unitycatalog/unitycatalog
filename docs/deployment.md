@@ -41,8 +41,8 @@ This guide outlines how to deploy the Unity Catalog server.
 
 ### Configuring the UC server
 
-- The UC server can be configured by modifying the files in `etc/conf/`. This includes properties related to logging,
-    server environment and the s3 configuration.
+- The UC server can be configured by modifying the files in `etc/conf/`. This includes properties related to the
+    server environment and s3 configuration. For logging configuration, see [Logging](./server/logging.md).
 - Setting the server environment to `dev` will use properties located in `etc/conf/hibernate.properties` to configure
     the backend database whereas `test` will spin up an in-memory database.
 - The `etc/data/` directory contains the data files that are used by the UC server. This includes the tables and volumes
