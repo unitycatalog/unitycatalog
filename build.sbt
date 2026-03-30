@@ -68,7 +68,7 @@ lazy val commonSettings = Seq(
   },
 
   // Test configs
-  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q", "--exclude-tags=postgres"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
+  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
   Test / logLevel := util.Level.Info,
   Test / publishArtifact := false,
   fork := true,

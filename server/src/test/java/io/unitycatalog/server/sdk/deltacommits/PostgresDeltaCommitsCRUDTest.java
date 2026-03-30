@@ -2,7 +2,6 @@ package io.unitycatalog.server.sdk.deltacommits;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Tag;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -14,10 +13,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  *
  * <p>To run: {@code build/sbt "server/testOnly *PostgresDeltaCommitsCRUDTest"}
  *
- * <p>Requires Docker to be running. Excluded from default test runs via {@code @Tag("postgres")}.
+ * <p>Requires Docker to be running. Automatically skipped when Docker is not available via {@code
+ * disabledWithoutDocker = true}.
  */
-@Tag("postgres")
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 public class PostgresDeltaCommitsCRUDTest extends SdkDeltaCommitsCRUDTest {
 
   @Container
