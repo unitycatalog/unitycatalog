@@ -60,7 +60,7 @@
     "prettier": "3.3.3"
   },
   "resolutions": {
-    "react-scripts/resolve-url-loader/postcss": ">=8.4.31",
-    "react-scripts/@svgr/webpack/**/nth-check": ">=2.0.1"
+    "react-scripts/resolve-url-loader/postcss": "8.4.49",
+    "react-scripts/@svgr/webpack/**/nth-check": "2.1.1"
   }
 }
