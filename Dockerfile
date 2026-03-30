@@ -19,7 +19,7 @@ ARG sbt_args="-J-Xmx2G"
 ARG unitycatalog_version="0.2.0-SNAPSHOT"
 ARG jars_directory="server/target/jars"
 
-FROM eclipse-temurin:17-jdk-alpine AS package_server
+FROM eclipse-temurin:17-jdk-alpine@sha256:903e865ecd125a01759fd156d042b998aa86957262f6dec4745125a47bd4f882 AS package_server
 
 ARG unitycatalog_repo
 ARG sbt_args
@@ -46,7 +46,7 @@ RUN build/sbt ${sbt_args} server/package
 # Copy the jar files into a single directory
 RUN ./docker/copy_jars_from_classpath.sh ${jars_directory}
 
-FROM eclipse-temurin:17-jdk-alpine AS build_uc
+FROM eclipse-temurin:17-jdk-alpine@sha256:903e865ecd125a01759fd156d042b998aa86957262f6dec4745125a47bd4f882 AS build_uc
 
 ARG unitycatalog_uid
 ARG unitycatalog_home
