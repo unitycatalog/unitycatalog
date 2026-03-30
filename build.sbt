@@ -68,7 +68,7 @@ lazy val commonSettings = Seq(
   },
 
   // Test configs
-  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
+  Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q", "--exclude-tags=postgres"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
   Test / logLevel := util.Level.Info,
   Test / publishArtifact := false,
   fork := true,
@@ -394,6 +394,12 @@ lazy val server = (project in file("server"))
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+
+      // PostgreSQL integration testing
+      "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
+      "org.testcontainers" % "postgresql" % "1.19.8" % Test,
+      "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
+      "org.postgresql" % "postgresql" % "42.7.3" % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
