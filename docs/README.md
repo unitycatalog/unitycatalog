@@ -83,8 +83,6 @@ For example, if your GitHub username is `bobbiedraper`, your documentation will 
 https://bobbiedraper.github.io/unitycatalog
 ```
 
----
-
 ## Additional Resources
 
 For more detailed instructions on using Astro or Astro Starlight, check out the official documentation:

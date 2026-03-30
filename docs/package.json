@@ -25,27 +25,27 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@astrojs/check": "^0.9.6",
-    "@astrojs/starlight": "^0.36.3",
-    "astro": "^5.16.1",
+    "@astrojs/check": "^0.9.8",
+    "@astrojs/starlight": "^0.38.2",
+    "astro": "^6.1.2",
     "sharp": "^0.34.5",
-    "starlight-plausible": "^0.1.0",
+    "starlight-plausible": "^0.2.0",
     "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@typescript-eslint/parser": "^8.48.0",
-    "eslint": "^9.39.1",
+    "@eslint/js": "^9.39.4",
+    "@typescript-eslint/parser": "^8.58.0",
+    "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-astro": "^1.5.0",
+    "eslint-plugin-astro": "^1.6.0",
     "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-prettier": "^5.5.5",
     "globals": "^16.5.0",
     "husky": "^9.1.7",
-    "lint-staged": "^16.2.7",
-    "prettier": "^3.6.2",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.1",
     "prettier-plugin-astro": "^0.14.1",
-    "typescript-eslint": "^8.48.0"
+    "typescript-eslint": "^8.58.0"
   },
   "packageManager": "npm@11.6.4+sha512.1118cab46a05a50aee6bff5b1b4fa1df18afff89d57465620a3518035026955db87c5bdf9d207b07b7487d99f2490d450cb774655ad63ec2cba7bf1d0ad25d45"
 }
