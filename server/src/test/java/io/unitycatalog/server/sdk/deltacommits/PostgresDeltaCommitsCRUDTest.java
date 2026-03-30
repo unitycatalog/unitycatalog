@@ -7,14 +7,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Integration test that runs all Delta Commits CRUD tests against a real PostgreSQL database via
- * Testcontainers. This verifies cross-database compatibility of SQL queries, particularly the
- * subquery-based DELETE pattern used in DeltaCommitRepository (issue #1385).
- *
- * <p>To run: {@code build/sbt "server/testOnly *PostgresDeltaCommitsCRUDTest"}
- *
- * <p>Requires Docker to be running. Automatically skipped when Docker is not available via {@code
- * disabledWithoutDocker = true}.
+ * Runs all Delta Commits CRUD tests against a real PostgreSQL database via Testcontainers.
+ * Automatically skipped when Docker is not available.
  */
 @Testcontainers(disabledWithoutDocker = true)
 public class PostgresDeltaCommitsCRUDTest extends SdkDeltaCommitsCRUDTest {

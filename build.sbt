@@ -395,7 +395,7 @@ lazy val server = (project in file("server"))
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
-      // PostgreSQL integration testing
+      // Integration testing
       "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
       "org.testcontainers" % "postgresql" % "1.19.8" % Test,
       "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,

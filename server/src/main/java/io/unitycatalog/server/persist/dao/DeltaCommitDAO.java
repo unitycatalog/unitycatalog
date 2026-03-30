@@ -30,7 +30,7 @@ public class DeltaCommitDAO {
   // optionally commit_version. But this is a required field as a unique ID in the database.
   @Id
   @UuidGenerator
-  @Column(name = "id", updatable = false, nullable = false)
+  @Column(name = "id")
   private UUID id;
 
   @Column(name = "table_id", nullable = false)
