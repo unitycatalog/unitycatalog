@@ -12,6 +12,7 @@ import com.google.common.base.CharMatcher;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.net.URI;
@@ -25,16 +26,25 @@ public class GcpCredentialVendor {
 
   public static final List<String> INITIAL_SCOPES =
       List.of("https://www.googleapis.com/auth/cloud-platform");
-  private final Map<String, GcsStorageConfig> gcsConfigurations;
-  private final Map<String, GcpCredentialsGenerator> credentialGenerators =
+  private final Map<NormalizedURL, GcsStorageConfig> gcsConfigurations;
+  private final Map<NormalizedURL, GcpCredentialGenerator> credentialGenerators =
       new ConcurrentHashMap<>();
 
   public GcpCredentialVendor(ServerProperties serverProperties) {
     this.gcsConfigurations = serverProperties.getGcsConfigurations();
   }
 
-  public AccessToken vendGcpToken(CredentialContext credentialContext) {
-    String storageBase = credentialContext.getStorageBase();
+  public AccessToken vendGcpCredential(CredentialContext credentialContext) {
+    credentialContext
+        .getCredentialDAO()
+        .ifPresent(
+            c -> {
+              throw new BaseException(
+                  ErrorCode.UNIMPLEMENTED,
+                  "Storage credential/external location for GCP is not supported yet.");
+            });
+
+    NormalizedURL storageBase = credentialContext.getStorageBase();
     GcsStorageConfig storageConfig = gcsConfigurations.get(storageBase);
 
     if (storageConfig == null) {
@@ -43,17 +53,17 @@ public class GcpCredentialVendor {
           format("Unknown GCS storage configuration for %s.", storageBase));
     }
 
-    GcpCredentialsGenerator generator =
+    GcpCredentialGenerator generator =
         credentialGenerators.computeIfAbsent(storageBase, key -> createGenerator(storageConfig));
     return generator.generate(credentialContext);
   }
 
-  private GcpCredentialsGenerator createGenerator(GcsStorageConfig storageConfig) {
-    String generatorClass = storageConfig.getCredentialsGenerator();
+  private GcpCredentialGenerator createGenerator(GcsStorageConfig storageConfig) {
+    String generatorClass = storageConfig.getCredentialGenerator();
     if (generatorClass != null && !generatorClass.isEmpty()) {
       try {
-        Class<? extends GcpCredentialsGenerator> generatorType =
-            Class.forName(generatorClass).asSubclass(GcpCredentialsGenerator.class);
+        Class<? extends GcpCredentialGenerator> generatorType =
+            Class.forName(generatorClass).asSubclass(GcpCredentialGenerator.class);
         try {
           return generatorType
               .getDeclaredConstructor(GcsStorageConfig.class)
@@ -72,7 +82,7 @@ public class GcpCredentialVendor {
       jsonKeyFilePath = null;
     }
 
-    return new ServiceAccountCredentialsGenerator(jsonKeyFilePath);
+    return new ServiceAccountCredentialGenerator(jsonKeyFilePath);
   }
 
   OAuth2Credentials downscopeGcpCreds(GoogleCredentials credentials, CredentialContext context) {
@@ -83,7 +93,7 @@ public class GcpCredentialVendor {
         .getLocations()
         .forEach(
             location -> {
-              URI locationUri = URI.create(location);
+              URI locationUri = location.toUri();
               String path = CharMatcher.is('/').trimLeadingFrom(locationUri.getPath());
 
               String resource =
@@ -131,10 +141,10 @@ public class GcpCredentialVendor {
     return List.of();
   }
 
-  private final class ServiceAccountCredentialsGenerator implements GcpCredentialsGenerator {
+  private final class ServiceAccountCredentialGenerator implements GcpCredentialGenerator {
     private final String jsonKeyFilePath;
 
-    private ServiceAccountCredentialsGenerator(String jsonKeyFilePath) {
+    private ServiceAccountCredentialGenerator(String jsonKeyFilePath) {
       this.jsonKeyFilePath = jsonKeyFilePath;
     }
 

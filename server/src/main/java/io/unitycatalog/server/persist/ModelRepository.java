@@ -12,15 +12,16 @@ import io.unitycatalog.server.model.ModelVersionStatus;
 import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.model.UpdateModelVersion;
 import io.unitycatalog.server.model.UpdateRegisteredModel;
-import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
-import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
@@ -38,14 +39,15 @@ public class ModelRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(ModelRepository.class);
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
-  private final FileOperations fileOperations;
+  private final ServerProperties serverProperties;
   private static final PagedListingHelper<RegisteredModelInfoDAO> REGISTERED_MODEL_LISTING_HELPER =
       new PagedListingHelper<>(RegisteredModelInfoDAO.class);
 
-  public ModelRepository(Repositories repositories, SessionFactory sessionFactory) {
+  public ModelRepository(
+      Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositories.getFileOperations();
+    this.serverProperties = serverProperties;
   }
 
   /** **************** DAO retrieval methods ***************** */
@@ -182,18 +184,18 @@ public class ModelRepository {
   private RegisteredModelInfoDAO findRegisteredModel(
       Session session, String catalogName, String schemaName, String registeredModelName) {
     UUID schemaId =
-        repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
     return getRegisteredModelDao(session, schemaId, registeredModelName);
   }
 
   public RegisteredModelInfo createRegisteredModel(CreateRegisteredModel createRegisteredModel) {
     ValidationUtils.validateSqlObjectName(createRegisteredModel.getName());
     long createTime = System.currentTimeMillis();
-    String modelId = UUID.randomUUID().toString();
+    UUID modelId = UUID.randomUUID();
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     RegisteredModelInfo registeredModelInfo =
         new RegisteredModelInfo()
-            .id(modelId)
+            .id(modelId.toString())
             .name(createRegisteredModel.getName())
             .catalogName(createRegisteredModel.getCatalogName())
             .schemaName(createRegisteredModel.getSchemaName())
@@ -212,27 +214,29 @@ public class ModelRepository {
       tx = session.beginTransaction();
       String catalogName = registeredModelInfo.getCatalogName();
       String schemaName = registeredModelInfo.getSchemaName();
-      UUID schemaId =
-          repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
-      UUID catalogId = repositories.getCatalogRepository().getCatalogId(session, catalogName);
-      String storageLocation =
-          fileOperations.getModelStorageLocation(
-              catalogId.toString(), schemaId.toString(), modelId);
+      RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
+          RepositoryUtils.getCatalogAndSchemaDaoOrThrow(session, catalogName, schemaName);
+      NormalizedURL parentStorageLocation =
+          ExternalLocationUtils.getManagedStorageLocation(
+              catalogAndSchemaDao, this::getDefaultModelsStorageRoot);
+      NormalizedURL storageLocation =
+          ExternalLocationUtils.getManagedLocationForModel(parentStorageLocation, modelId);
+      SchemaInfoDAO schemaInfoDAO = catalogAndSchemaDao.schemaInfoDAO();
       try {
         // Check if registered model already exists
         RegisteredModelInfoDAO existingRegisteredModel =
-            getRegisteredModelDao(session, schemaId, registeredModelInfo.getName());
+            getRegisteredModelDao(session, schemaInfoDAO.getId(), registeredModelInfo.getName());
         if (existingRegisteredModel != null) {
           throw new BaseException(
               ErrorCode.ALREADY_EXISTS, "Registered model already exists: " + fullName);
         }
-        registeredModelInfo.setStorageLocation(storageLocation);
+        registeredModelInfo.setStorageLocation(storageLocation.toString());
         RegisteredModelInfoDAO registeredModelInfoDAO =
             RegisteredModelInfoDAO.from(registeredModelInfo);
-        registeredModelInfoDAO.setSchemaId(schemaId);
+        registeredModelInfoDAO.setSchemaId(schemaInfoDAO.getId());
         registeredModelInfoDAO.setMaxVersionNumber(0L);
         session.persist(registeredModelInfoDAO);
-        UriUtils.createStorageLocationPath(storageLocation);
+        FileOperations.createStorageLocationDir(storageLocation);
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
@@ -291,15 +295,14 @@ public class ModelRepository {
                   registeredModelInfoDAOList, maxResults);
           List<RegisteredModelInfo> result = new ArrayList<>();
           for (RegisteredModelInfoDAO registeredModelInfoDAO : registeredModelInfoDAOList) {
-            SchemaInfoDAO schemaInfoDAO =
-                RepositoryUtils.getSchemaByIdOrThrow(session, registeredModelInfoDAO.getSchemaId());
-            CatalogInfoDAO catalogInfoDAO =
-                RepositoryUtils.getCatalogByIdOrThrow(session, schemaInfoDAO.getCatalogId());
+            RepositoryUtils.CatalogAndSchemaNames names =
+                RepositoryUtils.getCatalogAndSchemaNames(
+                    session, registeredModelInfoDAO.getSchemaId());
 
             RegisteredModelInfo registeredModelInfo =
                 registeredModelInfoDAO.toRegisteredModelInfo();
-            registeredModelInfo.setCatalogName(catalogInfoDAO.getName());
-            registeredModelInfo.setSchemaName(schemaInfoDAO.getName());
+            registeredModelInfo.setCatalogName(names.catalogName());
+            registeredModelInfo.setSchemaName(names.schemaName());
             registeredModelInfo.setFullName(getRegisteredModelFullName(registeredModelInfo));
             result.add(registeredModelInfo);
           }
@@ -311,7 +314,7 @@ public class ModelRepository {
           UUID schemaId =
               repositories
                   .getSchemaRepository()
-                  .getSchemaId(session, catalogName.get(), schemaName.get());
+                  .getSchemaIdOrThrow(session, catalogName.get(), schemaName.get());
           response =
               listRegisteredModels(
                   session, schemaId, catalogName.get(), schemaName.get(), maxResults, pageToken);
@@ -437,7 +440,7 @@ public class ModelRepository {
       String registeredModelName = parts[2];
       try {
         UUID schemaId =
-            repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+            repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
         deleteRegisteredModel(session, schemaId, registeredModelName, force);
         tx.commit();
       } catch (RuntimeException e) {
@@ -518,13 +521,13 @@ public class ModelRepository {
   public ModelVersionInfo createModelVersion(CreateModelVersion createModelVersion) {
     long createTime = System.currentTimeMillis();
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    String modelVersionId = UUID.randomUUID().toString();
+    UUID modelVersionId = UUID.randomUUID();
     String catalogName = createModelVersion.getCatalogName();
     String schemaName = createModelVersion.getSchemaName();
     String modelName = createModelVersion.getModelName();
     ModelVersionInfo modelVersionInfo =
         new ModelVersionInfo()
-            .id(modelVersionId)
+            .id(modelVersionId.toString())
             .modelName(createModelVersion.getModelName())
             .catalogName(createModelVersion.getCatalogName())
             .schemaName(createModelVersion.getSchemaName())
@@ -542,10 +545,9 @@ public class ModelRepository {
     Transaction tx;
     try (Session session = sessionFactory.openSession()) {
       tx = session.beginTransaction();
-      UUID catalogId = repositories.getCatalogRepository().getCatalogId(session, catalogName);
       UUID schemaId =
-          repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
-      String storageLocation = "";
+          repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
+      NormalizedURL storageLocation = null;
       try {
         // Check if registered model already exists
         RegisteredModelInfoDAO existingRegisteredModel =
@@ -560,14 +562,14 @@ public class ModelRepository {
         UUID modelId = existingRegisteredModel.getId();
         Long version = existingRegisteredModel.getMaxVersionNumber() + 1;
         storageLocation =
-            fileOperations.getModelVersionStorageLocation(
-                catalogId.toString(), schemaId.toString(), modelId.toString(), modelVersionId);
+            ExternalLocationUtils.getManagedLocationForModelVersion(
+                NormalizedURL.from(existingRegisteredModel.getUrl()), modelVersionId);
         modelVersionInfo.setVersion(version);
-        modelVersionInfo.setStorageLocation(storageLocation);
+        modelVersionInfo.setStorageLocation(storageLocation.toString());
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);
         modelVersionInfoDAO.setRegisteredModelId(modelId);
         session.persist(modelVersionInfoDAO);
-        UriUtils.createStorageLocationPath(storageLocation);
+        FileOperations.createStorageLocationDir(storageLocation);
         // update the registered model
         existingRegisteredModel.setMaxVersionNumber(version);
         session.persist(existingRegisteredModel);
@@ -629,7 +631,7 @@ public class ModelRepository {
         String schemaName = parts[1];
         String registeredModelName = parts[2];
         UUID schemaId =
-            repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+            repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
         RegisteredModelInfoDAO existingRegisteredModel =
             getRegisteredModelDaoOrThrow(session, schemaId, registeredModelName);
         UUID registeredModelId = existingRegisteredModel.getId();
@@ -692,7 +694,7 @@ public class ModelRepository {
       try {
         // Get the registered model record from the database
         UUID schemaId =
-            repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+            repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
         // Get the model version record from the database
         ModelVersionInfoDAO origModelVersionInfoDAO =
             getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
@@ -736,7 +738,7 @@ public class ModelRepository {
       Transaction tx = session.beginTransaction();
       try {
         UUID schemaId =
-            repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+            repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
         RegisteredModelInfoDAO existingRegisteredModel =
             getRegisteredModelDaoOrThrow(session, schemaId, registeredModelName);
         deleteModelVersion(session, existingRegisteredModel.getId(), fullName, version);
@@ -785,7 +787,7 @@ public class ModelRepository {
       try {
         // Get the registered model record from the database
         UUID schemaId =
-            repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+            repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
         ModelVersionInfoDAO origModelVersionInfoDAO =
             getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
 
@@ -819,5 +821,18 @@ public class ModelRepository {
           ErrorCode.INTERNAL, "Error updating model version: " + fullName + "/" + version, e);
     }
     return modelVersionInfo;
+  }
+
+  /**
+   * Gets the default model storage root from server properties.
+   *
+   * <p>This is used as a fallback when neither the catalog nor schema has a managed storage
+   * location configured. It is being deprecated.
+   *
+   * @return optional containing the storage root URL if configured in server properties
+   */
+  private Optional<NormalizedURL> getDefaultModelsStorageRoot() {
+    return Optional.ofNullable(serverProperties.get(ServerProperties.Property.MODEL_STORAGE_ROOT))
+        .map(NormalizedURL::from);
   }
 }

@@ -4,6 +4,7 @@ import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import io.delta.tables.DeltaTable;
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTest;
@@ -15,7 +16,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.spark.CredentialTestFileSystem;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.UCSingleCatalog;
-import io.unitycatalog.spark.utils.Clock;
+import io.unitycatalog.spark.fs.CredScopedFileSystem;
 import java.io.File;
 import java.net.URI;
 import java.time.Duration;
@@ -57,7 +58,7 @@ import org.sparkproject.guava.collect.Iterators;
  */
 public abstract class BaseCredRenewITTest extends BaseCRUDTest {
   private static final String CLOCK_NAME = UUID.randomUUID().toString();
-  private static final String CATALOG_NAME = "CredRenewalCatalog";
+  protected static final String CATALOG_NAME = "CredRenewalCatalog";
   private static final String SCHEMA_NAME = "Default";
   private static final String TABLE_NAME = String.format("%s.%s.demo", CATALOG_NAME, SCHEMA_NAME);
   protected static final String BUCKET_NAME = "test-bucket";
@@ -143,8 +144,6 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
 
     // Close the session.
     callQuietly(() -> session.close());
-
-    super.cleanUp();
   }
 
   @AfterAll
@@ -199,8 +198,15 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
             .map(
                 row -> {
                   Configuration conf = serialConf.value();
+                  FileSystem rawFs = FileSystem.get(new URI(location), conf);
+                  // When credScopedFsEnabled=true, unwrap CredScopedFileSystem to get the real
+                  // delegate. Exactly one level: newFileSystem() always restores the original impl
+                  // via fs.<scheme>.impl.original, so the delegate is never CredScopedFileSystem.
                   CredRenewFileSystem<?> fs =
-                      (CredRenewFileSystem<?>) FileSystem.get(new URI(location), conf);
+                      (CredRenewFileSystem<?>)
+                          (rawFs instanceof CredScopedFileSystem
+                              ? ((CredScopedFileSystem) rawFs).getRawFileSystem()
+                              : rawFs);
 
                   for (int refreshIndex = 0; refreshIndex < 10; refreshIndex += 1) {
                     // Pre-check before the credential renewal.

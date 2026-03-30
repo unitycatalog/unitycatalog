@@ -24,6 +24,7 @@ import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -78,7 +79,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         createTestingTable(
             TestUtils.TABLE_NAME,
             TableType.EXTERNAL,
-            Optional.of(TestUtils.STORAGE_LOCATION),
+            Optional.of(Files.createTempDirectory(testDirectoryRoot, "table").toString()),
             tableOperations);
     ListTablesResponse resp =
         localTablesApi.listTables(
@@ -137,7 +138,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(stagingTableInfo.getId()).isNotNull();
     assertThat(stagingTableInfo.getStagingLocation()).isNotNull();
     assertThat(stagingTableInfo.getStagingLocation())
-        .isEqualTo(tableStorageRoot + "/tables/" + stagingTableInfo.getId());
+        .isEqualTo(tableStorageRoot + "/__unitystorage/tables/" + stagingTableInfo.getId());
 
     // Step 2: Create a managed table that's not DELTA
     CreateTable createTableRequestNotDelta =
@@ -186,7 +187,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(commitedStagingTableDAO).isNotNull();
     assertThat(commitedStagingTableDAO.getStagingLocation()).isNotNull();
     assertThat(commitedStagingTableDAO.getStagingLocation())
-        .isEqualTo(tableStorageRoot + "/tables/" + stagingTableInfo.getId());
+        .isEqualTo(tableStorageRoot + "/__unitystorage/tables/" + stagingTableInfo.getId());
     assertThat(commitedStagingTableDAO.isStageCommitted()).isEqualTo(true);
 
     // Clean up
@@ -310,13 +311,14 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(tableInfo.getStorageLocation()).isEqualTo(stagingTableInfo.getStagingLocation());
     assertThat(tableInfo.getTableId()).isEqualTo(stagingTableInfo.getId());
 
-    // Create a 3rd staging table with the same name, and now it fails with ALREADY_EXISTS because
-    // the table has already been created using that name.
+    // Create a 3rd staging table with the same name, and now it fails with TABLE_ALREADY_EXISTS
+    // because the table has already been created using that name.
     assertThatExceptionOfType(ApiException.class)
         .isThrownBy(() -> localTablesApi.createStagingTable(createStagingTableRequest))
         .satisfies(
             ex ->
-                assertThat(ex.getCode()).isEqualTo(ErrorCode.ALREADY_EXISTS.getHttpStatus().code()))
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.TABLE_ALREADY_EXISTS.getHttpStatus().code()))
         .withMessageContaining("already exists");
   }
 

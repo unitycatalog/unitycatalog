@@ -6,12 +6,16 @@ import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Date;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -29,21 +33,21 @@ public class StagingTableRepository {
     this.serverProperties = serverProperties;
   }
 
-  private StagingTableDAO findByStagingLocation(Session session, String stagingLocation) {
+  private StagingTableDAO findByStagingLocation(Session session, NormalizedURL stagingLocation) {
     String hql = "FROM StagingTableDAO t WHERE t.stagingLocation = :stagingLocation";
     Query<StagingTableDAO> query = session.createQuery(hql, StagingTableDAO.class);
-    query.setParameter("stagingLocation", stagingLocation);
+    query.setParameter("stagingLocation", stagingLocation.toString());
     return query.uniqueResult(); // Returns null if no result is found
   }
 
   private void validateIfAlreadyExists(
-      Session session, UUID schemaId, String tableName, String stagingLocation) {
+      Session session, UUID schemaId, String tableName, NormalizedURL stagingLocation) {
     // Check if table by the same name already exists. It's OK if a staging table with the same name
     // already exist.
     TableInfoDAO existingTable =
         repositories.getTableRepository().findBySchemaIdAndName(session, schemaId, tableName);
     if (existingTable != null) {
-      throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + tableName);
+      throw new BaseException(ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + tableName);
     }
     // Also ensure that no staging table exists at the same location. This is almost impossible as
     // the generated path contains a newly generated random UUID. But still check for it anyway.
@@ -51,7 +55,7 @@ public class StagingTableRepository {
         findByStagingLocation(session, stagingLocation);
     if (existingStagingTableAtLocation != null) {
       throw new BaseException(
-          ErrorCode.ALREADY_EXISTS, "Staging table already exists at: " + stagingLocation);
+          ErrorCode.TABLE_ALREADY_EXISTS, "Staging table already exists at: " + stagingLocation);
     }
   }
 
@@ -83,19 +87,20 @@ public class StagingTableRepository {
     ValidationUtils.validateSqlObjectName(createStagingTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     UUID stagingTableId = UUID.randomUUID();
-    String stagingLocation =
-        repositories.getFileOperations().createTableDirectory(stagingTableId.toString());
 
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID schemaId =
-              repositories
-                  .getSchemaRepository()
-                  .getSchemaId(
-                      session,
-                      createStagingTable.getCatalogName(),
-                      createStagingTable.getSchemaName());
+          RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
+              RepositoryUtils.getCatalogAndSchemaDaoOrThrow(
+                  session, createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
+          NormalizedURL parentStorageLocation =
+              ExternalLocationUtils.getManagedStorageLocation(
+                  catalogAndSchemaDao, this::getDefaultManagedTablesStorageRoot);
+          NormalizedURL stagingLocation =
+              ExternalLocationUtils.getManagedLocationForTable(
+                  parentStorageLocation, stagingTableId);
+          UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 
           StagingTableDAO stagingTableDAO = new StagingTableDAO();
@@ -103,7 +108,7 @@ public class StagingTableRepository {
           stagingTableDAO.setId(stagingTableId);
           stagingTableDAO.setSchemaId(schemaId);
           stagingTableDAO.setName(createStagingTable.getName());
-          stagingTableDAO.setStagingLocation(stagingLocation);
+          stagingTableDAO.setStagingLocation(stagingLocation.toString());
           stagingTableDAO.setCreatedBy(callerId);
           session.persist(stagingTableDAO);
           return stagingTableDAO.toStagingTableInfo(
@@ -122,7 +127,7 @@ public class StagingTableRepository {
    *
    * @param session the Hibernate session for database operations
    * @param callerId the identifier of the user attempting to commit the staging table
-   * @param storageLocation the storage location URI of the staging table to commit
+   * @param storageLocation the normalized storage location URL of the staging table to commit
    * @return StagingTableDAO the committed staging table data access object
    * @throws BaseException with ErrorCode.NOT_FOUND if no staging table exists at the specified
    *     location
@@ -132,7 +137,7 @@ public class StagingTableRepository {
    *     committed
    */
   public StagingTableDAO commitStagingTable(
-      Session session, String callerId, String storageLocation) {
+      Session session, String callerId, NormalizedURL storageLocation) {
     serverProperties.checkManagedTableEnabled();
     StagingTableDAO stagingTableDAO = findByStagingLocation(session, storageLocation);
     if (stagingTableDAO == null) {
@@ -156,5 +161,18 @@ public class StagingTableRepository {
     stagingTableDAO.setAccessedAt(now);
     session.merge(stagingTableDAO);
     return stagingTableDAO;
+  }
+
+  /**
+   * Gets the default managed table storage root from server properties.
+   *
+   * <p>This is used as a fallback when neither the catalog nor schema has a managed storage
+   * location configured. It's being deprecated.
+   *
+   * @return optional containing the storage root URL if configured in server properties
+   */
+  private Optional<NormalizedURL> getDefaultManagedTablesStorageRoot() {
+    return Optional.ofNullable(serverProperties.get(ServerProperties.Property.TABLE_STORAGE_ROOT))
+        .map(NormalizedURL::from);
   }
 }

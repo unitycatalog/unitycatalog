@@ -42,6 +42,24 @@ server.authorization-url=https://accounts.google.com/o/oauth2/auth
 server.token-url=https://oauth2.googleapis.com/token
 server.client-id=<Client ID provided earlier>
 server.client-secret=<Client secret provided earlier>
+server.allowed-issuers=https://accounts.google.com
+server.audiences=<Client ID provided earlier>
+```
+
+### Issuer and Audience Validation
+
+When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
+
+- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
+- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain one of these audience values. This is typically your application's client ID.
+
+#### Multiple Identity Providers
+
+You can configure multiple issuers and audiences by separating them with commas:
+
+```properties
+server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline.com/{tenant-id}/v2.0
+server.audiences=your-google-client-id,your-azure-client-id
 ```
 
 ### Restart the UC Server

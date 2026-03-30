@@ -1,12 +1,14 @@
 package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateSchema;
@@ -39,20 +41,42 @@ public class SchemaService extends AuthorizedService {
 
   @SneakyThrows
   public SchemaService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.schemaRepository = repositories.getSchemaRepository();
     this.catalogRepository = repositories.getCatalogRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
   }
 
+  /**
+   * Creating a schema requires OWNER or USE_CATALOG+CREATE_SCHEMA permission on parent catalog.
+   * Additionally, if a {@code storage_root} is specified:
+   *
+   * <ul>
+   *   <li>The path has to map to an external_location, not anything else (tables, volumes, models),
+   *       to make sure the path isn't under any existing data securables.
+   *   <li>User needs to have OWNER or CREATE_MANAGED_STORAGE permission on the external location.
+   * </ul>
+   *
+   * {@code storage_root} is annotated as both a {@link AuthorizeResourceKey} (which maps to owning
+   * resource) and {@link AuthorizeKey} (which is simply the raw value of storage_root). This is
+   * done so that the expression can check both: 1. if parameter is specified, and 2. which external
+   * location (rather than tables etc.) owns the path.
+   */
   @Post("")
   @AuthorizeExpression("""
-      #authorize(#principal, #catalog, OWNER) ||
-      #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)
+      (#authorize(#principal, #catalog, OWNER) ||
+       #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)) &&
+      (#storage_root == null ||
+       (#no_overlap_with_data_securable &&
+        #external_location != null &&
+        #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse createSchema(
-      @AuthorizeKey(value = CATALOG, key = "catalog_name") CreateSchema createSchema) {
+      @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
+      @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
+      @AuthorizeKey(key = "storage_root")
+      CreateSchema createSchema) {
     SchemaInfo schemaInfo = schemaRepository.createSchema(createSchema);
 
     CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
@@ -86,8 +110,8 @@ public class SchemaService extends AuthorizedService {
       (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
           #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
-  @AuthorizeKey(METASTORE)
-  public HttpResponse getSchema(@Param("full_name") @AuthorizeKey(SCHEMA) String fullName) {
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse getSchema(@Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName) {
     return HttpResponse.ofJson(schemaRepository.getSchema(fullName));
   }
 
@@ -99,9 +123,9 @@ public class SchemaService extends AuthorizedService {
       (#authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #catalog, USE_CATALOG))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchema(
-      @Param("full_name") @AuthorizeKey(SCHEMA) String fullName,
+      @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       UpdateSchema updateSchema) {
     // TODO: This method does not adhere to the complete access control rules of the Databricks
     // Unity Catalog
@@ -115,9 +139,9 @@ public class SchemaService extends AuthorizedService {
       (#authorize(#principal, #schema, OWNER) &&
           #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteSchema(
-      @Param("full_name") @AuthorizeKey(SCHEMA) String fullName,
+      @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       @Param("force") Optional<Boolean> force) {
     SchemaInfo schemaInfo = schemaRepository.getSchema(fullName);
     schemaRepository.deleteSchema(fullName, force.orElse(false));

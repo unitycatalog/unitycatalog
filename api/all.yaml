@@ -1523,7 +1523,7 @@ components:
         name:
           type: string
           description: The name of the volume
-        "volume_type":
+        volume_type:
           "$ref": "#/components/schemas/VolumeType"
         comment:
           type: string
@@ -1538,7 +1538,6 @@ components:
         - schema_name
         - name
         - volume_type
-        - storage_location
     ListVolumesResponseContent:
       type: object
       properties:
@@ -1599,7 +1598,7 @@ components:
         volume_id:
           type: string
           description: Unique identifier of the volume
-        "volume_type":
+        volume_type:
           "$ref": "#/components/schemas/VolumeType"
         storage_location:
           type: string
@@ -1628,6 +1627,7 @@ components:
         - ARRAY
         - STRUCT
         - MAP
+        - VARIANT
         - CHAR
         - 'NULL'
         - USER_DEFINED_TYPE
@@ -1860,6 +1860,18 @@ components:
         schema_id:
           description: Unique identifier for the schema.
           type: string
+        storage_root:
+          description: |
+            Storage root URL for managed storage location of schema. This can be set when creating a
+            schema. Example: s3://bucket/ucroot
+          type: string
+        storage_location:
+          description: |
+            Storage Location URL (full path) for managed storage location of schema. This is an
+            automatically generated unique path under storage_root. If it is absent, managed
+            securables under this schema will try to use storage_location of the parent catalog
+            instead. Example: s3://bucket/ucroot/__unitystorage/schemas/{schema_id}
+          type: string
     CreateSchema:
       type: object
       properties:
@@ -1874,6 +1886,12 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        storage_root:
+          description: |
+            Storage root URL for managed storage location of schema. If not set, managed securables
+            under this schema will try to use the storage_location of the parent catalog instead.
+            Example: s3://bucket/ucroot
+          type: string
       required:
         - name
         - catalog_name
@@ -1932,6 +1950,17 @@ components:
         id:
           description: Unique identifier for the catalog.
           type: string
+        storage_root:
+          description: |
+            Storage root URL for managed storage location of catalog. This can be set when creating
+            a catalog. Example: s3://bucket/ucroot
+          type: string
+        storage_location:
+          description: |
+            Storage Location URL (full path) for managed storage location of catalog. This is an
+            automatically generated unique path under storage_root.
+            Example: s3://bucket/ucroot/__unitystorage/catalogs/{catalog_id}
+          type: string
     CreateCatalog:
       type: object
       properties:
@@ -1943,6 +1972,10 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        storage_root:
+          description: |
+            Storage root URL for managed storage location of catalog. Example: s3://bucket/ucroot
+          type: string
       required:
         - name
     UpdateCatalog:
@@ -2469,17 +2502,21 @@ components:
           description: Unique identifier for the model version.
           type: string
     ModelVersionStatus:
-      description: |
-        All possible model version statuses (MODEL_VERSION_STATUS_UNKNOWN, PENDING_REGISTRATION, FAILED_REGISTRATION, READY).
-        PENDING_REGISTRATION status indicates that the client has not completely written all model artifacts to external storage.
-        FAILED_REGISTRATION status indicates that the client has failed to write all model artifacts to external storage.
-        READY status indicates that the client has successfully written all model artifacts to external storage.
+      description: All possible model version statuses.
       type: string
       enum:
         - MODEL_VERSION_STATUS_UNKNOWN
         - PENDING_REGISTRATION
         - FAILED_REGISTRATION
         - READY
+      # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
+      #  corresponding description at the end of the description list. Both list must have the same
+      #  order.
+      x-enum-descriptions:
+        - 'MODEL_VERSION_STATUS_UNKNOWN: Unknown'
+        - 'PENDING_REGISTRATION: Indicates that the client has not completely written all model artifacts to external storage.'
+        - 'FAILED_REGISTRATION: Indicates that the client has failed to write all model artifacts to external storage.'
+        - 'READY: Indicates that the client has successfully written all model artifacts to external storage.'
     CreateRegisteredModel:
       type: object
       properties:
@@ -2628,8 +2665,11 @@ components:
         - function
         - volume
         - registered_model
+        - external_location
+        - credential
       description: The type of the resource.
     Privilege:
+      description: The privilege to grant.
       type: string
       enum:
         - CREATE CATALOG
@@ -2644,7 +2684,36 @@ components:
         - CREATE VOLUME
         - READ VOLUME
         - CREATE MODEL
-      description: The privilege to grant.
+        - CREATE EXTERNAL LOCATION
+        - READ FILES
+        - WRITE FILES
+        - CREATE EXTERNAL TABLE
+        - CREATE EXTERNAL VOLUME
+        - CREATE MANAGED STORAGE
+        - CREATE STORAGE CREDENTIAL
+      # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
+      #  corresponding description at the end of the description list. Both list must have the same
+      #  order.
+      x-enum-descriptions:
+        - 'CREATE CATALOG: Enables users to create new catalogs in a metastore.'
+        - 'USE CATALOG: Required to interact with any object within a catalog.'
+        - 'CREATE SCHEMA: Enables users to create new schemas in a catalog.'
+        - 'USE SCHEMA: Required to interact with any object within a schema.'
+        - 'CREATE TABLE: Allows creating tables or views in a schema.'
+        - 'SELECT: Enables querying tables, views, materialized views.'
+        - 'MODIFY: Enables adding, updating, and deleting data within tables (requires SELECT privilege also).'
+        - 'CREATE FUNCTION: Allows users to create functions or procedures within a schema.'
+        - 'EXECUTE: Permits invoking user-defined functions or loading models for inference.'
+        - 'CREATE VOLUME: Enables creating volumes in a schema.'
+        - 'READ VOLUME: Permits reading files and directories within volumes.'
+        - 'CREATE MODEL: Permits establishing MLflow registered models in a schema.'
+        - 'CREATE EXTERNAL LOCATION: Required privilege on both the metastore and referenced storage credential to create external locations.'
+        - 'READ FILES: Grants direct read access to files in cloud storage configured as external locations.'
+        - 'WRITE FILES: Grants direct write access to files in cloud storage configured as external locations.'
+        - 'CREATE EXTERNAL TABLE: Enables creating external tables through external locations.'
+        - 'CREATE EXTERNAL VOLUME: Enables creating external volumes through external locations.'
+        - 'CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.'
+        - 'CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.'
     UpdatePermissions:
       type: object
       properties:
@@ -2816,6 +2885,9 @@ components:
         name:
           description: Name of the external location.
           type: string
+        id:
+          description: Unique identifier for the external location.
+          type: string
         url:
           description: Path URL of the external location.
           type: string
@@ -2916,6 +2988,16 @@ components:
             needs to keep track of commits of versions <= this version.
         metadata:
           $ref: '#/components/schemas/DeltaMetadata'
+        uniform:
+          $ref: '#/components/schemas/DeltaUniform'
+          description: |
+            Optional UniForm metadata to be committed alongside this Delta commit. Whether this field is
+            strictly required by a UC API compatible implementation is left up to the implementation.
+            It is set by UniForm conversion processes after converting a Delta commit. When set, 
+            UC will atomically update the table's format-specific metadata (e.g. DeltaUniformIceberg),
+            keeping the conversion state synchronized with the Delta version.
+            Uniform enables Delta tables to be read by other table formats (e.g., Iceberg) without data conversion.
+            Independent of the `metadata` field, both can be provided together or separately.
       required:
         - table_id
         - table_uri
@@ -2977,6 +3059,56 @@ components:
     DeltaCommitResponse:
       type: object
       description: The response for the Delta commit action
+    DeltaUniform:
+      type: object
+      description: |
+        Uniform metadata that can be atomically committed alongside a Delta commit.
+        Uniform enables Delta tables to be read by other table formats (e.g. Iceberg)
+        without data conversion. When this message is provided in a Commit request,
+        UC will atomically update the table's format-specific metadata during the commit.
+      properties:
+        iceberg:
+          $ref: '#/components/schemas/DeltaUniformIceberg'
+          description: Metadata for Delta UniForm Iceberg conversion.
+      required:
+        - iceberg
+    DeltaUniformIceberg:
+      type: object
+      description: |
+        Iceberg conversion metadata tracking the Delta-to-Iceberg conversion state.
+        It contains the metadata location pointer, converted Delta version, timestamp, and 
+        optional base converted Delta version of the corresponding conversion.
+      properties:
+        metadata_location:
+          type: string
+          format: uri
+          description: |
+            The latest Iceberg metadata location.
+            Example: s3://abc/def/metadata/v1.json
+        converted_delta_version:
+          type: integer
+          format: int64
+          description: |
+            The Delta version that was converted to Iceberg to produce the Iceberg metadata location.
+            It should match the Delta version in the commit info.
+            Example: 1044
+        converted_delta_timestamp:
+          type: string
+          description: |
+            The timestamp that Delta finished conversion to produce the Iceberg metadata location.
+            The string must represent a valid instant in UTC with ISO 8601 format.
+            Example: 2025-01-04T03:13:11.423Z
+        base_converted_delta_version:
+          type: integer
+          format: int64
+          description: |
+            Optional Delta version used to incrementally convert Delta changes to Iceberg changes to
+            produce the latest Iceberg metadata at the metadata_location.
+            Example: 1042
+      required:
+        - metadata_location
+        - converted_delta_version
+        - converted_delta_timestamp
     DeltaGetCommits:
       type: object
       properties:
@@ -3021,9 +3153,9 @@ components:
           type: integer
           format: int64
           description: |
-            Represents the latest version of the table tracked by UC. If no commits have occurred via UC yet, 
-            then UC cannot determine the latest version and returns -1. Use this field to manage pagination — 
-            if the returned commits don't cover the range up to latest_table_version or end_version (whichever is smaller), 
+            Represents the latest version of the table tracked by UC. For a newly created managed table
+            with no commits, this returns 0. Use this field to manage pagination —
+            if the returned commits don't cover the range up to latest_table_version or end_version (whichever is smaller),
             it indicates that more unbackfilled commits may be available.
       required:
         - commits

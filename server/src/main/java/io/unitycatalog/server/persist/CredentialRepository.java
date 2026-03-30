@@ -1,21 +1,18 @@
 package io.unitycatalog.server.persist;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.AwsIamRoleRequest;
-import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.ListCredentialsResponse;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -31,49 +28,32 @@ public class CredentialRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(CredentialRepository.class);
   private final Repositories repositories;
   private final SessionFactory sessionFactory;
+  private final ServerProperties serverProperties;
   private static final PagedListingHelper<CredentialDAO> LISTING_HELPER =
       new PagedListingHelper<>(CredentialDAO.class);
-  public static ObjectMapper objectMapper = new ObjectMapper();
 
-  public CredentialRepository(Repositories repositories, SessionFactory sessionFactory) {
+  public CredentialRepository(
+      Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
+    this.serverProperties = serverProperties;
   }
 
   public CredentialInfo addCredential(CreateCredentialRequest createCredentialRequest) {
     ValidationUtils.validateSqlObjectName(createCredentialRequest.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    UUID storageCredentialId = UUID.randomUUID();
-    CredentialInfo storageCredentialInfo =
-        new CredentialInfo()
-            .id(storageCredentialId.toString())
-            .name(createCredentialRequest.getName())
-            .comment(createCredentialRequest.getComment())
-            .purpose(createCredentialRequest.getPurpose())
-            .owner(callerId)
-            .createdAt(Instant.now().toEpochMilli())
-            .createdBy(callerId);
-
-    if (createCredentialRequest.getAwsIamRole() != null) {
-      storageCredentialInfo.setAwsIamRole(
-          fromAwsIamRoleRequest(createCredentialRequest.getAwsIamRole()));
-    } else {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "Storage credential must have one of aws_iam_role, azure_service_principal, azure_managed_identity or gcp_service_account");
-    }
-
+    CredentialDAO dao = CredentialDAO.from(createCredentialRequest, callerId);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           if (getCredentialDAO(session, createCredentialRequest.getName()) != null) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS,
+                ErrorCode.STORAGE_CREDENTIAL_ALREADY_EXISTS,
                 "Storage credential already exists: " + createCredentialRequest.getName());
           }
-          session.persist(CredentialDAO.from(storageCredentialInfo));
-          LOGGER.info("Added storage credential: {}", storageCredentialInfo.getName());
-          return storageCredentialInfo;
+          session.persist(dao);
+          LOGGER.info("Added storage credential: {}", dao.getName());
+          return dao.toCredentialInfo(getAwsS3MasterRoleArn());
         },
         "Failed to add storage credential",
         /* readOnly = */ false);
@@ -88,10 +68,18 @@ public class CredentialRepository {
             throw new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
           }
           LOGGER.info("Retrieved storage credential: {}", name);
-          return dao.toCredentialInfo();
+          return dao.toCredentialInfo(getAwsS3MasterRoleArn());
         },
         "Failed to get storage credential",
         /* readOnly = */ true);
+  }
+
+  protected String getCredentialName(Session session, UUID id) {
+    CredentialDAO credentialDAO = session.get(CredentialDAO.class, id);
+    if (credentialDAO == null) {
+      throw new BaseException(ErrorCode.INTERNAL, "Credential not found: " + id);
+    }
+    return credentialDAO.getName();
   }
 
   protected CredentialDAO getCredentialDAO(Session session, String name) {
@@ -114,7 +102,7 @@ public class CredentialRepository {
           List<CredentialInfo> results = new ArrayList<>();
           for (CredentialDAO dao : daoList) {
             try {
-              results.add(dao.toCredentialInfo());
+              results.add(dao.toCredentialInfo(getAwsS3MasterRoleArn()));
             } catch (Exception e) {
               // Skip credentials that can't be processed
               LOGGER.error("Failed to process credential: {}", dao.getName(), e);
@@ -142,12 +130,14 @@ public class CredentialRepository {
             ValidationUtils.validateSqlObjectName(updateCredential.getNewName());
             if (getCredentialDAO(session, updateCredential.getNewName()) != null) {
               throw new BaseException(
-                  ErrorCode.ALREADY_EXISTS,
+                  ErrorCode.STORAGE_CREDENTIAL_ALREADY_EXISTS,
                   "Storage credential already exists: " + updateCredential.getNewName());
             }
             existingCredential.setName(updateCredential.getNewName());
           }
-          updateCredentialFields(existingCredential, updateCredential);
+          if (updateCredential.getAwsIamRole() != null) {
+            existingCredential.setAwsIamRole(updateCredential.getAwsIamRole());
+          }
           if (updateCredential.getComment() != null) {
             existingCredential.setComment(updateCredential.getComment());
           }
@@ -156,30 +146,14 @@ public class CredentialRepository {
 
           session.merge(existingCredential);
           LOGGER.info("Updated storage credential: {}", name);
-          return existingCredential.toCredentialInfo();
+          return existingCredential.toCredentialInfo(getAwsS3MasterRoleArn());
         },
         "Failed to update storage credential",
         /* readOnly = */ false);
   }
 
-  private static void updateCredentialFields(
-      CredentialDAO existingCredential, UpdateCredentialRequest updateCredentialRequest) {
-    try {
-      if (updateCredentialRequest.getAwsIamRole() != null) {
-        existingCredential.setCredentialType(CredentialDAO.CredentialType.AWS_IAM_ROLE);
-        String jsonCredential =
-            objectMapper.writeValueAsString(
-                fromAwsIamRoleRequest(updateCredentialRequest.getAwsIamRole()));
-        // TODO: encrypt the credential
-        existingCredential.setCredential(jsonCredential);
-      }
-    } catch (JsonProcessingException e) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Failed to serialize credential: " + e.getMessage());
-    }
-  }
-
-  public CredentialInfo deleteCredential(String name) {
+  public UUID deleteCredential(String name, boolean force) {
+    LOGGER.debug("Deleting storage credential {}", name);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -187,18 +161,37 @@ public class CredentialRepository {
           if (existingCredential == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Credential not found: " + name);
           }
-          // Convert to CredentialInfo before removing from database
-          CredentialInfo credentialInfo = existingCredential.toCredentialInfo();
+          if (!force) {
+            // Check if it's still used by any external location.
+            ExternalLocationDAO externalLocationDAO =
+                getExternalLocationDAOUsingCredential(session, existingCredential.getId());
+            if (externalLocationDAO != null) {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  "Credential still used by external location '"
+                      + externalLocationDAO.getName()
+                      + "'");
+            }
+          }
           session.remove(existingCredential);
           LOGGER.info("Deleted credential: {}", name);
-          return credentialInfo;
+          return existingCredential.getId();
         },
         "Failed to delete credential",
         /* readOnly = */ false);
   }
 
-  private static AwsIamRoleResponse fromAwsIamRoleRequest(AwsIamRoleRequest awsIamRoleRequest) {
-    // TODO: add external id and unity catalog server iam role
-    return new AwsIamRoleResponse().roleArn(awsIamRoleRequest.getRoleArn());
+  protected ExternalLocationDAO getExternalLocationDAOUsingCredential(
+      Session session, UUID credentialId) {
+    Query<ExternalLocationDAO> query =
+        session.createQuery(
+            "FROM ExternalLocationDAO WHERE credentialId = :value", ExternalLocationDAO.class);
+    query.setParameter("value", credentialId);
+    query.setMaxResults(1);
+    return query.uniqueResult();
+  }
+
+  private Optional<String> getAwsS3MasterRoleArn() {
+    return Optional.ofNullable(serverProperties.get(ServerProperties.Property.AWS_MASTER_ROLE_ARN));
   }
 }

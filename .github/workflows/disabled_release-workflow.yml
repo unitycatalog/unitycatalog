@@ -1,0 +1,24 @@
+name: Release Workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: false  # Disabled to prevent supply chain attacks; re-enable the line below to restore
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build tarball
+        run: build/sbt createTarball
+      - name: Upload Release Asset
+        uses: actions/upload-artifact@82c141cc518b40d92cc801eee768e7aafc9c2fa2 # v2.3.1
+        with:
+         name: unitycatalog
+         path: target/unitycatalog-*.tar.gz

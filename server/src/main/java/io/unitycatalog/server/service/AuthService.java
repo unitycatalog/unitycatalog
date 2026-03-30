@@ -2,6 +2,8 @@ package io.unitycatalog.server.service;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
+import com.auth0.jwt.exceptions.JWTDecodeException;
+import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
@@ -42,6 +44,7 @@ import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -90,19 +93,17 @@ public class AuthService {
    *   <li>scope: Not supported
    * </ul>
    *
-   * <p>Currently the issuer for the incoming token to validate is not constrained to a specific
-   * identity provider, rather as long as the token is signed by the matching issuer the validation
-   * succeeds.
-   *
-   * <p>Eventually this should be constrained to a specific identity provider and even require that
-   * the incoming identity (email, subject) matches a specific user in the system, once a user
-   * management system is in place.
+   * <p>The issuer of the incoming token must be in the configured allowlist
+   * (server.allowed-issuers) and the token must contain a valid audience claim matching the
+   * configured audiences (server.audiences). Both configurations are required when authorization is
+   * enabled.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
    * @return The token exchange response
    */
   @Post("/tokens")
+  @com.linecorp.armeria.server.annotation.Blocking
   public HttpResponse grantToken(
       @Param("ext") Optional<TokenEndpointExtensionType> ext,
       @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form) {
@@ -135,14 +136,54 @@ public class AuthService {
           ErrorCode.INVALID_ARGUMENT, "Authorization is disabled");
     }
 
-    DecodedJWT decodedJWT = JWT.decode(form.getSubjectToken());
+    List<String> allowedIssuers = serverProperties.getAllowedIssuers();
+    if (allowedIssuers.isEmpty()) {
+      LOGGER.error("No allowed issuers configured");
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT,
+          "No allowed issuers configured. Set server.allowed-issuers in server.properties");
+    }
+
+    List<String> audiences = serverProperties.getAudiences();
+    if (audiences.isEmpty()) {
+      LOGGER.error("No audiences configured");
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT,
+          "No audiences configured. Set server.audiences in server.properties");
+    }
+
+    DecodedJWT decodedJWT;
+    try {
+      decodedJWT = JWT.decode(form.getSubjectToken());
+    } catch (JWTDecodeException e) {
+      LOGGER.debug("Token rejected: malformed token", e);
+      throw new OAuthInvalidRequestException(
+          ErrorCode.UNAUTHENTICATED, "Invalid token: " + e.getMessage(), e);
+    }
+
     String issuer = decodedJWT.getIssuer();
+
+    // Validate issuer is in allowlist BEFORE fetching JWKS
+    if (!allowedIssuers.contains(issuer)) {
+      LOGGER.debug("Token rejected: invalid issuer '{}'", issuer);
+      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid issuer");
+    }
+
     String keyId = decodedJWT.getKeyId();
+    String alg = decodedJWT.getAlgorithm();
 
     LOGGER.debug("Validating token for issuer: {} and keyId: {}", issuer, keyId);
 
-    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
-    decodedJWT = jwtVerifier.verify(decodedJWT);
+    try {
+      JWTVerifier jwtVerifier =
+          jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg, audiences);
+      decodedJWT = jwtVerifier.verify(decodedJWT);
+    } catch (JWTVerificationException e) {
+      LOGGER.debug("Token rejected: verification failed", e);
+      throw new OAuthInvalidRequestException(
+          ErrorCode.UNAUTHENTICATED, "Token verification failed: " + e.getMessage(), e);
+    }
+
     verifyPrincipal(decodedJWT);
 
     LOGGER.debug("Validated. Creating access token.");

@@ -2,7 +2,7 @@ package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
-import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.utils.NormalizedURL;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -52,36 +52,20 @@ public class VolumeInfoDAO extends IdentifiableDAO {
   @Column(name = "volume_type")
   private String volumeType;
 
-  public VolumeInfo toVolumeInfo() {
+  public VolumeInfo toVolumeInfo(String catalogName, String schemaName) {
     return new VolumeInfo()
         .volumeId(getId().toString())
         .name(getName())
+        .catalogName(catalogName)
+        .schemaName(schemaName)
+        .fullName(catalogName + "." + schemaName + "." + getName())
         .comment(comment)
-        .storageLocation(FileOperations.toStandardizedURIString(storageLocation))
+        .storageLocation(NormalizedURL.normalize(storageLocation))
         .owner(owner)
         .createdAt(createdAt.getTime())
         .createdBy(createdBy)
         .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
         .updatedBy(updatedBy)
         .volumeType(VolumeType.valueOf(volumeType));
-  }
-
-  public static VolumeInfoDAO from(VolumeInfo volumeInfo) {
-    if (volumeInfo == null) {
-      return null;
-    }
-    return VolumeInfoDAO.builder()
-        .id(UUID.fromString(volumeInfo.getVolumeId()))
-        .name(volumeInfo.getName())
-        .comment(volumeInfo.getComment())
-        .storageLocation(volumeInfo.getStorageLocation())
-        .owner(volumeInfo.getOwner())
-        .createdAt(
-            volumeInfo.getCreatedAt() != null ? new Date(volumeInfo.getCreatedAt()) : new Date())
-        .createdBy(volumeInfo.getCreatedBy())
-        .updatedAt(volumeInfo.getUpdatedAt() != null ? new Date(volumeInfo.getUpdatedAt()) : null)
-        .updatedBy(volumeInfo.getUpdatedBy())
-        .volumeType(volumeInfo.getVolumeType().getValue())
-        .build();
   }
 }

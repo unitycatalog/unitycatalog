@@ -12,12 +12,14 @@ import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
@@ -60,24 +62,24 @@ public class TableRepository {
    * common supplemental of an actual table but only a special case.
    *
    * @param tableId the ID of the table or staging table
-   * @return the standardized URI string of the storage location
+   * @return the normalized URL of the storage location
    * @throws BaseException with ErrorCode.NOT_FOUND if neither a table nor staging table is found
    *     with the given ID
    */
-  public String getStorageLocationForTableOrStagingTable(UUID tableId) {
+  public NormalizedURL getStorageLocationForTableOrStagingTable(UUID tableId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           LOGGER.debug("Getting storage location of table by id: {}", tableId);
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
           if (tableInfoDAO != null) {
-            return FileOperations.toStandardizedURIString(tableInfoDAO.getUrl());
+            return NormalizedURL.from(tableInfoDAO.getUrl());
           }
 
           LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
           StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
           if (stagingTableDAO != null) {
-            return FileOperations.toStandardizedURIString(stagingTableDAO.getStagingLocation());
+            return NormalizedURL.from(stagingTableDAO.getStagingLocation());
           }
           throw new BaseException(
               ErrorCode.NOT_FOUND, "Neither table nor staging table found with id: " + tableId);
@@ -164,7 +166,7 @@ public class TableRepository {
   private TableInfoDAO findTable(
       Session session, String catalogName, String schemaName, String tableName) {
     UUID schemaId =
-        repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
     return findBySchemaIdAndName(session, schemaId, tableName);
   }
 
@@ -185,21 +187,24 @@ public class TableRepository {
           String catalogName = createTable.getCatalogName();
           String schemaName = createTable.getSchemaName();
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
-          String storageLocation =
-              FileOperations.toStandardizedURIString(createTable.getStorageLocation());
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
+          NormalizedURL storageLocation = NormalizedURL.from(createTable.getStorageLocation());
 
           // Check if table already exists
           TableInfoDAO existingTable =
               findBySchemaIdAndName(session, schemaId, createTable.getName());
           if (existingTable != null) {
-            throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + fullName);
+            throw new BaseException(
+                ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
           // The table ID will either be a new random one or the id of staging table, depending
           // on the type of table to create.
           String tableID;
           if (tableType == TableType.EXTERNAL) {
+            ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
             tableID = UUID.randomUUID().toString();
           } else if (tableType == TableType.MANAGED) {
             serverProperties.checkManagedTableEnabled();
@@ -240,7 +245,7 @@ public class TableRepository {
                   .createdBy(callerId)
                   .updatedAt(createTime)
                   .updatedBy(callerId)
-                  .storageLocation(storageLocation)
+                  .storageLocation(storageLocation.toString())
                   .tableId(tableID);
 
           TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);
@@ -301,7 +306,9 @@ public class TableRepository {
         sessionFactory,
         session -> {
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           return listTables(
               session,
               schemaId,
@@ -352,7 +359,9 @@ public class TableRepository {
           String schemaName = parts[1];
           String tableName = parts[2];
           UUID schemaId =
-              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           deleteTable(session, schemaId, tableName);
           return null;
         },
@@ -367,7 +376,7 @@ public class TableRepository {
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {
-        fileOperations.deleteDirectory(tableInfoDAO.getUrl());
+        FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
       } catch (Throwable e) {
         LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }

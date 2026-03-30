@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
@@ -8,7 +9,8 @@ import static io.unitycatalog.server.model.SecurableType.VOLUME;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
-import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
@@ -47,7 +49,7 @@ public class VolumeService extends AuthorizedService {
 
   @SneakyThrows
   public VolumeService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories.getUserRepository());
+    super(authorizer, repositories);
     this.volumeRepository = repositories.getVolumeRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.catalogRepository = repositories.getCatalogRepository();
@@ -55,18 +57,50 @@ public class VolumeService extends AuthorizedService {
     this.evaluator = new UnityAccessEvaluator(authorizer);
   }
 
+  /**
+   * Creates a new volume in the specified schema.
+   *
+   * <p>Authorization requirements:
+   *
+   * <ul>
+   *   <li>Must have OWNER or USE_CATALOG permission on the catalog
+   *   <li>Must have either OWNER permission on the schema, or both USE_SCHEMA and CREATE_VOLUME
+   *       permissions
+   *   <li>For EXTERNAL volumes:
+   *       <ul>
+   *         <li>The storage location must not overlap with any existing table, volume, or
+   *             registered model
+   *         <li>If the storage location falls within a registered external location, the user
+   *             must have OWNER or CREATE_EXTERNAL_VOLUME permission on that external location
+   *         <li>If the storage location does not fall within any registered external location,
+   *             the volume can be created without additional external location permissions
+   *       </ul>
+   *   <li>MANAGED volume creation delegates to catalog and schema for permission. Once the catalog
+   *       or schema is allowed to create under an external location with permission
+   *       CREATE_MANAGED_STORAGE, all managed entity creations under it no longer need to check for
+   *       external location again.
+   * </ul>
+   *
+   * @param createVolumeRequest the volume creation request containing volume metadata and storage
+   * @return HTTP response containing the created VolumeInfo
+   */
   @Post("")
-  // TODO: for now, we are not supporting CREATE VOLUME or CREATE EXTERNAL VOLUME privileges
   @AuthorizeExpression("""
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
+      (#authorize(#principal, #schema, OWNER) ||
+        #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME)) &&
+      (#volume_type != 'EXTERNAL' ||
+        (#no_overlap_with_data_securable &&
+          (#external_location == null ||
+           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_VOLUME))))
       """)
-  @AuthorizeKey(METASTORE)
   public HttpResponse createVolume(
-      @AuthorizeKeys({
-        @AuthorizeKey(value = SCHEMA, key = "schema_name"),
-        @AuthorizeKey(value = CATALOG, key = "catalog_name")
+      @AuthorizeResourceKeys({
+        @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
+        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
+        @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
       })
+      @AuthorizeKey(key = "volume_type")
       CreateVolumeRequestContent createVolumeRequest) {
     // Throw error if catalog/schema does not exist
     VolumeInfo volumeInfo = volumeRepository.createVolume(createVolumeRequest);
@@ -110,9 +144,9 @@ public class VolumeService extends AuthorizedService {
           #authorize(#principal, #catalog, USE_CATALOG) &&
           #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse getVolume(
-      @Param("full_name") @AuthorizeKey(VOLUME) String fullName,
+      @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
     return HttpResponse.ofJson(volumeRepository.getVolume(fullName));
   }
@@ -123,9 +157,9 @@ public class VolumeService extends AuthorizedService {
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolume(
-      @Param("full_name") @AuthorizeKey(VOLUME) String fullName,
+      @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
       UpdateVolumeRequestContent updateVolumeRequest) {
     return HttpResponse.ofJson(volumeRepository.updateVolume(fullName, updateVolumeRequest));
   }
@@ -138,8 +172,9 @@ public class VolumeService extends AuthorizedService {
           #authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA))
       """)
-  @AuthorizeKey(METASTORE)
-  public HttpResponse deleteVolume(@Param("full_name") @AuthorizeKey(VOLUME) String fullName) {
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse deleteVolume(
+      @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName) {
     VolumeInfo volumeInfo = volumeRepository.getVolume(fullName);
     volumeRepository.deleteVolume(fullName);
 

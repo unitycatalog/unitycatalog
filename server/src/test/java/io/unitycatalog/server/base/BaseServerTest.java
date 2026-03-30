@@ -5,7 +5,8 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
-import io.unitycatalog.server.utils.TestUtils;
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -19,11 +20,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 public abstract class BaseServerTest {
 
-  public static ServerConfig serverConfig = new ServerConfig("http://localhost", "");
-  protected static UnityCatalogServer unityCatalogServer;
-  protected static Properties serverProperties;
-  protected static HibernateConfigurator hibernateConfigurator;
-  protected static CloudCredentialVendor cloudCredentialVendor;
+  public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
+  protected UnityCatalogServer unityCatalogServer;
+  protected Properties serverProperties;
+  protected HibernateConfigurator hibernateConfigurator;
+  protected CloudCredentialVendor cloudCredentialVendor;
 
   // All test data should be written under this directory. It will be cleaned up.
   @TempDir protected Path testDirectoryRoot;
@@ -61,7 +62,7 @@ public abstract class BaseServerTest {
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
   }
 
-  protected void setUpCredentialOperations() {}
+  protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
   @SneakyThrows
   @BeforeEach
@@ -78,12 +79,12 @@ public abstract class BaseServerTest {
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
       // start the server on a random port
-      int port = TestUtils.getRandomPort();
+      int port = findAvailablePort();
       Files.createDirectories(testDirectoryRoot);
 
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
-      setUpCredentialOperations();
+      setUpCredentialOperations(initServerProperties);
       hibernateConfigurator = new HibernateConfigurator(initServerProperties);
       unityCatalogServer =
           UnityCatalogServer.builder()
@@ -93,6 +94,13 @@ public abstract class BaseServerTest {
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
+    }
+  }
+
+  /** Finds an available port for the UC server. */
+  private int findAvailablePort() throws IOException {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
     }
   }
 
@@ -113,6 +121,8 @@ public abstract class BaseServerTest {
       session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
       session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
       session.createMutationQuery("delete from UserDAO").executeUpdate();
+      session.createMutationQuery("delete from ExternalLocationDAO").executeUpdate();
+      session.createMutationQuery("delete from CredentialDAO").executeUpdate();
       tx.commit();
       session.close();
 

@@ -33,16 +33,15 @@ import io.unitycatalog.client.model.UpdateRegisteredModel;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
-import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public abstract class BaseModelCRUDTest extends BaseCRUDTest {
   protected SchemaOperations schemaOperations;
@@ -52,12 +51,12 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
   protected abstract ModelOperations createModelOperations(ServerConfig serverConfig);
 
-  String rootBase = "/tmp/" + UUID.randomUUID();
+  @TempDir Path rootBase;
 
   @Override
   public void setUpProperties() {
     super.setUpProperties();
-    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase);
+    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase.toString());
   }
 
   @BeforeEach
@@ -66,16 +65,6 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     super.setUp();
     schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
-  }
-
-  @AfterEach
-  public void afterEachTest() {
-    try {
-      // Clean up the newly created storage root
-      UriUtils.deleteStorageLocationPath("file:" + rootBase);
-    } catch (Exception e) {
-      // Ignore
-    }
   }
 
   protected void createCommonResources() throws ApiException {

@@ -5,15 +5,17 @@ import static io.unitycatalog.server.utils.TestUtils.COMMENT;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.TABLE_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
-import static org.apache.commons.io.FileUtils.deleteDirectory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.schema.CliSchemaOperations;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -26,13 +28,13 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -76,61 +78,79 @@ public class CliTableCreationTest extends BaseServerTest {
 
   @Test
   public void testCreateTableLocalDirectoryDoesNotExist() throws IOException, ApiException {
-    String tablePath = "/tmp/" + UUID.randomUUID();
+    String tablePath = testDirectoryRoot.resolve("table").toString();
     createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), COLUMNS);
   }
 
   @Test
   public void testCreateTableLocalDirectoryExistsWithoutDeltaLog()
       throws IOException, ApiException {
-    String tablePath = "/tmp/" + UUID.randomUUID();
-    Path dir = Paths.get(tablePath);
+    Path dir = testDirectoryRoot.resolve("table");
     Files.createDirectory(dir);
-    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), COLUMNS);
+    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(dir.toString()), COLUMNS);
   }
 
   @Test
   public void testCreateTableLocalDirectoryExistsWithDeltaLog() throws ApiException, IOException {
     // First create a table with delta log
-    String tablePath = "/tmp/" + UUID.randomUUID();
+    Path tableDir = testDirectoryRoot.resolve("table");
+    String tablePath = tableDir.toString();
     assertThatCode(
             () ->
+                // null tableId/serverUrl/authToken = external table (no UC commit coordination)
                 DeltaKernelUtils.createDeltaTable(
-                    Paths.get(tablePath).toUri().toString(), COLUMNS, null))
+                    tableDir.toUri().toString(), COLUMNS, null, null, null, null, null))
         .doesNotThrowAnyException();
-    assertThat(Paths.get(tablePath + "/_delta_log")).isDirectory();
+    assertThat(tableDir.resolve("_delta_log")).isDirectory();
     createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), COLUMNS);
   }
 
   @Test
   public void testCreateManagedTable() throws IOException, ApiException {
     createTableAndAssertReadTableSucceeds(TableType.MANAGED, Optional.empty(), COLUMNS);
+
+    // Verify CCv2 (catalog-managed) properties are persisted on the server via direct RPC call
+    TablesApi tablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));
+    Map<String, String> props = tablesApi.getTable(TABLE_FULL_NAME, true, true).getProperties();
+    assertThat(props).isNotNull();
+    assertThat(props).containsEntry("delta.feature.catalogManaged", "supported");
+    assertThat(props).containsEntry("delta.feature.vacuumProtocolCheck", "supported");
+    assertThat(props).containsEntry("delta.minReaderVersion", "3");
+    assertThat(props).containsEntry("delta.minWriterVersion", "7");
+    assertThat(props).containsEntry("delta.lastUpdateVersion", "0");
   }
 
   @Test
-  public void testCreateManagedTableAndFail() throws IOException, ApiException {
+  public void testCreateManagedTableAndFail() {
     // This fails due to setting a storage location for managed table.
-    assertThat(
-            tableOperations.createTable(
-                new CreateTable()
-                    .catalogName(CATALOG_NAME)
-                    .schemaName(SCHEMA_NAME)
-                    .name(TABLE_NAME + "_1")
-                    .tableType(TableType.MANAGED)
-                    .storageLocation("/tmp/some_path")
-                    .columns(COLUMNS)))
-        .isNull();
+    CliException ex1 =
+        assertThrows(
+            CliException.class,
+            () ->
+                tableOperations.createTable(
+                    new CreateTable()
+                        .catalogName(CATALOG_NAME)
+                        .schemaName(SCHEMA_NAME)
+                        .name(TABLE_NAME + "_1")
+                        .tableType(TableType.MANAGED)
+                        .storageLocation("/tmp/some_path")
+                        .columns(COLUMNS)));
+    assertThat(ex1.getMessage()).contains("Storage location is not allowed for managed tables");
     // This fails due to setting PARQUET. Only DELTA is supported for managed table right now.
-    assertThat(
-            tableOperations.createTable(
-                new CreateTable()
-                    .catalogName(CATALOG_NAME)
-                    .schemaName(SCHEMA_NAME)
-                    .name(TABLE_NAME + "_2")
-                    .tableType(TableType.MANAGED)
-                    .dataSourceFormat(DataSourceFormat.PARQUET)
-                    .columns(COLUMNS)))
-        .isNull();
+    CliException ex2 =
+        assertThrows(
+            CliException.class,
+            () ->
+                tableOperations.createTable(
+                    new CreateTable()
+                        .catalogName(CATALOG_NAME)
+                        .schemaName(SCHEMA_NAME)
+                        .name(TABLE_NAME + "_2")
+                        .tableType(TableType.MANAGED)
+                        .dataSourceFormat(DataSourceFormat.PARQUET)
+                        .columns(COLUMNS)));
+    assertThat(ex2.getMessage())
+        .contains("Only Delta tables are supported for managed tables: PARQUET");
   }
 
   private void createTableAndAssertReadTableSucceeds(
@@ -153,7 +173,7 @@ public class CliTableCreationTest extends BaseServerTest {
     } else {
       assert tableType == TableType.MANAGED;
       assertThat(tableInfo.getStorageLocation())
-          .isEqualTo(tableStorageRoot + "/tables/" + tableInfo.getTableId());
+          .isEqualTo(tableStorageRoot + "/__unitystorage/tables/" + tableInfo.getTableId());
       assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
     }
     assertThat(tableOperations.getTable(TABLE_FULL_NAME).getTableId())
@@ -163,10 +183,7 @@ public class CliTableCreationTest extends BaseServerTest {
                 DeltaKernelUtils.readDeltaTable(
                     tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100))
         .doesNotThrowAnyException();
-    assertThatCode(() -> tableOperations.deleteTable(TABLE_FULL_NAME)).doesNotThrowAnyException();
-    // Managed table deletion does not delete the directory yet. So the test would delete the
-    // directory anyway
-    assertThatCode(() -> deleteDirectory(Paths.get(tableInfo.getStorageLocation()).toFile()))
-        .doesNotThrowAnyException();
+    // Table and directory cleanup is handled by @AfterEach via cascade-deleting the catalog.
+    // For managed tables, the temp directory is also cleaned up by JUnit @TempDir.
   }
 }
