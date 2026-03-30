@@ -12,14 +12,20 @@ To start testing or modifying the documentation locally, follow these steps:
 
 Install the required node version using [nvm](https://github.com/nvm-sh/nvm):
 
-```
+```sh
 nvm install
+```
+
+Then install the required npm version using corepack:
+
+```sh
+corepack enable npm
 ```
 
 Install dependencies:
 
-```
-pnpm i
+```sh
+npm install
 ```
 
 ### 2. Serving the Docs Locally
