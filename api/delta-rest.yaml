@@ -1,6 +1,6 @@
 openapi: 3.1.1
 servers:
-  - url: "{scheme}://{host}:{port}/api/2.1/unity-catalog/delta/v1"
+  - url: "{scheme}://{host}:{port}/api/2.1/unity-catalog/delta"
     description: Delta REST Catalog server
     variables:
       scheme:
@@ -15,7 +15,7 @@ servers:
       port:
         description: The server port number
         default: "8080"
-  - url: http://localhost:8080/api/2.1/unity-catalog/delta/v1
+  - url: http://localhost:8080/api/2.1/unity-catalog/delta
     description: Localhost reference server for Delta REST Catalog API
 info:
   title: Delta REST Catalog API
@@ -27,6 +27,11 @@ info:
     is Delta-centric and only communicates native Delta schema and metadata over RPCs. It is
     meant to be used by Delta clients, not Iceberg clients, and co-exists with the fully
     IRC-compatible APIs for Iceberg clients to access UniForm and DBI tables.
+
+    Authentication: This API uses the same OAuth 2.0 bearer token authentication as the
+    Unity Catalog API (all.yaml). Clients must include an `Authorization: Bearer <token>`
+    header on every request. Authentication is not redefined here to stay consistent with
+    the existing UC API spec.
 
 tags:
   - name: Configuration
@@ -45,7 +50,7 @@ tags:
       Credentials are scoped by operation level (READ or READ_WRITE).
 
 paths:
-  /config:
+  /v1/config:
     get:
       tags:
         - Configuration
@@ -87,7 +92,7 @@ paths:
                   - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
                   - "DELETE /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
                   - "HEAD /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
-                  - "POST /v1/catalogs/{catalog}/tables/rename"
+                  - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename"
                   - "GET /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials"
                   - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics"
                   - "GET /v1/staging-tables/{table_id}/credentials"
@@ -106,7 +111,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailableResponse'
 
-  /catalogs/{catalog}/schemas/{schema}/staging-tables:
+  /v1/catalogs/{catalog}/schemas/{schema}/staging-tables:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -180,7 +185,7 @@ paths:
         '500':
           $ref: '#/components/responses/ServerErrorResponse'
 
-  /catalogs/{catalog}/schemas/{schema}/tables:
+  /v1/catalogs/{catalog}/schemas/{schema}/tables:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -249,7 +254,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /catalogs/{catalog}/schemas/{schema}/tables/{table}:
+  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -349,7 +354,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials:
+  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -385,7 +390,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics:
+  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -396,7 +401,9 @@ paths:
       operationId: reportMetrics
       summary: Report commit metrics
       description: |
-        Report commit metrics (telemetry) for a table.
+        Report commit metrics (telemetry) for a table. The path {table}
+        and the body table-id must identify the same table; the server
+        validates this and rejects mismatches.
       requestBody:
         required: true
         content:
@@ -415,7 +422,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /staging-tables/{table_id}/credentials:
+  /v1/staging-tables/{table_id}/credentials:
     parameters:
       - name: table_id
         in: path
@@ -448,16 +455,19 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /catalogs/{catalog}/tables/rename:
+  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename:
     parameters:
       - $ref: '#/components/parameters/catalog'
+      - $ref: '#/components/parameters/schema'
+      - $ref: '#/components/parameters/table'
     post:
       tags:
         - Tables
       operationId: renameTable
       summary: Rename a table
       description: |
-        Rename a table. Can only change the table name within the same schema and catalog.
+        Rename a table within the same catalog and schema.
+        Cross-schema and cross-catalog moves are not supported.
       requestBody:
         required: true
         content:
@@ -478,7 +488,7 @@ paths:
         '409':
           $ref: '#/components/responses/AlreadyExistsResponse'
 
-  /temporary-path-credentials:
+  /v1/temporary-path-credentials:
     get:
       tags:
         - TemporaryCredentials
@@ -638,9 +648,12 @@ components:
 
     CredentialsResponse:
       type: object
+      required:
+        - storage-credentials
       properties:
         storage-credentials:
           type: array
+          description: Temporary cloud storage credentials.
           items:
             $ref: '#/components/schemas/StorageCredential'
 
@@ -904,44 +917,28 @@ components:
           type: string
           description: Token for next page
 
-    TableIdentifier:
+    TableIdentifierWithDataSourceFormat:
       type: object
+      description: Table identifier returned by list operations. Schema and catalog are implicit from the request path.
       properties:
-        catalog:
-          type: string
-          description: Catalog name
-        schema:
-          type: string
-          description: Schema name
         name:
           type: string
           description: Table name
+        data-source-format:
+          $ref: '#/components/schemas/DataSourceFormat'
+          description: Data source format
       required:
         - name
-
-    TableIdentifierWithDataSourceFormat:
-      type: object
-      description: Table identifier with data source format, used in list operations
-      allOf:
-        - $ref: '#/components/schemas/TableIdentifier'
-        - type: object
-          properties:
-            data-source-format:
-              $ref: '#/components/schemas/DataSourceFormat'
-              description: Data source format
-          required:
-            - data-source-format
+        - data-source-format
 
     RenameTableRequest:
       type: object
       properties:
-        source:
-          $ref: '#/components/schemas/TableIdentifier'
-        destination:
-          $ref: '#/components/schemas/TableIdentifier'
+        new-name:
+          type: string
+          description: New table name
       required:
-        - source
-        - destination
+        - new-name
 
 
     # Table Update Operations
@@ -1484,11 +1481,16 @@ components:
 
     ReportMetricsRequest:
       type: object
+      required:
+        - table-id
       properties:
         table-id:
           type: string
           format: uuid
-          description: Uniquely identifies the Delta table
+          description: |
+            Table UUID. Must match the table identified by the path
+            {catalog}/{schema}/{table}. Obtained from loadTable
+            response metadata.table-uuid.
         report:
           type: object
           description: Contains the metrics being reported
