@@ -10,11 +10,11 @@ readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
-  "typing_extensions",
-  "pydantic",
-  "nest_asyncio",
-  "unitycatalog-client",
-  "cloudpickle",
+  "typing_extensions>=4.0.0",
+  "pydantic>=2.0.0,<3",
+  "nest_asyncio>=1.5.0",
+  "unitycatalog-client>=0.3.0",
+  "cloudpickle>=2.0.0",
 ]
 keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
 classifiers = [

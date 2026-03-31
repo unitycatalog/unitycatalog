@@ -23,7 +23,7 @@ jobs:
 
       - name: Run lint check
         run: |
-          (cd ui && yarn install && yarn test:format)
+          (cd ui && yarn install --frozen-lockfile && yarn test:format)
 
   java-fmt:
     runs-on: ubuntu-latest
