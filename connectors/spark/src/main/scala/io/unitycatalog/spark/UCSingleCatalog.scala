@@ -473,9 +473,6 @@ object UCSingleCatalog {
 
   def setCredentialProps(props: util.HashMap[String, String],
                          credentialProps: util.Map[String, String]): Unit = {
-    props.putAll(credentialProps)
-    // TODO: Delta requires the options to be set twice in the properties, with and without the
-    //       `option.` prefix. We should revisit this in Delta.
     val prefix = TableCatalog.OPTION_PREFIX
     props.putAll(credentialProps.map {
       case (k, v) => (prefix + k, v)
