@@ -14,16 +14,20 @@ import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.persist.PropertyRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.service.iceberg.LoadTableResponseWithLabels;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.catalog.Namespace;
@@ -160,15 +164,29 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
-  public LoadTableResponse loadTable(
+  public Object loadTable(
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
       @Param("table") String table) {
+    String fullName = catalog + "." + namespace + "." + table;
     String metadataLocation;
+    Map<String, String> labels;
     try (Session session = sessionFactory.openSession()) {
-      tableRepository.getTable(catalog + "." + namespace + "." + table);
+      var tableInfo = tableRepository.getTable(fullName);
       metadataLocation =
           tableRepository.getTableUniformMetadataLocation(session, catalog, namespace, table);
+
+      // Extract labels from UC properties with "label." prefix — these are catalog-scoped,
+      // not part of Iceberg table metadata
+      labels = new HashMap<>();
+      PropertyRepository.findProperties(
+              session, UUID.fromString(tableInfo.getTableId()), "TABLE")
+          .forEach(
+              prop -> {
+                if (prop.getKey().startsWith("label.")) {
+                  labels.put(prop.getKey().substring(6), prop.getValue());
+                }
+              });
     }
 
     if (metadataLocation == null) {
@@ -178,10 +196,17 @@ public class IcebergRestCatalogService {
     TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
     Map<String, String> config = tableConfigService.getTableConfig(tableMetadata);
 
-    return LoadTableResponse.builder()
-        .withTableMetadata(tableMetadata)
-        .addAllConfig(config)
-        .build();
+    LoadTableResponse response =
+        LoadTableResponse.builder()
+            .withTableMetadata(tableMetadata)
+            .addAllConfig(config)
+            .build();
+
+    if (labels.isEmpty()) {
+      return response;
+    }
+    return new LoadTableResponseWithLabels(
+        response, new LoadTableResponseWithLabels.Labels(labels));
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
