@@ -19,7 +19,6 @@ version.sbt @tdas
 # Docs
 /docs/ @tdas @dennyglee
 /mkdocs.yml @tdas @dennyglee
-/docs/ai/ @tdas @dennyglee
 
 # API
 /api/ @tdas
@@ -30,12 +29,23 @@ version.sbt @tdas
 # AI
 /ai/ @tdas @dennyglee
 
+# Server
+/server/ @tdas
+/server-shaded/ @tdas
+/spec/ @tdas
+
 # Spark Connector
 /connectors/spark/ @tdas @openinx
 
 # Docker
+/docker/ @tdas @dennyglee
 Dockerfile @tdas @dennyglee
 *.dockerfile @tdas @dennyglee
 
 # Clients
 /clients/ @tdas
+
+# Examples and tooling
+/examples/ @tdas @dennyglee
+/helm/ @tdas
+/dev/ @tdas
