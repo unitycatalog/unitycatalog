@@ -10,11 +10,11 @@ readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
-  "typing_extensions>=4.0.0",
+  "typing_extensions>=4.0.0,<5",
   "pydantic>=2.0.0,<3",
-  "nest_asyncio>=1.5.0",
-  "unitycatalog-client>=0.3.0",
-  "cloudpickle>=2.0.0",
+  "nest_asyncio>=1.5.0,<2",
+  "unitycatalog-client>=0.3.0,<1",
+  "cloudpickle>=2.0.0,<4",
 ]
 keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
 classifiers = [
@@ -68,25 +68,25 @@ only-include = ["src/unitycatalog/ai/core"]
 [project.optional-dependencies]
 
 databricks = [
-  "databricks-sdk>=0.32.0",
-  "pandas",
+  "databricks-sdk>=0.32.0,<2",
+  "pandas>=1.0.0,<3",
   "databricks-connect>=15.1.0,<17.1"
 ]
 databricks-dev = [
-  "hatch",
-  "pytest",
-  "databricks-sdk>=0.32.0",
+  "hatch>=1.0.0,<2",
+  "pytest>=7.0.0,<9",
+  "databricks-sdk>=0.32.0,<2",
   "databricks-connect>=15.1.0,<17.1",
-  "pandas",
+  "pandas>=1.0.0,<3",
   "ruff==0.9.3",
 ]
 dev = [
-  "hatch",
-  "pytest",
-  "pytest-asyncio",
-  "databricks-sdk>=0.32.0",
+  "hatch>=1.0.0,<2",
+  "pytest>=7.0.0,<9",
+  "pytest-asyncio>=0.21.0,<1",
+  "databricks-sdk>=0.32.0,<2",
   "databricks-connect<17.1",
-  "pandas",
+  "pandas>=1.0.0,<3",
   "ruff==0.9.3",
 ]
 
