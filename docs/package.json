@@ -8,7 +8,9 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "format": "prettier --write .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
     "prepare": "husky",
     "dev": "astro dev",
     "build": "astro build",
@@ -30,17 +32,16 @@
     "astro": "6.1.2",
     "sharp": "0.34.5",
     "starlight-plausible": "0.2.0",
-    "typescript": "5.9.3"
+    "typescript": "6.0.2"
   },
   "devDependencies": {
-    "@eslint/js": "9.39.4",
+    "@eslint/js": "10.0.1",
     "@typescript-eslint/parser": "8.58.0",
-    "eslint": "9.39.4",
+    "eslint": "10.1.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-astro": "1.6.0",
-    "eslint-plugin-import": "2.32.0",
     "eslint-plugin-prettier": "5.5.5",
-    "globals": "16.5.0",
+    "globals": "17.4.0",
     "husky": "9.1.7",
     "lint-staged": "16.4.0",
     "prettier": "3.8.1",

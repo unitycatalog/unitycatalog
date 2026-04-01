@@ -5,3 +5,4 @@ dist
 pnpm-lock.yaml
 .DS_Store
 src/content/**/*.mdx
+src/content/docs/assets/stylesheets/extra.css
