@@ -3,3 +3,9 @@
 
 docs/ @MrPowers
 mkdocs.yml @MrPowers
+
+# AI
+/ai/ @tdas @dennyglee @serena-ruan @benwilson2
+
+# Clients
+/clients/ @tdas
