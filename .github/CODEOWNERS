@@ -1,0 +1,10 @@
+# This is a CODEOWNERS file for unitycatalog
+# See https://help.github.com/articles/about-codeowners/ for more information
+
+* @tdas @dennyglee @rameshchandra
+
+# AI
+/ai/ @tdas @dennyglee @serena-ruan @benwilson2
+
+# Clients
+/clients/ @tdas
