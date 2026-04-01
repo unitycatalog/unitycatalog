@@ -28,7 +28,7 @@ version.sbt @tdas
 /ui/ @yc-shawn @jamieknight-db
 
 # AI
-/ai/ @dennyglee @serena-ruan @benwilson2
+/ai/ @tdas @dennyglee @serena-ruan @benwilson2
 
 # Spark Connector
 /spark-connector/ @tdas @cloud-fan
