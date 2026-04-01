@@ -3,49 +3,23 @@
 
 * @tdas @dennyglee
 
-# Builds and tests
-build.sbt @tdas
-version.sbt @tdas
+# Build & infra — @tdas only
+*.sbt @tdas
 /build/ @tdas
 /project/ @tdas
 /.github/ @tdas
-/tests/ @tdas
-/integration-tests/ @tdas
-
-# Binary scripts and configs
 /bin/ @tdas
 /etc/ @tdas
-
-# Docs
-/docs/ @tdas @dennyglee
-/mkdocs.yml @tdas @dennyglee
-
-# API
+/tests/ @tdas
+/integration-tests/ @tdas
 /api/ @tdas
-
-# UI
 /ui/ @tdas
-
-# AI
-/ai/ @tdas @dennyglee
-
-# Server
 /server/ @tdas
 /server-shaded/ @tdas
 /spec/ @tdas
+/clients/ @tdas
+/helm/ @tdas
+/dev/ @tdas
 
 # Spark Connector
 /connectors/spark/ @tdas @openinx
-
-# Docker
-/docker/ @tdas @dennyglee
-Dockerfile @tdas @dennyglee
-*.dockerfile @tdas @dennyglee
-
-# Clients
-/clients/ @tdas
-
-# Examples and tooling
-/examples/ @tdas @dennyglee
-/helm/ @tdas
-/dev/ @tdas
