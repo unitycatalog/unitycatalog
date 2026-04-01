@@ -21,6 +21,7 @@ jobs:
     name: test (Spark ${{ matrix.spark-version }}, Delta ${{ matrix.delta-version }})
     continue-on-error: ${{ matrix.allow-failure || false }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - spark-version: "4.0.0"
