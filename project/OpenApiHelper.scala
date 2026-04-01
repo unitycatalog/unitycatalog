@@ -1,5 +1,5 @@
 import org.openapitools.codegen.{CodegenConstants, DefaultGenerator}
-import org.openapitools.codegen.config.{CodegenConfigurator, GlobalSettings}
+import org.openapitools.codegen.config.CodegenConfigurator
 
 case class OpenApiSpec(
   inputSpec: String,
@@ -31,12 +31,10 @@ object OpenApiHelper {
       if (spec.packageName != null) config.setPackageName(spec.packageName)
       spec.additionalProperties.foreach { case (k, v) => config.addAdditionalProperty(k, v) }
       spec.globalProperties.foreach { case (k, v) => config.addGlobalProperty(k, v) }
-      // Suppress test and doc generation (matches OpenApiGeneratorPlugin defaults)
-      GlobalSettings.setProperty(CodegenConstants.API_TESTS, "false")
-      GlobalSettings.setProperty(CodegenConstants.MODEL_TESTS, "false")
-      GlobalSettings.setProperty(CodegenConstants.API_DOCS, "false")
-      GlobalSettings.setProperty(CodegenConstants.MODEL_DOCS, "false")
       val gen = new DefaultGenerator()
+      // Suppress test and metadata generation per-instance
+      gen.setGeneratorPropertyDefault(CodegenConstants.API_TESTS, "false")
+      gen.setGeneratorPropertyDefault(CodegenConstants.MODEL_TESTS, "false")
       gen.setGenerateMetadata(false)
       gen.opts(config.toClientOptInput()).generate()
     }

@@ -3,8 +3,6 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
-| **catalog** | **String** | Catalog name | [optional] [default to null] |
-| **schema** | **String** | Schema name | [optional] [default to null] |
 | **name** | **String** | Table name | [default to null] |
 | **data-source-format** | [**DataSourceFormat**](DataSourceFormat.md) | Data source format | [default to null] |
 

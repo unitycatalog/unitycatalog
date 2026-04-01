@@ -1,12 +1,12 @@
 # TemporaryCredentialsApi
 
-All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog/delta/v1*
+All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog/delta*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**getStagingTableCredentials**](TemporaryCredentialsApi.md#getStagingTableCredentials) | **GET** /staging-tables/{table_id}/credentials | Get staging table credentials by UUID |
-| [**getTableCredentials**](TemporaryCredentialsApi.md#getTableCredentials) | **GET** /catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials | Get table credentials |
-| [**getTemporaryPathCredentials**](TemporaryCredentialsApi.md#getTemporaryPathCredentials) | **GET** /temporary-path-credentials | Get temporary path credentials |
+| [**getStagingTableCredentials**](TemporaryCredentialsApi.md#getStagingTableCredentials) | **GET** /v1/staging-tables/{table_id}/credentials | Get staging table credentials by UUID |
+| [**getTableCredentials**](TemporaryCredentialsApi.md#getTableCredentials) | **GET** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials | Get table credentials |
+| [**getTemporaryPathCredentials**](TemporaryCredentialsApi.md#getTemporaryPathCredentials) | **GET** /v1/temporary-path-credentials | Get temporary path credentials |
 
 
 <a name="getStagingTableCredentials"></a>

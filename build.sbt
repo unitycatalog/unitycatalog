@@ -177,7 +177,7 @@ lazy val client = (project in file("clients/java"))
     javaOnlyReleaseSettings,
     Compile / compile / javacOptions ++= javacRelease11,
     javaCheckstyleTestOnlySettings("dev/checkstyle-config.xml"),
-    // Include generated OpenAPI sources (from both all.yaml and delta-rest.yaml, same output dir)
+    // Include generated OpenAPI sources (from both all.yaml and delta.yaml, same output dir)
     Compile / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "target" / "src" / "main" / "java"),
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -202,7 +202,7 @@ lazy val client = (project in file("clients/java"))
     // Add custom test sources from clients/java directory
     Test / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "src" / "test" / "java"),
 
-    // Generate from both all.yaml and delta-rest.yaml into the same output directory
+    // Generate from both all.yaml and delta.yaml into the same output directory
     generate := {
       val outputDir = (file(".") / "clients" / "java" / "target").toString
       val commonProps = Map(
@@ -222,7 +222,7 @@ lazy val client = (project in file("clients/java"))
             additionalProperties = commonProps
           ),
           OpenApiSpec(
-            inputSpec = (file(".") / "api" / "delta-rest.yaml").toString,
+            inputSpec = (file(".") / "api" / "delta.yaml").toString,
             invokerPackage = s"$orgName.client",
             apiPackage = s"$orgName.client.delta.api",
             modelPackage = s"$orgName.client.delta.model",
@@ -280,7 +280,7 @@ lazy val pythonClient = (project in file("clients/python"))
               additionalProperties = commonProps
             ),
             OpenApiSpec(
-              inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta-rest.yaml").getAbsolutePath,
+              inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
               packageName = s"$artifactNamePrefix.client",
               additionalProperties = commonProps,
               globalProperties = Map("apis" -> "", "models" -> "")
@@ -316,11 +316,11 @@ lazy val apiDocs = (project in file("api"))
         )
       )
       OpenApiHelper.generate(
-        outputDir = (file("api") / "delta-rest-docs").toString,
+        outputDir = (file("api") / "delta-docs").toString,
         generatorName = "markdown",
         specs = Seq(
           OpenApiSpec(
-            inputSpec = (file("api") / "delta-rest.yaml").toString
+            inputSpec = (file("api") / "delta.yaml").toString
           )
         )
       )
@@ -461,7 +461,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
     ),
-    // Generate model codes from both all.yaml and delta-rest.yaml into the same output directory.
+    // Generate model codes from both all.yaml and delta.yaml into the same output directory.
     // Both use "resteasy" for minimal server-side models (no client SDK dependencies).
     // Polymorphic types (TableUpdate, TableRequirement, DataType) use the
     // discriminator + allOf pattern for proper Jackson deserialization.
@@ -482,8 +482,8 @@ lazy val serverModels = (project in file("server") / "target" / "models")
             globalProperties = Map("models" -> "")
           ),
           OpenApiSpec(
-            inputSpec = (file(".") / "api" / "delta-rest.yaml").toString,
-            modelPackage = s"$orgName.server.model.delta",
+            inputSpec = (file(".") / "api" / "delta.yaml").toString,
+            modelPackage = s"$orgName.server.delta.model",
             additionalProperties = commonProps,
             globalProperties = Map("models" -> ""),
           )

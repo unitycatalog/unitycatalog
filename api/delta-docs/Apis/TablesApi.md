@@ -1,18 +1,18 @@
 # TablesApi
 
-All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog/delta/v1*
+All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog/delta*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createStagingTable**](TablesApi.md#createStagingTable) | **POST** /catalogs/{catalog}/schemas/{schema}/staging-tables | Create a staging table |
-| [**createTable**](TablesApi.md#createTable) | **POST** /catalogs/{catalog}/schemas/{schema}/tables | Create a table |
-| [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /catalogs/{catalog}/schemas/{schema}/tables/{table} | Delete a table |
-| [**listTables**](TablesApi.md#listTables) | **GET** /catalogs/{catalog}/schemas/{schema}/tables | List tables |
-| [**loadTable**](TablesApi.md#loadTable) | **GET** /catalogs/{catalog}/schemas/{schema}/tables/{table} | Load table metadata |
-| [**renameTable**](TablesApi.md#renameTable) | **POST** /catalogs/{catalog}/tables/rename | Rename a table |
-| [**reportMetrics**](TablesApi.md#reportMetrics) | **POST** /catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics | Report commit metrics |
-| [**tableExists**](TablesApi.md#tableExists) | **HEAD** /catalogs/{catalog}/schemas/{schema}/tables/{table} | Check if table exists |
-| [**updateTable**](TablesApi.md#updateTable) | **POST** /catalogs/{catalog}/schemas/{schema}/tables/{table} | Update table |
+| [**createStagingTable**](TablesApi.md#createStagingTable) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/staging-tables | Create a staging table |
+| [**createTable**](TablesApi.md#createTable) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/tables | Create a table |
+| [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Delete a table |
+| [**listTables**](TablesApi.md#listTables) | **GET** /v1/catalogs/{catalog}/schemas/{schema}/tables | List tables |
+| [**loadTable**](TablesApi.md#loadTable) | **GET** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Load table metadata |
+| [**renameTable**](TablesApi.md#renameTable) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename | Rename a table |
+| [**reportMetrics**](TablesApi.md#reportMetrics) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics | Report commit metrics |
+| [**tableExists**](TablesApi.md#tableExists) | **HEAD** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Check if table exists |
+| [**updateTable**](TablesApi.md#updateTable) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Update table |
 
 
 <a name="createStagingTable"></a>
@@ -163,17 +163,19 @@ No authorization required
 
 <a name="renameTable"></a>
 # **renameTable**
-> renameTable(catalog, RenameTableRequest)
+> renameTable(catalog, schema, table, RenameTableRequest)
 
 Rename a table
 
-    Rename a table. Can only change the table name within the same schema and catalog. 
+    Rename a table within the same catalog and schema. Cross-schema and cross-catalog moves are not supported. 
 
 ### Parameters
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **catalog** | **String**| Catalog name | [default to null] |
+| **schema** | **String**| Schema name | [default to null] |
+| **table** | **String**| Table name | [default to null] |
 | **RenameTableRequest** | [**RenameTableRequest**](../Models/RenameTableRequest.md)|  | |
 
 ### Return type
@@ -195,7 +197,7 @@ No authorization required
 
 Report commit metrics
 
-    Report commit metrics (telemetry) for a table. 
+    Report commit metrics (telemetry) for a table. The path {table} and the body table-id must identify the same table; the server validates this and rejects mismatches. 
 
 ### Parameters
 

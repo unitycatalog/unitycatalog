@@ -1,10 +1,10 @@
 # ConfigurationApi
 
-All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog/delta/v1*
+All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog/delta*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**getConfig**](ConfigurationApi.md#getConfig) | **GET** /config | Get catalog configuration |
+| [**getConfig**](ConfigurationApi.md#getConfig) | **GET** /v1/config | Get catalog configuration |
 
 
 <a name="getConfig"></a>
