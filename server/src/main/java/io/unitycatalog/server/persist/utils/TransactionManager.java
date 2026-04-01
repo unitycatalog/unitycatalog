@@ -66,11 +66,18 @@ public class TransactionManager {
         session.setDefaultReadOnly(true);
       }
 
-      // Save and set custom isolation level if specified
+      // Save and set custom isolation level if specified.
+      // IMPORTANT: With autocommit=false (Hibernate default), pooled connections may have an
+      // open implicit transaction from their prior use. H2's setTransactionIsolation() takes
+      // effect for the NEXT transaction, not the current implicit one. We must commit the
+      // implicit transaction first so the new isolation level applies to a fresh MVCC snapshot.
+      // Without this, REPEATABLE_READ reads can see stale data from before the connection was
+      // returned to the pool.
       final int[] originalIsolation = new int[1];
       if (isolationLevel.isPresent()) {
         session.doWork(
             connection -> {
+              connection.commit(); // Flush any stale implicit transaction from pool reuse
               originalIsolation[0] = connection.getTransactionIsolation();
               connection.setTransactionIsolation(isolationLevel.get());
             });
