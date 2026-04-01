@@ -3,23 +3,11 @@
 
 * @tdas @dennyglee
 
-# Build & infra — @tdas only
-*.sbt @tdas
-/build/ @tdas
-/project/ @tdas
-/.github/ @tdas
-/bin/ @tdas
-/etc/ @tdas
-/tests/ @tdas
-/integration-tests/ @tdas @openinx
-/api/ @tdas
-/ui/ @tdas
-/server/ @tdas
-/server-shaded/ @tdas
-/spec/ @tdas
-/clients/ @tdas
-/helm/ @tdas
-/dev/ @tdas
-
 # Spark Connector
 /connectors/spark/ @tdas @openinx
+
+# Java clients.
+/clients/java/ @tdas @openinx
+
+# Integration tests.
+/integration-tests/ @tdas @openinx
