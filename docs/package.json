@@ -25,27 +25,27 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@astrojs/check": "^0.9.8",
-    "@astrojs/starlight": "^0.38.2",
-    "astro": "^6.1.2",
-    "sharp": "^0.34.5",
-    "starlight-plausible": "^0.2.0",
-    "typescript": "^5.9.3"
+    "@astrojs/check": "0.9.8",
+    "@astrojs/starlight": "0.38.2",
+    "astro": "6.1.2",
+    "sharp": "0.34.5",
+    "starlight-plausible": "0.2.0",
+    "typescript": "5.9.3"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
-    "@typescript-eslint/parser": "^8.58.0",
-    "eslint": "^9.39.4",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-astro": "^1.6.0",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-prettier": "^5.5.5",
-    "globals": "^16.5.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.4.0",
-    "prettier": "^3.8.1",
-    "prettier-plugin-astro": "^0.14.1",
-    "typescript-eslint": "^8.58.0"
+    "@eslint/js": "9.39.4",
+    "@typescript-eslint/parser": "8.58.0",
+    "eslint": "9.39.4",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-astro": "1.6.0",
+    "eslint-plugin-import": "2.32.0",
+    "eslint-plugin-prettier": "5.5.5",
+    "globals": "16.5.0",
+    "husky": "9.1.7",
+    "lint-staged": "16.4.0",
+    "prettier": "3.8.1",
+    "prettier-plugin-astro": "0.14.1",
+    "typescript-eslint": "8.58.0"
   },
-  "packageManager": "npm@11.6.4+sha512.1118cab46a05a50aee6bff5b1b4fa1df18afff89d57465620a3518035026955db87c5bdf9d207b07b7487d99f2490d450cb774655ad63ec2cba7bf1d0ad25d45"
+  "packageManager": "pnpm@10.33.0+sha512.10568bb4a6afb58c9eb3630da90cc9516417abebd3fabbe6739f0ae795728da1491e9db5a544c76ad8eb7570f5c4bb3d6c637b2cb41bfdcdb47fa823c8649319"
 }

@@ -10,22 +10,23 @@ To start testing or modifying the documentation locally, follow these steps:
 
 ### 1. Install Node.js
 
-Install the required node version using [nvm](https://github.com/nvm-sh/nvm):
+First start by installing the latest version of node with nvm:
 
 ```sh
-nvm install
+nvm use
 ```
 
-Then install the required npm version using corepack:
+Next, install the latest version of [pnpm](https://pnpm.io/) with corepack:
 
 ```sh
-corepack enable npm
+npm install --global corepack@latest
+corepack install
 ```
 
-Install dependencies:
+Next, install dependencies:
 
 ```sh
-npm install
+pnpm install
 ```
 
 ### 2. Serving the Docs Locally
@@ -33,7 +34,7 @@ npm install
 After installing all dependencies, you can now serve the documentation locally. Run the following command:
 
 ```sh
-npm run dev
+pnpm dev
 ```
 
 This will start a local development server. By default, the docs will be served at `http://127.0.0.1:4321/`. You can visit this link in your browser to see your documentation live as you edit it. Any changes made to the markdown files will automatically update the browser view.
@@ -51,8 +52,6 @@ You can make changes to the documentation by editing the markdown files under th
 
 After making changes to the documentation, be sure to view the changes at `http://127.0.0.1:4321/` to verify that everything looks and functions as expected.
 
----
-
 ## Deploying the Documentation
 
 After you're satisfied with the changes, please deploy the documentation to your own repo's GitHub Pages. Please include a link to this deployment for any docs PRs, as this will help streamline reviews.
@@ -66,7 +65,7 @@ Make sure GitHub Pages is enabled in your repository settings. To do this, go to
 Astro can automatically deploy the site to the `gh-pages` branch of your repository. To do so, simply run:
 
 ```sh
-npm run dev -- --base=unitycatalog
+pnpm build -- --base=unitycatalog
 ```
 
 This command will build the documentation to the `docs/dist` folder while still being publishable to your own Github pages.
@@ -99,7 +98,7 @@ As general guideline we are using [Prettier](https://prettier.io/) to ensure a c
 Prettier can be ran manually by running:
 
 ```sh
-npm run format
+pnpm format
 ```
 
-Alternatively `npm run format:fix` will attempt to fix files.
+Alternatively `pnpm format:fix` will attempt to fix files.
