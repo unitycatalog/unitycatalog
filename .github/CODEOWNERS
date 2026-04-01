@@ -11,7 +11,7 @@
 /bin/ @tdas
 /etc/ @tdas
 /tests/ @tdas
-/integration-tests/ @tdas
+/integration-tests/ @tdas @openinx
 /api/ @tdas
 /ui/ @tdas
 /server/ @tdas
