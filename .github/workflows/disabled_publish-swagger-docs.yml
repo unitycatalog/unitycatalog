@@ -22,8 +22,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Prepare deployment directory for Swagger UI
         run: |
-            mkdir -p swagger-docs
-            mv swagger-ui/* ./swagger-docs/
+          mkdir -p swagger-docs
+          mv swagger-ui/* ./swagger-docs/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@373f7f263a76c20808c831209c920827a82a2847 # v3.9.3
