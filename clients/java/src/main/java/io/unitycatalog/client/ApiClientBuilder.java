@@ -1,6 +1,7 @@
 package io.unitycatalog.client;
 
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.delta.DeltaTypeModule;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.internal.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
@@ -173,6 +174,7 @@ public class ApiClientBuilder {
     // Set the scheme, host, port and base path, for the Api client.
     Preconditions.checkNotNull(uri, "The unitycatalog uri cannot be null");
     ApiClient apiClient = new RetryingApiClient(retryPolicy);
+    apiClient.getObjectMapper().registerModule(new DeltaTypeModule());
     apiClient.setScheme(uri.getScheme());
     apiClient.setHost(uri.getHost());
     apiClient.setPort(uri.getPort());
