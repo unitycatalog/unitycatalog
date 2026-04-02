@@ -7,10 +7,15 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd "${SCRIPT_DIR}/../.." || exit 1
 
 # Generate the client library
-build/sbt pythonClient/generate
+build/sbt -mem 4096 pythonClient/generate
 
-# Install the generated library
-pip install "${SCRIPT_DIR}/target/"
+# Sync all pinned test dependencies from the lock file
+cd "${SCRIPT_DIR}"
+uv sync --frozen
+
+# Install the generated library into the uv-managed venv (skip dep resolution since
+# all transitive deps are already pinned in uv.lock)
+uv pip install --no-deps "${SCRIPT_DIR}/target/"
 
 # Run the tests
-pytest "${SCRIPT_DIR}/tests"
+uv run pytest "${SCRIPT_DIR}/tests"
