@@ -29,8 +29,10 @@ success() {
     echo "Success: $1"
 }
 
+# clients/python/build/
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT_DIR="$(cd "$SCRIPT_DIR/../../../" && pwd)"
+# clients/python/build -> clients/python -> clients -> <repo-root>
+REPO_ROOT_DIR="$(cd "$SCRIPT_DIR" && cd ../../.. && pwd)"
 
 # ==========================
 # Step 1: Sync pinned doc tools from the lock file

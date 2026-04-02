@@ -4,8 +4,10 @@
 
 set -e
 
+# clients/python/build/
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT_DIR="$(cd "$SCRIPT_DIR/../../../" && pwd)"
+# clients/python/build -> clients/python -> clients -> <repo-root>
+REPO_ROOT_DIR="$(cd "$SCRIPT_DIR" && cd ../../.. && pwd)"
 cd "$REPO_ROOT_DIR"
 
 TARGET_DIR="$REPO_ROOT_DIR/clients/python/target"
