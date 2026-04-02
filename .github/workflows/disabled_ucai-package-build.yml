@@ -34,14 +34,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install uv
-        uses: ./.github/actions/setup-uv
-      - name: Install dependencies
-        run: |
-          uv pip install --system 'hatch==1.16.5'
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/install-uv.sh"
       - name: Build distribution files
         id: build-dist
         run: |
-          hatch build
+          uv build
           # List distribution files and check their file sizes
           ls -lh dist
           # Set step outputs
@@ -64,12 +61,14 @@ jobs:
       - name: Test installation from tarball
         env:
           SDIST_PATH: ${{ steps.build-dist.outputs.sdist-path }}
+          UV_EXCLUDE_NEWER: ""  # locally built artifact, not from PyPI
         run: |
           uv pip install --system "$SDIST_PATH"
           python -c "import unitycatalog.ai.core; print(unitycatalog.ai.core.__version__)"
       - name: Test installation from wheel
         env:
           WHEEL_PATH: ${{ steps.build-dist.outputs.wheel-path }}
+          UV_EXCLUDE_NEWER: ""  # locally built artifact, not from PyPI
         run: |
           uv pip install --system --reinstall "$WHEEL_PATH"
           python -c "import unitycatalog.ai.core; print(unitycatalog.ai.core.__version__)"

@@ -10,16 +10,16 @@ license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
     "litellm>=1.50.1,<=1.82.6",
-    "unitycatalog-ai",
+    "unitycatalog-ai>=0.3.0,<=0.4.0",
 ]
 
 [project.optional-dependencies]
 databricks-dev = [
-  "unitycatalog-ai[databricks-dev]",
+  "unitycatalog-ai[databricks-dev]>=0.3.0,<=0.4.0",
 ]
 
 dev = [
-  "unitycatalog-ai[dev]",
+  "unitycatalog-ai[dev]>=0.3.0,<=0.4.0",
 ]
 
 [build-system]

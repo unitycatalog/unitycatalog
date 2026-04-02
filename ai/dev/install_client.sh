@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+export UV_EXCLUDE_NEWER="${UV_EXCLUDE_NEWER:-2026-03-10T00:00:00Z}"
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 cd "${SCRIPT_DIR}/../.." || exit 1
