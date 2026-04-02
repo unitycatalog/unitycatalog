@@ -1348,15 +1348,13 @@ components:
           description: Column name
         type:
           description: |
-            Column data type. For primitive types, a bare JSON string (e.g.,
-            "long", "string", "decimal(10,2)"). For complex types, a plain
-            JSON object with a "type" discriminator field ("array", "map", or
-            "struct"). See DataType, ArrayType, MapType, StructType schemas
-            for the object shapes. Note: this field is untyped (generates
-            Object in Java, Any in Python) because OpenAPI cannot express a
-            string-or-object union. Deserialized as String or Map, not as
-            typed DataType subclasses. Delta clients (Kernel, Spark) use
-            their own parsers; see DataTypeJsonSerDe.parseDataType().
+            Column data type. For primitive types, a bare JSON string (e.g., "long", "string",
+            "decimal(10,2)"). For complex types, a plain JSON object with a "type" discriminator
+            field ("array", "map", or "struct"). See ArrayType, MapType, StructType schemas for the
+            object shapes.
+            Note: this field is untyped (generates Object in Java, Any in Python) because OpenAPI
+            cannot express a string-or-object union. Deserialized as String or Map, not as typed
+            schemas. Delta clients (Kernel, Spark) use their own parsers.
         nullable:
           type: boolean
           description: Whether this column can be null
@@ -1369,45 +1367,23 @@ components:
         - type
         - nullable
 
-    # Spark Type System
-    #
-    # The schemas below (DataType, ArrayType, MapType, StructType) document the
-    # JSON shapes used for complex column types. They are for documentation and
-    # spec validation only -- DeltaColumn.type is untyped because OpenAPI cannot
-    # express a string-or-object union, so the generated code does NOT use these
-    # classes for DeltaColumn deserialization. Delta clients (Kernel, Spark) have
-    # their own parsers (DataTypeJsonSerDe.parseDataType()).
-
-    DataType:
-      description: |
-        Complex data type base class (documentation-only for DeltaColumn.type).
-        The `type` field discriminates between array, map, and struct.
-        Primitive types (e.g., "long", "string", "decimal(10,2)") are bare
-        JSON strings, not DataType objects.
-      discriminator:
-        propertyName: type
-        mapping:
-          array: '#/components/schemas/ArrayType'
-          map: '#/components/schemas/MapType'
-          struct: '#/components/schemas/StructType'
-      type: object
-      required:
-        - type
-      properties:
-        type:
-          type: string
-          description: Type identifier (array, map, or struct)
+    # The schemas below (ArrayType, MapType, StructType) document the JSON shapes used for complex
+    # column types. They can not be deserialized from JSON.
+    # DeltaColumn.type is untyped because OpenAPI cannot express a string-or-object union, so the
+    # generated code does NOT use these classes for DeltaColumn deserialization. Delta clients
+    # (Kernel, Spark) have their own parsers.
 
     ArrayType:
-      allOf:
-        - $ref: '#/components/schemas/DataType'
+      type: object
       description: Array type containing elements of a specific type
       properties:
         type:
           type: string
           const: "array"
+          default: "array"
+          description: Type identifier, always "array"
         elementType:
-          description: Data type of array elements (string | DataType)
+          description: Data type of array elements (string | ArrayType | MapType | StructType)
         containsNull:
           type: boolean
           description: Whether array elements can be null
@@ -1422,17 +1398,18 @@ components:
         containsNull: true
 
     MapType:
-      allOf:
-        - $ref: '#/components/schemas/DataType'
+      type: object
       description: Map type with key-value pairs
       properties:
         type:
           type: string
           const: "map"
+          default: "map"
+          description: Type identifier, always "map"
         keyType:
-          description: Data type of map keys (string | DataType)
+          description: Data type of map keys (string | ArrayType | MapType | StructType)
         valueType:
-          description: Data type of map values (string | DataType)
+          description: Data type of map values (string | ArrayType | MapType | StructType)
         valueContainsNull:
           type: boolean
           description: Whether map values can be null
@@ -1449,13 +1426,14 @@ components:
         valueContainsNull: true
 
     StructType:
-      allOf:
-        - $ref: '#/components/schemas/DataType'
+      type: object
       description: Struct type containing named fields
       properties:
         type:
           type: string
           const: "struct"
+          description: Type identifier, always "struct"
+          default: "struct"
         fields:
           type: array
           description: Array of field definitions

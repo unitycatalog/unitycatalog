@@ -1,0 +1,150 @@
+{
+  "requirements": [
+    {
+      "type": "assert-table-uuid",
+      "uuid": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    {
+      "type": "assert-etag",
+      "etag": "etagabcdef"
+    }
+  ],
+  "updates": [
+    {
+      "action": "set-properties",
+      "updates": {
+        "delta.columnMapping.mode": "name",
+        "delta.enableDeletionVectors": "true"
+      }
+    },
+    {
+      "action": "remove-properties",
+      "removals": ["delta.logRetentionDuration"]
+    },
+    {
+      "action": "set-columns",
+      "columns": [
+        {
+          "name": "id",
+          "type": "long",
+          "nullable": false,
+          "metadata": {
+            "delta.columnMapping.id": 1,
+            "delta.columnMapping.physicalName": "col-1"
+          }
+        },
+        {
+          "name": "price",
+          "type": "decimal(10,2)",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "tags",
+          "type": {
+            "type": "array",
+            "elementType": "string",
+            "containsNull": true
+          },
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "scores",
+          "type": {
+            "type": "map",
+            "keyType": "string",
+            "valueType": {
+              "type": "struct",
+              "fields": [
+                {
+                  "name": "value",
+                  "type": "double",
+                  "nullable": false,
+                  "metadata": {
+                    "delta.columnMapping.id": 10,
+                    "delta.columnMapping.physicalName": "col-10",
+                    "comment": "score value"
+                  }
+                },
+                {
+                  "name": "timestamp",
+                  "type": "long",
+                  "nullable": true,
+                  "metadata": {
+                    "delta.columnMapping.id": 11
+                  }
+                }
+              ]
+            },
+            "valueContainsNull": true
+          },
+          "nullable": true,
+          "metadata": {}
+        }
+      ]
+    },
+    {
+      "action": "set-table-comment",
+      "comment": "updated table"
+    },
+    {
+      "action": "add-commit",
+      "commit": {
+        "version": 5,
+        "timestamp": 1700000000000,
+        "file-name": "00000005.json",
+        "file-size": 2048,
+        "file-modification-timestamp": 1700000001000
+      },
+      "uniform": {
+        "iceberg": {
+          "metadata-location": "s3://bucket/table/metadata/v5.metadata.json",
+          "converted-delta-version": 5,
+          "converted-delta-timestamp": 1700000000000
+        }
+      }
+    },
+    {
+      "action": "set-latest-backfilled-version",
+      "latest-published-version": 4
+    },
+    {
+      "action": "set-protocol",
+      "protocol": {
+        "min-reader-version": 3,
+        "min-writer-version": 7,
+        "reader-features": [
+          "deletionVectors",
+          "vacuumProtocolCheck"
+        ],
+        "writer-features": [
+          "catalogManaged",
+          "deletionVectors",
+          "inCommitTimestamp"
+        ]
+      }
+    },
+    {
+      "action": "set-domain-metadata",
+      "updates": {
+        "delta.clustering": {
+          "clusteringColumns": [["region"], ["event_time"]]
+        }
+      }
+    },
+    {
+      "action": "remove-domain-metadata",
+      "domains": ["delta.rowTracking"]
+    },
+    {
+      "action": "set-partition-columns",
+      "partition-columns": ["region", "date"]
+    },
+    {
+      "action": "update-metadata-snapshot-version",
+      "last-commit-version": 42,
+      "last-commit-timestamp-ms": 1700000000000
+    }
+  ]
+}

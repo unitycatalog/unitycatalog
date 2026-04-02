@@ -199,8 +199,9 @@ lazy val client = (project in file("clients/java"))
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
     (Compile / doc) := ((Compile / doc) dependsOn generate).value,
 
-    // Add custom test sources from clients/java directory
+    // Add custom test sources and shared test resources from clients/java directory
     Test / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "src" / "test" / "java"),
+    Test / unmanagedResourceDirectories += (file(".") / "server" / "src" / "test" / "resources"),
 
     // Generate from both all.yaml and delta.yaml into the same output directory
     generate := {
