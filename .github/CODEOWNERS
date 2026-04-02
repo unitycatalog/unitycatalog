@@ -1,10 +1,17 @@
 # This is a CODEOWNERS file for unitycatalog
 # See https://help.github.com/articles/about-codeowners/ for more information
 
-* @tdas @dennyglee @rameshchandra
+* @tdas @dennyglee
 
-# AI
-/ai/ @tdas @dennyglee @serena-ruan @benwilson2
-
-# Clients
+# Build & infra — @tdas only
+*.sbt @tdas
+/build/ @tdas
+/project/ @tdas
+/.github/ @tdas
+/bin/ @tdas
+/etc/ @tdas
+/tests/ @tdas
+/api/ @tdas
+/server/ @tdas
 /clients/ @tdas
+/dev/ @tdas
