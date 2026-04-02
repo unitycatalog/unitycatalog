@@ -1,0 +1,1696 @@
+openapi: 3.1.1
+servers:
+  - url: "{scheme}://{host}:{port}/api/2.1/unity-catalog/delta"
+    description: Delta REST Catalog server
+    variables:
+      scheme:
+        description: The URI scheme (http or https)
+        default: https
+        enum:
+          - http
+          - https
+      host:
+        description: The server host address
+        default: localhost
+      port:
+        description: The server port number
+        default: "8080"
+  - url: http://localhost:8080/api/2.1/unity-catalog/delta
+    description: Localhost reference server for Delta REST Catalog API
+info:
+  title: Delta REST Catalog API
+  summary: REST API for Delta Lake table catalog operations
+  version: '1.0'
+  description: |
+    This is a new catalog API for external Delta client access to UC managed and external
+    Delta tables. While inspired by the Apache Iceberg REST Catalog (IRC) API style, this API
+    is Delta-centric and only communicates native Delta schema and metadata over RPCs. It is
+    meant to be used by Delta clients, not Iceberg clients, and co-exists with the fully
+    IRC-compatible APIs for Iceberg clients to access UniForm and DBI tables.
+
+    Authentication: This API uses the same OAuth 2.0 bearer token authentication as the
+    Unity Catalog API (all.yaml). Clients must include an `Authorization: Bearer <token>`
+    header on every request. Authentication is not redefined here to stay consistent with
+    the existing UC API spec.
+
+tags:
+  - name: Configuration
+    description: |
+      Configuration endpoint for getting catalog configuration and supported endpoints.
+      This initial /config request also serves as API versioning: the server advertises versioned
+      endpoints to clients so they can adapt to the correct API version.
+  - name: Tables
+    description: |
+      Table operations for Delta tables: create, load, update, delete, list, rename,
+      and commit metrics reporting. Includes Delta-only staging table endpoints for
+      managed table creation.
+  - name: TemporaryCredentials
+    description: |
+      Temporary credential vending for accessing table data in cloud storage.
+      Credentials are scoped by operation level (READ or READ_WRITE).
+
+paths:
+  /v1/config:
+    get:
+      tags:
+        - Configuration
+      operationId: getConfig
+      summary: Get catalog configuration
+      description: |
+        Get catalog configuration and supported endpoints. This endpoint also serves as the
+        API versioning mechanism: the client sends its supported versions via `protocol-versions`,
+        and the server returns versioned endpoints for the newest version both sides support.
+      parameters:
+        - name: catalog
+          in: query
+          description: Catalog name
+          required: true
+          schema:
+            type: string
+        - name: protocol-versions
+          in: query
+          description: |
+            Comma-separated list of highest protocol versions the client supports per major version
+            (e.g., 1.1,2.3 means the client supports 1.0-1.1 and 2.0-2.3).
+            The server selects the highest mutually supported protocol version and returns endpoints for that version.
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogConfig'
+              example:
+                endpoints:
+                  - "POST /v1/catalogs/{catalog}/schemas/{schema}/staging-tables"
+                  - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables"
+                  - "GET /v1/catalogs/{catalog}/schemas/{schema}/tables"
+                  - "GET /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
+                  - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
+                  - "DELETE /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
+                  - "HEAD /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
+                  - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename"
+                  - "GET /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials"
+                  - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics"
+                  - "GET /v1/staging-tables/{table_id}/credentials"
+                  - "GET /v1/temporary-path-credentials"
+                protocol-version: "1.0"
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+        '500':
+          $ref: '#/components/responses/ServerErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableResponse'
+
+  /v1/catalogs/{catalog}/schemas/{schema}/staging-tables:
+    parameters:
+      - $ref: '#/components/parameters/catalog'
+      - $ref: '#/components/parameters/schema'
+    post:
+      tags:
+        - Tables
+      operationId: createStagingTable
+      summary: Create a staging table
+      description: |
+        Create a staging table that will become a catalog managed table. The server allocates
+        a table UUID and a storage location for the table. This is a new endpoint for Delta only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStagingTableRequest'
+      responses:
+        '200':
+          description: Staging table created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StagingTableResponse'
+              example:
+                table-id: "123e4567-e89b-12d3-a456-426614174000"
+                table-type: "MANAGED"
+                location: "s3://bucket/warehouse/catalog/schema/table"
+                storage-credentials:
+                  - prefix: "s3://bucket/warehouse/catalog/schema/table/"
+                    operation: "READ_WRITE"
+                    expiration-time-ms: 1234567890000
+                    config:
+                      s3.access-key-id: "AK...example"
+                      s3.secret-access-key: "ExampleKey"
+                      s3.session-token: "token"
+                required-protocol:
+                  min-reader-version: 3
+                  min-writer-version: 7
+                  reader-features:
+                    - "deletionVectors"
+                    - "vacuumProtocolCheck"
+                  writer-features:
+                    - "catalogManaged"
+                    - "deletionVectors"
+                    - "inCommitTimestamp"
+                    - "v2Checkpoint"
+                    - "vacuumProtocolCheck"
+                suggested-protocol:
+                  reader-features:
+                    - "typeWidening"
+                  writer-features:
+                    - "domainMetadata"
+                    - "rowTracking"
+                    - "typeWidening"
+                required-properties:
+                  delta.checkpointPolicy: "v2"
+                suggested-properties:
+                  delta.rowTracking.materializedRowIdColumnName: null
+                  delta.rowTracking.materializedRowCommitVersionColumnName: null
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+        '409':
+          $ref: '#/components/responses/AlreadyExistsResponse'
+        '500':
+          $ref: '#/components/responses/ServerErrorResponse'
+
+  /v1/catalogs/{catalog}/schemas/{schema}/tables:
+    parameters:
+      - $ref: '#/components/parameters/catalog'
+      - $ref: '#/components/parameters/schema'
+    post:
+      tags:
+        - Tables
+      operationId: createTable
+      summary: Create a table
+      description: |
+        Create a new Delta table in the specified schema.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTableRequest'
+      responses:
+        '200':
+          description: Table created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoadTableResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+        '409':
+          $ref: '#/components/responses/AlreadyExistsResponse'
+    get:
+      tags:
+        - Tables
+      operationId: listTables
+      summary: List tables
+      description: |
+        List all tables in a schema.
+      parameters:
+        - name: maxResults
+          in: query
+          description: Maximum number of tables to return
+          required: false
+          schema:
+            type: integer
+            default: 50
+        - name: pageToken
+          in: query
+          description: Pagination token
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tables listed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTablesResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+
+  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+    parameters:
+      - $ref: '#/components/parameters/catalog'
+      - $ref: '#/components/parameters/schema'
+      - $ref: '#/components/parameters/table'
+    get:
+      tags:
+        - Tables
+      operationId: loadTable
+      summary: Load table metadata
+      description: |
+        Load table metadata including columns, protocol, properties, and optionally credentials.
+      responses:
+        '200':
+          description: Table loaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoadTableResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+    post:
+      tags:
+        - Tables
+      operationId: updateTable
+      summary: Update table
+      description: |
+        Update table properties, columns, or commit Delta changes. Unlike IRC, this endpoint
+        does not support table creation. This endpoint also covers the coordinated commit flow
+        described in the Unity Catalog Managed Tables Specification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTableRequest'
+      responses:
+        '200':
+          description: Table updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoadTableResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+        '409':
+          description:
+            Conflict - CommitVersionConflictException or UpdateRequirementConflictException.
+            The client should reload the table and retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many unbackfilled commits. See ErrorType for details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ServerErrorResponse'
+    delete:
+      tags:
+        - Tables
+      operationId: deleteTable
+      summary: Delete a table
+      description: |
+        Delete a table from the catalog.
+      responses:
+        '204':
+          description: Table deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+    head:
+      tags:
+        - Tables
+      operationId: tableExists
+      summary: Check if table exists
+      description: |
+        Check if the specified table exists.
+      responses:
+        '204':
+          description: Table exists
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+
+  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials:
+    parameters:
+      - $ref: '#/components/parameters/catalog'
+      - $ref: '#/components/parameters/schema'
+      - $ref: '#/components/parameters/table'
+    get:
+      tags:
+        - TemporaryCredentials
+      operationId: getTableCredentials
+      summary: Get table credentials
+      description: |
+        Get temporary credentials for accessing table data (vended credentials).
+        The operation parameter controls the access level.
+      parameters:
+        - name: operation
+          in: query
+          description: The operation the credential is scoped to.
+          required: true
+          schema:
+            $ref: '#/components/schemas/CredentialOperation'
+      responses:
+        '200':
+          description: Credentials retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+
+  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics:
+    parameters:
+      - $ref: '#/components/parameters/catalog'
+      - $ref: '#/components/parameters/schema'
+      - $ref: '#/components/parameters/table'
+    post:
+      tags:
+        - Tables
+      operationId: reportMetrics
+      summary: Report commit metrics
+      description: |
+        Report commit metrics (telemetry) for a table. The path {table}
+        and the body table-id must identify the same table; the server
+        validates this and rejects mismatches.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportMetricsRequest'
+      responses:
+        '204':
+          description: Metrics received successfully
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+
+  /v1/staging-tables/{table_id}/credentials:
+    parameters:
+      - name: table_id
+        in: path
+        description: Staging table UUID
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags:
+        - TemporaryCredentials
+      operationId: getStagingTableCredentials
+      summary: Get staging table credentials by UUID
+      description: |
+        Get temporary credentials for accessing staging table data by UUID. The staging table
+        is identified solely by its UUID -- catalog and schema are not needed since the UUID
+        is globally unique. Credentials are always READ_WRITE since the client needs to write
+        the initial commit. This is a new endpoint for Delta only.
+      responses:
+        '200':
+          description: Credentials retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+
+  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename:
+    parameters:
+      - $ref: '#/components/parameters/catalog'
+      - $ref: '#/components/parameters/schema'
+      - $ref: '#/components/parameters/table'
+    post:
+      tags:
+        - Tables
+      operationId: renameTable
+      summary: Rename a table
+      description: |
+        Rename a table within the same catalog and schema.
+        Cross-schema and cross-catalog moves are not supported.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameTableRequest'
+      responses:
+        '204':
+          description: Table renamed successfully
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+        '409':
+          $ref: '#/components/responses/AlreadyExistsResponse'
+
+  /v1/temporary-path-credentials:
+    get:
+      tags:
+        - TemporaryCredentials
+      operationId: getTemporaryPathCredentials
+      summary: Get temporary path credentials
+      description: |
+        Get temporary credentials of a storage path for creating a new external table.
+        This path will later be registered in UC as a real external table.
+        The URL has no catalog or schema because the path isn't part of any catalog or namespace.
+        This is a new endpoint for Delta only.
+      parameters:
+        - name: location
+          in: query
+          description: Storage path for the external table
+          required: true
+          schema:
+            type: string
+        - name: operation
+          in: query
+          description: Operation type for the path credential.
+          required: true
+          schema:
+            $ref: '#/components/schemas/CredentialOperation'
+      responses:
+        '200':
+          description: Credentials retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+
+components:
+
+  # Path Parameters
+  parameters:
+    catalog:
+      name: catalog
+      in: path
+      description: Catalog name
+      required: true
+      schema:
+        type: string
+    schema:
+      name: schema
+      in: path
+      description: Schema name
+      required: true
+      schema:
+        type: string
+    table:
+      name: table
+      in: path
+      description: Table name
+      required: true
+      schema:
+        type: string
+
+  schemas:
+
+
+    # Enums
+
+    DataSourceFormat:
+      type: string
+      description: |
+        Data source format. Only DELTA is supported for write operations in this API.
+        Other formats may appear in list/load responses where the server returns tables of any format.
+      enum:
+        - DELTA
+        - ICEBERG
+        - CSV
+        - JSON
+        - AVRO
+        - PARQUET
+        - ORC
+        - TEXT
+
+    TableType:
+      type: string
+      description: The type of a table.
+      enum:
+        - MANAGED
+        - EXTERNAL
+
+    SecurableType:
+      type: string
+      description: The type of securable object.
+      enum:
+        - TABLE
+        - VIEW
+
+
+    CredentialOperation:
+      type: string
+      description: |
+        The permission level for a storage credential.
+      enum:
+        - READ
+        - READ_WRITE
+
+    # Shared Types
+
+    StorageCredential:
+      type: object
+      description: |
+        Temporary storage credential with prefix and config.
+        Indicates a storage location prefix where the credential is relevant.
+        Clients should choose the most specific prefix (by selecting the longest prefix)
+        if several credentials of the same type are available.
+      required:
+        - prefix
+        - operation
+        - expiration-time-ms
+        - config
+      properties:
+        prefix:
+          type: string
+          description: Storage path prefix this credential applies to
+        operation:
+          $ref: '#/components/schemas/CredentialOperation'
+        config:
+          type: object
+          description: |
+            Cloud provider-specific credential configuration as string key-value pairs.
+            Not all keys are present -- only keys for the relevant cloud provider are included.
+          properties:
+            s3.access-key-id:
+              type: string
+              description: AWS access key ID
+            s3.secret-access-key:
+              type: string
+              description: AWS secret access key
+            s3.session-token:
+              type: string
+              description: AWS session token for temporary credentials
+            azure.sas-token:
+              type: string
+              description: Azure SAS (Shared Access Signature) token
+            gcs.oauth-token:
+              type: string
+              description: GCP OAuth token
+          additionalProperties:
+            type: string
+        expiration-time-ms:
+          type: integer
+          format: int64
+          description: |
+            Credential expiration time in epoch milliseconds.
+            This standardized field avoids the need for provider-specific expiration keys
+            (e.g., s3.session-token-expires-at-ms, adls.sas-token-expires-at-ms, etc.)
+
+    CredentialsResponse:
+      type: object
+      required:
+        - storage-credentials
+      properties:
+        storage-credentials:
+          type: array
+          description: Temporary cloud storage credentials.
+          items:
+            $ref: '#/components/schemas/StorageCredential'
+
+
+    # Configuration
+
+    CatalogConfig:
+      type: object
+      properties:
+        endpoints:
+          type: array
+          description: List of supported endpoints
+          items:
+            type: string
+        protocol-version:
+          type: string
+          description: The negotiated protocol version (e.g., "1.0")
+      required:
+        - endpoints
+        - protocol-version
+
+
+    # Table Lifecycle
+
+    CreateStagingTableRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The table name
+      required:
+        - name
+      example:
+        name: "sales"
+
+    StagingTableResponse:
+      type: object
+      properties:
+        table-id:
+          type: string
+          format: uuid
+          description: Table UUID allocated by UC
+        table-type:
+          $ref: '#/components/schemas/TableType'
+          description: Table type (always MANAGED for staging tables)
+        location:
+          type: string
+          description: UC allocated storage location for this table
+        storage-credentials:
+          type: array
+          description: Temporary credentials for initial commit
+          items:
+            $ref: '#/components/schemas/StorageCredential'
+        required-protocol:
+          allOf:
+            - $ref: '#/components/schemas/DeltaProtocol'
+            - description: Required protocol - client must write an initial commit with at least this protocol.
+        suggested-protocol:
+          type: object
+          description: Suggested protocol - client should enable these additional features if supported
+          properties:
+            reader-features:
+              type: array
+              description: Suggested reader features
+              items:
+                type: string
+            writer-features:
+              type: array
+              description: Suggested writer features
+              items:
+                type: string
+        required-properties:
+          type: object
+          description: Table properties that must be set; null values mean any valid value is allowed
+          additionalProperties:
+            type: ["string", "null"]
+        suggested-properties:
+          type: object
+          description: Table properties that should be set whenever possible; null values mean client generates the value
+          additionalProperties:
+            type: ["string", "null"]
+      required:
+        - table-id
+        - table-type
+        - location
+        - storage-credentials
+        - required-protocol
+        - required-properties
+
+    CreateTableRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The table name
+        location:
+          type: string
+          description: Storage location
+        table-type:
+          $ref: '#/components/schemas/TableType'
+        data-source-format:
+          $ref: '#/components/schemas/DataSourceFormat'
+          description: Data source format (DELTA or ICEBERG)
+        comment:
+          type: string
+          description: Table comment
+        columns:
+          type: array
+          description: Table columns as DeltaColumn
+          items:
+            $ref: '#/components/schemas/DeltaColumn'
+        partition-columns:
+          type: array
+          description: Partition column names
+          items:
+            type: string
+        protocol:
+          $ref: '#/components/schemas/DeltaProtocol'
+          description: Delta protocol version and feature requirements
+        properties:
+          type: object
+          description: Delta table properties
+          additionalProperties:
+            type: string
+        domain-metadata:
+          $ref: '#/components/schemas/DomainMetadataUpdates'
+      required:
+        - name
+        - location
+        - table-type
+        - data-source-format
+        - columns
+        - protocol
+        - properties
+      example:
+        name: "sales"
+        location: "s3://bucket/warehouse/catalog/schema/sales"
+        table-type: "MANAGED"
+        data-source-format: "DELTA"
+        columns:
+          - name: "id"
+            type: "long"
+            nullable: false
+            metadata: {}
+          - name: "amount"
+            type:
+              type: "decimal"
+              precision: 10
+              scale: 2
+            nullable: true
+            metadata: {}
+        partition-columns:
+          - "id"
+        protocol:
+          min-reader-version: 3
+          min-writer-version: 7
+          reader-features:
+            - "deletionVectors"
+          writer-features:
+            - "deletionVectors"
+            - "invariants"
+        properties:
+          "delta.enableDeletionVectors": "true"
+
+    LoadTableResponse:
+      type: object
+      properties:
+        metadata:
+          $ref: '#/components/schemas/TableMetadata'
+          description: Complete table metadata including schema, protocol, and properties
+        commits:
+          type: array
+          description: All unbackfilled CCv2 commits
+          items:
+            $ref: '#/components/schemas/DeltaCommit'
+        uniform:
+          $ref: '#/components/schemas/UniformMetadata'
+        latest-table-version:
+          type: integer
+          format: int64
+          description: The latest ratified table version tracked by the server, including data-only commits. Compare with metadata.last-commit-version which only tracks metadata-changing commits.
+      required:
+        - metadata
+
+    TableMetadata:
+      type: object
+      properties:
+        etag:
+          type: string
+          description: Entity tag for optimistic concurrency control
+        data-source-format:
+          $ref: '#/components/schemas/DataSourceFormat'
+          description: Data source format (DELTA or ICEBERG)
+        table-type:
+          $ref: '#/components/schemas/TableType'
+        table-uuid:
+          type: string
+          format: uuid
+          description: Unique identifier for the table
+        location:
+          type: string
+          description: Storage location of the table
+        created-time:
+          type: integer
+          format: int64
+          description: Creation time in epoch milliseconds
+        updated-time:
+          type: integer
+          format: int64
+          description: Last update time in epoch milliseconds
+        securable-type:
+          $ref: '#/components/schemas/SecurableType'
+        columns:
+          type: array
+          description: Table columns as DeltaColumn array
+          items:
+            $ref: '#/components/schemas/DeltaColumn'
+        partition-columns:
+          type: array
+          description: Partition column names
+          items:
+            type: string
+        protocol:
+          $ref: '#/components/schemas/DeltaProtocol'
+          description: Delta protocol version and feature requirements
+        properties:
+          type: object
+          description: Table properties
+          additionalProperties:
+            type: string
+        last-commit-version:
+          type: integer
+          format: int64
+          description: The version of the last commit that changed table metadata (delta.lastUpdateVersion). Data-only commits do not update this value.
+        last-commit-timestamp-ms:
+          type: integer
+          format: int64
+          description: Timestamp of the last commit that changed table metadata, in epoch milliseconds (delta.lastCommitTimestamp).
+      required:
+        - etag
+        - data-source-format
+        - table-type
+        - table-uuid
+        - location
+        - created-time
+        - updated-time
+        - securable-type
+        - columns
+        - protocol
+        - properties
+
+    ListTablesResponse:
+      type: object
+      properties:
+        identifiers:
+          type: array
+          description: List of table identifiers
+          items:
+            $ref: '#/components/schemas/TableIdentifierWithDataSourceFormat'
+        next-page-token:
+          type: string
+          description: Token for next page
+
+    TableIdentifierWithDataSourceFormat:
+      type: object
+      description: Table identifier returned by list operations. Schema and catalog are implicit from the request path.
+      properties:
+        name:
+          type: string
+          description: Table name
+        data-source-format:
+          $ref: '#/components/schemas/DataSourceFormat'
+          description: Data source format
+      required:
+        - name
+        - data-source-format
+
+    RenameTableRequest:
+      type: object
+      properties:
+        new-name:
+          type: string
+          description: New table name
+      required:
+        - new-name
+
+
+    # Table Update Operations
+
+    UpdateTableRequest:
+      type: object
+      description: Request to update a table with requirements and updates
+      properties:
+        requirements:
+          type: array
+          description: Pre-conditions that must be met for the update
+          items:
+            $ref: '#/components/schemas/TableRequirement'
+        updates:
+          type: array
+          description: Updates to apply to the table
+          items:
+            $ref: '#/components/schemas/TableUpdate'
+      required:
+        - requirements
+        - updates
+
+    # Requirements
+
+    TableRequirement:
+      discriminator:
+        propertyName: type
+        mapping:
+          assert-table-uuid: '#/components/schemas/AssertTableUUID'
+          assert-etag: '#/components/schemas/AssertEtag'
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+
+    AssertTableUUID:
+      allOf:
+        - $ref: '#/components/schemas/TableRequirement'
+      description: Assert that the table UUID matches the expected value
+      properties:
+        type:
+          type: string
+          const: "assert-table-uuid"
+        uuid:
+          type: string
+          format: uuid
+          description: Expected table UUID
+      required:
+        - uuid
+
+    AssertEtag:
+      allOf:
+        - $ref: '#/components/schemas/TableRequirement'
+      description: Assert that the table etag matches the expected value for optimistic concurrency
+      properties:
+        type:
+          type: string
+          const: "assert-etag"
+        etag:
+          type: string
+          description: Expected etag value
+      required:
+        - etag
+
+    # Updates
+
+    TableUpdate:
+      discriminator:
+        propertyName: action
+        mapping:
+          set-properties: '#/components/schemas/SetPropertiesUpdate'
+          remove-properties: '#/components/schemas/RemovePropertiesUpdate'
+          set-columns: '#/components/schemas/SetSchemaUpdate'
+          set-table-comment: '#/components/schemas/SetTableCommentUpdate'
+          add-commit: '#/components/schemas/AddCommitUpdate'
+          set-latest-backfilled-version: '#/components/schemas/SetLatestBackfilledVersionUpdate'
+          set-protocol: '#/components/schemas/SetProtocolUpdate'
+          set-domain-metadata: '#/components/schemas/SetDomainMetadataUpdate'
+          remove-domain-metadata: '#/components/schemas/RemoveDomainMetadataUpdate'
+          set-partition-columns: '#/components/schemas/SetPartitionColumnsUpdate'
+          update-metadata-snapshot-version: '#/components/schemas/UpdateSnapshotVersionUpdate'
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+
+    SetPropertiesUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      required:
+        - updates
+      properties:
+        action:
+          type: string
+          const: "set-properties"
+        updates:
+          type: object
+          description: Properties to set
+          additionalProperties:
+            type: string
+
+    RemovePropertiesUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: Remove table properties
+      properties:
+        action:
+          type: string
+          const: "remove-properties"
+        removals:
+          type: array
+          description: Property keys to remove
+          items:
+            type: string
+      required:
+        - action
+        - removals
+
+    SetSchemaUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: |
+        Set table columns. The metadata field on each column carries Spark/Delta field metadata
+        from metaData.schemaString in the Delta commit log.
+      properties:
+        action:
+          type: string
+          const: "set-columns"
+        columns:
+          type: array
+          description: New table columns
+          items:
+            $ref: '#/components/schemas/DeltaColumn'
+      required:
+        - action
+        - columns
+
+    SetTableCommentUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: Set table comment
+      properties:
+        action:
+          type: string
+          const: "set-table-comment"
+        comment:
+          type: string
+          description: New table comment
+      required:
+        - action
+        - comment
+
+    AddCommitUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: Add a CCv2 commit to the table (managed tables only)
+      properties:
+        action:
+          type: string
+          const: "add-commit"
+        commit:
+          $ref: '#/components/schemas/DeltaCommit'
+          description: Commit metadata including version, timestamp, and file information
+        uniform:
+          $ref: '#/components/schemas/UniformMetadata'
+      required:
+        - action
+        - commit
+
+    SetLatestBackfilledVersionUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: Set the latest backfilled version for the table
+      properties:
+        action:
+          type: string
+          const: "set-latest-backfilled-version"
+        latest-published-version:
+          type: integer
+          format: int64
+          description: Latest backfilled/published version
+      required:
+        - action
+        - latest-published-version
+
+    SetProtocolUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: Set Delta protocol version and features (full replacement)
+      properties:
+        action:
+          type: string
+          const: "set-protocol"
+        protocol:
+          $ref: '#/components/schemas/DeltaProtocol'
+      required:
+        - action
+        - protocol
+
+    SetDomainMetadataUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: |
+        Set domain metadata. The `updates` object contains one or more
+        domain entries, each keyed by domain name with a typed configuration.
+      properties:
+        action:
+          type: string
+          const: "set-domain-metadata"
+        updates:
+          $ref: '#/components/schemas/DomainMetadataUpdates'
+      required:
+        - action
+        - updates
+
+    DomainMetadataUpdates:
+      type: object
+      description: |
+        Domain metadata entries keyed by domain name. Include one or more.
+      properties:
+        delta.clustering:
+          $ref: '#/components/schemas/ClusteringDomainMetadata'
+        delta.rowTracking:
+          $ref: '#/components/schemas/RowTrackingDomainMetadata'
+
+    RemoveDomainMetadataUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: Remove domain metadata for specified domains
+      properties:
+        action:
+          type: string
+          const: "remove-domain-metadata"
+        domains:
+          type: array
+          items:
+            type: string
+          description: Domain names to remove
+      required:
+        - action
+        - domains
+
+    SetPartitionColumnsUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: Set partition columns (table-level property, typically only during creation)
+      properties:
+        action:
+          type: string
+          const: "set-partition-columns"
+        partition-columns:
+          type: array
+          items:
+            type: string
+          description: Partition column names
+      required:
+        - action
+        - partition-columns
+
+    UpdateSnapshotVersionUpdate:
+      allOf:
+        - $ref: '#/components/schemas/TableUpdate'
+      description: Update snapshot version (external tables only, used by post-commit hook)
+      properties:
+        action:
+          type: string
+          const: "update-metadata-snapshot-version"
+        last-commit-version:
+          type: integer
+          format: int64
+          description: Last commit version (delta.lastUpdateVersion)
+        last-commit-timestamp-ms:
+          type: integer
+          format: int64
+          description: Last commit timestamp in ms (delta.lastCommitTimestamp)
+      required:
+        - action
+        - last-commit-version
+        - last-commit-timestamp-ms
+
+
+
+    # Domain Metadata
+
+    ClusteringDomainMetadata:
+      type: object
+      description: Configuration for Clustered Tables. Present when the clustering writer feature is enabled.
+      properties:
+        clusteringColumns:
+          type: array
+          description: Clustering column paths. Each inner array is a path from root schema to a column. If Column Mapping is enabled, physical column names are used.
+          items:
+            type: array
+            items:
+              type: string
+      required:
+        - clusteringColumns
+
+    RowTrackingDomainMetadata:
+      type: object
+      description: Configuration for Row Tracking. Present when the rowTracking writer feature is enabled.
+      properties:
+        rowIdHighWaterMark:
+          type: integer
+          format: int64
+          description: The highest fresh Row ID assigned so far.
+      required:
+        - rowIdHighWaterMark
+
+
+    # Delta Data Types
+
+    DeltaProtocol:
+      type: object
+      description: Delta table protocol specification
+      properties:
+        min-reader-version:
+          type: integer
+          format: int32
+          description: Minimum reader version
+        min-writer-version:
+          type: integer
+          format: int32
+          description: Minimum writer version
+        reader-features:
+          type: array
+          description: Enabled reader features
+          items:
+            type: string
+        writer-features:
+          type: array
+          description: Enabled writer features
+          items:
+            type: string
+      required:
+        - min-reader-version
+        - min-writer-version
+
+    UniformMetadata:
+      type: object
+      description: UniForm conversion metadata. Present only for Uniform (Delta + Iceberg) tables.
+      properties:
+        iceberg:
+          type: object
+          description: Iceberg-specific conversion metadata
+          properties:
+            metadata-location:
+              type: string
+              description: Iceberg metadata file location
+            converted-delta-version:
+              type: integer
+              format: int64
+              description: Delta version that was converted to Iceberg
+            converted-delta-timestamp:
+              type: integer
+              format: int64
+              description: Timestamp of the conversion, in epoch milliseconds
+            base-converted-delta-version:
+              type: integer
+              format: int64
+              description: Delta version used as the base for incremental conversion
+      required:
+        - iceberg
+
+    DeltaCommit:
+      type: object
+      description: Delta commit information for CCv2
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: Commit version
+        timestamp:
+          type: integer
+          format: int64
+          description: In-commit timestamp
+        file-name:
+          type: string
+          description: UUID-based commit file name
+        file-size:
+          type: integer
+          format: int64
+          description: Commit file size in bytes
+        file-modification-timestamp:
+          type: integer
+          format: int64
+          description: File modification timestamp
+      required:
+        - version
+        - timestamp
+        - file-name
+        - file-size
+        - file-modification-timestamp
+
+    DeltaColumn:
+      type: object
+      description: |
+        Column information for Delta tables. Contains the column name, type, nullability,
+        and metadata as a flat structure matching the Delta schema field format.
+      properties:
+        name:
+          type: string
+          description: Column name
+        type:
+          description: |
+            Column data type. For primitive types, a bare JSON string (e.g.,
+            "long", "string", "decimal(10,2)"). For complex types, a plain
+            JSON object with a "type" discriminator field ("array", "map", or
+            "struct"). See DataType, ArrayType, MapType, StructType schemas
+            for the object shapes. Note: this field is untyped (generates
+            Object in Java, Any in Python) because OpenAPI cannot express a
+            string-or-object union. Deserialized as String or Map, not as
+            typed DataType subclasses. Delta clients (Kernel, Spark) use
+            their own parsers; see DataTypeJsonSerDe.parseDataType().
+        nullable:
+          type: boolean
+          description: Whether this column can be null
+        metadata:
+          type: object
+          description: Additional column metadata (arbitrary key-value pairs, e.g., comment, delta.columnMapping.id)
+          additionalProperties: true
+      required:
+        - name
+        - type
+        - nullable
+
+    # Spark Type System
+    #
+    # The schemas below (DataType, ArrayType, MapType, StructType) document the
+    # JSON shapes used for complex column types. They are for documentation and
+    # spec validation only -- DeltaColumn.type is untyped because OpenAPI cannot
+    # express a string-or-object union, so the generated code does NOT use these
+    # classes for DeltaColumn deserialization. Delta clients (Kernel, Spark) have
+    # their own parsers (DataTypeJsonSerDe.parseDataType()).
+
+    DataType:
+      description: |
+        Complex data type base class (documentation-only for DeltaColumn.type).
+        The `type` field discriminates between array, map, and struct.
+        Primitive types (e.g., "long", "string", "decimal(10,2)") are bare
+        JSON strings, not DataType objects.
+      discriminator:
+        propertyName: type
+        mapping:
+          array: '#/components/schemas/ArrayType'
+          map: '#/components/schemas/MapType'
+          struct: '#/components/schemas/StructType'
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          description: Type identifier (array, map, or struct)
+
+    ArrayType:
+      allOf:
+        - $ref: '#/components/schemas/DataType'
+      description: Array type containing elements of a specific type
+      properties:
+        type:
+          type: string
+          const: "array"
+        elementType:
+          description: Data type of array elements (string | DataType)
+        containsNull:
+          type: boolean
+          description: Whether array elements can be null
+          default: true
+      required:
+        - type
+        - elementType
+        - containsNull
+      example:
+        type: "array"
+        elementType: "string"
+        containsNull: true
+
+    MapType:
+      allOf:
+        - $ref: '#/components/schemas/DataType'
+      description: Map type with key-value pairs
+      properties:
+        type:
+          type: string
+          const: "map"
+        keyType:
+          description: Data type of map keys (string | DataType)
+        valueType:
+          description: Data type of map values (string | DataType)
+        valueContainsNull:
+          type: boolean
+          description: Whether map values can be null
+          default: true
+      required:
+        - type
+        - keyType
+        - valueType
+        - valueContainsNull
+      example:
+        type: "map"
+        keyType: "string"
+        valueType: "integer"
+        valueContainsNull: true
+
+    StructType:
+      allOf:
+        - $ref: '#/components/schemas/DataType'
+      description: Struct type containing named fields
+      properties:
+        type:
+          type: string
+          const: "struct"
+        fields:
+          type: array
+          description: Array of field definitions
+          items:
+            $ref: '#/components/schemas/DeltaColumn'
+      required:
+        - type
+        - fields
+      example:
+        type: "struct"
+        fields:
+          - name: "id"
+            type: "long"
+            nullable: false
+            metadata: {}
+          - name: "name"
+            type: "string"
+            nullable: true
+            metadata: {}
+
+
+    # Metrics
+
+    ReportMetricsRequest:
+      type: object
+      required:
+        - table-id
+      properties:
+        table-id:
+          type: string
+          format: uuid
+          description: |
+            Table UUID. Must match the table identified by the path
+            {catalog}/{schema}/{table}. Obtained from loadTable
+            response metadata.table-uuid.
+        report:
+          type: object
+          description: Contains the metrics being reported
+          properties:
+            commit-report:
+              type: object
+              description: Commit report metrics
+              properties:
+                num-files-added:
+                  type: integer
+                  format: int64
+                  description: Number of files added by this commit
+                num-bytes-added:
+                  type: integer
+                  format: int64
+                  description: Number of bytes added by this commit
+                num-files-removed:
+                  type: integer
+                  format: int64
+                  description: Number of files removed by this commit
+                num-bytes-removed:
+                  type: integer
+                  format: int64
+                  description: Number of bytes removed by this commit
+                num-clustered-bytes-added:
+                  type: integer
+                  format: int64
+                  description: Number of clustered bytes added by this commit
+                num-clustered-bytes-removed:
+                  type: integer
+                  format: int64
+                  description: Number of clustered bytes removed by this commit
+                num-rows-inserted:
+                  type: integer
+                  format: int64
+                  description: Number of rows inserted by this commit
+                num-rows-removed:
+                  type: integer
+                  format: int64
+                  description: Number of rows removed by this commit
+                num-rows-updated:
+                  type: integer
+                  format: int64
+                  description: Number of rows updated by this commit
+                file-size-histogram:
+                  type: object
+                  description: Histogram tracking file counts and total bytes across size ranges
+                  properties:
+                    sorted-bin-boundaries:
+                      type: array
+                      items:
+                        type: integer
+                        format: int64
+                      description: Sorted bin boundary values
+                    file-counts:
+                      type: array
+                      items:
+                        type: integer
+                      description: Count of files in each bin
+                    total-bytes:
+                      type: array
+                      items:
+                        type: integer
+                        format: int64
+                      description: Total bytes in each bin
+                    commit-version:
+                      type: integer
+                      format: int64
+                      description: The commit version this histogram is for
+                  required:
+                    - sorted-bin-boundaries
+                    - file-counts
+                    - total-bytes
+
+
+    # Errors
+
+    ErrorType:
+      type: string
+      description: Error type identifier returned in error responses.
+      enum:
+        - BadRequestException
+        - InvalidParameterValueException
+        - NotAuthorizedException
+        - PermissionDeniedException
+        - NoSuchCatalogException
+        - NoSuchSchemaException
+        - NoSuchTableException
+        - AlreadyExistsException
+        - CommitVersionConflictException
+        - UpdateRequirementConflictException
+        - ResourceExhaustedException
+        - CommitStateUnknownException
+        - InternalServerErrorException
+        - NotImplementedException
+        - SlowDownException
+      # Keep enum order aligned with x-enum-descriptions below
+      x-enum-descriptions:
+        - 'BadRequestException: Malformed request or invalid action.'
+        - 'InvalidParameterValueException: Server-side validation failed (e.g., missing required fields or table features).'
+        - 'NotAuthorizedException: Authentication credentials are missing, expired, or invalid.'
+        - 'PermissionDeniedException: Authenticated user does not have the necessary permissions.'
+        - 'NoSuchCatalogException: The specified catalog does not exist.'
+        - 'NoSuchSchemaException: The specified catalog or schema does not exist.'
+        - 'NoSuchTableException: The specified table or staging table does not exist.'
+        - 'AlreadyExistsException: A resource with the same name already exists.'
+        - 'CommitVersionConflictException: Commit rejected due to a concurrent conflicting commit. The client should rebuild the snapshot and retry.'
+        - 'UpdateRequirementConflictException: An assert-etag or assert-table-uuid requirement was not met. The client should reload the table and retry.'
+        - 'ResourceExhaustedException: The maximum number of unbackfilled commits has been reached. The client should backfill pending commits before retrying.'
+        - 'CommitStateUnknownException: Commit outcome unknown (e.g., network failure after the server received the request). The client should check the table state before retrying.'
+        - 'InternalServerErrorException: A server-side problem that might not be addressable from the client side.'
+        - 'NotImplementedException: The requested functionality is not supported by the server.'
+        - 'SlowDownException: The service is not ready to handle the request. The client may retry after a delay.'
+
+    ErrorModel:
+      type: object
+      description: JSON error payload returned in a response with further details on the error
+      required:
+        - message
+        - type
+        - code
+      properties:
+        message:
+          type: string
+          description: Human-readable error message
+        type:
+          $ref: '#/components/schemas/ErrorType'
+        code:
+          type: integer
+          minimum: 400
+          maximum: 600
+          description: HTTP response code
+        stack:
+          type: array
+          description: Stack trace (only in debug mode)
+          items:
+            type: string
+
+    ErrorResponse:
+      description: JSON wrapper for all error responses (non-2xx)
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorModel'
+      additionalProperties: false
+
+  # Reusable Responses
+  # Error type is identified by the ErrorType enum in the response body.
+  responses:
+    BadRequestErrorResponse:
+      description: |
+        Bad request. The request is malformed or contains invalid parameters.
+        Error type will be BadRequestException or InvalidParameterValueException.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    UnauthorizedResponse:
+      description: Unauthorized. Credentials are missing, expired, or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ForbiddenResponse:
+      description: Forbidden. Insufficient permissions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFoundResponse:
+      description: |
+        Not found. The requested catalog, schema, table, or staging table does not exist.
+        Error type will be NoSuchCatalogException, NoSuchSchemaException, or NoSuchTableException.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    AlreadyExistsResponse:
+      description: Conflict. A resource with the same name already exists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ServerErrorResponse:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ServiceUnavailableResponse:
+      description: Service unavailable. The client may retry after a delay.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

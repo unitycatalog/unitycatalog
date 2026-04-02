@@ -9,6 +9,7 @@ target/
 .bsp/
 etc/logs/
 api/.openapi-generator
+api/delta-rest-docs/.openapi-generator
 build/sbt-launch-*
 venv
 uc_docs_venv
