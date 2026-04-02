@@ -1,41 +1,24 @@
 # This is a CODEOWNERS file for unitycatalog
 # See https://help.github.com/articles/about-codeowners/ for more information
 
-* @tdas @dennyglee @rameshchandra
+* @tdas @dennyglee
 
-# Builds and tests
-build.sbt @tdas
-version.sbt @tdas
+# Build & infra — @tdas only
+*.sbt @tdas
 /build/ @tdas
 /project/ @tdas
 /.github/ @tdas
-/tests/ @tdas
-/integration-tests/ @tdas
-
-# Binary scripts and configs
 /bin/ @tdas
 /etc/ @tdas
-
-# Docs
-/docs/ @dennyglee
-/mkdocs.yml @dennyglee
-/docs/ai/ @benwilson2
-
-# API
-/api/ @rameshchandra @tdas
-
-# UI
-/ui/ @yc-shawn @jamieknight-db
-
-# AI
-/ai/ @tdas @dennyglee @serena-ruan @benwilson2
+/tests/ @tdas
+/integration-tests/ @tdas @openinx
+/api/ @tdas
+/ui/ @tdas
+/server/ @tdas
+/spec/ @tdas
+/clients/ @tdas
+/helm/ @tdas
+/dev/ @tdas
 
 # Spark Connector
-/spark-connector/ @tdas @cloud-fan
-
-# Docker
-Dockerfile @dennyglee
-*.dockerfile @dennyglee
-
-# Clients
-/clients/ @tdas
+/connectors/spark/ @tdas @openinx
