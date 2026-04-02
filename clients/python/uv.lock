@@ -1793,22 +1793,22 @@ package-build = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.8.4" },
-    { name = "aiohttp-retry", specifier = ">=2.8.3" },
+    { name = "aiohttp", specifier = ">=3.8.4,<4" },
+    { name = "aiohttp-retry", specifier = ">=2.8.3,<3" },
     { name = "pydantic", specifier = ">=2,<3" },
-    { name = "pytest", specifier = ">=7.2.1" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0" },
-    { name = "python-dateutil", specifier = ">=2.8.2" },
-    { name = "requests", specifier = ">=2.28.0" },
-    { name = "typing-extensions", specifier = ">=4.7.1" },
-    { name = "urllib3", specifier = ">=1.25.3,<3.0.0" },
+    { name = "pytest", specifier = ">=7.2.1,<10" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0,<2" },
+    { name = "python-dateutil", specifier = ">=2.8.2,<3" },
+    { name = "requests", specifier = ">=2.28.0,<3" },
+    { name = "typing-extensions", specifier = ">=4.7.1,<5" },
+    { name = "urllib3", specifier = ">=1.25.3,<3" },
 ]
 
 [package.metadata.requires-dev]
 docs = [{ name = "pdoc", specifier = "==15.0.0" }]
 package-build = [
-    { name = "build", specifier = ">=1.0" },
-    { name = "twine", specifier = ">=4.0" },
+    { name = "build", specifier = ">=1.0,<2" },
+    { name = "twine", specifier = ">=4.0,<7" },
 ]
 
 [[package]]
