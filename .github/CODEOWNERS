@@ -3,15 +3,5 @@
 
 * @tdas @dennyglee
 
-# Build & infra — @tdas only
-*.sbt @tdas
-/build/ @tdas
-/project/ @tdas
-/.github/ @tdas
-/bin/ @tdas
-/etc/ @tdas
-/tests/ @tdas
-/api/ @tdas
-/server/ @tdas
-/clients/ @tdas
-/dev/ @tdas
+# Java clients.
+/clients/java/ @tdas @openinx
