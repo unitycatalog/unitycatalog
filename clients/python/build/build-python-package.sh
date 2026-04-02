@@ -16,6 +16,8 @@ DIST_DIR="$TARGET_DIR/dist"
 # Sync pinned build tools from the lock file
 cd "$REPO_ROOT_DIR/clients/python"
 uv sync --group package-build --frozen
+# shellcheck source=/dev/null
+source .venv/bin/activate
 
 if [ -d "$TARGET_DIR" ]; then
     cd "$TARGET_DIR"
@@ -31,15 +33,13 @@ fi
 
 mkdir -p "$DIST_DIR"
 
-PYTHON="$REPO_ROOT_DIR/clients/python/.venv/bin/python"
-
 echo "Building the package..."
-"$PYTHON" -m build --outdir "$DIST_DIR"
+python -m build --outdir "$DIST_DIR"
 
 echo "Build completed. The following files are ready for deployment:"
 ls "$DIST_DIR"
 
 echo "Running twine check on the package..."
-"$PYTHON" -m twine check "$DIST_DIR"/*
+python -m twine check "$DIST_DIR"/*
 
 echo "Packaging complete. You can now deploy the package to PyPI with twine upload $DIST_DIR/*"
