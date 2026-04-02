@@ -10,8 +10,8 @@ license = { text="Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
     "unitycatalog-ai",
-    "crewai>=0.67.1",
-    "crewai_tools",
+    "crewai>=0.67.1,<=1.10.1a1",
+    "crewai_tools<=1.10.1a1",
 ]
 
 [project.optional-dependencies]
