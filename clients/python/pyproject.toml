@@ -25,3 +25,4 @@ docs = ["pdoc==15.0.0"]
 [tool.uv]
 # This is a virtual project used only for dependency management, not an installable package.
 package = false
+exclude-newer = "2026-03-20T00:00:00Z"

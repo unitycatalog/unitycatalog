@@ -17,5 +17,6 @@ uv sync --frozen
 # all transitive deps are already pinned in uv.lock)
 uv pip install --no-deps "${SCRIPT_DIR}/target/"
 
-# Run the tests
-uv run pytest "${SCRIPT_DIR}/tests"
+# Run the tests from the repo root so that bin/start-uc-server is resolved correctly
+cd "${SCRIPT_DIR}/../.."
+"${SCRIPT_DIR}/.venv/bin/pytest" "${SCRIPT_DIR}/tests"
