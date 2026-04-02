@@ -486,6 +486,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
         .hasMessageContaining("Nested namespaces are not supported");
   }
 
+  // With page size 2 and 3 tables, pagination must occur (2 API calls) for all 3 to be returned.
+  // Asserting all 3 names proves pagination worked end-to-end.
   @Test
   public void testListTablesPagination() {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG);
@@ -498,10 +500,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       List<Row> tables = sql("SHOW TABLES in %s.%s", SPARK_CATALOG, SCHEMA_NAME);
       assertThat(tables).hasSize(3);
       List<String> tableNames =
-          tables.stream()
-              .map(row -> row.getString(1))
-              .sorted()
-              .collect(java.util.stream.Collectors.toList());
+          tables.stream().map(row -> row.getString(1)).sorted().collect(Collectors.toList());
       assertThat(tableNames)
           .containsExactly("pagination_table_1", "pagination_table_2", "pagination_table_3");
     } finally {
@@ -720,7 +719,15 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "[42,test]",
                 ColumnTypeName.STRUCT,
                 "struct<a:int,b:string>",
-                structJson));
+                structJson),
+            new ColSpec(
+                "col_variant",
+                "VARIANT",
+                "parse_json('1')",
+                "1",
+                ColumnTypeName.VARIANT,
+                "variant",
+                "\"variant\""));
 
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String tableName = TEST_TABLE + "_complex_type";

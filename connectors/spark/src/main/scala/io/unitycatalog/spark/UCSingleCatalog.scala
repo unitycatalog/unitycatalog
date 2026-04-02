@@ -25,6 +25,7 @@ import java.util
 import java.util.Locale
 import scala.collection.JavaConverters._
 import scala.collection.convert.ImplicitConversions._
+import scala.collection.mutable.ArrayBuffer
 import scala.language.existentials
 
 /**
@@ -566,13 +567,13 @@ private class UCProxy(
 
     val catalogName = this.name
     val schemaName = namespace.head
-    val tables = scala.collection.mutable.ArrayBuffer.empty[Identifier]
+    val tables = ArrayBuffer.empty[Identifier]
     var pageToken: String = null
     do {
       val response = tablesApi.listTables(catalogName, schemaName, /* limit */ 0, pageToken)
       tables ++= response.getTables.asScala.map(table => Identifier.of(namespace, table.getName))
       pageToken = response.getNextPageToken
-    } while (pageToken != null)
+    } while (pageToken != null && pageToken.nonEmpty)
     tables.toArray
   }
 
@@ -773,6 +774,7 @@ private class UCProxy(
       case _: MapType => ColumnTypeName.MAP
       case _: NullType => ColumnTypeName.NULL
       case _: UserDefinedType[_] => ColumnTypeName.USER_DEFINED_TYPE
+      case _: VariantType => ColumnTypeName.VARIANT
       case _ => ColumnTypeName.UNKNOWN_DEFAULT_OPEN_API
     }
   }
@@ -813,13 +815,13 @@ private class UCProxy(
   }
 
   override def listNamespaces(): Array[Array[String]] = {
-    val schemas = scala.collection.mutable.ArrayBuffer.empty[Array[String]]
+    val schemas = ArrayBuffer.empty[Array[String]]
     var pageToken: String = null
     do {
       val response = schemasApi.listSchemas(name, /* limit */ 0, pageToken)
       schemas ++= response.getSchemas.asScala.map(schema => Array(schema.getName))
       pageToken = response.getNextPageToken
-    } while (pageToken != null)
+    } while (pageToken != null && pageToken.nonEmpty)
     schemas.toArray
   }
 

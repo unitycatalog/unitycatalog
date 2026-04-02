@@ -1,0 +1,33 @@
+name: Publish Swagger Docs
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Generate Swagger UI
+        uses: Legion2/swagger-ui-action@eff65dc3f193f0a749872be82f74baa35be0797d # v1.3.0
+        with:
+          output: ./swagger-ui/swagger-docs
+          spec-file: ./api/all.yaml
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare deployment directory for Swagger UI
+        run: |
+            mkdir -p swagger-docs
+            mv swagger-ui/* ./swagger-docs/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@373f7f263a76c20808c831209c920827a82a2847 # v3.9.3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./swagger-docs
+          keep_files: true
