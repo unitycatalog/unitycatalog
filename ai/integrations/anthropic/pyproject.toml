@@ -9,7 +9,7 @@ readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
-    "anthropic>=0.34.2",
+    "anthropic>=0.34.2,<=0.84.0",
     "unitycatalog-ai",
     "pydantic<3,>=2",
 ]
