@@ -78,6 +78,9 @@ dependencies = [
     "mypy>=1.4.1,<=1.19.1",
 ]
 
+[tool.uv]
+exclude-newer = "2026-03-20T00:00:00Z"
+
 [tool.pylint."MESSAGES CONTROL"]
 extension-pkg-whitelist = "pydantic"
 
