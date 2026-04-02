@@ -1,5 +1,7 @@
 # This is a CODEOWNERS file for unitycatalog
 # See https://help.github.com/articles/about-codeowners/ for more information
 
-docs/ @MrPowers
-mkdocs.yml @MrPowers
+* @tdas @dennyglee
+
+# Spark Connector
+/connectors/spark/ @tdas @openinx
