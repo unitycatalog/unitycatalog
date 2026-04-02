@@ -5,6 +5,7 @@ import io.unitycatalog.client.retry.RetryPolicy;
 import org.apache.hadoop.conf.Configuration;
 
 public class UCHadoopConf {
+
   private UCHadoopConf() {}
 
   // Key for the AWS S3 credential provider, same as org.apache.hadoop.fs.s3a.Constants
