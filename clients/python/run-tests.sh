@@ -7,7 +7,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd "${SCRIPT_DIR}/../.." || exit 1
 
 # Generate the client library
-build/sbt -mem 4096 pythonClient/generate
+build/sbt pythonClient/generate
 
 # Sync all pinned test dependencies from the lock file
 cd "${SCRIPT_DIR}"
