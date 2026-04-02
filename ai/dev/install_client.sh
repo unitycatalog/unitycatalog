@@ -15,7 +15,7 @@ if [ ! -d "$CLIENT_TARGET_DIR" ]; then
 fi
 
 # Install the current branch's unitycatalog-client package
-pip install "$CLIENT_TARGET_DIR/.[dev]"
+uv pip install --system "$CLIENT_TARGET_DIR/.[dev]"
 
 # Install unitycatalog-ai core dev package from the current branch
-pip install "./ai/core/.[dev]"
+uv pip install --system "./ai/core/.[dev]"

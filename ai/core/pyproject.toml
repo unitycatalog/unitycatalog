@@ -125,5 +125,8 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["T201", "T203"] # ignore print statements in notebooks
 
+[tool.uv]
+exclude-newer = "2026-03-10T00:00:00Z"
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
