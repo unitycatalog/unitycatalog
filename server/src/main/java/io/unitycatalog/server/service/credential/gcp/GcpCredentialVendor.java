@@ -49,8 +49,7 @@ public class GcpCredentialVendor {
 
     if (storageConfig == null) {
       throw new BaseException(
-          ErrorCode.FAILED_PRECONDITION,
-          format("Unknown GCS storage configuration for %s.", storageBase));
+          ErrorCode.INTERNAL, format("Unknown GCS storage configuration for %s.", storageBase));
     }
 
     GcpCredentialGenerator generator =
@@ -160,7 +159,7 @@ public class GcpCredentialVendor {
         }
         return downscopeGcpCreds(creds.createScoped(INITIAL_SCOPES), context).refreshAccessToken();
       } catch (IOException e) {
-        throw new BaseException(ErrorCode.FAILED_PRECONDITION, "GCS credentials not found.", e);
+        throw new BaseException(ErrorCode.INTERNAL, "GCS credentials not found.", e);
       }
     }
   }

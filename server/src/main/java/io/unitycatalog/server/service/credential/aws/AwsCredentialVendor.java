@@ -133,8 +133,7 @@ public class AwsCredentialVendor {
       // No credential dao. Use the per bucket config
       S3StorageConfig config = perBucketS3Configs.get(context.getStorageBase());
       if (config == null) {
-        throw new BaseException(
-            ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
+        throw new BaseException(ErrorCode.INTERNAL, "S3 bucket configuration not found.");
       }
       generator =
           perBucketCredGenerators.computeIfAbsent(

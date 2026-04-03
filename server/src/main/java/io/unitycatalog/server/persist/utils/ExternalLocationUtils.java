@@ -297,7 +297,7 @@ public class ExternalLocationUtils {
       // This is an invalid internal state. We never allow external locations with
       // overlapping URLs.
       throw new BaseException(
-          ErrorCode.FAILED_PRECONDITION,
+          ErrorCode.INTERNAL,
           "More than one external location with URL '" + url + "' exist.");
     }
 
@@ -306,7 +306,7 @@ public class ExternalLocationUtils {
     CredentialDAO credentialDAO = session.get(CredentialDAO.class, credentialId);
     if (credentialDAO == null) {
       throw new BaseException(
-          ErrorCode.FAILED_PRECONDITION,
+          ErrorCode.INTERNAL,
           String.format("Credential %s for '%s' not found.", credentialId, url));
     }
     return Optional.of(credentialDAO);
@@ -590,7 +590,7 @@ public class ExternalLocationUtils {
    *
    * @param catalogAndSchemaDao the catalog and schema DAOs
    * @return the storage location to use as root for child entity storage
-   * @throws BaseException with ErrorCode.FAILED_PRECONDITION if neither catalog nor schema has
+   * @throws BaseException with ErrorCode.INTERNAL if neither catalog nor schema has
    *     managed location configured
    */
   public static NormalizedURL getManagedStorageLocation(
@@ -615,7 +615,7 @@ public class ExternalLocationUtils {
    * @param fallbackStorageRoot supplier that provides an optional fallback storage root from
    *                            server properties
    * @return the storage location to use as root for child entity storage
-   * @throws BaseException with ErrorCode.FAILED_PRECONDITION if no storage root is available
+   * @throws BaseException with ErrorCode.INTERNAL if no storage root is available
    */
   public static NormalizedURL getManagedStorageLocation(
       RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao,
@@ -633,7 +633,7 @@ public class ExternalLocationUtils {
           .orElseThrow(
               () ->
                   new BaseException(
-                      ErrorCode.FAILED_PRECONDITION,
+                      ErrorCode.INTERNAL,
                       "Neither catalog nor schema has managed location configured."));
     }
   }
