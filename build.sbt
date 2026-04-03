@@ -281,7 +281,7 @@ lazy val pythonClient = (project in file("clients/python"))
             ),
             OpenApiSpec(
               inputSpec = (baseDirectory.value.getParentFile.getParentFile / "api" / "delta.yaml").getAbsolutePath,
-              packageName = s"$artifactNamePrefix.client",
+              packageName = s"$artifactNamePrefix.delta",
               additionalProperties = commonProps,
               globalProperties = Map("apis" -> "", "models" -> "")
             )
