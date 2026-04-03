@@ -1,7 +1,7 @@
 openapi: 3.1.1
 servers:
-  - url: "{scheme}://{host}:{port}/api/2.1/unity-catalog/delta"
-    description: Delta REST Catalog server
+  - url: "{scheme}://{host}:{port}/api/2.1/unity-catalog"
+    description: Unity Catalog server
     variables:
       scheme:
         description: The URI scheme (http or https)
@@ -15,8 +15,8 @@ servers:
       port:
         description: The server port number
         default: "8080"
-  - url: http://localhost:8080/api/2.1/unity-catalog/delta
-    description: Localhost reference server for Delta REST Catalog API
+  - url: http://localhost:8080/api/2.1/unity-catalog
+    description: Localhost reference server
 info:
   title: Delta REST Catalog API
   summary: REST API for Delta Lake table catalog operations
@@ -50,7 +50,7 @@ tags:
       Credentials are scoped by operation level (READ or READ_WRITE).
 
 paths:
-  /v1/config:
+  /delta/v1/config:
     get:
       tags:
         - Configuration
@@ -111,7 +111,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailableResponse'
 
-  /v1/catalogs/{catalog}/schemas/{schema}/staging-tables:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -185,7 +185,7 @@ paths:
         '500':
           $ref: '#/components/responses/ServerErrorResponse'
 
-  /v1/catalogs/{catalog}/schemas/{schema}/tables:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -254,7 +254,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -354,7 +354,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -390,7 +390,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -422,7 +422,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /v1/staging-tables/{table_id}/credentials:
+  /delta/v1/staging-tables/{table_id}/credentials:
     parameters:
       - name: table_id
         in: path
@@ -455,7 +455,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundResponse'
 
-  /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename:
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename:
     parameters:
       - $ref: '#/components/parameters/catalog'
       - $ref: '#/components/parameters/schema'
@@ -488,7 +488,7 @@ paths:
         '409':
           $ref: '#/components/responses/AlreadyExistsResponse'
 
-  /v1/temporary-path-credentials:
+  /delta/v1/temporary-path-credentials:
     get:
       tags:
         - TemporaryCredentials
