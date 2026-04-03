@@ -2,16 +2,15 @@ name: Python Client Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "branch-*" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "branch-*" ]
 
 permissions:
   contents: read
 
 jobs:
   test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
 
     steps:
@@ -22,13 +21,11 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Set up Python
-      uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
-      with:
-        python-version: '3.9'
+    - name: Install uv
+      run: bash dev/install-uv.sh
 
-    - name: Install dependencies
-      run: pip install requests pytest pytest-asyncio
+    - name: Install Python 3.9 via uv
+      run: uv python install 3.9
 
     - name: Generate the client library, install it, and run the tests
       run: ./clients/python/run-tests.sh
