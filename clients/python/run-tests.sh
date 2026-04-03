@@ -19,4 +19,4 @@ uv pip install --no-deps "${SCRIPT_DIR}/target/"
 
 # Run the tests from the repo root so that bin/start-uc-server is resolved correctly
 cd "${SCRIPT_DIR}/../.."
-"${SCRIPT_DIR}/.venv/bin/pytest" "${SCRIPT_DIR}/tests"
+uv run --directory "${SCRIPT_DIR}" pytest "${SCRIPT_DIR}/tests"
