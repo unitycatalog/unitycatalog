@@ -19,6 +19,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -50,10 +51,10 @@ import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
+import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
-import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
@@ -116,6 +117,9 @@ public class UnityCatalogServer {
     UnityCatalogAuthorizer authorizer =
         initializeAuthorizer(
             unityCatalogServerBuilder.serverProperties, hibernateConfigurator, repositories);
+    // Configure error response stack traces
+    BaseExceptionHandler.setIncludeStackTrace(
+        unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
     addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
     // Init security decorators
@@ -261,7 +265,7 @@ public class UnityCatalogServer {
     LOGGER.info("Adding Iceberg services...");
 
     // Add support for Iceberg REST APIs
-    ObjectMapper icebergMapper = RESTObjectMapper.mapper();
+    ObjectMapper icebergMapper = IcebergObjectMapper.mapper();
     JacksonRequestConverterFunction icebergRequestConverter =
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
