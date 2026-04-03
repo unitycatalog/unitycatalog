@@ -225,6 +225,32 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     assertManagedTableHasUcProperties(loadTableInfo(fullTableName), originalTableId);
   }
 
+  @Test
+  public void testManagedDeltaAlterTableSupportsPropertiesAndAddColumns() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    sql("ALTER TABLE %s SET TBLPROPERTIES ('custom.key' = 'value')", fullTableName);
+    sql("ALTER TABLE %s ADD COLUMNS (extra STRING)", fullTableName);
+    sql("INSERT INTO %s VALUES (1, 'a', 'x')", fullTableName);
+
+    validateTableSchema(
+        session.table(fullTableName).schema(),
+        Pair.of("i", DataTypes.IntegerType),
+        Pair.of("s", DataTypes.StringType),
+        Pair.of("extra", DataTypes.StringType));
+    assertThat(sql("SHOW TBLPROPERTIES %s('custom.key')", fullTableName).get(0).getString(1))
+        .isEqualTo("value");
+
+    List<Row> rows = sql("SELECT * FROM %s", fullTableName);
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getInt(0)).isEqualTo(1);
+    assertThat(rows.get(0).getString(1)).isEqualTo("a");
+    assertThat(rows.get(0).getString(2)).isEqualTo("x");
+  }
+
   @Override
   protected void prepareExistingTableForDdl(TableSetupOptions options) {
     TableSetupOptions existingOptions =

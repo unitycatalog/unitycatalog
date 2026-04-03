@@ -9,15 +9,23 @@ import io.unitycatalog.client.deltarest.{ApiClient => DeltaRestApiClient}
 import io.unitycatalog.client.deltarest.{ApiException => DeltaRestApiException}
 import io.unitycatalog.client.deltarest.api.{TablesApi => DeltaRestTablesApi}
 import io.unitycatalog.client.deltarest.model.{
+  AssertEtag => DRAssertEtag,
+  AssertTableUUID => DRAssertTableUUID,
   CreateStagingTableRequest => DRCreateStagingTableRequest,
   CreateTableRequest => DRCreateTableRequest,
   DeltaColumn => DRDeltaColumn,
   DeltaProtocol => DRDeltaProtocol,
   DataSourceFormat => DRDataSourceFormat,
   LoadTableResponse => DRLoadTableResponse,
+  RemovePropertiesUpdate => DRRemovePropertiesUpdate,
   RenameTableRequest => DRRenameTableRequest,
+  SetColumnsUpdate => DRSetColumnsUpdate,
+  SetPropertiesUpdate => DRSetPropertiesUpdate,
   TableIdentifier => DRTableIdentifier,
-  TableMetadata => DRTableMetadata
+  TableMetadata => DRTableMetadata,
+  TableRequirement => DRTableRequirement,
+  TableUpdate => DRTableUpdate,
+  UpdateTableRequest => DRUpdateTableRequest
 }
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
 import io.unitycatalog.spark.fs.CredScopedFileSystem
@@ -945,7 +953,87 @@ private class UCProxy(
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (changes.isEmpty) {
+      return loadTable(ident)
+    }
+
+    val currentMetadata = deltaRestTablesApi
+      .loadTable(this.name, ident.namespace().head, ident.name(), /* withCredentials = */ false)
+      .getMetadata
+
+    val requirements = new util.ArrayList[DRTableRequirement]()
+    Option(currentMetadata.getTableUuid).foreach { tableUuid =>
+      val assertTableUuid = new DRAssertTableUUID()
+      assertTableUuid.setType(DRAssertTableUUID.TypeEnum.ASSERT_TABLE_UUID)
+      assertTableUuid.setUuid(tableUuid)
+      requirements.add(new DRTableRequirement(assertTableUuid))
+    }
+    Option(currentMetadata.getEtag).foreach { etag =>
+      val assertEtag = new DRAssertEtag()
+      assertEtag.setType(DRAssertEtag.TypeEnum.ASSERT_ETAG)
+      assertEtag.setEtag(etag)
+      requirements.add(new DRTableRequirement(assertEtag))
+    }
+
+    val propertyUpdates = new util.LinkedHashMap[String, String]()
+    val propertyRemovals = new util.ArrayList[String]()
+    val updatedColumns = Option(currentMetadata.getColumns)
+      .map(_.asScala.map(cloneDeltaColumn).toBuffer)
+      .getOrElse(scala.collection.mutable.ArrayBuffer.empty[DRDeltaColumn])
+    var columnsChanged = false
+
+    changes.foreach {
+      case change: TableChange.SetProperty =>
+        rejectAlterSystemManagedProperty(change.property())
+        propertyUpdates.put(change.property(), change.value())
+      case change: TableChange.RemoveProperty =>
+        rejectAlterSystemManagedProperty(change.property())
+        propertyRemovals.add(change.property())
+      case change: TableChange.AddColumn =>
+        if (change.fieldNames().length != 1) {
+          throw new UnsupportedOperationException(
+            s"Nested ADD COLUMN is not supported yet: ${change.fieldNames().mkString(".")}")
+        }
+        if (change.position() != null) {
+          throw new UnsupportedOperationException("ADD COLUMN with position is not supported yet")
+        }
+        if (change.defaultValue() != null) {
+          throw new UnsupportedOperationException("ADD COLUMN with default value is not supported yet")
+        }
+        updatedColumns += buildDeltaColumn(change.fieldNames().head, change.dataType(),
+          change.isNullable(), Option(change.comment()))
+        columnsChanged = true
+      case other =>
+        throw new UnsupportedOperationException(
+          s"ALTER TABLE change ${other.getClass.getSimpleName} is not supported yet")
+    }
+
+    val updates = new util.ArrayList[DRTableUpdate]()
+    if (!propertyUpdates.isEmpty) {
+      val setProperties = new DRSetPropertiesUpdate()
+      setProperties.setAction(DRSetPropertiesUpdate.ActionEnum.SET_PROPERTIES)
+      setProperties.setUpdates(propertyUpdates)
+      updates.add(new DRTableUpdate(setProperties))
+    }
+    if (!propertyRemovals.isEmpty) {
+      val removeProperties = new DRRemovePropertiesUpdate()
+      removeProperties.setAction(DRRemovePropertiesUpdate.ActionEnum.REMOVE_PROPERTIES)
+      removeProperties.setRemovals(propertyRemovals)
+      updates.add(new DRTableUpdate(removeProperties))
+    }
+    if (columnsChanged) {
+      val setColumns = new DRSetColumnsUpdate()
+      setColumns.setAction(DRSetColumnsUpdate.ActionEnum.SET_COLUMNS)
+      setColumns.setColumns(updatedColumns.asJava)
+      updates.add(new DRTableUpdate(setColumns))
+    }
+
+    val request = new DRUpdateTableRequest()
+    request.setRequirements(requirements)
+    request.setUpdates(updates)
+    deltaRestTablesApi.updateTable(this.name, ident.namespace().head, ident.name(), request)
+    loadTable(ident)
   }
 
   override def dropTable(ident: Identifier): Boolean = {
@@ -1024,6 +1112,52 @@ private class UCProxy(
 
   private def parseInt(value: String): Option[Int] = {
     scala.util.Try(value.toInt).toOption
+  }
+
+  private def rejectAlterSystemManagedProperty(property: String): Unit = {
+    if (Set(
+        UCTableProperties.UC_TABLE_ID_KEY,
+        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+        TableCatalog.PROP_IS_MANAGED_LOCATION,
+        TableCatalog.PROP_LOCATION,
+        TableCatalog.PROP_PROVIDER).contains(property)) {
+      throw new ApiException(s"Cannot alter property '$property'.")
+    }
+  }
+
+  private def cloneDeltaColumn(column: DRDeltaColumn): DRDeltaColumn = {
+    val copy = new DRDeltaColumn()
+    copy.setName(column.getName)
+    copy.setNullable(column.getNullable)
+    copy.setType(column.getType)
+    copy.setMetadata(Option(column.getMetadata)
+      .map(m => new util.LinkedHashMap[String, Object](m))
+      .orNull)
+    copy
+  }
+
+  private def buildDeltaColumn(
+      name: String,
+      dataType: DataType,
+      nullable: Boolean,
+      comment: Option[String]): DRDeltaColumn = {
+    val column = new DRDeltaColumn()
+    column.setName(name)
+    column.setNullable(nullable)
+    val jsonType = dataType.json
+    val typeValue: Object = if (jsonType.startsWith("\"") && jsonType.endsWith("\"")) {
+      jsonType.substring(1, jsonType.length - 1).asInstanceOf[Object]
+    } else {
+      val mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+      mapper.readValue(jsonType, classOf[Object])
+    }
+    column.setType(typeValue)
+    comment.foreach { value =>
+      val metadata = new util.LinkedHashMap[String, Object]()
+      metadata.put("comment", value)
+      column.setMetadata(metadata)
+    }
+    column
   }
 
   private def isReaderFeature(feature: String): Boolean = {
