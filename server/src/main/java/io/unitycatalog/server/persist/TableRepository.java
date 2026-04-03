@@ -63,8 +63,8 @@ public class TableRepository {
    *
    * @param tableId the ID of the table or staging table
    * @return the normalized URL of the storage location
-   * @throws BaseException with ErrorCode.NOT_FOUND if neither a table nor staging table is found
-   *     with the given ID
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if neither a table nor staging table is
+   *     found with the given ID
    */
   public NormalizedURL getStorageLocationForTableOrStagingTable(UUID tableId) {
     return TransactionManager.executeWithTransaction(
@@ -82,7 +82,8 @@ public class TableRepository {
             return NormalizedURL.from(stagingTableDAO.getStagingLocation());
           }
           throw new BaseException(
-              ErrorCode.NOT_FOUND, "Neither table nor staging table found with id: " + tableId);
+              ErrorCode.TABLE_NOT_FOUND,
+              "Neither table nor staging table found with id: " + tableId);
         },
         "Failed to get storage location of table or staging table",
         /* readOnly = */ true);
@@ -98,8 +99,9 @@ public class TableRepository {
    *
    * @param tableId the UUID of the table or staging table
    * @return a Pair containing the catalog ID (left) and schema ID (right)
-   * @throws BaseException with ErrorCode.NOT_FOUND if neither a table nor staging table is found
-   *     with the given ID, or if the associated schema is not found
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if neither a table nor staging table is
+   *     found with the given ID
+   * @throws BaseException with ErrorCode.SCHEMA_NOT_FOUND if the associated schema is not found
    */
   public Pair<UUID, UUID> getCatalogSchemaIdsByTableOrStagingTableId(UUID tableId) {
     LOGGER.debug("Getting catalog&schema id by table or staging table id: {}", tableId);
@@ -116,14 +118,16 @@ public class TableRepository {
             StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
             if (stagingTableDAO == null) {
               throw new BaseException(
-                  ErrorCode.NOT_FOUND, "Neither table nor staging table found with id: " + tableId);
+                  ErrorCode.TABLE_NOT_FOUND,
+                  "Neither table nor staging table found with id: " + tableId);
             }
             schemaId = stagingTableDAO.getSchemaId();
           }
 
           SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, schemaId);
           if (schemaInfoDAO == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found with id: " + schemaId);
+            throw new BaseException(
+                ErrorCode.SCHEMA_NOT_FOUND, "Schema not found with id: " + schemaId);
           }
 
           return Pair.of(schemaInfoDAO.getCatalogId(), schemaId);
@@ -146,7 +150,7 @@ public class TableRepository {
           String tableName = parts[2];
           TableInfoDAO tableInfoDAO = findTable(session, catalogName, schemaName, tableName);
           if (tableInfoDAO == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + fullName);
           }
           TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
@@ -372,7 +376,7 @@ public class TableRepository {
   public void deleteTable(Session session, UUID schemaId, String tableName) {
     TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
     if (tableInfoDAO == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableName);
+      throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {

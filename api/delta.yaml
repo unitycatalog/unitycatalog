@@ -1576,6 +1576,7 @@ components:
         - InvalidParameterValueException
         - NotAuthorizedException
         - PermissionDeniedException
+        - NotFoundException
         - NoSuchCatalogException
         - NoSuchSchemaException
         - NoSuchTableException
@@ -1583,27 +1584,28 @@ components:
         - CommitVersionConflictException
         - UpdateRequirementConflictException
         - ResourceExhaustedException
+        - TooManyRequestsException
         - CommitStateUnknownException
         - InternalServerErrorException
         - NotImplementedException
-        - SlowDownException
       # Keep enum order aligned with x-enum-descriptions below
       x-enum-descriptions:
-        - 'BadRequestException: Malformed request or invalid action.'
-        - 'InvalidParameterValueException: Server-side validation failed (e.g., missing required fields or table features).'
-        - 'NotAuthorizedException: Authentication credentials are missing, expired, or invalid.'
-        - 'PermissionDeniedException: Authenticated user does not have the necessary permissions.'
-        - 'NoSuchCatalogException: The specified catalog does not exist.'
-        - 'NoSuchSchemaException: The specified catalog or schema does not exist.'
-        - 'NoSuchTableException: The specified table or staging table does not exist.'
-        - 'AlreadyExistsException: A resource with the same name already exists.'
-        - 'CommitVersionConflictException: Commit rejected due to a concurrent conflicting commit. The client should rebuild the snapshot and retry.'
-        - 'UpdateRequirementConflictException: An assert-etag or assert-table-uuid requirement was not met. The client should reload the table and retry.'
-        - 'ResourceExhaustedException: The maximum number of unbackfilled commits has been reached. The client should backfill pending commits before retrying.'
-        - 'CommitStateUnknownException: Commit outcome unknown (e.g., network failure after the server received the request). The client should check the table state before retrying.'
-        - 'InternalServerErrorException: A server-side problem that might not be addressable from the client side.'
-        - 'NotImplementedException: The requested functionality is not supported by the server.'
-        - 'SlowDownException: The service is not ready to handle the request. The client may retry after a delay.'
+        - 'BadRequestException: (400) Malformed request or invalid action.'
+        - 'InvalidParameterValueException: (400) Server-side validation failed (e.g., missing required fields or table features).'
+        - 'NotAuthorizedException: (401) Authentication credentials are missing, expired, or invalid.'
+        - 'PermissionDeniedException: (403) Authenticated user does not have the necessary permissions.'
+        - 'NotFoundException: (404) The requested resource does not exist.'
+        - 'NoSuchCatalogException: (404) The specified catalog does not exist.'
+        - 'NoSuchSchemaException: (404) The specified catalog or schema does not exist.'
+        - 'NoSuchTableException: (404) The specified table or staging table does not exist.'
+        - 'AlreadyExistsException: (409) A resource with the same name already exists.'
+        - 'CommitVersionConflictException: (409) Commit rejected due to a concurrent conflicting commit. The client should rebuild the snapshot and retry.'
+        - 'UpdateRequirementConflictException: (409) An assert-etag or assert-table-uuid requirement was not met. The client should reload the table and retry.'
+        - 'ResourceExhaustedException: (429) The maximum number of unbackfilled commits has been reached. The client should backfill pending commits before retrying.'
+        - 'TooManyRequestsException: (429) Too many requests. The client may retry after a delay.'
+        - 'CommitStateUnknownException: (500) Commit outcome unknown (e.g., network failure after the server received the request). The client should check the table state before retrying.'
+        - 'InternalServerErrorException: (500) A server-side problem that might not be addressable from the client side.'
+        - 'NotImplementedException: (501) The requested functionality is not supported by the server.'
 
     ErrorModel:
       type: object
