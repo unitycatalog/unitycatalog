@@ -4,22 +4,20 @@
 
 set -e
 
+# clients/python/build/
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT_DIR="$(cd "$SCRIPT_DIR/../../../" && pwd)"
+# clients/python/build -> clients/python -> clients -> <repo-root>
+REPO_ROOT_DIR="$(cd "$SCRIPT_DIR" && cd ../../.. && pwd)"
 cd "$REPO_ROOT_DIR"
 
 TARGET_DIR="$REPO_ROOT_DIR/clients/python/target"
 DIST_DIR="$TARGET_DIR/dist"
 
-if ! python -m build --version &>/dev/null; then
-    echo "Python build module not found. Installing..."
-    python -m pip install --upgrade build
-fi
-
-if ! python -m twine --version &>/dev/null; then
-    echo "Twine module not found. Installing..."
-    python -m pip install --upgrade twine
-fi
+# Sync pinned build tools from the lock file
+cd "$REPO_ROOT_DIR/clients/python"
+uv sync --group package-build --frozen
+# shellcheck source=/dev/null
+source .venv/bin/activate
 
 if [ -d "$TARGET_DIR" ]; then
     cd "$TARGET_DIR"
