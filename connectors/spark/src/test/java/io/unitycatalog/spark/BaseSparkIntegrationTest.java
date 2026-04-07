@@ -46,11 +46,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   protected SparkSession createSparkSessionWithCatalogs(String... catalogs) {
-    return createSparkSessionWithCatalogs(false, true, catalogs);
-  }
-
-  protected SparkSession createSparkSessionWithCatalogs(boolean renewCred, String... catalogs) {
-    return createSparkSessionWithCatalogs(renewCred, true, catalogs);
+    return createSparkSessionWithCatalogs(true, true, catalogs);
   }
 
   protected SparkSession createSparkSessionWithCatalogs(
