@@ -39,7 +39,7 @@ class UCSingleCatalog
   private[this] var uri: URI = null
   private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
-  private[this] var credScopedFsEnabled: Boolean = false
+  private[this] var credScopedFsEnabled: Boolean = true
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
