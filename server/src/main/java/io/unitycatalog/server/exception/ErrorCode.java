@@ -7,6 +7,23 @@ import java.util.EnumMap;
 import java.util.Map;
 import lombok.Getter;
 
+/**
+ * Error codes for the Unity Catalog server. Each entry is defined as:
+ *
+ * <pre>
+ *   NAME(grpcCode, ucHttpStatus, deltaErrorType)
+ *   NAME(grpcCode, ucHttpStatus, deltaErrorType, deltaHttpStatus)
+ * </pre>
+ *
+ * <ul>
+ *   <li>{@code grpcCode} - numeric gRPC status code (e.g., 3 = INVALID_ARGUMENT)
+ *   <li>{@code ucHttpStatus} - HTTP status code returned by the UC REST API
+ *   <li>{@code deltaErrorType} - corresponding {@link ErrorType} in the Delta REST API error spec
+ *   <li>{@code deltaHttpStatus} - HTTP status code for the Delta REST API (defaults to ucHttpStatus
+ *       when omitted; overridden when the Delta spec disagrees, e.g., 409 for AlreadyExists vs UC's
+ *       legacy 400)
+ * </ul>
+ */
 @Getter
 public enum ErrorCode {
   INVALID_ARGUMENT(3, 400, ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION),
