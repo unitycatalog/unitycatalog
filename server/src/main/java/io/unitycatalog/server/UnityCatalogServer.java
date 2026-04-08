@@ -294,10 +294,7 @@ public class UnityCatalogServer {
     DeltaRestCatalogService deltaRestService =
         new DeltaRestCatalogService(authorizer, repositories, storageCredentialVendor);
     ObjectMapper deltaMapper =
-        JsonMapper.builder()
-            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-            .serializationInclusion(JsonInclude.Include.NON_NULL)
-            .build();
+        JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
     armeriaServerBuilder.annotatedService(
         BASE_PATH,
         deltaRestService,
