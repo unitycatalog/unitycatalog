@@ -21,7 +21,8 @@ public class GlobalExceptionHandler extends BaseExceptionHandler {
     // SCIM has its own error format, handle before normalization
     if (cause instanceof Scim2RuntimeException) {
       ScimException scimException = (ScimException) cause.getCause();
-      return HttpResponse.ofJson(HttpStatus.INTERNAL_SERVER_ERROR, scimException.getScimError());
+      HttpStatus httpStatus = HttpStatus.valueOf(scimException.getScimError().getStatus());
+      return HttpResponse.ofJson(httpStatus, scimException.getScimError());
     }
     return super.handleException(ctx, req, cause);
   }
