@@ -733,10 +733,8 @@ report | Report | Contains information about which metrics are being sent. | opt
 &nbsp;&nbsp;report.commit_report | CommitReport | The commit report metrics. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_files_added | int64 | Number of files added by this commit. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_bytes_added | int64 | Number of bytes added by this commit. | optional
-&nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_clustered_bytes_added | int64 | Number of clustered bytes added by this commit. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_files_removed | int64 | Number of files removed by this commit. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_bytes_removed | int64 | Number of bytes removed by this commit. | optional
-&nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_clustered_bytes_removed | int64 | Number of clustered bytes removed by this commit. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.file_size_histogram | Histogram | Object that represents a histogram tracking file counts and total bytes across different size ranges. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.file_size_histogram.sorted_bin_boundaries | array of int64 | A sorted array of bin boundaries where each element represents the start of a bin (inclusive) and the next element represents the end of the bin (exclusive). The first element must be 0. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.file_size_histogram.file_counts | array of int64 | Count of files in each bin. Length must match `sortedBinBoundaries`. | optional
@@ -762,10 +760,8 @@ Request:
     "commit_report": {
       "num_files_added": 10,
       "num_bytes_added": 104857600,
-      "num_clustered_bytes_added": 52428800,
       "num_files_removed": 2,
       "num_bytes_removed": 8192,
-      "num_clustered_bytes_removed": 4096,
       "file_size_histogram": {
         "sorted_bin_boundaries": [0, 1024, 2048],
         "file_counts": [100, 40, 5],
