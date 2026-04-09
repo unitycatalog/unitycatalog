@@ -18,28 +18,32 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    name: test (Spark ${{ matrix.spark-version }}, Delta ${{ matrix.delta-version }})
-    continue-on-error: ${{ matrix.allow-failure || false }}
+    name: >-
+      ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
+      ${{ matrix.run-only-spark-tests && 'Spark tests' || 'All tests' }}
+      (Spark ${{ matrix.spark-version }}, Delta ${{ matrix.delta-version }})
+    continue-on-error: ${{ matrix.non-blocking || false }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - spark-version: "4.0.0"
             delta-version: "4.1.0"
-            # Only one combo needs to run unit tests and license check since they
-            # don't depend on Spark/Delta versions.
-            run-unit-tests: true
-            allow-failure: false
+            # This is the primary combo: runs ALL tests (unit, spark, license).
+            # Other combos run only spark connector tests since unit tests and
+            # license checks don't depend on Spark/Delta versions.
+            run-only-spark-tests: false
+            non-blocking: false
           - spark-version: "4.1.0"
             delta-version: "4.1.0"
-            run-unit-tests: false
-            allow-failure: false
+            run-only-spark-tests: true
+            non-blocking: false
           - spark-version: "4.1.0"
             delta-version: "master-SNAPSHOT"
-            run-unit-tests: false
+            run-only-spark-tests: true
             # Cross-version testing with Delta master is informational; failures
             # indicate upcoming incompatibilities but should not block PRs.
-            allow-failure: true
+            non-blocking: true
 
     steps:
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -91,14 +95,16 @@ jobs:
     - name: Build and verify the local deployment.
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G clean package publishM2
 
-    - name: Run all tests with coverage
-      if: matrix.run-unit-tests
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G +jacoco
-
-    - name: Run integration tests with coverage
-      if: ${{ !matrix.run-unit-tests }}
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G spark/jacoco
+    - name: Run tests with coverage
+      run: |
+        if [[ "${{ matrix.run-only-spark-tests }}" == "true" ]]; then
+          echo "Running spark connector tests only"
+          build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G spark/jacoco
+        else
+          echo "Running all tests"
+          build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G +jacoco
+        fi
 
     - name: Run license check
-      if: matrix.run-unit-tests
+      if: ${{ !matrix.run-only-spark-tests }}
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck
