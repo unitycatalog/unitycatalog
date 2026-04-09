@@ -11,21 +11,21 @@ requires-python = ">=3.10"
 dependencies = [
     "dspy>=3.0.0,<=3.1.3",
     "litellm<=1.82.6",
-    "unitycatalog-ai",
+    "unitycatalog-ai>=0.3.0,<=0.4.0",
     "pydantic<3,>=2",
 ]
 
 [project.optional-dependencies]
 databricks = [
-  "unitycatalog-ai[databricks]",
+  "unitycatalog-ai[databricks]>=0.3.0,<=0.4.0",
 ]
 
 databricks-dev = [
-  "unitycatalog-ai[databricks-dev]",
+  "unitycatalog-ai[databricks-dev]>=0.3.0,<=0.4.0",
 ]
 
 dev = [
-  "unitycatalog-ai[dev]",
+  "unitycatalog-ai[dev]>=0.3.0,<=0.4.0",
 ]
 
 [build-system]
