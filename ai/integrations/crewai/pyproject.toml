@@ -71,3 +71,6 @@ docstring-code-line-length = 88
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.uv]
+exclude-newer = "2026-03-10T00:00:00Z"
