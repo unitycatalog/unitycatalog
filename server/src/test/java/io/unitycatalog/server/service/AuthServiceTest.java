@@ -162,4 +162,38 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     // The issuer is not in the allowlist → 403 Forbidden
     assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
   }
+
+  @Test
+  public void testScimDuplicateUserReturnsValidJson() throws Exception {
+    String scimUsersPath = "/api/1.0/unity-control/scim2/Users";
+    String userJson =
+        "{\"displayName\":\"test\",\"emails\":[{\"value\":\"scim-dup@test.com\",\"primary\":true}]}";
+    RequestHeaders headers =
+        RequestHeaders.builder()
+            .method(HttpMethod.POST)
+            .path(scimUsersPath)
+            .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+            .build();
+
+    // First create succeeds
+    AggregatedHttpResponse first =
+        client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
+    assertThat(first.status().code()).isEqualTo(201);
+
+    // Second create triggers Scim2RuntimeException wrapping ResourceConflictException
+    AggregatedHttpResponse second =
+        client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
+    assertThat(second.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+
+    // Verify the SCIM error response is a valid JSON object (not double-serialized)
+    // with the expected SCIM error fields
+    String body = second.contentUtf8();
+    JsonNode json = MAPPER.readTree(body);
+    assertThat(json.isObject()).as("Expected JSON object but got: " + body).isTrue();
+    assertThat(json.has("schemas")).isTrue();
+    assertThat(json.get("status").asText()).isEqualTo("409");
+    assertThat(json.has("detail")).isTrue();
+    assertThat(json.get("detail").asText()).contains("already exists");
+  }
 }

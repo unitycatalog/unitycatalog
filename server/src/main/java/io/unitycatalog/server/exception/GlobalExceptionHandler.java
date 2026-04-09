@@ -1,63 +1,45 @@
 package io.unitycatalog.server.exception;
 
-import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.ServiceRequestContext;
-import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.unboundid.scim2.common.exceptions.ScimException;
-import io.unitycatalog.server.utils.RESTObjectMapper;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import lombok.SneakyThrows;
 
-public class GlobalExceptionHandler implements ExceptionHandlerFunction {
-  @SneakyThrows
+/**
+ * Exception handler for the main Unity Catalog REST API. Formats errors as JSON with error_code,
+ * message, stack_trace, and google.rpc.ErrorInfo details.
+ */
+public class GlobalExceptionHandler extends BaseExceptionHandler {
+
   @Override
   public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
-    if (cause instanceof BaseException) {
-      BaseException baseException = (BaseException) cause;
-      return HttpResponse.ofJson(
-          baseException.getErrorCode().getHttpStatus(),
-          createErrorResponse(
-              baseException.getErrorCode(),
-              baseException.getErrorMessage(),
-              baseException.getCause(),
-              baseException.getMetadata()));
-    } else if (cause instanceof JWTVerificationException) {
-      return HttpResponse.ofJson(
-          HttpStatus.UNAUTHORIZED,
-          createErrorResponse(
-              ErrorCode.UNAUTHENTICATED, "Invalid access token.", cause, new HashMap<>()));
-    } else if (cause instanceof Scim2RuntimeException) {
+    // SCIM has its own error format, handle before normalization
+    if (cause instanceof Scim2RuntimeException) {
       ScimException scimException = (ScimException) cause.getCause();
-      return HttpResponse.ofJson(
-          HttpStatus.INTERNAL_SERVER_ERROR,
-          RESTObjectMapper.mapper().writeValueAsString(scimException.getScimError()));
-    } else if (cause instanceof RuntimeException) {
-      return HttpResponse.ofJson(
-          HttpStatus.INTERNAL_SERVER_ERROR,
-          createErrorResponse(ErrorCode.INTERNAL, cause.getMessage(), cause, new HashMap<>()));
+      return HttpResponse.ofJson(HttpStatus.INTERNAL_SERVER_ERROR, scimException.getScimError());
     }
-    return ExceptionHandlerFunction.fallthrough();
+    return super.handleException(ctx, req, cause);
   }
 
-  private Map<String, Object> createErrorResponse(
-      ErrorCode errorCode, String message, Throwable cause, Map<String, String> metadata) {
+  @Override
+  protected HttpResponse createErrorResponse(BaseException exception) {
     Map<String, Object> response = new HashMap<>();
-    response.put("error_code", errorCode.name());
-    response.put("message", message);
-    response.put("stack_trace", cause != null ? Arrays.toString(cause.getStackTrace()) : null);
+    response.put("error_code", exception.getErrorCode().name());
+    response.put("message", exception.getErrorMessage());
+    if (isIncludeStackTrace()) {
+      response.put("stack_trace", Arrays.toString(getRelevantStackTrace(exception)));
+    }
 
     Map<String, Object> details = new HashMap<>();
     details.put("@type", "google.rpc.ErrorInfo");
-    details.put("reason", errorCode.name());
-    details.put("metadata", metadata);
+    details.put("reason", exception.getErrorCode().name());
     response.put("details", List.of(details));
 
-    return response;
+    return HttpResponse.ofJson(exception.getErrorCode().getHttpStatus(), response);
   }
 }

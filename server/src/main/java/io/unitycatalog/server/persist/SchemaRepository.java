@@ -112,7 +112,8 @@ public class SchemaRepository {
         .orElseThrow(
             () ->
                 new BaseException(
-                    ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName));
+                    ErrorCode.SCHEMA_NOT_FOUND,
+                    "Schema not found: " + catalogName + "." + schemaName));
   }
 
   public SchemaInfoDAO getSchemaDaoOrThrow(Session session, String catalogName, String schemaName) {

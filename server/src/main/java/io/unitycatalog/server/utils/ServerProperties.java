@@ -204,7 +204,8 @@ public class ServerProperties {
     AWS_ACCESS_KEY("aws.accessKey"),
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
-    AWS_REGION("aws.region");
+    AWS_REGION("aws.region"),
+    INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
     // getS3Configurations.
@@ -433,6 +434,10 @@ public class ServerProperties {
 
   public boolean isAuthorizationEnabled() {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
+  }
+
+  public boolean isIncludeStackTraceInError() {
+    return isTrueOrEnable(get(Property.INCLUDE_STACK_TRACE_IN_ERROR));
   }
 
   /**
