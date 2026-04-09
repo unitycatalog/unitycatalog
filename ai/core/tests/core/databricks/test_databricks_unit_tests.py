@@ -1085,21 +1085,104 @@ def test_create_python_function_with_environment_version(client: DatabricksFunct
         assert result == mock_function_info
 
 
-def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
-    with (
-        caplog.at_level(logging.WARNING),
-        patch(
-            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
-            lambda self: None,
-        ),
-    ):
-        DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
+def test_warehouse_id_is_stored(mock_workspace_client):
+    """warehouse_id passed via **kwargs is stored on the client without a warning."""
+    client = DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="abc123")
+    assert client.warehouse_id == "abc123"
 
-    assert "The argument `warehouse_id` was specified" in caplog.text
+
+def test_warehouse_id_skips_spark_session(mock_workspace_client):
+    """When warehouse_id is set, no Spark session is initialised."""
+    with patch.object(
+        DatabricksFunctionClient, "set_spark_session", side_effect=AssertionError("should not be called")
+    ):
+        client = DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="abc123")
+    assert client.spark is None
+
+
+def test_warehouse_id_absent_by_default(mock_workspace_client, mock_spark_session):
+    """Without warehouse_id the attribute is None and serverless is used."""
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    assert client.warehouse_id is None
+
+
+def test_execute_function_with_warehouse_scalar(mock_workspace_client, mock_function_info):
+    """Scalar function execution succeeds through a warehouse."""
+    from databricks.sdk.service.sql import StatementState
+
+    mock_response = MagicMock()
+    mock_response.status.state = StatementState.SUCCEEDED
+    mock_response.statement_id = "stmt-1"
+    mock_response.manifest.truncated = False
+    mock_response.manifest.schema.columns = [MagicMock(name="result")]
+    mock_response.result.data_array = [["hello"]]
+
+    mock_workspace_client.statement_execution.execute_statement.return_value = mock_response
+
+    client = DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="wh-1")
+    client.get_function = MagicMock(return_value=mock_function_info)
+
+    result = client.execute_function("catalog.schema.function_name")
+
+    assert result.value == "hello"
+    assert result.format == "SCALAR"
+    mock_workspace_client.statement_execution.execute_statement.assert_called_once()
+    call_kwargs = mock_workspace_client.statement_execution.execute_statement.call_args.kwargs
+    assert call_kwargs["warehouse_id"] == "wh-1"
+
+
+def test_execute_function_with_warehouse_polls_on_pending(mock_workspace_client, mock_function_info):
+    """Client polls until the statement finishes when the first response is PENDING."""
+    from databricks.sdk.service.sql import StatementState
+
+    pending_response = MagicMock()
+    pending_response.status.state = StatementState.PENDING
+    pending_response.statement_id = "stmt-2"
+
+    succeeded_response = MagicMock()
+    succeeded_response.status.state = StatementState.SUCCEEDED
+    succeeded_response.manifest.truncated = False
+    succeeded_response.result.data_array = [["42"]]
+
+    mock_workspace_client.statement_execution.execute_statement.return_value = pending_response
+    mock_workspace_client.statement_execution.get_statement.return_value = succeeded_response
+
+    client = DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="wh-2")
+    client.get_function = MagicMock(return_value=mock_function_info)
+
+    with patch("time.sleep"):
+        result = client.execute_function("catalog.schema.function_name")
+
+    assert result.value == "42"
+    mock_workspace_client.statement_execution.get_statement.assert_called_once_with("stmt-2")
+
+
+def test_execute_function_with_warehouse_failed_state(mock_workspace_client, mock_function_info):
+    """An error result is returned when the statement reaches FAILED state."""
+    from databricks.sdk.service.sql import StatementState
+
+    mock_response = MagicMock()
+    mock_response.status.state = StatementState.FAILED
+    mock_response.status.error.error_code = "RUNTIME_ERROR"
+    mock_response.status.error.message = "something went wrong"
+    mock_response.statement_id = "stmt-3"
+
+    mock_workspace_client.statement_execution.execute_statement.return_value = mock_response
+
+    client = DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="wh-3")
+    client.get_function = MagicMock(return_value=mock_function_info)
+
+    result = client.execute_function("catalog.schema.function_name")
+
+    assert result.error is not None
+    assert "RUNTIME_ERROR" in result.error
+
+
+def test_to_dict_includes_warehouse_id(mock_workspace_client, mock_spark_session):
+    """to_dict round-trips warehouse_id so from_dict can restore it."""
+    client = DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="wh-rt")
+    d = client.to_dict()
+    assert d["warehouse_id"] == "wh-rt"
 
 
 def dummy_primary(a: int, b: str) -> str:

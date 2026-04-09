@@ -19,7 +19,7 @@
 
 // This file is ported from core/src/main/java/org/apache/iceberg/rest/RESTObjectMapper.java in
 // apache/iceberg.
-package io.unitycatalog.server.utils;
+package io.unitycatalog.server.service.iceberg;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
@@ -29,16 +29,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import org.apache.iceberg.rest.RESTSerializers;
 
-public class RESTObjectMapper {
+public class IcebergObjectMapper {
   private static final JsonFactory FACTORY = new JsonFactory();
   private static final ObjectMapper MAPPER = new ObjectMapper(FACTORY);
   private static volatile boolean isInitialized = false;
 
-  private RESTObjectMapper() {}
+  private IcebergObjectMapper() {}
 
   public static ObjectMapper mapper() {
     if (!isInitialized) {
-      synchronized (RESTObjectMapper.class) {
+      synchronized (IcebergObjectMapper.class) {
         if (!isInitialized) {
           MAPPER.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
           MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
