@@ -249,7 +249,14 @@ class UCSingleCatalog
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    if (backend.isInstanceOf[DeltaRestBackend]) {
+      // Bypass DeltaCatalog to avoid the UC-managed metadata guard in
+      // OptimisticTransaction. Send property changes directly to the server
+      // via the Delta REST API's updateTable RPC.
+      backend.alterTable(this.name(), ident, changes: _*)
+    } else {
+      delegate.alterTable(ident, changes: _*)
+    }
   }
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
@@ -462,7 +469,7 @@ private class UCProxy(
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    backend.alterTable(this.name, ident, changes: _*)
   }
 
   override def dropTable(ident: Identifier): Boolean = {

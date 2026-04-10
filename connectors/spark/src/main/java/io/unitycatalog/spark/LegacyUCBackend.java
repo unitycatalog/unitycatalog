@@ -34,6 +34,7 @@ import org.apache.spark.sql.catalyst.catalog.CatalogUtils;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.Table;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.connector.catalog.TableChange;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.StructField;
@@ -299,6 +300,13 @@ public class LegacyUCBackend implements CatalogBackend {
     createTable.setProperties(propsToServer);
     tablesApi.createTable(createTable);
     return loadTable(catalogName, ident, false, false, false, "");
+  }
+
+  @Override
+  public Table alterTable(String catalogName, Identifier ident, TableChange... changes)
+      throws Exception {
+    throw new UnsupportedOperationException(
+        "Altering a table is not supported via the legacy UC API");
   }
 
   @Override

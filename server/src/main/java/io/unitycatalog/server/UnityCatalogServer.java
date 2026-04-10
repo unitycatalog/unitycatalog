@@ -13,6 +13,7 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
+import com.linecorp.armeria.server.logging.ContentPreviewingService;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -104,7 +105,30 @@ public class UnityCatalogServer {
     ServerBuilder armeriaServerBuilder =
         Server.builder()
             .http(unityCatalogServerBuilder.port)
-            .serviceUnder("/docs", new DocService());
+            .serviceUnder("/docs", new DocService())
+            .decorator(ContentPreviewingService.newDecorator(Integer.MAX_VALUE))
+            .decorator(
+                (delegate, ctx, req) -> {
+                  ctx.log()
+                      .whenComplete()
+                      .thenAccept(
+                          log -> {
+                            String method = log.requestHeaders().method().name();
+                            String path = log.requestHeaders().path();
+                            int status = log.responseHeaders().status().code();
+                            String reqBody = log.requestContentPreview();
+                            String resBody = log.responseContentPreview();
+                            org.slf4j.LoggerFactory.getLogger("uc.api")
+                                .info(
+                                    ">>> {} {}{}\n<<< {}{}\n",
+                                    method,
+                                    path,
+                                    reqBody != null && !reqBody.isEmpty() ? "\n" + reqBody : "",
+                                    status,
+                                    resBody != null && !resBody.isEmpty() ? "\n" + resBody : "");
+                          });
+                  return delegate.serve(ctx, req);
+                });
 
     // Init hibernate
     HibernateConfigurator hibernateConfigurator =

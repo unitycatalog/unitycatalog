@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.Table;
+import org.apache.spark.sql.connector.catalog.TableChange;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.StructType;
 
@@ -38,6 +39,8 @@ public interface CatalogBackend {
       Transform[] partitions,
       Map<String, String> properties)
       throws Exception;
+
+  Table alterTable(String catalogName, Identifier ident, TableChange... changes) throws Exception;
 
   boolean dropTable(String catalogName, Identifier ident) throws Exception;
 

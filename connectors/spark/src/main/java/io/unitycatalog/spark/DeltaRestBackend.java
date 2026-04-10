@@ -5,6 +5,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.delta.api.TablesApi;
 import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.delta.model.AssertEtag;
 import io.unitycatalog.client.delta.model.CreateStagingTableRequest;
 import io.unitycatalog.client.delta.model.CreateTableRequest;
 import io.unitycatalog.client.delta.model.CredentialOperation;
@@ -12,6 +13,8 @@ import io.unitycatalog.client.delta.model.CredentialsResponse;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.ListTablesResponse;
 import io.unitycatalog.client.delta.model.LoadTableResponse;
+import io.unitycatalog.client.delta.model.RemovePropertiesUpdate;
+import io.unitycatalog.client.delta.model.SetPropertiesUpdate;
 import io.unitycatalog.client.delta.model.StagingTableResponse;
 import io.unitycatalog.client.delta.model.StagingTableResponseRequiredProtocol;
 import io.unitycatalog.client.delta.model.StorageCredential;
@@ -19,6 +22,7 @@ import io.unitycatalog.client.delta.model.StorageCredentialConfig;
 import io.unitycatalog.client.delta.model.StructType;
 import io.unitycatalog.client.delta.model.TableIdentifierWithDataSourceFormat;
 import io.unitycatalog.client.delta.model.TableMetadata;
+import io.unitycatalog.client.delta.model.UpdateTableRequest;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
@@ -44,6 +48,7 @@ import org.apache.spark.sql.catalyst.catalog.CatalogUtils;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.Table;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.connector.catalog.TableChange;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataType;
 import org.slf4j.Logger;
@@ -290,6 +295,50 @@ public class DeltaRestBackend implements CatalogBackend {
     request.setProperties(propsToServer);
 
     deltaTablesApi.createTable(catalogName, schemaName, request);
+    return loadTable(catalogName, ident, false, false, false, "");
+  }
+
+  @Override
+  public Table alterTable(String catalogName, Identifier ident, TableChange... changes)
+      throws Exception {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace());
+    String schemaName = ident.namespace()[0];
+    String tableName = ident.name();
+
+    // Load current table to get etag for optimistic concurrency
+    LoadTableResponse current = deltaTablesApi.loadTable(catalogName, schemaName, tableName);
+    String etag = current.getMetadata() != null ? current.getMetadata().getEtag() : null;
+
+    // Build updates from TableChange objects
+    Map<String, String> propsToSet = new HashMap<>();
+    List<String> propsToRemove = new ArrayList<>();
+    for (TableChange change : changes) {
+      if (change instanceof TableChange.SetProperty) {
+        TableChange.SetProperty sp = (TableChange.SetProperty) change;
+        propsToSet.put(sp.property(), sp.value());
+      } else if (change instanceof TableChange.RemoveProperty) {
+        TableChange.RemoveProperty rp = (TableChange.RemoveProperty) change;
+        propsToRemove.add(rp.property());
+      } else {
+        throw new UnsupportedOperationException(
+            "Unsupported table change type: " + change.getClass().getSimpleName());
+      }
+    }
+
+    UpdateTableRequest request = new UpdateTableRequest();
+    if (etag != null) {
+      request.addRequirementsItem(new AssertEtag().etag(etag));
+    }
+    if (!propsToSet.isEmpty()) {
+      request.addUpdatesItem(new SetPropertiesUpdate().updates(propsToSet));
+    }
+    if (!propsToRemove.isEmpty()) {
+      request.addUpdatesItem(new RemovePropertiesUpdate().removals(propsToRemove));
+    }
+
+    deltaTablesApi.updateTable(catalogName, schemaName, tableName, request);
+
+    // Reload and return the updated table
     return loadTable(catalogName, ident, false, false, false, "");
   }
 
