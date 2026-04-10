@@ -72,6 +72,26 @@ public class CredPropsUtil {
       return self();
     }
 
+    public T deltaRestApiEnabled(boolean enabled) {
+      builder.put(UCHadoopConf.UC_DELTA_REST_API_ENABLED_KEY, String.valueOf(enabled));
+      return self();
+    }
+
+    public T tableCatalog(String catalog) {
+      builder.put(UCHadoopConf.UC_TABLE_CATALOG_KEY, catalog);
+      return self();
+    }
+
+    public T tableSchema(String schema) {
+      builder.put(UCHadoopConf.UC_TABLE_SCHEMA_KEY, schema);
+      return self();
+    }
+
+    public T tableName(String name) {
+      builder.put(UCHadoopConf.UC_TABLE_NAME_KEY, name);
+      return self();
+    }
+
     public T path(String path) {
       builder.put(UCHadoopConf.UC_PATH_KEY, path);
       return self();
@@ -408,6 +428,48 @@ public class CredPropsUtil {
   }
 
   /**
+   * Builds the Hadoop configuration properties needed to access a table's storage location. This
+   * overload includes delta REST API context for credential renewal dual-pathing.
+   */
+  public static Map<String, String> createTableCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Map<String, String> fsImplProps,
+      String scheme,
+      String uri,
+      TokenProvider tokenProvider,
+      String tableId,
+      TableOperation tableOp,
+      TemporaryCredentials tempCreds,
+      boolean deltaRestApiEnabled,
+      String catalogName,
+      String schemaName,
+      String tableName) {
+    // Build base props, then add delta REST API context if enabled
+    Map<String, String> baseProps =
+        createTableCredProps(
+            renewCredEnabled,
+            credScopedFsEnabled,
+            fsImplProps,
+            scheme,
+            uri,
+            tokenProvider,
+            tableId,
+            tableOp,
+            tempCreds);
+    if (deltaRestApiEnabled && renewCredEnabled) {
+      ImmutableMap.Builder<String, String> combined = ImmutableMap.builder();
+      combined.putAll(baseProps);
+      combined.put(UCHadoopConf.UC_DELTA_REST_API_ENABLED_KEY, "true");
+      if (catalogName != null) combined.put(UCHadoopConf.UC_TABLE_CATALOG_KEY, catalogName);
+      if (schemaName != null) combined.put(UCHadoopConf.UC_TABLE_SCHEMA_KEY, schemaName);
+      if (tableName != null) combined.put(UCHadoopConf.UC_TABLE_NAME_KEY, tableName);
+      return combined.build();
+    }
+    return baseProps;
+  }
+
+  /**
    * Builds the Hadoop configuration properties needed to access a table's storage location.
    *
    * @param renewCredEnabled when {@code true}, configures a vended-token provider that
@@ -455,6 +517,41 @@ public class CredPropsUtil {
       default:
         return ImmutableMap.of();
     }
+  }
+
+  /**
+   * Builds the Hadoop configuration properties needed to access an external storage path. This
+   * overload includes delta REST API context for credential renewal dual-pathing.
+   */
+  public static Map<String, String> createPathCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Map<String, String> fsImplProps,
+      String scheme,
+      String uri,
+      TokenProvider tokenProvider,
+      String path,
+      PathOperation pathOp,
+      TemporaryCredentials tempCreds,
+      boolean deltaRestApiEnabled) {
+    Map<String, String> baseProps =
+        createPathCredProps(
+            renewCredEnabled,
+            credScopedFsEnabled,
+            fsImplProps,
+            scheme,
+            uri,
+            tokenProvider,
+            path,
+            pathOp,
+            tempCreds);
+    if (deltaRestApiEnabled && renewCredEnabled) {
+      ImmutableMap.Builder<String, String> combined = ImmutableMap.builder();
+      combined.putAll(baseProps);
+      combined.put(UCHadoopConf.UC_DELTA_REST_API_ENABLED_KEY, "true");
+      return combined.build();
+    }
+    return baseProps;
   }
 
   /**

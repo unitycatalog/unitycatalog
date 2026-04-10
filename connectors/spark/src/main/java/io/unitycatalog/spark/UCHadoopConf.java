@@ -78,6 +78,16 @@ public class UCHadoopConf {
       "fs.unitycatalog.credential.cache.enabled";
   public static final boolean UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = true;
 
+  // Key to enable the Delta REST Catalog API for credential renewal.
+  // When "true", GenericCredentialProvider uses the delta REST credential endpoints.
+  public static final String UC_DELTA_REST_API_ENABLED_KEY = "fs.unitycatalog.deltaRestApi.enabled";
+  public static final boolean UC_DELTA_REST_API_ENABLED_DEFAULT_VALUE = false;
+
+  // Keys for delta REST API credential renewal (catalog/schema/table name for table-based creds).
+  public static final String UC_TABLE_CATALOG_KEY = "fs.unitycatalog.table.catalog";
+  public static final String UC_TABLE_SCHEMA_KEY = "fs.unitycatalog.table.schema";
+  public static final String UC_TABLE_NAME_KEY = "fs.unitycatalog.table.name";
+
   // Keys for HTTP request configuration - see ApiClientConf for more details.
   public static final String REQUEST_RETRY_MAX_ATTEMPTS_KEY =
       "fs.unitycatalog.request.retry.maxAttempts";

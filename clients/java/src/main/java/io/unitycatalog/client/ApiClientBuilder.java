@@ -36,6 +36,7 @@ public class ApiClientBuilder {
   private static final String BASE_PATH = "/api/2.1/unity-catalog";
 
   private URI uri = null;
+  private String basePathOverride = null;
   private TokenProvider tokenProvider = null;
   private final Map<String, String> appVersionMap = new LinkedHashMap<>();
   private RetryPolicy retryPolicy = JitterDelayRetryPolicy.builder().build();
@@ -77,6 +78,20 @@ public class ApiClientBuilder {
    */
   public ApiClientBuilder uri(String uri) {
     return uri(URI.create(uri));
+  }
+
+  /**
+   * Overrides the default base path ({@code /api/2.1/unity-catalog}) appended to the server URI.
+   *
+   * <p>Use this when building a client for a different API surface (e.g., the Delta REST Catalog
+   * API at {@code /api/2.1/unity-catalog/delta}).
+   *
+   * @param basePath the base path to use instead of the default
+   * @return this builder instance for method chaining
+   */
+  public ApiClientBuilder basePath(String basePath) {
+    this.basePathOverride = basePath;
+    return this;
   }
 
   /**
@@ -176,7 +191,8 @@ public class ApiClientBuilder {
     apiClient.setScheme(uri.getScheme());
     apiClient.setHost(uri.getHost());
     apiClient.setPort(uri.getPort());
-    apiClient.setBasePath(uri.getPath() + BASE_PATH);
+    String effectiveBasePath = basePathOverride != null ? basePathOverride : BASE_PATH;
+    apiClient.setBasePath(uri.getPath() + effectiveBasePath);
 
     // Add the User-Agent request interceptor.
     if (!appVersionMap.isEmpty()) {

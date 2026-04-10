@@ -17,11 +17,27 @@ public class OptionsUtil {
   public static final String SERVER_SIDE_PLANNING_ENABLED = "serverSidePlanning.enabled";
   public static final boolean DEFAULT_SERVER_SIDE_PLANNING_ENABLED = false;
 
+  public static final String DELTA_REST_API_ENABLED = "deltaRestApi.enabled";
+  public static final String DEFAULT_DELTA_REST_API_ENABLED = "false";
+
   public static boolean getBoolean(
       Map<String, String> props, String property, boolean defaultValue) {
     String value = props.get(property);
     if (value != null) {
       return Boolean.parseBoolean(value);
+    }
+    return defaultValue;
+  }
+
+  /**
+   * Returns the tri-state value of a property: "true", "false", or "auto". Defaults to the provided
+   * default if the property is not set.
+   */
+  public static String getTriState(
+      Map<String, String> props, String property, String defaultValue) {
+    String value = props.get(property);
+    if (value != null) {
+      return value.toLowerCase();
     }
     return defaultValue;
   }

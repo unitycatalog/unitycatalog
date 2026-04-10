@@ -13,6 +13,7 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
+import com.linecorp.armeria.server.logging.ContentPreviewingService;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -50,6 +51,7 @@ import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.deltarest.DeltaRestCatalogService;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
@@ -103,7 +105,30 @@ public class UnityCatalogServer {
     ServerBuilder armeriaServerBuilder =
         Server.builder()
             .http(unityCatalogServerBuilder.port)
-            .serviceUnder("/docs", new DocService());
+            .serviceUnder("/docs", new DocService())
+            .decorator(ContentPreviewingService.newDecorator(Integer.MAX_VALUE))
+            .decorator(
+                (delegate, ctx, req) -> {
+                  ctx.log()
+                      .whenComplete()
+                      .thenAccept(
+                          log -> {
+                            String method = log.requestHeaders().method().name();
+                            String path = log.requestHeaders().path();
+                            int status = log.responseHeaders().status().code();
+                            String reqBody = log.requestContentPreview();
+                            String resBody = log.responseContentPreview();
+                            org.slf4j.LoggerFactory.getLogger("uc.api")
+                                .info(
+                                    ">>> {} {}{}\n<<< {}{}\n",
+                                    method,
+                                    path,
+                                    reqBody != null && !reqBody.isEmpty() ? "\n" + reqBody : "",
+                                    status,
+                                    resBody != null && !resBody.isEmpty() ? "\n" + resBody : "");
+                          });
+                  return delegate.serve(ctx, req);
+                });
 
     // Init hibernate
     HibernateConfigurator hibernateConfigurator =
@@ -178,6 +203,8 @@ public class UnityCatalogServer {
     ExternalLocationService externalLocationService =
         new ExternalLocationService(authorizer, repositories);
     DeltaCommitsService deltaCommitsService = new DeltaCommitsService(authorizer, repositories);
+    DeltaRestCatalogService deltaRestCatalogService =
+        new DeltaRestCatalogService(repositories, storageCredentialVendor);
     MetastoreService metastoreService = new MetastoreService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
@@ -242,6 +269,7 @@ public class UnityCatalogServer {
         .annotatedService(BASE_PATH + "credentials", credentialService, requestConverterFunction)
         .annotatedService(
             BASE_PATH + "delta/preview/commits", deltaCommitsService, requestConverterFunction)
+        .annotatedService(BASE_PATH + "delta", deltaRestCatalogService, requestConverterFunction)
         .annotatedService(
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
     addIcebergApiServices(
