@@ -10,6 +10,8 @@ public class ApiClientFactory {
 
   private ApiClientFactory() {}
 
+  public static final String DELTA_REST_BASE_PATH = "/api/2.1/unity-catalog/delta";
+
   public static ApiClient createApiClient(
       RetryPolicy retryPolicy, URI uri, TokenProvider tokenProvider) {
 
@@ -24,6 +26,39 @@ public class ApiClientFactory {
     String scalaVersion = getScalaVersion();
 
     // Add versions in order: Spark, Delta, Java, Scala
+    builder.addAppVersion("Spark", sparkVersion);
+    if (deltaVersion != null) {
+      builder.addAppVersion("Delta", deltaVersion);
+    }
+    if (javaVersion != null) {
+      builder.addAppVersion("Java", javaVersion);
+    }
+    if (scalaVersion != null) {
+      builder.addAppVersion("Scala", scalaVersion);
+    }
+
+    return builder.build();
+  }
+
+  /**
+   * Creates an ApiClient configured for the Delta REST Catalog API ({@code
+   * /api/2.1/unity-catalog/delta}).
+   */
+  public static ApiClient createDeltaApiClient(
+      RetryPolicy retryPolicy, URI uri, TokenProvider tokenProvider) {
+
+    ApiClientBuilder builder =
+        ApiClientBuilder.create()
+            .uri(uri)
+            .tokenProvider(tokenProvider)
+            .retryPolicy(retryPolicy)
+            .basePath(DELTA_REST_BASE_PATH);
+
+    String sparkVersion = getSparkVersion();
+    String deltaVersion = getDeltaVersion();
+    String javaVersion = getJavaVersion();
+    String scalaVersion = getScalaVersion();
+
     builder.addAppVersion("Spark", sparkVersion);
     if (deltaVersion != null) {
       builder.addAppVersion("Delta", deltaVersion);

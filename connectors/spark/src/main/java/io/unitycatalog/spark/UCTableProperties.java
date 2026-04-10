@@ -9,6 +9,11 @@ public class UCTableProperties {
   // This table property should be set to the table ID assigned by UC for managed tables.
   public static final String UC_TABLE_ID_KEY = "io.unitycatalog.tableId";
 
+  // Three-part table name properties for Delta REST API coordinated commits.
+  public static final String UC_CATALOG_NAME_KEY = "io.unitycatalog.catalogName";
+  public static final String UC_SCHEMA_NAME_KEY = "io.unitycatalog.schemaName";
+  public static final String UC_TABLE_NAME_KEY = "io.unitycatalog.tableName";
+
   // This table property should be set in order to enable Delta code to use UC as commit coordinator
   public static final String DELTA_CATALOG_MANAGED_KEY = "delta.feature.catalogOwned-preview";
   public static final String DELTA_CATALOG_MANAGED_VALUE = "supported";

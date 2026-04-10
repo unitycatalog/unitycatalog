@@ -265,7 +265,9 @@ paths:
       operationId: loadTable
       summary: Load table metadata
       description: |
-        Load table metadata including columns, protocol, properties, and optionally credentials.
+        Load full table metadata including schema, properties, protocol, and commit history.
+        Credential vending is intentionally not part of this response; clients use the
+        dedicated credential endpoints for operation-scoped storage credentials.
       responses:
         '200':
           description: Table loaded successfully
@@ -761,10 +763,8 @@ components:
           type: string
           description: Table comment
         columns:
-          type: array
-          description: Table columns as DeltaColumn
-          items:
-            $ref: '#/components/schemas/DeltaColumn'
+          $ref: '#/components/schemas/StructType'
+          description: Table columns as a Spark/Delta StructType schema
         partition-columns:
           type: array
           description: Partition column names
@@ -775,7 +775,10 @@ components:
           description: Delta protocol version and feature requirements
         properties:
           type: object
-          description: Delta table properties
+          description: |
+            Raw Delta table properties from metadata.configuration only.
+            Derived protocol, snapshot, and domain values must be sent through native Delta fields
+            or update actions, not through this properties map.
           additionalProperties:
             type: string
         domain-metadata:
@@ -794,17 +797,19 @@ components:
         table-type: "MANAGED"
         data-source-format: "DELTA"
         columns:
-          - name: "id"
-            type: "long"
-            nullable: false
-            metadata: {}
-          - name: "amount"
-            type:
-              type: "decimal"
-              precision: 10
-              scale: 2
-            nullable: true
-            metadata: {}
+          type: "struct"
+          fields:
+            - name: "id"
+              type: "long"
+              nullable: false
+              metadata: {}
+            - name: "amount"
+              type:
+                type: "decimal"
+                precision: 10
+                scale: 2
+              nullable: true
+              metadata: {}
         partition-columns:
           - "id"
         protocol:
@@ -867,10 +872,8 @@ components:
         securable-type:
           $ref: '#/components/schemas/SecurableType'
         columns:
-          type: array
-          description: Table columns as DeltaColumn array
-          items:
-            $ref: '#/components/schemas/DeltaColumn'
+          $ref: '#/components/schemas/StructType'
+          description: Table columns as a Spark/Delta StructType schema
         partition-columns:
           type: array
           description: Partition column names
@@ -881,7 +884,7 @@ components:
           description: Delta protocol version and feature requirements
         properties:
           type: object
-          description: Table properties
+          description: Raw Delta table properties from metadata.configuration
           additionalProperties:
             type: string
         last-commit-version:
@@ -919,8 +922,11 @@ components:
 
     TableIdentifierWithDataSourceFormat:
       type: object
-      description: Table identifier returned by list operations. Schema and catalog are implicit from the request path.
+      description: Table identifier returned by list operations.
       properties:
+        schema:
+          type: string
+          description: Schema name
         name:
           type: string
           description: Table name
@@ -928,6 +934,7 @@ components:
           $ref: '#/components/schemas/DataSourceFormat'
           description: Data source format
       required:
+        - schema
         - name
         - data-source-format
 
@@ -1040,7 +1047,9 @@ components:
           const: "set-properties"
         updates:
           type: object
-          description: Properties to set
+          description: |
+            Raw table properties to set. Do not include derived protocol, snapshot, or domain
+            metadata values here.
           additionalProperties:
             type: string
 
@@ -1054,7 +1063,9 @@ components:
           const: "remove-properties"
         removals:
           type: array
-          description: Property keys to remove
+          description: |
+            Raw property keys to remove. Derived protocol, snapshot, and domain metadata values
+            must be changed through native Delta actions instead.
           items:
             type: string
       required:
@@ -1072,10 +1083,8 @@ components:
           type: string
           const: "set-columns"
         columns:
-          type: array
-          description: New table columns
-          items:
-            $ref: '#/components/schemas/DeltaColumn'
+          $ref: '#/components/schemas/StructType'
+          description: New table schema as a full Spark/Delta StructType replacement
       required:
         - action
         - columns

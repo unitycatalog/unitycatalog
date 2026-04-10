@@ -50,6 +50,7 @@ import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.deltarest.DeltaRestCatalogService;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
@@ -178,6 +179,8 @@ public class UnityCatalogServer {
     ExternalLocationService externalLocationService =
         new ExternalLocationService(authorizer, repositories);
     DeltaCommitsService deltaCommitsService = new DeltaCommitsService(authorizer, repositories);
+    DeltaRestCatalogService deltaRestCatalogService =
+        new DeltaRestCatalogService(repositories, storageCredentialVendor);
     MetastoreService metastoreService = new MetastoreService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
@@ -242,6 +245,7 @@ public class UnityCatalogServer {
         .annotatedService(BASE_PATH + "credentials", credentialService, requestConverterFunction)
         .annotatedService(
             BASE_PATH + "delta/preview/commits", deltaCommitsService, requestConverterFunction)
+        .annotatedService(BASE_PATH + "delta", deltaRestCatalogService, requestConverterFunction)
         .annotatedService(
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
     addIcebergApiServices(

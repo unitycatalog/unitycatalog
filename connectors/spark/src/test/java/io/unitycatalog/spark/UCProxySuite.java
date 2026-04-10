@@ -63,12 +63,16 @@ public class UCProxySuite {
     // UCProxy is a private Scala class — Java cannot call `new UCProxy(...)` directly.
     // We use reflection with dynamic arg resolution so the test adapts when the
     // constructor gains or loses boolean flags across branches.
+    CatalogBackend legacyBackend =
+        new LegacyUCBackend(mockTablesApi, mockTempCredApi, mockTokenProvider);
+
     Map<Class<?>, Object> argsByType = new HashMap<>();
     argsByType.put(URI.class, new URI("http://localhost:8080"));
     argsByType.put(TokenProvider.class, mockTokenProvider);
     argsByType.put(ApiClient.class, mockApiClient);
     argsByType.put(TablesApi.class, mockTablesApi);
     argsByType.put(TemporaryCredentialsApi.class, mockTempCredApi);
+    argsByType.put(CatalogBackend.class, legacyBackend);
 
     Class<?> proxyClass = Class.forName("io.unitycatalog.spark.UCProxy");
     Constructor<?> ctor = proxyClass.getDeclaredConstructors()[0];

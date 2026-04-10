@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.StagingTableInfo;
@@ -427,21 +428,40 @@ public class UCSingleCatalogStagingTableTest {
   private void mockExistingTableLookup(TablesApi tablesApi, TableInfo tableInfo) throws Exception {
     when(mockDelegate.name()).thenReturn("main");
     when(tablesApi.getTable(eq("main.schema.table"), eq(false), eq(false))).thenReturn(tableInfo);
-    setField(catalog, "tablesApi", tablesApi);
+    setBackend(tablesApi, null);
   }
 
   private void mockMissingTableLookup(TablesApi tablesApi) throws Exception {
     when(mockDelegate.name()).thenReturn("main");
     when(tablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
         .thenThrow(new ApiException(404, "not found"));
-    setField(catalog, "tablesApi", tablesApi);
+    setBackend(tablesApi, null);
   }
 
   private void setTemporaryCredentialsApi(TemporaryCredentialsApi tempCredsApi) throws Exception {
     when(tempCredsApi.generateTemporaryTableCredentials(any()))
         .thenReturn(new TemporaryCredentials());
-    setField(catalog, "temporaryCredentialsApi", tempCredsApi);
     setField(catalog, "uri", URI.create("http://localhost"));
+    // The backend was already set by mockExistingTableLookup/mockMissingTableLookup.
+    // We need to reconstruct it with the same tablesApi but the new tempCredsApi.
+    // Store the last tablesApi in a field so we can reuse it.
+    LegacyUCBackend backend =
+        new LegacyUCBackend(lastTablesApi, tempCredsApi, mock(TokenProvider.class));
+    setField(catalog, "backend", backend);
+  }
+
+  /** Tracks the last TablesApi used in setBackend so setTemporaryCredentialsApi can reuse it. */
+  private TablesApi lastTablesApi;
+
+  private void setBackend(TablesApi tablesApi, TemporaryCredentialsApi tempCredsApi)
+      throws Exception {
+    this.lastTablesApi = tablesApi;
+    if (tempCredsApi == null) {
+      tempCredsApi = mock(TemporaryCredentialsApi.class);
+    }
+    LegacyUCBackend backend =
+        new LegacyUCBackend(tablesApi, tempCredsApi, mock(TokenProvider.class));
+    setField(catalog, "backend", backend);
   }
 
   private static void setDelegate(UCSingleCatalog catalog, TableCatalog delegate) {
@@ -465,11 +485,22 @@ public class UCSingleCatalogStagingTableTest {
     return tableInfo;
   }
 
-  private static void setField(UCSingleCatalog catalog, String fieldName, Object value) {
+  private static void setField(Object target, String fieldName, Object value) {
     try {
-      Field f = UCSingleCatalog.class.getDeclaredField(fieldName);
+      Field f = target.getClass().getDeclaredField(fieldName);
       f.setAccessible(true);
-      f.set(catalog, value);
+      f.set(target, value);
+    } catch (ReflectiveOperationException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T> T getField(Object target, String fieldName) {
+    try {
+      Field f = target.getClass().getDeclaredField(fieldName);
+      f.setAccessible(true);
+      return (T) f.get(target);
     } catch (ReflectiveOperationException e) {
       throw new RuntimeException(e);
     }
