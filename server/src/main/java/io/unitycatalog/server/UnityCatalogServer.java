@@ -50,6 +50,7 @@ import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.delta.DeltaRestCatalogService;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
@@ -252,6 +253,7 @@ public class UnityCatalogServer {
         schemaService,
         tableService,
         repositories);
+    addDeltaApiServices(armeriaServerBuilder, authorizer, repositories, storageCredentialVendor);
   }
 
   private void addIcebergApiServices(
@@ -281,6 +283,24 @@ public class UnityCatalogServer {
             schemaService, tableConfigService, metadataService, repositories),
         icebergRequestConverter,
         icebergResponseConverter);
+  }
+
+  private void addDeltaApiServices(
+      ServerBuilder armeriaServerBuilder,
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      StorageCredentialVendor storageCredentialVendor) {
+    LOGGER.info("Adding Delta REST Catalog API services...");
+    DeltaRestCatalogService deltaRestService =
+        new DeltaRestCatalogService(authorizer, repositories, storageCredentialVendor);
+    // Omit null fields to match the Delta protocol wire format.
+    ObjectMapper deltaMapper =
+        JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
+    armeriaServerBuilder.annotatedService(
+        BASE_PATH,
+        deltaRestService,
+        new JacksonRequestConverterFunction(deltaMapper),
+        new JacksonResponseConverterFunction(deltaMapper));
   }
 
   private void addSecurityDecorators(
