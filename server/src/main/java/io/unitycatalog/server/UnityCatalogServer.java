@@ -293,6 +293,7 @@ public class UnityCatalogServer {
     LOGGER.info("Adding Delta REST Catalog API services...");
     DeltaRestCatalogService deltaRestService =
         new DeltaRestCatalogService(authorizer, repositories, storageCredentialVendor);
+    // Omit null fields to match the Delta protocol wire format.
     ObjectMapper deltaMapper =
         JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
     armeriaServerBuilder.annotatedService(
