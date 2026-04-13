@@ -248,9 +248,15 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     return tableFormat().equalsIgnoreCase("DELTA");
   }
 
+  protected abstract boolean isManagedTable();
+
   protected final boolean canUpdateColumnsToUC() {
-    // DELTA tables can't update columns to UC yet.
-    return !tableFormat().equalsIgnoreCase("DELTA") || DeltaVersionUtils.isDeltaAtLeast("4.2.0");
+    if (tableFormat().equalsIgnoreCase("DELTA")) {
+      // Delta external tables don't update columns to UC yet.
+      // Delta managed tables can update columns starting from Delta 4.2.
+      return isManagedTable() && DeltaVersionUtils.isDeltaAtLeast("4.2.0");
+    }
+    return true;
   }
 
   protected List<TableDdlMode> supportedTableDdlModes() {
@@ -680,22 +686,23 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 ColumnTypeName.TIMESTAMP_NTZ,
                 "timestamp_ntz",
                 "\"timestamp_ntz\""),
-            new ColSpec(
-                "col_daytime_interval",
-                "INTERVAL DAY TO SECOND",
-                "INTERVAL '1 00:00:00' DAY TO SECOND",
-                "PT24H",
-                ColumnTypeName.INTERVAL,
-                "interval day to second",
-                "\"interval day to second\""),
-            new ColSpec(
-                "col_yearmonth_interval",
-                "INTERVAL YEAR TO MONTH",
-                "INTERVAL '0-1' YEAR TO MONTH",
-                "P1M",
-                ColumnTypeName.INTERVAL,
-                "interval year to month",
-                "\"interval year to month\""),
+            // Interval types are not supported in Delta (DELTA_UNSUPPORTED_DATA_TYPES).
+            // new ColSpec(
+            //     "col_daytime_interval",
+            //     "INTERVAL DAY TO SECOND",
+            //     "INTERVAL '1 00:00:00' DAY TO SECOND",
+            //     "PT24H",
+            //     ColumnTypeName.INTERVAL,
+            //     "interval day to second",
+            //     "\"interval day to second\""),
+            // new ColSpec(
+            //     "col_yearmonth_interval",
+            //     "INTERVAL YEAR TO MONTH",
+            //     "INTERVAL '0-1' YEAR TO MONTH",
+            //     "P1M",
+            //     ColumnTypeName.INTERVAL,
+            //     "interval year to month",
+            //     "\"interval year to month\""),
             new ColSpec(
                 "col_arr",
                 "ARRAY<INT>",
@@ -731,7 +738,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String tableName = TEST_TABLE + "_complex_type";
-    List<String> partitionColumns = List.of("col_daytime_interval", "col_string", "col_bigint");
+    List<String> partitionColumns = List.of("col_string", "col_bigint");
     String fullTableName =
         setupTable(
             new TableSetupOptions()

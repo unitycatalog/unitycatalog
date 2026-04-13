@@ -31,6 +31,11 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
   // 0 and 1 to construct the bucket name.
   private int bucketIndex = 0;
 
+  @Override
+  protected boolean isManagedTable() {
+    return false;
+  }
+
   /**
    * This function provides a set of test parameters that cloud-aware tests should run for this
    * class.
