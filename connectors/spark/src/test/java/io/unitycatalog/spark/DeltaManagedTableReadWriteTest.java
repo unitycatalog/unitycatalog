@@ -39,6 +39,11 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   private static final String DELTA_TABLE = "test_delta";
 
   @Override
+  protected boolean isManagedTable() {
+    return true;
+  }
+
+  @Override
   protected List<TableDdlMode> supportedTableDdlModes() {
     return List.of(TableDdlMode.CREATE);
   }
