@@ -5,6 +5,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.util.Date;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -20,6 +21,11 @@ import lombok.experimental.SuperBuilder;
     name = "uc_registered_models",
     indexes = {
       @Index(name = "uc_registered_models_name_idx", columnList = "name"),
+    },
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uk_registered_model_schema_id_name",
+          columnNames = {"schema_id", "name"})
     })
 // Lombok annotations
 @Getter

@@ -21,13 +21,16 @@ import io.unitycatalog.server.base.table.BaseTableCRUDTest;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 
@@ -271,8 +274,8 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
   /**
    * Test that attempting to create a staging table duplicate with existing table (not staging
-   * table) fails with ALREADY_EXISTS error. But creating multiple staging tables with the same name
-   * is allowed.
+   * table) fails with TABLE_ALREADY_EXISTS error. But creating multiple staging tables with the
+   * same name is allowed.
    */
   @Test
   public void testDuplicateStagingTableCreation() throws Exception {
@@ -367,6 +370,100 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         .satisfies(
             ex -> assertThat(ex.getCode()).isEqualTo(ErrorCode.NOT_FOUND.getHttpStatus().code()))
         .withMessageContaining("not found");
+  }
+
+  private class ConcurrentCreateTableWorker {
+    CountDownLatch startLatch;
+    CreateTable request;
+    TableInfo result = null;
+    ApiException error = null;
+    Thread thread;
+
+    ConcurrentCreateTableWorker(CountDownLatch startLatch, CreateTable request) {
+      TablesApi api = new TablesApi(TestUtils.createApiClient(serverConfig));
+      this.startLatch = startLatch;
+      this.request = request;
+      this.thread =
+          new Thread(
+              () -> {
+                try {
+                  startLatch.await();
+                  result = api.createTable(request);
+                } catch (ApiException e) {
+                  error = e;
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                }
+              });
+      this.thread.start();
+    }
+  }
+
+  /**
+   * Test that two concurrent create-table requests for the same table name result in exactly one
+   * success and one TABLE_ALREADY_EXISTS failure.
+   */
+  @Test
+  public void testConcurrentCreateTableRequests() throws Exception {
+    String tableName = "table-concurrent";
+    // Latch to kick off all threads to race to the server at the same time.
+    CountDownLatch startLatch = new CountDownLatch(1);
+    List<ConcurrentCreateTableWorker> workers = new ArrayList<>();
+
+    for (int i = 0; i < 2; i++) {
+      String storageLocation =
+          Files.createTempDirectory(testDirectoryRoot, "concurrent-").toString();
+      CreateTable request =
+          new CreateTable()
+              .name(tableName)
+              .catalogName(TestUtils.CATALOG_NAME)
+              .schemaName(TestUtils.SCHEMA_NAME)
+              .columns(COLUMNS)
+              .tableType(TableType.EXTERNAL)
+              .dataSourceFormat(DataSourceFormat.DELTA)
+              .storageLocation(storageLocation);
+
+      workers.add(new ConcurrentCreateTableWorker(startLatch, request));
+    }
+    startLatch.countDown(); // Kick off both threads at the same time
+    for (ConcurrentCreateTableWorker worker : workers) {
+      worker.thread.join();
+    }
+
+    // Inspect the raw DB state to can see exactly how many rows landed in the table regardless of
+    // what the HTTP layer reported.
+    List<TableInfoDAO> dbRows = findAllTablesBySchemaAndName(tableName);
+    // Primary assertion: the DB must always have exactly one row for this table name.
+    assertThat(dbRows).hasSize(1);
+
+    // Secondary assertion: exactly one HTTP request should have succeeded.
+    long success = workers.stream().filter(x -> x.result != null).count();
+    assertThat(success).isEqualTo(1);
+
+    // The failing thread must have received TABLE_ALREADY_EXISTS (400).
+    workers.stream()
+        .filter(x -> x.result == null)
+        .map(x -> x.error.getCode())
+        .forEach(
+            errorCode ->
+                assertThat(errorCode)
+                    .isEqualTo(ErrorCode.TABLE_ALREADY_EXISTS.getHttpStatus().code()));
+  }
+
+  /**
+   * Returns ALL DB rows for the given table name within the test schema. When duplicate tables with
+   * the same name exist, return all of them.
+   */
+  private List<TableInfoDAO> findAllTablesBySchemaAndName(String tableName) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      return session
+          .createQuery(
+              "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name",
+              TableInfoDAO.class)
+          .setParameter("schemaId", UUID.fromString(schemaId))
+          .setParameter("name", tableName)
+          .getResultList();
+    }
   }
 
   /** Test that staging table creation fails when the catalog doesn't exist. */

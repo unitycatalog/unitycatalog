@@ -17,6 +17,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,7 +38,13 @@ import lombok.experimental.SuperBuilder;
  * @see AwsCredentialVendor
  */
 @Entity
-@Table(name = "uc_credentials")
+@Table(
+    name = "uc_credentials",
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uk_credential_name",
+          columnNames = {"name"}),
+    })
 // Lombok
 @Getter
 @Setter

@@ -8,6 +8,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.util.List;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -20,7 +21,13 @@ import org.hibernate.annotations.SQLRestriction;
 
 // Hibernate annotations
 @Entity
-@Table(name = "uc_functions")
+@Table(
+    name = "uc_functions",
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uk_function_schema_id_name",
+          columnNames = {"schema_id", "name"})
+    })
 // Lombok annotations
 @Getter
 @Setter

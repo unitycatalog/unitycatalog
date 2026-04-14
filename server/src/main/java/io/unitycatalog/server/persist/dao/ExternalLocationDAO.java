@@ -5,6 +5,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.util.Date;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -20,6 +21,11 @@ import lombok.experimental.SuperBuilder;
     indexes = {
       @Index(name = "idx_url", columnList = "url"),
       @Index(name = "idx_credential_id", columnList = "credential_id"),
+    },
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uk_external_location_name",
+          columnNames = {"name"}),
     })
 // Lombok
 @Getter
