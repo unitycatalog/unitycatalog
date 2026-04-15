@@ -14,6 +14,9 @@ on:
       - .github/workflows/ucai-*.yml
       - clients/python/**
 
+env:
+  UV_EXCLUDE_NEWER: "2026-03-10T00:00:00Z"
+
 jobs:
   integration_tests:
     if: false  # Disabled to prevent supply chain attacks; remove this line to restore
@@ -38,67 +41,69 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/install-uv.sh"
       - name: Install Pydantic dependencies
         run: |
           if [ ${{ matrix.pydantic-version }} == 1 ]; then
-              pip install 'pydantic<2'
+              uv pip install --system 'pydantic<2'
           else
-              pip install 'pydantic<3,>=2'
+              uv pip install --system 'pydantic<3,>=2'
           fi
       - name: Install Unity Catalog Python Libraries
         run: |
           dev/install_client.sh
       - name: Install Unity Catalog AI Core Library
         run: |
-          pip install core/.
+          uv pip install --system 'core/.'
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
-      - name: Install dependencies
+      - name: Install mlflow
         run: |
-          pip install mlflow
+          uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Start Unity Catalog Server
         run: |
           dev/start_unitycatalog.sh
       - name: Run OpenAI OSS Integration Tests
         run: |
-          pip install integrations/openai[dev]
+          uv pip install --system 'integrations/openai[dev]'
           pytest integrations/openai/tests/test_openai_toolkit_oss.py
       - name: Run LangChain OSS Integration Tests
         if: ${{ matrix.python-version == '3.10' && matrix.pydantic-version == 2 }}
         run: |
-          pip install integrations/langchain[dev]
+          uv pip install --system 'integrations/langchain[dev]'
           pytest integrations/langchain/tests/test_langchain_toolkit_oss.py
       - name: Run Anthropic OSS Integration Tests
         run: |
-          pip install integrations/anthropic[dev]
+          uv pip install --system 'integrations/anthropic[dev]'
           pytest integrations/anthropic/tests/test_anthropic_toolkit_oss.py
       - name: Run AutoGen OSS Integration Tests
         if: matrix.python-version == '3.10'
         run: |
-          pip install integrations/autogen[dev]
+          uv pip install --system 'integrations/autogen[dev]'
           pytest integrations/autogen/tests/test_autogen_toolkit_oss.py
       - name: Run CrewAI OSS Integration Tests
         if: matrix.python-version == '3.10'
         run: |
-          pip install integrations/crewai[dev]
+          uv pip install --system 'integrations/crewai[dev]'
           pytest integrations/crewai/tests/test_crewai_toolkit_oss.py
       - name: Run Gemini OSS Integration Tests
         run: |
-          pip install integrations/gemini[dev]
+          uv pip install --system 'integrations/gemini[dev]'
           pytest integrations/gemini/tests/test_gemini_toolkit_oss.py
       - name: Run LiteLLM OSS Integration Tests
         if: matrix.python-version == '3.10'
         run: |
-          pip install integrations/litellm[dev]
+          uv pip install --system 'integrations/litellm[dev]'
           pytest integrations/litellm/tests/test_litellm_toolkit_oss.py
       - name: Run Dspy OSS Integration Tests
         if: matrix.python-version == '3.10'
         run: |
-          pip install integrations/dspy[dev]
+          uv pip install --system 'integrations/dspy[dev]'
           pytest integrations/dspy/tests/test_dspy_toolkit_oss.py
       - name: Run LlamaIndex OSS Integration Tests
         if: matrix.python-version == '3.10'
         run: |
-          pip install integrations/llama_index[dev]
+          uv pip install --system 'integrations/llama_index[dev]'
           pytest integrations/llama_index/tests/test_llama_index_toolkit_oss.py
       - name: Stop Unity Catalog Server
         run: |

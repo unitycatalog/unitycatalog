@@ -3,8 +3,11 @@ package io.unitycatalog.server.utils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.delta.model.ErrorResponse;
+import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
@@ -80,6 +83,28 @@ public class TestUtils {
     // more.
     assertThat(ex.getMessage()).contains(containsMessage);
     assertThat(ex.getCode()).isEqualTo(errorCode.getHttpStatus().code());
+  }
+
+  private static final ObjectMapper DELTA_ERROR_MAPPER = new ObjectMapper();
+
+  public static void assertDeltaApiException(
+      Executable executable, ErrorType expectedType, String expectedMessageSubstring) {
+    int expectedCode = ErrorCode.getDeltaHttpStatus(expectedType.getValue()).code();
+    ApiException ex = assertThrows(ApiException.class, executable);
+    // Check message first for better diagnostics on failure (includes the full response body)
+    assertThat(ex.getMessage()).contains(expectedMessageSubstring);
+    assertThat(ex.getCode()).isEqualTo(expectedCode);
+    try {
+      ErrorResponse errorResponse =
+          DELTA_ERROR_MAPPER.readValue(ex.getResponseBody(), ErrorResponse.class);
+      assertThat(errorResponse.getError().getCode()).isEqualTo(expectedCode);
+      assertThat(errorResponse.getError().getType()).isEqualTo(expectedType);
+      assertThat(errorResponse.getError().getMessage()).contains(expectedMessageSubstring);
+    } catch (Exception e) {
+      assertThat(false)
+          .as("Failed to parse Delta error response: " + ex.getResponseBody())
+          .isTrue();
+    }
   }
 
   public static void assertPermissionDenied(Executable executable) {

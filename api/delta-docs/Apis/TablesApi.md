@@ -1,18 +1,18 @@
 # TablesApi
 
-All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog/delta*
+All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createStagingTable**](TablesApi.md#createStagingTable) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/staging-tables | Create a staging table |
-| [**createTable**](TablesApi.md#createTable) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/tables | Create a table |
-| [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Delete a table |
-| [**listTables**](TablesApi.md#listTables) | **GET** /v1/catalogs/{catalog}/schemas/{schema}/tables | List tables |
-| [**loadTable**](TablesApi.md#loadTable) | **GET** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Load table metadata |
-| [**renameTable**](TablesApi.md#renameTable) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename | Rename a table |
-| [**reportMetrics**](TablesApi.md#reportMetrics) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics | Report commit metrics |
-| [**tableExists**](TablesApi.md#tableExists) | **HEAD** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Check if table exists |
-| [**updateTable**](TablesApi.md#updateTable) | **POST** /v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Update table |
+| [**createStagingTable**](TablesApi.md#createStagingTable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables | Create a staging table |
+| [**createTable**](TablesApi.md#createTable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables | Create a table |
+| [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Delete a table |
+| [**listTables**](TablesApi.md#listTables) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables | List tables |
+| [**loadTable**](TablesApi.md#loadTable) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Load table metadata |
+| [**renameTable**](TablesApi.md#renameTable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename | Rename a table |
+| [**reportMetrics**](TablesApi.md#reportMetrics) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics | Report commit metrics |
+| [**tableExists**](TablesApi.md#tableExists) | **HEAD** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Check if table exists |
+| [**updateTable**](TablesApi.md#updateTable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Update table |
 
 
 <a name="createStagingTable"></a>
