@@ -33,6 +33,7 @@ import io.unitycatalog.client.delta.model.UniformMetadata;
 import io.unitycatalog.client.delta.model.UniformMetadataIceberg;
 import io.unitycatalog.client.delta.model.UpdateSnapshotVersionUpdate;
 import io.unitycatalog.client.delta.model.UpdateTableRequest;
+import io.unitycatalog.client.delta.serde.DeltaTypeModule;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -179,18 +180,31 @@ public class DeltaModelSerializationTest {
 
   @Test
   public void testDeserNestedComplex() throws Exception {
-    // map<string, array<struct<v:double>>> -- deeper nesting than the fixture covers
+    // map<string, array<struct<v:double>>>
     String json =
-        "{\"name\":\"data\",\"type\":{\"type\":\"map\","
-            + "\"key-type\":\"string\","
-            + "\"value-type\":{\"type\":\"array\","
-            + "\"element-type\":{\"type\":\"struct\","
-            + "\"fields\":[{\"name\":\"v\","
-            + "\"type\":\"double\","
-            + "\"nullable\":false,\"metadata\":{}}]},"
-            + "\"contains-null\":true},"
-            + "\"value-contains-null\":true},"
-            + "\"nullable\":true,\"metadata\":{}}";
+        "{"
+            + " \"name\": \"data\","
+            + " \"type\": {"
+            + "   \"type\": \"map\","
+            + "   \"key-type\": \"string\","
+            + "   \"value-type\": {"
+            + "     \"type\": \"array\","
+            + "     \"element-type\": {"
+            + "       \"type\": \"struct\","
+            + "       \"fields\": [{"
+            + "         \"name\": \"v\","
+            + "         \"type\": \"double\","
+            + "         \"nullable\": false,"
+            + "         \"metadata\": {}"
+            + "       }]"
+            + "     },"
+            + "     \"contains-null\": true"
+            + "   },"
+            + "   \"value-contains-null\": true"
+            + " },"
+            + " \"nullable\": true,"
+            + " \"metadata\": {}"
+            + "}";
     StructField col = MAPPER.readValue(json, StructField.class);
     assertThat(col.getType()).isInstanceOf(MapType.class);
     MapType mt = (MapType) col.getType();
@@ -202,8 +216,158 @@ public class DeltaModelSerializationTest {
     assertThat(st.getFields().get(0).getType().getType()).isEqualTo("double");
   }
 
+  // ==================== Edge cases ====================
+
+  @Test
+  public void testDeserPrimitiveAndDecimalEdgeCases() throws Exception {
+    // All primitive types deserialize as PrimitiveType
+    for (String type :
+        List.of(
+            "long",
+            "string",
+            "boolean",
+            "binary",
+            "date",
+            "timestamp",
+            "integer",
+            "short",
+            "byte",
+            "float",
+            "double")) {
+      String json =
+          "{\"name\":\"col\",\"type\":\"" + type + "\",\"nullable\":true,\"metadata\":{}}";
+      StructField col = MAPPER.readValue(json, StructField.class);
+      assertThat(col.getType()).isInstanceOf(PrimitiveType.class);
+      assertThat(col.getType().getType()).isEqualTo(type);
+
+      // Round-trip: serializes back to bare string
+      String serialized = MAPPER.writeValueAsString(col);
+      JsonNode node = MAPPER.readTree(serialized);
+      assertThat(node.get("type").isTextual()).isTrue();
+      assertThat(node.get("type").asText()).isEqualTo(type);
+    }
+
+    // Decimal with various precision/scale
+    for (String decStr : List.of("decimal(10,2)", "decimal(38,0)", "decimal(1,1)")) {
+      String json =
+          "{\"name\":\"col\",\"type\":\"" + decStr + "\",\"nullable\":true,\"metadata\":{}}";
+      StructField col = MAPPER.readValue(json, StructField.class);
+      assertThat(col.getType()).isInstanceOf(DecimalType.class);
+
+      // Round-trip
+      String serialized = MAPPER.writeValueAsString(col);
+      JsonNode node = MAPPER.readTree(serialized);
+      assertThat(node.get("type").asText()).isEqualTo(decStr);
+    }
+
+    // Bare "decimal" (no parens) is treated as a primitive, not DecimalType
+    String json = "{\"name\":\"col\",\"type\":\"decimal\",\"nullable\":true,\"metadata\":{}}";
+    StructField col = MAPPER.readValue(json, StructField.class);
+    assertThat(col.getType()).isInstanceOf(PrimitiveType.class);
+    assertThat(col.getType().getType()).isEqualTo("decimal");
+  }
+
+  @Test
+  public void testDeserDecimalAsJsonObject() throws Exception {
+    // DecimalType can also appear as a JSON object (not just bare string)
+    String json =
+        "{"
+            + " \"name\": \"price\","
+            + " \"type\": {\"type\": \"decimal\", \"precision\": 10, \"scale\": 2},"
+            + " \"nullable\": true,"
+            + " \"metadata\": {}"
+            + "}";
+    StructField col = MAPPER.readValue(json, StructField.class);
+    assertThat(col.getType()).isInstanceOf(DecimalType.class);
+    DecimalType dt = (DecimalType) col.getType();
+    assertThat(dt.getPrecision()).isEqualTo(10);
+    assertThat(dt.getScale()).isEqualTo(2);
+
+    // Round-trip: serializes back to string form "decimal(10,2)"
+    String serialized = MAPPER.writeValueAsString(col);
+    JsonNode node = MAPPER.readTree(serialized);
+    assertThat(node.get("type").isTextual()).isTrue();
+    assertThat(node.get("type").asText()).isEqualTo("decimal(10,2)");
+  }
+
+  @Test
+  public void testDeserMalformedDecimalString() throws Exception {
+    // Malformed decimal string doesn't match decimal(N,N) regex,
+    // so it falls through to PrimitiveType (same as any unrecognized type string)
+    String json = "{\"name\":\"col\",\"type\":\"decimal(abc)\",\"nullable\":true,\"metadata\":{}}";
+    StructField col = MAPPER.readValue(json, StructField.class);
+    assertThat(col.getType()).isInstanceOf(PrimitiveType.class);
+    assertThat(col.getType().getType()).isEqualTo("decimal(abc)");
+
+    // Missing scale: "decimal(10)" -- also not matched, becomes PrimitiveType
+    json = "{\"name\":\"col\",\"type\":\"decimal(10)\",\"nullable\":true,\"metadata\":{}}";
+    col = MAPPER.readValue(json, StructField.class);
+    assertThat(col.getType()).isInstanceOf(PrimitiveType.class);
+  }
+
+  @Test
+  public void testDeserOmittedContainsNull() throws Exception {
+    // When contains-null / value-contains-null are omitted, defaults apply
+    String arrayJson =
+        "{"
+            + " \"name\": \"tags\","
+            + " \"type\": {\"type\": \"array\", \"element-type\": \"string\"},"
+            + " \"nullable\": true,"
+            + " \"metadata\": {}"
+            + "}";
+    StructField arrCol = MAPPER.readValue(arrayJson, StructField.class);
+    ArrayType at = (ArrayType) arrCol.getType();
+    // Default: containsNull = true
+    assertThat(at.getContainsNull()).isTrue();
+
+    // Round-trip preserves the default
+    String serialized = MAPPER.writeValueAsString(arrCol);
+    StructField roundTrip = MAPPER.readValue(serialized, StructField.class);
+    assertThat(((ArrayType) roundTrip.getType()).getContainsNull()).isTrue();
+
+    String mapJson =
+        "{"
+            + " \"name\": \"kv\","
+            + " \"type\": {"
+            + "   \"type\": \"map\","
+            + "   \"key-type\": \"string\","
+            + "   \"value-type\": \"integer\""
+            + " },"
+            + " \"nullable\": true,"
+            + " \"metadata\": {}"
+            + "}";
+    StructField mapCol = MAPPER.readValue(mapJson, StructField.class);
+    MapType mt = (MapType) mapCol.getType();
+    // Default: valueContainsNull = true
+    assertThat(mt.getValueContainsNull()).isTrue();
+
+    // Round-trip preserves the default
+    String mapSerialized = MAPPER.writeValueAsString(mapCol);
+    StructField mapRoundTrip = MAPPER.readValue(mapSerialized, StructField.class);
+    assertThat(((MapType) mapRoundTrip.getType()).getValueContainsNull()).isTrue();
+  }
+
   // ==================== Serialization ====================
 
+  /**
+   * Constructs a full UpdateTableRequest and serializes it to JSON, then compares against the
+   * fixture. Tested types and actions:
+   *
+   * <ul>
+   *   <li>Requirements: assert-table-uuid, assert-etag
+   *   <li>set-properties, remove-properties
+   *   <li>set-columns: PrimitiveType("long"), DecimalType(10,2), ArrayType(string), MapType(string,
+   *       StructType([double, long]) with column metadata)
+   *   <li>set-table-comment
+   *   <li>add-commit with UniformMetadata (Iceberg)
+   *   <li>set-latest-backfilled-version
+   *   <li>set-protocol (reader/writer features)
+   *   <li>set-domain-metadata (clustering)
+   *   <li>remove-domain-metadata
+   *   <li>set-partition-columns
+   *   <li>update-metadata-snapshot-version
+   * </ul>
+   */
   @Test
   public void testSerialization() throws Exception {
     UpdateTableRequest request =
@@ -356,9 +520,78 @@ public class DeltaModelSerializationTest {
             setPartition,
             snapUpdate));
 
-    // Serialize and compare with fixture (JSON tree comparison, order-independent)
+    // Serialize and compare with fixture (tree comparison is order-independent).
+    // Pretty-print in the assertion message so failures show readable diffs.
     JsonNode expected = MAPPER.readTree(fixtureJson);
     JsonNode actual = MAPPER.readTree(MAPPER.writeValueAsString(request));
-    assertThat(actual).isEqualTo(expected);
+    assertThat(actual)
+        .as(
+            "Expected:\n%s\n\nActual:\n%s",
+            MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(expected),
+            MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(actual))
+        .isEqualTo(expected);
+  }
+
+  // ==================== CreateTableRequest round-trip ====================
+
+  @Test
+  public void testCreateTableRequestRoundTrip() throws Exception {
+    String json = readFixture("/delta-model-test/create-table-request.json");
+    io.unitycatalog.client.delta.model.CreateTableRequest req =
+        MAPPER.readValue(json, io.unitycatalog.client.delta.model.CreateTableRequest.class);
+
+    // Verify DeltaType serde works on nested StructType fields
+    StructField idField = req.getColumns().getFields().get(0);
+    assertThat(idField.getType()).isInstanceOf(PrimitiveType.class);
+    assertThat(idField.getType().getType()).isEqualTo("long");
+
+    StructField amountField = req.getColumns().getFields().get(1);
+    assertThat(amountField.getType()).isInstanceOf(DecimalType.class);
+    assertThat(((DecimalType) amountField.getType()).getPrecision()).isEqualTo(10);
+
+    StructField tagsField = req.getColumns().getFields().get(2);
+    assertThat(tagsField.getType()).isInstanceOf(ArrayType.class);
+
+    // Round-trip: re-serialize, decimal-as-object becomes bare "decimal(10,2)" string
+    JsonNode actual = MAPPER.readTree(MAPPER.writeValueAsString(req));
+    assertThat(actual.path("columns").path("fields").get(0).path("type").asText())
+        .isEqualTo("long");
+    assertThat(actual.path("columns").path("fields").get(1).path("type").asText())
+        .isEqualTo("decimal(10,2)");
+    assertThat(actual.path("columns").path("fields").get(2).path("type").path("type").asText())
+        .isEqualTo("array");
+  }
+
+  // ==================== LoadTableResponse round-trip ====================
+
+  @Test
+  public void testLoadTableResponseRoundTrip() throws Exception {
+    String json = readFixture("/delta-model-test/load-table-response.json");
+    io.unitycatalog.client.delta.model.LoadTableResponse resp =
+        MAPPER.readValue(json, io.unitycatalog.client.delta.model.LoadTableResponse.class);
+
+    // Verify DeltaType serde works in TableMetadata.columns
+    StructField priceField = resp.getMetadata().getColumns().getFields().get(1);
+    assertThat(priceField.getType()).isInstanceOf(DecimalType.class);
+    assertThat(((DecimalType) priceField.getType()).getPrecision()).isEqualTo(10);
+
+    StructField scoresField = resp.getMetadata().getColumns().getFields().get(2);
+    assertThat(scoresField.getType()).isInstanceOf(MapType.class);
+
+    // Round-trip matches fixture
+    JsonNode expected = MAPPER.readTree(json);
+    JsonNode actual = MAPPER.readTree(MAPPER.writeValueAsString(resp));
+    assertThat(actual)
+        .as(
+            "Expected:\n%s\n\nActual:\n%s",
+            MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(expected),
+            MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(actual))
+        .isEqualTo(expected);
+  }
+
+  private static String readFixture(String resourcePath) throws Exception {
+    try (InputStream is = DeltaModelSerializationTest.class.getResourceAsStream(resourcePath)) {
+      return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+    }
   }
 }

@@ -118,9 +118,10 @@ object PythonClientPostBuild {
       openApiOutputDir: String
   ): Unit = {
     val srcModule = baseDir.toPath.resolve("src")
-      .resolve("unitycatalog").resolve("delta").resolve("delta_type_module.py")
+      .resolve("unitycatalog").resolve("delta").resolve("serde").resolve("delta_type_module.py")
     val targetDir = Paths.get(openApiOutputDir, "src", "unitycatalog", "delta")
-    val targetModule = targetDir.resolve("delta_type_module.py")
+    val targetSerdeDir = targetDir.resolve("serde")
+    val targetModule = targetSerdeDir.resolve("delta_type_module.py")
     val targetInit = targetDir.resolve("__init__.py")
 
     if (!Files.exists(srcModule)) {
@@ -132,14 +133,20 @@ object PythonClientPostBuild {
       return
     }
 
-    // Copy the module
+    // Copy the module into serde/ subdirectory
+    Files.createDirectories(targetSerdeDir)
     Files.copy(srcModule, targetModule, StandardCopyOption.REPLACE_EXISTING)
+    // Create __init__.py for the serde package
+    val serdeInit = targetSerdeDir.resolve("__init__.py")
+    if (!Files.exists(serdeInit)) {
+      Files.writeString(serdeInit, "")
+    }
     log.info(s"Copied delta_type_module.py to $targetModule")
 
     // Append import to models/__init__.py so the patch activates on any model import
     val modelsInit = targetDir.resolve("models").resolve("__init__.py")
     if (Files.exists(modelsInit)) {
-      val patchLine = "\n# Auto-import DeltaType string-or-object patch\nimport unitycatalog.delta.delta_type_module  # noqa: F401\n"
+      val patchLine = "\n# Auto-import DeltaType string-or-object patch\nimport unitycatalog.delta.serde.delta_type_module  # noqa: F401\n"
       val content = new String(Files.readAllBytes(modelsInit))
       if (!content.contains("delta_type_module")) {
         Files.write(modelsInit, (content + patchLine).getBytes)

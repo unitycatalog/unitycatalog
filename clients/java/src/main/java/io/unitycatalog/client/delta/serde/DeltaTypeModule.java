@@ -1,4 +1,4 @@
-package io.unitycatalog.client.delta;
+package io.unitycatalog.client.delta.serde;
 
 import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.DeserializationConfig;

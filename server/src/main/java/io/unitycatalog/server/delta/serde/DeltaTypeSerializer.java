@@ -1,4 +1,4 @@
-package io.unitycatalog.server.delta.type;
+package io.unitycatalog.server.delta.serde;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonSerializer;

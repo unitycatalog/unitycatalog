@@ -1,4 +1,4 @@
-package io.unitycatalog.client.delta;
+package io.unitycatalog.client.delta.serde;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
@@ -22,11 +22,6 @@ public class DeltaTypeDeserializer extends StdDeserializer<DeltaType> {
   private static final Pattern DECIMAL_PATTERN = Pattern.compile("decimal\\((\\d+),\\s*(\\d+)\\)");
 
   private final JsonDeserializer<?> defaultDeserializer;
-
-  public DeltaTypeDeserializer() {
-    super(DeltaType.class);
-    this.defaultDeserializer = null;
-  }
 
   public DeltaTypeDeserializer(JsonDeserializer<?> defaultDeserializer) {
     super(DeltaType.class);

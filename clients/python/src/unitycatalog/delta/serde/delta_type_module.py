@@ -45,8 +45,10 @@ def _parse_type(obj):
         if t == "struct":
             fields = [_parse_field(f) for f in obj.get("fields", [])]
             return StructType(type=t, fields=fields)
-        return PrimitiveType(type=t) if t else DeltaType(type="unknown")
-    return None
+        if t:
+            return PrimitiveType(type=t)
+        raise ValueError("dict type value missing 'type' field: {}".format(obj))
+    raise ValueError("Expected str or dict for type, got: {}".format(type(obj).__name__))
 
 
 def _parse_field(obj):

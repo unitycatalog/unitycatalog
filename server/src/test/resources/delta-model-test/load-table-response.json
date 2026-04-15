@@ -1,0 +1,63 @@
+{
+  "metadata": {
+    "etag": "etag-123",
+    "data-source-format": "DELTA",
+    "table-type": "MANAGED",
+    "table-uuid": "550e8400-e29b-41d4-a716-446655440000",
+    "location": "s3://bucket/warehouse/catalog/schema/sales",
+    "created-time": 1700000000000,
+    "updated-time": 1700000100000,
+    "securable-type": "TABLE",
+    "columns": {
+      "type": "struct",
+      "fields": [
+        {
+          "name": "id",
+          "type": "long",
+          "nullable": false,
+          "metadata": {}
+        },
+        {
+          "name": "price",
+          "type": "decimal(10,2)",
+          "nullable": true,
+          "metadata": {}
+        },
+        {
+          "name": "scores",
+          "type": {
+            "type": "map",
+            "key-type": "string",
+            "value-type": "double",
+            "value-contains-null": true
+          },
+          "nullable": true,
+          "metadata": {}
+        }
+      ]
+    },
+    "partition-columns": ["id"],
+    "properties": {
+      "delta.enableDeletionVectors": "true"
+    },
+    "last-commit-version": 5,
+    "last-commit-timestamp-ms": 1700000100000
+  },
+  "commits": [
+    {
+      "version": 5,
+      "timestamp": 1700000100000,
+      "file-name": "00000000000000000005.json",
+      "file-size": 1024,
+      "file-modification-timestamp": 1700000100500
+    }
+  ],
+  "uniform": {
+    "iceberg": {
+      "metadata-location": "s3://bucket/warehouse/catalog/schema/sales/metadata/v5.metadata.json",
+      "converted-delta-version": 5,
+      "converted-delta-timestamp": 1700000100000
+    }
+  },
+  "latest-table-version": 5
+}

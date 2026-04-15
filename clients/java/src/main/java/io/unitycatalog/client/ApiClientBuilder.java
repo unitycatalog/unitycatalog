@@ -1,7 +1,8 @@
 package io.unitycatalog.client;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.delta.DeltaTypeModule;
+import io.unitycatalog.client.delta.serde.DeltaTypeModule;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.internal.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
@@ -174,7 +175,11 @@ public class ApiClientBuilder {
     // Set the scheme, host, port and base path, for the Api client.
     Preconditions.checkNotNull(uri, "The unitycatalog uri cannot be null");
     ApiClient apiClient = new RetryingApiClient(retryPolicy);
-    apiClient.getObjectMapper().registerModule(new DeltaTypeModule());
+    // getObjectMapper() returns a copy, so we must get it, mutate,
+    // and set it back for the module to take effect.
+    ObjectMapper mapper = apiClient.getObjectMapper();
+    mapper.registerModule(new DeltaTypeModule());
+    apiClient.setObjectMapper(mapper);
     apiClient.setScheme(uri.getScheme());
     apiClient.setHost(uri.getHost());
     apiClient.setPort(uri.getPort());
