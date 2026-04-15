@@ -13,7 +13,6 @@
 | **securable-type** | [**SecurableType**](SecurableType.md) |  | [default to null] |
 | **columns** | [**List**](DeltaColumn.md) | Table columns as DeltaColumn array | [default to null] |
 | **partition-columns** | **List** | Partition column names | [optional] [default to null] |
-| **protocol** | [**DeltaProtocol**](DeltaProtocol.md) | Delta protocol version and feature requirements | [default to null] |
 | **properties** | **Map** | Table properties | [default to null] |
 | **last-commit-version** | **Long** | The version of the last commit that changed table metadata (delta.lastUpdateVersion). Data-only commits do not update this value. | [optional] [default to null] |
 | **last-commit-timestamp-ms** | **Long** | Timestamp of the last commit that changed table metadata, in epoch milliseconds (delta.lastCommitTimestamp). | [optional] [default to null] |

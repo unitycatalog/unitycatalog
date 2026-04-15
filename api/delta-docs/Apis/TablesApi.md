@@ -138,7 +138,7 @@ No authorization required
 
 Load table metadata
 
-    Load table metadata including columns, protocol, properties, and optionally credentials. 
+    Load table metadata including columns, properties, and optionally credentials. 
 
 ### Parameters
 

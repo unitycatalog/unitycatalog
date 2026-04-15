@@ -265,7 +265,7 @@ paths:
       operationId: loadTable
       summary: Load table metadata
       description: |
-        Load table metadata including columns, protocol, properties, and optionally credentials.
+        Load table metadata including columns, properties, and optionally credentials.
       responses:
         '200':
           description: Table loaded successfully
@@ -823,7 +823,7 @@ components:
       properties:
         metadata:
           $ref: '#/components/schemas/TableMetadata'
-          description: Complete table metadata including schema, protocol, and properties
+          description: Complete table metadata including schema and properties
         commits:
           type: array
           description: All unbackfilled CCv2 commits
@@ -876,9 +876,6 @@ components:
           description: Partition column names
           items:
             type: string
-        protocol:
-          $ref: '#/components/schemas/DeltaProtocol'
-          description: Delta protocol version and feature requirements
         properties:
           type: object
           description: Table properties
@@ -902,7 +899,6 @@ components:
         - updated-time
         - securable-type
         - columns
-        - protocol
         - properties
 
     ListTablesResponse:
@@ -1406,20 +1402,20 @@ components:
         type:
           type: string
           const: "array"
-        elementType:
+        element-type:
           description: Data type of array elements (string | DataType)
-        containsNull:
+        contains-null:
           type: boolean
           description: Whether array elements can be null
           default: true
       required:
         - type
-        - elementType
-        - containsNull
+        - element-type
+        - contains-null
       example:
         type: "array"
-        elementType: "string"
-        containsNull: true
+        element-type: "string"
+        contains-null: true
 
     MapType:
       allOf:
@@ -1429,24 +1425,24 @@ components:
         type:
           type: string
           const: "map"
-        keyType:
+        key-type:
           description: Data type of map keys (string | DataType)
-        valueType:
+        value-type:
           description: Data type of map values (string | DataType)
-        valueContainsNull:
+        value-contains-null:
           type: boolean
           description: Whether map values can be null
           default: true
       required:
         - type
-        - keyType
-        - valueType
-        - valueContainsNull
+        - key-type
+        - value-type
+        - value-contains-null
       example:
         type: "map"
-        keyType: "string"
-        valueType: "integer"
-        valueContainsNull: true
+        key-type: "string"
+        value-type: "integer"
+        value-contains-null: true
 
     StructType:
       allOf:
