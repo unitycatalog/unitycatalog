@@ -24,7 +24,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
-import io.unitycatalog.server.utils.RESTObjectMapper;
+import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -134,7 +134,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           client.get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(200);
       assertThat(
-              RESTObjectMapper.mapper().readValue(resp.contentUtf8(), GetNamespaceResponse.class))
+              IcebergObjectMapper.mapper()
+                  .readValue(resp.contentUtf8(), GetNamespaceResponse.class))
           .asString()
           .isEqualTo(
               GetNamespaceResponse.builder()
@@ -157,7 +158,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       AggregatedHttpResponse resp = client.get(TEST_BASE_PREFIX + "/namespaces").aggregate().join();
       assertThat(resp.status().code()).isEqualTo(200);
       assertThat(
-              RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class))
+              IcebergObjectMapper.mapper()
+                  .readValue(resp.contentUtf8(), ListNamespacesResponse.class))
           .asString()
           .isEqualTo(
               ListNamespacesResponse.builder()
@@ -283,7 +285,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .join();
       assertThat(resp.status().code()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
-          RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
           .isEqualTo(
               Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
@@ -312,7 +314,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .join();
       assertThat(resp.status().code()).isEqualTo(200);
       ListTablesResponse loadTableResponse =
-          RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
       assertThat(loadTableResponse.identifiers())
           .containsExactly(TableIdentifier.of(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
 

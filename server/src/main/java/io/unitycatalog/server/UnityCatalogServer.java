@@ -19,6 +19,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -49,11 +50,12 @@ import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.delta.DeltaRestCatalogService;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
+import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
-import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
@@ -116,6 +118,9 @@ public class UnityCatalogServer {
     UnityCatalogAuthorizer authorizer =
         initializeAuthorizer(
             unityCatalogServerBuilder.serverProperties, hibernateConfigurator, repositories);
+    // Configure error response stack traces
+    BaseExceptionHandler.setIncludeStackTrace(
+        unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
     addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
     // Init security decorators
@@ -248,6 +253,7 @@ public class UnityCatalogServer {
         schemaService,
         tableService,
         repositories);
+    addDeltaApiServices(armeriaServerBuilder, authorizer, repositories, storageCredentialVendor);
   }
 
   private void addIcebergApiServices(
@@ -261,7 +267,7 @@ public class UnityCatalogServer {
     LOGGER.info("Adding Iceberg services...");
 
     // Add support for Iceberg REST APIs
-    ObjectMapper icebergMapper = RESTObjectMapper.mapper();
+    ObjectMapper icebergMapper = IcebergObjectMapper.mapper();
     JacksonRequestConverterFunction icebergRequestConverter =
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
@@ -277,6 +283,24 @@ public class UnityCatalogServer {
             schemaService, tableConfigService, metadataService, repositories),
         icebergRequestConverter,
         icebergResponseConverter);
+  }
+
+  private void addDeltaApiServices(
+      ServerBuilder armeriaServerBuilder,
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      StorageCredentialVendor storageCredentialVendor) {
+    LOGGER.info("Adding Delta REST Catalog API services...");
+    DeltaRestCatalogService deltaRestService =
+        new DeltaRestCatalogService(authorizer, repositories, storageCredentialVendor);
+    // Omit null fields to match the Delta protocol wire format.
+    ObjectMapper deltaMapper =
+        JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
+    armeriaServerBuilder.annotatedService(
+        BASE_PATH,
+        deltaRestService,
+        new JacksonRequestConverterFunction(deltaMapper),
+        new JacksonResponseConverterFunction(deltaMapper));
   }
 
   private void addSecurityDecorators(

@@ -21,19 +21,16 @@ export SBT_LOG_NOFORMAT=true
 # Remove any stale coursier lock files (safe)
 find "$COURSIER_CACHE" -type f -name '*.lock' -delete 2>/dev/null || true
 
-SBT_CMD="${SBT_CMD:-./build/sbt -info}"
-
 run_sbt_with_retries() {
-  local cmd="$1"
   local max=3
   local n=1
   while true; do
-    echo "Running: $cmd (attempt $n/$max)"
-    if eval "$cmd"; then
+    echo "Running: ./build/sbt -info $* (attempt $n/$max)"
+    if ./build/sbt -info "$@"; then
       return 0
     fi
     if [[ $n -ge $max ]]; then
-      echo "SBT command failed after $max attempts: $cmd"
+      echo "SBT command failed after $max attempts: $*"
       return 1
     fi
     echo "Retrying in $((n*5))s..."
@@ -47,8 +44,8 @@ run_sbt_with_retries() {
 # Ensure the server jar exists before starting
 if ! ls server/target/unitycatalog-server*.jar >/dev/null 2>&1; then
   echo "Server JAR not found. Building with SBT..."
-  run_sbt_with_retries "$SBT_CMD clean update"
-  run_sbt_with_retries "$SBT_CMD package"
+  run_sbt_with_retries clean update
+  run_sbt_with_retries package
 else
   echo "Found existing server JAR."
 fi

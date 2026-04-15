@@ -109,7 +109,7 @@ public class DeltaCommitRepository {
         session -> {
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
           if (tableInfoDAO == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableId);
           }
           validateTable(tableInfoDAO);
 
@@ -242,7 +242,8 @@ public class DeltaCommitRepository {
           UUID tableId = UUID.fromString(commit.getTableId());
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
           if (tableInfoDAO == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + commit.getTableId());
+            throw new BaseException(
+                ErrorCode.TABLE_NOT_FOUND, "Table not found: " + commit.getTableId());
           }
           validateTableForCommit(session, commit, tableInfoDAO);
           List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);

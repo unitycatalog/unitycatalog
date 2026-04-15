@@ -9,22 +9,22 @@ readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
-    "unitycatalog-ai",
+    "unitycatalog-ai>=0.3.0,<=0.4.0",
     "crewai>=0.67.1,<=1.10.1a1",
     "crewai_tools<=1.10.1a1",
 ]
 
 [project.optional-dependencies]
 databricks = [
-  "unitycatalog-ai[databricks]",
+  "unitycatalog-ai[databricks]>=0.3.0,<=0.4.0",
 ]
 
 databricks-dev = [
-  "unitycatalog-ai[databricks-dev]",
+  "unitycatalog-ai[databricks-dev]>=0.3.0,<=0.4.0",
 ]
 
 dev = [
-  "unitycatalog-ai[dev]",
+  "unitycatalog-ai[dev]>=0.3.0,<=0.4.0",
 ]
 
 [build-system]
