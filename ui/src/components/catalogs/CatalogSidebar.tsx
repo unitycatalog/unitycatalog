@@ -2,12 +2,18 @@ import { Typography } from 'antd';
 import { CatalogInterface, useGetCatalog } from '../../hooks/catalog';
 import { formatTimestamp } from '../../utils/formatTimestamp';
 import MetadataList, { MetadataListType } from '../MetadataList';
+import PropertiesDisplay from '../PropertiesDisplay';
 
 interface CatalogSidebarProps {
   catalog: string;
 }
 
 const CATALOG_METADATA: MetadataListType<CatalogInterface> = [
+  {
+    key: 'owner',
+    label: 'Owner',
+    dataIndex: 'owner',
+  },
   {
     key: 'created_at',
     label: 'Created at',
@@ -32,10 +38,13 @@ export default function CatalogSidebar({ catalog }: CatalogSidebarProps) {
   if (!data) return null;
 
   return (
-    <MetadataList
-      data={data}
-      metadata={CATALOG_METADATA}
-      title="Catalog details"
-    />
+    <>
+      <MetadataList
+        data={data}
+        metadata={CATALOG_METADATA}
+        title="Catalog details"
+      />
+      <PropertiesDisplay properties={data.properties} />
+    </>
   );
 }
