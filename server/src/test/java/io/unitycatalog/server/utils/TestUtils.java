@@ -11,6 +11,9 @@ import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.function.Executable;
@@ -109,5 +112,35 @@ public class TestUtils {
 
   public static void assertPermissionDenied(Executable executable) {
     assertApiException(executable, ErrorCode.PERMISSION_DENIED, "PERMISSION_DENIED");
+  }
+
+  /**
+   * Raw-HTTP counterpart to {@link #assertApiException}. Use when the generated SDK can't reach the
+   * failure mode (e.g. the SDK always serializes a body, so you can't exercise body-less
+   * authorization paths with it).
+   */
+  public static void assertHttpApiException(
+      HttpResponse<String> response, ErrorCode errorCode, String containsMessage) {
+    // Check the body first. When tests fail due to mismatching error, the body can tell us more.
+    assertThat(response.body()).contains(containsMessage).contains(errorCode.name());
+    assertThat(response.statusCode()).isEqualTo(errorCode.getHttpStatus().code());
+  }
+
+  /**
+   * Sends a body-less POST to the given path. The SDK always attaches a serialized body, so raw
+   * HTTP is the only way to reach the body-less code path (used to exercise {@link
+   * io.unitycatalog.server.auth.decorator.AuthorizationGateConverter}'s silent-skip denial).
+   */
+  public static HttpResponse<String> sendRawEmptyPost(ServerConfig config, String path)
+      throws Exception {
+    HttpRequest.Builder reqBuilder =
+        HttpRequest.newBuilder()
+            .uri(URI.create(config.getServerUrl() + path))
+            .POST(HttpRequest.BodyPublishers.noBody());
+    if (config.getAuthToken() != null && !config.getAuthToken().isEmpty()) {
+      reqBuilder.header("Authorization", "Bearer " + config.getAuthToken());
+    }
+    return HttpClient.newHttpClient()
+        .send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
   }
 }
