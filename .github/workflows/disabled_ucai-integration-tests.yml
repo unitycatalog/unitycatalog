@@ -46,7 +46,7 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          uv run pytestintegrations/crewai/tests --ignore=integrations/crewai/tests/test_crewai_toolkit_oss.py
+          uv run pytest integrations/crewai/tests --ignore=integrations/crewai/tests/test_crewai_toolkit_oss.py
 
   langchain_test:
 
@@ -75,7 +75,7 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run Langchain Tests
         run: |
-          uv run pytestintegrations/langchain/tests --ignore=integrations/langchain/tests/test_langchain_toolkit_oss.py
+          uv run pytest integrations/langchain/tests --ignore=integrations/langchain/tests/test_langchain_toolkit_oss.py
 
   anthropic_test:
 
@@ -104,7 +104,7 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run Anthropic Tests
         run: |
-          uv run pytestintegrations/anthropic/tests --ignore=integrations/anthropic/tests/test_anthropic_toolkit_oss.py
+          uv run pytest integrations/anthropic/tests --ignore=integrations/anthropic/tests/test_anthropic_toolkit_oss.py
 
   llamaindex_test:
 
@@ -133,7 +133,7 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run LlamaIndex Tests
         run: |
-          uv run pytestintegrations/llama_index/tests --ignore=integrations/llama_index/tests/test_llama_index_toolkit_oss.py
+          uv run pytest integrations/llama_index/tests --ignore=integrations/llama_index/tests/test_llama_index_toolkit_oss.py
 
   openai_test:
 
@@ -162,7 +162,7 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run OpenAI Tests
         run: |
-          uv run pytestintegrations/openai/tests --ignore=integrations/openai/tests/test_openai_toolkit_oss.py
+          uv run pytest integrations/openai/tests --ignore=integrations/openai/tests/test_openai_toolkit_oss.py
 
   autogen_test:
 
@@ -191,7 +191,7 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          uv run pytestintegrations/autogen/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py
+          uv run pytest integrations/autogen/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py
 
   gemini_test:
 
@@ -220,7 +220,7 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          uv run pytestintegrations/gemini/tests --ignore=integrations/gemini/tests/test_gemini_toolkit_oss.py
+          uv run pytest integrations/gemini/tests --ignore=integrations/gemini/tests/test_gemini_toolkit_oss.py
 
   litellm_test:
 
@@ -249,7 +249,7 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          uv run pytestintegrations/litellm/tests --ignore=integrations/litellm/tests/test_litellm_toolkit_oss.py
+          uv run pytest integrations/litellm/tests --ignore=integrations/litellm/tests/test_litellm_toolkit_oss.py
 
   dspy_test:
 
@@ -278,4 +278,4 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          uv run pytestintegrations/dspy/tests --ignore=integrations/dspy/tests/test_dspy_toolkit_oss.py
+          uv run pytest integrations/dspy/tests --ignore=integrations/dspy/tests/test_dspy_toolkit_oss.py
