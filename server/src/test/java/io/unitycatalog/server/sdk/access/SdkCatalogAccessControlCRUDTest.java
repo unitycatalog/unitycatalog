@@ -21,6 +21,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.Optional;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -110,6 +111,52 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
 
     // get catalog (principal-1) -> denied
     assertPermissionDenied(() -> principal1CatalogsApi.getCatalog("admincatalog1"));
+
+    // Cross-channel probe 1: the same GET, but with a JSON body that tries to override the `name`
+    // path parameter. getCatalog's authorization key is the URL path segment, so the body must not
+    // change which catalog is authorized; the request stays denied (403) exactly as it did with no
+    // body.
+    HttpResponse<String> rawWithBody =
+        TestUtils.sendRawGet(
+            principal1Config,
+            "/api/2.1/unity-catalog/catalogs/admincatalog1",
+            Optional.of("{\"name\":\"different\"}"));
+    assertThat(rawWithBody.statusCode())
+        .as("body on a URL-param GET must not bypass URL-driven authz")
+        .isEqualTo(403);
+
+    // Cross-channel probe 2: attacker omits the URL path segment entirely and moves the name
+    // into the body. This routes to listCatalogs (a different endpoint with per-user filtering),
+    // NOT getCatalog. The body's "name" field is not routed through authz, and the response must
+    // not leak admincatalog1 to principal-1 who lacks access.
+    HttpResponse<String> rawWithBodyNoPath =
+        TestUtils.sendRawGet(
+            principal1Config,
+            "/api/2.1/unity-catalog/catalogs",
+            Optional.of("{\"name\":\"admincatalog1\"}"));
+    assertThat(rawWithBodyNoPath.statusCode())
+        .as("listCatalogs must return 200 for a principal that can see at least their own catalog")
+        .isEqualTo(200);
+    assertThat(rawWithBodyNoPath.body())
+        .as("listCatalogs response must not leak catalogs the caller cannot see")
+        .doesNotContain("admincatalog1");
+
+    // Cross-channel probe 3 (write path via PATCH): updateCatalog's authorization key is the URL
+    // path segment, not the body. A request body must not flip a path-based denial into a
+    // successful mutation. principal-1 does not own admincatalog1, so the PATCH must be denied
+    // regardless of the body it carries, and the catalog must be left unmodified.
+    HttpResponse<String> rawPatch =
+        TestUtils.sendRaw(
+            principal1Config,
+            "PATCH",
+            "/api/2.1/unity-catalog/catalogs/admincatalog1",
+            Optional.of("{\"comment\":\"hijacked\",\"new_name\":\"hijacked\"}"));
+    assertThat(rawPatch.statusCode())
+        .as("mutation on a non-owned catalog must be denied regardless of request body")
+        .isEqualTo(403);
+    assertThat(adminCatalogsApi.getCatalog("admincatalog1").getComment())
+        .as("a denied PATCH must not have modified the catalog")
+        .isEqualTo("(created from scratch)");
 
     // get catalog (regular-1) -> USE CATALOG -> allowed
     CatalogInfo getCatalog1AsRegular1 = regular1CatalogsApi.getCatalog("catalog1");
