@@ -17,7 +17,6 @@ env:
 
 jobs:
   lint:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -43,7 +42,6 @@ jobs:
         run: yamllint .
 
   core_tests:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -81,12 +79,12 @@ jobs:
           dev/start_unitycatalog.sh
       - name: Run Tests
         run: |
-          pytest core/tests --ignore=core/tests/core/databricks/test_databricks_unit_tests.py
+          uv run pytest core/tests --ignore=core/tests/core/databricks/test_databricks_unit_tests.py
       - name: Run Databricks Unit Tests
         if: matrix.python-version == '3.10'
         run: |
           uv pip install --system --require-hashes -r core/requirements-databricks-dev.lock
-          pytest core/tests/core/databricks/test_databricks_unit_tests.py
+          uv run pytest core/tests/core/databricks/test_databricks_unit_tests.py
       - name: Stop Unity Catalog Server
         if: always()
         run: |

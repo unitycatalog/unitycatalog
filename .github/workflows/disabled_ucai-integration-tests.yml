@@ -20,7 +20,7 @@ env:
 
 jobs:
   crewai_test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -46,10 +46,10 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          pytest integrations/crewai/tests --ignore=integrations/crewai/tests/test_crewai_toolkit_oss.py
+          uv run pytestintegrations/crewai/tests --ignore=integrations/crewai/tests/test_crewai_toolkit_oss.py
 
   langchain_test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -75,10 +75,10 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run Langchain Tests
         run: |
-          pytest integrations/langchain/tests --ignore=integrations/langchain/tests/test_langchain_toolkit_oss.py
+          uv run pytestintegrations/langchain/tests --ignore=integrations/langchain/tests/test_langchain_toolkit_oss.py
 
   anthropic_test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -104,10 +104,10 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run Anthropic Tests
         run: |
-          pytest integrations/anthropic/tests --ignore=integrations/anthropic/tests/test_anthropic_toolkit_oss.py
+          uv run pytestintegrations/anthropic/tests --ignore=integrations/anthropic/tests/test_anthropic_toolkit_oss.py
 
   llamaindex_test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -133,10 +133,10 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run LlamaIndex Tests
         run: |
-          pytest integrations/llama_index/tests --ignore=integrations/llama_index/tests/test_llama_index_toolkit_oss.py
+          uv run pytestintegrations/llama_index/tests --ignore=integrations/llama_index/tests/test_llama_index_toolkit_oss.py
 
   openai_test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -162,10 +162,10 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run OpenAI Tests
         run: |
-          pytest integrations/openai/tests --ignore=integrations/openai/tests/test_openai_toolkit_oss.py
+          uv run pytestintegrations/openai/tests --ignore=integrations/openai/tests/test_openai_toolkit_oss.py
 
   autogen_test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -191,10 +191,10 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          pytest integrations/autogen/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py
+          uv run pytestintegrations/autogen/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py
 
   gemini_test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -220,10 +220,10 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          pytest integrations/gemini/tests --ignore=integrations/gemini/tests/test_gemini_toolkit_oss.py
+          uv run pytestintegrations/gemini/tests --ignore=integrations/gemini/tests/test_gemini_toolkit_oss.py
 
   litellm_test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -249,10 +249,10 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          pytest integrations/litellm/tests --ignore=integrations/litellm/tests/test_litellm_toolkit_oss.py
+          uv run pytestintegrations/litellm/tests --ignore=integrations/litellm/tests/test_litellm_toolkit_oss.py
 
   dspy_test:
-    if: false  # Disabled to prevent supply chain attacks; remove this line to restore
+
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -278,4 +278,4 @@ jobs:
           uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Run tests
         run: |
-          pytest integrations/dspy/tests --ignore=integrations/dspy/tests/test_dspy_toolkit_oss.py
+          uv run pytestintegrations/dspy/tests --ignore=integrations/dspy/tests/test_dspy_toolkit_oss.py
