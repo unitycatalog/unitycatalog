@@ -11,7 +11,7 @@
 | **created-time** | **Long** | Creation time in epoch milliseconds | [default to null] |
 | **updated-time** | **Long** | Last update time in epoch milliseconds | [default to null] |
 | **securable-type** | [**SecurableType**](SecurableType.md) |  | [default to null] |
-| **columns** | [**List**](DeltaColumn.md) | Table columns as DeltaColumn array | [default to null] |
+| **columns** | [**StructType**](StructType.md) |  | [default to null] |
 | **partition-columns** | **List** | Partition column names | [optional] [default to null] |
 | **properties** | **Map** | Table properties | [default to null] |
 | **last-commit-version** | **Long** | The version of the last commit that changed table metadata (delta.lastUpdateVersion). Data-only commits do not update this value. | [optional] [default to null] |
