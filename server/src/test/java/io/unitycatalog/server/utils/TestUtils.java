@@ -11,8 +11,12 @@ import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
@@ -109,5 +113,26 @@ public class TestUtils {
 
   public static void assertPermissionDenied(Executable executable) {
     assertApiException(executable, ErrorCode.PERMISSION_DENIED, "PERMISSION_DENIED");
+  }
+
+  /**
+   * Raw HTTP GET, bypassing the generated SDK, for cross-channel authorization probes. Pass {@link
+   * Optional#empty()} for a body-less GET; otherwise the GET is sent with that body and {@code
+   * Content-Type: application/json}.
+   */
+  public static HttpResponse<String> sendRawGet(
+      ServerConfig config, String path, Optional<String> jsonBody) throws Exception {
+    HttpRequest.Builder b =
+        HttpRequest.newBuilder()
+            .uri(URI.create(config.getServerUrl() + path))
+            .header("Authorization", "Bearer " + config.getAuthToken());
+    if (jsonBody.isPresent()) {
+      b =
+          b.header("Content-Type", "application/json")
+              .method("GET", HttpRequest.BodyPublishers.ofString(jsonBody.get()));
+    } else {
+      b = b.GET();
+    }
+    return HttpClient.newHttpClient().send(b.build(), HttpResponse.BodyHandlers.ofString());
   }
 }
