@@ -62,11 +62,28 @@ import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.S
  * <p>3. {@code @AuthorizeKey} - Works like {@code @AuthorizeResourceKey} for source selection, but
  * for non-resource request values (operation mode, table type, flag, etc.) exposed directly as a
  * SpEL variable instead of being mapped to a resource identifier.
+ *
+ * <p>For PAYLOAD-source locators (body-read), {@code peekData} only observes complete JSON chunks;
+ * anything else (no body, non-JSON content-type, malformed JSON, trailing whitespace) silently
+ * skips {@link #checkAuthorization}. The {@link #AUTH_PENDING} flag and {@link
+ * AuthorizationGateConverter} close that gap: the decorator marks the request auth-pending on
+ * entry to the PAYLOAD path, clears it only after authorization succeeds, and the gate converter
+ * denies any body-binding where the flag is still set.
  */
 public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityAccessDecorator.class);
   private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  /**
+   * Per-request flag: {@code true} once the decorator enters the PAYLOAD path, flipped to
+   * {@code false} when {@link #checkAuthorization} completes inside the peekData callback. Read by
+   * {@link AuthorizationGateConverter} at body-binding time: if still {@code true}, authorization
+   * never ran (no body chunk arrived, content-type wasn't JSON, or JSON didn't complete) and the
+   * request must be denied.
+   */
+  public static final AttributeKey<Boolean> AUTH_PENDING =
+      AttributeKey.valueOf(UnityAccessDecorator.class, "AUTH_PENDING");
   private final KeyMapper keyMapper;
   private final UserRepository userRepository;
 
@@ -177,15 +194,22 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
           resourceKeys,
           nonResourceValues);
 
-      // Note that peekData only gets called for requests that actually have data (like PUT&POST)
+      // peekData's lambda only fires when a body chunk arrives AND processPeekData returns true
+      // (JSON content-type + chunk ending in '}'). Any other path (no body, non-JSON, malformed
+      // JSON, trailing whitespace) silently skips authorization. Mark the request auth-pending
+      // here and clear it only after checkAuthorization runs; AuthorizationGateConverter denies
+      // any body-binding attempt where this flag is still set.
+      ctx.setAttr(AUTH_PENDING, true);
 
       req = req.peekData(data -> {
         // This code block is not called immediately. It is called later as part of delegate.serve()
         LOGGER.debug("Authorization peekData invoked.");
 
-        peekDataHandler.processPeekData(data);
-        Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
-        evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
+        if (peekDataHandler.processPeekData(data)) {
+          Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
+          evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
+          ctx.setAttr(AUTH_PENDING, false);
+        }
       });
     }
 
