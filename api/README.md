@@ -19,6 +19,13 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *CredentialsApi* | [**updateCredential**](Apis/CredentialsApi.md#updatecredential) | **PATCH** /credentials/{name} | Update a credential |
 | *DeltaCommitsApi* | [**commit**](Apis/DeltaCommitsApi.md#commit) | **POST** /delta/preview/commits | Commit changes to a specified Delta table. The server has a limit defined in config on how many unbackfilled commits it can hold. Clients are expected to do active backfill of the commit after committing to UC. So in most cases the number of unbackfilled commits should be close to zero or one. But if clients misbehave and unbackfilled commits accumulate beyond the limit, server will reject further commits until more backfill is done. WARNING: This API is experimental and may change in future versions.  |
 *DeltaCommitsApi* | [**getCommits**](Apis/DeltaCommitsApi.md#getcommits) | **GET** /delta/preview/commits | List unbackfilled Delta table commits. WARNING: This API is experimental and may change in future versions.  |
+| *DeltaV1Api* | [**deltaV1Config**](Apis/DeltaV1Api.md#deltav1config) | **GET** /delta/v1/config | Discover the Delta v1 managed table API. |
+*DeltaV1Api* | [**deltaV1CreateStagingTable**](Apis/DeltaV1Api.md#deltav1createstagingtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables | Create a managed Delta staging table. |
+*DeltaV1Api* | [**deltaV1CreateTable**](Apis/DeltaV1Api.md#deltav1createtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables | Finalize creation of a managed Delta table. |
+*DeltaV1Api* | [**deltaV1GetStagingTableCredentials**](Apis/DeltaV1Api.md#deltav1getstagingtablecredentials) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables/{table_id}/credentials | Generate temporary credentials for a Delta staging table. |
+*DeltaV1Api* | [**deltaV1GetTableCredentials**](Apis/DeltaV1Api.md#deltav1gettablecredentials) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials | Generate temporary credentials for a managed Delta table. |
+*DeltaV1Api* | [**deltaV1LoadTable**](Apis/DeltaV1Api.md#deltav1loadtable) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Load a managed Delta table. |
+*DeltaV1Api* | [**deltaV1UpdateTable**](Apis/DeltaV1Api.md#deltav1updatetable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Update metadata or commit a managed Delta table version. |
 | *ExternalLocationsApi* | [**createExternalLocation**](Apis/ExternalLocationsApi.md#createexternallocation) | **POST** /external-locations | Create an external location |
 *ExternalLocationsApi* | [**deleteExternalLocation**](Apis/ExternalLocationsApi.md#deleteexternallocation) | **DELETE** /external-locations/{name} | Delete an external location |
 *ExternalLocationsApi* | [**getExternalLocation**](Apis/ExternalLocationsApi.md#getexternallocation) | **GET** /external-locations/{name} | Get an external location |
@@ -96,6 +103,13 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [DeltaMetadata](./Models/DeltaMetadata.md)
  - [DeltaUniform](./Models/DeltaUniform.md)
  - [DeltaUniformIceberg](./Models/DeltaUniformIceberg.md)
+ - [DeltaV1ConfigResponse](./Models/DeltaV1ConfigResponse.md)
+ - [DeltaV1CreateStagingTableRequest](./Models/DeltaV1CreateStagingTableRequest.md)
+ - [DeltaV1CreateTableRequest](./Models/DeltaV1CreateTableRequest.md)
+ - [DeltaV1LoadTableResponse](./Models/DeltaV1LoadTableResponse.md)
+ - [DeltaV1ProtocolInfo](./Models/DeltaV1ProtocolInfo.md)
+ - [DeltaV1StagingTableResponse](./Models/DeltaV1StagingTableResponse.md)
+ - [DeltaV1UpdateTableRequest](./Models/DeltaV1UpdateTableRequest.md)
  - [Dependency](./Models/Dependency.md)
  - [DependencyList](./Models/DependencyList.md)
  - [ExternalLocationInfo](./Models/ExternalLocationInfo.md)

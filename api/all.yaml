@@ -41,6 +41,9 @@ tags:
   - name: DeltaCommits
     description: |
       "Delta commits" is a Delta tables feature that allows Delta tables to designate a coordinator to coordinate commits. This is Unity Catalog's API to allow Unity Catalog be the commit coordinator for managed tables. (See https://github.com/delta-io/delta/blob/master/protocol_rfcs/catalog-managed.md for more details)
+  - name: DeltaV1
+    description: |
+      Delta-native catalog APIs for external access to UC-managed Delta tables.
 paths:
   /catalogs:
     post:
@@ -1498,6 +1501,220 @@ paths:
           description: Internal Server Error. An unexpected error occurred on the server.
         '501':
           description: Not Implemented. The requested functionality is not supported.
+  /delta/v1/config:
+    get:
+      operationId: deltaV1Config
+      tags:
+        - DeltaV1
+      summary: Discover the Delta v1 managed table API.
+      parameters:
+        - name: catalog
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: protocol_versions
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaV1ConfigResponse'
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables:
+    parameters:
+      - name: catalog
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: schema
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: deltaV1CreateStagingTable
+      tags:
+        - DeltaV1
+      summary: Create a managed Delta staging table.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeltaV1CreateStagingTableRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaV1StagingTableResponse'
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables/{table_id}/credentials:
+    parameters:
+      - name: catalog
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: schema
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: table_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: deltaV1GetStagingTableCredentials
+      tags:
+        - DeltaV1
+      summary: Generate temporary credentials for a Delta staging table.
+      parameters:
+        - name: operation
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TableOperation'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryCredentials'
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables:
+    parameters:
+      - name: catalog
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: schema
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: deltaV1CreateTable
+      tags:
+        - DeltaV1
+      summary: Finalize creation of a managed Delta table.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeltaV1CreateTableRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaV1LoadTableResponse'
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+    parameters:
+      - name: catalog
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: schema
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: table
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: deltaV1LoadTable
+      tags:
+        - DeltaV1
+      summary: Load a managed Delta table.
+      parameters:
+        - name: start_version
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: end_version
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaV1LoadTableResponse'
+    post:
+      operationId: deltaV1UpdateTable
+      tags:
+        - DeltaV1
+      summary: Update metadata or commit a managed Delta table version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeltaV1UpdateTableRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaV1LoadTableResponse'
+  /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials:
+    parameters:
+      - name: catalog
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: schema
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: table
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: deltaV1GetTableCredentials
+      tags:
+        - DeltaV1
+      summary: Generate temporary credentials for a managed Delta table.
+      parameters:
+        - name: operation
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TableOperation'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryCredentials'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -3160,6 +3377,119 @@ components:
       required:
         - commits
         - latest_table_version
+    DeltaV1ConfigResponse:
+      type: object
+      properties:
+        endpoints:
+          type: array
+          items:
+            type: string
+        protocol_version:
+          type: integer
+          format: int32
+    DeltaV1ProtocolInfo:
+      type: object
+      properties:
+        min_reader_version:
+          type: integer
+          format: int32
+        min_writer_version:
+          type: integer
+          format: int32
+        reader_features:
+          type: array
+          items:
+            type: string
+        writer_features:
+          type: array
+          items:
+            type: string
+    DeltaV1CreateStagingTableRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+    DeltaV1StagingTableResponse:
+      type: object
+      properties:
+        table_id:
+          type: string
+        location:
+          type: string
+        required_properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        suggested_properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        required_protocol:
+          $ref: '#/components/schemas/DeltaV1ProtocolInfo'
+        suggested_protocol:
+          $ref: '#/components/schemas/DeltaV1ProtocolInfo'
+    DeltaV1CreateTableRequest:
+      type: object
+      properties:
+        table_id:
+          type: string
+        name:
+          type: string
+        storage_location:
+          type: string
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        comment:
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+      required:
+        - name
+        - storage_location
+        - columns
+    DeltaV1LoadTableResponse:
+      type: object
+      properties:
+        table_info:
+          $ref: '#/components/schemas/TableInfo'
+        etag:
+          type: string
+        latest_table_version:
+          type: integer
+          format: int64
+        last_known_backfilled_version:
+          type: integer
+          format: int64
+        commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeltaCommitInfo'
+        protocol:
+          $ref: '#/components/schemas/DeltaV1ProtocolInfo'
+    DeltaV1UpdateTableRequest:
+      type: object
+      properties:
+        assert_table_id:
+          type: string
+        assert_etag:
+          type: string
+        set_properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        remove_properties:
+          type: array
+          items:
+            type: string
+        comment:
+          type: string
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        commit_info:
+          $ref: '#/components/schemas/DeltaCommitInfo'
+        latest_backfilled_version:
+          type: integer
+          format: int64
 info:
   title: Unity Catalog API
   version: '0.1'

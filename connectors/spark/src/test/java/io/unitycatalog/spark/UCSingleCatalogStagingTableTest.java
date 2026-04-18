@@ -12,10 +12,10 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.DataSourceFormat;
-import io.unitycatalog.client.model.StagingTableInfo;
+import io.unitycatalog.client.model.DeltaV1StagingTableResponse;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.lang.reflect.Field;
@@ -61,6 +61,11 @@ public class UCSingleCatalogStagingTableTest {
   private static final class ManagedReplaceMocks {
     final TablesApi tablesApi = mock(TablesApi.class);
     final TemporaryCredentialsApi tempCredsApi = mock(TemporaryCredentialsApi.class);
+    final StagedTable staged = mock(StagedTable.class);
+  }
+
+  private static final class ManagedCreateMocks {
+    final DeltaV1Client deltaV1Client = mock(DeltaV1Client.class);
     final StagedTable staged = mock(StagedTable.class);
   }
 
@@ -121,14 +126,23 @@ public class UCSingleCatalogStagingTableTest {
 
   @Test
   public void testStageCreateOrReplaceMissingManagedTableUsesManagedCreatePath() throws Exception {
-    ManagedReplaceMocks mocks = new ManagedReplaceMocks();
-    mockMissingTableLookup(mocks.tablesApi);
+    ManagedCreateMocks mocks = new ManagedCreateMocks();
+    TablesApi mockTablesApi = mock(TablesApi.class);
+    mockMissingTableLookup(mockTablesApi);
     when(mockDelegate.stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any()))
         .thenReturn(mocks.staged);
-    when(mocks.tablesApi.createStagingTable(any(CreateStagingTable.class)))
-        .thenReturn(
-            new StagingTableInfo().id("staging-id").stagingLocation("file:///tmp/uc-staging"));
-    setTemporaryCredentialsApi(mocks.tempCredsApi);
+    DeltaV1StagingTableResponse stagingTableResponse = new DeltaV1StagingTableResponse();
+    stagingTableResponse.setTableId("staging-id");
+    stagingTableResponse.setLocation("file:///tmp/uc-staging");
+    stagingTableResponse.setRequiredProperties(
+        Map.of("delta.feature.vacuumProtocolCheck", "supported"));
+    when(mocks.deltaV1Client.createStagingTable(eq("main"), eq("schema"), eq("table")))
+        .thenReturn(stagingTableResponse);
+    when(mocks.deltaV1Client.getStagingTableCredentials(
+            eq("main"), eq("schema"), eq("staging-id"), eq(TableOperation.READ_WRITE)))
+        .thenReturn(new TemporaryCredentials());
+    setDeltaV1Api(mocks.deltaV1Client);
+    when(mockDelegate.name()).thenReturn("main");
 
     StagedTable result =
         catalog.stageCreateOrReplace(IDENT, SCHEMA, PARTITIONS, MANAGED_DELTA_PROPS);
@@ -136,13 +150,15 @@ public class UCSingleCatalogStagingTableTest {
     @SuppressWarnings("unchecked")
     ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
 
-    verify(mocks.tablesApi).createStagingTable(any(CreateStagingTable.class));
-    verify(mocks.tempCredsApi).generateTemporaryTableCredentials(any());
+    verify(mocks.deltaV1Client).createStagingTable("main", "schema", "table");
+    verify(mocks.deltaV1Client)
+        .getStagingTableCredentials("main", "schema", "staging-id", TableOperation.READ_WRITE);
     verify(mockDelegate).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
     assertThat(propsCaptor.getValue())
         .containsEntry(TableCatalog.PROP_LOCATION, "file:///tmp/uc-staging")
         .containsEntry(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
-        .containsEntry(UCTableProperties.UC_TABLE_ID_KEY, "staging-id");
+        .containsEntry(UCTableProperties.UC_TABLE_ID_KEY, "staging-id")
+        .containsEntry("delta.feature.vacuumProtocolCheck", "supported");
     assertThat(result).isSameAs(mocks.staged);
   }
 
@@ -159,7 +175,6 @@ public class UCSingleCatalogStagingTableTest {
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("Managed table creation requires table property");
 
-    verify(mockTablesApi, never()).createStagingTable(any(CreateStagingTable.class));
     verify(mockDelegate, never()).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any());
   }
 
@@ -321,7 +336,6 @@ public class UCSingleCatalogStagingTableTest {
     @SuppressWarnings("unchecked")
     ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
 
-    verify(mocks.tablesApi, never()).createStagingTable(any(CreateStagingTable.class));
     verify(mocks.tempCredsApi).generateTemporaryTableCredentials(any());
     if (createOrReplace) {
       verify(mockDelegate)
@@ -441,6 +455,11 @@ public class UCSingleCatalogStagingTableTest {
     when(tempCredsApi.generateTemporaryTableCredentials(any()))
         .thenReturn(new TemporaryCredentials());
     setField(catalog, "temporaryCredentialsApi", tempCredsApi);
+    setField(catalog, "uri", URI.create("http://localhost"));
+  }
+
+  private void setDeltaV1Api(DeltaV1Client deltaV1Client) throws Exception {
+    setField(catalog, "deltaV1Api", deltaV1Client);
     setField(catalog, "uri", URI.create("http://localhost"));
   }
 

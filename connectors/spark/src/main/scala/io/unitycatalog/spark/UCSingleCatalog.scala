@@ -43,6 +43,7 @@ class UCSingleCatalog
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
+  private[this] var deltaV1Api: DeltaV1Client = null
 
   @volatile private var delegate: TableCatalog = null
 
@@ -66,8 +67,9 @@ class UCSingleCatalog
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
+    deltaV1Api = new DeltaV1Client(uri, tokenProvider)
     val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
-      serverSidePlanningEnabled, apiClient, tablesApi, temporaryCredentialsApi)
+      serverSidePlanningEnabled, apiClient, tablesApi, temporaryCredentialsApi, deltaV1Api)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -131,25 +133,28 @@ class UCSingleCatalog
       ident: Identifier,
       properties: util.Map[String, String]): util.Map[String, String] = {
     // Get staging table location and table id from UC
-    val createStagingTable = new CreateStagingTable()
-      .catalogName(name())
-      .schemaName(ident.namespace().head)
-      .name(ident.name())
-    val stagingTableInfo = tablesApi.createStagingTable(createStagingTable)
-    val stagingLocation = stagingTableInfo.getStagingLocation
-    val stagingTableId = stagingTableInfo.getId
+    val stagingTableInfo = deltaV1Api.createStagingTable(name(), ident.namespace().head, ident.name())
+    val stagingLocation = stagingTableInfo.getLocation
+    val stagingTableId = stagingTableInfo.getTableId
 
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
-    newProps.put(TableCatalog.PROP_LOCATION, stagingTableInfo.getStagingLocation)
+    Option(stagingTableInfo.getRequiredProperties).foreach(_.asScala.foreach { case (k, v) =>
+      newProps.put(k, v)
+    })
+    newProps.put(TableCatalog.PROP_LOCATION, stagingLocation)
     // Set the UC-assigned table ID so Delta can preserve table identity.
-    newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableInfo.getId)
+    newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableId)
     // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
     // user-specified but system-generated, which is exactly the case here.
     newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
 
-    val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
-      new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
+    val temporaryCredentials =
+      deltaV1Api.getStagingTableCredentials(
+        name(),
+        ident.namespace().head,
+        stagingTableId,
+        TableOperation.READ_WRITE)
     val credentialProps = CredPropsUtil.createTableCredProps(
       renewCredEnabled,
       credScopedFsEnabled,
@@ -318,7 +323,7 @@ class UCSingleCatalog
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    delegate.alterTable(ident, changes: _*)
   }
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
@@ -548,7 +553,8 @@ private class UCProxy(
     serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
+    temporaryCredentialsApi: TemporaryCredentialsApi,
+    deltaV1Api: DeltaV1Client) extends TableCatalog with SupportsNamespaces with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
 
@@ -578,14 +584,28 @@ private class UCProxy(
   }
 
   override def loadTable(ident: Identifier): Table = {
-    val t = try {
+    val fullTableName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
+    val legacyTableInfo = try {
       tablesApi.getTable(
-        UCSingleCatalog.fullTableNameForApi(this.name, ident),
-        /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true)
+        fullTableName,
+        /* readStreamingTableAsManaged = */ false,
+        /* readMaterializedViewAsManaged = */ false)
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchTableException(ident)
+    }
+    val shouldUseDeltaV1 =
+      legacyTableInfo.getTableType == TableType.MANAGED &&
+        legacyTableInfo.getDataSourceFormat == DataSourceFormat.DELTA &&
+        Option(legacyTableInfo.getProperties).exists(
+          _.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW) ==
+            UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
+    val t = if (shouldUseDeltaV1) {
+      deltaV1Api
+        .loadTable(this.name, ident.namespace().head, ident.name())
+        .getTableInfo
+    } else {
+      legacyTableInfo
     }
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
     val partitionCols = scala.collection.mutable.ArrayBuffer.empty[(String, Int)]
@@ -601,23 +621,23 @@ private class UCProxy(
     var tableOp = TableOperation.READ_WRITE
     val temporaryCredentials = {
       try {
-        temporaryCredentialsApi
-          .generateTemporaryTableCredentials(
-            // TODO: at this time, we don't know if the table will be read or written. For now we always
-            //       request READ_WRITE credentials as the server doesn't distinguish between READ and
-            //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
-            //       for read or write, we can request the proper credential after fixing Spark.
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-          )
+        if (shouldUseDeltaV1) {
+          deltaV1Api.getTableCredentials(this.name, ident.namespace().head, ident.name(), tableOp)
+        } else {
+          temporaryCredentialsApi.generateTemporaryTableCredentials(
+            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp))
+        }
       }       catch {
         case e: ApiException =>
           logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
           try {
             tableOp = TableOperation.READ
-            temporaryCredentialsApi
-              .generateTemporaryTableCredentials(
-                new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-              )
+            if (shouldUseDeltaV1) {
+              deltaV1Api.getTableCredentials(this.name, ident.namespace().head, ident.name(), tableOp)
+            } else {
+              temporaryCredentialsApi.generateTemporaryTableCredentials(
+                new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp))
+            }
           } catch {
             case e: ApiException =>
               logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
@@ -676,11 +696,6 @@ private class UCProxy(
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     UCSingleCatalog.requireProviderSpecified("CREATE TABLE", properties)
 
-    val createTable = new CreateTable()
-    createTable.setName(ident.name())
-    createTable.setSchemaName(ident.namespace().head)
-    createTable.setCatalogName(this.name)
-
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
     assert(storageLocation != null, "location should either be user specified or system generated.")
@@ -692,11 +707,7 @@ private class UCProxy(
       if (!format.equalsIgnoreCase(DataSourceFormat.DELTA.name)) {
         throw new ApiException("Unity Catalog does not support non-Delta managed table.")
       }
-      createTable.setTableType(TableType.MANAGED)
-    } else {
-      createTable.setTableType(TableType.EXTERNAL)
     }
-    createTable.setStorageLocation(storageLocation)
 
     val partitionColNames: Seq[String] = partitions.flatMap { t =>
       t.name() match {
@@ -705,7 +716,7 @@ private class UCProxy(
           require(fieldNames.length == 1,
             s"Expected single-field partition reference but got: ${fieldNames.mkString(".")}")
           Some(fieldNames.head)
-        case "cluster_by" =>
+        case "cluster_by" | "temp_cluster_by" =>
           None
         case other =>
           throw new ApiException(s"Unsupported partition transform: $other")
@@ -727,14 +738,31 @@ private class UCProxy(
       column
     }
     val comment = Option(properties.get(TableCatalog.PROP_COMMENT))
-    comment.foreach(createTable.setComment(_))
-    createTable.setColumns(columns)
-    createTable.setDataSourceFormat(convertDatasourceFormat(format))
-    // Do not send the V2 table properties as they are made part of the `createTable` already.
     val propertiesToServer =
       properties.view.filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_)).toMap
-    createTable.setProperties(propertiesToServer)
-    tablesApi.createTable(createTable)
+    if (isManagedLocation) {
+      deltaV1Api.createManagedTable(
+        this.name,
+        ident.namespace().head,
+        ident.name(),
+        properties.get(UCTableProperties.UC_TABLE_ID_KEY),
+        storageLocation,
+        columns.toList.asJava,
+        comment.orNull,
+        propertiesToServer.asJava)
+    } else {
+      val createTable = new CreateTable()
+      createTable.setName(ident.name())
+      createTable.setSchemaName(ident.namespace().head)
+      createTable.setCatalogName(this.name)
+      createTable.setTableType(TableType.EXTERNAL)
+      createTable.setStorageLocation(storageLocation)
+      comment.foreach(createTable.setComment(_))
+      createTable.setColumns(columns)
+      createTable.setDataSourceFormat(convertDatasourceFormat(format))
+      createTable.setProperties(propertiesToServer)
+      tablesApi.createTable(createTable)
+    }
     loadTable(ident)
   }
 
@@ -802,7 +830,37 @@ private class UCProxy(
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (changes.isEmpty) {
+      return loadTable(ident)
+    }
+
+    val currentState = deltaV1Api.loadTable(this.name, ident.namespace().head, ident.name())
+    val request = new DeltaV1UpdateTableRequest()
+      .assertTableId(currentState.getTableInfo.getTableId)
+      .assertEtag(currentState.getEtag)
+
+    val setProperties = new util.HashMap[String, String]()
+    val removeProperties = new util.ArrayList[String]()
+
+    changes.foreach {
+      case set: TableChange.SetProperty =>
+        setProperties.put(set.property(), set.value())
+      case remove: TableChange.RemoveProperty =>
+        removeProperties.add(remove.property())
+      case unsupported =>
+        throw new UnsupportedOperationException(
+          s"Unsupported table change for Unity Catalog Delta v1 demo: $unsupported")
+    }
+
+    if (!setProperties.isEmpty) {
+      request.setProperties(setProperties)
+    }
+    if (!removeProperties.isEmpty) {
+      request.removeProperties(removeProperties)
+    }
+    deltaV1Api.updateTable(this.name, ident.namespace().head, ident.name(), request)
+    loadTable(ident)
   }
 
   override def dropTable(ident: Identifier): Boolean = {
