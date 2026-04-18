@@ -1,12 +1,12 @@
 package io.unitycatalog.server.service.delta;
 
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.ProducesJson;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -57,13 +57,14 @@ public class DeltaRestCatalogService extends AuthorizedService {
   // ==================== Configuration API ====================
 
   @Get("/delta/v1/config")
+  @ProducesJson
   @AuthorizeExpression(
       """
       #authorize(#principal, #metastore, OWNER) ||
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
       """)
   @AuthorizeResourceKey(METASTORE)
-  public HttpResponse getConfig(
+  public CatalogConfig getConfig(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("protocol-versions") String protocolVersions) {
     if (catalog == null || catalog.isEmpty()) {
@@ -75,7 +76,6 @@ public class DeltaRestCatalogService extends AuthorizedService {
     catalogRepository.getCatalog(catalog);
 
     // For now, we only have 1.0 as the first protocol version. Input protocolVersions is ignored.
-    return HttpResponse.ofJson(
-        new CatalogConfig().endpoints(ENDPOINTS).protocolVersion("1.0"));
+    return new CatalogConfig().endpoints(ENDPOINTS).protocolVersion("1.0");
   }
 }

@@ -18,6 +18,7 @@ import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
+import io.unitycatalog.server.delta.serde.DeltaTypeModule;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -296,6 +297,7 @@ public class UnityCatalogServer {
     // Omit null fields to match the Delta protocol wire format.
     ObjectMapper deltaMapper =
         JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
+    deltaMapper.registerModule(new DeltaTypeModule());
     armeriaServerBuilder.annotatedService(
         BASE_PATH,
         deltaRestService,

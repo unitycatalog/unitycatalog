@@ -1,0 +1,47 @@
+{
+  "name": "sales",
+  "location": "s3://bucket/warehouse/catalog/schema/sales",
+  "table-type": "MANAGED",
+  "data-source-format": "DELTA",
+  "columns": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "id",
+        "type": "long",
+        "nullable": false,
+        "metadata": {}
+      },
+      {
+        "name": "amount",
+        "type": {
+          "type": "decimal",
+          "precision": 10,
+          "scale": 2
+        },
+        "nullable": true,
+        "metadata": {}
+      },
+      {
+        "name": "tags",
+        "type": {
+          "type": "array",
+          "element-type": "string",
+          "contains-null": true
+        },
+        "nullable": true,
+        "metadata": {}
+      }
+    ]
+  },
+  "partition-columns": ["id"],
+  "protocol": {
+    "min-reader-version": 3,
+    "min-writer-version": 7,
+    "reader-features": ["deletionVectors"],
+    "writer-features": ["deletionVectors", "invariants"]
+  },
+  "properties": {
+    "delta.enableDeletionVectors": "true"
+  }
+}

@@ -265,7 +265,7 @@ paths:
       operationId: loadTable
       summary: Load table metadata
       description: |
-        Load table metadata including columns, protocol, properties, and optionally credentials.
+        Load table metadata including columns, properties, and optionally credentials.
       responses:
         '200':
           description: Table loaded successfully
@@ -761,10 +761,7 @@ components:
           type: string
           description: Table comment
         columns:
-          type: array
-          description: Table columns as DeltaColumn
-          items:
-            $ref: '#/components/schemas/DeltaColumn'
+          $ref: '#/components/schemas/StructType'
         partition-columns:
           type: array
           description: Partition column names
@@ -794,17 +791,19 @@ components:
         table-type: "MANAGED"
         data-source-format: "DELTA"
         columns:
-          - name: "id"
-            type: "long"
-            nullable: false
-            metadata: {}
-          - name: "amount"
-            type:
-              type: "decimal"
-              precision: 10
-              scale: 2
-            nullable: true
-            metadata: {}
+          type: "struct"
+          fields:
+            - name: "id"
+              type: "long"
+              nullable: false
+              metadata: {}
+            - name: "amount"
+              type:
+                type: "decimal"
+                precision: 10
+                scale: 2
+              nullable: true
+              metadata: {}
         partition-columns:
           - "id"
         protocol:
@@ -823,7 +822,7 @@ components:
       properties:
         metadata:
           $ref: '#/components/schemas/TableMetadata'
-          description: Complete table metadata including schema, protocol, and properties
+          description: Complete table metadata including schema and properties
         commits:
           type: array
           description: All unbackfilled CCv2 commits
@@ -867,18 +866,12 @@ components:
         securable-type:
           $ref: '#/components/schemas/SecurableType'
         columns:
-          type: array
-          description: Table columns as DeltaColumn array
-          items:
-            $ref: '#/components/schemas/DeltaColumn'
+          $ref: '#/components/schemas/StructType'
         partition-columns:
           type: array
           description: Partition column names
           items:
             type: string
-        protocol:
-          $ref: '#/components/schemas/DeltaProtocol'
-          description: Delta protocol version and feature requirements
         properties:
           type: object
           description: Table properties
@@ -902,7 +895,6 @@ components:
         - updated-time
         - securable-type
         - columns
-        - protocol
         - properties
 
     ListTablesResponse:
@@ -1065,17 +1057,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/TableUpdate'
       description: |
-        Set table columns. The metadata field on each column carries Spark/Delta field metadata
+        Set table columns. The metadata field on each field carries Spark/Delta field metadata
         from metaData.schemaString in the Delta commit log.
       properties:
         action:
           type: string
           const: "set-columns"
         columns:
-          type: array
-          description: New table columns
-          items:
-            $ref: '#/components/schemas/DeltaColumn'
+          $ref: '#/components/schemas/StructType'
       required:
         - action
         - columns
@@ -1337,132 +1326,121 @@ components:
         - file-size
         - file-modification-timestamp
 
-    DeltaColumn:
+    StructField:
       type: object
       description: |
-        Column information for Delta tables. Contains the column name, type, nullability,
-        and metadata as a flat structure matching the Delta schema field format.
+        A field in a StructType. Contains the field name, type, nullability,
+        and metadata matching the Delta schema field format.
       properties:
         name:
           type: string
           description: Column name
         type:
-          description: |
-            Column data type. For primitive types, a bare JSON string (e.g.,
-            "long", "string", "decimal(10,2)"). For complex types, a plain
-            JSON object with a "type" discriminator field ("array", "map", or
-            "struct"). See DataType, ArrayType, MapType, StructType schemas
-            for the object shapes. Note: this field is untyped (generates
-            Object in Java, Any in Python) because OpenAPI cannot express a
-            string-or-object union. Deserialized as String or Map, not as
-            typed DataType subclasses. Delta clients (Kernel, Spark) use
-            their own parsers; see DataTypeJsonSerDe.parseDataType().
+          $ref: '#/components/schemas/DeltaType'
         nullable:
           type: boolean
           description: Whether this column can be null
         metadata:
           type: object
           description: Additional column metadata (arbitrary key-value pairs, e.g., comment, delta.columnMapping.id)
-          additionalProperties: true
+          additionalProperties:
+            description: Metadata values can be strings, numbers, booleans, or nested objects
       required:
         - name
         - type
         - nullable
+        - metadata
 
-    # Spark Type System
-    #
-    # The schemas below (DataType, ArrayType, MapType, StructType) document the
-    # JSON shapes used for complex column types. They are for documentation and
-    # spec validation only -- DeltaColumn.type is untyped because OpenAPI cannot
-    # express a string-or-object union, so the generated code does NOT use these
-    # classes for DeltaColumn deserialization. Delta clients (Kernel, Spark) have
-    # their own parsers (DataTypeJsonSerDe.parseDataType()).
-
-    DataType:
+    DeltaType:
       description: |
-        Complex data type base class (documentation-only for DeltaColumn.type).
-        The `type` field discriminates between array, map, and struct.
-        Primitive types (e.g., "long", "string", "decimal(10,2)") are bare
-        JSON strings, not DataType objects.
+        Column data type. For primitive types, a bare JSON string (e.g., "long", "string",
+        "decimal(10,2)"). For complex types, a JSON object with a "type" discriminator
+        field ("array", "map", or "struct").
       discriminator:
         propertyName: type
         mapping:
           array: '#/components/schemas/ArrayType'
           map: '#/components/schemas/MapType'
           struct: '#/components/schemas/StructType'
+          decimal: '#/components/schemas/DecimalType'
       type: object
       required:
         - type
       properties:
         type:
           type: string
-          description: Type identifier (array, map, or struct)
+          description: Type identifier
+
+    PrimitiveType:
+      description: |
+        Primitive data type (e.g., "long", "string", "boolean"). On the wire,
+        primitive types are bare JSON strings. The custom DeltaTypeDeserializer
+        converts them into PrimitiveType instances.
+      allOf:
+        - $ref: '#/components/schemas/DeltaType'
+
+    DecimalType:
+      description: |
+        Decimal data type with precision and scale. On the wire, represented as
+        "decimal(precision,scale)" (e.g., "decimal(10,2)"). The custom
+        DeltaTypeDeserializer parses the string into a DecimalType instance.
+      allOf:
+        - $ref: '#/components/schemas/DeltaType'
+      properties:
+        precision:
+          type: integer
+          description: Total number of digits
+        scale:
+          type: integer
+          description: Number of digits after the decimal point
+      required:
+        - precision
+        - scale
 
     ArrayType:
-      allOf:
-        - $ref: '#/components/schemas/DataType'
       description: Array type containing elements of a specific type
+      allOf:
+        - $ref: '#/components/schemas/DeltaType'
       properties:
-        type:
-          type: string
-          const: "array"
-        elementType:
-          description: Data type of array elements (string | DataType)
-        containsNull:
+        element-type:
+          $ref: '#/components/schemas/DeltaType'
+        contains-null:
           type: boolean
           description: Whether array elements can be null
           default: true
       required:
-        - type
-        - elementType
-        - containsNull
-      example:
-        type: "array"
-        elementType: "string"
-        containsNull: true
+        - element-type
+        - contains-null
 
     MapType:
-      allOf:
-        - $ref: '#/components/schemas/DataType'
       description: Map type with key-value pairs
+      allOf:
+        - $ref: '#/components/schemas/DeltaType'
       properties:
-        type:
-          type: string
-          const: "map"
-        keyType:
-          description: Data type of map keys (string | DataType)
-        valueType:
-          description: Data type of map values (string | DataType)
-        valueContainsNull:
+        key-type:
+          $ref: '#/components/schemas/DeltaType'
+        value-type:
+          $ref: '#/components/schemas/DeltaType'
+        value-contains-null:
           type: boolean
           description: Whether map values can be null
           default: true
       required:
-        - type
-        - keyType
-        - valueType
-        - valueContainsNull
-      example:
-        type: "map"
-        keyType: "string"
-        valueType: "integer"
-        valueContainsNull: true
+        - key-type
+        - value-type
+        - value-contains-null
 
     StructType:
-      allOf:
-        - $ref: '#/components/schemas/DataType'
       description: Struct type containing named fields
+      allOf:
+        - $ref: '#/components/schemas/DeltaType'
       properties:
-        type:
-          type: string
-          const: "struct"
         fields:
           type: array
           description: Array of field definitions
           items:
-            $ref: '#/components/schemas/DeltaColumn'
+            $ref: '#/components/schemas/StructField'
       required:
-        - type
         - fields
       example:
         type: "struct"
