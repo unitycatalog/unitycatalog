@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
+
 import io.unitycatalog.server.delta.model.DeltaCommit;
 import io.unitycatalog.server.delta.model.LoadTableResponse;
 import io.unitycatalog.server.delta.model.StructType;
@@ -214,7 +216,7 @@ public class TableRepository {
         },
         "Failed to load table",
         /* readOnly = */ true,
-        Optional.of(java.sql.Connection.TRANSACTION_REPEATABLE_READ));
+        Optional.of(TRANSACTION_REPEATABLE_READ));
   }
 
   private TableMetadata buildTableMetadata(

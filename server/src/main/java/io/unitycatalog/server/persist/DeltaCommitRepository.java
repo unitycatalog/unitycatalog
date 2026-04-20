@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
+
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfos;
@@ -219,7 +221,7 @@ public class DeltaCommitRepository {
         },
         "Failed to get commits",
         /* readOnly= */ true,
-        Optional.of(java.sql.Connection.TRANSACTION_REPEATABLE_READ));
+        Optional.of(TRANSACTION_REPEATABLE_READ));
   }
 
   /**
