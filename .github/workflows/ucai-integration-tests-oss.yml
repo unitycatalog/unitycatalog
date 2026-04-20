@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10']
+        python-version: ['3.10', '3.11']
         pydantic-version: [1, 2]
     timeout-minutes: 40
     defaults:
@@ -58,7 +58,7 @@ jobs:
           fi
           uv run pytest tests/test_openai_toolkit_oss.py
       - name: Run LangChain OSS Integration Tests
-        if: ${{ matrix.python-version == '3.10' && matrix.pydantic-version == 2 }}
+        if: matrix.pydantic-version == 2
         working-directory: ai/integrations/langchain
         run: |
           uv sync --extra dev
@@ -72,13 +72,13 @@ jobs:
           fi
           uv run pytest tests/test_anthropic_toolkit_oss.py
       - name: Run AutoGen OSS Integration Tests
-        if: matrix.python-version == '3.10'
+
         working-directory: ai/integrations/autogen
         run: |
           uv sync --extra dev
           uv run pytest tests/test_autogen_toolkit_oss.py
       - name: Run CrewAI OSS Integration Tests
-        if: matrix.python-version == '3.10'
+
         working-directory: ai/integrations/crewai
         run: |
           uv sync --extra dev
@@ -92,19 +92,19 @@ jobs:
           fi
           uv run pytest tests/test_gemini_toolkit_oss.py
       - name: Run LiteLLM OSS Integration Tests
-        if: matrix.python-version == '3.10'
+
         working-directory: ai/integrations/litellm
         run: |
           uv sync --extra dev
           uv run pytest tests/test_litellm_toolkit_oss.py
       - name: Run Dspy OSS Integration Tests
-        if: matrix.python-version == '3.10'
+
         working-directory: ai/integrations/dspy
         run: |
           uv sync --extra dev
           uv run pytest tests/test_dspy_toolkit_oss.py
       - name: Run LlamaIndex OSS Integration Tests
-        if: matrix.python-version == '3.10'
+
         working-directory: ai/integrations/llama_index
         run: |
           uv sync --extra dev
