@@ -1,0 +1,38 @@
+name: Spark Tests (DRC enabled)
+
+# Runs the Spark connector test suite with the Delta REST Catalog flag
+# (spark.sql.catalog.<cat>.deltaRestApi.enabled) turned on. Future PRs will
+# plumb this env var through the test harness to toggle DRC routing in
+# integration tests. For now this job proves the flag-on path compiles and
+# existing tests stay green with the system property set.
+
+on:
+  push:
+    branches: [ "main", "branch-*" ]
+  pull_request:
+    branches: [ "main", "branch-*" ]
+
+permissions:
+  contents: read
+
+jobs:
+  spark-tests-drc-enabled:
+    runs-on: ubuntu-latest
+    name: Spark tests with deltaRestApi.enabled=true (Spark 4.0.0, Delta 4.1.0)
+
+    env:
+      DELTA_REST_API_ENABLED: "true"
+
+    steps:
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+    - name: Set up JDK 17
+      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Build and publish to local Maven
+      run: build/sbt -DsparkVersion=4.0.0 -DdeltaVersion=4.1.0 -J-Xmx2G clean package publishM2
+
+    - name: Run Spark connector tests with DRC flag
+      run: build/sbt -DsparkVersion=4.0.0 -DdeltaVersion=4.1.0 -DdeltaRestApiEnabled=true -J-Xmx2G spark/test
