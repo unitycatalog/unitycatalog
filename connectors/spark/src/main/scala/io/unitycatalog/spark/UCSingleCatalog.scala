@@ -40,6 +40,7 @@ class UCSingleCatalog
   private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
   private[this] var credScopedFsEnabled: Boolean = false
+  private[this] var deltaRestApiEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
@@ -61,6 +62,9 @@ class UCSingleCatalog
     val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
       OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
+    deltaRestApiEnabled = OptionsUtil.getBoolean(options,
+      OptionsUtil.DELTA_REST_API_ENABLED,
+      OptionsUtil.DEFAULT_DELTA_REST_API_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
