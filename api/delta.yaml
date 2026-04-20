@@ -618,8 +618,8 @@ components:
         config:
           type: object
           description: |
-            Cloud provider-specific credential configuration as string key-value pairs.
-            Not all keys are present -- only keys for the relevant cloud provider are included.
+            Cloud provider-specific credential configuration.
+            Only keys for the relevant cloud provider are populated; the others are null.
           properties:
             s3.access-key-id:
               type: string
@@ -636,8 +636,6 @@ components:
             gcs.oauth-token:
               type: string
               description: GCP OAuth token
-          additionalProperties:
-            type: string
         expiration-time-ms:
           type: integer
           format: int64

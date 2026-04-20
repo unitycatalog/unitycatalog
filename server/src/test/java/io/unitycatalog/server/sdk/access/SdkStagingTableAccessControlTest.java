@@ -23,6 +23,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -113,6 +114,26 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
     // User B (non-owner) should fail to get temporary credentials with PERMISSION_DENIED
     assertThatExceptionOfType(ApiException.class)
         .isThrownBy(() -> userBTempCredsApi.generateTemporaryTableCredentials(tempCredRequest))
+        .satisfies(
+            ex ->
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.PERMISSION_DENIED.getHttpStatus().code()));
+
+    // Delta REST getStagingTableCredentials follows the same OWNER-only authz.
+    io.unitycatalog.client.delta.api.TemporaryCredentialsApi userADeltaCredsApi =
+        new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(
+            TestUtils.createApiClient(userAConfig));
+    io.unitycatalog.client.delta.api.TemporaryCredentialsApi userBDeltaCredsApi =
+        new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(
+            TestUtils.createApiClient(userBConfig));
+    UUID stagingId = UUID.fromString(stagingTableInfo.getId());
+
+    // User A (owner) -> allowed
+    assertThat(userADeltaCredsApi.getStagingTableCredentials(stagingId)).isNotNull();
+
+    // User B (non-owner) -> denied
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> userBDeltaCredsApi.getStagingTableCredentials(stagingId))
         .satisfies(
             ex ->
                 assertThat(ex.getCode())
