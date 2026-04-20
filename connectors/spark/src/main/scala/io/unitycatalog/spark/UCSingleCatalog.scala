@@ -34,6 +34,7 @@ import scala.language.existentials
 class UCSingleCatalog
   extends StagingTableCatalog
   with SupportsNamespaces
+  with io.unitycatalog.client.delta.DeltaRestClientProvider
   with Logging {
 
   private[this] var uri: URI = null
@@ -45,6 +46,9 @@ class UCSingleCatalog
   private[this] var tablesApi: TablesApi = null
 
   @volatile private var delegate: TableCatalog = null
+
+  /** Returns the internal delegate catalog (DeltaCatalog or UCProxy). */
+  def getDelegateCatalog(): TableCatalog = delegate
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get(OptionsUtil.URI)
@@ -87,6 +91,14 @@ class UCSingleCatalog
   }
 
   override def name(): String = delegate.name()
+
+  override def getDeltaTablesApi(): io.unitycatalog.client.delta.api.TablesApi = {
+    delegate match {
+      case provider: io.unitycatalog.client.delta.DeltaRestClientProvider =>
+        provider.getDeltaTablesApi()
+      case _ => null
+    }
+  }
 
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
@@ -317,15 +329,13 @@ class UCSingleCatalog
     throw new AssertionError("deprecated `createTable` should not be called")
   }
 
-  override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
-  }
+  override def alterTable(ident: Identifier, changes: TableChange*): Table =
+    delegate.alterTable(ident, changes: _*)
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
 
-  override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
-    throw new UnsupportedOperationException("Renaming a table is not supported yet")
-  }
+  override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit =
+    delegate.renameTable(oldIdent, newIdent)
 
   override def listNamespaces(): Array[Array[String]] = {
     delegate.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
@@ -548,9 +558,20 @@ private class UCProxy(
     serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
+    temporaryCredentialsApi: TemporaryCredentialsApi)
+  extends TableCatalog
+  with SupportsNamespaces
+  with io.unitycatalog.client.delta.DeltaRestClientProvider
+  with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
+  // Delta REST Catalog API client for DRC-enabled operations
+  private lazy val deltaTablesApi =
+    new io.unitycatalog.client.delta.api.TablesApi(apiClient)
+
+  override def getDeltaTablesApi(): io.unitycatalog.client.delta.api.TablesApi = deltaTablesApi
+
+  override def getApiClient(): Object = apiClient
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
@@ -570,8 +591,12 @@ private class UCProxy(
     val tables = ArrayBuffer.empty[Identifier]
     var pageToken: String = null
     do {
-      val response = tablesApi.listTables(catalogName, schemaName, /* limit */ 0, pageToken)
-      tables ++= response.getTables.asScala.map(table => Identifier.of(namespace, table.getName))
+      val response = deltaTablesApi.listTables(
+        catalogName, schemaName, /* maxResults */ null, pageToken)
+      if (response.getIdentifiers != null) {
+        tables ++= response.getIdentifiers.asScala.map(
+          id => Identifier.of(namespace, id.getName))
+      }
       pageToken = response.getNextPageToken
     } while (pageToken != null && pageToken.nonEmpty)
     tables.toArray
@@ -802,16 +827,28 @@ private class UCProxy(
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    // For Delta tables, ALTER TABLE is handled by AbstractDeltaCatalog.alterTable()
+    // which runs Delta commands and commits via DRC. This path is only reached
+    // for non-Delta tables, which we don't support yet.
+    throw new UnsupportedOperationException("Altering a non-Delta table is not supported yet")
   }
 
   override def dropTable(ident: Identifier): Boolean = {
-    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
-    if (ret == 200) true else false
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    try {
+      deltaTablesApi.deleteTable(this.name, ident.namespace()(0), ident.name())
+      true
+    } catch {
+      case _: Exception => false
+    }
   }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
-    throw new UnsupportedOperationException("Renaming a table is not supported yet")
+    UCSingleCatalog.checkUnsupportedNestedNamespace(oldIdent.namespace())
+    val request = new io.unitycatalog.client.delta.model.RenameTableRequest()
+    request.setNewName(newIdent.name())
+    deltaTablesApi.renameTable(
+      this.name, oldIdent.namespace()(0), oldIdent.name(), request)
   }
 
   override def listNamespaces(): Array[Array[String]] = {
