@@ -221,9 +221,11 @@ public class TableRepository {
       Session session, TableInfoDAO dao, String catalog, String schema, String table) {
     TableMetadata metadata = new TableMetadata();
     Long updatedAt = dao.getUpdatedAt() != null ? dao.getUpdatedAt().getTime() : null;
-    // When updatedAt is null (shouldn't happen for a persisted table but defensively handled),
-    // the etag becomes "etag-null" which is a stable distinct value for that edge case.
-    metadata.setEtag("etag-" + updatedAt);
+    // Normal case: etag keyed on the table's last update time. If updatedAt is missing
+    // (shouldn't happen for a persisted table, but defensively handled), fall back to the
+    // table UUID so the etag stays unique per table rather than collapsing to "etag-null"
+    // across rows.
+    metadata.setEtag(updatedAt != null ? "etag-" + updatedAt : "etag-" + dao.getId());
     metadata.setDataSourceFormat(toDeltaFormat(dao.getDataSourceFormat()));
     metadata.setTableType(toDeltaTableType(dao.getType()));
     metadata.setTableUuid(dao.getId());
@@ -281,14 +283,18 @@ public class TableRepository {
             .toList();
     for (int i = 0; i < partitionInfos.size(); i++) {
       if (partitionInfos.get(i).getPartitionIndex() != i) {
+        // Non-contiguous indices mean the persisted partition spec is corrupt. Emit an empty
+        // partition list rather than a possibly-partial one the client can't reconcile.
         LOGGER.warn(
-            "Table {}.{}.{} has invalid partition indices, expected {} but got {}",
+            "Table {}.{}.{} has invalid partition indices, expected {} but got {}; "
+                + "emitting empty partition columns",
             catalog,
             schema,
             table,
             i,
             partitionInfos.get(i).getPartitionIndex());
-        break;
+        metadata.setPartitionColumns(List.of());
+        return;
       }
     }
     metadata.setPartitionColumns(partitionInfos.stream().map(ColumnInfo::getName).toList());
