@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10']
+        python-version: ['3.10', '3.11']
     timeout-minutes: 20
     defaults:
       run:
@@ -61,14 +61,14 @@ jobs:
       - name: Test installation from tarball
         env:
           SDIST_PATH: ${{ steps.build-dist.outputs.sdist-path }}
-          UV_EXCLUDE_NEWER: ""  # locally built artifact, not from PyPI
         run: |
+          unset UV_EXCLUDE_NEWER  # locally built artifact, not from PyPI
           uv pip install --system "$SDIST_PATH"
           python -c "import unitycatalog.ai.core; print(unitycatalog.ai.core.__version__)"
       - name: Test installation from wheel
         env:
           WHEEL_PATH: ${{ steps.build-dist.outputs.wheel-path }}
-          UV_EXCLUDE_NEWER: ""  # locally built artifact, not from PyPI
         run: |
+          unset UV_EXCLUDE_NEWER  # locally built artifact, not from PyPI
           uv pip install --system --reinstall "$WHEEL_PATH"
           python -c "import unitycatalog.ai.core; print(unitycatalog.ai.core.__version__)"
