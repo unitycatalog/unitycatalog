@@ -43,68 +43,72 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install uv
         run: bash "$GITHUB_WORKSPACE/.github/scripts/install-uv.sh"
-      - name: Install Pydantic dependencies
-        run: |
-          if [ ${{ matrix.pydantic-version }} == 1 ]; then
-              uv pip install --system 'pydantic<2'
-          else
-              uv pip install --system 'pydantic<3,>=2'
-          fi
       - name: Install Unity Catalog Python Libraries
         run: |
           dev/install_client.sh
-      - name: Install Unity Catalog AI Core Library
-        run: |
-          uv pip install --system 'core/.'
-          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
-      - name: Install mlflow
-        run: |
-          uv pip install --system 'mlflow>=3.3.0,<=3.10.0'
       - name: Start Unity Catalog Server
         run: |
           dev/start_unitycatalog.sh
       - name: Run OpenAI OSS Integration Tests
+        working-directory: ai/integrations/openai
         run: |
-          uv pip install --system 'integrations/openai[dev]'
-          uv run pytest integrations/openai/tests/test_openai_toolkit_oss.py
+          uv sync --extra dev
+          if [ ${{ matrix.pydantic-version }} == 1 ]; then
+            uv pip install 'pydantic<2'
+          fi
+          uv run pytest tests/test_openai_toolkit_oss.py
       - name: Run LangChain OSS Integration Tests
         if: ${{ matrix.python-version == '3.10' && matrix.pydantic-version == 2 }}
+        working-directory: ai/integrations/langchain
         run: |
-          uv pip install --system 'integrations/langchain[dev]'
-          uv run pytestintegrations/langchain/tests/test_langchain_toolkit_oss.py
+          uv sync --extra dev
+          uv run pytest tests/test_langchain_toolkit_oss.py
       - name: Run Anthropic OSS Integration Tests
+        working-directory: ai/integrations/anthropic
         run: |
-          uv pip install --system 'integrations/anthropic[dev]'
-          uv run pytestintegrations/anthropic/tests/test_anthropic_toolkit_oss.py
+          uv sync --extra dev
+          if [ ${{ matrix.pydantic-version }} == 1 ]; then
+            uv pip install 'pydantic<2'
+          fi
+          uv run pytest tests/test_anthropic_toolkit_oss.py
       - name: Run AutoGen OSS Integration Tests
         if: matrix.python-version == '3.10'
+        working-directory: ai/integrations/autogen
         run: |
-          uv pip install --system 'integrations/autogen[dev]'
-          uv run pytestintegrations/autogen/tests/test_autogen_toolkit_oss.py
+          uv sync --extra dev
+          uv run pytest tests/test_autogen_toolkit_oss.py
       - name: Run CrewAI OSS Integration Tests
         if: matrix.python-version == '3.10'
+        working-directory: ai/integrations/crewai
         run: |
-          uv pip install --system 'integrations/crewai[dev]'
-          uv run pytestintegrations/crewai/tests/test_crewai_toolkit_oss.py
+          uv sync --extra dev
+          uv run pytest tests/test_crewai_toolkit_oss.py
       - name: Run Gemini OSS Integration Tests
+        working-directory: ai/integrations/gemini
         run: |
-          uv pip install --system 'integrations/gemini[dev]'
-          uv run pytestintegrations/gemini/tests/test_gemini_toolkit_oss.py
+          uv sync --extra dev
+          if [ ${{ matrix.pydantic-version }} == 1 ]; then
+            uv pip install 'pydantic<2'
+          fi
+          uv run pytest tests/test_gemini_toolkit_oss.py
       - name: Run LiteLLM OSS Integration Tests
         if: matrix.python-version == '3.10'
+        working-directory: ai/integrations/litellm
         run: |
-          uv pip install --system 'integrations/litellm[dev]'
-          uv run pytestintegrations/litellm/tests/test_litellm_toolkit_oss.py
+          uv sync --extra dev
+          uv run pytest tests/test_litellm_toolkit_oss.py
       - name: Run Dspy OSS Integration Tests
         if: matrix.python-version == '3.10'
+        working-directory: ai/integrations/dspy
         run: |
-          uv pip install --system 'integrations/dspy[dev]'
-          uv run pytestintegrations/dspy/tests/test_dspy_toolkit_oss.py
+          uv sync --extra dev
+          uv run pytest tests/test_dspy_toolkit_oss.py
       - name: Run LlamaIndex OSS Integration Tests
         if: matrix.python-version == '3.10'
+        working-directory: ai/integrations/llama_index
         run: |
-          uv pip install --system 'integrations/llama_index[dev]'
-          uv run pytestintegrations/llama_index/tests/test_llama_index_toolkit_oss.py
+          uv sync --extra dev
+          uv run pytest tests/test_llama_index_toolkit_oss.py
       - name: Stop Unity Catalog Server
         run: |
           dev/teardown_server.sh
