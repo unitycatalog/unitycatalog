@@ -3,8 +3,11 @@ package io.unitycatalog.server.sdk.access;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.delta.model.CredentialOperation;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -12,6 +15,7 @@ import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
@@ -57,6 +61,12 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
         new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(regular1Config));
     io.unitycatalog.client.delta.api.TablesApi regular2DeltaApi =
         new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(regular2Config));
+
+    // Delta REST credential clients for getTableCredentials tests
+    TemporaryCredentialsApi regular1DeltaCredsApi =
+        new TemporaryCredentialsApi(TestUtils.createApiClient(regular1Config));
+    TemporaryCredentialsApi regular2DeltaCredsApi =
+        new TemporaryCredentialsApi(TestUtils.createApiClient(regular2Config));
 
     // Grant USE CATALOG and USE SCHEMA to principal-1
     grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
@@ -151,6 +161,36 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
 
     // loadTable (regular-2) -> use schema, use catalog, select -> allowed
     assertThat(regular2DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1")).isNotNull();
+
+    // Delta getTableCredentials authz: READ requires SELECT, READ_WRITE requires MODIFY
+    // getTableCredentials READ (regular-1) -> use catalog, use schema, but no SELECT -> denied
+    assertPermissionDenied(
+        () ->
+            regular1DeltaCredsApi.getTableCredentials(
+                CredentialOperation.READ, "cat_pr1", "sch_pr1", "tbl_pr1"));
+
+    // getTableCredentials READ_WRITE (regular-2) -> has SELECT but not MODIFY -> denied
+    assertPermissionDenied(
+        () ->
+            regular2DeltaCredsApi.getTableCredentials(
+                CredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1"));
+
+    // Grant MODIFY to regular-2 so the READ_WRITE path passes authz.
+    grantPermissions(
+        "regular-2@localhost", SecurableType.TABLE, "cat_pr1.sch_pr1.tbl_pr1", Privileges.MODIFY);
+
+    // getTableCredentials READ_WRITE (regular-2) -> SELECT + MODIFY -> authz passes.
+    // Credential vending against /tmp/tbl_pr1 will fail with a non-authz error (no cloud config);
+    // authz test cares only that it's not PERMISSION_DENIED.
+    try {
+      regular2DeltaCredsApi.getTableCredentials(
+          CredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1");
+    } catch (ApiException ex) {
+      int forbiddenCode = ErrorCode.PERMISSION_DENIED.getHttpStatus().code();
+      assertThat(ex.getCode())
+          .as("expected non-403 after authz passes")
+          .isNotEqualTo(forbiddenCode);
+    }
 
     // grant CREATE SCHEMA to regular-2
     grantPermissions(

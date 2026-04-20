@@ -102,6 +102,29 @@ public class TableRepository {
   }
 
   /**
+   * Looks up the storage location for a staging table by ID. Unlike {@link
+   * #getStorageLocationForTableOrStagingTable}, this rejects regular table UUIDs so endpoints
+   * scoped to staging tables don't silently accept regular-table inputs.
+   *
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no staging table exists with this ID.
+   */
+  public NormalizedURL getStagingTableStorageLocation(UUID stagingTableId) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LOGGER.debug("Getting storage location of staging table by id: {}", stagingTableId);
+          StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, stagingTableId);
+          if (stagingTableDAO == null) {
+            throw new BaseException(
+                ErrorCode.TABLE_NOT_FOUND, "Staging table not found with id: " + stagingTableId);
+          }
+          return NormalizedURL.from(stagingTableDAO.getStagingLocation());
+        },
+        "Failed to get storage location of staging table",
+        /* readOnly = */ true);
+  }
+
+  /**
    * Retrieves the schema ID and catalog ID for a table or staging table by its ID. First attempts
    * to get IDs associated with a regular table with the given ID, then falls back to searching for
    * a staging table if no regular table is found. NOTE: Similar to
