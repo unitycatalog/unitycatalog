@@ -49,14 +49,16 @@ import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.S
  * <p>1. {@code @AuthorizeExpression} - This defines a Spring Expression Language expression to
  * evaluate to make an authorization decision.
  *
- * <p>2. {@code @AuthorizeResourceKey} - This annotation is used to define request and payload
- * parameters for the authorization context. These are typically things like catalog, schema and
- * table names. This annotation may be used at both the method and method parameter context. It may
- * be specified more than once per method to map parameters to object keys.
+ * <p>2. {@code @AuthorizeResourceKey} - This annotation maps a request value to a unity catalog
+ * resource (catalog, schema, table, etc.) for the authorization context. The source is chosen by
+ * whether the annotated method parameter also carries {@code @Param}: if present, the value is
+ * read from the URL query or path; if absent, from the request body field named by
+ * {@code @AuthorizeResourceKey.key()}. May be used at the method level (server-level resources
+ * like METASTORE) or at the parameter level, and may be specified more than once per method.
  *
- * <p>3. {@code @AuthorizeKey} - This annotation is used to define request and payload parameters
- * for that are usually not resources but parameters of the operation. For example, table_type,
- * operation, etc.
+ * <p>3. {@code @AuthorizeKey} - Works like {@code @AuthorizeResourceKey} for source selection, but
+ * for non-resource request values (operation mode, table type, flag, etc.) exposed directly as a
+ * SpEL variable instead of being mapped to a resource identifier.
  */
 public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
