@@ -2,6 +2,8 @@ package io.unitycatalog.spark
 
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.auth.TokenProvider
+import io.unitycatalog.client.delta.DeltaRestClientProvider
+import io.unitycatalog.client.delta.api.{TablesApi => DeltaTablesApi}
 import io.unitycatalog.client.model.{TableInfo, _}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
@@ -34,6 +36,7 @@ import scala.language.existentials
 class UCSingleCatalog
   extends StagingTableCatalog
   with SupportsNamespaces
+  with DeltaRestClientProvider
   with Logging {
 
   private[this] var uri: URI = null
@@ -71,7 +74,8 @@ class UCSingleCatalog
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
     val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
-      serverSidePlanningEnabled, apiClient, tablesApi, temporaryCredentialsApi)
+      serverSidePlanningEnabled, deltaRestApiEnabled,
+      apiClient, tablesApi, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -91,6 +95,13 @@ class UCSingleCatalog
   }
 
   override def name(): String = delegate.name()
+
+  override def getDeltaTablesApi(): DeltaTablesApi = delegate match {
+    case provider: DeltaRestClientProvider => provider.getDeltaTablesApi()
+    case _ => null
+  }
+
+  override def getApiClient(): Object = apiClient
 
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
@@ -550,11 +561,22 @@ private class UCProxy(
     renewCredEnabled: Boolean,
     credScopedFsEnabled: Boolean,
     serverSidePlanningEnabled: Boolean,
+    deltaRestApiEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
+    temporaryCredentialsApi: TemporaryCredentialsApi)
+  extends TableCatalog
+  with SupportsNamespaces
+  with DeltaRestClientProvider
+  with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
+  private[this] lazy val deltaTablesApi: DeltaTablesApi = new DeltaTablesApi(apiClient)
+
+  override def getDeltaTablesApi(): DeltaTablesApi =
+    if (deltaRestApiEnabled) deltaTablesApi else null
+
+  override def getApiClient(): Object = apiClient
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
