@@ -1,5 +1,13 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
+
+import io.unitycatalog.server.delta.model.DeltaCommit;
+import io.unitycatalog.server.delta.model.LoadTableResponse;
+import io.unitycatalog.server.delta.model.StructType;
+import io.unitycatalog.server.delta.model.TableMetadata;
+import io.unitycatalog.server.delta.model.UniformMetadata;
+import io.unitycatalog.server.delta.model.UniformMetadataIceberg;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -8,6 +16,7 @@ import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
@@ -17,18 +26,21 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.TableProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -161,6 +173,195 @@ public class TableRepository {
         /* readOnly = */ true);
   }
 
+  /**
+   * Load a table for the Delta REST Catalog API in a single REPEATABLE_READ transaction.
+   *
+   * <p>Returns a {@link LoadTableResponse} containing:
+   *
+   * <ul>
+   *   <li>Table metadata (format, type, location, columns, partition columns, properties)
+   *   <li>Unbackfilled commits (managed Delta tables only; empty for external tables)
+   *   <li>Uniform metadata (Iceberg location/version if present)
+   * </ul>
+   *
+   * <p>Column parsing is best-effort: corrupt typeJson data yields an empty schema rather than
+   * failing the entire response.
+   */
+  public LoadTableResponse loadTableForDelta(String catalog, String schema, String table) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTable(session, catalog, schema, table);
+          if (dao == null) {
+            throw new BaseException(
+                ErrorCode.TABLE_NOT_FOUND,
+                "Table not found: " + catalog + "." + schema + "." + table);
+          }
+
+          TableMetadata metadata = buildTableMetadata(session, dao, catalog, schema, table);
+
+          LoadTableResponse response = new LoadTableResponse();
+          response.setMetadata(metadata);
+
+          // Commits (managed Delta tables only)
+          if (TableType.MANAGED.toString().equals(dao.getType())
+              && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
+            populateCommitsForDelta(
+                response, repositories.getDeltaCommitRepository(), session, dao.getId());
+          }
+
+          populateUniformMetadata(response, dao);
+
+          return response;
+        },
+        "Failed to load table",
+        /* readOnly = */ true,
+        Optional.of(TRANSACTION_REPEATABLE_READ));
+  }
+
+  private TableMetadata buildTableMetadata(
+      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
+    TableMetadata metadata = new TableMetadata();
+    Long updatedAt = dao.getUpdatedAt() != null ? dao.getUpdatedAt().getTime() : null;
+    // Normal case: etag keyed on the table's last update time. If updatedAt is missing
+    // (shouldn't happen for a persisted table, but defensively handled), fall back to the
+    // table UUID so the etag stays unique per table rather than collapsing to "etag-null"
+    // across rows.
+    metadata.setEtag(updatedAt != null ? "etag-" + updatedAt : "etag-" + dao.getId());
+    metadata.setDataSourceFormat(toDeltaFormat(dao.getDataSourceFormat()));
+    metadata.setTableType(toDeltaTableType(dao.getType()));
+    metadata.setTableUuid(dao.getId());
+    metadata.setLocation(NormalizedURL.normalize(dao.getUrl()));
+    metadata.setCreatedTime(dao.getCreatedAt() != null ? dao.getCreatedAt().getTime() : null);
+    metadata.setUpdatedTime(updatedAt);
+    metadata.setSecurableType(io.unitycatalog.server.delta.model.SecurableType.TABLE);
+
+    // Columns -- best-effort; corrupt data should not fail the entire response
+    StructType emptySchema = new StructType().fields(List.of());
+    List<ColumnInfo> cols = List.of();
+    try {
+      cols = ColumnInfoDAO.toList(dao.getColumns());
+      if (cols != null && !cols.isEmpty()) {
+        metadata.setColumns(
+            new StructType().fields(cols.stream().map(ColumnUtils::toStructField).toList()));
+      } else {
+        metadata.setColumns(emptySchema);
+      }
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Failed to parse columns for table {}.{}.{}, returning empty schema",
+          catalog,
+          schema,
+          table,
+          e);
+      metadata.setColumns(emptySchema);
+    }
+
+    populatePartitionColumns(metadata, cols, catalog, schema, table);
+
+    List<PropertyDAO> propDAOs =
+        PropertyRepository.findProperties(session, dao.getId(), Constants.TABLE);
+    Map<String, String> props = PropertyDAO.toMap(propDAOs);
+    metadata.setProperties(props);
+
+    // last-commit-version and last-commit-timestamp track only metadata-changing commits
+    // (delta.lastUpdateVersion / delta.lastCommitTimestamp) and are written by the commit path.
+    // They are distinct from CommitQueryResult.latestTableVersion, which advances on every
+    // commit including data-only ones. Reading from table properties preserves that distinction.
+    parseLongProperty(props, TableProperties.LAST_UPDATE_VERSION)
+        .ifPresent(metadata::setLastCommitVersion);
+    parseLongProperty(props, TableProperties.LAST_COMMIT_TIMESTAMP)
+        .ifPresent(metadata::setLastCommitTimestampMs);
+
+    return metadata;
+  }
+
+  private static void populatePartitionColumns(
+      TableMetadata metadata, List<ColumnInfo> cols, String catalog, String schema, String table) {
+    List<ColumnInfo> partitionInfos =
+        cols.stream()
+            .filter(c -> c.getPartitionIndex() != null)
+            .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
+            .toList();
+    for (int i = 0; i < partitionInfos.size(); i++) {
+      if (partitionInfos.get(i).getPartitionIndex() != i) {
+        // Non-contiguous indices mean the persisted partition spec is corrupt. Emit an empty
+        // partition list rather than a possibly-partial one the client can't reconcile.
+        LOGGER.warn(
+            "Table {}.{}.{} has invalid partition indices, expected {} but got {}; "
+                + "emitting empty partition columns",
+            catalog,
+            schema,
+            table,
+            i,
+            partitionInfos.get(i).getPartitionIndex());
+        metadata.setPartitionColumns(List.of());
+        return;
+      }
+    }
+    metadata.setPartitionColumns(partitionInfos.stream().map(ColumnInfo::getName).toList());
+  }
+
+  private static Optional<Long> parseLongProperty(Map<String, String> props, String key) {
+    String value = props.get(key);
+    if (value == null) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(Long.parseLong(value));
+    } catch (NumberFormatException e) {
+      LOGGER.warn("Invalid long value for property {}: {}", key, value);
+      return Optional.empty();
+    }
+  }
+
+  /** Populate unbackfilled commits from DeltaCommitRepository into the response. */
+  private static void populateCommitsForDelta(
+      LoadTableResponse response, DeltaCommitRepository commitRepo, Session session, UUID tableId) {
+    DeltaCommitRepository.CommitQueryResult result =
+        commitRepo.getUnbackfilledCommits(session, tableId);
+    response.setLatestTableVersion(result.latestTableVersion());
+
+    List<DeltaCommit> commits =
+        result.commits().stream()
+            .map(
+                c ->
+                    new DeltaCommit()
+                        .version(c.getCommitVersion())
+                        .timestamp(c.getCommitTimestamp().getTime())
+                        .fileName(c.getCommitFilename())
+                        .fileSize(c.getCommitFilesize())
+                        .fileModificationTimestamp(
+                            c.getCommitFileModificationTimestamp().getTime()))
+            .toList();
+    response.setCommits(commits);
+  }
+
+  private static void populateUniformMetadata(LoadTableResponse response, TableInfoDAO dao) {
+    String uniformLocation = dao.getUniformIcebergMetadataLocation();
+    if (uniformLocation == null) {
+      return;
+    }
+    UniformMetadataIceberg iceberg = new UniformMetadataIceberg().metadataLocation(uniformLocation);
+    if (dao.getUniformIcebergConvertedDeltaVersion() != null) {
+      iceberg.convertedDeltaVersion(dao.getUniformIcebergConvertedDeltaVersion());
+    }
+    if (dao.getUniformIcebergConvertedDeltaTimestamp() != null) {
+      iceberg.convertedDeltaTimestamp(dao.getUniformIcebergConvertedDeltaTimestamp().getTime());
+    }
+    response.setUniform(new UniformMetadata().iceberg(iceberg));
+  }
+
+  // Delta model enum converters (avoid FQ names for types that
+  // conflict with io.unitycatalog.server.model.*)
+  private static io.unitycatalog.server.delta.model.DataSourceFormat toDeltaFormat(String value) {
+    return io.unitycatalog.server.delta.model.DataSourceFormat.fromValue(value);
+  }
+
+  private static io.unitycatalog.server.delta.model.TableType toDeltaTableType(String value) {
+    return io.unitycatalog.server.delta.model.TableType.fromValue(value);
+  }
+
   public String getTableUniformMetadataLocation(
       Session session, String catalogName, String schemaName, String tableName) {
     TableInfoDAO dao = findTable(session, catalogName, schemaName, tableName);
@@ -180,7 +381,7 @@ public class TableRepository {
     List<ColumnInfo> columnInfos =
         createTable.getColumns().stream()
             .map(c -> c.typeText(c.getTypeText().toLowerCase(Locale.ROOT)))
-            .collect(Collectors.toList());
+            .toList();
     Long createTime = System.currentTimeMillis();
     String fullName = getTableFullName(createTable);
     LOGGER.debug("Creating table: {}", fullName);
