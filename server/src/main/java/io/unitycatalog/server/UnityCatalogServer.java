@@ -12,10 +12,12 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
+import com.linecorp.armeria.server.annotation.RequestConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.AuthorizationGateConverter;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.delta.serde.DeltaTypeModule;
@@ -191,8 +193,8 @@ public class UnityCatalogServer {
     TemporaryPathCredentialsService temporaryPathCredentialsService =
         new TemporaryPathCredentialsService(storageCredentialVendor);
 
-    JacksonRequestConverterFunction requestConverterFunction =
-        new JacksonRequestConverterFunction(
+    RequestConverterFunction requestConverterFunction =
+        gatedJackson(
             JsonMapper.builder()
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .build());
@@ -257,6 +259,17 @@ public class UnityCatalogServer {
     addDeltaApiServices(armeriaServerBuilder, authorizer, repositories, storageCredentialVendor);
   }
 
+  /**
+   * Wraps a Jackson body converter with {@link AuthorizationGateConverter}. Every annotated
+   * service's request converter must go through this so the PAYLOAD-source auth check fires before
+   * body binding. Using a wrapper (rather than registering the gate as a separate chain element per
+   * {@code annotatedService(...)} call) makes the gate impossible to forget when a new service is
+   * added.
+   */
+  private static RequestConverterFunction gatedJackson(ObjectMapper mapper) {
+    return new AuthorizationGateConverter(new JacksonRequestConverterFunction(mapper));
+  }
+
   private void addIcebergApiServices(
       ServerBuilder armeriaServerBuilder,
       ServerProperties serverProperties,
@@ -269,8 +282,7 @@ public class UnityCatalogServer {
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = IcebergObjectMapper.mapper();
-    JacksonRequestConverterFunction icebergRequestConverter =
-        new JacksonRequestConverterFunction(icebergMapper);
+    RequestConverterFunction icebergRequestConverter = gatedJackson(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
     MetadataService metadataService =
@@ -301,7 +313,7 @@ public class UnityCatalogServer {
     armeriaServerBuilder.annotatedService(
         BASE_PATH,
         deltaRestService,
-        new JacksonRequestConverterFunction(deltaMapper),
+        gatedJackson(deltaMapper),
         new JacksonResponseConverterFunction(deltaMapper));
   }
 
