@@ -33,7 +33,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
-import io.unitycatalog.server.utils.TableProperties;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -81,7 +81,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
   private DeltaMetadata deltaMetadataWithTableId(String tableId) {
     Map<String, String> propertiesWithTableId =
-        Map.of(TableProperties.UC_TABLE_ID_KEY, tableId);
+        Map.of(TableProperties.UC_TABLE_ID, tableId);
     return new DeltaMetadata()
         .properties(new DeltaCommitMetadataProperties().properties(propertiesWithTableId));
   }
@@ -231,7 +231,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   ) {
     Map<String, String> properties = new HashMap<>(
         Map.of(
-            TableProperties.UC_TABLE_ID_KEY, tableId
+            TableProperties.UC_TABLE_ID, tableId
         )
     );
     properties.putAll(additionalProperties);
@@ -427,7 +427,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     DeltaMetadata metadata1 =
         new DeltaMetadata().properties(new DeltaCommitMetadataProperties().properties(properties1));
     checkCommitInvalidParameter(
-        1L, c -> c.setMetadata(metadata1), TableProperties.UC_TABLE_ID_KEY);
+        1L, c -> c.setMetadata(metadata1), TableProperties.UC_TABLE_ID);
     // Commit with metadata but with wrong io.unitycatalog.tableId
     checkCommitInvalidParameter(
         1L,
@@ -659,7 +659,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   public void testCommitWithMetadata() throws ApiException {
     // Commit with metadata properties
     Map<String, String> properties1 = new HashMap<>();
-    properties1.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties1.put(TableProperties.UC_TABLE_ID, tableInfo.getTableId());
     properties1.put("customProperty", "customValue");
     properties1.put("delta.feature.test", "enabled");
 
@@ -677,7 +677,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertNotNull(updatedTable1.getProperties());
     assertEquals(
         tableInfo.getTableId(),
-        updatedTable1.getProperties().get(TableProperties.UC_TABLE_ID_KEY));
+        updatedTable1.getProperties().get(TableProperties.UC_TABLE_ID));
     assertEquals("customValue", updatedTable1.getProperties().get("customProperty"));
     assertEquals("enabled", updatedTable1.getProperties().get("delta.feature.test"));
 
@@ -727,7 +727,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Commit with all metadata fields
     Map<String, String> properties2 = new HashMap<>();
-    properties2.put(TableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId());
+    properties2.put(TableProperties.UC_TABLE_ID, tableInfo.getTableId());
     properties2.put("customProperty", "customValueNew");
     metadataProperties = new DeltaCommitMetadataProperties().properties(properties2);
     columnInfos =
