@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
-import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
 import io.unitycatalog.server.auth.AllowingAuthorizer;
@@ -24,6 +23,7 @@ import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.exception.TypedErrorJacksonRequestConverter;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
@@ -191,8 +191,8 @@ public class UnityCatalogServer {
     TemporaryPathCredentialsService temporaryPathCredentialsService =
         new TemporaryPathCredentialsService(storageCredentialVendor);
 
-    JacksonRequestConverterFunction requestConverterFunction =
-        new JacksonRequestConverterFunction(
+    TypedErrorJacksonRequestConverter requestConverterFunction =
+        TypedErrorJacksonRequestConverter.forMapper(
             JsonMapper.builder()
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .build());
@@ -269,8 +269,8 @@ public class UnityCatalogServer {
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = IcebergObjectMapper.mapper();
-    JacksonRequestConverterFunction icebergRequestConverter =
-        new JacksonRequestConverterFunction(icebergMapper);
+    TypedErrorJacksonRequestConverter icebergRequestConverter =
+        TypedErrorJacksonRequestConverter.forMapper(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
     MetadataService metadataService =
@@ -301,7 +301,7 @@ public class UnityCatalogServer {
     armeriaServerBuilder.annotatedService(
         BASE_PATH,
         deltaRestService,
-        new JacksonRequestConverterFunction(deltaMapper),
+        TypedErrorJacksonRequestConverter.forMapper(deltaMapper),
         new JacksonResponseConverterFunction(deltaMapper));
   }
 
