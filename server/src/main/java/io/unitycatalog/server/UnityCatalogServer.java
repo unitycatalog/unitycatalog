@@ -18,7 +18,6 @@ import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
-import io.unitycatalog.server.delta.serde.DeltaTypeModule;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -51,6 +50,7 @@ import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.delta.DeltaRestCatalogMappers;
 import io.unitycatalog.server.service.delta.DeltaRestCatalogService;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
@@ -306,10 +306,7 @@ public class UnityCatalogServer {
     DeltaRestCatalogService deltaRestService =
         new DeltaRestCatalogService(
             authorizer, repositories, serverProperties, storageCredentialVendor);
-    // Omit null fields to match the Delta protocol wire format.
-    ObjectMapper deltaMapper =
-        JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
-    deltaMapper.registerModule(new DeltaTypeModule());
+    ObjectMapper deltaMapper = DeltaRestCatalogMappers.MAPPER;
     armeriaServerBuilder.annotatedService(
         BASE_PATH,
         deltaRestService,

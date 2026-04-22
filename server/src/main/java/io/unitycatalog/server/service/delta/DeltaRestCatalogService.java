@@ -9,6 +9,7 @@ import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.ProducesJson;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -20,7 +21,6 @@ import io.unitycatalog.server.delta.model.LoadTableResponse;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
@@ -102,15 +102,7 @@ public class DeltaRestCatalogService extends AuthorizedService {
 
   @Get("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
   @ProducesJson
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public LoadTableResponse loadTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
@@ -129,25 +121,13 @@ public class DeltaRestCatalogService extends AuthorizedService {
    */
   @Get("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials")
   @ProducesJson
-  // Mirror TemporaryTableCredentialsService's rule. Credential vending is stricter than metadata
-  // reads: admins/owners above the table still need an explicit table-level privilege. Keep this
-  // in sync with TemporaryTableCredentialsService so both entry points grant the same access.
-  @AuthorizeExpression(
-      """
-      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#operation == 'READ'
-          ? #authorizeAny(#principal, #table, OWNER, SELECT)
-          : (#authorize(#principal, #table, OWNER) ||
-              #authorizeAll(#principal, #table, SELECT, MODIFY)))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.VEND_TABLE_CREDENTIAL)
   public CredentialsResponse getTableCredentials(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table,
       @Param("operation") @AuthorizeKey CredentialOperation operation) {
-    TableInfo tableInfo = tableRepository.getTable(catalog + "." + schema + "." + table);
-    NormalizedURL storageLocation = NormalizedURL.from(tableInfo.getStorageLocation());
+    NormalizedURL storageLocation = tableRepository.getTableStorageLocation(catalog, schema, table);
     TemporaryCredentials credentials =
         storageCredentialVendor.vendCredential(storageLocation, toPrivileges(operation));
     return DeltaCredentialsMapper.toCredentialsResponse(

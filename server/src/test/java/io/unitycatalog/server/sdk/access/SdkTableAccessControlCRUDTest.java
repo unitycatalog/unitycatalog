@@ -8,6 +8,7 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.CredentialOperation;
+import io.unitycatalog.client.delta.model.CredentialsResponse;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -15,7 +16,6 @@ import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
-import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
@@ -63,6 +63,8 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
         new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(regular2Config));
 
     // Delta REST credential clients for getTableCredentials tests
+    TemporaryCredentialsApi principal1DeltaCredsApi =
+        new TemporaryCredentialsApi(TestUtils.createApiClient(principal1Config));
     TemporaryCredentialsApi regular1DeltaCredsApi =
         new TemporaryCredentialsApi(TestUtils.createApiClient(regular1Config));
     TemporaryCredentialsApi regular2DeltaCredsApi =
@@ -179,18 +181,16 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     grantPermissions(
         "regular-2@localhost", SecurableType.TABLE, "cat_pr1.sch_pr1.tbl_pr1", Privileges.MODIFY);
 
-    // getTableCredentials READ_WRITE (regular-2) -> SELECT + MODIFY -> authz passes.
-    // Credential vending against /tmp/tbl_pr1 will fail with a non-authz error (no cloud config);
-    // authz test cares only that it's not PERMISSION_DENIED.
-    try {
-      regular2DeltaCredsApi.getTableCredentials(
-          CredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1");
-    } catch (ApiException ex) {
-      int forbiddenCode = ErrorCode.PERMISSION_DENIED.getHttpStatus().code();
-      assertThat(ex.getCode())
-          .as("expected non-403 after authz passes")
-          .isNotEqualTo(forbiddenCode);
-    }
+    // getTableCredentials READ_WRITE (regular-2) -> SELECT + MODIFY -> authz passes, call
+    // returns. The table's storage location is a local filesystem path; CloudCredentialVendor
+    // returns an empty TemporaryCredentials for file:// which flows through the mapper to a
+    // well-formed response with one storage credential whose config fields are all null.
+    assertReadWriteCredentialsVended(regular2DeltaCredsApi);
+
+    // getTableCredentials READ_WRITE (principal-1) -> TABLE OWNER (no explicit MODIFY) -> authz
+    // passes via the OWNER arm of the OR in the READ_WRITE rule. Covers the other branch of
+    // `OWNER || (SELECT && MODIFY)` so the expression gets full branch coverage.
+    assertReadWriteCredentialsVended(principal1DeltaCredsApi);
 
     // grant CREATE SCHEMA to regular-2
     grantPermissions(
@@ -222,5 +222,19 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
 
     // delete table (principal-1) -> owner [catalog] -> allowed
     principal1TablesApi.deleteTable("cat_pr1.sch_rg2.tab_rg2");
+  }
+
+  /**
+   * Asserts that the given client can vend READ_WRITE credentials for {@code cat_pr1.sch_pr1
+   * .tbl_pr1}. Used to pin the "authz passes, call returns a well-formed response" behavior for
+   * both the {@code SELECT && MODIFY} and {@code OWNER} branches of the READ_WRITE policy.
+   */
+  private static void assertReadWriteCredentialsVended(TemporaryCredentialsApi api)
+      throws ApiException {
+    CredentialsResponse vended =
+        api.getTableCredentials(CredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1");
+    assertThat(vended.getStorageCredentials()).hasSize(1);
+    assertThat(vended.getStorageCredentials().get(0).getOperation())
+        .isEqualTo(CredentialOperation.READ_WRITE);
   }
 }

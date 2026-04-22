@@ -102,6 +102,30 @@ public class TableRepository {
   }
 
   /**
+   * Looks up the storage location for a regular table by its three-part name. Only reads what the
+   * caller actually needs (the storage URL) rather than hydrating the full {@link TableInfo} with
+   * columns and properties. Accepts the three parts separately so callers don't have to round-trip
+   * them through a dotted string that the repo would immediately split again.
+   *
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no table exists at the given name.
+   */
+  public NormalizedURL getTableStorageLocation(String catalog, String schema, String table) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTable(session, catalog, schema, table);
+          if (dao == null) {
+            throw new BaseException(
+                ErrorCode.TABLE_NOT_FOUND,
+                "Table not found: " + catalog + "." + schema + "." + table);
+          }
+          return NormalizedURL.from(dao.getUrl());
+        },
+        "Failed to get storage location of table " + catalog + "." + schema + "." + table,
+        /* readOnly = */ true);
+  }
+
+  /**
    * Looks up the storage location for a staging table by ID. Unlike {@link
    * #getStorageLocationForTableOrStagingTable}, this rejects regular table UUIDs so endpoints
    * scoped to staging tables don't silently accept regular-table inputs.
