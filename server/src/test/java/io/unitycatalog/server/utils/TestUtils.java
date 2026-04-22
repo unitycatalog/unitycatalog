@@ -106,7 +106,21 @@ public class TestUtils {
     }
   }
 
+  /**
+   * Asserts the call fails with PERMISSION_DENIED (HTTP 403) and the exception message contains
+   * {@code containsMessage}. Use this when the test cares that a specific authz check fired -- e.g.
+   * a staging-table ownership check -- rather than just that something produced a 403.
+   */
+  public static void assertPermissionDenied(Executable executable, String containsMessage) {
+    assertApiException(executable, ErrorCode.PERMISSION_DENIED, containsMessage);
+  }
+
+  /**
+   * Asserts the call fails with PERMISSION_DENIED (HTTP 403). Only checks the error code and the
+   * generic {@code "PERMISSION_DENIED"} marker in the message; use {@link
+   * #assertPermissionDenied(Executable, String)} when the specific cause matters.
+   */
   public static void assertPermissionDenied(Executable executable) {
-    assertApiException(executable, ErrorCode.PERMISSION_DENIED, "PERMISSION_DENIED");
+    assertPermissionDenied(executable, "PERMISSION_DENIED");
   }
 }

@@ -3,8 +3,6 @@ package io.unitycatalog.server.service.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.unitycatalog.server.delta.model.CredentialOperation;
 import io.unitycatalog.server.delta.model.CredentialsResponse;
 import io.unitycatalog.server.delta.model.StorageCredential;
@@ -121,9 +119,9 @@ public class DeltaCredentialsMapperTest {
   /**
    * Pins the sparse-JSON wire contract. StorageCredentialConfig is a typed POJO whose unset fields
    * are null in Java. The Delta REST Catalog ObjectMapper is configured with {@link
-   * JsonInclude.Include#NON_NULL} in UnityCatalogServer so the response omits keys for clouds that
-   * don't apply. If that mapper config is ever changed (or the generated class is regenerated with
-   * a default {@code USE_DEFAULTS} policy), this test fails loudly.
+   * JsonInclude.Include#NON_NULL} in {@link DeltaRestCatalogMappers} so the response omits keys for
+   * clouds that don't apply. If that mapper config is ever changed (or the generated class is
+   * regenerated with a default {@code USE_DEFAULTS} policy), this test fails loudly.
    */
   @Test
   public void testSparseJsonOmitsUnpopulatedKeys() throws Exception {
@@ -142,10 +140,9 @@ public class DeltaCredentialsMapperTest {
             .get(0)
             .getConfig();
 
-    // Use the same mapper config as the Delta REST Catalog response converter.
-    ObjectMapper deltaMapper =
-        JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
-    String json = deltaMapper.writeValueAsString(config);
+    // Use the same mapper as the Delta REST Catalog response converter, so a change to the
+    // wire-format config (e.g. inclusion policy) is caught here instead of drifting silently.
+    String json = DeltaRestCatalogMappers.MAPPER.writeValueAsString(config);
 
     assertThat(json)
         .contains("\"s3.access-key-id\":\"AKIA123\"")

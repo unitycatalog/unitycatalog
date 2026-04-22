@@ -1,13 +1,13 @@
 package io.unitycatalog.server.sdk.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.CredentialOperation;
 import io.unitycatalog.client.delta.model.CredentialsResponse;
+import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.client.delta.model.StorageCredential;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.StagingTableInfo;
@@ -19,6 +19,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTest;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
@@ -102,26 +103,28 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
     }
 
     // -------- getTableCredentials: table not found --------
-    assertThatThrownBy(
-            () ->
-                deltaCredentialsApi.getTableCredentials(
-                    CredentialOperation.READ,
-                    TestUtils.CATALOG_NAME,
-                    TestUtils.SCHEMA_NAME,
-                    "nonexistent"))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("not found");
+    TestUtils.assertDeltaApiException(
+        () ->
+            deltaCredentialsApi.getTableCredentials(
+                CredentialOperation.READ,
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                "nonexistent"),
+        ErrorType.NO_SUCH_TABLE_EXCEPTION,
+        "not found");
 
     // -------- getTableCredentials: missing `operation` param (SDK-side required check) --------
-    assertThatThrownBy(
-            () ->
-                deltaCredentialsApi.getTableCredentials(
-                    /* operation= */ null,
-                    TestUtils.CATALOG_NAME,
-                    TestUtils.SCHEMA_NAME,
-                    readTable.getName()))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Missing the required parameter 'operation'");
+    // This ApiException is thrown locally by the generated client before the server is reached,
+    // so there is no Delta-format response body to verify -- use the generic assertApiException.
+    TestUtils.assertApiException(
+        () ->
+            deltaCredentialsApi.getTableCredentials(
+                /* operation= */ null,
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                readTable.getName()),
+        ErrorCode.INVALID_ARGUMENT,
+        "Missing the required parameter 'operation'");
 
     // -------- getStagingTableCredentials: happy path --------
     StagingTableInfo staging =
@@ -142,16 +145,18 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
 
     // -------- getStagingTableCredentials: staging UUID not found --------
     UUID randomId = UUID.randomUUID();
-    assertThatThrownBy(() -> deltaCredentialsApi.getStagingTableCredentials(randomId))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Staging table not found");
+    TestUtils.assertDeltaApiException(
+        () -> deltaCredentialsApi.getStagingTableCredentials(randomId),
+        ErrorType.NO_SUCH_TABLE_EXCEPTION,
+        "Staging table not found");
 
     // -------- getStagingTableCredentials: rejects regular-table UUID --------
     // Endpoint is scoped to staging tables only; passing a real table's UUID must 404.
     UUID regularTableId = UUID.fromString(readTable.getTableId());
-    assertThatThrownBy(() -> deltaCredentialsApi.getStagingTableCredentials(regularTableId))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Staging table not found");
+    TestUtils.assertDeltaApiException(
+        () -> deltaCredentialsApi.getStagingTableCredentials(regularTableId),
+        ErrorType.NO_SUCH_TABLE_EXCEPTION,
+        "Staging table not found");
   }
 
   /** Creates a configured-S3-backed external table for credential tests. */
