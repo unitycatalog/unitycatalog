@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-ai"
-version = "0.3.0"
+version = "0.4.0"
 description = "Official Python library for Unity Catalog AI support"
 authors = [
     { name="Serena Ruan", email="serena.ruan@databricks.com" },
@@ -8,12 +8,12 @@ authors = [
 ]
 readme = "README.md"
 license = { text="Apache-2.0" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
   "typing_extensions>=4.0.0,<=4.15.0",
   "pydantic>=2.0.0,<3",
   "nest_asyncio>=1.5.0,<=1.6.0",
-  "unitycatalog-client>=0.3.0,<=0.4.0",
+  "unitycatalog-client>=0.4.0, <0.5.0",
   "cloudpickle>=2.0.0,<=3.1.2",
 ]
 keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
@@ -28,7 +28,6 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -70,13 +69,13 @@ only-include = ["src/unitycatalog/ai/core"]
 databricks = [
   "databricks-sdk>=0.32.0,<=0.94.0",
   "pandas>=1.0.0,<=3.0.1",
-  "databricks-connect>=15.1.0,<17.1 ; python_version >= '3.10'",
+  "databricks-connect>=15.1.0,<17.1",
 ]
 databricks-dev = [
   "hatch>=1.0.0,<=1.16.5",
   "pytest>=7.0.0,<=9.0.2",
   "databricks-sdk>=0.32.0,<=0.94.0",
-  "databricks-connect>=15.1.0,<17.1 ; python_version >= '3.10'",
+  "databricks-connect>=15.1.0,<17.1",
   "pandas>=1.0.0,<=3.0.1",
   "ruff==0.9.3",
 ]
@@ -91,7 +90,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
