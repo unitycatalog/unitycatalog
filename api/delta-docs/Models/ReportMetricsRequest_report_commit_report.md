@@ -7,8 +7,6 @@
 | **num-bytes-added** | **Long** | Number of bytes added by this commit | [optional] [default to null] |
 | **num-files-removed** | **Long** | Number of files removed by this commit | [optional] [default to null] |
 | **num-bytes-removed** | **Long** | Number of bytes removed by this commit | [optional] [default to null] |
-| **num-clustered-bytes-added** | **Long** | Number of clustered bytes added by this commit | [optional] [default to null] |
-| **num-clustered-bytes-removed** | **Long** | Number of clustered bytes removed by this commit | [optional] [default to null] |
 | **num-rows-inserted** | **Long** | Number of rows inserted by this commit | [optional] [default to null] |
 | **num-rows-removed** | **Long** | Number of rows removed by this commit | [optional] [default to null] |
 | **num-rows-updated** | **Long** | Number of rows updated by this commit | [optional] [default to null] |
