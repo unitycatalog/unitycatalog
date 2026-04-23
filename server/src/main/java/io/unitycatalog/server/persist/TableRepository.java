@@ -442,18 +442,16 @@ public class TableRepository {
                   ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for metric view");
             }
             storageLocation = null;
-            tableID = UUID.randomUUID().toString();
-            if (viewDeps.getDependencies() != null) {
-              UUID tableUUID = UUID.fromString(tableID);
-              DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
-              List<DependencyDAO> depDAOs =
-                  viewDeps.getDependencies().stream()
-                      .map(dep -> DependencyDAO.from(dep, tableUUID, dependentType))
-                      .collect(Collectors.toList());
-              repositories
-                  .getDependencyRepository()
-                  .createDependencies(session, tableUUID, dependentType, depDAOs);
-            }
+            UUID tableUUID = UUID.randomUUID();
+            tableID = tableUUID.toString();
+            DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
+            List<DependencyDAO> depDAOs =
+                viewDeps.getDependencies().stream()
+                    .map(dep -> DependencyDAO.from(dep, tableUUID, dependentType))
+                    .collect(Collectors.toList());
+            repositories
+                .getDependencyRepository()
+                .createDependencies(session, tableUUID, dependentType, depDAOs);
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
@@ -621,7 +619,7 @@ public class TableRepository {
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
     }
-    if ("METRIC_VIEW".equals(tableInfoDAO.getType())) {
+    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getDependencyRepository()
           .deleteDependencies(session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);
@@ -632,15 +630,16 @@ public class TableRepository {
   }
 
   private void attachDependencies(TableInfo tableInfo, TableInfoDAO tableInfoDAO, Session session) {
-    if ("METRIC_VIEW".equals(tableInfoDAO.getType())) {
+    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())) {
       List<DependencyDAO> deps =
           repositories
               .getDependencyRepository()
               .getDependencies(session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);
-      if (!deps.isEmpty()) {
-        tableInfo.setViewDependencies(
-            new DependencyList().dependencies(DependencyDAO.toDependencyList(deps)));
-      }
+      // Always attach a dependency list (even when empty) for syntactic consistency: callers
+      // can tell "metric view with no recorded deps" apart from "field not set", and a
+      // hypothetical metric view that aggregates only constants would still round-trip cleanly.
+      tableInfo.setViewDependencies(
+          new DependencyList().dependencies(DependencyDAO.toDependencyList(deps)));
     }
   }
 }

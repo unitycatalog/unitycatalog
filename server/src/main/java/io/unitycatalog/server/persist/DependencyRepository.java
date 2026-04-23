@@ -51,13 +51,4 @@ public class DependencyRepository {
     int deleted = query.executeUpdate();
     LOGGER.debug("Deleted {} dependencies for {}:{}", deleted, dependentType, dependentId);
   }
-
-  public void updateDependencies(
-      Session session,
-      UUID dependentId,
-      DependentType dependentType,
-      List<DependencyDAO> dependencies) {
-    deleteDependencies(session, dependentId, dependentType);
-    createDependencies(session, dependentId, dependentType, dependencies);
-  }
 }

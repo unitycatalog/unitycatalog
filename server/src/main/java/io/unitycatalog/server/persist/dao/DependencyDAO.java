@@ -12,7 +12,6 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -83,30 +82,38 @@ public class DependencyDAO {
   /** Converts a Dependency API model to a DependencyDAO for a given dependent. */
   public static DependencyDAO from(
       Dependency dependency, UUID dependentId, DependentType dependentType) {
-    DependencyDAOBuilder builder =
-        DependencyDAO.builder().dependentId(dependentId).dependentType(dependentType);
-
+    final DependencyType dependencyType;
+    final String fullName;
     if (dependency.getTable() != null) {
-      builder.dependencyType(DependencyType.TABLE);
-      populateThreePartName(
-          builder, dependency.getTable().getTableFullName(), DependencyType.TABLE);
+      dependencyType = DependencyType.TABLE;
+      fullName = dependency.getTable().getTableFullName();
     } else if (dependency.getFunction() != null) {
-      builder.dependencyType(DependencyType.FUNCTION);
-      populateThreePartName(
-          builder, dependency.getFunction().getFunctionFullName(), DependencyType.FUNCTION);
+      dependencyType = DependencyType.FUNCTION;
+      fullName = dependency.getFunction().getFunctionFullName();
     } else {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported dependency type");
     }
-
-    return builder.build();
+    String[] parts = parseThreePartName(fullName, dependencyType);
+    return DependencyDAO.builder()
+        .dependentId(dependentId)
+        .dependentType(dependentType)
+        .dependencyType(dependencyType)
+        .dependencyCatalog(parts[0])
+        .dependencySchema(parts[1])
+        .dependencyName(parts[2])
+        .build();
   }
 
   /**
-   * Splits a {@code catalog.schema.name} three-part name into the corresponding DAO columns. Throws
-   * if the input is null/empty or does not contain exactly three parts.
+   * Splits a {@code catalog.schema.name} three-part name into its three components. Throws if the
+   * input is null/empty or does not contain exactly three parts.
+   *
+   * <p>Returns plain {@code String[]} (rather than mutating a {@code DependencyDAOBuilder}) so the
+   * helper signature does not reference any Lombok-generated builder type. Javadoc does not run
+   * annotation processors, so referencing such generated types from method signatures would fail
+   * {@code sbt doc} with {@code cannot find symbol: class DependencyDAOBuilder}.
    */
-  private static void populateThreePartName(
-      DependencyDAOBuilder builder, String fullName, DependencyType type) {
+  private static String[] parseThreePartName(String fullName, DependencyType type) {
     String kind = type.name().toLowerCase(Locale.ROOT);
     if (fullName == null || fullName.isEmpty()) {
       throw new BaseException(
@@ -124,9 +131,7 @@ public class DependencyDAO {
               + "); got: "
               + fullName);
     }
-    builder.dependencyCatalog(parts[0]);
-    builder.dependencySchema(parts[1]);
-    builder.dependencyName(parts[2]);
+    return parts;
   }
 
   /** Converts this DAO to a Dependency API model. */
@@ -145,9 +150,6 @@ public class DependencyDAO {
   }
 
   public static List<Dependency> toDependencyList(List<DependencyDAO> daos) {
-    if (daos == null) {
-      return new ArrayList<>();
-    }
     return daos.stream().map(DependencyDAO::toDependency).collect(Collectors.toList());
   }
 }

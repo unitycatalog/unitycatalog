@@ -1,5 +1,6 @@
 package io.unitycatalog.server.base.table;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -10,10 +11,13 @@ import io.unitycatalog.client.model.FunctionDependency;
 import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
@@ -42,10 +46,20 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
   private static DependencyList makeDependencyList(String... tableFullNames) {
     DependencyList depList = new DependencyList();
     depList.setDependencies(
-        java.util.Arrays.stream(tableFullNames)
+        Arrays.stream(tableFullNames)
             .map(name -> new Dependency().table(new TableDependency().tableFullName(name)))
-            .collect(java.util.stream.Collectors.toList()));
+            .collect(Collectors.toList()));
     return depList;
+  }
+
+  private CreateTable validMetricViewRequest() {
+    return new CreateTable()
+        .name(METRIC_VIEW_NAME)
+        .catalogName(TestUtils.CATALOG_NAME)
+        .schemaName(TestUtils.SCHEMA_NAME)
+        .tableType(TableType.METRIC_VIEW)
+        .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE)
+        .viewDependencies(makeDependencyList(SOURCE_TABLE_FULL_NAME));
   }
 
   @Test
@@ -55,15 +69,7 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
 
     // --- Create with asset source ---
     CreateTable createRequest =
-        new CreateTable()
-            .name(METRIC_VIEW_NAME)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .tableType(TableType.METRIC_VIEW)
-            .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE)
-            .viewDependencies(makeDependencyList(SOURCE_TABLE_FULL_NAME))
-            .comment("Daily event counts by day")
-            .properties(PROPERTIES);
+        validMetricViewRequest().comment("Daily event counts by day").properties(PROPERTIES);
 
     TableInfo created = tableOperations.createTable(createRequest);
     assertThat(created.getName()).isEqualTo(METRIC_VIEW_NAME);
@@ -111,27 +117,32 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   @Test
-  public void testCreateMetricViewWithoutDefinitionFails() throws Exception {
-    CreateTable badRequest =
-        new CreateTable()
-            .name(METRIC_VIEW_NAME)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .tableType(TableType.METRIC_VIEW)
-            .viewDependencies(makeDependencyList(SOURCE_TABLE_FULL_NAME));
-    assertThatThrownBy(() -> tableOperations.createTable(badRequest)).isInstanceOf(Exception.class);
+  public void testCreateMetricViewWithoutDefinitionFails() {
+    CreateTable badRequest = validMetricViewRequest().viewDefinition(null);
+    assertApiException(
+        () -> tableOperations.createTable(badRequest),
+        ErrorCode.INVALID_ARGUMENT,
+        "view_definition is required for metric view");
   }
 
   @Test
-  public void testCreateMetricViewWithoutDependenciesFails() throws Exception {
+  public void testCreateMetricViewWithoutDependenciesFails() {
+    CreateTable badRequest = validMetricViewRequest().viewDependencies(null);
+    assertApiException(
+        () -> tableOperations.createTable(badRequest),
+        ErrorCode.INVALID_ARGUMENT,
+        "view_dependencies is required for metric view");
+  }
+
+  /** Empty {@code dependencies} array on the request: server must reject. */
+  @Test
+  public void testCreateMetricViewWithEmptyDependencyListFails() {
     CreateTable badRequest =
-        new CreateTable()
-            .name(METRIC_VIEW_NAME)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .tableType(TableType.METRIC_VIEW)
-            .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE);
-    assertThatThrownBy(() -> tableOperations.createTable(badRequest)).isInstanceOf(Exception.class);
+        validMetricViewRequest().viewDependencies(new DependencyList().dependencies(List.of()));
+    assertApiException(
+        () -> tableOperations.createTable(badRequest),
+        ErrorCode.INVALID_ARGUMENT,
+        "view_dependencies is required for metric view");
   }
 
   /**
@@ -139,59 +150,48 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
    * "Unsupported dependency type" branch.
    */
   @Test
-  public void testCreateMetricViewWithEmptyDependencyFails() throws Exception {
-    DependencyList deps = new DependencyList();
-    deps.setDependencies(java.util.List.of(new Dependency()));
-    CreateTable badRequest =
-        new CreateTable()
-            .name(METRIC_VIEW_NAME)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .tableType(TableType.METRIC_VIEW)
-            .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE)
-            .viewDependencies(deps);
-    assertThatThrownBy(() -> tableOperations.createTable(badRequest)).isInstanceOf(Exception.class);
+  public void testCreateMetricViewWithEmptyDependencyEntryFails() {
+    DependencyList deps = new DependencyList().dependencies(List.of(new Dependency()));
+    CreateTable badRequest = validMetricViewRequest().viewDependencies(deps);
+    assertApiException(
+        () -> tableOperations.createTable(badRequest),
+        ErrorCode.INVALID_ARGUMENT,
+        "Unsupported dependency type");
   }
 
   /**
    * Dependency with a table full name that is not a three-part name. Hits the "three-part name"
-   * validation in {@code DependencyDAO.populateThreePartName}.
+   * validation in {@code DependencyDAO.parseThreePartName}.
    */
   @Test
-  public void testCreateMetricViewWithNonThreePartTableNameFails() throws Exception {
-    DependencyList deps = new DependencyList();
-    deps.setDependencies(
-        java.util.List.of(
-            new Dependency().table(new TableDependency().tableFullName("schema_only.table"))));
-    CreateTable badRequest =
-        new CreateTable()
-            .name(METRIC_VIEW_NAME)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .tableType(TableType.METRIC_VIEW)
-            .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE)
-            .viewDependencies(deps);
-    assertThatThrownBy(() -> tableOperations.createTable(badRequest)).isInstanceOf(Exception.class);
+  public void testCreateMetricViewWithNonThreePartTableNameFails() {
+    DependencyList deps =
+        new DependencyList()
+            .dependencies(
+                List.of(
+                    new Dependency()
+                        .table(new TableDependency().tableFullName("schema_only.table"))));
+    CreateTable badRequest = validMetricViewRequest().viewDependencies(deps);
+    assertApiException(
+        () -> tableOperations.createTable(badRequest),
+        ErrorCode.INVALID_ARGUMENT,
+        "must be a three-part name");
   }
 
   /**
    * Dependency with a table entry whose {@code table_full_name} is empty. Hits the "must not be
-   * null or empty" validation in {@code DependencyDAO.populateThreePartName}.
+   * null or empty" validation in {@code DependencyDAO.parseThreePartName}.
    */
   @Test
-  public void testCreateMetricViewWithEmptyTableFullNameFails() throws Exception {
-    DependencyList deps = new DependencyList();
-    deps.setDependencies(
-        java.util.List.of(new Dependency().table(new TableDependency().tableFullName(""))));
-    CreateTable badRequest =
-        new CreateTable()
-            .name(METRIC_VIEW_NAME)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .tableType(TableType.METRIC_VIEW)
-            .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE)
-            .viewDependencies(deps);
-    assertThatThrownBy(() -> tableOperations.createTable(badRequest)).isInstanceOf(Exception.class);
+  public void testCreateMetricViewWithEmptyTableFullNameFails() {
+    DependencyList deps =
+        new DependencyList()
+            .dependencies(List.of(new Dependency().table(new TableDependency().tableFullName(""))));
+    CreateTable badRequest = validMetricViewRequest().viewDependencies(deps);
+    assertApiException(
+        () -> tableOperations.createTable(badRequest),
+        ErrorCode.INVALID_ARGUMENT,
+        "must not be null or empty");
   }
 
   /**
@@ -199,19 +199,17 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
    * Hits the same validation as tables but on the function branch.
    */
   @Test
-  public void testCreateMetricViewWithNonThreePartFunctionNameFails() throws Exception {
-    DependencyList deps = new DependencyList();
-    deps.setDependencies(
-        java.util.List.of(
-            new Dependency().function(new FunctionDependency().functionFullName("just_a_name"))));
-    CreateTable badRequest =
-        new CreateTable()
-            .name(METRIC_VIEW_NAME)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .tableType(TableType.METRIC_VIEW)
-            .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE)
-            .viewDependencies(deps);
-    assertThatThrownBy(() -> tableOperations.createTable(badRequest)).isInstanceOf(Exception.class);
+  public void testCreateMetricViewWithNonThreePartFunctionNameFails() {
+    DependencyList deps =
+        new DependencyList()
+            .dependencies(
+                List.of(
+                    new Dependency()
+                        .function(new FunctionDependency().functionFullName("just_a_name"))));
+    CreateTable badRequest = validMetricViewRequest().viewDependencies(deps);
+    assertApiException(
+        () -> tableOperations.createTable(badRequest),
+        ErrorCode.INVALID_ARGUMENT,
+        "must be a three-part name");
   }
 }
