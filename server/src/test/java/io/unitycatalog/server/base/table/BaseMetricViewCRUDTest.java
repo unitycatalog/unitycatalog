@@ -27,6 +27,8 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
       TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + METRIC_VIEW_NAME;
   protected static final String SOURCE_TABLE_FULL_NAME =
       TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".source_events";
+  protected static final String SOURCE_FUNCTION_FULL_NAME =
+      TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".event_bucket";
 
   protected static final String VIEW_DEFINITION_ASSET_SOURCE =
       "version: \"0.1\"\n"
@@ -211,5 +213,66 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
         () -> tableOperations.createTable(badRequest),
         ErrorCode.INVALID_ARGUMENT,
         "must be a three-part name");
+  }
+
+  /**
+   * Happy-path coverage for the {@code FUNCTION} branch in {@link
+   * io.unitycatalog.server.persist.dao.DependencyDAO#from} and {@link
+   * io.unitycatalog.server.persist.dao.DependencyDAO#toDependency}. The negative tests above only
+   * exercise the validation error path; this test creates a metric view that depends on both a
+   * table and a function, then asserts the dependency list round-trips through {@code getTable} and
+   * {@code listTables} with both kinds of entries reconstructed correctly.
+   */
+  @Test
+  public void testMetricViewWithMixedTableAndFunctionDependencies() throws Exception {
+    DependencyList mixed =
+        new DependencyList()
+            .dependencies(
+                List.of(
+                    new Dependency()
+                        .table(new TableDependency().tableFullName(SOURCE_TABLE_FULL_NAME)),
+                    new Dependency()
+                        .function(
+                            new FunctionDependency().functionFullName(SOURCE_FUNCTION_FULL_NAME))));
+    CreateTable createRequest = validMetricViewRequest().viewDependencies(mixed);
+
+    try {
+      TableInfo created = tableOperations.createTable(createRequest);
+      assertThat(created.getTableType()).isEqualTo(TableType.METRIC_VIEW);
+
+      // --- Get: round-trip through DependencyDAO.toDependency ---
+      TableInfo fetched = tableOperations.getTable(METRIC_VIEW_FULL_NAME);
+      assertThat(fetched.getViewDependencies()).isNotNull();
+      List<Dependency> deps = fetched.getViewDependencies().getDependencies();
+      assertThat(deps).hasSize(2);
+
+      Optional<Dependency> tableDep = deps.stream().filter(d -> d.getTable() != null).findFirst();
+      Optional<Dependency> functionDep =
+          deps.stream().filter(d -> d.getFunction() != null).findFirst();
+
+      assertThat(tableDep).as("Mixed dependency list should preserve the TABLE entry").isPresent();
+      assertThat(tableDep.get().getTable().getTableFullName()).isEqualTo(SOURCE_TABLE_FULL_NAME);
+      assertThat(tableDep.get().getFunction()).isNull();
+
+      assertThat(functionDep)
+          .as("Mixed dependency list should preserve the FUNCTION entry")
+          .isPresent();
+      assertThat(functionDep.get().getFunction().getFunctionFullName())
+          .isEqualTo(SOURCE_FUNCTION_FULL_NAME);
+      assertThat(functionDep.get().getTable()).isNull();
+
+      // --- List: dependencies are not required on listTables responses, but the metric view
+      // itself must still be present and tagged as METRIC_VIEW. ---
+      List<TableInfo> tables =
+          tableOperations.listTables(
+              TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty());
+      assertThat(tables)
+          .anyMatch(
+              t ->
+                  METRIC_VIEW_NAME.equals(t.getName())
+                      && TableType.METRIC_VIEW.equals(t.getTableType()));
+    } finally {
+      tableOperations.deleteTable(METRIC_VIEW_FULL_NAME);
+    }
   }
 }
