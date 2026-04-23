@@ -2361,7 +2361,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'databricks-dev'", specifier = "==0.9.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.9.3" },
     { name = "typing-extensions", specifier = ">=4.0.0,<=4.15.0" },
-    { name = "unitycatalog-client", specifier = ">=0.3.0,<=0.4.0" },
+    { name = "unitycatalog-client", specifier = ">=0.4.0,<0.5.0" },
 ]
 provides-extras = ["databricks", "databricks-dev", "dev"]
 
