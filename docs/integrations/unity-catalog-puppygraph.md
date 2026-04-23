@@ -79,10 +79,10 @@ Exit the Spark SQL shell after data insertion is done.
 
 ## Querying the Tables as a Graph
 
-Start PuppyGraph using Docker. Here we map the PuppyGraph port `8081` to `9081` on the host.
+Start PuppyGraph using Docker. Here we map the PuppyGraph port `8080` to `9081` on the host.
 
 ```sh
-docker run -p 9081:8081 -p 8182:8182 -p 7687:7687 \
+docker run -p 9081:8080 -p 8182:8182 -p 7687:7687 \
 -v /tmp/puppygraph:/tmp/puppygraph \
 --name puppy --rm -itd puppygraph/puppygraph:stable
 ```
@@ -97,7 +97,7 @@ Create the schema.json and replace `<host-name>` with your host ip address.
             "type": "deltalake", 
             "metastore": {
                 "type": "unity", 
-                "host": "http://<host-name>:8081", 
+                "host": "http://<host-name>:8080", 
                 "token": "no-use", 
                 "databricksCatalogName": "puppygraph"
             }
@@ -160,7 +160,7 @@ Create the schema.json and replace `<host-name>` with your host ip address.
 }
 ```
 
-Upload the schema to PuppyGraph. Note here port is 9081 as 8081 is used by Unity Catalog.
+Upload the schema to PuppyGraph. Note here port is 9081 as 8080 is used by Unity Catalog.
 
 ```sh
 curl -XPOST -H "content-type: application/json" --data-binary @./schema.json --user "puppygraph:puppygraph123" localhost:9081/schema
