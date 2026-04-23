@@ -77,15 +77,7 @@ public class TableService extends AuthorizedService {
    * @return HTTP response containing the created TableInfo
    */
   @Post("")
-  @AuthorizeExpression("""
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#authorize(#principal, #schema, OWNER) ||
-        #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)) &&
-      (#table_type != 'EXTERNAL' ||
-        (#no_overlap_with_data_securable &&
-          (#external_location == null ||
-           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE))))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
   public HttpResponse createTable(
       @AuthorizeResourceKeys({
         @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
