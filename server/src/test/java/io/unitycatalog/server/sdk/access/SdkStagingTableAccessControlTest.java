@@ -21,8 +21,10 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -194,6 +196,7 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
             .tableType(TableType.MANAGED)
             .dataSourceFormat(DataSourceFormat.DELTA)
             .storageLocation(stagingTableInfo.getStagingLocation())
+            .properties(Map.of(TableProperties.UC_TABLE_ID, stagingTableInfo.getId()))
             .comment("Table created by different user - should fail");
 
     // This by user B should fail with PERMISSION_DENIED and a message identifying the check.
