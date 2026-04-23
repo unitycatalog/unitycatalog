@@ -263,7 +263,8 @@ public class UnityCatalogServer {
         schemaService,
         tableService,
         repositories);
-    addDeltaApiServices(armeriaServerBuilder, authorizer, repositories, storageCredentialVendor);
+    addDeltaApiServices(
+        armeriaServerBuilder, authorizer, repositories, serverProperties, storageCredentialVendor);
   }
 
   private void addIcebergApiServices(
@@ -299,10 +300,12 @@ public class UnityCatalogServer {
       ServerBuilder armeriaServerBuilder,
       UnityCatalogAuthorizer authorizer,
       Repositories repositories,
+      ServerProperties serverProperties,
       StorageCredentialVendor storageCredentialVendor) {
     LOGGER.info("Adding Delta REST Catalog API services...");
     DeltaRestCatalogService deltaRestService =
-        new DeltaRestCatalogService(authorizer, repositories, storageCredentialVendor);
+        new DeltaRestCatalogService(
+            authorizer, repositories, serverProperties, storageCredentialVendor);
     // Omit null fields to match the Delta protocol wire format.
     ObjectMapper deltaMapper =
         JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();

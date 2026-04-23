@@ -157,9 +157,9 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       }
     });
 
-    AbstractEvaluationAction evaluateAction =
+    EvaluationAction evaluateAction =
         filterAnnotation
-            .<AbstractEvaluationAction>map(x -> new ResultFilterAction(ctx, method))
+            .<EvaluationAction>map(x -> new ResultFilterAction(ctx, method))
             .orElseGet(RequestEvaluationAction::new);
 
     if (payloadLocators.isEmpty()) {
@@ -208,23 +208,20 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  private abstract static class AbstractEvaluationAction {
-    protected static final String ERR_AUTH_NOT_EXECUTED =
-        "Authorization required but failed to execute";
-
-    abstract void beforeRequest(
+  private interface EvaluationAction {
+    void beforeRequest(
         UUID principal,
         String expression,
         Map<SecurableType, UUID> resourceIds,
         Map<String, Object> nonResourceValues);
 
-    abstract HttpResponse afterRequest(HttpResponse response);
+    HttpResponse afterRequest(HttpResponse response);
   }
 
-  private class RequestEvaluationAction extends AbstractEvaluationAction {
+  private class RequestEvaluationAction implements EvaluationAction {
 
     @Override
-    void beforeRequest(
+    public void beforeRequest(
         UUID principal,
         String expression,
         Map<SecurableType, UUID> resourceIds,
@@ -235,12 +232,14 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     @Override
-    HttpResponse afterRequest(HttpResponse response) {
+    public HttpResponse afterRequest(HttpResponse response) {
       return response;
     }
   }
 
-  private class ResultFilterAction extends AbstractEvaluationAction {
+  private class ResultFilterAction implements EvaluationAction {
+    protected static final String ERR_AUTH_NOT_EXECUTED =
+        "Authorization required but failed to execute";
     private final ServiceRequestContext ctx;
     private final Method method;
     private volatile ResultFilter resultFilter = null;
@@ -251,11 +250,11 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     @Override
-    void beforeRequest(
-        UUID principal,
-        String expression,
-        Map<SecurableType, UUID> resourceIds,
-        Map<String, Object> nonResourceValues) {
+    public void beforeRequest(
+      UUID principal,
+      String expression,
+      Map<SecurableType, UUID> resourceIds,
+      Map<String, Object> nonResourceValues) {
       resultFilter =
           new ResultFilter(
               evaluator, principal, expression, resourceIds, nonResourceValues, keyMapper);
@@ -263,7 +262,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     @Override
-    HttpResponse afterRequest(HttpResponse response) {
+    public HttpResponse afterRequest(HttpResponse response) {
       return HttpResponse.of(response.aggregate().thenApply(
         aggregated -> {
           if (aggregated.status().isSuccess()) {
