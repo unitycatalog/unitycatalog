@@ -439,6 +439,33 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
+  // Spark 4.2 adds a `serdeName` field to CatalogStorageFormat.copy. Dispatch through
+  // reflection so one connector jar can keep working across Spark 4.0/4.1/4.2 runtimes.
+  private[spark] def catalogStorageFormatWithLocation(
+      locationUri: URI,
+      properties: util.Map[String, String]): CatalogStorageFormat = {
+    val base = CatalogStorageFormat.empty
+    val copyMethod = base.getClass.getMethods.find { method =>
+      method.getName == "copy" && (method.getParameterCount == 6 || method.getParameterCount == 7)
+    }.getOrElse {
+      throw new IllegalStateException("Unsupported CatalogStorageFormat.copy signature")
+    }
+    val copyArgs = Array[AnyRef](
+      Some(locationUri),
+      base.inputFormat,
+      base.outputFormat,
+      base.serde,
+      Boolean.box(base.compressed),
+      properties.asScala.toMap
+    )
+    val effectiveArgs = copyMethod.getParameterCount match {
+      case 6 => copyArgs
+      case 7 => copyArgs :+ None
+      case _ => throw new IllegalStateException("Unsupported CatalogStorageFormat.copy arity")
+    }
+    copyMethod.invoke(base, effectiveArgs: _*).asInstanceOf[CatalogStorageFormat]
+  }
+
   /**
    * Returns any user-configured {@code fs.<scheme>.impl} values from the current Spark session.
    *
@@ -646,6 +673,7 @@ private class UCProxy(
       )
     }
 
+    val storageProperties = (t.getProperties.asScala.toMap ++ extraSerdeProps).asJava
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -653,10 +681,7 @@ private class UCProxy(
       } else {
         CatalogTableType.EXTERNAL
       },
-      storage = CatalogStorageFormat.empty.copy(
-        locationUri = Some(locationUri),
-        properties = t.getProperties.asScala.toMap ++ extraSerdeProps
-      ),
+      storage = UCSingleCatalog.catalogStorageFormatWithLocation(locationUri, storageProperties),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
       createTime = t.getCreatedAt,
