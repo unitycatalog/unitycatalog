@@ -579,14 +579,6 @@ components:
         - MANAGED
         - EXTERNAL
 
-    SecurableType:
-      type: string
-      description: The type of securable object.
-      enum:
-        - TABLE
-        - VIEW
-
-
     CredentialOperation:
       type: string
       description: |
@@ -863,8 +855,6 @@ components:
           type: integer
           format: int64
           description: Last update time in epoch milliseconds
-        securable-type:
-          $ref: '#/components/schemas/SecurableType'
         columns:
           $ref: '#/components/schemas/StructType'
         partition-columns:
@@ -893,7 +883,6 @@ components:
         - location
         - created-time
         - updated-time
-        - securable-type
         - columns
         - properties
 

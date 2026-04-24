@@ -10,7 +10,6 @@
 | **location** | **String** | Storage location of the table | [default to null] |
 | **created-time** | **Long** | Creation time in epoch milliseconds | [default to null] |
 | **updated-time** | **Long** | Last update time in epoch milliseconds | [default to null] |
-| **securable-type** | [**SecurableType**](SecurableType.md) |  | [default to null] |
 | **columns** | [**StructType**](StructType.md) |  | [default to null] |
 | **partition-columns** | **List** | Partition column names | [optional] [default to null] |
 | **properties** | **Map** | Table properties | [default to null] |

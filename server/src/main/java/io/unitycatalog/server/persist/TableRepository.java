@@ -234,7 +234,6 @@ public class TableRepository {
     metadata.setLocation(NormalizedURL.normalize(dao.getUrl()));
     metadata.setCreatedTime(dao.getCreatedAt() != null ? dao.getCreatedAt().getTime() : null);
     metadata.setUpdatedTime(updatedAt);
-    metadata.setSecurableType(io.unitycatalog.server.delta.model.SecurableType.TABLE);
 
     // Columns -- best-effort; corrupt data should not fail the entire response
     StructType emptySchema = new StructType().fields(List.of());
