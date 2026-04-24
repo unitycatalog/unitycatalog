@@ -22,6 +22,8 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.service.AuthorizedService;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.utils.ServerProperties;
+
 import java.util.List;
 
 /**
@@ -54,8 +56,9 @@ public class DeltaRestCatalogService extends AuthorizedService {
   public DeltaRestCatalogService(
       UnityCatalogAuthorizer authorizer,
       Repositories repositories,
+      ServerProperties serverProperties,
       StorageCredentialVendor storageCredentialVendor) {
-    super(authorizer, repositories);
+    super(authorizer, repositories, serverProperties);
     this.catalogRepository = repositories.getCatalogRepository();
     this.tableRepository = repositories.getTableRepository();
   }
