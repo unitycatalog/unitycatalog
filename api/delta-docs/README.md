@@ -56,7 +56,6 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
  - [ReportMetricsRequest_report_commit_report](./Models/ReportMetricsRequest_report_commit_report.md)
  - [ReportMetricsRequest_report_commit_report_file_size_histogram](./Models/ReportMetricsRequest_report_commit_report_file_size_histogram.md)
  - [RowTrackingDomainMetadata](./Models/RowTrackingDomainMetadata.md)
- - [SecurableType](./Models/SecurableType.md)
  - [SetDomainMetadataUpdate](./Models/SetDomainMetadataUpdate.md)
  - [SetLatestBackfilledVersionUpdate](./Models/SetLatestBackfilledVersionUpdate.md)
  - [SetPartitionColumnsUpdate](./Models/SetPartitionColumnsUpdate.md)
