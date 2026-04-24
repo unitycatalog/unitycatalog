@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.unitycatalog.server.service.AuthorizedService;
 import org.slf4j.Logger;
@@ -68,7 +69,7 @@ public class ResultFilter {
   private final Map<SecurableType, UUID> resourceIds;
   private final Map<String, Object> nonResourceValues;
   private final KeyMapper keyMapper;
-  private volatile boolean called = false;
+  private final AtomicBoolean called;
 
   public ResultFilter(
       UnityAccessEvaluator evaluator,
@@ -83,6 +84,7 @@ public class ResultFilter {
     this.resourceIds = resourceIds;
     this.nonResourceValues = nonResourceValues;
     this.keyMapper = keyMapper;
+    this.called = new AtomicBoolean(false);
   }
 
   /**
@@ -109,7 +111,7 @@ public class ResultFilter {
    *     which indicates a programming error
    */
   public <T> void filter(SecurableType securableType, List<T> items) {
-    called = true;
+    called.set(true);
 
     if (items == null || items.isEmpty()) {
       return;
@@ -190,6 +192,6 @@ public class ResultFilter {
    * @return true if {@link #filter} has been called at least once, false otherwise
    */
   public boolean wasCalled() {
-    return called;
+    return called.get();
   }
 }
