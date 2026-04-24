@@ -66,6 +66,7 @@ lazy val commonSettings = Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
   ),
   resolvers += Resolver.mavenLocal,
+  resolvers ++= sparkResolvers,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
