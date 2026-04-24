@@ -1,5 +1,39 @@
 # Changelog for Unity Catalog AI releases
 
+## Unity Catalog AI 0.4.0
+
+The 0.4.0 release of Unity Catalog AI includes a new framework integration, LangChain v1 compatibility, expanded Databricks client options, and dependency/security improvements.
+
+### Major Changes
+
+- **Warehouse ID Support in DatabricksFunctionClient**: For workspaces where serverless compute is unavailable or restricted, `DatabricksFunctionClient` now accepts an optional `warehouse_id` parameter to dispatch function execution via the Statement Execution API. Serverless remains the default and recommended execution path.
+
+- **Python 3.10+ Required**: The minimum supported Python version has been raised to 3.10, as Python 3.9 has reached end-of-life.
+
+### Bug Fixes
+
+- Fixed Gemini toolkit test failures.
+- Fixed LangGraph integration test failures.
+- Fixed OSS client function creation edge cases.
+- Fixed an issue where the pandas import was incorrectly declared as a top-level dependency.
+
+### Change Log
+
+- Dspy integration with AI functions by @puneet-jain159 in #1063
+- Update DSPy README and code examples by @BenWilson2 in #1157
+- LangChain v1 compatibility for `unitycatalog-langchain` by @bbqiu in #1120
+- Update Python version requirements and integration tests for AI Functions by @puneet-jain159 in #1065
+- Add `warehouse_id` support to `DatabricksFunctionClient` by @smurching in #1428
+- Security: add version bounds to `ai/core` Python deps by @serena-ruan in #1457
+- Fix `unitycatalog-ai` dependency (remove redundant pydantic check, move pandas import) by @serena-ruan in #1519
+- Pin litellm version by @BenWilson2 in #1427
+- Set maximum version of `databricks-connect` for Databricks integration by @aravind-segu in #1062
+- Fix Gemini toolkit test by @emmanuelferdman in #1024
+- Fix LangGraph test by @serena-ruan in #1014
+- Migrate UCAI workflows to uv with pinned deps by @serena-ruan in #1467
+- Bump version and prepare for 0.4.0 release by @serena-ruan in #1514
+- Bump `unitycatalog-langchain` and `unitycatalog-openai` package versions by @serena-ruan in #1515
+
 ## Unity Catalog AI 0.3.1
 
 The 0.3.1 release of Unity Catalog AI includes important bug fixes, improved error handling, and enhanced reliability for function execution and client connections.
