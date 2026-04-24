@@ -332,7 +332,7 @@ def process_retriever_output(result: "FunctionExecutionResult") -> List[Dict[str
     """
     if result.format == "CSV":
         import pandas as pd
-        
+
         df = pd.read_csv(StringIO(result.value))
         if "metadata" in df.columns:
             df["metadata"] = df["metadata"].apply(ast.literal_eval)
