@@ -4,6 +4,12 @@
 
 The 0.4.0 release of Unity Catalog AI includes a new framework integration, LangChain v1 compatibility, expanded Databricks client options, and dependency/security improvements.
 
+### Artifacts in this release
+
+- [unitycatalog-ai](https://pypi.org/project/unitycatalog-ai/0.4.0/)
+- [unitycatalog-langchain](https://pypi.org/project/unitycatalog-langchain/0.4.0/)
+- [unitycatalog-openai](https://pypi.org/project/unitycatalog-openai/0.4.0/)
+
 ### Major Changes
 
 - **Warehouse ID Support in DatabricksFunctionClient**: For workspaces where serverless compute is unavailable or restricted, `DatabricksFunctionClient` now accepts an optional `warehouse_id` parameter to dispatch function execution via the Statement Execution API. Serverless remains the default and recommended execution path.
