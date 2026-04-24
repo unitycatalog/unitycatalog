@@ -6,6 +6,7 @@ import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.SplitHttpResponse;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedService;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
@@ -263,16 +264,22 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     @Override
     public HttpResponse afterRequest(HttpResponse response) {
-      return HttpResponse.of(response.aggregate().thenApply(
-        aggregated -> {
-          if (aggregated.status().isSuccess()) {
+      // Wait only for response headers (not the full body) to run the enforcement check,
+      // then stream the body through. This avoids buffering large LIST responses just to
+      // check a flag that would allocate O(response size) per concurrent request.
+      SplitHttpResponse split = response.split();
+      return HttpResponse.of(split.headers().thenApply(
+        headers -> {
+          if (headers.status().isSuccess()) {
             if (resultFilter == null) {
+              split.body().abort();
               LOGGER.error(
                   "SECURITY VIOLATION: Method {} did not execute evaluateAction",
                   method.getName());
               throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
             }
             if (!resultFilter.wasCalled()) {
+              split.body().abort();
               LOGGER.error(
                   "SECURITY VIOLATION: Method {} with @ResponseAuthorizeFilter did not call "
                       + "applyResponseFilter(). This is a security vulnerability!",
@@ -280,7 +287,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
               throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
             }
           }
-          return aggregated.toHttpResponse();
+          return HttpResponse.of(headers, split.body());
         }));
     }
   }
