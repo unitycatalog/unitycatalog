@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist;
 
+import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
+
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfos;
@@ -101,32 +103,57 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Retrieves all commits for a table in descending order by version up to NUM_COMMITS_PER_BATCH.
+   * Result of querying unbackfilled commits for a table.
+   *
+   * @param commits unbackfilled commits (descending version order, newest first)
+   * @param latestTableVersion the latest commit version (0 if no commits)
+   * @param oldestVersion the oldest commit version in the DB (used for pagination base)
    */
-  private List<DeltaCommitDAO> getAllCommitDAOsDesc(UUID tableId) {
-    return TransactionManager.executeWithTransaction(
-        sessionFactory,
-        session -> {
-          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
-          if (tableInfoDAO == null) {
-            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableId);
-          }
-          validateTable(tableInfoDAO);
+  record CommitQueryResult(
+      List<DeltaCommitDAO> commits, long latestTableVersion, long oldestVersion) {}
 
-          Query<DeltaCommitDAO> query =
-              session.createQuery(
-                  "FROM DeltaCommitDAO WHERE tableId = :tableId ORDER BY commitVersion DESC",
-                  DeltaCommitDAO.class);
-          query.setParameter("tableId", tableId);
-          query.setMaxResults(NUM_COMMITS_PER_BATCH);
-          return query.list();
-        },
-        "Failed to get latest commits",
-        /* readOnly= */ true,
-        // Use REPEATABLE_READ isolation to ensure consistent snapshot and prevent version numbers
-        // from appearing to go backwards during concurrent writes. This is critical for get
-        // commits that expect monotonic version progression after posting a commit.
-        Optional.of(java.sql.Connection.TRANSACTION_REPEATABLE_READ));
+  /**
+   * Query unbackfilled commits for a table within an existing session. Returns commits in
+   * descending version order (newest first) and the latest table version.
+   *
+   * <p>Handles empty tables (returns version 0) and fully backfilled tables (returns empty list
+   * with correct version).
+   */
+  CommitQueryResult getUnbackfilledCommits(Session session, UUID tableId) {
+    Query<DeltaCommitDAO> query =
+        session.createQuery(
+            "FROM DeltaCommitDAO WHERE tableId = :tableId ORDER BY commitVersion DESC",
+            DeltaCommitDAO.class);
+    query.setParameter("tableId", tableId);
+    query.setMaxResults(NUM_COMMITS_PER_BATCH);
+    List<DeltaCommitDAO> allDesc = query.list();
+
+    if (allDesc.isEmpty()) {
+      return new CommitQueryResult(List.of(), 0L, 0L);
+    }
+
+    int commitCount = allDesc.size();
+    if (commitCount > MAX_NUM_COMMITS_PER_TABLE) {
+      LOGGER.error(
+          "Table {} has {} commits, exceeds limit {}.",
+          tableId,
+          commitCount,
+          MAX_NUM_COMMITS_PER_TABLE);
+    }
+
+    DeltaCommitDAO newestCommit = allDesc.get(0);
+    long latestVersion = newestCommit.getCommitVersion();
+    long oldestVersion = allDesc.get(allDesc.size() - 1).getCommitVersion();
+    if (newestCommit.isBackfilledLatestCommit()) {
+      return new CommitQueryResult(List.of(), latestVersion, oldestVersion);
+    }
+
+    // Only the latest backfilled version is kept in the DB as a
+    // marker (isBackfilledLatestCommit=true). All other backfilled
+    // commits are deleted. Filter out this single marker.
+    List<DeltaCommitDAO> unbackfilled =
+        allDesc.stream().filter(c -> !c.isBackfilledLatestCommit()).toList();
+    return new CommitQueryResult(unbackfilled, latestVersion, oldestVersion);
   }
 
   /**
@@ -163,56 +190,38 @@ public class DeltaCommitRepository {
         endVersion.filter(x -> x < startVersion).isEmpty(),
         "end_version must be >=start_version if set");
 
-    List<DeltaCommitDAO> allCommitDAOsDesc = getAllCommitDAOsDesc(tableId);
-    int commitCount = allCommitDAOsDesc.size();
-    if (commitCount > MAX_NUM_COMMITS_PER_TABLE) {
-      // This should never occur. But this is recoverable and not fatal.
-      LOGGER.error(
-          "Table {} has {} commits, which exceeds the limit of {}.",
-          tableId,
-          commitCount,
-          MAX_NUM_COMMITS_PER_TABLE);
-    }
-    if (commitCount == 0) {
-      // Table is validated as a managed Delta table. UC is the source of truth for
-      // managed tables, so a newly created table with no commits is at version 0.
-      return new DeltaGetCommitsResponse().latestTableVersion(0L);
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          // Validate table exists and is managed Delta
+          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableId);
+          }
+          validateTable(tableInfoDAO);
 
-    // In case there's only one commit in database, firstCommitDAO and lastCommitDAO will be the
-    // same object.
-    DeltaCommitDAO firstCommitDAO = allCommitDAOsDesc.get(allCommitDAOsDesc.size() - 1);
-    DeltaCommitDAO lastCommitDAO = allCommitDAOsDesc.get(0);
-    assert firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion();
-    if (lastCommitDAO.isBackfilledLatestCommit()) {
-      // The last commit is already backfilled. Just return an empty list. No need to return any
-      // actual commits.
-      return new DeltaGetCommitsResponse().latestTableVersion(lastCommitDAO.getCommitVersion());
-    }
+          CommitQueryResult result = getUnbackfilledCommits(session, tableId);
 
-    // The last version to return if endVersion is not set. It's limited by pagination limit.
-    // In normal cases the pagination limitation should not happen at all since the limit is the
-    // same limit that a table can have as many unbackfilled commits as possible. But it is
-    // implemented this way just in case.
-    long paginatedEndVersionInclusive =
-        Math.max(startVersion, firstCommitDAO.getCommitVersion()) + MAX_NUM_COMMITS_PER_TABLE - 1;
-    // The actual last version to return
-    long effectiveEndVersionInclusive =
-        Math.min(endVersion.orElse(Long.MAX_VALUE), paginatedEndVersionInclusive);
+          // Apply version range filter + pagination
+          long paginatedEnd =
+              Math.max(startVersion, result.oldestVersion()) + MAX_NUM_COMMITS_PER_TABLE - 1;
+          long effectiveEnd = Math.min(endVersion.orElse(Long.MAX_VALUE), paginatedEnd);
 
-    // Filter result and return
-    List<DeltaCommitInfo> commits =
-        allCommitDAOsDesc.stream()
-            .filter(
-                c ->
-                    !c.isBackfilledLatestCommit()
-                        && c.getCommitVersion() >= startVersion
-                        && c.getCommitVersion() <= effectiveEndVersionInclusive)
-            .map(DeltaCommitDAO::toCommitInfo)
-            .collect(Collectors.toList());
-    return new DeltaGetCommitsResponse()
-        .commits(commits)
-        .latestTableVersion(lastCommitDAO.getCommitVersion());
+          List<DeltaCommitInfo> commits =
+              result.commits().stream()
+                  .filter(
+                      c ->
+                          c.getCommitVersion() >= startVersion
+                              && c.getCommitVersion() <= effectiveEnd)
+                  .map(DeltaCommitDAO::toCommitInfo)
+                  .collect(Collectors.toList());
+          return new DeltaGetCommitsResponse()
+              .commits(commits)
+              .latestTableVersion(result.latestTableVersion());
+        },
+        "Failed to get commits",
+        /* readOnly= */ true,
+        Optional.of(TRANSACTION_REPEATABLE_READ));
   }
 
   /**

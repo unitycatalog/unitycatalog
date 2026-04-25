@@ -7,7 +7,7 @@ authors = [
 ]
 readme = "README.md"
 license = { text="Apache-2.0" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "litellm>=1.50.1,<=1.82.6",
     "unitycatalog-ai>=0.3.0,<=0.4.0",
@@ -66,3 +66,9 @@ docstring-code-line-length = 88
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.uv]
+exclude-newer = "2026-03-10T00:00:00Z"
+
+[tool.uv.sources]
+unitycatalog-ai = { path = "../../core", editable = true }

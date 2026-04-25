@@ -1679,6 +1679,7 @@ components:
         - EXTERNAL
         - STREAMING_TABLE # Not yet fully implemented
         - MATERIALIZED_VIEW # Not yet fully implemented
+        - METRIC_VIEW
     DataSourceFormat:
       description: Data source format
       type: string
@@ -1739,6 +1740,14 @@ components:
         table_id:
           description: Unique identifier for the table.
           type: string
+        view_definition:
+          description: >-
+            Definition text for view-like table types such as VIEW,
+            MATERIALIZED_VIEW, STREAMING_TABLE, and METRIC_VIEW. The format
+            depends on the table type (SQL for views, YAML for metric views).
+          type: string
+        view_dependencies:
+          "$ref": "#/components/schemas/DependencyList"
     CreateTable:
       type: object
       properties:
@@ -1768,14 +1777,20 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        view_definition:
+          description: >-
+            Definition text for view-like table types such as VIEW,
+            MATERIALIZED_VIEW, STREAMING_TABLE, and METRIC_VIEW. The format
+            depends on the table type (SQL for views, YAML for metric views).
+          type: string
+        view_dependencies:
+          "$ref": "#/components/schemas/DependencyList"
       required:
         - name
         - catalog_name
         - schema_name
         - table_type
-        - data_source_format
         - columns
-        - storage_location
     StagingTableInfo:
       type: object
       properties:

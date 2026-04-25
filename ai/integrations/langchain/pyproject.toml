@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-langchain"
-version = "0.3.0"
+version = "0.4.0"
 description = "Support for Unity Catalog functions as LangChain tools"
 authors = [
     { name="Serena Ruan", email="serena.ruan@databricks.com" }
@@ -11,24 +11,25 @@ requires-python = ">=3.10"
 dependencies = [
     "langchain>=1.0.0,<=1.2.10",
     "langchain-community>=0.4.0,<=0.4.1",
-    "unitycatalog-ai>=0.3.0,<=0.4.0",
+    "unitycatalog-ai>=0.4.0,<0.5.0",
 ]
 
 [project.optional-dependencies]
 databricks = [
-  "unitycatalog-ai[databricks]>=0.3.0,<=0.4.0",
+  "unitycatalog-ai[databricks]>=0.4.0,<0.5.0",
 ]
 
 databricks-dev = [
-  "unitycatalog-ai[databricks-dev]>=0.3.0,<=0.4.0",
+  "unitycatalog-ai[databricks-dev]>=0.4.0,<0.5.0",
   "langgraph<=1.0.10",
   "databricks-langchain<=0.16.1",
 ]
 
 dev = [
-  "unitycatalog-ai[dev]>=0.3.0,<=0.4.0",
+  "unitycatalog-ai[dev]>=0.4.0,<0.5.0",
   "langgraph<=1.0.10",
   "databricks-langchain<=0.16.1",
+  "mlflow>=3.3.0,<=3.10.0",
 ]
 
 [build-system]
@@ -46,7 +47,7 @@ only-include = ["src/unitycatalog/ai/langchain"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
@@ -75,3 +76,9 @@ docstring-code-line-length = 88
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.uv]
+exclude-newer = "2026-03-10T00:00:00Z"
+
+[tool.uv.sources]
+unitycatalog-ai = { path = "../../core", editable = true }
