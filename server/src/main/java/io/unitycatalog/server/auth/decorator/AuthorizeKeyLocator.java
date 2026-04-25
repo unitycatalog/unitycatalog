@@ -63,22 +63,32 @@ public class AuthorizeKeyLocator {
 
   private static AuthorizeKeyLocator from(
       Optional<SecurableType> type, String key, Parameter parameter) {
-    if (!key.isEmpty()) {
-      // Explicitly declaring a key, so it's the source is from the payload data
-      return AuthorizeKeyLocator.builder().source(Source.PAYLOAD).type(type).key(key).build();
-    } else {
-      // No key defined so implicitly referencing an (annotated) (query) parameter
-      Param param = parameter.getAnnotation(Param.class);
-      if (param != null) {
-        return AuthorizeKeyLocator.builder()
-            .source(Source.PARAM)
-            .type(type)
-            .key(param.value())
-            .build();
-      } else {
-        throw new RuntimeException(
-            "Couldn't find param key for authorization key: " + parameter.getName());
+    Param param = parameter.getAnnotation(Param.class);
+    if (param != null) {
+      // @Param bound: source is the URL query/path. If a key is explicitly set it must equal
+      // @Param.value() so the SpEL variable name and URL parameter name agree; leaving it empty
+      // reuses @Param.value() for both.
+      if (!key.isEmpty() && !key.equals(param.value())) {
+        throw new IllegalStateException(
+            "Authorization key=\""
+                + key
+                + "\" on parameter "
+                + parameter.getName()
+                + " must match its companion @Param(\""
+                + param.value()
+                + "\")");
       }
+      return AuthorizeKeyLocator.builder()
+          .source(Source.PARAM)
+          .type(type)
+          .key(param.value())
+          .build();
     }
+    // No @Param: the key names a request body field.
+    if (key.isEmpty()) {
+      throw new RuntimeException(
+          "Couldn't find param key for authorization key: " + parameter.getName());
+    }
+    return AuthorizeKeyLocator.builder().source(Source.PAYLOAD).type(type).key(key).build();
   }
 }

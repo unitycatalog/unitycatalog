@@ -5,17 +5,18 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.ListCredentialsResponse;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.CredentialRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
-import java.util.List;
-import java.util.Map;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
 import java.util.UUID;
 import com.linecorp.armeria.common.HttpResponse;
@@ -46,8 +47,11 @@ public class CredentialService extends AuthorizedService {
   private final MetastoreRepository metastoreRepository;
 
   @SneakyThrows
-  public CredentialService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories);
+  public CredentialService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
     this.credentialRepository = repositories.getCredentialRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
   }
@@ -68,13 +72,15 @@ public class CredentialService extends AuthorizedService {
       """;
 
   @Get("")
-  @AuthorizeExpression("#defer")
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse listCredentials(
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
     ListCredentialsResponse credentials =
         credentialRepository.listCredentials(maxResults, pageToken);
-    filterCredentials(LIST_AND_GET_AUTH_EXPRESSION, credentials.getCredentials());
+    applyResponseFilter(SecurableType.CREDENTIAL, credentials.getCredentials());
     return HttpResponse.ofJson(credentials);
   }
 
@@ -112,29 +118,4 @@ public class CredentialService extends AuthorizedService {
     return HttpResponse.of(HttpStatus.OK);
   }
 
-  /**
-   * Filters a list of credentials based on the authorization expression.
-   *
-   * <p>This method removes credentials from the list that the current principal does not
-   * have permission to access according to the provided authorization expression. The filtering is
-   * done in-place by removing unauthorized entries from the list.
-   *
-   * @param expression The authorization expression to evaluate (e.g., checking for OWNER or
-   *     CREATE_EXTERNAL_LOCATION permissions)
-   * @param entries The list of credential entries to filter (modified in-place)
-   */
-  public void filterCredentials(String expression, List<CredentialInfo> entries) {
-    // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = userRepository.findPrincipalId();
-
-    evaluator.filter(
-        principalId,
-        expression,
-        entries,
-        credentialInfo -> Map.of(
-            METASTORE,
-            metastoreRepository.getMetastoreId(),
-            CREDENTIAL,
-            UUID.fromString(credentialInfo.getId())));
-  }
 }
