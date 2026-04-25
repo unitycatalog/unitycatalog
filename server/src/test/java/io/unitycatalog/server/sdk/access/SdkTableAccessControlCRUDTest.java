@@ -50,6 +50,14 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     TablesApi regular2TablesApi = new TablesApi(TestUtils.createApiClient(regular2Config));
     SchemasApi regular2SchemasApi = new SchemasApi(TestUtils.createApiClient(regular2Config));
 
+    // Delta REST API clients for loadTable tests
+    io.unitycatalog.client.delta.api.TablesApi adminDeltaApi =
+        new io.unitycatalog.client.delta.api.TablesApi(adminApiClient);
+    io.unitycatalog.client.delta.api.TablesApi regular1DeltaApi =
+        new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(regular1Config));
+    io.unitycatalog.client.delta.api.TablesApi regular2DeltaApi =
+        new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(regular2Config));
+
     // Grant USE CATALOG and USE SCHEMA to principal-1
     grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
     grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.USE_SCHEMA);
@@ -133,6 +141,16 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     // get, table (regular-2) -> use schema, use catalog, select [table] -> allowed
     TableInfo tableInfoRegular2 = getTable(regular2TablesApi, "cat_pr1.sch_pr1.tbl_pr1");
     assertThat(tableInfoRegular2).isNotNull();
+
+    // Delta loadTable follows the same authz as getTable
+    // loadTable (admin) -> metastore admin -> allowed
+    assertThat(adminDeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1")).isNotNull();
+
+    // loadTable (regular-1) -> use catalog, use schema, but no SELECT -> denied
+    assertPermissionDenied(() -> regular1DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1"));
+
+    // loadTable (regular-2) -> use schema, use catalog, select -> allowed
+    assertThat(regular2DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1")).isNotNull();
 
     // grant CREATE SCHEMA to regular-2
     grantPermissions(

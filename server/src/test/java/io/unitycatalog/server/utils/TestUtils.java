@@ -5,9 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.delta.model.ErrorResponse;
 import io.unitycatalog.client.delta.model.ErrorType;
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
@@ -63,17 +66,13 @@ public class TestUtils {
   public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
 
   public static ApiClient createApiClient(ServerConfig serverConfig) {
-    ApiClient apiClient = new ApiClient();
     URI uri = URI.create(serverConfig.getServerUrl());
-    int port = uri.getPort();
-    apiClient.setHost(uri.getHost());
-    apiClient.setPort(port);
-    apiClient.setScheme(uri.getScheme());
-    if (serverConfig.getAuthToken() != null && !serverConfig.getAuthToken().isEmpty()) {
-      apiClient.setRequestInterceptor(
-          request -> request.header("Authorization", "Bearer " + serverConfig.getAuthToken()));
-    }
-    return apiClient;
+    String token = serverConfig.getAuthToken() != null ? serverConfig.getAuthToken() : "";
+    return ApiClientBuilder.create()
+        .uri(uri)
+        .tokenProvider(TokenProvider.create(Map.of("type", "static", "token", token)))
+        .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(1).build())
+        .build();
   }
 
   public static void assertApiException(

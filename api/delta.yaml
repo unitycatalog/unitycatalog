@@ -1307,7 +1307,7 @@ components:
         timestamp:
           type: integer
           format: int64
-          description: In-commit timestamp
+          description: In-commit timestamp, in epoch milliseconds
         file-name:
           type: string
           description: UUID-based commit file name
@@ -1318,7 +1318,7 @@ components:
         file-modification-timestamp:
           type: integer
           format: int64
-          description: File modification timestamp
+          description: File modification timestamp, in epoch milliseconds
       required:
         - version
         - timestamp
