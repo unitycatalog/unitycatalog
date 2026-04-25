@@ -1,22 +1,21 @@
-package io.unitycatalog.spark.auth.storage;
+package io.unitycatalog.client.storage;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Clock;
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.client.retry.RetryPolicy;
-import io.unitycatalog.spark.ApiClientFactory;
-import io.unitycatalog.spark.UCHadoopConf;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
-import org.sparkproject.guava.base.Preconditions;
-import org.sparkproject.guava.cache.Cache;
-import org.sparkproject.guava.cache.CacheBuilder;
 
 public abstract class GenericCredentialProvider {
   // The credential cache, for saving QPS to unity catalog server.
@@ -102,7 +101,11 @@ public abstract class GenericCredentialProvider {
           RetryPolicy retryPolicy = UCHadoopConf.createRequestRetryPolicy(conf);
           tempCredApi =
               new TemporaryCredentialsApi(
-                  ApiClientFactory.createApiClient(retryPolicy, ucUri, tokenProvider));
+                  ApiClientBuilder.create()
+                      .uri(ucUri)
+                      .tokenProvider(tokenProvider)
+                      .retryPolicy(retryPolicy)
+                      .build());
         }
       }
     }

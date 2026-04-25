@@ -185,8 +185,13 @@ lazy val client = (project in file("clients/java"))
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
+      "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
+      "com.google.guava" % "guava" % "31.0.1-jre",
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
+      "org.apache.hadoop" % "hadoop-common" % hadoopVersion % Provided,
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
 
       // Test dependencies
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
@@ -194,6 +199,8 @@ lazy val client = (project in file("clients/java"))
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
