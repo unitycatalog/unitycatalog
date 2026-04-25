@@ -1,9 +1,7 @@
 package io.unitycatalog.server.sdk.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
-import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.ColumnInfo;
@@ -19,10 +17,10 @@ import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.base.ServerConfig;
-import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -111,12 +109,24 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
     assertThat(tempCredsA).isNotNull();
 
     // User B (non-owner) should fail to get temporary credentials with PERMISSION_DENIED
-    assertThatExceptionOfType(ApiException.class)
-        .isThrownBy(() -> userBTempCredsApi.generateTemporaryTableCredentials(tempCredRequest))
-        .satisfies(
-            ex ->
-                assertThat(ex.getCode())
-                    .isEqualTo(ErrorCode.PERMISSION_DENIED.getHttpStatus().code()));
+    TestUtils.assertPermissionDenied(
+        () -> userBTempCredsApi.generateTemporaryTableCredentials(tempCredRequest));
+
+    // Delta REST getStagingTableCredentials follows the same OWNER-only authz.
+    io.unitycatalog.client.delta.api.TemporaryCredentialsApi userADeltaCredsApi =
+        new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(
+            TestUtils.createApiClient(userAConfig));
+    io.unitycatalog.client.delta.api.TemporaryCredentialsApi userBDeltaCredsApi =
+        new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(
+            TestUtils.createApiClient(userBConfig));
+    UUID stagingId = UUID.fromString(stagingTableInfo.getId());
+
+    // User A (owner) -> allowed
+    assertThat(userADeltaCredsApi.getStagingTableCredentials(stagingId)).isNotNull();
+
+    // User B (non-owner) -> denied
+    TestUtils.assertPermissionDenied(
+        () -> userBDeltaCredsApi.getStagingTableCredentials(stagingId));
 
     // Step 3: User B attempts to create a managed table using User A's staging location
     CreateTable createTableRequest =
@@ -130,20 +140,25 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
             .storageLocation(stagingTableInfo.getStagingLocation())
             .comment("Table created by different user - should fail");
 
-    // This by user B should fail with PERMISSION_DENIED
-    assertThatExceptionOfType(ApiException.class)
-        .isThrownBy(() -> userBTablesApi.createTable(createTableRequest))
-        .satisfies(
-            ex ->
-                assertThat(ex.getCode())
-                    .isEqualTo(ErrorCode.PERMISSION_DENIED.getHttpStatus().code()))
-        .withMessageContaining(
-            "User attempts to create table on a staging location without ownership");
+    // This by user B should fail with PERMISSION_DENIED and a message identifying the check.
+    TestUtils.assertPermissionDenied(
+        () -> userBTablesApi.createTable(createTableRequest),
+        "User attempts to create table on a staging location without ownership");
 
     // Step 4: The same request by user A should succeed
     TableInfo tableInfo = userATablesApi.createTable(createTableRequest);
     assertThat(tableInfo).isNotNull();
     assertThat(tableInfo.getStorageLocation()).isEqualTo(stagingTableInfo.getStagingLocation());
     assertThat(tableInfo.getTableId()).isEqualTo(stagingTableInfo.getId());
+
+    // Step 5: User B calls getStagingTableCredentials with User A's regular-table UUID.
+    // This is not the same as the SdkDeltaCredentialsTest case (owner passes regular-table UUID
+    // and gets 404 from the reject-regular-table logic); here the caller is a non-owner, so
+    // authz (@AuthorizeResourceKey(TABLE)) resolves the regular-table UUID in the graph, finds
+    // that User B is not OWNER, and rejects with 403 before the handler runs. The 404 path is
+    // therefore unreachable for non-owners -- which is fail-closed and the desired behavior.
+    UUID tableUuid = UUID.fromString(tableInfo.getTableId());
+    TestUtils.assertPermissionDenied(
+        () -> userBDeltaCredsApi.getStagingTableCredentials(tableUuid));
   }
 }
