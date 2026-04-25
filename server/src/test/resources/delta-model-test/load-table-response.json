@@ -7,7 +7,6 @@
     "location": "s3://bucket/warehouse/catalog/schema/sales",
     "created-time": 1700000000000,
     "updated-time": 1700000100000,
-    "securable-type": "TABLE",
     "columns": {
       "type": "struct",
       "fields": [
