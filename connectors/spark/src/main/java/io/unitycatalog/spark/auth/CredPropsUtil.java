@@ -9,6 +9,24 @@ import java.util.stream.Collectors;
 
 /** Compatibility wrapper for the shared UC credential property builder. */
 public class CredPropsUtil {
+  private static final String CLIENT_AWS_PROVIDER =
+      "io.unitycatalog.client.storage.AwsVendedTokenProvider";
+  private static final String CLIENT_GCS_PROVIDER =
+      "io.unitycatalog.client.storage.GcsVendedTokenProvider";
+  private static final String CLIENT_ABFS_PROVIDER =
+      "io.unitycatalog.client.storage.AbfsVendedTokenProvider";
+  private static final String SPARK_AWS_PROVIDER =
+      "io.unitycatalog.spark.auth.storage.AwsVendedTokenProvider";
+  private static final String SPARK_GCS_PROVIDER =
+      "io.unitycatalog.spark.auth.storage.GcsVendedTokenProvider";
+  private static final String SPARK_ABFS_PROVIDER =
+      "io.unitycatalog.spark.auth.storage.AbfsVendedTokenProvider";
+  private static final Map<String, String> SPARK_PROVIDER_NAMES =
+      Map.of(
+          CLIENT_AWS_PROVIDER, SPARK_AWS_PROVIDER,
+          CLIENT_GCS_PROVIDER, SPARK_GCS_PROVIDER,
+          CLIENT_ABFS_PROVIDER, SPARK_ABFS_PROVIDER);
+
   private CredPropsUtil() {}
 
   public static Map<String, String> createTableCredProps(
@@ -61,19 +79,7 @@ public class CredPropsUtil {
     return props.entrySet().stream()
         .collect(
             Collectors.toMap(
-                Map.Entry::getKey, entry -> toSparkProviderClassName(entry.getValue())));
-  }
-
-  private static String toSparkProviderClassName(String value) {
-    if (value.equals(io.unitycatalog.client.storage.AwsVendedTokenProvider.class.getName())) {
-      return io.unitycatalog.spark.auth.storage.AwsVendedTokenProvider.class.getName();
-    }
-    if (value.equals(io.unitycatalog.client.storage.GcsVendedTokenProvider.class.getName())) {
-      return io.unitycatalog.spark.auth.storage.GcsVendedTokenProvider.class.getName();
-    }
-    if (value.equals(io.unitycatalog.client.storage.AbfsVendedTokenProvider.class.getName())) {
-      return io.unitycatalog.spark.auth.storage.AbfsVendedTokenProvider.class.getName();
-    }
-    return value;
+                Map.Entry::getKey,
+                entry -> SPARK_PROVIDER_NAMES.getOrDefault(entry.getValue(), entry.getValue())));
   }
 }

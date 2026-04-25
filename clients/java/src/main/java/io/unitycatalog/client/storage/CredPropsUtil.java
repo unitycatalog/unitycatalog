@@ -21,6 +21,18 @@ public class CredPropsUtil {
       "io.unitycatalog.spark.fs.CredScopedFileSystem";
   private static final String CRED_SCOPED_FS = "io.unitycatalog.spark.fs.CredScopedFs";
 
+  // Keep these as strings so property construction does not load optional cloud SDK classes.
+  static final String AWS_VENDED_TOKEN_PROVIDER =
+      "io.unitycatalog.client.storage.AwsVendedTokenProvider";
+  static final String GCS_VENDED_TOKEN_PROVIDER =
+      "io.unitycatalog.client.storage.GcsVendedTokenProvider";
+  static final String ABFS_VENDED_TOKEN_PROVIDER =
+      "io.unitycatalog.client.storage.AbfsVendedTokenProvider";
+  private static final String GCS_ACCESS_TOKEN_KEY = "fs.gs.auth.access.token.credential";
+  private static final String GCS_ACCESS_TOKEN_EXPIRATION_KEY =
+      "fs.gs.auth.access.token.expiration";
+  private static final String AZURE_ACCESS_TOKEN_KEY = "fs.azure.sas.fixed.token";
+
   private CredPropsUtil() {}
 
   private abstract static class PropsBuilder<T extends PropsBuilder<T>> {
@@ -224,7 +236,7 @@ public class CredPropsUtil {
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     S3PropsBuilder builder =
         new S3PropsBuilder(credScopedFsEnabled, fsImplProps)
-            .set(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName())
+            .set(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AWS_VENDED_TOKEN_PROVIDER)
             .uri(uri)
             .tokenProvider(tokenProvider)
             .uid(UUID.randomUUID().toString())
@@ -232,43 +244,13 @@ public class CredPropsUtil {
             .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
             .set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
 
-    // For the static credential case, nullable expiration time is possible.
+    // UC may omit expiration in the initial credential payload.
     if (tempCreds.getExpirationTime() != null) {
       builder.set(
           UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, String.valueOf(tempCreds.getExpirationTime()));
     }
 
     return builder;
-  }
-
-  private static Map<String, String> s3TableTempCredProps(
-      boolean credScopedFsEnabled,
-      Map<String, String> fsImplProps,
-      String uri,
-      TokenProvider tokenProvider,
-      String tableId,
-      TableOperation tableOp,
-      TemporaryCredentials tempCreds) {
-    return s3TempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .tableId(tableId)
-        .tableOperation(tableOp)
-        .build();
-  }
-
-  private static Map<String, String> s3PathTempCredProps(
-      boolean credScopedFsEnabled,
-      Map<String, String> fsImplProps,
-      String uri,
-      TokenProvider tokenProvider,
-      String path,
-      PathOperation pathOp,
-      TemporaryCredentials tempCreds) {
-    return s3TempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
-        .path(path)
-        .pathOperation(pathOp)
-        .build();
   }
 
   private static Map<String, String> gsFixedCredProps(
@@ -279,8 +261,8 @@ public class CredPropsUtil {
     Long expirationTime =
         tempCreds.getExpirationTime() == null ? Long.MAX_VALUE : tempCreds.getExpirationTime();
     return new GcsPropsBuilder(credScopedFsEnabled, fsImplProps)
-        .set(GcsVendedTokenProvider.ACCESS_TOKEN_KEY, gcpOauthToken.getOauthToken())
-        .set(GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY, String.valueOf(expirationTime))
+        .set(GCS_ACCESS_TOKEN_KEY, gcpOauthToken.getOauthToken())
+        .set(GCS_ACCESS_TOKEN_EXPIRATION_KEY, String.valueOf(expirationTime))
         .build();
   }
 
@@ -294,13 +276,13 @@ public class CredPropsUtil {
     GcsPropsBuilder builder =
         new GcsPropsBuilder(credScopedFsEnabled, fsImplProps)
             .set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
-            .set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName())
+            .set("fs.gs.auth.access.token.provider", GCS_VENDED_TOKEN_PROVIDER)
             .uri(uri)
             .tokenProvider(tokenProvider)
             .uid(UUID.randomUUID().toString())
             .set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
 
-    // For the static credential case, nullable expiration time is possible.
+    // UC may omit expiration in the initial credential payload.
     if (tempCreds.getExpirationTime() != null) {
       builder.set(
           UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
@@ -310,43 +292,13 @@ public class CredPropsUtil {
     return builder;
   }
 
-  private static Map<String, String> gsTableTempCredProps(
-      boolean credScopedFsEnabled,
-      Map<String, String> fsImplProps,
-      String uri,
-      TokenProvider tokenProvider,
-      String tableId,
-      TableOperation tableOp,
-      TemporaryCredentials tempCreds) {
-    return gcsTempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .tableId(tableId)
-        .tableOperation(tableOp)
-        .build();
-  }
-
-  private static Map<String, String> gsPathTempCredProps(
-      boolean credScopedFsEnabled,
-      Map<String, String> fsImplProps,
-      String uri,
-      TokenProvider tokenProvider,
-      String path,
-      PathOperation pathOp,
-      TemporaryCredentials tempCreds) {
-    return gcsTempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
-        .path(path)
-        .pathOperation(pathOp)
-        .build();
-  }
-
   private static Map<String, String> abfsFixedCredProps(
       boolean credScopedFsEnabled,
       Map<String, String> fsImplProps,
       TemporaryCredentials tempCreds) {
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     return new AbfsPropsBuilder(credScopedFsEnabled, fsImplProps)
-        .set(AbfsVendedTokenProvider.ACCESS_TOKEN_KEY, azureSas.getSasToken())
+        .set(AZURE_ACCESS_TOKEN_KEY, azureSas.getSasToken())
         .build();
   }
 
@@ -359,13 +311,13 @@ public class CredPropsUtil {
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     AbfsPropsBuilder builder =
         new AbfsPropsBuilder(credScopedFsEnabled, fsImplProps)
-            .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName())
+            .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, ABFS_VENDED_TOKEN_PROVIDER)
             .uri(uri)
             .tokenProvider(tokenProvider)
             .uid(UUID.randomUUID().toString())
             .set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
 
-    // For the static credential case, nullable expiration time is possible.
+    // UC may omit expiration in the initial credential payload.
     if (tempCreds.getExpirationTime() != null) {
       builder.set(
           UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
@@ -375,34 +327,20 @@ public class CredPropsUtil {
     return builder;
   }
 
-  private static Map<String, String> abfsTableTempCredProps(
-      boolean credScopedFsEnabled,
-      Map<String, String> fsImplProps,
-      String uri,
-      TokenProvider tokenProvider,
-      String tableId,
-      TableOperation tableOp,
-      TemporaryCredentials tempCreds) {
-    return abfsTempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .tableId(tableId)
-        .tableOperation(tableOp)
-        .build();
+  private static Map<String, String> tableCredProps(
+      PropsBuilder<?> builder, String tableId, TableOperation tableOp) {
+    builder.credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    builder.tableId(tableId);
+    builder.tableOperation(tableOp);
+    return builder.build();
   }
 
-  private static Map<String, String> abfsPathTempCredProps(
-      boolean credScopedFsEnabled,
-      Map<String, String> fsImplProps,
-      String uri,
-      TokenProvider tokenProvider,
-      String path,
-      PathOperation pathOp,
-      TemporaryCredentials tempCreds) {
-    return abfsTempCredPropsBuilder(credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
-        .path(path)
-        .pathOperation(pathOp)
-        .build();
+  private static Map<String, String> pathCredProps(
+      PropsBuilder<?> builder, String path, PathOperation pathOp) {
+    builder.credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    builder.path(path);
+    builder.pathOperation(pathOp);
+    return builder.build();
   }
 
   /**
@@ -412,8 +350,8 @@ public class CredPropsUtil {
    *     automatically refreshes credentials before expiry; when {@code false}, embeds the initial
    *     credentials as static keys.
    * @param credScopedFsEnabled when {@code true}, overrides {@code fs.<scheme>.impl} with the Spark
-   *     connector's credential-scoped filesystem wrapper so that filesystem instances are reused per
-   *     credential scope rather than created anew for every file access.
+   *     connector's credential-scoped filesystem wrapper so that filesystem instances are reused
+   *     per credential scope rather than created anew for every file access.
    * @param fsImplProps the existing table/path properties, used to read any previously configured
    *     {@code fs.<scheme>.impl} values before they are overridden.
    */
@@ -430,27 +368,30 @@ public class CredPropsUtil {
     switch (scheme) {
       case "s3a":
       case "s3":
-        if (renewCredEnabled) {
-          return s3TableTempCredProps(
-              credScopedFsEnabled, fsImplProps, uri, tokenProvider, tableId, tableOp, tempCreds);
-        } else {
-          return s3FixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
-        }
+        return renewCredEnabled
+            ? tableCredProps(
+                s3TempCredPropsBuilder(
+                    credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds),
+                tableId,
+                tableOp)
+            : s3FixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
       case "gs":
-        if (renewCredEnabled) {
-          return gsTableTempCredProps(
-              credScopedFsEnabled, fsImplProps, uri, tokenProvider, tableId, tableOp, tempCreds);
-        } else {
-          return gsFixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
-        }
+        return renewCredEnabled
+            ? tableCredProps(
+                gcsTempCredPropsBuilder(
+                    credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds),
+                tableId,
+                tableOp)
+            : gsFixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
       case "abfss":
       case "abfs":
-        if (renewCredEnabled) {
-          return abfsTableTempCredProps(
-              credScopedFsEnabled, fsImplProps, uri, tokenProvider, tableId, tableOp, tempCreds);
-        } else {
-          return abfsFixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
-        }
+        return renewCredEnabled
+            ? tableCredProps(
+                abfsTempCredPropsBuilder(
+                    credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds),
+                tableId,
+                tableOp)
+            : abfsFixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
       default:
         return ImmutableMap.of();
     }
@@ -463,8 +404,8 @@ public class CredPropsUtil {
    *     automatically refreshes credentials before expiry; when {@code false}, embeds the initial
    *     credentials as static keys.
    * @param credScopedFsEnabled when {@code true}, overrides {@code fs.<scheme>.impl} with the Spark
-   *     connector's credential-scoped filesystem wrapper so that filesystem instances are reused per
-   *     credential scope rather than created anew for every file access.
+   *     connector's credential-scoped filesystem wrapper so that filesystem instances are reused
+   *     per credential scope rather than created anew for every file access.
    * @param fsImplProps the existing table/path properties, used to read any previously configured
    *     {@code fs.<scheme>.impl} values before they are overridden.
    */
@@ -481,27 +422,30 @@ public class CredPropsUtil {
     switch (scheme) {
       case "s3a":
       case "s3":
-        if (renewCredEnabled) {
-          return s3PathTempCredProps(
-              credScopedFsEnabled, fsImplProps, uri, tokenProvider, path, pathOp, tempCreds);
-        } else {
-          return s3FixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
-        }
+        return renewCredEnabled
+            ? pathCredProps(
+                s3TempCredPropsBuilder(
+                    credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds),
+                path,
+                pathOp)
+            : s3FixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
       case "gs":
-        if (renewCredEnabled) {
-          return gsPathTempCredProps(
-              credScopedFsEnabled, fsImplProps, uri, tokenProvider, path, pathOp, tempCreds);
-        } else {
-          return gsFixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
-        }
+        return renewCredEnabled
+            ? pathCredProps(
+                gcsTempCredPropsBuilder(
+                    credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds),
+                path,
+                pathOp)
+            : gsFixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
       case "abfss":
       case "abfs":
-        if (renewCredEnabled) {
-          return abfsPathTempCredProps(
-              credScopedFsEnabled, fsImplProps, uri, tokenProvider, path, pathOp, tempCreds);
-        } else {
-          return abfsFixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
-        }
+        return renewCredEnabled
+            ? pathCredProps(
+                abfsTempCredPropsBuilder(
+                    credScopedFsEnabled, fsImplProps, uri, tokenProvider, tempCreds),
+                path,
+                pathOp)
+            : abfsFixedCredProps(credScopedFsEnabled, fsImplProps, tempCreds);
       default:
         return ImmutableMap.of();
     }

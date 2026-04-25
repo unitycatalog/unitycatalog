@@ -601,26 +601,25 @@ private class UCProxy(
     var tableOp = TableOperation.READ_WRITE
     val temporaryCredentials = {
       try {
-        temporaryCredentialsApi
-          .generateTemporaryTableCredentials(
-            // TODO: at this time, we don't know if the table will be read or written. For now we always
-            //       request READ_WRITE credentials as the server doesn't distinguish between READ and
-            //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
-            //       for read or write, we can request the proper credential after fixing Spark.
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-          )
-      }       catch {
+        temporaryCredentialsApi.generateTemporaryTableCredentials(
+          // TODO: at this time, we don't know if the table will be read or written. For now we
+          //       always request READ_WRITE credentials as the server doesn't distinguish between
+          //       READ and READ_WRITE credentials as of today. When loading a table, Spark should
+          //       tell if it's for read or write, we can request the proper credential after
+          //       fixing Spark.
+          new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp))
+      } catch {
         case e: ApiException =>
-          logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
+          logWarning(
+            s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
           try {
             tableOp = TableOperation.READ
-            temporaryCredentialsApi
-              .generateTemporaryTableCredentials(
-                new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-              )
+            temporaryCredentialsApi.generateTemporaryTableCredentials(
+              new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp))
           } catch {
             case e: ApiException =>
-              logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
+              logWarning(
+                s"READ credential generation failed for table $identifier: ${e.getMessage}")
               if (serverSidePlanningEnabled) null else throw e
           }
       }

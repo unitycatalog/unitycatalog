@@ -28,7 +28,7 @@ class CredPropsUtilTest {
 
     assertThat(props)
         .containsEntry(
-            UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName())
+            UCHadoopConf.S3A_CREDENTIALS_PROVIDER, CredPropsUtil.AWS_VENDED_TOKEN_PROVIDER)
         .containsEntry(UCHadoopConf.UC_URI_KEY, "http://uc")
         .containsEntry(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, "table")
         .containsEntry(UCHadoopConf.UC_TABLE_ID_KEY, "table-id")
