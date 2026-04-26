@@ -127,7 +127,7 @@ class UCFunctionToolkit(BaseModel):
             _logger.info(f"Skipping {function_name} due to permission errors.")
             if filter_accessible_functions:
                 return None
-            raise e
+            raise
 
         # Use your existing logic to build a dynamic Pydantic model for input parameters
         function_input_params_schema = generate_function_input_params_schema(

@@ -91,7 +91,7 @@ class UCFunctionToolkit(BaseModel):
             _logger.info(f"Skipping {function_name} due to permission errors.")
             if filter_accessible_functions:
                 return None
-            raise e
+            raise
 
         def func(*args: Any, **kwargs: Any) -> str:
             args_json = json.loads(json.dumps(kwargs, default=str))

@@ -161,7 +161,7 @@ class UCFunctionToolkit(BaseModel):
                 _logger.info(f"Skipping {function_name} due to permission errors.")
                 if filter_accessible_functions:
                     return None
-                raise e
+                raise
         elif function_info:
             function_name = function_info.full_name
         else:
