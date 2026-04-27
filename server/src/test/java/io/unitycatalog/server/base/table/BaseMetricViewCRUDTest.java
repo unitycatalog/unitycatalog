@@ -2,7 +2,6 @@ package io.unitycatalog.server.base.table;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.Dependency;
@@ -17,8 +16,13 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
 
@@ -66,8 +70,10 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
 
   @Test
   public void testMetricViewCRUD() throws Exception {
-    assertThatThrownBy(() -> tableOperations.getTable(METRIC_VIEW_FULL_NAME))
-        .isInstanceOf(Exception.class);
+    assertApiException(
+        () -> tableOperations.getTable(METRIC_VIEW_FULL_NAME),
+        ErrorCode.TABLE_NOT_FOUND,
+        METRIC_VIEW_FULL_NAME);
 
     // --- Create with asset source ---
     CreateTable createRequest =
@@ -114,105 +120,107 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
 
     // --- Delete ---
     tableOperations.deleteTable(METRIC_VIEW_FULL_NAME);
-    assertThatThrownBy(() -> tableOperations.getTable(METRIC_VIEW_FULL_NAME))
-        .isInstanceOf(Exception.class);
+    assertApiException(
+        () -> tableOperations.getTable(METRIC_VIEW_FULL_NAME),
+        ErrorCode.TABLE_NOT_FOUND,
+        METRIC_VIEW_FULL_NAME);
   }
 
-  @Test
-  public void testCreateMetricViewWithoutDefinitionFails() {
-    CreateTable badRequest = validMetricViewRequest().viewDefinition(null);
-    assertApiException(
-        () -> tableOperations.createTable(badRequest),
-        ErrorCode.INVALID_ARGUMENT,
-        "view_definition is required for metric view");
+  private static Stream<Arguments> negativeCreateCases() {
+    return Stream.of(
+        Arguments.of(
+            "missing view_definition",
+            (UnaryOperator<CreateTable>) request -> request.viewDefinition(null),
+            ErrorCode.INVALID_ARGUMENT,
+            "view_definition is required for metric view"),
+        Arguments.of(
+            "missing view_dependencies",
+            (UnaryOperator<CreateTable>) request -> request.viewDependencies(null),
+            ErrorCode.INVALID_ARGUMENT,
+            "view_dependencies is required for metric view"),
+        Arguments.of(
+            "empty dependency list",
+            (UnaryOperator<CreateTable>)
+                request -> request.viewDependencies(new DependencyList().dependencies(List.of())),
+            ErrorCode.INVALID_ARGUMENT,
+            "view_dependencies must contain at least one entry for metric view"),
+        Arguments.of(
+            "dependency entry with neither table nor function set",
+            (UnaryOperator<CreateTable>)
+                request ->
+                    request.viewDependencies(
+                        new DependencyList().dependencies(List.of(new Dependency()))),
+            ErrorCode.INVALID_ARGUMENT,
+            "Unsupported dependency type"),
+        Arguments.of(
+            "dependency entry with both table and function set",
+            (UnaryOperator<CreateTable>)
+                request ->
+                    request.viewDependencies(
+                        new DependencyList()
+                            .dependencies(
+                                List.of(
+                                    new Dependency()
+                                        .table(
+                                            new TableDependency()
+                                                .tableFullName(SOURCE_TABLE_FULL_NAME))
+                                        .function(
+                                            new FunctionDependency()
+                                                .functionFullName(SOURCE_FUNCTION_FULL_NAME))))),
+            ErrorCode.INVALID_ARGUMENT,
+            "must have exactly one of table or function set"),
+        Arguments.of(
+            "table dependency with non-three-part full name",
+            (UnaryOperator<CreateTable>)
+                request ->
+                    request.viewDependencies(
+                        new DependencyList()
+                            .dependencies(
+                                List.of(
+                                    new Dependency()
+                                        .table(
+                                            new TableDependency()
+                                                .tableFullName("schema_only.table"))))),
+            ErrorCode.INVALID_ARGUMENT,
+            "must be a three-part name"),
+        Arguments.of(
+            "table dependency with empty full name",
+            (UnaryOperator<CreateTable>)
+                request ->
+                    request.viewDependencies(
+                        new DependencyList()
+                            .dependencies(
+                                List.of(
+                                    new Dependency()
+                                        .table(new TableDependency().tableFullName(""))))),
+            ErrorCode.INVALID_ARGUMENT,
+            "must not be null or empty"),
+        Arguments.of(
+            "function dependency with non-three-part full name",
+            (UnaryOperator<CreateTable>)
+                request ->
+                    request.viewDependencies(
+                        new DependencyList()
+                            .dependencies(
+                                List.of(
+                                    new Dependency()
+                                        .function(
+                                            new FunctionDependency()
+                                                .functionFullName("just_a_name"))))),
+            ErrorCode.INVALID_ARGUMENT,
+            "must be a three-part name"));
   }
 
-  @Test
-  public void testCreateMetricViewWithoutDependenciesFails() {
-    CreateTable badRequest = validMetricViewRequest().viewDependencies(null);
+  @ParameterizedTest(name = "createTable rejects metric view with {0}")
+  @MethodSource("negativeCreateCases")
+  public void testCreateMetricViewNegativeCases(
+      String label,
+      UnaryOperator<CreateTable> mutator,
+      ErrorCode expectedCode,
+      String expectedMessageSubstring) {
+    CreateTable badRequest = mutator.apply(validMetricViewRequest());
     assertApiException(
-        () -> tableOperations.createTable(badRequest),
-        ErrorCode.INVALID_ARGUMENT,
-        "view_dependencies is required for metric view");
-  }
-
-  /** Empty {@code dependencies} array on the request: server must reject. */
-  @Test
-  public void testCreateMetricViewWithEmptyDependencyListFails() {
-    CreateTable badRequest =
-        validMetricViewRequest().viewDependencies(new DependencyList().dependencies(List.of()));
-    assertApiException(
-        () -> tableOperations.createTable(badRequest),
-        ErrorCode.INVALID_ARGUMENT,
-        "view_dependencies is required for metric view");
-  }
-
-  /**
-   * Dependency entry with neither a table nor a function set. Hits {@code DependencyDAO.from}'s
-   * "Unsupported dependency type" branch.
-   */
-  @Test
-  public void testCreateMetricViewWithEmptyDependencyEntryFails() {
-    DependencyList deps = new DependencyList().dependencies(List.of(new Dependency()));
-    CreateTable badRequest = validMetricViewRequest().viewDependencies(deps);
-    assertApiException(
-        () -> tableOperations.createTable(badRequest),
-        ErrorCode.INVALID_ARGUMENT,
-        "Unsupported dependency type");
-  }
-
-  /**
-   * Dependency with a table full name that is not a three-part name. Hits the "three-part name"
-   * validation in {@code DependencyDAO.parseThreePartName}.
-   */
-  @Test
-  public void testCreateMetricViewWithNonThreePartTableNameFails() {
-    DependencyList deps =
-        new DependencyList()
-            .dependencies(
-                List.of(
-                    new Dependency()
-                        .table(new TableDependency().tableFullName("schema_only.table"))));
-    CreateTable badRequest = validMetricViewRequest().viewDependencies(deps);
-    assertApiException(
-        () -> tableOperations.createTable(badRequest),
-        ErrorCode.INVALID_ARGUMENT,
-        "must be a three-part name");
-  }
-
-  /**
-   * Dependency with a table entry whose {@code table_full_name} is empty. Hits the "must not be
-   * null or empty" validation in {@code DependencyDAO.parseThreePartName}.
-   */
-  @Test
-  public void testCreateMetricViewWithEmptyTableFullNameFails() {
-    DependencyList deps =
-        new DependencyList()
-            .dependencies(List.of(new Dependency().table(new TableDependency().tableFullName(""))));
-    CreateTable badRequest = validMetricViewRequest().viewDependencies(deps);
-    assertApiException(
-        () -> tableOperations.createTable(badRequest),
-        ErrorCode.INVALID_ARGUMENT,
-        "must not be null or empty");
-  }
-
-  /**
-   * Dependency with a function entry whose {@code function_full_name} is not a three-part name.
-   * Hits the same validation as tables but on the function branch.
-   */
-  @Test
-  public void testCreateMetricViewWithNonThreePartFunctionNameFails() {
-    DependencyList deps =
-        new DependencyList()
-            .dependencies(
-                List.of(
-                    new Dependency()
-                        .function(new FunctionDependency().functionFullName("just_a_name"))));
-    CreateTable badRequest = validMetricViewRequest().viewDependencies(deps);
-    assertApiException(
-        () -> tableOperations.createTable(badRequest),
-        ErrorCode.INVALID_ARGUMENT,
-        "must be a three-part name");
+        () -> tableOperations.createTable(badRequest), expectedCode, expectedMessageSubstring);
   }
 
   /**

@@ -170,7 +170,8 @@ public class TableRepository {
           TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
               tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
-          attachDependencies(tableInfo, tableInfoDAO, session);
+          RepositoryUtils.attachDependencies(
+              tableInfo, tableInfoDAO, session, repositories.getDependencyRepository());
           return tableInfo;
         },
         "Failed to get table",
@@ -409,6 +410,7 @@ public class TableRepository {
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
           String tableID;
+          UUID metricViewTableUUID = null;
           NormalizedURL storageLocation;
           if (tableType == TableType.EXTERNAL) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());
@@ -429,29 +431,9 @@ public class TableRepository {
                     .commitStagingTable(session, callerId, storageLocation);
             tableID = stagingTableDAO.getId().toString();
           } else if (tableType == TableType.METRIC_VIEW) {
-            if (createTable.getViewDefinition() == null
-                || createTable.getViewDefinition().isEmpty()) {
-              throw new BaseException(
-                  ErrorCode.INVALID_ARGUMENT, "view_definition is required for metric view");
-            }
-            DependencyList viewDeps = createTable.getViewDependencies();
-            if (viewDeps == null
-                || viewDeps.getDependencies() == null
-                || viewDeps.getDependencies().isEmpty()) {
-              throw new BaseException(
-                  ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for metric view");
-            }
             storageLocation = null;
-            UUID tableUUID = UUID.randomUUID();
-            tableID = tableUUID.toString();
-            DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
-            List<DependencyDAO> depDAOs =
-                viewDeps.getDependencies().stream()
-                    .map(dep -> DependencyDAO.from(dep, tableUUID, dependentType))
-                    .collect(Collectors.toList());
-            repositories
-                .getDependencyRepository()
-                .createDependencies(session, tableUUID, dependentType, depDAOs);
+            metricViewTableUUID = validateMetricView(createTable);
+            tableID = metricViewTableUUID.toString();
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
@@ -495,10 +477,39 @@ public class TableRepository {
           PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
               .forEach(session::persist);
           session.persist(tableInfoDAO);
+          if (tableType == TableType.METRIC_VIEW) {
+            DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
+            UUID tableUUID = Objects.requireNonNull(metricViewTableUUID);
+            List<DependencyDAO> depDAOs =
+                createTable.getViewDependencies().getDependencies().stream()
+                    .map(dep -> DependencyDAO.from(dep, tableUUID, dependentType))
+                    .collect(Collectors.toList());
+            repositories
+                .getDependencyRepository()
+                .createDependencies(session, tableUUID, dependentType, depDAOs);
+          }
           return tableInfo;
         },
         "Error creating table: " + fullName,
         /* readOnly = */ false);
+  }
+
+  private static UUID validateMetricView(CreateTable createTable) {
+    if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "view_definition is required for metric view");
+    }
+    DependencyList viewDeps = createTable.getViewDependencies();
+    if (viewDeps == null || viewDeps.getDependencies() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for metric view");
+    }
+    if (viewDeps.getDependencies().isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "view_dependencies must contain at least one entry for metric view");
+    }
+    return UUID.randomUUID();
   }
 
   public TableInfoDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
@@ -576,7 +587,8 @@ public class TableRepository {
         RepositoryUtils.attachProperties(
             tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
       }
-      attachDependencies(tableInfo, tableInfoDAO, session);
+      RepositoryUtils.attachDependencies(
+          tableInfo, tableInfoDAO, session, repositories.getDependencyRepository());
       result.add(tableInfo);
     }
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
@@ -627,19 +639,5 @@ public class TableRepository {
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
     session.remove(tableInfoDAO);
-  }
-
-  private void attachDependencies(TableInfo tableInfo, TableInfoDAO tableInfoDAO, Session session) {
-    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())) {
-      List<DependencyDAO> deps =
-          repositories
-              .getDependencyRepository()
-              .getDependencies(session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);
-      // Always attach a dependency list (even when empty) for syntactic consistency: callers
-      // can tell "metric view with no recorded deps" apart from "field not set", and a
-      // hypothetical metric view that aggregates only constants would still round-trip cleanly.
-      tableInfo.setViewDependencies(
-          new DependencyList().dependencies(DependencyDAO.toDependencyList(deps)));
-    }
   }
 }

@@ -2,10 +2,16 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.DependencyList;
+import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.persist.DependencyRepository;
 import io.unitycatalog.server.persist.PropertyRepository;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.Constants;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -47,6 +53,20 @@ public class RepositoryUtils {
       return entityInfo;
     } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  public static void attachDependencies(
+      TableInfo tableInfo,
+      TableInfoDAO tableInfoDAO,
+      Session session,
+      DependencyRepository dependencyRepository) {
+    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())) {
+      List<DependencyDAO> deps =
+          dependencyRepository.getDependencies(
+              session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);
+      tableInfo.setViewDependencies(
+          new DependencyList().dependencies(DependencyDAO.toDependencyList(deps)));
     }
   }
 

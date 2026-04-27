@@ -84,14 +84,22 @@ public class DependencyDAO {
       Dependency dependency, UUID dependentId, DependentType dependentType) {
     final DependencyType dependencyType;
     final String fullName;
-    if (dependency.getTable() != null) {
+    boolean hasTable = dependency.getTable() != null;
+    boolean hasFunction = dependency.getFunction() != null;
+    if (hasTable && hasFunction) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Dependency must have exactly one of table or function set, not both");
+    }
+    if (!hasTable && !hasFunction) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported dependency type");
+    }
+    if (hasTable) {
       dependencyType = DependencyType.TABLE;
       fullName = dependency.getTable().getTableFullName();
-    } else if (dependency.getFunction() != null) {
+    } else {
       dependencyType = DependencyType.FUNCTION;
       fullName = dependency.getFunction().getFunctionFullName();
-    } else {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported dependency type");
     }
     String[] parts = parseThreePartName(fullName, dependencyType);
     return DependencyDAO.builder()
