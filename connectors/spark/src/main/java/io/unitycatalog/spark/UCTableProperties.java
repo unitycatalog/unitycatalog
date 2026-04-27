@@ -16,14 +16,21 @@ public class UCTableProperties {
   // can't set it yet.
   public static final String DELTA_CATALOG_MANAGED_KEY_NEW = "delta.feature.catalogManaged";
 
-  // These properties were added by `V1Table.addV2TableProperties` in package spark-catalyst.
-  // They are used for constructing the CreateTable rpc.
+  // Reserved V2 table properties that are promoted to first-class fields on the UC `CreateTable`
+  // payload (provider, location, comment, table_type, ...) and therefore must not
+  // be forwarded to the server as part of the `properties` map -- otherwise they would be
+  // double-persisted and would not round-trip cleanly on `loadTable`.
+  //
+  // View-specific fields such as query text and current catalog/namespace are typed fields on
+  // Spark's `ViewInfo`, not TableCatalog properties.
   public static final Set<String> V2_TABLE_PROPERTIES =
       Set.of(
           TableCatalog.PROP_COMMENT,
+          TableCatalog.PROP_COLLATION,
           TableCatalog.PROP_EXTERNAL,
           TableCatalog.PROP_IS_MANAGED_LOCATION,
           TableCatalog.PROP_LOCATION,
           TableCatalog.PROP_OWNER,
-          TableCatalog.PROP_PROVIDER);
+          TableCatalog.PROP_PROVIDER,
+          TableCatalog.PROP_TABLE_TYPE);
 }
