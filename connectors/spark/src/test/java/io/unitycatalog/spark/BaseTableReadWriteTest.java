@@ -571,6 +571,12 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
         spec.getName(), spec.getDataTypeJson());
   }
 
+  private static String expectedStructFieldTypeJson(ColSpec spec) {
+    return String.format(
+        "{\"name\":\"%s\",\"type\":%s,\"nullable\":true,\"metadata\":{}}",
+        spec.getName(), spec.getTypeJson());
+  }
+
   // Currently this test only works for non-Delta tables. Later it will work for more.
   @Test
   @EnabledIf("canUpdateColumnsToUC")
