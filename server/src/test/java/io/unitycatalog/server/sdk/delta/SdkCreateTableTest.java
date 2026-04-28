@@ -288,8 +288,6 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
   private static Map<String, String> fullManagedProperties(String tableId) {
     Map<String, String> props = new java.util.HashMap<>();
     props.put(TableProperties.CHECKPOINT_POLICY, "v2");
-    props.put(TableProperties.CHECKPOINT_WRITE_STATS_AS_JSON, "false");
-    props.put(TableProperties.CHECKPOINT_WRITE_STATS_AS_STRUCT, "true");
     props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
     props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
     props.put(TableProperties.UC_TABLE_ID, tableId);
