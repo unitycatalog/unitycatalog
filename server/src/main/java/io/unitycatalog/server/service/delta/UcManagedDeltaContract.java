@@ -58,8 +58,6 @@ public final class UcManagedDeltaContract {
   public static final Map<String, String> REQUIRED_FIXED_PROPERTIES =
       Map.of(
           TableProperties.CHECKPOINT_POLICY, "v2",
-          TableProperties.CHECKPOINT_WRITE_STATS_AS_JSON, "false",
-          TableProperties.CHECKPOINT_WRITE_STATS_AS_STRUCT, "true",
           TableProperties.ENABLE_DELETION_VECTORS, "true",
           TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
 

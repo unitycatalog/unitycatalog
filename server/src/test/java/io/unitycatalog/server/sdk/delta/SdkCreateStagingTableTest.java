@@ -102,8 +102,6 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
 
     assertThat(resp.getRequiredProperties())
         .containsEntry(TableProperties.CHECKPOINT_POLICY, "v2")
-        .containsEntry(TableProperties.CHECKPOINT_WRITE_STATS_AS_JSON, "false")
-        .containsEntry(TableProperties.CHECKPOINT_WRITE_STATS_AS_STRUCT, "true")
         .containsEntry(TableProperties.ENABLE_DELETION_VECTORS, "true")
         .containsEntry(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true")
         // The rule-based property binds the Delta table to the UC-allocated tableId.

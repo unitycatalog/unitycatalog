@@ -81,9 +81,6 @@ public final class DeltaConsts {
     public static final String LAST_COMMIT_TIMESTAMP = "delta.lastCommitTimestamp";
 
     public static final String CHECKPOINT_POLICY = "delta.checkpointPolicy";
-    public static final String CHECKPOINT_WRITE_STATS_AS_JSON = "delta.checkpoint.writeStatsAsJson";
-    public static final String CHECKPOINT_WRITE_STATS_AS_STRUCT =
-        "delta.checkpoint.writeStatsAsStruct";
     public static final String ENABLE_DELETION_VECTORS = "delta.enableDeletionVectors";
     public static final String ENABLE_IN_COMMIT_TIMESTAMPS = "delta.enableInCommitTimestamps";
     public static final String IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION =
