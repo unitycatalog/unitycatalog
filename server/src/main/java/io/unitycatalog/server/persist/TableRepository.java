@@ -203,20 +203,6 @@ public class TableRepository {
                 "Table not found: " + catalog + "." + schema + "." + table);
           }
 
-          // Guard non-Delta entries (metric views, parquet/csv/etc. tables) before they reach
-          // `buildTableMetadata`. The downstream code calls `NormalizedURL.normalize(dao.getUrl())`
-          // (throws "Path cannot be null or empty" when the row has no storage location, e.g.
-          // metric views) and `DataSourceFormat.fromValue(dao.getDataSourceFormat())` (throws
-          // IllegalArgumentException on null), both of which surface as misleading errors to a
-          // Delta REST client that simply asked for a name that happens to live in the same
-          // schema. Sibling guard to `DeltaCommitRepository.validateTable`.
-          if (dao.getDataSourceFormat() == null
-              || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
-            throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT,
-                "Table is not a Delta table: " + catalog + "." + schema + "." + table);
-          }
-
           TableMetadata metadata = buildTableMetadata(session, dao, catalog, schema, table);
 
           LoadTableResponse response = new LoadTableResponse();
@@ -423,13 +409,16 @@ public class TableRepository {
                 ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
-          String tableID;
-          UUID metricViewTableUUID = null;
+          // `tableUUID` is the table's primary key. The shape is uniform across the three
+          // creatable branches (external, managed, metric view); the only divergence is the
+          // source of the UUID (random for external/metric-view, staging-table id for managed).
+          // The string form is generated exactly once below at `tableInfo.tableId(...)`.
+          UUID tableUUID;
           NormalizedURL storageLocation;
           if (tableType == TableType.EXTERNAL) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
-            tableID = UUID.randomUUID().toString();
+            tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());
             serverProperties.checkManagedTableEnabled();
@@ -443,11 +432,11 @@ public class TableRepository {
                 repositories
                     .getStagingTableRepository()
                     .commitStagingTable(session, callerId, storageLocation);
-            tableID = stagingTableDAO.getId().toString();
+            tableUUID = stagingTableDAO.getId();
           } else if (tableType == TableType.METRIC_VIEW) {
             storageLocation = null;
-            metricViewTableUUID = validateMetricView(createTable);
-            tableID = metricViewTableUUID.toString();
+            validateMetricView(createTable);
+            tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
@@ -476,7 +465,7 @@ public class TableRepository {
                   .updatedBy(callerId)
                   .storageLocation(storageLocation != null ? storageLocation.toString() : null)
                   .viewDefinition(createTable.getViewDefinition())
-                  .tableId(tableID);
+                  .tableId(tableUUID.toString());
 
           TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);
           // create columns
@@ -493,7 +482,6 @@ public class TableRepository {
           session.persist(tableInfoDAO);
           if (tableType == TableType.METRIC_VIEW) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
-            UUID tableUUID = Objects.requireNonNull(metricViewTableUUID);
             List<DependencyDAO> depDAOs =
                 createTable.getViewDependencies().getDependencies().stream()
                     .map(dep -> DependencyDAO.from(dep, tableUUID, dependentType))
@@ -508,7 +496,7 @@ public class TableRepository {
         /* readOnly = */ false);
   }
 
-  private static UUID validateMetricView(CreateTable createTable) {
+  private static void validateMetricView(CreateTable createTable) {
     if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "view_definition is required for metric view");
@@ -523,7 +511,6 @@ public class TableRepository {
           ErrorCode.INVALID_ARGUMENT,
           "view_dependencies must contain at least one entry for metric view");
     }
-    return UUID.randomUUID();
   }
 
   public TableInfoDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
