@@ -550,7 +550,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   /**
    * Specification for one column in testTableWithSupportedDataTypes: its SQL DDL type, the SQL
    * literal used in the INSERT, the expected toString() from the result row (null = byte-array ref
-   * check via startsWith("[B@")), and the expected UC catalog metadata fields.
+   * check via startsWith("[B@")), and the expected UC catalog metadata fields. The dataTypeJson
+   * value is the Spark DataType JSON fragment embedded in UC's full StructField type_json.
    */
   @AllArgsConstructor
   @Getter
@@ -561,13 +562,13 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     private final String rowValue; // null = byte-array object ref, checked with startsWith
     private final ColumnTypeName typeName;
     private final String typeText;
-    private final String typeJson;
+    private final String dataTypeJson;
   }
 
   private static String expectedStructFieldTypeJson(ColSpec spec) {
     return String.format(
         "{\"name\":\"%s\",\"type\":%s,\"nullable\":true,\"metadata\":{}}",
-        spec.getName(), spec.getTypeJson());
+        spec.getName(), spec.getDataTypeJson());
   }
 
   // Currently this test only works for non-Delta tables. Later it will work for more.
