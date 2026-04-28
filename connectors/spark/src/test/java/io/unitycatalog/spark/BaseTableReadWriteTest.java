@@ -564,6 +564,12 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     private final String typeJson;
   }
 
+  private static String expectedStructFieldTypeJson(ColSpec spec) {
+    return String.format(
+        "{\"name\":\"%s\",\"type\":%s,\"nullable\":true,\"metadata\":{}}",
+        spec.getName(), spec.getTypeJson());
+  }
+
   // Currently this test only works for non-Delta tables. Later it will work for more.
   @Test
   @EnabledIf("canUpdateColumnsToUC")
@@ -787,7 +793,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
           .isEqualTo(spec.getTypeText());
       assertThat(col.getTypeJson())
           .as("typeJson for %s", spec.getName())
-          .isEqualTo(spec.getTypeJson());
+          .isEqualTo(expectedStructFieldTypeJson(spec));
       int partitionIndex = partitionColumns.indexOf(col.getName());
       if (partitionIndex != -1) {
         assertThat(col.getPartitionIndex()).isEqualTo(partitionIndex);
