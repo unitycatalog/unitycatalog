@@ -1146,10 +1146,17 @@ private class UCProxy(
 private object UCProxy {
 
   /**
-   * Converts Spark's typed [[DependencyList]] into the
-   * wire-format UC [[UCDependencyList]]. Only `TableDependency` is
-   * currently translated; UC OSS does not persist function dependencies (metric views disallow
-   * UDFs in their source) and other `Dependency` subtypes are dropped on the floor.
+   * Converts Spark's typed [[DependencyList]] into the wire-format UC [[UCDependencyList]].
+   * Only `TableDependency` is currently translated; UC OSS does not persist function
+   * dependencies (metric views disallow UDFs in their source) and other `Dependency`
+   * subtypes are dropped on the floor.
+   *
+   * Spark's `TableDependency.nameParts` is the structural multi-part identifier (preserves
+   * arity for multi-level-namespace catalogs); UC's wire format is the legacy
+   * `tableFullName: String` -- a dot-joined flattening of the parts. The conversion is
+   * lossy for identifiers containing literal `.` (the wire side has no quoting convention),
+   * but UC's server-side dependency tracking has the same limitation today, so no fidelity
+   * is lost vs. the pre-PR producer that emitted dot-joined strings directly.
    */
   def toUcDependencyList(
       sparkDeps: DependencyList)
@@ -1159,7 +1166,7 @@ private object UCProxy {
       case td: TableDependency =>
         ucDeps.add(new UCDependency()
           .table(new UCTableDependency()
-            .tableFullName(td.tableFullName())))
+            .tableFullName(td.nameParts().mkString("."))))
       case _ =>
       // UC OSS does not currently persist function dependencies; drop.
     }
@@ -1167,8 +1174,10 @@ private object UCProxy {
   }
 
   /**
-   * Converts the wire-format UC [[UCDependencyList]] back into
-   * Spark's typed [[DependencyList]].
+   * Converts the wire-format UC [[UCDependencyList]] back into Spark's typed
+   * [[DependencyList]]. Splits UC's dot-joined `tableFullName` back into the structural
+   * `nameParts` accepted by the new varargs `Dependency.table(String...)` factory; same
+   * dot-flattening caveat as [[toUcDependencyList]].
    */
   def fromUcDependencyList(
       ucDeps: UCDependencyList)
@@ -1178,7 +1187,9 @@ private object UCProxy {
       .getOrElse(Seq.empty)
     val sparkDeps: Array[Dependency] = list.flatMap { d =>
       Option(d.getTable).map { td =>
-        Dependency.table(td.getTableFullName)
+        // `split("\\.", -1)` keeps trailing empty parts -- defensive against malformed
+        // input from the wire (UC's server should never produce trailing dots).
+        Dependency.table(td.getTableFullName.split("\\.", -1): _*)
           .asInstanceOf[Dependency]
       }
     }.toArray
