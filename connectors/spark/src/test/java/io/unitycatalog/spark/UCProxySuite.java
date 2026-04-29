@@ -248,10 +248,15 @@ public class UCProxySuite {
             .withQueryText("version: \"0.1\"\nsource: test_catalog.test_schema.events")
             .withCurrentCatalog(CATALOG_NAME)
             .withCurrentNamespace(NAMESPACE)
+            // Spark's `Dependency.table(...)` is now varargs over structural multi-part name
+            // parts (was a single dot-joined string). The matching mock UC payload below
+            // continues to use UC's legacy dot-joined `tableFullName` wire format -- the
+            // connector's `toUcDependencyList` joins / `fromUcDependencyList` splits at the
+            // boundary.
             .withViewDependencies(
                 org.apache.spark.sql.connector.catalog.DependencyList.of(
                     org.apache.spark.sql.connector.catalog.Dependency.table(
-                        "test_catalog.test_schema.events")))
+                        "test_catalog", "test_schema", "events")))
             .build();
 
     ColumnInfo ucColumn =
@@ -296,10 +301,21 @@ public class UCProxySuite {
     assertThat(request.getTableType()).isEqualTo(TableType.METRIC_VIEW);
     assertThat(request.getViewDefinition()).isEqualTo(viewInfo.queryText());
     assertThat(request.getViewDependencies().getDependencies()).hasSize(1);
+    // Wire-side check: `toUcDependencyList` flattened Spark's structural parts back into
+    // UC's legacy dot-joined `tableFullName` for the wire payload.
+    assertThat(request.getViewDependencies().getDependencies().get(0).getTable().getTableFullName())
+        .isEqualTo("test_catalog.test_schema.events");
     assertThat(request.getColumns()).hasSize(1);
     assertThat(request.getColumns().get(0).getTypeJson()).contains("metric_view.type");
     assertThat(loaded.queryText()).isEqualTo(viewInfo.queryText());
     assertThat(loaded.viewDependencies().dependencies()).hasSize(1);
+    // Spark-side check: `fromUcDependencyList` split the wire dot-joined `tableFullName`
+    // back into structural parts. This pins the full Spark structural -> UC wire ->
+    // Spark structural round-trip.
+    org.apache.spark.sql.connector.catalog.TableDependency loadedDep =
+        (org.apache.spark.sql.connector.catalog.TableDependency)
+            loaded.viewDependencies().dependencies()[0];
+    assertThat(loadedDep.nameParts()).containsExactly("test_catalog", "test_schema", "events");
   }
 
   @Test
