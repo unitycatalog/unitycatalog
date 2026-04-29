@@ -481,7 +481,7 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
           new ColumnInfo()
               .name("id")
               .typeText("INT")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson("{\"name\":\"id\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .nullable(true));
