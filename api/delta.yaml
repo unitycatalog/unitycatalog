@@ -1491,14 +1491,6 @@ components:
                   type: integer
                   format: int64
                   description: Number of bytes removed by this commit
-                num-clustered-bytes-added:
-                  type: integer
-                  format: int64
-                  description: Number of clustered bytes added by this commit
-                num-clustered-bytes-removed:
-                  type: integer
-                  format: int64
-                  description: Number of clustered bytes removed by this commit
                 num-rows-inserted:
                   type: integer
                   format: int64
