@@ -38,6 +38,20 @@ public final class AuthorizeExpressions {
       """;
 
   /**
+   * Authorization policy for creating a staging table (UC REST {@code POST /staging-tables} and
+   * Delta REST Catalog {@code createStagingTable}). Catalog {@code USE_CATALOG}/{@code OWNER}
+   * plus either schema {@code OWNER} or schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. Catalog
+   * OWNER alone is not sufficient.
+   */
+  public static final String CREATE_STAGING_TABLE =
+      """
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+        && #authorize(#principal, #schema, OWNER)) ||
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+        && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE))
+      """;
+
+  /**
    * Authorization policy for vending table credentials. Admin-above-the-table privileges on
    * their own are not sufficient; the caller must have an explicit table-level privilege
    * matching the requested operation. {@code READ} needs OWNER or SELECT; {@code READ_WRITE}
