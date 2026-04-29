@@ -203,6 +203,20 @@ public class TableRepository {
                 "Table not found: " + catalog + "." + schema + "." + table);
           }
 
+          // Guard non-Delta entries (metric views, parquet/csv/etc. tables) before they reach
+          // `buildTableMetadata`. The downstream code calls `NormalizedURL.normalize(dao.getUrl())`
+          // (throws "Path cannot be null or empty" when the row has no storage location, e.g.
+          // metric views) and `DataSourceFormat.fromValue(dao.getDataSourceFormat())` (throws
+          // IllegalArgumentException on null), both of which surface as misleading errors to a
+          // Delta REST client that simply asked for a name that happens to live in the same
+          // schema. Sibling guard to `DeltaCommitRepository.validateTable`.
+          if (dao.getDataSourceFormat() == null
+              || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                "Table is not a Delta table: " + catalog + "." + schema + "." + table);
+          }
+
           TableMetadata metadata = buildTableMetadata(session, dao, catalog, schema, table);
 
           LoadTableResponse response = new LoadTableResponse();
