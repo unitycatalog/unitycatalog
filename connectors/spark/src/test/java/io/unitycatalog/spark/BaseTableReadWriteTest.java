@@ -552,7 +552,6 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
    * literal used in the INSERT, the expected toString() from the result row (null = byte-array ref
    * check via startsWith("[B@")), and the expected UC catalog metadata fields.
    */
-  @AllArgsConstructor
   @Getter
   private static final class ColSpec {
     private final String name;
@@ -561,12 +560,50 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     private final String rowValue; // null = byte-array object ref, checked with startsWith
     private final ColumnTypeName typeName;
     private final String typeText;
+    private final boolean nullable;
     private final String typeJson;
+
+    private ColSpec(
+        String name,
+        String sqlType,
+        String insertValue,
+        String rowValue,
+        ColumnTypeName typeName,
+        String typeText,
+        String dataTypeJson) {
+      this(name, sqlType, insertValue, rowValue, typeName, typeText, true, "{}", dataTypeJson);
+    }
+
+    private ColSpec(
+        String name,
+        String sqlType,
+        String insertValue,
+        String rowValue,
+        ColumnTypeName typeName,
+        String typeText,
+        boolean nullable,
+        String metadataJson,
+        String dataTypeJson) {
+      this.name = name;
+      this.sqlType = sqlType;
+      this.insertValue = insertValue;
+      this.rowValue = rowValue;
+      this.typeName = typeName;
+      this.typeText = typeText;
+      this.nullable = nullable;
+      this.typeJson = structFieldTypeJson(name, dataTypeJson, nullable, metadataJson);
+    }
   }
 
   private static String structFieldTypeJson(String name, String dataTypeJson) {
+    return structFieldTypeJson(name, dataTypeJson, true, "{}");
+  }
+
+  private static String structFieldTypeJson(
+      String name, String dataTypeJson, boolean nullable, String metadataJson) {
     return String.format(
-        "{\"name\":\"%s\",\"type\":%s,\"nullable\":true,\"metadata\":{}}", name, dataTypeJson);
+        "{\"name\":\"%s\",\"type\":%s,\"nullable\":%s,\"metadata\":%s}",
+        name, dataTypeJson, nullable, metadataJson);
   }
 
   // Currently this test only works for non-Delta tables. Later it will work for more.
@@ -591,7 +628,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "1",
                 ColumnTypeName.BYTE,
                 "tinyint",
-                structFieldTypeJson("col_tinyint", "\"byte\"")),
+                "\"byte\""),
             new ColSpec(
                 "col_smallint",
                 "SMALLINT",
@@ -599,15 +636,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "100",
                 ColumnTypeName.SHORT,
                 "smallint",
-                structFieldTypeJson("col_smallint", "\"short\"")),
-            new ColSpec(
-                "col_int",
-                "INT",
-                "1000",
-                "1000",
-                ColumnTypeName.INT,
-                "int",
-                structFieldTypeJson("col_int", "\"integer\"")),
+                "\"short\""),
+            new ColSpec("col_int", "INT", "1000", "1000", ColumnTypeName.INT, "int", "\"integer\""),
             new ColSpec(
                 "col_bigint",
                 "BIGINT",
@@ -615,15 +645,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "100000",
                 ColumnTypeName.LONG,
                 "bigint",
-                structFieldTypeJson("col_bigint", "\"long\"")),
+                "\"long\""),
             new ColSpec(
-                "col_float",
-                "FLOAT",
-                "2.5",
-                "2.5",
-                ColumnTypeName.FLOAT,
-                "float",
-                structFieldTypeJson("col_float", "\"float\"")),
+                "col_float", "FLOAT", "2.5", "2.5", ColumnTypeName.FLOAT, "float", "\"float\""),
             new ColSpec(
                 "col_double",
                 "DOUBLE",
@@ -631,7 +655,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "1.5",
                 ColumnTypeName.DOUBLE,
                 "double",
-                structFieldTypeJson("col_double", "\"double\"")),
+                "\"double\""),
             new ColSpec(
                 "col_decimal",
                 "DECIMAL(10,2)",
@@ -639,15 +663,17 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "123.45",
                 ColumnTypeName.DECIMAL,
                 "decimal(10,2)",
-                structFieldTypeJson("col_decimal", "\"decimal(10,2)\"")),
+                "\"decimal(10,2)\""),
             new ColSpec(
                 "col_string",
-                "STRING",
+                "STRING COMMENT 'column metadata comment'",
                 "'test'",
                 "test",
                 ColumnTypeName.STRING,
                 "string",
-                structFieldTypeJson("col_string", "\"string\"")),
+                true,
+                "{\"comment\":\"column metadata comment\"}",
+                "\"string\""),
             new ColSpec(
                 "col_char",
                 "CHAR(10)",
@@ -655,7 +681,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "char_test ",
                 ColumnTypeName.CHAR,
                 "char(10)",
-                structFieldTypeJson("col_char", "\"char(10)\"")),
+                "\"char(10)\""),
             new ColSpec(
                 "col_varchar",
                 "VARCHAR(20)",
@@ -663,7 +689,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "varchar_test",
                 ColumnTypeName.STRING,
                 "varchar(20)",
-                structFieldTypeJson("col_varchar", "\"varchar(20)\"")),
+                "\"varchar(20)\""),
             new ColSpec(
                 "col_binary",
                 "BINARY",
@@ -671,15 +697,17 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 null,
                 ColumnTypeName.BINARY,
                 "binary",
-                structFieldTypeJson("col_binary", "\"binary\"")),
+                "\"binary\""),
             new ColSpec(
                 "col_boolean",
-                "BOOLEAN",
+                "BOOLEAN NOT NULL",
                 "true",
                 "true",
                 ColumnTypeName.BOOLEAN,
                 "boolean",
-                structFieldTypeJson("col_boolean", "\"boolean\"")),
+                false,
+                "{}",
+                "\"boolean\""),
             new ColSpec(
                 "col_date",
                 "DATE",
@@ -687,7 +715,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "2025-01-01",
                 ColumnTypeName.DATE,
                 "date",
-                structFieldTypeJson("col_date", "\"date\"")),
+                "\"date\""),
             new ColSpec(
                 "col_timestamp",
                 "TIMESTAMP",
@@ -695,7 +723,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "2025-01-01 12:00:00.0",
                 ColumnTypeName.TIMESTAMP,
                 "timestamp",
-                structFieldTypeJson("col_timestamp", "\"timestamp\"")),
+                "\"timestamp\""),
             new ColSpec(
                 "col_timestamp_ntz",
                 "TIMESTAMP_NTZ",
@@ -703,7 +731,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "2025-01-01T12:00",
                 ColumnTypeName.TIMESTAMP_NTZ,
                 "timestamp_ntz",
-                structFieldTypeJson("col_timestamp_ntz", "\"timestamp_ntz\"")),
+                "\"timestamp_ntz\""),
             // Interval types are not supported in Delta (DELTA_UNSUPPORTED_DATA_TYPES).
             // new ColSpec(
             //     "col_daytime_interval",
@@ -712,7 +740,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             //     "PT24H",
             //     ColumnTypeName.INTERVAL,
             //     "interval day to second",
-            //     structFieldTypeJson("col_daytime_interval", "\"interval day to second\"")),
+            //     "\"interval day to second\""),
             // new ColSpec(
             //     "col_yearmonth_interval",
             //     "INTERVAL YEAR TO MONTH",
@@ -720,7 +748,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
             //     "P1M",
             //     ColumnTypeName.INTERVAL,
             //     "interval year to month",
-            //     structFieldTypeJson("col_yearmonth_interval", "\"interval year to month\"")),
+            //     "\"interval year to month\""),
             new ColSpec(
                 "col_arr",
                 "ARRAY<INT>",
@@ -728,7 +756,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "ArraySeq(1, 2, 3)",
                 ColumnTypeName.ARRAY,
                 "array<int>",
-                structFieldTypeJson("col_arr", arrJson)),
+                arrJson),
             new ColSpec(
                 "col_map",
                 "MAP<STRING, INT>",
@@ -736,7 +764,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "Map(key1 -> 10, key2 -> 20)",
                 ColumnTypeName.MAP,
                 "map<string,int>",
-                structFieldTypeJson("col_map", mapJson)),
+                mapJson),
             new ColSpec(
                 "col_struct",
                 "STRUCT<a: INT, b: STRING>",
@@ -744,7 +772,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "[42,test]",
                 ColumnTypeName.STRUCT,
                 "struct<a:int,b:string>",
-                structFieldTypeJson("col_struct", structJson)),
+                structJson),
             new ColSpec(
                 "col_variant",
                 "VARIANT",
@@ -752,7 +780,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "1",
                 ColumnTypeName.VARIANT,
                 "variant",
-                structFieldTypeJson("col_variant", "\"variant\"")));
+                "\"variant\""));
 
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String tableName = TEST_TABLE + "_complex_type";
@@ -803,6 +831,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       assertThat(col.getTypeText())
           .as("typeText for %s", spec.getName())
           .isEqualTo(spec.getTypeText());
+      assertThat(col.getNullable())
+          .as("nullable for %s", spec.getName())
+          .isEqualTo(spec.isNullable());
       assertThat(col.getTypeJson())
           .as("typeJson for %s", spec.getName())
           .isEqualTo(spec.getTypeJson());
