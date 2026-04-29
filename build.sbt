@@ -32,6 +32,14 @@ lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
 lazy val log4jVersion = "2.25.3"
 val orgApacheHttpVersion = "4.5.14"
 
+// Serialize dependency-resolution tasks to avoid coursier cache-lock races
+// (java.nio.channels.OverlappingFileLockException) when multiple subprojects
+// run `update` in parallel against a shared ~/.cache/coursier.
+ThisBuild / concurrentRestrictions ++= Seq(
+  Tags.limit(Tags.Update, 1),
+  Tags.limit(Tags.Network, 1),
+)
+
 lazy val commonSettings = Seq(
   organization := orgName,
   // Compilation configs
