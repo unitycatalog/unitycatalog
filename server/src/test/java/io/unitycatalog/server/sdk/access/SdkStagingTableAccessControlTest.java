@@ -37,7 +37,9 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
           new ColumnInfo()
               .name("test_column")
               .typeText("INTEGER")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson(
+                  "{\"name\":\"test_column\",\"type\":\"integer\","
+                      + "\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .nullable(true));

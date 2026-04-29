@@ -51,7 +51,9 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
           new ColumnInfo()
               .name("test_col")
               .typeText("INTEGER")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson(
+                  "{\"name\":\"test_col\",\"type\":\"integer\","
+                      + "\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .nullable(true));
