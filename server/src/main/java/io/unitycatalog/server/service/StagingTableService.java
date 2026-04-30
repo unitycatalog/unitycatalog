@@ -4,22 +4,21 @@ import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateStagingTable;
-import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.utils.ServerProperties;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Post;
-
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class StagingTableService extends AuthorizedService {
@@ -36,13 +35,14 @@ public class StagingTableService extends AuthorizedService {
     this.schemaRepository = repositories.getSchemaRepository();
   }
 
+  static final String disableGoogleJavaFormat =
+      """
+    Google Java Format and Checkstyle disagree on how to indent annotation array initializers in
+    method parameters. This doc string is just a hack to stop Google Java Format from messing up
+    with this file.""";
+
   @Post("")
-  @AuthorizeExpression("""
-          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
-           && #authorize(#principal, #schema, OWNER)) ||
-          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
-           && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_STAGING_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createStagingTable(
       @AuthorizeResourceKeys({
@@ -51,12 +51,13 @@ public class StagingTableService extends AuthorizedService {
       })
       CreateStagingTable createStagingTable) {
     assert createStagingTable != null;
-    StagingTableInfo createdStagingTable = stagingTableRepository.createStagingTable(
-        createStagingTable);
-
-    SchemaInfo schemaInfo = schemaRepository.getSchema(
-        createdStagingTable.getCatalogName() + "." + createdStagingTable.getSchemaName());
-    initializeHierarchicalAuthorization(createdStagingTable.getId(), schemaInfo.getSchemaId());
+    StagingTableInfo createdStagingTable =
+        stagingTableRepository.createStagingTable(createStagingTable);
+    String catalog = createdStagingTable.getCatalogName();
+    String schema = createdStagingTable.getSchemaName();
+    initializeHierarchicalAuthorization(
+        createdStagingTable.getId(),
+        schemaRepository.getSchemaIdOrThrow(catalog, schema).toString());
     return HttpResponse.ofJson(createdStagingTable);
   }
 }

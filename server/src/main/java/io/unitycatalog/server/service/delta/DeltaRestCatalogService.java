@@ -8,6 +8,7 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -15,15 +16,21 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.delta.model.CatalogConfig;
+import io.unitycatalog.server.delta.model.CreateStagingTableRequest;
 import io.unitycatalog.server.delta.model.CredentialOperation;
 import io.unitycatalog.server.delta.model.CredentialsResponse;
 import io.unitycatalog.server.delta.model.LoadTableResponse;
+import io.unitycatalog.server.delta.model.StagingTableResponse;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.CreateStagingTable;
+import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.service.AuthorizedService;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -59,7 +66,9 @@ public class DeltaRestCatalogService extends AuthorizedService {
           "GET /v1/temporary-path-credentials");
 
   private final CatalogRepository catalogRepository;
+  private final SchemaRepository schemaRepository;
   private final TableRepository tableRepository;
+  private final StagingTableRepository stagingTableRepository;
   private final StorageCredentialVendor storageCredentialVendor;
 
   public DeltaRestCatalogService(
@@ -69,7 +78,9 @@ public class DeltaRestCatalogService extends AuthorizedService {
       StorageCredentialVendor storageCredentialVendor) {
     super(authorizer, repositories, serverProperties);
     this.catalogRepository = repositories.getCatalogRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
     this.tableRepository = repositories.getTableRepository();
+    this.stagingTableRepository = repositories.getStagingTableRepository();
     this.storageCredentialVendor = storageCredentialVendor;
   }
 
@@ -109,6 +120,44 @@ public class DeltaRestCatalogService extends AuthorizedService {
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
     return tableRepository.loadTableForDelta(catalog, schema, table);
+  }
+
+  // ==================== Staging Table API ====================
+
+  /**
+   * Create a staging table for a soon-to-be-created UC catalog-managed Delta table. UC allocates a
+   * UUID and a managed storage location; the client then writes the initial Delta commit to that
+   * location and calls {@code POST /tables} to finalize the table.
+   *
+   * <p>The response carries the protocol / properties the client must write in the initial commit
+   * for the resulting table to be a valid UC catalog-managed Delta table, plus temporary {@code
+   * READ_WRITE} credentials scoped to the staging location.
+   */
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_STAGING_TABLE)
+  public StagingTableResponse createStagingTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      CreateStagingTableRequest request) {
+    if (request == null || request.getName() == null || request.getName().isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Staging table name is required.");
+    }
+    StagingTableInfo staging =
+        stagingTableRepository.createStagingTable(
+            new CreateStagingTable()
+                .catalogName(catalog)
+                .schemaName(schema)
+                .name(request.getName()));
+    initializeHierarchicalAuthorization(
+        staging.getId(), schemaRepository.getSchemaIdOrThrow(catalog, schema).toString());
+
+    NormalizedURL stagingLocation = NormalizedURL.from(staging.getStagingLocation());
+    TemporaryCredentials credentials =
+        storageCredentialVendor.vendCredential(
+            stagingLocation,
+            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+    return DeltaStagingTableMapper.toStagingTableResponse(staging, credentials);
   }
 
   // ==================== Table Credentials API ====================

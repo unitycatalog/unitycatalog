@@ -2,10 +2,13 @@ package io.unitycatalog.server.sdk.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.delta.model.CreateStagingTableRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -130,6 +133,59 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
     TestUtils.assertPermissionDenied(
         () -> userBDeltaCredsApi.getStagingTableCredentials(stagingId));
 
+    // Delta REST createStagingTable: same authz rule as UC REST StagingTableService (catalog
+    // USE_CATALOG/OWNER + schema USE_SCHEMA+CREATE_TABLE OR schema OWNER). Verify here that both
+    // entry points grant equivalent access so they don't silently drift apart.
+
+    // User A covers the `USE_SCHEMA + CREATE_TABLE` arm of the OR -- User A's schema grants
+    // are USE_SCHEMA + CREATE_TABLE (set up at the top of the test), but NOT OWNER.
+    assertThat(
+            deltaTablesApi(userAConfig)
+                .createStagingTable(
+                    TestUtils.CATALOG_NAME,
+                    TestUtils.SCHEMA_NAME,
+                    new CreateStagingTableRequest().name("drc_staging_allowed_via_use_schema")))
+        .isNotNull();
+
+    // User D covers the `schema OWNER` arm of the OR. OWNER is not grantable via the API (it's
+    // implicit from creating a resource), so User D creates their own schema and then creates a
+    // staging table in it -- with no explicit CREATE_TABLE grant, only the schema OWNER path can
+    // admit this call. Pairing with User A above, both branches of the OR in
+    // AuthorizeExpressions.CREATE_STAGING_TABLE are exercised.
+    String userDEmail = "user_d@example.com";
+    String userDSchema = "user_d_schema";
+    createTestUser(userDEmail, "User D");
+    grantPermissions(
+        userDEmail,
+        SecurableType.CATALOG,
+        TestUtils.CATALOG_NAME,
+        Privileges.USE_CATALOG,
+        Privileges.CREATE_SCHEMA);
+    ServerConfig userDConfig = createTestUserServerConfig(userDEmail);
+    new SchemasApi(TestUtils.createApiClient(userDConfig))
+        .createSchema(new CreateSchema().name(userDSchema).catalogName(TestUtils.CATALOG_NAME));
+    assertThat(
+            deltaTablesApi(userDConfig)
+                .createStagingTable(
+                    TestUtils.CATALOG_NAME,
+                    userDSchema,
+                    new CreateStagingTableRequest().name("drc_staging_allowed_via_schema_owner")))
+        .isNotNull();
+
+    // User C has USE_CATALOG only (neither arm of the OR satisfied) -- denied.
+    String userCEmail = "user_c@example.com";
+    createTestUser(userCEmail, "User C");
+    grantPermissions(
+        userCEmail, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+    ServerConfig userCConfig = createTestUserServerConfig(userCEmail);
+    TestUtils.assertPermissionDenied(
+        () ->
+            deltaTablesApi(userCConfig)
+                .createStagingTable(
+                    TestUtils.CATALOG_NAME,
+                    TestUtils.SCHEMA_NAME,
+                    new CreateStagingTableRequest().name("drc_staging_denied")));
+
     // Step 3: User B attempts to create a managed table using User A's staging location
     CreateTable createTableRequest =
         new CreateTable()
@@ -162,5 +218,11 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
     UUID tableUuid = UUID.fromString(tableInfo.getTableId());
     TestUtils.assertPermissionDenied(
         () -> userBDeltaCredsApi.getStagingTableCredentials(tableUuid));
+  }
+
+  // FQCN kept at this single site because io.unitycatalog.client.delta.api.TablesApi has the same
+  // simple name as io.unitycatalog.client.api.TablesApi that's imported for createTable above.
+  private static io.unitycatalog.client.delta.api.TablesApi deltaTablesApi(ServerConfig config) {
+    return new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(config));
   }
 }
