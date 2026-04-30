@@ -39,12 +39,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.spark.sql.connector.catalog.Column;
-import org.apache.spark.sql.connector.catalog.MetadataOnlyTable;
+import org.apache.spark.sql.connector.catalog.MetadataTable;
 import org.apache.spark.sql.connector.catalog.Identifier;
-import org.apache.spark.sql.connector.catalog.RelationCatalog;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.connector.catalog.TableSummary;
+import org.apache.spark.sql.connector.catalog.TableViewCatalog;
 import org.apache.spark.sql.connector.catalog.ViewCatalog;
 import org.apache.spark.sql.connector.catalog.ViewInfo;
 import org.apache.spark.sql.types.DataTypes;
@@ -72,7 +72,7 @@ public class UCProxySuite {
   private TablesApi mockTablesApi;
   private SchemasApi mockSchemasApi;
   private TableCatalog proxy;
-  private RelationCatalog proxyRelations;
+  private TableViewCatalog proxyRelations;
   private ViewCatalog proxyViews;
   private SupportsNamespaces proxyNs;
 
@@ -122,7 +122,7 @@ public class UCProxySuite {
     schemasField.set(proxyObj, mockSchemasApi);
 
     proxyNs = (SupportsNamespaces) proxyObj;
-    proxyRelations = (RelationCatalog) proxyObj;
+    proxyRelations = (TableViewCatalog) proxyObj;
     proxyViews = (ViewCatalog) proxyObj;
   }
 
@@ -319,7 +319,7 @@ public class UCProxySuite {
   }
 
   @Test
-  public void testLoadRelationForMetricViewReturnsMetadataOnlyTableWithViewInfo() throws Exception {
+  public void testLoadTableOrViewForMetricViewReturnsMetadataTableWithViewInfo() throws Exception {
     TableInfo ucMetricView =
         new TableInfo()
             .catalogName(CATALOG_NAME)
@@ -344,20 +344,20 @@ public class UCProxySuite {
         .thenReturn(ucMetricView);
 
     org.apache.spark.sql.connector.catalog.Table table =
-        proxyRelations.loadRelation(Identifier.of(NAMESPACE, "mv1"));
+        proxyRelations.loadTableOrView(Identifier.of(NAMESPACE, "mv1"));
 
-    assertThat(table).isInstanceOf(MetadataOnlyTable.class);
-    ViewInfo view = (ViewInfo) ((MetadataOnlyTable) table).getTableInfo();
+    assertThat(table).isInstanceOf(MetadataTable.class);
+    ViewInfo view = (ViewInfo) ((MetadataTable) table).getTableInfo();
     assertThat(view.queryText()).isEqualTo("version: \"0.1\"");
     assertThat(view.properties().get(TableCatalog.PROP_TABLE_TYPE))
         .isEqualTo(TableSummary.METRIC_VIEW_TABLE_TYPE);
-    // RelationCatalog spec recommends MetadataOnlyTable.name() be the v2 ident.toString()
+    // TableViewCatalog spec recommends MetadataTable.name() be the v2 ident.toString()
     // (quoted multi-part form, no catalog prefix) so DESCRIBE TABLE EXTENDED's `Name` row
     // renders the identifier consistently with every other catalog.
     assertThat(table.name()).isEqualTo(Identifier.of(NAMESPACE, "mv1").toString());
   }
 
-  // -- RelationCatalog cross-type filtering --
+  // -- TableViewCatalog cross-type filtering --
 
   @Test
   public void testLoadTableThrowsNoSuchTableForMetricView() throws Exception {
