@@ -70,6 +70,7 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
  - [StorageCredential](./Models/StorageCredential.md)
  - [StorageCredential_config](./Models/StorageCredential_config.md)
  - [StructField](./Models/StructField.md)
+ - [StructFieldMetadata](./Models/StructFieldMetadata.md)
  - [StructType](./Models/StructType.md)
  - [TableIdentifierWithDataSourceFormat](./Models/TableIdentifierWithDataSourceFormat.md)
  - [TableMetadata](./Models/TableMetadata.md)

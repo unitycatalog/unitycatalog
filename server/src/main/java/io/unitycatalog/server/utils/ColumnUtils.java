@@ -8,7 +8,9 @@ import io.unitycatalog.server.delta.model.ArrayType;
 import io.unitycatalog.server.delta.model.DecimalType;
 import io.unitycatalog.server.delta.model.DeltaType;
 import io.unitycatalog.server.delta.model.MapType;
+import io.unitycatalog.server.delta.model.PrimitiveType;
 import io.unitycatalog.server.delta.model.StructField;
+import io.unitycatalog.server.delta.model.StructFieldMetadata;
 import io.unitycatalog.server.delta.model.StructType;
 import io.unitycatalog.server.delta.serde.DeltaTypeModule;
 import io.unitycatalog.server.exception.BaseException;
@@ -158,6 +160,80 @@ public class ColumnUtils {
   }
 
   /**
+   * Validate that a {@link StructType} is well-formed against the Delta spec's wire shape.
+   */
+  public static void validateStructType(StructType structType, String path) {
+    requireNonNull(structType.getFields(), path + ".fields");
+    List<StructField> fields = structType.getFields();
+    for (int i = 0; i < fields.size(); i++) {
+      validateStructField(fields.get(i), path + ".fields[" + i + "]");
+    }
+  }
+
+  private static void validateStructField(StructField field, String path) {
+    requireNonNull(field.getName(), path + ".name");
+    requireNonNull(field.getType(), path + ".type");
+    requireNonNull(field.getNullable(), path + ".nullable");
+    requireNonNull(field.getMetadata(), path + ".metadata");
+    validateType(field.getType(), path + ".type");
+  }
+
+  private static void validateType(DeltaType type, String path) {
+    if (type instanceof StructType s) {
+      validateStructType(s, path);
+    } else if (type instanceof ArrayType a) {
+      validateArrayType(a, path);
+    } else if (type instanceof MapType m) {
+      validateMapType(m, path);
+    } else if (type instanceof DecimalType d) {
+      validateDecimalType(d, path);
+    } else if (type instanceof PrimitiveType p) {
+      validatePrimitiveType(p, path);
+    }
+  }
+
+  private static void validateArrayType(ArrayType array, String path) {
+    requireNonNull(array.getElementType(), path + ".element-type");
+    requireNonNull(array.getContainsNull(), path + ".contains-null");
+    validateType(array.getElementType(), path + ".element-type");
+  }
+
+  private static void validateMapType(MapType map, String path) {
+    requireNonNull(map.getKeyType(), path + ".key-type");
+    requireNonNull(map.getValueType(), path + ".value-type");
+    requireNonNull(map.getValueContainsNull(), path + ".value-contains-null");
+    validateType(map.getKeyType(), path + ".key-type");
+    validateType(map.getValueType(), path + ".value-type");
+  }
+
+  private static void validateDecimalType(DecimalType decimal, String path) {
+    requireNonNull(decimal.getPrecision(), path + ".precision");
+    requireNonNull(decimal.getScale(), path + ".scale");
+    int precision = decimal.getPrecision();
+    int scale = decimal.getScale();
+    if (precision < 0 || precision > 38) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format("%s.precision must be in [0, 38], got %d.", path, precision));
+    }
+    if (scale < 0 || scale > precision) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format("%s.scale must be in [0, precision=%d], got %d.", path, precision, scale));
+    }
+  }
+
+  private static void validatePrimitiveType(PrimitiveType primitive, String path) {
+    requireNonNull(primitive.getType(), path + ".type");
+  }
+
+  private static void requireNonNull(Object value, String path) {
+    if (value == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, path + " is required.");
+    }
+  }
+
+  /**
    * Convert a Delta REST Catalog {@link StructField} into a UC {@link ColumnInfo}, mirroring
    * {@code UCSingleCatalog.createTable}'s per-column projection so DRC-created tables render
    * identically to Spark-created ones.
@@ -229,10 +305,14 @@ public class ColumnUtils {
   }
 
   private static String extractComment(StructField field) {
-    Map<String, Object> metadata = field.getMetadata();
+    StructFieldMetadata metadata = field.getMetadata();
     if (metadata == null) return null;
-    Object comment = metadata.get("comment");
-    return comment instanceof String s ? s : null;
+    if (metadata.getComment() != null) {
+      return metadata.getComment();
+    }
+    Object fromMap = metadata.get("comment");
+    if (fromMap instanceof String s) return s;
+    return null;
   }
 
   private static ColumnTypeName resolveColumnTypeName(DeltaType type) {

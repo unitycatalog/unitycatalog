@@ -8,6 +8,7 @@ import io.unitycatalog.server.delta.model.DataSourceFormat;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.PrimitiveType;
 import io.unitycatalog.server.delta.model.StructField;
+import io.unitycatalog.server.delta.model.StructFieldMetadata;
 import io.unitycatalog.server.delta.model.StructType;
 import io.unitycatalog.server.delta.model.TableType;
 import io.unitycatalog.server.exception.BaseException;
@@ -115,7 +116,7 @@ public class DeltaCreateTableMapperTest {
                     .name("id")
                     .type(new PrimitiveType().type("long"))
                     .nullable(false)
-                    .metadata(Map.of())));
+                    .metadata(new StructFieldMetadata())));
   }
 
   private static DeltaProtocol managedProtocol() {
