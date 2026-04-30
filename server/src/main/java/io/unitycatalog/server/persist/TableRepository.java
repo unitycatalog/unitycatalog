@@ -29,6 +29,7 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
@@ -249,7 +250,6 @@ public class TableRepository {
                 ErrorCode.TABLE_NOT_FOUND,
                 "Table not found: " + catalog + "." + schema + "." + table);
           }
-
           // Guard non-Delta entries (metric views, parquet/csv/etc. tables) before they reach
           // `buildTableMetadata`. The downstream code calls `NormalizedURL.normalize(dao.getUrl())`
           // (throws "Path cannot be null or empty" when the row has no storage location, e.g.
@@ -263,26 +263,35 @@ public class TableRepository {
                 ErrorCode.INVALID_ARGUMENT,
                 "Table is not a Delta table: " + catalog + "." + schema + "." + table);
           }
-
-          TableMetadata metadata = buildTableMetadata(session, dao, catalog, schema, table);
-
-          LoadTableResponse response = new LoadTableResponse();
-          response.setMetadata(metadata);
-
-          // Commits (managed Delta tables only)
-          if (TableType.MANAGED.toString().equals(dao.getType())
-              && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
-            populateCommitsForDelta(
-                response, repositories.getDeltaCommitRepository(), session, dao.getId());
-          }
-
-          populateUniformMetadata(response, dao);
-
-          return response;
+          return buildLoadTableResponse(session, dao, catalog, schema, table);
         },
         "Failed to load table",
         /* readOnly = */ true,
         Optional.of(TRANSACTION_REPEATABLE_READ));
+  }
+
+  /**
+   * Build a {@link LoadTableResponse} from an already-loaded {@link TableInfoDAO}. Used by both
+   * {@link #loadTableForDelta} and {@link #createTableForDelta} so the post-load DAO → response
+   * assembly stays in one place.
+   */
+  private LoadTableResponse buildLoadTableResponse(
+      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
+    TableMetadata metadata = buildTableMetadata(session, dao, catalog, schema, table);
+
+    LoadTableResponse response = new LoadTableResponse();
+    response.setMetadata(metadata);
+
+    // Commits (managed Delta tables only)
+    if (TableType.MANAGED.toString().equals(dao.getType())
+        && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
+      populateCommitsForDelta(
+          response, repositories.getDeltaCommitRepository(), session, dao.getId());
+    }
+
+    populateUniformMetadata(response, dao);
+
+    return response;
   }
 
   private TableMetadata buildTableMetadata(
@@ -442,6 +451,33 @@ public class TableRepository {
   }
 
   public TableInfo createTable(CreateTable createTable) {
+    return createTableImpl(createTable, (session, dao, tableInfo) -> tableInfo);
+  }
+
+  /**
+   * Create a table and return the Delta REST Catalog {@link LoadTableResponse} in a single
+   * transaction. The DAO persisted during create is the same one used to build the response, so
+   * there's no second lookup or risk of a reader observing an intermediate state.
+   */
+  public LoadTableResponse createTableForDelta(CreateTable createTable) {
+    return createTableImpl(
+        createTable,
+        (session, dao, tableInfo) ->
+            buildLoadTableResponse(
+                session,
+                dao,
+                createTable.getCatalogName(),
+                createTable.getSchemaName(),
+                createTable.getName()));
+  }
+
+  /**
+   * Shared implementation for the two {@code create} entry points. Validates the name, opens a
+   * write transaction, persists the new table (row, columns, properties), then hands the persisted
+   * DAO + built TableInfo to {@code mapper} which picks the return shape each caller needs. Keeps
+   * the create path as a single operation rather than a chain of private helpers.
+   */
+  private <T> T createTableImpl(CreateTable createTable, CreateResultMapper<T> mapper) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     List<ColumnInfo> columnInfos =
@@ -494,6 +530,13 @@ public class TableRepository {
                     .getStagingTableRepository()
                     .commitStagingTable(session, callerId, storageLocation);
             tableUUID = stagingTableDAO.getId();
+            // MANAGED tables (created via either UC REST or DRC) must carry UC_TABLE_ID in their
+            // properties, matching the staging UUID. UC has the staging UUID as the source of
+            // truth; a request with a missing or mismatched UC_TABLE_ID gets rejected here
+            // instead of producing an internally-inconsistent UC table that subsequent commits
+            // would fail on.
+            UcManagedDeltaContract.validateTableIdProperty(
+                createTable.getProperties(), tableUUID.toString());
           } else if (tableType == TableType.METRIC_VIEW) {
             storageLocation = null;
             validateMetricView(createTable);
@@ -551,10 +594,15 @@ public class TableRepository {
                 .getDependencyRepository()
                 .createDependencies(session, tableUUID, dependentType, depDAOs);
           }
-          return tableInfo;
+          return mapper.apply(session, tableInfoDAO, tableInfo);
         },
         "Error creating table: " + fullName,
         /* readOnly = */ false);
+  }
+
+  @FunctionalInterface
+  private interface CreateResultMapper<T> {
+    T apply(Session session, TableInfoDAO dao, TableInfo tableInfo);
   }
 
   private static void validateMetricView(CreateTable createTable) {

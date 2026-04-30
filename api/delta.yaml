@@ -1339,15 +1339,21 @@ components:
           type: boolean
           description: Whether this column can be null
         metadata:
-          type: object
-          description: Additional column metadata (arbitrary key-value pairs, e.g., comment, delta.columnMapping.id)
-          additionalProperties:
-            description: Metadata values can be strings, numbers, booleans, or nested objects
+          $ref: '#/components/schemas/StructFieldMetadata'
       required:
         - name
         - type
         - nullable
         - metadata
+
+    StructFieldMetadata:
+      type: object
+      description: Additional column metadata (arbitrary key-value pairs, e.g., comment, delta.columnMapping.id)
+      additionalProperties:
+        description: Metadata values can be strings, numbers, booleans, or nested objects
+      properties:
+        comment:
+          type: string
 
     DeltaType:
       description: |
@@ -1405,7 +1411,6 @@ components:
         contains-null:
           type: boolean
           description: Whether array elements can be null
-          default: true
       required:
         - element-type
         - contains-null
@@ -1422,7 +1427,6 @@ components:
         value-contains-null:
           type: boolean
           description: Whether map values can be null
-          default: true
       required:
         - key-type
         - value-type

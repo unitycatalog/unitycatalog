@@ -27,6 +27,7 @@ import io.unitycatalog.client.delta.model.SetProtocolUpdate;
 import io.unitycatalog.client.delta.model.SetSchemaUpdate;
 import io.unitycatalog.client.delta.model.SetTableCommentUpdate;
 import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
 import io.unitycatalog.client.delta.model.StructType;
 import io.unitycatalog.client.delta.model.TableUpdate;
 import io.unitycatalog.client.delta.model.UniformMetadata;
@@ -306,8 +307,7 @@ public class DeltaModelSerializationTest {
   }
 
   @Test
-  public void testDeserOmittedContainsNull() throws Exception {
-    // When contains-null / value-contains-null are omitted, defaults apply
+  public void testDeserOmittedContainsNullLeavesNull() throws Exception {
     String arrayJson =
         "{"
             + " \"name\": \"tags\","
@@ -316,14 +316,7 @@ public class DeltaModelSerializationTest {
             + " \"metadata\": {}"
             + "}";
     StructField arrCol = MAPPER.readValue(arrayJson, StructField.class);
-    ArrayType at = (ArrayType) arrCol.getType();
-    // Default: containsNull = true
-    assertThat(at.getContainsNull()).isTrue();
-
-    // Round-trip preserves the default
-    String serialized = MAPPER.writeValueAsString(arrCol);
-    StructField roundTrip = MAPPER.readValue(serialized, StructField.class);
-    assertThat(((ArrayType) roundTrip.getType()).getContainsNull()).isTrue();
+    assertThat(((ArrayType) arrCol.getType()).getContainsNull()).isNull();
 
     String mapJson =
         "{"
@@ -337,14 +330,7 @@ public class DeltaModelSerializationTest {
             + " \"metadata\": {}"
             + "}";
     StructField mapCol = MAPPER.readValue(mapJson, StructField.class);
-    MapType mt = (MapType) mapCol.getType();
-    // Default: valueContainsNull = true
-    assertThat(mt.getValueContainsNull()).isTrue();
-
-    // Round-trip preserves the default
-    String mapSerialized = MAPPER.writeValueAsString(mapCol);
-    StructField mapRoundTrip = MAPPER.readValue(mapSerialized, StructField.class);
-    assertThat(((MapType) mapRoundTrip.getType()).getValueContainsNull()).isTrue();
+    assertThat(((MapType) mapCol.getType()).getValueContainsNull()).isNull();
   }
 
   // ==================== Serialization ====================
@@ -398,20 +384,23 @@ public class DeltaModelSerializationTest {
             .type(new PrimitiveType().type("long"))
             .nullable(false)
             .metadata(
-                Map.of("delta.columnMapping.id", 1, "delta.columnMapping.physicalName", "col-1"));
+                meta(
+                    null,
+                    Map.of(
+                        "delta.columnMapping.id", 1, "delta.columnMapping.physicalName", "col-1")));
     StructField colPrice =
         new StructField()
             .name("price")
             .type(new DecimalType().precision(10).scale(2))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     StructField colTags =
         new StructField()
             .name("tags")
             .type(
                 new ArrayType().elementType(new PrimitiveType().type("string")).containsNull(true))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     StructField colScores =
         new StructField()
             .name("scores")
@@ -427,18 +416,22 @@ public class DeltaModelSerializationTest {
                                         .type(new PrimitiveType().type("double"))
                                         .nullable(false)
                                         .metadata(
-                                            Map.of(
-                                                "delta.columnMapping.id", 10,
-                                                "delta.columnMapping.physicalName", "col-10",
-                                                "comment", "score value")),
+                                            meta(
+                                                "score value",
+                                                Map.of(
+                                                    "delta.columnMapping.id",
+                                                    10,
+                                                    "delta.columnMapping.physicalName",
+                                                    "col-10"))),
                                     new StructField()
                                         .name("timestamp")
                                         .type(new PrimitiveType().type("long"))
                                         .nullable(true)
-                                        .metadata(Map.of("delta.columnMapping.id", 11)))))
+                                        .metadata(
+                                            meta(null, Map.of("delta.columnMapping.id", 11))))))
                     .valueContainsNull(true))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     SetSchemaUpdate setSchema =
         new SetSchemaUpdate()
             .action("set-columns")
@@ -593,5 +586,22 @@ public class DeltaModelSerializationTest {
     try (InputStream is = DeltaModelSerializationTest.class.getResourceAsStream(resourcePath)) {
       return new String(is.readAllBytes(), StandardCharsets.UTF_8);
     }
+  }
+
+  /**
+   * Build a {@link StructFieldMetadata} with the optional {@code comment} plus a bag of additional
+   * properties for the spec's dotted Delta keys (e.g. {@code delta.columnMapping.id}). Both the
+   * server-side and client-side {@code StructFieldMetadata} extend {@code HashMap<String, Object>};
+   * Jackson treats them as Maps for serialization (and skips the generated {@code @JsonAnyGetter}
+   * when extending a Map), so we write everything via {@code put} into the inherited Map view
+   * rather than the typed setter or {@code putAdditionalProperty}.
+   */
+  private static StructFieldMetadata meta(String comment, Map<String, Object> additional) {
+    StructFieldMetadata m = new StructFieldMetadata();
+    if (comment != null) {
+      m.put("comment", comment);
+    }
+    m.putAll(additional);
+    return m;
   }
 }

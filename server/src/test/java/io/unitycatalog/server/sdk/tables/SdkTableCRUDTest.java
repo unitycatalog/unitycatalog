@@ -23,9 +23,11 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
@@ -170,6 +172,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             .tableType(TableType.MANAGED)
             .dataSourceFormat(DataSourceFormat.DELTA)
             .storageLocation(stagingTableInfo.getStagingLocation())
+            .properties(Map.of(TableProperties.UC_TABLE_ID, stagingTableInfo.getId()))
             .comment("Table created from staging location");
 
     TableInfo tableInfo = localTablesApi.createTable(createTableRequest);
@@ -246,7 +249,8 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             .columns(columns)
             .tableType(TableType.MANAGED)
             .dataSourceFormat(DataSourceFormat.DELTA)
-            .storageLocation(fakeStagingLocation);
+            .storageLocation(fakeStagingLocation)
+            .properties(Map.of(TableProperties.UC_TABLE_ID, stagingTableInfo.getId()));
 
     // This should fail with NOT_FOUND
     assertThatExceptionOfType(ApiException.class)
@@ -305,7 +309,8 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             .columns(columns)
             .tableType(TableType.MANAGED)
             .dataSourceFormat(DataSourceFormat.DELTA)
-            .storageLocation(stagingTableInfo.getStagingLocation());
+            .storageLocation(stagingTableInfo.getStagingLocation())
+            .properties(Map.of(TableProperties.UC_TABLE_ID, stagingTableInfo.getId()));
     TableInfo tableInfo = localTablesApi.createTable(createTableRequest);
     assertThat(tableInfo).isNotNull();
     assertThat(tableInfo.getStorageLocation()).isEqualTo(stagingTableInfo.getStagingLocation());

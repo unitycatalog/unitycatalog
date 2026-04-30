@@ -25,6 +25,7 @@ import io.unitycatalog.server.delta.model.SetProtocolUpdate;
 import io.unitycatalog.server.delta.model.SetSchemaUpdate;
 import io.unitycatalog.server.delta.model.SetTableCommentUpdate;
 import io.unitycatalog.server.delta.model.StructField;
+import io.unitycatalog.server.delta.model.StructFieldMetadata;
 import io.unitycatalog.server.delta.model.StructType;
 import io.unitycatalog.server.delta.model.TableUpdate;
 import io.unitycatalog.server.delta.model.UniformMetadata;
@@ -303,8 +304,11 @@ public class DeltaModelSerializationTest {
   }
 
   @Test
-  public void testDeserOmittedContainsNull() throws Exception {
-    // When contains-null / value-contains-null are omitted, defaults apply
+  public void testDeserOmittedContainsNullLeavesNull() throws Exception {
+    // delta.yaml dropped `default: true` on contains-null / value-contains-null so the generated
+    // POJOs no longer auto-fill those fields; an omitted JSON property leaves the POJO field at
+    // null. The mapper's per-column validator (ColumnUtils.validateStructType) then rejects with
+    // a 400. Pinned here so a future regen that re-introduces a default is caught.
     String arrayJson =
         """
         {
@@ -315,14 +319,7 @@ public class DeltaModelSerializationTest {
         }
         """;
     StructField arrCol = MAPPER.readValue(arrayJson, StructField.class);
-    ArrayType at = (ArrayType) arrCol.getType();
-    // Default: containsNull = true
-    assertThat(at.getContainsNull()).isTrue();
-
-    // Round-trip preserves the default
-    String serialized = MAPPER.writeValueAsString(arrCol);
-    StructField roundTrip = MAPPER.readValue(serialized, StructField.class);
-    assertThat(((ArrayType) roundTrip.getType()).getContainsNull()).isTrue();
+    assertThat(((ArrayType) arrCol.getType()).getContainsNull()).isNull();
 
     String mapJson =
         """
@@ -338,14 +335,7 @@ public class DeltaModelSerializationTest {
         }
         """;
     StructField mapCol = MAPPER.readValue(mapJson, StructField.class);
-    MapType mt = (MapType) mapCol.getType();
-    // Default: valueContainsNull = true
-    assertThat(mt.getValueContainsNull()).isTrue();
-
-    // Round-trip preserves the default
-    String mapSerialized = MAPPER.writeValueAsString(mapCol);
-    StructField mapRoundTrip = MAPPER.readValue(mapSerialized, StructField.class);
-    assertThat(((MapType) mapRoundTrip.getType()).getValueContainsNull()).isTrue();
+    assertThat(((MapType) mapCol.getType()).getValueContainsNull()).isNull();
   }
 
   // ==================== Serialization ====================
@@ -385,20 +375,24 @@ public class DeltaModelSerializationTest {
             .type(new PrimitiveType().type("long"))
             .nullable(false)
             .metadata(
-                Map.of("delta.columnMapping.id", 1, "delta.columnMapping.physicalName", "col-1"));
+                meta(
+                    null,
+                    Map.of(
+                        "delta.columnMapping.id", 1,
+                        "delta.columnMapping.physicalName", "col-1")));
     StructField colPrice =
         new StructField()
             .name("price")
             .type(new DecimalType().precision(10).scale(2))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     StructField colTags =
         new StructField()
             .name("tags")
             .type(
                 new ArrayType().elementType(new PrimitiveType().type("string")).containsNull(true))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     StructField colScores =
         new StructField()
             .name("scores")
@@ -414,18 +408,20 @@ public class DeltaModelSerializationTest {
                                         .type(new PrimitiveType().type("double"))
                                         .nullable(false)
                                         .metadata(
-                                            Map.of(
-                                                "delta.columnMapping.id", 10,
-                                                "delta.columnMapping.physicalName", "col-10",
-                                                "comment", "score value")),
+                                            meta(
+                                                "score value",
+                                                Map.of(
+                                                    "delta.columnMapping.id", 10,
+                                                    "delta.columnMapping.physicalName", "col-10"))),
                                     new StructField()
                                         .name("timestamp")
                                         .type(new PrimitiveType().type("long"))
                                         .nullable(true)
-                                        .metadata(Map.of("delta.columnMapping.id", 11)))))
+                                        .metadata(
+                                            meta(null, Map.of("delta.columnMapping.id", 11))))))
                     .valueContainsNull(true))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     SetSchemaUpdate setSchema =
         new SetSchemaUpdate()
             .action("set-columns")
@@ -580,5 +576,22 @@ public class DeltaModelSerializationTest {
     try (InputStream is = DeltaModelSerializationTest.class.getResourceAsStream(resourcePath)) {
       return new String(is.readAllBytes(), StandardCharsets.UTF_8);
     }
+  }
+
+  /**
+   * Build a {@link StructFieldMetadata} with the optional {@code comment} plus a bag of
+   * additional properties for the spec's dotted Delta keys (e.g. {@code delta.columnMapping.id}).
+   * The server-side {@code StructFieldMetadata} extends {@code HashMap<String, Object>}; Jackson
+   * treats it as a Map for serialization (and skips the named {@code comment} getter), so we
+   * write the comment into the map view via {@code put} rather than the typed setter so the wire
+   * shape matches the fixture.
+   */
+  private static StructFieldMetadata meta(String comment, Map<String, Object> additional) {
+    StructFieldMetadata m = new StructFieldMetadata();
+    if (comment != null) {
+      m.put("comment", comment);
+    }
+    m.putAll(additional);
+    return m;
   }
 }
