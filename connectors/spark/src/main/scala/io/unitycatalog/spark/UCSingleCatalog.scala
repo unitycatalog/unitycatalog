@@ -43,7 +43,7 @@ import org.sparkproject.guava.base.Preconditions
 class UCSingleCatalog
   extends StagingTableCatalog
   with SupportsNamespaces
-  with RelationCatalog
+  with TableViewCatalog
   with Logging {
 
   private[this] var uri: URI = null
@@ -62,7 +62,7 @@ class UCSingleCatalog
   //     create / load paths and add Delta-specific behavior. When DeltaCatalog is not on the
   //     classpath, `delegate` is set to `ucProxy` itself so non-Delta table paths still work.
   //
-  //   - `ucProxy` is the underlying UC REST client wrapped as a Spark `RelationCatalog`. It
+  //   - `ucProxy` is the underlying UC REST client wrapped as a Spark `TableViewCatalog`. It
   //     is always the real `UCProxy` instance so we can route view operations directly. Delta
   //     has no role in view handling, so view-side methods (`createView` / `loadView` /
   //     `dropView` / `listViews`) bypass `delegate` and call `ucProxy` directly, avoiding the
@@ -140,14 +140,17 @@ class UCSingleCatalog
   override def dropView(ident: Identifier): Boolean =
     ucProxy.dropView(ident)
 
+  override def renameView(oldIdent: Identifier, newIdent: Identifier): Unit =
+    ucProxy.renameView(oldIdent, newIdent)
+
   /**
-   * `RelationCatalog.loadRelation` is Spark's single-RPC perf entry point: the resolver calls
-   * it once per identifier and uses its return type to discriminate tables from views, instead
-   * of falling back from `loadTable` to `loadView`. We honor that contract by performing one
-   * UC `getTable` and dispatching on the UC `TableType`:
+   * `TableViewCatalog.loadTableOrView` is Spark's single-RPC perf entry point: the resolver
+   * calls it once per identifier and uses its return type to discriminate tables from views,
+   * instead of falling back from `loadTable` to `loadView`. We honor that contract by
+   * performing one UC `getTable` and dispatching on the UC `TableType`:
    *
    *   - For view-like UC table types (metric views today, materialized views in the future)
-   *     we build a `ViewInfo` and return it wrapped in a `MetadataOnlyTable`. Spark recognizes
+   *     we build a `ViewInfo` and return it wrapped in a `MetadataTable`. Spark recognizes
    *     this shape and routes resolution through the view path.
    *   - For ordinary table types we forward to `delegate.loadTable`. That re-fetches via
    *     `UCProxy` so DeltaCatalog (when present) can wrap the result and provide its
@@ -157,13 +160,13 @@ class UCSingleCatalog
    *
    * The orthogonal `loadTable` / `loadView` overrides remain available: `loadTable` uses the
    * Delta-aware delegate path and rejects view-like rows; `loadView` delegates to
-   * `UCProxy`, which inherits the `RelationCatalog` default that derives from
-   * `UCProxy.loadRelation` and rejects table rows.
+   * `UCProxy`, which inherits the `TableViewCatalog` default that derives from
+   * `UCProxy.loadTableOrView` and rejects table rows.
    */
-  override def loadRelation(ident: Identifier): Table = {
+  override def loadTableOrView(ident: Identifier): Table = {
     val t = ucProxy.getUcTable(ident)
     if (UCSingleCatalog.isViewLikeTableType(t.getTableType)) {
-      new MetadataOnlyTable(
+      new MetadataTable(
         ucProxy.toViewInfo(t),
         // Spec recommends ident.toString() for the wrapper's `name()`; the resolver and
         // DESCRIBE TABLE EXTENDED render the multi-part v2 identifier consistently with
@@ -624,7 +627,7 @@ object UCSingleCatalog {
    * `ViewCatalog` surface rather than the table surface. UC's enum currently splits
    * `MANAGED` / `EXTERNAL` / `STREAMING_TABLE` (table-like) from `METRIC_VIEW` /
    * `MATERIALIZED_VIEW` (view-like); only metric views are wired through `createView` /
-   * `loadView` / `dropView` today, but listings and `loadRelation` filter on the broader
+   * `loadView` / `dropView` today, but listings and `loadTableOrView` filter on the broader
    * view-like set so a future materialized-view path "just works" without a touch on these
    * call sites.
    */
@@ -644,7 +647,7 @@ private class UCProxy(
     apiClient: ApiClient,
     tablesApi: TablesApi,
     temporaryCredentialsApi: TemporaryCredentialsApi)
-  extends RelationCatalog
+  extends TableViewCatalog
   with SupportsNamespaces
   with Logging {
   private[this] var name: String = null
@@ -662,7 +665,7 @@ private class UCProxy(
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
-    // Per the RelationCatalog contract, listTables must return tables only -- view-like UC
+    // Per the TableViewCatalog contract, listTables must return tables only -- view-like UC
     // table types (metric views, materialized views) belong on listViews.
     listUcTables(namespace)
       .filterNot(t => UCSingleCatalog.isViewLikeTableType(t.getTableType))
@@ -705,18 +708,18 @@ private class UCProxy(
     }
   }
 
-  // Single-RPC perf path for `RelationCatalog`. Calls UC `getTable` once and dispatches by
-  // `TableType`: a view-like row is wrapped in `MetadataOnlyTable(ViewInfo)`; everything else
+  // Single-RPC perf path for `TableViewCatalog`. Calls UC `getTable` once and dispatches by
+  // `TableType`: a view-like row is wrapped in `MetadataTable(ViewInfo)`; everything else
   // goes through `loadV1Table` (which generates temp credentials).
   //
   // `loadView`, `loadTable`, `tableExists`, and `viewExists` are inherited from
-  // `RelationCatalog`'s defaults that derive from this method (see RelationCatalog.java),
-  // matching the upstream `TestingRelationCatalog` pattern. There is no need to override them
-  // -- they unwrap / discriminate the `MetadataOnlyTable + ViewInfo` shape automatically.
-  override def loadRelation(ident: Identifier): Table = {
+  // `TableViewCatalog`'s defaults that derive from this method (see TableViewCatalog.java),
+  // matching the upstream `InMemoryTableViewCatalog` pattern. There is no need to override
+  // them -- they unwrap / discriminate the `MetadataTable + ViewInfo` shape automatically.
+  override def loadTableOrView(ident: Identifier): Table = {
     val t = getUcTable(ident)
     if (UCSingleCatalog.isViewLikeTableType(t.getTableType)) {
-      new MetadataOnlyTable(toViewInfo(t), ident.toString)
+      new MetadataTable(toViewInfo(t), ident.toString)
     } else {
       loadV1Table(ident, t)
     }
@@ -874,6 +877,12 @@ private class UCProxy(
     tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident)) == 200
   }
 
+  // UC OSS does not currently expose a rename endpoint for tables or views; mirror the
+  // existing `renameTable` stub below until UC adds a rename API.
+  override def renameView(oldIdent: Identifier, newIdent: Identifier): Unit = {
+    throw new UnsupportedOperationException("Renaming a view is not supported yet")
+  }
+
   override def createTable(
       ident: Identifier,
       tableInfo: TableInfo): Table = {
@@ -917,7 +926,7 @@ private class UCProxy(
     try {
       tablesApi.createTable(ct)
     } catch {
-      // RelationCatalog's active-rejection contract: createTable must throw
+      // TableViewCatalog's active-rejection contract: createTable must throw
       // TableAlreadyExistsException when a view (or another table, race) already sits at
       // `ident`. UC returns 409 in both cases.
       case e: ApiException if e.getCode == 409 =>
@@ -1067,7 +1076,7 @@ private class UCProxy(
   }
 
   override def dropTable(ident: Identifier): Boolean = {
-    // RelationCatalog passive-filtering: if a view sits at `ident`, dropTable must look like
+    // TableViewCatalog passive-filtering: if a view sits at `ident`, dropTable must look like
     // "nothing there" -- return false and do not delete. We resolve the kind first so a
     // DROP TABLE on a metric view never reaches `deleteTable`.
     val t = try {
