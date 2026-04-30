@@ -1,6 +1,8 @@
 package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -8,14 +10,26 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.Dependency;
+import io.unitycatalog.client.model.DependencyList;
 import io.unitycatalog.client.model.ListSchemasResponse;
 import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.SchemaInfo;
+import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
+import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
+import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
+import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
+import org.apache.spark.sql.catalyst.analysis.ViewAlreadyExistsException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
@@ -24,9 +38,17 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.spark.sql.connector.catalog.Column;
+import org.apache.spark.sql.connector.catalog.MetadataTable;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.connector.catalog.TableSummary;
+import org.apache.spark.sql.connector.catalog.TableViewCatalog;
+import org.apache.spark.sql.connector.catalog.ViewCatalog;
+import org.apache.spark.sql.connector.catalog.ViewInfo;
+import org.apache.spark.sql.types.DataTypes;
+import org.mockito.ArgumentCaptor;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +72,8 @@ public class UCProxySuite {
   private TablesApi mockTablesApi;
   private SchemasApi mockSchemasApi;
   private TableCatalog proxy;
+  private TableViewCatalog proxyRelations;
+  private ViewCatalog proxyViews;
   private SupportsNamespaces proxyNs;
 
   @BeforeEach
@@ -98,6 +122,8 @@ public class UCProxySuite {
     schemasField.set(proxyObj, mockSchemasApi);
 
     proxyNs = (SupportsNamespaces) proxyObj;
+    proxyRelations = (TableViewCatalog) proxyObj;
+    proxyViews = (ViewCatalog) proxyObj;
   }
 
   // -- listTables tests --
@@ -168,6 +194,271 @@ public class UCProxySuite {
 
     assertThat(result).hasSize(1);
     assertThat(result[0]).isEqualTo(Identifier.of(NAMESPACE, "table1"));
+  }
+
+  @Test
+  public void testListTablesFiltersMetricViews() throws Exception {
+    ListTablesResponse response =
+        new ListTablesResponse()
+            .tables(
+                List.of(
+                    new TableInfo().name("table1").tableType(TableType.EXTERNAL),
+                    new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
+            .nextPageToken(null);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    Identifier[] result = proxy.listTables(NAMESPACE);
+
+    assertThat(result).containsExactly(Identifier.of(NAMESPACE, "table1"));
+  }
+
+  @Test
+  public void testListViewsReturnsMetricViewsOnly() throws Exception {
+    ListTablesResponse response =
+        new ListTablesResponse()
+            .tables(
+                List.of(
+                    new TableInfo().name("table1").tableType(TableType.EXTERNAL),
+                    new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
+            .nextPageToken(null);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    Identifier[] result = proxyViews.listViews(NAMESPACE);
+
+    assertThat(result).containsExactly(Identifier.of(NAMESPACE, "mv1"));
+  }
+
+  @Test
+  public void testCreateViewSendsMetricViewPayloadAndLoadViewReturnsViewInfo() throws Exception {
+    String metadataJson = "{\"metric_view.type\":\"dimension\",\"metric_view.expr\":\"region\"}";
+    ViewInfo viewInfo =
+        new ViewInfo.Builder()
+            .withColumns(
+                new Column[] {
+                  Column.create("region", DataTypes.StringType, true, null, metadataJson)
+                })
+            .withProperties(
+                Map.of(
+                    TableCatalog.PROP_TABLE_TYPE,
+                    TableSummary.METRIC_VIEW_TABLE_TYPE,
+                    "metric_view.from.type",
+                    "ASSET"))
+            .withQueryText("version: \"0.1\"\nsource: test_catalog.test_schema.events")
+            .withCurrentCatalog(CATALOG_NAME)
+            .withCurrentNamespace(NAMESPACE)
+            // Spark's `Dependency.table(...)` is now varargs over structural multi-part name
+            // parts (was a single dot-joined string). The matching mock UC payload below
+            // continues to use UC's legacy dot-joined `tableFullName` wire format -- the
+            // connector's `toUcDependencyList` joins / `fromUcDependencyList` splits at the
+            // boundary.
+            .withViewDependencies(
+                org.apache.spark.sql.connector.catalog.DependencyList.of(
+                    org.apache.spark.sql.connector.catalog.Dependency.table(
+                        "test_catalog", "test_schema", "events")))
+            .build();
+
+    ColumnInfo ucColumn =
+        new ColumnInfo()
+            .name("region")
+            .typeName(ColumnTypeName.STRING)
+            .typeText("string")
+            .typeJson(
+                "{\"name\":\"region\",\"type\":\"string\",\"nullable\":true,"
+                    + "\"metadata\":{\"metric_view.type\":\"dimension\","
+                    + "\"metric_view.expr\":\"region\"}}")
+            .nullable(true)
+            .position(0);
+    DependencyList ucDeps =
+        new DependencyList()
+            .dependencies(
+                List.of(
+                    new Dependency()
+                        .table(
+                            new TableDependency()
+                                .tableFullName("test_catalog.test_schema.events"))));
+    TableInfo ucMetricView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW)
+            .viewDefinition(viewInfo.queryText())
+            .columns(List.of(ucColumn))
+            .properties(Map.of("metric_view.from.type", "ASSET"))
+            .viewDependencies(ucDeps);
+    when(mockTablesApi.createTable(any(CreateTable.class))).thenReturn(ucMetricView);
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+        .thenReturn(ucMetricView);
+
+    ViewInfo loaded = proxyViews.createView(Identifier.of(NAMESPACE, "mv1"), viewInfo);
+
+    ArgumentCaptor<CreateTable> captor = ArgumentCaptor.forClass(CreateTable.class);
+    verify(mockTablesApi).createTable(captor.capture());
+    CreateTable request = captor.getValue();
+    assertThat(request.getTableType()).isEqualTo(TableType.METRIC_VIEW);
+    assertThat(request.getViewDefinition()).isEqualTo(viewInfo.queryText());
+    assertThat(request.getViewDependencies().getDependencies()).hasSize(1);
+    // Wire-side check: `toUcDependencyList` flattened Spark's structural parts back into
+    // UC's legacy dot-joined `tableFullName` for the wire payload.
+    assertThat(request.getViewDependencies().getDependencies().get(0).getTable().getTableFullName())
+        .isEqualTo("test_catalog.test_schema.events");
+    assertThat(request.getColumns()).hasSize(1);
+    assertThat(request.getColumns().get(0).getTypeJson()).contains("metric_view.type");
+    assertThat(loaded.queryText()).isEqualTo(viewInfo.queryText());
+    assertThat(loaded.viewDependencies().dependencies()).hasSize(1);
+    // Spark-side check: `fromUcDependencyList` split the wire dot-joined `tableFullName`
+    // back into structural parts. This pins the full Spark structural -> UC wire ->
+    // Spark structural round-trip.
+    org.apache.spark.sql.connector.catalog.TableDependency loadedDep =
+        (org.apache.spark.sql.connector.catalog.TableDependency)
+            loaded.viewDependencies().dependencies()[0];
+    assertThat(loadedDep.nameParts()).containsExactly("test_catalog", "test_schema", "events");
+  }
+
+  @Test
+  public void testLoadTableOrViewForMetricViewReturnsMetadataTableWithViewInfo() throws Exception {
+    TableInfo ucMetricView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW)
+            .viewDefinition("version: \"0.1\"")
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("region")
+                        .typeName(ColumnTypeName.STRING)
+                        .typeText("string")
+                        .typeJson(
+                            "{\"name\":\"region\",\"type\":\"string\",\"nullable\":true,"
+                                + "\"metadata\":{}}")
+                        .nullable(true)
+                        .position(0)))
+            .properties(Map.of("metric_view.from.type", "ASSET"));
+    when(mockTablesApi.getTable(
+            eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+        .thenReturn(ucMetricView);
+
+    org.apache.spark.sql.connector.catalog.Table table =
+        proxyRelations.loadTableOrView(Identifier.of(NAMESPACE, "mv1"));
+
+    assertThat(table).isInstanceOf(MetadataTable.class);
+    ViewInfo view = (ViewInfo) ((MetadataTable) table).getTableInfo();
+    assertThat(view.queryText()).isEqualTo("version: \"0.1\"");
+    assertThat(view.properties().get(TableCatalog.PROP_TABLE_TYPE))
+        .isEqualTo(TableSummary.METRIC_VIEW_TABLE_TYPE);
+    // TableViewCatalog spec recommends MetadataTable.name() be the v2 ident.toString()
+    // (quoted multi-part form, no catalog prefix) so DESCRIBE TABLE EXTENDED's `Name` row
+    // renders the identifier consistently with every other catalog.
+    assertThat(table.name()).isEqualTo(Identifier.of(NAMESPACE, "mv1").toString());
+  }
+
+  // -- TableViewCatalog cross-type filtering --
+
+  @Test
+  public void testLoadTableThrowsNoSuchTableForMetricView() throws Exception {
+    TableInfo ucMetricView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW);
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+        .thenReturn(ucMetricView);
+
+    assertThatThrownBy(() -> proxy.loadTable(Identifier.of(NAMESPACE, "mv1")))
+        .isInstanceOf(NoSuchTableException.class);
+  }
+
+  @Test
+  public void testLoadViewThrowsNoSuchViewForRegularTable() throws Exception {
+    TableInfo ucTable =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("t1")
+            .tableType(TableType.EXTERNAL);
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+        .thenReturn(ucTable);
+
+    assertThatThrownBy(() -> proxyViews.loadView(Identifier.of(NAMESPACE, "t1")))
+        .isInstanceOf(NoSuchViewException.class);
+  }
+
+  @Test
+  public void testDropTableReturnsFalseForMetricViewAndDoesNotDelete() throws Exception {
+    TableInfo ucMetricView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW);
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+        .thenReturn(ucMetricView);
+
+    boolean dropped = proxy.dropTable(Identifier.of(NAMESPACE, "mv1"));
+
+    assertThat(dropped).isFalse();
+    // Crucial: deleteTable must not be called, otherwise DROP TABLE on a metric view would
+    // silently delete it.
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .deleteTable(org.mockito.ArgumentMatchers.anyString());
+  }
+
+  @Test
+  public void testDropViewReturnsFalseForRegularTableAndDoesNotDelete() throws Exception {
+    TableInfo ucTable =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("t1")
+            .tableType(TableType.EXTERNAL);
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+        .thenReturn(ucTable);
+
+    boolean dropped = proxyViews.dropView(Identifier.of(NAMESPACE, "t1"));
+
+    assertThat(dropped).isFalse();
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .deleteTable(org.mockito.ArgumentMatchers.anyString());
+  }
+
+  @Test
+  public void testCreateViewMapsConflictToViewAlreadyExistsException() throws Exception {
+    when(mockTablesApi.createTable(any(CreateTable.class)))
+        .thenThrow(new ApiException(409, "conflict"));
+
+    ViewInfo viewInfo =
+        new ViewInfo.Builder()
+            .withColumns(new Column[] {Column.create("c", DataTypes.StringType, true)})
+            .withProperties(
+                Map.of(TableCatalog.PROP_TABLE_TYPE, TableSummary.METRIC_VIEW_TABLE_TYPE))
+            .withQueryText("version: \"0.1\"")
+            .withCurrentCatalog(CATALOG_NAME)
+            .withCurrentNamespace(NAMESPACE)
+            .build();
+
+    assertThatThrownBy(() -> proxyViews.createView(Identifier.of(NAMESPACE, "mv1"), viewInfo))
+        .isInstanceOf(ViewAlreadyExistsException.class);
+  }
+
+  @Test
+  public void testCreateTableMapsConflictToTableAlreadyExistsException() throws Exception {
+    when(mockTablesApi.createTable(any(CreateTable.class)))
+        .thenThrow(new ApiException(409, "conflict"));
+
+    org.apache.spark.sql.connector.catalog.TableInfo sparkInfo =
+        new org.apache.spark.sql.connector.catalog.TableInfo.Builder()
+            .withColumns(new Column[] {Column.create("c", DataTypes.StringType, true)})
+            .withProperties(Map.of(TableCatalog.PROP_PROVIDER, "parquet"))
+            .build();
+
+    assertThatThrownBy(() -> proxy.createTable(Identifier.of(NAMESPACE, "t1"), sparkInfo))
+        .isInstanceOf(TableAlreadyExistsException.class);
   }
 
   // -- listNamespaces tests --
