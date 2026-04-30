@@ -38,7 +38,9 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
           new ColumnInfo()
               .name("test_column")
               .typeText("INTEGER")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson(
+                  "{\"name\":\"test_column\",\"type\":\"integer\","
+                      + "\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .nullable(true));
@@ -110,6 +112,45 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             resp.getNextPageToken());
     assertThat(nextPageResp.getNextPageToken()).isNull();
     assertThat(nextPageResp.getTables()).hasSize(1);
+  }
+
+  @Test
+  public void testCreateTableRejectsInvalidColumnTypeJson() throws Exception {
+    assertCreateTableWithInvalidTypeJson("missing_type_json", null);
+    assertCreateTableWithInvalidTypeJson("invalid_type_json", "not json at all");
+    assertCreateTableWithInvalidTypeJson("short_type_json", "\"integer\"");
+    assertCreateTableWithInvalidTypeJson(
+        "missing_metadata_type_json",
+        "{\"name\":\"bad_column\",\"type\":\"integer\",\"nullable\":true}");
+  }
+
+  private void assertCreateTableWithInvalidTypeJson(String tableName, String typeJson)
+      throws Exception {
+    CreateTable createTableRequest =
+        new CreateTable()
+            .name(tableName)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("bad_column")
+                        .typeText("INTEGER")
+                        .typeJson(typeJson)
+                        .typeName(ColumnTypeName.INT)
+                        .position(0)
+                        .nullable(true)))
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA)
+            .storageLocation(Files.createTempDirectory(testDirectoryRoot, "table").toString());
+
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> localTablesApi.createTable(createTableRequest))
+        .satisfies(
+            ex ->
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
+        .withMessageContaining("Invalid type_json for column bad_column");
   }
 
   /**

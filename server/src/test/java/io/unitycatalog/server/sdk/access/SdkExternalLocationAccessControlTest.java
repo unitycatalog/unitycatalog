@@ -488,7 +488,9 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
                     .name("id")
                     .typeName(ColumnTypeName.INT)
                     .typeText("INTEGER")
-                    .typeJson("{\"type\": \"integer\"}")
+                    .typeJson(
+                        "{\"name\":\"id\",\"type\":\"integer\","
+                            + "\"nullable\":true,\"metadata\":{}}")
                     .position(0)
                     .nullable(true)));
   }

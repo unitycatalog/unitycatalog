@@ -446,7 +446,11 @@ public class TableRepository {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     List<ColumnInfo> columnInfos =
         createTable.getColumns().stream()
-            .map(c -> c.typeText(c.getTypeText().toLowerCase(Locale.ROOT)))
+            .map(
+                c -> {
+                  ColumnUtils.validateTypeJson(c);
+                  return c.typeText(c.getTypeText().toLowerCase(Locale.ROOT));
+                })
             .toList();
     Long createTime = System.currentTimeMillis();
     String fullName = getTableFullName(createTable);

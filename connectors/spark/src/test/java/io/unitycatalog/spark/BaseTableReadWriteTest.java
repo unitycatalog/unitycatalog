@@ -552,7 +552,6 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
    * literal used in the INSERT, the expected toString() from the result row (null = byte-array ref
    * check via startsWith("[B@")), and the expected UC catalog metadata fields.
    */
-  @AllArgsConstructor
   @Getter
   private static final class ColSpec {
     private final String name;
@@ -561,7 +560,50 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     private final String rowValue; // null = byte-array object ref, checked with startsWith
     private final ColumnTypeName typeName;
     private final String typeText;
+    private final boolean nullable;
     private final String typeJson;
+
+    private ColSpec(
+        String name,
+        String sqlType,
+        String insertValue,
+        String rowValue,
+        ColumnTypeName typeName,
+        String typeText,
+        String dataTypeJson) {
+      this(name, sqlType, insertValue, rowValue, typeName, typeText, true, "{}", dataTypeJson);
+    }
+
+    private ColSpec(
+        String name,
+        String sqlType,
+        String insertValue,
+        String rowValue,
+        ColumnTypeName typeName,
+        String typeText,
+        boolean nullable,
+        String metadataJson,
+        String dataTypeJson) {
+      this.name = name;
+      this.sqlType = sqlType;
+      this.insertValue = insertValue;
+      this.rowValue = rowValue;
+      this.typeName = typeName;
+      this.typeText = typeText;
+      this.nullable = nullable;
+      this.typeJson = structFieldTypeJson(name, dataTypeJson, nullable, metadataJson);
+    }
+  }
+
+  private static String structFieldTypeJson(String name, String dataTypeJson) {
+    return structFieldTypeJson(name, dataTypeJson, true, "{}");
+  }
+
+  private static String structFieldTypeJson(
+      String name, String dataTypeJson, boolean nullable, String metadataJson) {
+    return String.format(
+        "{\"name\":\"%s\",\"type\":%s,\"nullable\":%s,\"metadata\":%s}",
+        name, dataTypeJson, nullable, metadataJson);
   }
 
   // Currently this test only works for non-Delta tables. Later it will work for more.
@@ -624,11 +666,13 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "\"decimal(10,2)\""),
             new ColSpec(
                 "col_string",
-                "STRING",
+                "STRING COMMENT 'column metadata comment'",
                 "'test'",
                 "test",
                 ColumnTypeName.STRING,
                 "string",
+                true,
+                "{\"comment\":\"column metadata comment\"}",
                 "\"string\""),
             new ColSpec(
                 "col_char",
@@ -656,11 +700,13 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "\"binary\""),
             new ColSpec(
                 "col_boolean",
-                "BOOLEAN",
+                "BOOLEAN NOT NULL",
                 "true",
                 "true",
                 ColumnTypeName.BOOLEAN,
                 "boolean",
+                false,
+                "{}",
                 "\"boolean\""),
             new ColSpec(
                 "col_date",
@@ -785,6 +831,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       assertThat(col.getTypeText())
           .as("typeText for %s", spec.getName())
           .isEqualTo(spec.getTypeText());
+      assertThat(col.getNullable())
+          .as("nullable for %s", spec.getName())
+          .isEqualTo(spec.isNullable());
       assertThat(col.getTypeJson())
           .as("typeJson for %s", spec.getName())
           .isEqualTo(spec.getTypeJson());
