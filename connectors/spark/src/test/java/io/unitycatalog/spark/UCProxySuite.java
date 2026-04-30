@@ -26,10 +26,6 @@ import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
-import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
-import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
-import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
-import org.apache.spark.sql.catalyst.analysis.ViewAlreadyExistsException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
@@ -38,9 +34,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
+import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
+import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
+import org.apache.spark.sql.catalyst.analysis.ViewAlreadyExistsException;
 import org.apache.spark.sql.connector.catalog.Column;
-import org.apache.spark.sql.connector.catalog.MetadataTable;
 import org.apache.spark.sql.connector.catalog.Identifier;
+import org.apache.spark.sql.connector.catalog.MetadataTable;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.connector.catalog.TableSummary;
@@ -48,10 +48,10 @@ import org.apache.spark.sql.connector.catalog.TableViewCatalog;
 import org.apache.spark.sql.connector.catalog.ViewCatalog;
 import org.apache.spark.sql.connector.catalog.ViewInfo;
 import org.apache.spark.sql.types.DataTypes;
-import org.mockito.ArgumentCaptor;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
  * Unit tests for UCProxy pagination using mocked API responses.
@@ -289,8 +289,7 @@ public class UCProxySuite {
             .properties(Map.of("metric_view.from.type", "ASSET"))
             .viewDependencies(ucDeps);
     when(mockTablesApi.createTable(any(CreateTable.class))).thenReturn(ucMetricView);
-    when(mockTablesApi.getTable(
-            eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
         .thenReturn(ucMetricView);
 
     ViewInfo loaded = proxyViews.createView(Identifier.of(NAMESPACE, "mv1"), viewInfo);
@@ -339,8 +338,7 @@ public class UCProxySuite {
                         .nullable(true)
                         .position(0)))
             .properties(Map.of("metric_view.from.type", "ASSET"));
-    when(mockTablesApi.getTable(
-            eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
         .thenReturn(ucMetricView);
 
     org.apache.spark.sql.connector.catalog.Table table =
@@ -451,10 +449,15 @@ public class UCProxySuite {
     when(mockTablesApi.createTable(any(CreateTable.class)))
         .thenThrow(new ApiException(409, "conflict"));
 
+    // The 4-arg createTable method asserts a non-null storage location, so the test must
+    // set PROP_LOCATION on the TableInfo for the 409-mapping path to be reached.
     org.apache.spark.sql.connector.catalog.TableInfo sparkInfo =
         new org.apache.spark.sql.connector.catalog.TableInfo.Builder()
             .withColumns(new Column[] {Column.create("c", DataTypes.StringType, true)})
-            .withProperties(Map.of(TableCatalog.PROP_PROVIDER, "parquet"))
+            .withProperties(
+                Map.of(
+                    TableCatalog.PROP_PROVIDER, "parquet",
+                    TableCatalog.PROP_LOCATION, "/tmp/uc-proxy-suite/t1"))
             .build();
 
     assertThatThrownBy(() -> proxy.createTable(Identifier.of(NAMESPACE, "t1"), sparkInfo))

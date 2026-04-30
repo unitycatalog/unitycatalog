@@ -34,8 +34,6 @@ import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import org.json4s.{JArray, JObject}
-import org.json4s.jackson.JsonMethods
 import org.sparkproject.guava.base.Preconditions
 
 /**
@@ -150,14 +148,14 @@ class UCSingleCatalog
    * instead of falling back from `loadTable` to `loadView`. We honor that contract by
    * performing one UC `getTable` and dispatching on the UC `TableType`:
    *
-   *   - For view-like UC table types (metric views today, materialized views in the future)
-   *     we build a `ViewInfo` and return it wrapped in a `MetadataTable`. Spark recognizes
-   *     this shape and routes resolution through the view path.
-   *   - For ordinary table types we forward to `delegate.loadTable`. That re-fetches via
-   *     `UCProxy` so DeltaCatalog (when present) can wrap the result and provide its
-   *     Delta-specific reader; views never need that wrapping, so we skip Delta entirely for
-   *     them. The extra `getTable` is intentional and avoids leaking Delta-specific behavior
-   *     into the view path.
+   *   - If `UCSingleCatalog.isViewLikeTableType` accepts the row, we build a `ViewInfo` and
+   *     return it wrapped in a `MetadataTable`. Spark recognizes this shape and routes
+   *     resolution through the view path.
+   *   - Otherwise we forward to `delegate.loadTable`. That re-fetches via `UCProxy` so
+   *     DeltaCatalog (when present) can wrap the result and provide its Delta-specific
+   *     reader; views never need that wrapping, so we skip Delta entirely for them. The
+   *     extra `getTable` is intentional and avoids leaking Delta-specific behavior into the
+   *     view path.
    *
    * The orthogonal `loadTable` / `loadView` overrides remain available: `loadTable` uses the
    * Delta-aware delegate path and rejects view-like rows; `loadView` delegates to
@@ -596,18 +594,41 @@ object UCSingleCatalog {
   }
 
   /**
-   * Returns true for UC `TableType` values that should round-trip through Spark's
-   * `ViewCatalog` surface rather than the table surface. UC's enum currently splits
-   * `MANAGED` / `EXTERNAL` / `STREAMING_TABLE` (table-like) from `METRIC_VIEW` /
-   * `MATERIALIZED_VIEW` (view-like); only metric views are wired through `createView` /
-   * `loadView` / `dropView` today, but listings and `loadTableOrView` filter on the broader
-   * view-like set so a future materialized-view path "just works" without a touch on these
-   * call sites.
+   * Single source of truth for which UC `TableType` values the connector treats as
+   * view-like, and how each maps onto Spark's `TableSummary` view-type strings:
+   *
+   *   - `Some(s)` means: appears in `listViews`, `loadTableOrView` builds a `ViewInfo`
+   *     wrapped in `MetadataTable(... s)`, and `createView` accepts `s` as the requested
+   *     `TableSummary` table-type string.
+   *   - `None` means: appears in `listViews` (and is filtered out of `listTables`) so the
+   *     UC server-managed lifecycle is not mis-classified as a table, but Spark has no
+   *     `TableSummary` constant for it yet, so loading or creating fails with a clear
+   *     "no Spark view type" error.
+   *
+   * Adding a future view kind = one new entry here. The three predicates below derive
+   * from this map, so listing / dispatch / createView reject all stay in sync.
    */
-  def isViewLikeTableType(tableType: TableType): Boolean = tableType match {
-    case TableType.METRIC_VIEW | TableType.MATERIALIZED_VIEW => true
-    case _ => false
-  }
+  private val viewLikeUcTypes: Map[TableType, Option[String]] = Map(
+    TableType.METRIC_VIEW -> Some(TableSummary.METRIC_VIEW_TABLE_TYPE),
+    TableType.MATERIALIZED_VIEW -> None
+  )
+
+  /** Used by `listTables` / `listViews` / `loadTableOrView` / `dropTable` to dispatch by surface. */
+  def isViewLikeTableType(tableType: TableType): Boolean = viewLikeUcTypes.contains(tableType)
+
+  /**
+   * Used by `toViewInfo` to label the wrapped `MetadataTable` with the right Spark
+   * `TableSummary` table-type. Throws for view-like UC types we list but cannot yet load
+   * (e.g. `MATERIALIZED_VIEW` until Spark adds a `TableSummary.MATERIALIZED_VIEW_TABLE_TYPE`).
+   */
+  def ucTableTypeToSparkViewType(tableType: TableType): String =
+    viewLikeUcTypes.get(tableType).flatten.getOrElse(
+      throw new UnsupportedOperationException(
+        s"No Spark TableSummary view-type string for UC table type: $tableType"))
+
+  /** Used by `createView` to reject Spark `TableSummary` view-type strings UC OSS does not support. */
+  def isCreateViewSupportedTableType(tableType: String): Boolean =
+    viewLikeUcTypes.values.flatten.toSet.contains(tableType)
 }
 
 // An internal proxy to talk to the UC client.
@@ -786,15 +807,9 @@ private class UCProxy(
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val properties: util.Map[String, String] = info.properties()
     val tableType = properties.get(TableCatalog.PROP_TABLE_TYPE)
-    // UC's `TableType` enum has two view-like values: METRIC_VIEW (created via
-    // `CREATE METRIC VIEW`) and MATERIALIZED_VIEW (managed by Lakeflow / DLT pipelines, not
-    // by Spark DDL). MATERIALIZED_VIEW is not user-creatable through `ViewCatalog.createView`
-    // -- the pipeline runtime owns its lifecycle -- so the only view kind we accept here is
-    // METRIC_VIEW. Plain `CREATE VIEW` (`tableType == "VIEW"`) and any future view kinds are
-    // rejected explicitly so callers see a clear error rather than a silent type coercion.
-    if (TableSummary.METRIC_VIEW_TABLE_TYPE != tableType) {
+    if (!UCSingleCatalog.isCreateViewSupportedTableType(tableType)) {
       throw new ApiException(
-        s"Unity Catalog only supports METRIC_VIEW via ViewCatalog.createView; got: $tableType")
+        s"Unity Catalog does not support creating $tableType via ViewCatalog.createView")
     }
 
     val ct = new CreateTable()
@@ -852,48 +867,78 @@ private class UCProxy(
     throw new UnsupportedOperationException("Renaming a view is not supported yet")
   }
 
-  override def createTable(
-      ident: Identifier,
-      tableInfo: TableInfo): Table = {
+  // Spark 4.2's `TableViewCatalog` made `createTable(ident, TableInfo)` the canonical entry
+  // point; the legacy 4-arg method below carries all the create-table logic, which keeps the
+  // diff vs. main scoped to "add the new overload + 409 -> TableAlreadyExistsException catch
+  // required by TableViewCatalog's active-rejection contract".
+  override def createTable(ident: Identifier, tableInfo: TableInfo): Table = {
+    createTable(ident, tableInfo.schema(), tableInfo.partitions(), tableInfo.properties())
+  }
+
+  override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    val properties: util.Map[String, String] = tableInfo.properties()
-    // Regular tables must declare their provider so UC can set `data_source_format`.
     UCSingleCatalog.requireProviderSpecified("CREATE TABLE", properties)
 
-    val ct = new CreateTable()
-      .name(ident.name())
-      .schemaName(ident.namespace().head)
-      .catalogName(this.name)
+    val createTable = new CreateTable()
+    createTable.setName(ident.name())
+    createTable.setSchemaName(ident.namespace().head)
+    createTable.setCatalogName(this.name)
 
-    Option(properties.get(TableCatalog.PROP_COMMENT)).foreach(ct.setComment)
-    Option(properties.get(TableCatalog.PROP_LOCATION)).foreach(ct.setStorageLocation)
-    Option(properties.get(TableCatalog.PROP_PROVIDER)).foreach { p =>
-      ct.setDataSourceFormat(convertDatasourceFormat(p))
-    }
-
-    ct.setTableType {
-      val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
-      val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
-        .exists(_.equalsIgnoreCase("true"))
-      if (isManagedLocation) {
-        assert(!hasExternalClause, "location is only generated for managed tables.")
-        val format = properties.get("provider")
-        if (format != null && !format.equalsIgnoreCase(DataSourceFormat.DELTA.name)) {
-          throw new ApiException("Unity Catalog does not support non-Delta managed table.")
-        }
-        TableType.MANAGED
-      } else {
-        TableType.EXTERNAL
+    val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
+    val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
+    assert(storageLocation != null, "location should either be user specified or system generated.")
+    val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
+      .exists(_.equalsIgnoreCase("true"))
+    val format = properties.get("provider")
+    if (isManagedLocation) {
+      assert(!hasExternalClause, "location is only generated for managed tables.")
+      if (!format.equalsIgnoreCase(DataSourceFormat.DELTA.name)) {
+        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
       }
+      createTable.setTableType(TableType.MANAGED)
+    } else {
+      createTable.setTableType(TableType.EXTERNAL)
     }
+    createTable.setStorageLocation(storageLocation)
 
-    ct.setColumns(UCProxy.buildColumnInfos(tableInfo, convertDataTypeToTypeName).asJava)
-
+    val partitionColNames: Seq[String] = partitions.flatMap { t =>
+      t.name() match {
+        case "identity" =>
+          val fieldNames = t.references().flatMap(_.fieldNames())
+          require(fieldNames.length == 1,
+            s"Expected single-field partition reference but got: ${fieldNames.mkString(".")}")
+          Some(fieldNames.head)
+        case "cluster_by" =>
+          None
+        case other =>
+          throw new ApiException(s"Unsupported partition transform: $other")
+      }
+    }.toSeq
+    val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
+      val column = new ColumnInfo()
+      column.setName(field.name)
+      if (field.getComment().isDefined) {
+        column.setComment(field.getComment.get)
+      }
+      column.setNullable(field.nullable)
+      column.setTypeText(field.dataType.catalogString)
+      column.setTypeName(convertDataTypeToTypeName(field.dataType))
+      column.setTypeJson(field.dataType.json)
+      column.setPosition(i)
+      val partitionIdx = partitionColNames.indexWhere(_.equalsIgnoreCase(field.name))
+      if (partitionIdx >= 0) column.setPartitionIndex(partitionIdx)
+      column
+    }
+    val comment = Option(properties.get(TableCatalog.PROP_COMMENT))
+    comment.foreach(createTable.setComment(_))
+    createTable.setColumns(columns)
+    createTable.setDataSourceFormat(convertDatasourceFormat(format))
+    // Do not send the V2 table properties as they are made part of the `createTable` already.
     val propertiesToServer =
-      properties.asScala.view.filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_)).toMap
-    ct.setProperties(propertiesToServer.asJava)
+      properties.view.filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_)).toMap
+    createTable.setProperties(propertiesToServer)
     try {
-      tablesApi.createTable(ct)
+      tablesApi.createTable(createTable)
     } catch {
       // TableViewCatalog's active-rejection contract: createTable must throw
       // TableAlreadyExistsException when a view (or another table, race) already sits at
@@ -904,32 +949,12 @@ private class UCProxy(
     loadTable(ident)
   }
 
-  override def createTable(
-      ident: Identifier,
-      schema: StructType,
-      partitions: Array[Transform],
-      properties: util.Map[String, String]): Table = {
-    // Build a TableInfo and funnel into the new entry point so both paths share the same server
-    // payload construction.
-    val columns: Array[Column] = schema.fields.map { f =>
-      Column.create(f.name, f.dataType, f.nullable, f.getComment().orNull, null)
-    }
-    val tableInfo = new TableInfo.Builder()
-      .withColumns(columns)
-      .withPartitions(partitions)
-      .withProperties(properties)
-      .build()
-    createTable(ident, tableInfo)
-  }
-
   private[spark] def toViewInfo(t: UCTableInfo): ViewInfo = {
     val columns = t.getColumns.asScala.map { col =>
-      Column.create(
-        col.getName,
-        DataType.fromDDL(col.getTypeText),
-        col.getNullable,
-        col.getComment,
-        metadataJsonFromTypeJson(col.getTypeJson))
+      // typeJson holds the full StructField JSON written by `buildColumnInfos`; parse it back
+      // through Spark's public `StructField.fromJson` + `Column.fromStructField` so dataType,
+      // nullable, comment, and metadata flow through unchanged.
+      Column.fromStructField(StructField.fromJson(col.getTypeJson))
     }.toArray
 
     val props = new util.HashMap[String, String]()
@@ -939,7 +964,7 @@ private class UCProxy(
     val builder = new ViewInfo.Builder()
       .withColumns(columns)
       .withProperties(props)
-      .withTableType(TableSummary.METRIC_VIEW_TABLE_TYPE)
+      .withTableType(UCSingleCatalog.ucTableTypeToSparkViewType(t.getTableType))
       .withQueryText(t.getViewDefinition)
       .withCurrentCatalog(t.getCatalogName)
       .withCurrentNamespace(Array(t.getSchemaName))
@@ -951,20 +976,6 @@ private class UCProxy(
       builder.withViewDependencies(UCProxy.fromUcDependencyList(ucDeps))
     }
     builder.build()
-  }
-
-  private def metadataJsonFromTypeJson(typeJson: String): String = {
-    if (typeJson == null || typeJson.isEmpty) return null
-    try {
-      val parsed = JsonMethods.parse(typeJson)
-      (parsed \ "metadata") match {
-        case obj: JObject =>
-          JsonMethods.compact(JsonMethods.render(obj))
-        case _ => null
-      }
-    } catch {
-      case _: Throwable => null
-    }
   }
 
   private def extractSqlConfigs(properties: util.Map[String, String]): util.Map[String, String] = {
@@ -1045,9 +1056,13 @@ private class UCProxy(
   }
 
   override def dropTable(ident: Identifier): Boolean = {
-    // TableViewCatalog passive-filtering: if a view sits at `ident`, dropTable must look like
-    // "nothing there" -- return false and do not delete. We resolve the kind first so a
-    // DROP TABLE on a metric view never reaches `deleteTable`.
+    // Spark's `DROP TABLE` always lands in `TableCatalog.dropTable`, regardless of what kind
+    // of object actually sits at `ident`. `TableViewCatalog` puts tables and views in a
+    // shared identifier namespace, and the spec requires `dropTable` to passive-filter
+    // view-like rows -- a `DROP TABLE <view>` must look like "nothing here" and return false
+    // rather than delete the view. (`dropView` is symmetric: returns false for a table.)
+    // We resolve the kind via UC `getTable` first so a view-like row never reaches
+    // `tablesApi.deleteTable`.
     val t = try {
       getUcTable(ident)
     } catch {
@@ -1175,58 +1190,34 @@ private object UCProxy {
   }
 
   /**
-   * Builds the UC column-info list from a Spark `TableInfo`, preserving nullability, comment,
-   * type metadata (text / name / JSON), and partition position inferred from `tableInfo.partitions()`.
+   * Builds the UC column-info list for `createView` from a Spark `TableInfo` (or its `ViewInfo`
+   * subtype). Preserves nullability, comment, partition position, and the full Spark
+   * `StructField` JSON in `typeJson` so column-level analyzer metadata (e.g. `metric_view.type`,
+   * `metric_view.expr`) survives the round-trip through Unity Catalog. Matches the Databricks
+   * runtime wire format (`TypeConversionUtils.toProto` -> `typeJson = Some(field.toJson)`).
    *
-   * `typeJson` is serialized as the full Spark `StructField` JSON (`name` / `type` / `nullable` /
-   * `metadata`) rather than the raw `DataType` JSON so that column-level metadata survives the
-   * round-trip through Unity Catalog. This matches the Databricks runtime wire format -- see
-   * `TypeConversionUtils.toProto` which emits `typeJson = Some(field.toJson)` -- and means
-   * metric-view metadata keys (`metric_view.type`, `metric_view.expr`) attached to column
-   * `StructField`s by Spark's analyzer will be visible to every UC client.
+   * `tableInfo.schema()` runs Spark's `CatalogV2Util.v2ColumnsToStructType`, which folds each
+   * `Column.metadataInJSON` into the resulting `StructField.metadata`; we then read the field
+   * JSON via the public `StructField.json` (added in the upstream Spark PR alongside
+   * `Column.fromStructField` / `StructField.fromJson`).
    */
   def buildColumnInfos(
       tableInfo: TableInfo,
       convertDataTypeToTypeName: DataType => ColumnTypeName): Seq[ColumnInfo] = {
     val partitionColNames = extractPartitionColumnNames(tableInfo.partitions())
-    tableInfo.columns().toSeq.zipWithIndex.map { case (col, i) =>
+    tableInfo.schema().fields.toSeq.zipWithIndex.map { case (field, i) =>
       val column = new ColumnInfo()
-      column.setName(col.name())
-      column.setNullable(col.nullable())
-      column.setTypeText(col.dataType().catalogString)
-      column.setTypeName(convertDataTypeToTypeName(col.dataType()))
-      column.setTypeJson(toStructFieldJson(col))
+      column.setName(field.name)
+      column.setNullable(field.nullable)
+      column.setTypeText(field.dataType.catalogString)
+      column.setTypeName(convertDataTypeToTypeName(field.dataType))
+      column.setTypeJson(field.json)
       column.setPosition(i)
-      Option(col.comment()).foreach(column.setComment(_))
-      val partitionIdx = partitionColNames.indexWhere(_.equalsIgnoreCase(col.name()))
+      field.getComment().foreach(column.setComment(_))
+      val partitionIdx = partitionColNames.indexWhere(_.equalsIgnoreCase(field.name))
       if (partitionIdx >= 0) column.setPartitionIndex(partitionIdx)
       column
     }
-  }
-
-  /**
-   * Builds the JSON string Unity Catalog stores in `ColumnInfo.type_json`. This is the full
-   * Spark `StructField` JSON (`name` / `type` / `nullable` / `metadata`), not the bare
-   * `DataType` JSON. We construct the `StructField` here rather than calling
-   * `CatalogV2Util.v2ColumnsToStructType` because that helper is `private[sql]` in Spark and
-   * not callable from this package; the conversion logic mirrors what that helper does for
-   * the no-default / no-generated / no-identity column case (the only shape UC supports today).
-   *
-   * `StructField.json` itself is `private[sql]` in Spark, so we wrap the field in a singleton
-   * `StructType` (whose `.json` is public, inherited from `DataType`) and extract the only
-   * element of `fields`.
-   */
-  private def toStructFieldJson(col: Column): String = {
-    val baseMetadata = Option(col.metadataInJSON()).map(Metadata.fromJson).getOrElse(Metadata.empty)
-    var field = StructField(col.name(), col.dataType(), col.nullable(), baseMetadata)
-    Option(col.comment()).foreach { c => field = field.withComment(c) }
-    val parent = JsonMethods.parse(StructType(Array(field)).json)
-    val onlyField = (parent \ "fields") match {
-      case JArray(elem :: Nil) => elem
-      case other =>
-        throw new IllegalStateException(s"Unexpected StructType.json shape for single field: $other")
-    }
-    JsonMethods.compact(JsonMethods.render(onlyField))
   }
 
   private def extractPartitionColumnNames(partitions: Array[Transform]): Seq[String] = {
