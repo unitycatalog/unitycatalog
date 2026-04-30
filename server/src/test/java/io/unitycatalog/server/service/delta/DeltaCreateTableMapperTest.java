@@ -30,7 +30,8 @@ public class DeltaCreateTableMapperTest {
 
   @Test
   public void happyPathManagedBuildsCreateTable() {
-    CreateTable created = DeltaCreateTableMapper.toCreateTable("cat", "sch", baseManagedRequest());
+    CreateTable created =
+        DeltaCreateTableMapper.toCreateTable("cat", "sch", baseManagedRequest()).createTable();
 
     assertThat(created.getName()).isEqualTo("tbl");
     assertThat(created.getCatalogName()).isEqualTo("cat");
@@ -62,7 +63,7 @@ public class DeltaCreateTableMapperTest {
                     .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
             .properties(Map.of());
 
-    CreateTable created = DeltaCreateTableMapper.toCreateTable("cat", "sch", req);
+    CreateTable created = DeltaCreateTableMapper.toCreateTable("cat", "sch", req).createTable();
     assertThat(created.getTableType()).isEqualTo(io.unitycatalog.server.model.TableType.EXTERNAL);
   }
 

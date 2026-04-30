@@ -10,7 +10,7 @@ import io.unitycatalog.server.delta.serde.DeltaTypeModule;
  *
  * <p>The same mapper is used both by the server's request / response converters (see {@code
  * UnityCatalogServer#addDeltaApiServices}) and by tests that want to pin the exact wire-format the
- * server produces. Centralising it here means a change to the Delta response shape -- e.g. adding a
+ * server produces. Centralizing it here means a change to the Delta response shape -- e.g. adding a
  * serialization feature -- takes effect in one place, and regression tests that use the same mapper
  * can't silently drift from production behavior.
  *
