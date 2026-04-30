@@ -27,7 +27,6 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateStagingTable;
-import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CatalogRepository;
@@ -181,8 +180,10 @@ public class DeltaRestCatalogService extends AuthorizedService {
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "location")
           @AuthorizeKey(key = "table-type")
           CreateTableRequest request) {
-    CreateTable createTable = DeltaCreateTableMapper.toCreateTable(catalog, schema, request);
-    return tableRepository.createTableForDelta(createTable);
+    DeltaCreateTableMapper.Result mapped =
+        DeltaCreateTableMapper.toCreateTable(catalog, schema, request);
+    return tableRepository.createTableForDelta(
+        mapped.createTable(), mapped.uniformIcebergFields());
   }
 
   // ==================== Table Credentials API ====================

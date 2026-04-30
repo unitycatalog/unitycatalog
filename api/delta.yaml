@@ -775,6 +775,13 @@ components:
             type: string
         domain-metadata:
           $ref: '#/components/schemas/DomainMetadataUpdates'
+        uniform:
+          $ref: '#/components/schemas/UniformMetadata'
+          description: |
+            Optional UniForm conversion metadata. When present, the table is registered as
+            UniForm-enabled, so readers can access it via either the Delta or Iceberg REST
+            Catalog. The engine generates the Iceberg metadata file at the supplied
+            metadata-location before calling createTable.
       required:
         - name
         - location

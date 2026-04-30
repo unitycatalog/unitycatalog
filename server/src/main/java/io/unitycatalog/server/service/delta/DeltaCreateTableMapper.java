@@ -9,8 +9,10 @@ import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ColumnUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Converts a Delta REST Catalog {@link CreateTableRequest} (with typed Delta columns and kebab-case
@@ -27,7 +29,18 @@ public final class DeltaCreateTableMapper {
 
   private DeltaCreateTableMapper() {}
 
-  public static CreateTable toCreateTable(String catalog, String schema, CreateTableRequest req) {
+  /**
+   * Result of mapping a {@link CreateTableRequest}: the assembled UC {@link CreateTable} together
+   * with the validated, normalized UniForm Iceberg fields ({@code Optional.empty()} when no
+   * UniForm metadata was supplied). Callers thread the uniform fields straight to {@code
+   * TableRepository.createTableForDelta} so the metadata-location is normalized exactly once at
+   * the request boundary.
+   */
+  public record Result(
+      CreateTable createTable,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformIcebergFields) {}
+
+  public static Result toCreateTable(String catalog, String schema, CreateTableRequest req) {
     if (req == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Request body is required.");
     }
@@ -54,6 +67,13 @@ public final class DeltaCreateTableMapper {
           req.getProtocol(), req.getDomainMetadata(), req.getProperties());
     }
 
+    // Uniform property/block consistency mirrors the addCommit-time check (shared via
+    // DeltaUniformUtils) so a table never starts in a state the next commit would reject.
+    DeltaUniformUtils.validateConsistency(req.getProperties(), req.getUniform() != null);
+    Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields =
+        DeltaUniformUtils.getUniformFields(req.getUniform());
+    DeltaUniformUtils.validateCreate(uniformFields, NormalizedURL.from(req.getLocation()));
+
     List<ColumnInfo> columns = new ArrayList<>();
     List<StructField> fields = req.getColumns().getFields();
     for (int i = 0; i < fields.size(); i++) {
@@ -61,18 +81,20 @@ public final class DeltaCreateTableMapper {
     }
     ColumnUtils.applyPartitionColumns(columns, req.getPartitionColumns());
 
-    return new CreateTable()
-        .name(req.getName())
-        .catalogName(catalog)
-        .schemaName(schema)
-        .tableType(tableType)
-        .dataSourceFormat(toUCDataSourceFormat(req.getDataSourceFormat()))
-        .columns(columns)
-        .comment(req.getComment())
-        .storageLocation(req.getLocation())
-        .properties(
-            DeltaPropertyMapper.mergeDerivedWithClient(
-                req.getProtocol(), req.getDomainMetadata(), req.getProperties()));
+    CreateTable createTable =
+        new CreateTable()
+            .name(req.getName())
+            .catalogName(catalog)
+            .schemaName(schema)
+            .tableType(tableType)
+            .dataSourceFormat(toUCDataSourceFormat(req.getDataSourceFormat()))
+            .columns(columns)
+            .comment(req.getComment())
+            .storageLocation(req.getLocation())
+            .properties(
+                DeltaPropertyMapper.mergeDerivedWithClient(
+                    req.getProtocol(), req.getDomainMetadata(), req.getProperties()));
+    return new Result(createTable, uniformFields);
   }
 
   private static TableType toUCTableType(io.unitycatalog.server.delta.model.TableType type) {

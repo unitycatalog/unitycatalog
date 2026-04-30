@@ -1,7 +1,7 @@
 package io.unitycatalog.server.service.delta;
 
 /**
- * Spec-defined Delta protocol identifiers referenced by the Delta REST Catalog surface. Centralised
+ * Spec-defined Delta protocol identifiers referenced by the Delta REST Catalog surface. Centralized
  * here so that feature-specific server decisions (e.g. "MANAGED tables must declare {@code
  * catalogManaged}") and required-property declarations cannot silently mismatch the strings the
  * client actually writes into the Delta log.
@@ -113,5 +113,21 @@ public final class DeltaConsts {
      * name as it appears in {@code protocol.reader-features} / {@code protocol.writer-features}.
      */
     public static final String FEATURE_PREFIX = "delta.feature.";
+
+    /**
+     * UniForm enabled-formats property: a comma-separated list naming the additional formats to
+     * expose this Delta table as. Setting it to {@link DeltaConsts#UNIVERSAL_FORMAT_ICEBERG}
+     * declares the table as UniForm-Iceberg-enabled, at which point every commit (including the
+     * initial one via createTable) must carry uniform metadata.
+     */
+    public static final String UNIVERSAL_FORMAT_ENABLED_FORMATS =
+        "delta.universalFormat.enabledFormats";
   }
+
+  /**
+   * Wire value of {@link TableProperties#UNIVERSAL_FORMAT_ENABLED_FORMATS} that turns on UniForm
+   * Iceberg conversion. Per Delta spec the property accepts a comma-separated list of formats; for
+   * now {@code "iceberg"} is the only supported value.
+   */
+  public static final String UNIVERSAL_FORMAT_ICEBERG = "iceberg";
 }

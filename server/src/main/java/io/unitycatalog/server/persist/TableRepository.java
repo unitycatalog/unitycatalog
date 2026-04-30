@@ -29,6 +29,7 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.service.delta.DeltaUniformUtils;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.Constants;
@@ -451,17 +452,25 @@ public class TableRepository {
   }
 
   public TableInfo createTable(CreateTable createTable) {
-    return createTableImpl(createTable, (session, dao, tableInfo) -> tableInfo);
+    return createTableImpl(createTable, Optional.empty(), (session, dao, tableInfo) -> tableInfo);
   }
 
   /**
    * Create a table and return the Delta REST Catalog {@link LoadTableResponse} in a single
    * transaction. The DAO persisted during create is the same one used to build the response, so
    * there's no second lookup or risk of a reader observing an intermediate state.
+   *
+   * <p>If {@code uniformFields} is non-empty the table is registered as UniForm-enabled: the
+   * already-validated, already-normalized Iceberg fields (computed once in {@code
+   * DeltaCreateTableMapper.toCreateTable}) are written onto the DAO before {@code session.persist},
+   * so the create lands as a single INSERT carrying the uniform fields and the metadata-location is
+   * normalized exactly once on this code path.
    */
-  public LoadTableResponse createTableForDelta(CreateTable createTable) {
+  public LoadTableResponse createTableForDelta(
+      CreateTable createTable, Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
     return createTableImpl(
         createTable,
+        uniformFields,
         (session, dao, tableInfo) ->
             buildLoadTableResponse(
                 session,
@@ -473,11 +482,16 @@ public class TableRepository {
 
   /**
    * Shared implementation for the two {@code create} entry points. Validates the name, opens a
-   * write transaction, persists the new table (row, columns, properties), then hands the persisted
-   * DAO + built TableInfo to {@code mapper} which picks the return shape each caller needs. Keeps
-   * the create path as a single operation rather than a chain of private helpers.
+   * write transaction, builds the new {@link TableInfoDAO} (row, columns, properties), applies
+   * UniForm Iceberg metadata when {@code uniformFields} is non-empty, persists the DAO, then hands
+   * it and the built {@link TableInfo} to {@code mapper} which picks the return shape each caller
+   * needs. Keeps the create path as a single operation, and pins all DAO setters before {@code
+   * session.persist} so the create lands as a single INSERT.
    */
-  private <T> T createTableImpl(CreateTable createTable, CreateResultMapper<T> mapper) {
+  private <T> T createTableImpl(
+      CreateTable createTable,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      CreateResultMapper<T> mapper) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     List<ColumnInfo> columnInfos =
@@ -583,6 +597,9 @@ public class TableRepository {
           // create properties
           PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
               .forEach(session::persist);
+          // UniForm Iceberg fields (when supplied by the DRC create path) are written while the
+          // entity is still transient so they're folded into the single INSERT below.
+          DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           session.persist(tableInfoDAO);
           if (tableType == TableType.METRIC_VIEW) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;

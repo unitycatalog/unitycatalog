@@ -149,20 +149,27 @@ public final class UcManagedDeltaContract {
 
   /**
    * Cross-check the client's claim against UC's own state: {@code properties[UC_TABLE_ID]} must
-   * equal the UC-allocated UUID for the table being created or updated. The {@code expectedTableId}
-   * is the source of truth -- the staging table's UUID at create time, the existing table's UUID at
-   * update time. {@link #validate} only checks presence; this method checks identity.
+   * equal the UC-allocated UUID for the table being created or committed against. The {@code
+   * expectedTableId} is the source of truth -- the staging table's UUID at create time, the
+   * existing table's UUID at commit time. Shared between {@link DeltaCreateTableMapper}'s
+   * MANAGED-create path and {@code DeltaCommitRepository}'s commit-metadata-property path so the
+   * two cannot drift. {@link #validate} only checks presence; this method checks identity.
    */
   public static void validateTableIdProperty(
       Map<String, String> properties, String expectedTableId) {
     Objects.requireNonNull(expectedTableId, "expectedTableId");
     String actual = properties != null ? properties.get(TableProperties.UC_TABLE_ID) : null;
+    if (actual == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format("Properties does not contain %s.", TableProperties.UC_TABLE_ID));
+    }
     if (!expectedTableId.equals(actual)) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           String.format(
-              "Property %s (%s) does not match the table id (%s).",
-              TableProperties.UC_TABLE_ID, actual, expectedTableId));
+              "the table id (%s) does not match the properties %s(%s).",
+              expectedTableId, TableProperties.UC_TABLE_ID, actual));
     }
   }
 
