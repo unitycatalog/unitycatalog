@@ -64,6 +64,16 @@ public final class NormalizedURL {
   }
 
   /**
+   * Creates a normalized URL from the given URI. Returns null if the input is null. Convenience
+   * overload of {@link #from(String)} for callers that already hold a {@link URI}.
+   *
+   * @param uri the URI to normalize
+   */
+  public static NormalizedURL from(URI uri) {
+    return uri == null ? null : new NormalizedURL(uri.toString());
+  }
+
+  /**
    * Returns the normalized URL as a string.
    *
    * @return the normalized URL string, never null

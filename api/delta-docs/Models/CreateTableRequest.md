@@ -13,6 +13,7 @@
 | **protocol** | [**DeltaProtocol**](DeltaProtocol.md) | Delta protocol version and feature requirements | [default to null] |
 | **properties** | **Map** | Delta table properties | [default to null] |
 | **domain-metadata** | [**DomainMetadataUpdates**](DomainMetadataUpdates.md) |  | [optional] [default to null] |
+| **uniform** | [**UniformMetadata**](UniformMetadata.md) | Optional UniForm conversion metadata. When present, the table is registered as UniForm-enabled, so readers can access it via either the Delta or Iceberg REST Catalog. The engine generates the Iceberg metadata file at the supplied metadata-location before calling createTable.  | [optional] [default to null] |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

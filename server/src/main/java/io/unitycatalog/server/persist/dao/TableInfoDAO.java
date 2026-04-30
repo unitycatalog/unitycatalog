@@ -137,4 +137,17 @@ public class TableInfoDAO extends IdentifiableDAO {
     }
     return tableInfo;
   }
+
+  /**
+   * Update the UniForm Iceberg metadata fields as an atomic triple. All three fields are written
+   * together; callers must supply the validated, normalized values produced by {@code
+   * DeltaUniformUtils.UniformIcebergFields} so the DAO cannot drift on which fields are touched or
+   * how the location is normalized. Shared between createTable on Delta REST and addCommit.
+   */
+  public void updateUniformIcebergMetadata(
+      NormalizedURL metadataLocation, long convertedDeltaVersion, long convertedDeltaTimestampMs) {
+    setUniformIcebergMetadataLocation(metadataLocation.toString());
+    setUniformIcebergConvertedDeltaVersion(convertedDeltaVersion);
+    setUniformIcebergConvertedDeltaTimestamp(new Date(convertedDeltaTimestampMs));
+  }
 }

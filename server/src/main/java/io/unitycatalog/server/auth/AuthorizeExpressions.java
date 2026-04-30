@@ -52,6 +52,28 @@ public final class AuthorizeExpressions {
       """;
 
   /**
+   * Authorization policy for creating a table (UC REST {@code POST /tables} and Delta REST Catalog
+   * {@code createTable}). Catalog {@code USE_CATALOG}/{@code OWNER} plus either schema
+   * {@code OWNER} or schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. For EXTERNAL tables, the
+   * caller additionally needs {@code OWNER}/{@code CREATE_EXTERNAL_TABLE} on the external location
+   * (if one resolves) and the storage path must not overlap a data securable.
+   *
+   * <p>The {@code #table_type} SpEL variable comes from {@code @AuthorizeKey(key = "table-type")};
+   * kebab-case payload keys surface with hyphens mapped to underscores (see {@link
+   * io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator#getVariableName}).
+   */
+  public static final String CREATE_TABLE =
+      """
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+      (#authorize(#principal, #schema, OWNER) ||
+        #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)) &&
+      (#table_type != 'EXTERNAL' ||
+        (#no_overlap_with_data_securable &&
+          (#external_location == null ||
+           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE))))
+      """;
+
+  /**
    * Authorization policy for vending table credentials. Admin-above-the-table privileges on
    * their own are not sufficient; the caller must have an explicit table-level privilege
    * matching the requested operation. {@code READ} needs OWNER or SELECT; {@code READ_WRITE}
