@@ -626,9 +626,35 @@ object UCSingleCatalog {
       throw new UnsupportedOperationException(
         s"No Spark TableSummary view-type string for UC table type: $tableType"))
 
-  /** Used by `createView` to reject Spark `TableSummary` view-type strings UC OSS does not support. */
-  def isCreateViewSupportedTableType(tableType: String): Boolean =
-    viewLikeUcTypes.values.flatten.toSet.contains(tableType)
+  /**
+   * Reverse lookup: given a Spark `TableSummary` view-type string supplied by the caller
+   * via `ViewInfo.properties().get(PROP_TABLE_TYPE)`, return the corresponding UC
+   * `TableType` to stamp on `CreateTable.tableType`. Computed once from `viewLikeUcTypes`.
+   */
+  private lazy val sparkViewTypeToUcType: Map[String, TableType] =
+    viewLikeUcTypes.collect { case (ucType, Some(sparkType)) => sparkType -> ucType }
+
+  def sparkViewTypeToUcTableType(sparkType: String): Option[TableType] =
+    sparkViewTypeToUcType.get(sparkType)
+
+  /**
+   * Used by view-side commands (`createView`, `dropView`, ...) to gate by whether the
+   * connector supports the given view kind. Two overloads cover both call sites:
+   *
+   *   - `String` overload: caller has a Spark `TableSummary` view-type string (e.g. from
+   *     `ViewInfo.properties().get(PROP_TABLE_TYPE)` on the create path).
+   *   - `TableType` overload: caller has a UC `TableType` (e.g. from `getUcTable(...)` on
+   *     the drop path).
+   *
+   * Both return `true` iff the kind is in `viewLikeUcTypes` AND has a Spark mapping
+   * (i.e. `Some(_)` in the map). Listed-but-unmapped kinds (`None`) are filtered into
+   * `listViews` for surface correctness but rejected from view CRUD commands.
+   */
+  def isViewCommandsSupportedTableType(sparkType: String): Boolean =
+    sparkViewTypeToUcType.contains(sparkType)
+
+  def isViewCommandsSupportedTableType(ucType: TableType): Boolean =
+    viewLikeUcTypes.get(ucType).exists(_.isDefined)
 }
 
 // An internal proxy to talk to the UC client.
@@ -806,17 +832,17 @@ private class UCProxy(
   override def createView(ident: Identifier, info: ViewInfo): ViewInfo = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val properties: util.Map[String, String] = info.properties()
-    val tableType = properties.get(TableCatalog.PROP_TABLE_TYPE)
-    if (!UCSingleCatalog.isCreateViewSupportedTableType(tableType)) {
+    val sparkTableType = properties.get(TableCatalog.PROP_TABLE_TYPE)
+    val ucTableType = UCSingleCatalog.sparkViewTypeToUcTableType(sparkTableType).getOrElse {
       throw new ApiException(
-        s"Unity Catalog does not support creating $tableType via ViewCatalog.createView")
+        s"Unity Catalog does not support creating $sparkTableType via ViewCatalog.createView")
     }
 
     val ct = new CreateTable()
       .name(ident.name())
       .schemaName(ident.namespace().head)
       .catalogName(this.name)
-      .tableType(TableType.METRIC_VIEW)
+      .tableType(ucTableType)
       .viewDefinition(info.queryText())
 
     Option(properties.get(TableCatalog.PROP_COMMENT)).foreach(ct.setComment)
@@ -855,7 +881,10 @@ private class UCProxy(
     } catch {
       case _: NoSuchTableException => return false
     }
-    if (t.getTableType != TableType.METRIC_VIEW) {
+    // Per the TableViewCatalog passive-filtering contract, dropView must return false (no
+    // delete) when the entry exists but isn't a view kind we manage via view commands.
+    // Same gate as createView -- one source of truth.
+    if (!UCSingleCatalog.isViewCommandsSupportedTableType(t.getTableType)) {
       return false
     }
     tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident)) == 200
@@ -1141,8 +1170,7 @@ private object UCProxy {
   /**
    * Converts Spark's typed [[DependencyList]] into the wire-format UC [[UCDependencyList]].
    * Only `TableDependency` is currently translated; UC OSS does not persist function
-   * dependencies (metric views disallow UDFs in their source) and other `Dependency`
-   * subtypes are dropped on the floor.
+   * dependencies for now.
    *
    * Spark's `TableDependency.nameParts` is the structural multi-part identifier (preserves
    * arity for multi-level-namespace catalogs); UC's wire format is the legacy
