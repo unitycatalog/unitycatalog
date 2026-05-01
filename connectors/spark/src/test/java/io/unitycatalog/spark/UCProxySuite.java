@@ -519,4 +519,106 @@ public class UCProxySuite {
     assertThat(result).hasNumberOfRows(1);
     assertThat(result[0]).containsExactly("schema1");
   }
+
+  // -- UCColumnJson round-trip tests --
+  //
+  // `UCColumnJson` is the in-connector helper that produces / consumes the canonical
+  // Spark `StructField`-shape JSON UC stores in `ColumnInfo.type_json`. We exercise it
+  // directly (rather than only through `createView` / `loadView`) because the helper
+  // needs to handle a few subtle invariants the end-to-end tests don't pin:
+  //   - comment lives in `Column.comment()` separately from `metadataInJSON`, but on
+  //     the wire it sits inside `metadata` under the `"comment"` key (Spark convention);
+  //   - empty metadata round-trips as `null` `metadataInJSON`, not `"{}"`;
+  //   - complex nested types round-trip via `DataType.json` / `DataType.fromJson`.
+
+  @Test
+  public void testUCColumnJsonRoundTripsMetricViewMetadata() {
+    String metadataJson =
+        "{\"metric_view.type\":\"dimension\",\"metric_view.expr\":\"region\"}";
+    Column input = Column.create("region", DataTypes.StringType, true, null, metadataJson);
+
+    String wire = UCColumnJson$.MODULE$.buildStructFieldJson(input);
+    Column output = UCColumnJson$.MODULE$.parseStructFieldJson(wire);
+
+    assertThat(output.name()).isEqualTo("region");
+    assertThat(output.dataType()).isEqualTo(DataTypes.StringType);
+    assertThat(output.nullable()).isTrue();
+    assertThat(output.comment()).isNull();
+    org.apache.spark.sql.types.Metadata md =
+        org.apache.spark.sql.types.Metadata.fromJson(output.metadataInJSON());
+    assertThat(md.getString("metric_view.type")).isEqualTo("dimension");
+    assertThat(md.getString("metric_view.expr")).isEqualTo("region");
+  }
+
+  @Test
+  public void testUCColumnJsonRoundTripsCommentWithoutDuplication() {
+    String metadataJson = "{\"metric_view.type\":\"dimension\"}";
+    Column input = Column.create("region", DataTypes.StringType, true, "the region", metadataJson);
+
+    String wire = UCColumnJson$.MODULE$.buildStructFieldJson(input);
+    // Wire format: comment is folded into metadata under the "comment" key.
+    assertThat(wire).contains("\"comment\":\"the region\"");
+
+    Column output = UCColumnJson$.MODULE$.parseStructFieldJson(wire);
+
+    // Spark V2 Column: comment is exposed via `comment()`, NOT left in `metadataInJSON`.
+    assertThat(output.comment()).isEqualTo("the region");
+    org.apache.spark.sql.types.Metadata md =
+        org.apache.spark.sql.types.Metadata.fromJson(output.metadataInJSON());
+    assertThat(md.contains("comment")).isFalse();
+    assertThat(md.getString("metric_view.type")).isEqualTo("dimension");
+  }
+
+  @Test
+  public void testUCColumnJsonRoundTripsEmptyMetadataAsNull() {
+    Column input = Column.create("c", DataTypes.IntegerType, false, null, null);
+
+    String wire = UCColumnJson$.MODULE$.buildStructFieldJson(input);
+    Column output = UCColumnJson$.MODULE$.parseStructFieldJson(wire);
+
+    assertThat(output.name()).isEqualTo("c");
+    assertThat(output.dataType()).isEqualTo(DataTypes.IntegerType);
+    assertThat(output.nullable()).isFalse();
+    assertThat(output.comment()).isNull();
+    // Empty metadata must round-trip as `null` (not the string `"{}"`), matching Spark's
+    // own `CatalogV2Util.structFieldToV2Column` convention so consumers checking
+    // `metadataInJSON() == null` work correctly.
+    assertThat(output.metadataInJSON()).isNull();
+  }
+
+  @Test
+  public void testUCColumnJsonRoundTripsCommentOnlyMetadataAsNull() {
+    Column input = Column.create("c", DataTypes.IntegerType, true, "only comment", null);
+
+    String wire = UCColumnJson$.MODULE$.buildStructFieldJson(input);
+    Column output = UCColumnJson$.MODULE$.parseStructFieldJson(wire);
+
+    assertThat(output.comment()).isEqualTo("only comment");
+    // After stripping `"comment"` on the read side, the metadata is empty -- so
+    // `metadataInJSON` is null (not `"{}"`), matching the empty-metadata case.
+    assertThat(output.metadataInJSON()).isNull();
+  }
+
+  @Test
+  public void testUCColumnJsonRoundTripsComplexNestedType() {
+    org.apache.spark.sql.types.DataType nested =
+        DataTypes.createArrayType(
+            DataTypes.createStructType(
+                new org.apache.spark.sql.types.StructField[] {
+                  org.apache.spark.sql.types.DataTypes.createStructField(
+                      "a", DataTypes.IntegerType, false),
+                  org.apache.spark.sql.types.DataTypes.createStructField(
+                      "b", DataTypes.StringType, true)
+                }),
+            true);
+    Column input = Column.create("nested", nested, true, null, null);
+
+    String wire = UCColumnJson$.MODULE$.buildStructFieldJson(input);
+    Column output = UCColumnJson$.MODULE$.parseStructFieldJson(wire);
+
+    // `DataType.fromJson` reconstructs the entire nested array<struct<...>> from the
+    // `type` node of the wire JSON.
+    assertThat(output.dataType()).isEqualTo(nested);
+    assertThat(output.nullable()).isTrue();
+  }
 }
