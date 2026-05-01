@@ -8,21 +8,38 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.delta.model.CatalogConfig;
+import io.unitycatalog.server.delta.model.CreateStagingTableRequest;
+import io.unitycatalog.server.delta.model.CredentialOperation;
+import io.unitycatalog.server.delta.model.CredentialsResponse;
 import io.unitycatalog.server.delta.model.LoadTableResponse;
+import io.unitycatalog.server.delta.model.StagingTableResponse;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.CreateStagingTable;
+import io.unitycatalog.server.model.StagingTableInfo;
+import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.service.AuthorizedService;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Delta REST Catalog Service -- REST API for Delta tables.
@@ -49,15 +66,22 @@ public class DeltaRestCatalogService extends AuthorizedService {
           "GET /v1/temporary-path-credentials");
 
   private final CatalogRepository catalogRepository;
+  private final SchemaRepository schemaRepository;
   private final TableRepository tableRepository;
+  private final StagingTableRepository stagingTableRepository;
+  private final StorageCredentialVendor storageCredentialVendor;
 
   public DeltaRestCatalogService(
       UnityCatalogAuthorizer authorizer,
       Repositories repositories,
+      ServerProperties serverProperties,
       StorageCredentialVendor storageCredentialVendor) {
-    super(authorizer, repositories);
+    super(authorizer, repositories, serverProperties);
     this.catalogRepository = repositories.getCatalogRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
     this.tableRepository = repositories.getTableRepository();
+    this.stagingTableRepository = repositories.getStagingTableRepository();
+    this.storageCredentialVendor = storageCredentialVendor;
   }
 
   // ==================== Configuration API ====================
@@ -89,20 +113,101 @@ public class DeltaRestCatalogService extends AuthorizedService {
 
   @Get("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
   @ProducesJson
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public LoadTableResponse loadTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
     return tableRepository.loadTableForDelta(catalog, schema, table);
+  }
+
+  // ==================== Staging Table API ====================
+
+  /**
+   * Create a staging table for a soon-to-be-created UC catalog-managed Delta table. UC allocates a
+   * UUID and a managed storage location; the client then writes the initial Delta commit to that
+   * location and calls {@code POST /tables} to finalize the table.
+   *
+   * <p>The response carries the protocol / properties the client must write in the initial commit
+   * for the resulting table to be a valid UC catalog-managed Delta table, plus temporary {@code
+   * READ_WRITE} credentials scoped to the staging location.
+   */
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_STAGING_TABLE)
+  public StagingTableResponse createStagingTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      CreateStagingTableRequest request) {
+    if (request == null || request.getName() == null || request.getName().isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Staging table name is required.");
+    }
+    StagingTableInfo staging =
+        stagingTableRepository.createStagingTable(
+            new CreateStagingTable()
+                .catalogName(catalog)
+                .schemaName(schema)
+                .name(request.getName()));
+    initializeHierarchicalAuthorization(
+        staging.getId(), schemaRepository.getSchemaIdOrThrow(catalog, schema).toString());
+
+    NormalizedURL stagingLocation = NormalizedURL.from(staging.getStagingLocation());
+    TemporaryCredentials credentials =
+        storageCredentialVendor.vendCredential(
+            stagingLocation,
+            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+    return DeltaStagingTableMapper.toStagingTableResponse(staging, credentials);
+  }
+
+  // ==================== Table Credentials API ====================
+
+  /**
+   * Vend temporary cloud storage credentials for a table identified by three-part name. The {@code
+   * operation} query param scopes the returned credentials: {@code READ} requires {@code SELECT}
+   * (or OWNER); {@code READ_WRITE} requires {@code OWNER} or both {@code SELECT} and {@code
+   * MODIFY}.
+   */
+  @Get("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.VEND_TABLE_CREDENTIAL)
+  public CredentialsResponse getTableCredentials(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
+      @Param("operation") @AuthorizeKey CredentialOperation operation) {
+    NormalizedURL storageLocation = tableRepository.getTableStorageLocation(catalog, schema, table);
+    TemporaryCredentials credentials =
+        storageCredentialVendor.vendCredential(storageLocation, toPrivileges(operation));
+    return DeltaCredentialsMapper.toCredentialsResponse(
+        storageLocation.toString(), credentials, operation);
+  }
+
+  /**
+   * Vend temporary cloud storage credentials for a staging table identified by UUID. Only the
+   * staging table owner may vend credentials; the returned credentials are always READ_WRITE so the
+   * client can write the initial commit.
+   */
+  @Get("/delta/v1/staging-tables/{table_id}/credentials")
+  @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #table, OWNER)")
+  public CredentialsResponse getStagingTableCredentials(
+      @Param("table_id") @AuthorizeResourceKey(TABLE) String tableId) {
+    NormalizedURL storageLocation =
+        tableRepository.getStagingTableStorageLocation(UUID.fromString(tableId));
+    TemporaryCredentials credentials =
+        storageCredentialVendor.vendCredential(
+            storageLocation,
+            Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+    return DeltaCredentialsMapper.toCredentialsResponse(
+        storageLocation.toString(), credentials, CredentialOperation.READ_WRITE);
+  }
+
+  private static Set<CredentialContext.Privilege> toPrivileges(CredentialOperation operation) {
+    return switch (operation) {
+      case READ -> Set.of(CredentialContext.Privilege.SELECT);
+      case READ_WRITE ->
+          Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE);
+    };
   }
 }

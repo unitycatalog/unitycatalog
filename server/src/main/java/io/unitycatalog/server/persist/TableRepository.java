@@ -13,10 +13,12 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.DependencyList;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.DependencyDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
@@ -26,12 +28,12 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
-import io.unitycatalog.server.utils.TableProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -41,6 +43,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -98,6 +101,53 @@ public class TableRepository {
               "Neither table nor staging table found with id: " + tableId);
         },
         "Failed to get storage location of table or staging table",
+        /* readOnly = */ true);
+  }
+
+  /**
+   * Looks up the storage location for a regular table by its three-part name. Only reads what the
+   * caller actually needs (the storage URL) rather than hydrating the full {@link TableInfo} with
+   * columns and properties. Accepts the three parts separately so callers don't have to round-trip
+   * them through a dotted string that the repo would immediately split again.
+   *
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no table exists at the given name.
+   */
+  public NormalizedURL getTableStorageLocation(String catalog, String schema, String table) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTable(session, catalog, schema, table);
+          if (dao == null) {
+            throw new BaseException(
+                ErrorCode.TABLE_NOT_FOUND,
+                "Table not found: " + catalog + "." + schema + "." + table);
+          }
+          return NormalizedURL.from(dao.getUrl());
+        },
+        "Failed to get storage location of table " + catalog + "." + schema + "." + table,
+        /* readOnly = */ true);
+  }
+
+  /**
+   * Looks up the storage location for a staging table by ID. Unlike {@link
+   * #getStorageLocationForTableOrStagingTable}, this rejects regular table UUIDs so endpoints
+   * scoped to staging tables don't silently accept regular-table inputs.
+   *
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no staging table exists with this ID.
+   */
+  public NormalizedURL getStagingTableStorageLocation(UUID stagingTableId) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LOGGER.debug("Getting storage location of staging table by id: {}", stagingTableId);
+          StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, stagingTableId);
+          if (stagingTableDAO == null) {
+            throw new BaseException(
+                ErrorCode.TABLE_NOT_FOUND, "Staging table not found with id: " + stagingTableId);
+          }
+          return NormalizedURL.from(stagingTableDAO.getStagingLocation());
+        },
+        "Failed to get storage location of staging table",
         /* readOnly = */ true);
   }
 
@@ -167,6 +217,8 @@ public class TableRepository {
           TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
               tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+          RepositoryUtils.attachDependencies(
+              tableInfo, tableInfoDAO, session, repositories.getDependencyRepository());
           return tableInfo;
         },
         "Failed to get table",
@@ -196,6 +248,20 @@ public class TableRepository {
             throw new BaseException(
                 ErrorCode.TABLE_NOT_FOUND,
                 "Table not found: " + catalog + "." + schema + "." + table);
+          }
+
+          // Guard non-Delta entries (metric views, parquet/csv/etc. tables) before they reach
+          // `buildTableMetadata`. The downstream code calls `NormalizedURL.normalize(dao.getUrl())`
+          // (throws "Path cannot be null or empty" when the row has no storage location, e.g.
+          // metric views) and `DataSourceFormat.fromValue(dao.getDataSourceFormat())` (throws
+          // IllegalArgumentException on null), both of which surface as misleading errors to a
+          // Delta REST client that simply asked for a name that happens to live in the same
+          // schema. Sibling guard to `DeltaCommitRepository.validateTable`.
+          if (dao.getDataSourceFormat() == null
+              || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                "Table is not a Delta table: " + catalog + "." + schema + "." + table);
           }
 
           TableMetadata metadata = buildTableMetadata(session, dao, catalog, schema, table);
@@ -395,7 +461,6 @@ public class TableRepository {
               repositories
                   .getSchemaRepository()
                   .getSchemaIdOrThrow(session, catalogName, schemaName);
-          NormalizedURL storageLocation = NormalizedURL.from(createTable.getStorageLocation());
 
           // Check if table already exists
           TableInfoDAO existingTable =
@@ -405,13 +470,18 @@ public class TableRepository {
                 ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
-          // The table ID will either be a new random one or the id of staging table, depending
-          // on the type of table to create.
-          String tableID;
+          // `tableUUID` is the table's primary key. The shape is uniform across the three
+          // creatable branches (external, managed, metric view); the only divergence is the
+          // source of the UUID (random for external/metric-view, staging-table id for managed).
+          // The string form is generated exactly once below at `tableInfo.tableId(...)`.
+          UUID tableUUID;
+          NormalizedURL storageLocation;
           if (tableType == TableType.EXTERNAL) {
+            storageLocation = NormalizedURL.from(createTable.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
-            tableID = UUID.randomUUID().toString();
+            tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
+            storageLocation = NormalizedURL.from(createTable.getStorageLocation());
             serverProperties.checkManagedTableEnabled();
             if (createTable.getDataSourceFormat() != DataSourceFormat.DELTA) {
               throw new BaseException(
@@ -423,7 +493,11 @@ public class TableRepository {
                 repositories
                     .getStagingTableRepository()
                     .commitStagingTable(session, callerId, storageLocation);
-            tableID = stagingTableDAO.getId().toString();
+            tableUUID = stagingTableDAO.getId();
+          } else if (tableType == TableType.METRIC_VIEW) {
+            storageLocation = null;
+            validateMetricView(createTable);
+            tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
@@ -450,8 +524,9 @@ public class TableRepository {
                   .createdBy(callerId)
                   .updatedAt(createTime)
                   .updatedBy(callerId)
-                  .storageLocation(storageLocation.toString())
-                  .tableId(tableID);
+                  .storageLocation(storageLocation != null ? storageLocation.toString() : null)
+                  .viewDefinition(createTable.getViewDefinition())
+                  .tableId(tableUUID.toString());
 
           TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);
           // create columns
@@ -466,10 +541,37 @@ public class TableRepository {
           PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
               .forEach(session::persist);
           session.persist(tableInfoDAO);
+          if (tableType == TableType.METRIC_VIEW) {
+            DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
+            List<DependencyDAO> depDAOs =
+                createTable.getViewDependencies().getDependencies().stream()
+                    .map(dep -> DependencyDAO.from(dep, tableUUID, dependentType))
+                    .collect(Collectors.toList());
+            repositories
+                .getDependencyRepository()
+                .createDependencies(session, tableUUID, dependentType, depDAOs);
+          }
           return tableInfo;
         },
         "Error creating table: " + fullName,
         /* readOnly = */ false);
+  }
+
+  private static void validateMetricView(CreateTable createTable) {
+    if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "view_definition is required for metric view");
+    }
+    DependencyList viewDeps = createTable.getViewDependencies();
+    if (viewDeps == null || viewDeps.getDependencies() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for metric view");
+    }
+    if (viewDeps.getDependencies().isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "view_dependencies must contain at least one entry for metric view");
+    }
   }
 
   public TableInfoDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
@@ -547,6 +649,8 @@ public class TableRepository {
         RepositoryUtils.attachProperties(
             tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
       }
+      RepositoryUtils.attachDependencies(
+          tableInfo, tableInfoDAO, session, repositories.getDependencyRepository());
       result.add(tableInfo);
     }
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
@@ -588,6 +692,11 @@ public class TableRepository {
       repositories
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
+    }
+    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())) {
+      repositories
+          .getDependencyRepository()
+          .deleteDependencies(session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);

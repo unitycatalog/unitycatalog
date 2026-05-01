@@ -3,8 +3,12 @@ package io.unitycatalog.server.sdk.access;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.delta.model.CredentialOperation;
+import io.unitycatalog.client.delta.model.CredentialsResponse;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -57,6 +61,14 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
         new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(regular1Config));
     io.unitycatalog.client.delta.api.TablesApi regular2DeltaApi =
         new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(regular2Config));
+
+    // Delta REST credential clients for getTableCredentials tests
+    TemporaryCredentialsApi principal1DeltaCredsApi =
+        new TemporaryCredentialsApi(TestUtils.createApiClient(principal1Config));
+    TemporaryCredentialsApi regular1DeltaCredsApi =
+        new TemporaryCredentialsApi(TestUtils.createApiClient(regular1Config));
+    TemporaryCredentialsApi regular2DeltaCredsApi =
+        new TemporaryCredentialsApi(TestUtils.createApiClient(regular2Config));
 
     // Grant USE CATALOG and USE SCHEMA to principal-1
     grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
@@ -152,6 +164,34 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     // loadTable (regular-2) -> use schema, use catalog, select -> allowed
     assertThat(regular2DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1")).isNotNull();
 
+    // Delta getTableCredentials authz: READ requires SELECT, READ_WRITE requires MODIFY
+    // getTableCredentials READ (regular-1) -> use catalog, use schema, but no SELECT -> denied
+    assertPermissionDenied(
+        () ->
+            regular1DeltaCredsApi.getTableCredentials(
+                CredentialOperation.READ, "cat_pr1", "sch_pr1", "tbl_pr1"));
+
+    // getTableCredentials READ_WRITE (regular-2) -> has SELECT but not MODIFY -> denied
+    assertPermissionDenied(
+        () ->
+            regular2DeltaCredsApi.getTableCredentials(
+                CredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1"));
+
+    // Grant MODIFY to regular-2 so the READ_WRITE path passes authz.
+    grantPermissions(
+        "regular-2@localhost", SecurableType.TABLE, "cat_pr1.sch_pr1.tbl_pr1", Privileges.MODIFY);
+
+    // getTableCredentials READ_WRITE (regular-2) -> SELECT + MODIFY -> authz passes, call
+    // returns. The table's storage location is a local filesystem path; CloudCredentialVendor
+    // returns an empty TemporaryCredentials for file:// which flows through the mapper to a
+    // well-formed response with one storage credential whose config fields are all null.
+    assertReadWriteCredentialsVended(regular2DeltaCredsApi);
+
+    // getTableCredentials READ_WRITE (principal-1) -> TABLE OWNER (no explicit MODIFY) -> authz
+    // passes via the OWNER arm of the OR in the READ_WRITE rule. Covers the other branch of
+    // `OWNER || (SELECT && MODIFY)` so the expression gets full branch coverage.
+    assertReadWriteCredentialsVended(principal1DeltaCredsApi);
+
     // grant CREATE SCHEMA to regular-2
     grantPermissions(
         "regular-2@localhost", SecurableType.CATALOG, "cat_pr1", Privileges.CREATE_SCHEMA);
@@ -182,5 +222,19 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
 
     // delete table (principal-1) -> owner [catalog] -> allowed
     principal1TablesApi.deleteTable("cat_pr1.sch_rg2.tab_rg2");
+  }
+
+  /**
+   * Asserts that the given client can vend READ_WRITE credentials for {@code cat_pr1.sch_pr1
+   * .tbl_pr1}. Used to pin the "authz passes, call returns a well-formed response" behavior for
+   * both the {@code SELECT && MODIFY} and {@code OWNER} branches of the READ_WRITE policy.
+   */
+  private static void assertReadWriteCredentialsVended(TemporaryCredentialsApi api)
+      throws ApiException {
+    CredentialsResponse vended =
+        api.getTableCredentials(CredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1");
+    assertThat(vended.getStorageCredentials()).hasSize(1);
+    assertThat(vended.getStorageCredentials().get(0).getOperation())
+        .isEqualTo(CredentialOperation.READ_WRITE);
   }
 }

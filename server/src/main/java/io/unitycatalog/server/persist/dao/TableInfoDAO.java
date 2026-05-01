@@ -9,6 +9,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.Date;
@@ -76,6 +77,10 @@ public class TableInfoDAO extends IdentifiableDAO {
       fetch = FetchType.LAZY)
   private List<ColumnInfoDAO> columns;
 
+  @Lob
+  @Column(name = "view_definition", length = 16777215)
+  private String viewDefinition;
+
   @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
 
@@ -98,8 +103,12 @@ public class TableInfoDAO extends IdentifiableDAO {
         .updatedBy(tableInfo.getUpdatedBy())
         .columnCount(tableInfo.getColumns() != null ? tableInfo.getColumns().size() : 0)
         .type(tableInfo.getTableType().toString())
-        .dataSourceFormat(tableInfo.getDataSourceFormat().toString())
+        .dataSourceFormat(
+            tableInfo.getDataSourceFormat() != null
+                ? tableInfo.getDataSourceFormat().toString()
+                : null)
         .url(tableInfo.getStorageLocation())
+        .viewDefinition(tableInfo.getViewDefinition())
         .columns(ColumnInfoDAO.fromList(tableInfo.getColumns()))
         .schemaId(schemaId)
         .build();
@@ -113,8 +122,10 @@ public class TableInfoDAO extends IdentifiableDAO {
             .catalogName(catalogName)
             .schemaName(schemaName)
             .tableType(TableType.valueOf(type))
-            .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
-            .storageLocation(NormalizedURL.normalize(url))
+            .dataSourceFormat(
+                dataSourceFormat != null ? DataSourceFormat.valueOf(dataSourceFormat) : null)
+            .storageLocation(url != null ? NormalizedURL.normalize(url) : null)
+            .viewDefinition(viewDefinition)
             .comment(comment)
             .owner(owner)
             .createdAt(createdAt != null ? createdAt.getTime() : null)

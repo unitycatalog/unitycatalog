@@ -3,9 +3,10 @@ package io.unitycatalog.server.service;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.server.model.TableOperation;
@@ -35,14 +36,7 @@ public class TemporaryTableCredentialsService {
   }
 
   @Post("")
-  @AuthorizeExpression("""
-      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-      (#operation == 'READ'
-        ? #authorizeAny(#principal, #table, OWNER, SELECT)
-        : (#authorize(#principal, #table, OWNER) ||
-           #authorizeAll(#principal, #table, SELECT, MODIFY)))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.VEND_TABLE_CREDENTIAL)
   public HttpResponse generateTemporaryTableCredential(
       @AuthorizeResourceKey(value = TABLE, key = "table_id")
       @AuthorizeKey(key = "operation")

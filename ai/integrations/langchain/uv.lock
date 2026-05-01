@@ -4862,7 +4862,7 @@ wheels = [
 
 [[package]]
 name = "unitycatalog-ai"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "../../core" }
 dependencies = [
     { name = "cloudpickle" },
@@ -4900,8 +4900,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cloudpickle", specifier = ">=2.0.0,<=3.1.2" },
-    { name = "databricks-connect", marker = "python_full_version >= '3.10' and extra == 'databricks'", specifier = ">=15.1.0,<17.1" },
-    { name = "databricks-connect", marker = "python_full_version >= '3.10' and extra == 'databricks-dev'", specifier = ">=15.1.0,<17.1" },
+    { name = "databricks-connect", marker = "extra == 'databricks'", specifier = ">=15.1.0,<17.1" },
+    { name = "databricks-connect", marker = "extra == 'databricks-dev'", specifier = ">=15.1.0,<17.1" },
     { name = "databricks-sdk", marker = "extra == 'databricks'", specifier = ">=0.32.0,<=0.94.0" },
     { name = "databricks-sdk", marker = "extra == 'databricks-dev'", specifier = ">=0.32.0,<=0.94.0" },
     { name = "databricks-sdk", marker = "extra == 'dev'", specifier = ">=0.32.0,<=0.94.0" },
@@ -4918,7 +4918,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'databricks-dev'", specifier = "==0.9.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.9.3" },
     { name = "typing-extensions", specifier = ">=4.0.0,<=4.15.0" },
-    { name = "unitycatalog-client", specifier = ">=0.3.0,<=0.4.0" },
+    { name = "unitycatalog-client", specifier = ">=0.4.0,<0.5.0" },
 ]
 provides-extras = ["databricks", "databricks-dev", "dev"]
 
@@ -4941,7 +4941,7 @@ wheels = [
 
 [[package]]
 name = "unitycatalog-langchain"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "langchain" },

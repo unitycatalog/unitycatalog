@@ -77,7 +77,15 @@ jobs:
         SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
         git clone --depth=1 https://github.com/delta-io/delta.git /tmp/delta
         cd /tmp/delta
-        build/sbt -DsparkVersion=$SPARK_MAJOR_MINOR publishM2
+        # Publish only delta-spark and the modules its POM references at SNAPSHOT:
+        # storage (dependsOn) and the kernel artifacts re-added via pomPostProcess.
+        # This avoids compiling unrelated Delta projects (hudi, iceberg, flink, connect, ...).
+        build/sbt -DsparkVersion=$SPARK_MAJOR_MINOR \
+          storage/publishM2 \
+          kernelApi/publishM2 \
+          kernelDefaults/publishM2 \
+          kernelUnityCatalog/publishM2 \
+          spark/publishM2
 
     - name: Set effective Delta version
       run: |

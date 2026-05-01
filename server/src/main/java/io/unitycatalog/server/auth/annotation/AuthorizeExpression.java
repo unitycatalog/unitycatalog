@@ -24,7 +24,6 @@ import java.lang.annotation.Target;
  * <ul>
  *   <li>#principal - the (UUID) of the principal making the request
  *   <li>#deny - constant evaluating to false
- *   <li>#defer - constant evaluating to true - a marker to note authorization happens elsewhere
  *   <li>#permit - constant evaluating to true - always allow access
  *   <li>#catalog - the ID of the catalog associated with the request (if applicable)
  *   <li>#schema - the ID of the schema associated with the request (if applicable)
