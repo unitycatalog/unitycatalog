@@ -21,7 +21,9 @@ import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
@@ -240,8 +242,15 @@ public class ColumnUtils {
   public static void validateStructType(StructType structType, String path) {
     requireNonNull(structType.getFields(), path + ".fields");
     List<StructField> fields = structType.getFields();
+    Set<String> seen = new HashSet<>();
     for (int i = 0; i < fields.size(); i++) {
       validateStructField(fields.get(i), path + ".fields[" + i + "]");
+      String name = fields.get(i).getName();
+      if (!seen.add(name)) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Duplicate field name in " + path + ".fields: " + name);
+      }
     }
   }
 
@@ -463,6 +472,14 @@ public class ColumnUtils {
       List<ColumnInfo> columns, List<String> partitionColumns) {
     if (partitionColumns == null || partitionColumns.isEmpty()) {
       return;
+    }
+    Set<String> seen = new HashSet<>();
+    for (String partName : partitionColumns) {
+      if (!seen.add(partName)) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition-columns contains duplicate entry: " + partName);
+      }
     }
     Map<String, ColumnInfo> columnsByName =
         columns.stream().collect(Collectors.toMap(ColumnInfo::getName, Function.identity()));

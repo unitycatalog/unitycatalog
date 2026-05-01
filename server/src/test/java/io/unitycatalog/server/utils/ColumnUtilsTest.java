@@ -437,4 +437,15 @@ public class ColumnUtilsTest {
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("partition-columns references unknown column: nope");
   }
+
+  @Test
+  public void testApplyPartitionColumnsDuplicateRejected() {
+    List<ColumnInfo> columns =
+        new ArrayList<>(
+            List.of(
+                new ColumnInfo().name("a").position(0), new ColumnInfo().name("b").position(1)));
+    assertThatThrownBy(() -> ColumnUtils.applyPartitionColumns(columns, List.of("a", "a")))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("partition-columns contains duplicate entry: a");
+  }
 }
