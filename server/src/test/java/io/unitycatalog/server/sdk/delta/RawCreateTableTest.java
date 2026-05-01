@@ -192,7 +192,15 @@ public class RawCreateTableTest extends BaseCRUDTest {
         "columns.fields[0].type.element-type.fields[0].name is required.");
 
     // -------- columns.fields is an empty list --------
-    assertRejected(staging, "", "Table must have at least one column.");
+    assertRejected(staging, "", "Table columns are required.");
+
+    // -------- duplicate field names at the top level --------
+    assertRejected(
+        staging,
+        """
+        {"name": "id", "type": "long", "nullable": false, "metadata": {}},
+        {"name": "id", "type": "string", "nullable": true, "metadata": {}}""",
+        "Duplicate field name in columns.fields: id");
   }
 
   // ---------- helpers ----------
