@@ -11,6 +11,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.net.URI;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
@@ -40,11 +41,11 @@ public final class DeltaUniformUtils {
   private DeltaUniformUtils() {}
 
   /**
-   * Maximum byte length the server accepts for {@code uniform.iceberg.metadata-location}. Matches
-   * the DAO column ({@code uniform_iceberg_metadata_location} length=65535) so a request that
-   * passes here cannot fail later at persist time.
+   * Maximum character length the server accepts for {@code uniform.iceberg.metadata-location}.
+   * Matches the DAO column ({@code uniform_iceberg_metadata_location} length=65535) so a request
+   * that passes here cannot fail later at persist time.
    */
-  public static final int MAX_METADATA_LOCATION_BYTES = 65535;
+  public static final int MAX_METADATA_LOCATION_CHARS = 65535;
 
   /**
    * UniForm Iceberg fields, normalized once at the request boundary. Callers normalize the
@@ -140,11 +141,9 @@ public final class DeltaUniformUtils {
     if (uniform == null) {
       return Optional.empty();
     }
-    UniformMetadataIceberg iceberg = uniform.getIceberg();
-    if (iceberg == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "uniform.iceberg is required when uniform is set.");
-    }
+    UniformMetadataIceberg iceberg =
+        ValidationUtils.checkNotNull(
+            uniform.getIceberg(), "uniform.iceberg is required when uniform is set.");
     UniformIcebergFields fields =
         new UniformIcebergFields(
             NormalizedURL.from(iceberg.getMetadataLocation()),
@@ -179,9 +178,9 @@ public final class DeltaUniformUtils {
     if (uniform == null) {
       return Optional.empty();
     }
-    ValidationUtils.checkArgument(
-        uniform.getIceberg() != null, "Field cannot be null in uniform: iceberg");
-    DeltaUniformIceberg iceberg = uniform.getIceberg();
+    DeltaUniformIceberg iceberg =
+        ValidationUtils.checkNotNull(
+            uniform.getIceberg(), "Field cannot be null in uniform: iceberg");
     String timestampStr = iceberg.getConvertedDeltaTimestamp();
     UniformIcebergFields fields =
         new UniformIcebergFields(
@@ -224,19 +223,14 @@ public final class DeltaUniformUtils {
     }
     UniformIcebergFields fields = uniformFields.get();
     long version = fields.convertedDeltaVersion();
-    if (version != 0L && version != 1L) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          String.format(
-              "uniform.iceberg.converted-delta-version must be 0 or 1 at create time, got %d.",
-              version));
-    }
-    if (fields.baseConvertedDeltaVersion().isPresent()) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "uniform.iceberg.base-converted-delta-version must not be set at create time:"
-              + " the table has no prior converted-delta-version for it to reference.");
-    }
+    ValidationUtils.checkArgument(
+        version == 0L || version == 1L,
+        "uniform.iceberg.converted-delta-version must be 0 or 1 at create time, got %d.",
+        version);
+    ValidationUtils.checkArgument(
+        fields.baseConvertedDeltaVersion().isEmpty(),
+        "uniform.iceberg.base-converted-delta-version must not be set at create time:"
+            + " the table has no prior converted-delta-version for it to reference.");
     requireMetadataLocationSubpath(fields.metadataLocation(), tableLocation);
   }
 
@@ -250,34 +244,21 @@ public final class DeltaUniformUtils {
    * (commit-time).
    */
   public static void requireBasicShape(UniformIcebergFields fields) {
-    if (fields.metadataLocation() == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "uniform.iceberg.metadata-location is required when uniform is set.");
-    }
-    if (fields.convertedDeltaVersion() == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "uniform.iceberg.converted-delta-version is required when uniform is set.");
-    }
-    if (fields.convertedDeltaTimestampMs() == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "uniform.iceberg.converted-delta-timestamp is required when uniform is set.");
-    }
-    int locationBytes =
-        fields
-            .metadataLocation()
-            .toString()
-            .getBytes(java.nio.charset.StandardCharsets.UTF_8)
-            .length;
-    if (locationBytes > MAX_METADATA_LOCATION_BYTES) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          String.format(
-              "uniform.iceberg.metadata-location byte size (%d) exceeds the maximum allowed (%d).",
-              locationBytes, MAX_METADATA_LOCATION_BYTES));
-    }
+    ValidationUtils.checkNotNull(
+        fields.metadataLocation(),
+        "uniform.iceberg.metadata-location is required when uniform is set.");
+    ValidationUtils.checkNotNull(
+        fields.convertedDeltaVersion(),
+        "uniform.iceberg.converted-delta-version is required when uniform is set.");
+    ValidationUtils.checkNotNull(
+        fields.convertedDeltaTimestampMs(),
+        "uniform.iceberg.converted-delta-timestamp is required when uniform is set.");
+    int locationChars = fields.metadataLocation().toString().length();
+    ValidationUtils.checkArgument(
+        locationChars <= MAX_METADATA_LOCATION_CHARS,
+        "uniform.iceberg.metadata-location length (%d) exceeds the maximum allowed (%d).",
+        locationChars,
+        MAX_METADATA_LOCATION_CHARS);
   }
 
   /**
@@ -291,14 +272,11 @@ public final class DeltaUniformUtils {
    */
   public static void requireMetadataLocationSubpath(
       NormalizedURL metadataLocation, NormalizedURL tableLocation) {
-    if (!metadataLocation.toString().startsWith(tableLocation.toString() + "/")) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          String.format(
-              "uniform.iceberg.metadata-location ('%s') must be a subpath of the table location"
-                  + " ('%s').",
-              metadataLocation, tableLocation));
-    }
+    ValidationUtils.checkArgument(
+        metadataLocation.toString().startsWith(tableLocation.toString() + "/"),
+        "uniform.iceberg.metadata-location ('%s') must be a subpath of the table location ('%s').",
+        metadataLocation,
+        tableLocation);
   }
 
   /**

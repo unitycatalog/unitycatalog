@@ -159,18 +159,14 @@ public final class UcManagedDeltaContract {
       Map<String, String> properties, String expectedTableId) {
     ValidationUtils.checkNotNull(expectedTableId, "expectedTableId is required.");
     String actual = properties != null ? properties.get(TableProperties.UC_TABLE_ID) : null;
-    if (actual == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          String.format("Properties does not contain %s.", TableProperties.UC_TABLE_ID));
-    }
-    if (!expectedTableId.equals(actual)) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          String.format(
-              "the table id (%s) does not match the properties %s(%s).",
-              expectedTableId, TableProperties.UC_TABLE_ID, actual));
-    }
+    ValidationUtils.checkNotNull(
+        actual, "Properties does not contain " + TableProperties.UC_TABLE_ID + ".");
+    ValidationUtils.checkArgument(
+        expectedTableId.equals(actual),
+        "the table id (%s) does not match the properties %s(%s).",
+        expectedTableId,
+        TableProperties.UC_TABLE_ID,
+        actual);
   }
 
   private static void validateRequiredVersions(DeltaProtocol protocol) {

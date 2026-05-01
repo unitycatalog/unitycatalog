@@ -967,7 +967,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // Create a very long metadata location that exceeds the maximum allowed size
     String longLocation =
         tableInfo.getStorageLocation() + "/_u/"
-            + "x".repeat(DeltaUniformUtils.MAX_METADATA_LOCATION_BYTES);
+            + "x".repeat(DeltaUniformUtils.MAX_METADATA_LOCATION_CHARS);
     DeltaUniformIceberg invalidIceberg4 =
         new DeltaUniformIceberg()
             .metadataLocation(URI.create(longLocation))
