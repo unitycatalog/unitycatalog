@@ -775,6 +775,12 @@ components:
             type: string
         domain-metadata:
           $ref: '#/components/schemas/DomainMetadataUpdates'
+        last-commit-timestamp-ms:
+          type: integer
+          format: int64
+          description: |
+            Timestamp of version 0 (the commit the client wrote  before calling this endpoint),
+            in epoch milliseconds.
         uniform:
           $ref: '#/components/schemas/UniformMetadata'
           description: |
@@ -790,6 +796,7 @@ components:
         - columns
         - protocol
         - properties
+        - last-commit-timestamp-ms
       example:
         name: "sales"
         location: "s3://bucket/warehouse/catalog/schema/sales"

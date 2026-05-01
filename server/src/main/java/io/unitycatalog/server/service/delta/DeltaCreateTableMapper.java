@@ -15,10 +15,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Converts a Delta REST Catalog {@link CreateTableRequest} (with typed Delta columns and kebab-case
- * field names) into the UC {@link CreateTable} (with UC {@link ColumnInfo}s and
- * partition-index-per-column). The server holds path params for catalog and schema; the rest comes
- * from the request body.
+ * Converts a Delta {@link CreateTableRequest} (with typed Delta columns and kebab-case field names)
+ * into the UC {@link CreateTable} (with UC {@link ColumnInfo}s and partition-index-per-column). The
+ * server holds path params for catalog and schema; the rest comes from the request body.
  *
  * <p>Required-field checks (name, location, columns, protocol, table-type, data-source-format) and
  * the DELTA-only format rule apply to all tables. The full UC catalog-managed contract ({@link
@@ -62,6 +61,10 @@ public final class DeltaCreateTableMapper {
     if (req.getProtocol() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "protocol is required.");
     }
+    if (req.getLastCommitTimestampMs() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "last-commit-timestamp-ms is required.");
+    }
 
     // MANAGED-only: full UC catalog-managed contract (protocol versions + features + reader-subset
     // + domain-metadata consistency + properties). EXTERNAL tables get a pass: UC mirrors what the
@@ -95,9 +98,7 @@ public final class DeltaCreateTableMapper {
             .columns(columns)
             .comment(req.getComment())
             .storageLocation(req.getLocation())
-            .properties(
-            DeltaPropertyMapper.buildStoredProperties(
-                    req.getProtocol(), req.getDomainMetadata(), req.getProperties()));
+        .properties(DeltaPropertyMapper.buildStoredProperties(req));
     return new Result(createTable, uniformFields);
   }
 
