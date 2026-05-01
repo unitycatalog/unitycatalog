@@ -120,7 +120,7 @@ public class DeltaPropertyMapperTest {
   // ---------- mergeDerivedWithClient ----------
 
   @Test
-  public void mergeClientPropertiesWinOnConflict() {
+  public void mergeDerivedPropertiesWinOnConflict() {
     DeltaProtocol protocol =
         new DeltaProtocol()
             .minReaderVersion(3)
@@ -129,9 +129,10 @@ public class DeltaPropertyMapperTest {
     Map<String, String> client =
         Map.of(featureKey(TableFeature.CATALOG_MANAGED.specName()), "client-override");
     Map<String, String> merged = DeltaPropertyMapper.mergeDerivedWithClient(protocol, null, client);
-    // Client value wins -- callers can pin engine-managed values or override defaults.
+    // Server-derived projection of the structured protocol block wins over a stray client entry
+    // under the same key, so the structured block remains the single source of truth.
     assertThat(merged)
-        .containsEntry(featureKey(TableFeature.CATALOG_MANAGED.specName()), "client-override");
+        .containsEntry(featureKey(TableFeature.CATALOG_MANAGED.specName()), "supported");
   }
 
   @Test

@@ -47,21 +47,24 @@ public final class DeltaPropertyMapper {
   private static final String FEATURE_SUPPORTED = "supported";
 
   /**
-   * Returns the stored UC property map formed by merging protocol-derived, domain-metadata-derived,
-   * and client-supplied entries. Client-supplied entries take precedence so callers can pin
-   * engine-managed values (e.g. row-tracking materialized column names) or override a derived value
-   * if needed.
+   * Returns the stored UC property map formed by layering client-supplied entries first, then
+   * overlaying protocol- and domain-metadata-derived entries on top. The structured {@code
+   * protocol} and {@code domain-metadata} blocks are the canonical source for the keys this method
+   * derives ({@code delta.feature.*}, {@code delta.clusteringColumns}, {@code
+   * delta.rowTracking.rowIdHighWaterMark}); a stray client property under those names cannot
+   * silently override the projection. Client-only properties (e.g. {@code
+   * delta.rowTracking.materializedRowIdColumnName}) flow through untouched.
    */
   public static Map<String, String> mergeDerivedWithClient(
       DeltaProtocol protocol,
       DomainMetadataUpdates domainMetadata,
       Map<String, String> clientProperties) {
     Map<String, String> merged = new HashMap<>();
-    deriveFromProtocol(merged, protocol);
-    deriveFromDomainMetadata(merged, domainMetadata);
     if (clientProperties != null) {
       merged.putAll(clientProperties);
     }
+    deriveFromProtocol(merged, protocol);
+    deriveFromDomainMetadata(merged, domainMetadata);
     return merged;
   }
 
