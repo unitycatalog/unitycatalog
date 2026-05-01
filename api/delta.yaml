@@ -279,6 +279,8 @@ paths:
           $ref: '#/components/responses/ForbiddenResponse'
         '404':
           $ref: '#/components/responses/NotFoundResponse'
+        '501':
+          $ref: '#/components/responses/UnsupportedTableFormatResponse'
     post:
       tags:
         - Tables
@@ -1564,6 +1566,7 @@ components:
         - CommitStateUnknownException
         - InternalServerErrorException
         - NotImplementedException
+        - UnsupportedTableFormatException
       # Keep enum order aligned with x-enum-descriptions below
       x-enum-descriptions:
         - 'BadRequestException: (400) Malformed request or invalid action.'
@@ -1582,6 +1585,7 @@ components:
         - 'CommitStateUnknownException: (500) Commit outcome unknown (e.g., network failure after the server received the request). The client should check the table state before retrying.'
         - 'InternalServerErrorException: (500) A server-side problem that might not be addressable from the client side.'
         - 'NotImplementedException: (501) The requested functionality is not supported by the server.'
+        - 'UnsupportedTableFormatException: (501) The table exists but is not a Delta table, or a Delta table not yet supported by this endpoint. In any case, clients should fallback to the general UC API.'
 
     ErrorModel:
       type: object
@@ -1668,6 +1672,16 @@ components:
 
     ServiceUnavailableResponse:
       description: Service unavailable. The client may retry after a delay.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    UnsupportedTableFormatResponse:
+      description: |
+        The table exists but is not a Delta table, or a Delta table not yet supported by this
+        endpoint. In any case, clients should fallback to the general UC API. Error type will be
+        UnsupportedTableFormatException.
       content:
         application/json:
           schema:

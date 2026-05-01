@@ -1,8 +1,11 @@
 package io.unitycatalog.server.base.table;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.assertDeltaApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.delta.api.TablesApi;
+import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.Dependency;
 import io.unitycatalog.client.model.DependencyList;
@@ -107,6 +110,17 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(fetched.getProperties()).isNotNull();
     assertThat(fetched.getProperties().get("team")).isEqualTo("analytics");
     assertThat(fetched.getProperties().get("refresh")).isEqualTo("daily");
+
+    // --- Delta loadTable rejects metric views with 501 UnsupportedTableFormatException ---
+    // The Delta endpoint must steer clients to the general UC API rather than 4xx'ing on a UC
+    // row that isn't a Delta table.
+    TablesApi deltaTablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));
+    assertDeltaApiException(
+        () ->
+            deltaTablesApi.loadTable(
+                TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, METRIC_VIEW_NAME),
+        ErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
+        "fallback to the general UC API");
 
     // --- List ---
     List<TableInfo> tables =

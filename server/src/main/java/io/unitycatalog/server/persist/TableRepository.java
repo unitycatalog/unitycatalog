@@ -260,8 +260,15 @@ public class TableRepository {
           if (dao.getDataSourceFormat() == null
               || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
             throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT,
-                "Table is not a Delta table: " + catalog + "." + schema + "." + table);
+                ErrorCode.UNSUPPORTED_TABLE_FORMAT,
+                "The table exists but is not a Delta table, or a Delta table not yet supported by "
+                    + "this endpoint. In any case, clients should fallback to the general UC API. "
+                    + "Table: "
+                    + catalog
+                    + "."
+                    + schema
+                    + "."
+                    + table);
           }
 
           TableMetadata metadata = buildTableMetadata(session, dao, catalog, schema, table);
