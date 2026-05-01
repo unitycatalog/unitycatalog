@@ -23,6 +23,7 @@ import io.unitycatalog.server.delta.model.CredentialOperation;
 import io.unitycatalog.server.delta.model.CredentialsResponse;
 import io.unitycatalog.server.delta.model.LoadTableResponse;
 import io.unitycatalog.server.delta.model.StagingTableResponse;
+import io.unitycatalog.server.delta.model.TableType;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -182,7 +183,16 @@ public class DeltaRestCatalogService extends AuthorizedService {
           @AuthorizeKey(key = "table-type")
           CreateTableRequest request) {
     CreateTable createTable = DeltaCreateTableMapper.toCreateTable(catalog, schema, request);
-    return tableRepository.createTableForDelta(createTable);
+    LoadTableResponse response = tableRepository.createTableForDelta(createTable);
+    // Wire the new table into the auth hierarchy under its schema (mirrors
+    // TableService.createTable). MANAGED tables reuse the staging-table UUID, whose auth row
+    // was already created in createStagingTable, so re-init is unnecessary there.
+    if (request.getTableType() == TableType.EXTERNAL) {
+      initializeHierarchicalAuthorization(
+          response.getMetadata().getTableUuid().toString(),
+          schemaRepository.getSchemaIdOrThrow(catalog, schema).toString());
+    }
+    return response;
   }
 
   // ==================== Table Credentials API ====================

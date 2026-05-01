@@ -7,8 +7,14 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.delta.model.CreateTableRequest;
 import io.unitycatalog.client.delta.model.CredentialOperation;
 import io.unitycatalog.client.delta.model.CredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaProtocol;
+import io.unitycatalog.client.delta.model.LoadTableResponse;
+import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructType;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -19,6 +25,8 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -216,6 +224,47 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
             .dataSourceFormat(DataSourceFormat.DELTA);
     TableInfo tableRg2Info = regular2TablesApi.createTable(createTableRg2);
     assertThat(tableRg2Info).isNotNull();
+
+    // Delta createTable for an EXTERNAL table must wire the new table into the auth
+    // hierarchy (mirrors TableService.createTable). regular-1 has only USE_CATALOG, USE_SCHEMA,
+    // CREATE_TABLE -- under GET_TABLE the only OR-branch this user can satisfy is the
+    // table-OWNER one, which only holds if initializeBasicAuthorization granted it. The
+    // subsequent loadTable proves the wiring. (MANAGED skips re-init: its UUID was already
+    // wired at createStagingTable time.)
+    String deltaExternalName = "tbl_delta_authz";
+    String deltaExternalLocation = "/tmp/" + deltaExternalName + "_" + UUID.randomUUID();
+    LoadTableResponse deltaCreated =
+        regular1DeltaApi.createTable(
+            "cat_pr1",
+            "sch_pr1",
+            new CreateTableRequest()
+                .name(deltaExternalName)
+                .location(deltaExternalLocation)
+                .tableType(io.unitycatalog.client.delta.model.TableType.EXTERNAL)
+                .dataSourceFormat(io.unitycatalog.client.delta.model.DataSourceFormat.DELTA)
+                .columns(
+                    new StructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new StructField()
+                                    .name("id")
+                                    .type(new PrimitiveType().type("long"))
+                                    .nullable(false)
+                                    .metadata(Map.of()))))
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(3)
+                        .minWriterVersion(7)
+                        .readerFeatures(List.of("deletionVectors"))
+                        .writerFeatures(List.of("deletionVectors")))
+                .properties(Map.of("delta.enableDeletionVectors", "true")));
+    assertThat(
+            regular1DeltaApi
+                .loadTable("cat_pr1", "sch_pr1", deltaExternalName)
+                .getMetadata()
+                .getTableUuid())
+        .isEqualTo(deltaCreated.getMetadata().getTableUuid());
 
     // delete table (regular-1) -> -- -> denied
     assertPermissionDenied(() -> regular1TablesApi.deleteTable("cat_pr1.sch_rg2.tab_rg2"));
