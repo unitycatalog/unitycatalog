@@ -1174,21 +1174,26 @@ private object UCProxy {
    * dependencies for now.
    *
    * Spark's `TableDependency.nameParts` is the structural multi-part identifier (preserves
-   * arity for multi-level-namespace catalogs); UC's wire format is the legacy
-   * `tableFullName: String` -- a dot-joined flattening of the parts. The conversion is
-   * lossy for identifiers containing literal `.` (the wire side has no quoting convention),
-   * but UC's server-side dependency tracking has the same limitation today, so no fidelity
-   * is lost vs. the pre-PR producer that emitted dot-joined strings directly.
+   * arity for multi-level-namespace catalogs, and is normalized to the stable 3-part
+   * `[spark_catalog, db, table]` shape for v1 sources by Spark's `MetricViewHelper`); UC's
+   * wire format is the legacy `tableFullName: String` -- a dot-joined flattening of the
+   * parts. The conversion is lossy for identifiers containing literal `.` (the wire side
+   * has no quoting convention), but UC's server-side dependency tracking has the same
+   * limitation today, so no fidelity is lost vs. the pre-PR producer that emitted
+   * dot-joined strings directly.
    */
   def toUcDependencyList(
       sparkDeps: DependencyList)
       : UCDependencyList = {
     val ucDeps = new java.util.ArrayList[UCDependency]()
-    sparkDeps.dependencies().foreach {
+    // `dependencies()` and `nameParts()` returns are now `java.util.List` (Spark switched
+    // from arrays to immutable Lists so records inherit value `equals`/`hashCode`); reach
+    // through `.asScala` to get the Scala iterable methods (`foreach`, `mkString`).
+    sparkDeps.dependencies().asScala.foreach {
       case td: TableDependency =>
         ucDeps.add(new UCDependency()
           .table(new UCTableDependency()
-            .tableFullName(td.nameParts().mkString("."))))
+            .tableFullName(td.nameParts().asScala.mkString("."))))
       case _ =>
       // UC OSS does not currently persist function dependencies; drop.
     }

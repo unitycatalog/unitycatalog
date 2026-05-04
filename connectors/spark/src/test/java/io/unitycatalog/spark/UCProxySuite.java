@@ -311,9 +311,12 @@ public class UCProxySuite {
     // Spark-side check: `fromUcDependencyList` split the wire dot-joined `tableFullName`
     // back into structural parts. This pins the full Spark structural -> UC wire ->
     // Spark structural round-trip.
+    // `dependencies()` and `nameParts()` return `java.util.List` since the Spark round-3
+    // commit -- AssertJ's `hasSize` / `containsExactly` accept both arrays and `Iterable`,
+    // but element access is now `.get(0)` (was `[0]`).
     org.apache.spark.sql.connector.catalog.TableDependency loadedDep =
         (org.apache.spark.sql.connector.catalog.TableDependency)
-            loaded.viewDependencies().dependencies()[0];
+            loaded.viewDependencies().dependencies().get(0);
     assertThat(loadedDep.nameParts()).containsExactly("test_catalog", "test_schema", "events");
   }
 
