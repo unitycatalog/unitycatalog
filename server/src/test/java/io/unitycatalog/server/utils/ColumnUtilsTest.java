@@ -199,7 +199,7 @@ public class ColumnUtilsTest {
         .hasMessageContaining("Failed to parse");
   }
 
-  // ---------- toColumnInfo (DRC StructField -> UC ColumnInfo) ----------
+  // ---------- toColumnInfo (Delta StructField -> UC ColumnInfo) ----------
 
   @Test
   public void testToColumnInfoPrimitive() {

@@ -172,6 +172,15 @@ public class DeltaRestCatalogService extends AuthorizedService {
    * POST /staging-tables}, written the initial Delta commit at the returned staging location, and
    * passes that same location back here. For EXTERNAL, the caller supplies any storage location
    * they have rights on.
+   *
+   * <p>OWNER is the createTable-caller in both branches, matching UC REST {@code
+   * TableService.createTable}. EXTERNAL wires it via the {@code
+   * initializeHierarchicalAuthorization} call below. MANAGED reuses the staging-table UUID's auth
+   * row (already wired by {@code createStagingTable} under the staging-creator); {@code
+   * commitStagingTable} additionally enforces {@code callerId == staging.createdBy}, so a
+   * different principal cannot finalize someone else's staging — the staging-creator and the
+   * createTable-caller are always the same identity. The cross-principal rejection is pinned by
+   * {@code SdkStagingTableAccessControlTest#testManagedTableCreationByDifferentUserShouldFail}.
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables")
   @ProducesJson

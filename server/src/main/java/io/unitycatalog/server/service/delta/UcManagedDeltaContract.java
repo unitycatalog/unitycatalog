@@ -7,11 +7,11 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeatureKind;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -115,7 +115,7 @@ public final class UcManagedDeltaContract {
       DeltaProtocol protocol,
       DomainMetadataUpdates domainMetadata,
       Map<String, String> properties) {
-    Objects.requireNonNull(protocol, "protocol");
+    ValidationUtils.checkNotNull(protocol, "protocol is required.");
     validateReaderFeatureSubset(protocol);
     validateRequiredVersions(protocol);
     validateRequiredFeatures(protocol);
@@ -155,7 +155,7 @@ public final class UcManagedDeltaContract {
    */
   public static void validateTableIdProperty(
       Map<String, String> properties, String expectedTableId) {
-    Objects.requireNonNull(expectedTableId, "expectedTableId");
+    ValidationUtils.checkNotNull(expectedTableId, "expectedTableId is required.");
     String actual = properties != null ? properties.get(TableProperties.UC_TABLE_ID) : null;
     if (!expectedTableId.equals(actual)) {
       throw new BaseException(

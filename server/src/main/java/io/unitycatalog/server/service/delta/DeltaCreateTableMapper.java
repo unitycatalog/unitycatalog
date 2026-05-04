@@ -19,9 +19,11 @@ import java.util.List;
  * from the request body.
  *
  * <p>Required-field checks (name, location, columns, protocol, table-type, data-source-format) and
- * the DELTA-only format rule apply to all tables. Domain-metadata vs feature consistency and the
- * full UC catalog-managed contract ({@link UcManagedDeltaContract}) apply only to MANAGED tables;
- * for EXTERNAL tables UC mirrors what the client wrote with the Delta log as the source of truth.
+ * the DELTA-only format rule apply to all tables. The full UC catalog-managed contract ({@link
+ * UcManagedDeltaContract}) applies only to MANAGED tables; EXTERNAL tables skip contract validation
+ * but still go through the same {@link DeltaPropertyMapper} projection, so derived
+ * {@code delta.feature.*} and {@code delta.clusteringColumns} entries override any client-supplied
+ * values under those keys.
  */
 public final class DeltaCreateTableMapper {
 
@@ -73,7 +75,7 @@ public final class DeltaCreateTableMapper {
         .comment(req.getComment())
         .storageLocation(req.getLocation())
         .properties(
-            DeltaPropertyMapper.mergeDerivedWithClient(
+            DeltaPropertyMapper.buildStoredProperties(
                 req.getProtocol(), req.getDomainMetadata(), req.getProperties()));
   }
 

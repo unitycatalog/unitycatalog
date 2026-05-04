@@ -530,8 +530,8 @@ public class TableRepository {
                     .getStagingTableRepository()
                     .commitStagingTable(session, callerId, storageLocation);
             tableUUID = stagingTableDAO.getId();
-            // MANAGED tables (created via either UC REST or DRC) must carry UC_TABLE_ID in their
-            // properties, matching the staging UUID. UC has the staging UUID as the source of
+            // MANAGED tables (created via either UC REST or Delta REST) must carry UC_TABLE_ID in
+            // their properties, matching the staging UUID. UC has the staging UUID as the source of
             // truth; a request with a missing or mismatched UC_TABLE_ID gets rejected here
             // instead of producing an internally-inconsistent UC table that subsequent commits
             // would fail on.

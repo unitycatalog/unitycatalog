@@ -117,7 +117,7 @@ public class DeltaPropertyMapperTest {
     assertThat(props).isEmpty();
   }
 
-  // ---------- mergeDerivedWithClient ----------
+  // ---------- buildStoredProperties ----------
 
   @Test
   public void mergeDerivedPropertiesWinOnConflict() {
@@ -128,7 +128,7 @@ public class DeltaPropertyMapperTest {
             .writerFeatures(List.of(TableFeature.CATALOG_MANAGED.specName()));
     Map<String, String> client =
         Map.of(featureKey(TableFeature.CATALOG_MANAGED.specName()), "client-override");
-    Map<String, String> merged = DeltaPropertyMapper.mergeDerivedWithClient(protocol, null, client);
+    Map<String, String> merged = DeltaPropertyMapper.buildStoredProperties(protocol, null, client);
     // Server-derived projection of the structured protocol block wins over a stray client entry
     // under the same key, so the structured block remains the single source of truth.
     assertThat(merged)
@@ -137,7 +137,7 @@ public class DeltaPropertyMapperTest {
 
   @Test
   public void mergeTolerantOfAllNulls() {
-    assertThat(DeltaPropertyMapper.mergeDerivedWithClient(null, null, null)).isEmpty();
+    assertThat(DeltaPropertyMapper.buildStoredProperties(null, null, null)).isEmpty();
   }
 
   @Test
@@ -151,7 +151,7 @@ public class DeltaPropertyMapperTest {
         new DomainMetadataUpdates()
             .deltaRowTracking(new RowTrackingDomainMetadata().rowIdHighWaterMark(100L));
     Map<String, String> client = Map.of("custom.key", "custom.value");
-    Map<String, String> merged = DeltaPropertyMapper.mergeDerivedWithClient(protocol, dm, client);
+    Map<String, String> merged = DeltaPropertyMapper.buildStoredProperties(protocol, dm, client);
     assertThat(merged)
         .containsEntry(featureKey(TableFeature.ROW_TRACKING.specName()), "supported")
         .containsEntry(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK, "100")

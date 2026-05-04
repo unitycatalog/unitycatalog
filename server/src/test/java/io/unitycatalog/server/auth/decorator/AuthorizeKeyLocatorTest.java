@@ -17,7 +17,7 @@ public class AuthorizeKeyLocatorTest {
             .key("location")
             .build();
     // For resource keys, the SpEL variable is always the securable's type name regardless of the
-    // payload lookup key. This lets DRC's kebab-case payload field "location" surface as the same
+    // payload lookup key. This lets Delta's kebab-case payload field "location" surface as the same
     // #external_location variable that the snake_case "storage_location" key uses.
     assertThat(l.getVariableName()).isEqualTo("external_location");
   }
@@ -35,8 +35,9 @@ public class AuthorizeKeyLocatorTest {
 
   @Test
   public void plainKeyVariableNameMapsHyphensToUnderscores() {
-    // Kebab-case keys (DRC payload shape) must surface as valid SpEL identifiers — hyphens in the
-    // last path segment map to underscores. The payload lookup itself still uses the original key.
+    // Kebab-case keys (Delta payload shape) must surface as valid SpEL identifiers — hyphens in
+    // the last path segment map to underscores. The payload lookup itself still uses the original
+    // key.
     AuthorizeKeyLocator hyphen =
         AuthorizeKeyLocator.builder()
             .source(AuthorizeKeyLocator.Source.PAYLOAD)

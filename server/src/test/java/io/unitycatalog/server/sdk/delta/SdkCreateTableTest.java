@@ -13,6 +13,7 @@ import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.client.delta.model.LoadTableResponse;
 import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.StagingTableResponse;
 import io.unitycatalog.client.delta.model.StructField;
 import io.unitycatalog.client.delta.model.StructType;
@@ -88,12 +89,20 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     // Every feature in the request's protocol is mirrored as delta.feature.* = supported in the
     // stored table properties (both reader- and writer-side features collapse to one key per
     // feature name). Client-supplied properties from the request are preserved alongside.
+    //
+    // The catalogManaged and clusteringColumns entries also pin the server-derived-wins
+    // precedence end-to-end. The request's client properties include
+    // "delta.feature.catalogManaged" = "client-override" and "delta.clusteringColumns" =
+    // "[[\"wrong\"]]"; the assertions below verify the protocol-derived "supported" and the
+    // domainMetadata-derived JSON encoding of clusteringColumns=[["id"]] override them.
     assertThat(resp.getMetadata().getProperties())
         .containsEntry(featureKey(TableFeature.CATALOG_MANAGED.specName()), "supported")
+        .containsEntry(featureKey(TableFeature.CLUSTERING.specName()), "supported")
         .containsEntry(featureKey(TableFeature.DELETION_VECTORS.specName()), "supported")
         .containsEntry(featureKey(TableFeature.IN_COMMIT_TIMESTAMP.specName()), "supported")
         .containsEntry(featureKey(TableFeature.V2_CHECKPOINT.specName()), "supported")
         .containsEntry(featureKey(TableFeature.VACUUM_PROTOCOL_CHECK.specName()), "supported")
+        .containsEntry(TableProperties.CLUSTERING_COLUMNS, "[[\"id\"]]")
         .containsEntry("delta.enableDeletionVectors", "true");
 
     // -------- EXTERNAL happy path at a fresh (unregistered) storage path --------
@@ -174,11 +183,10 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                 managedTableRequest("tbl_bad_domain", stagingDm)
                     .domainMetadata(
                         new DomainMetadataUpdates()
-                            .deltaClustering(
-                                new ClusteringDomainMetadata()
-                                    .clusteringColumns(List.of(List.of("id")))))),
+                            .deltaRowTracking(
+                                new RowTrackingDomainMetadata().rowIdHighWaterMark(100L)))),
         ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
-        "'clustering' writer feature");
+        "'rowTracking' writer feature");
 
     // -------- partition-columns referencing unknown column --------
     StagingTableResponse stagingForBadPart =
@@ -261,7 +269,11 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                     .metadata(Map.of())));
   }
 
-  /** Full UC catalog-managed protocol: every required feature in the right list. */
+  /**
+   * Full UC catalog-managed protocol: every required feature in the right list, plus CLUSTERING in
+   * writerFeatures so the canonical request can carry a {@code deltaClustering} domain-metadata
+   * block (see {@link #managedTableRequest(String, StagingTableResponse)}).
+   */
   private static DeltaProtocol managedProtocol() {
     return new DeltaProtocol()
         .minReaderVersion(3)
@@ -275,6 +287,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         .writerFeatures(
             List.of(
                 TableFeature.CATALOG_MANAGED.specName(),
+                TableFeature.CLUSTERING.specName(),
                 TableFeature.DELETION_VECTORS.specName(),
                 TableFeature.IN_COMMIT_TIMESTAMP.specName(),
                 TableFeature.V2_CHECKPOINT.specName(),
@@ -293,6 +306,18 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     props.put(TableProperties.UC_TABLE_ID, tableId);
     props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION, "0");
     props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP, "1700000000000");
+    // User-specified properties under server-derived keys are overridden by the structured
+    // protocol/domain-metadata blocks. End-to-end override is pinned by the assertions on
+    // featureKey(CATALOG_MANAGED) and CLUSTERING_COLUMNS in testCreateTableEndpoint.
+    //   - delta.feature.catalogManaged: protocol-derived (CATALOG_MANAGED is in writerFeatures);
+    //     "client-override" loses to the derived "supported".
+    //   - delta.clusteringColumns: domain-metadata-derived (managedTableRequest carries a
+    //     deltaClustering block with clusteringColumns=[["id"]]); "[[\"wrong\"]]" loses to the
+    //     derived JSON encoding of the structured block.
+    props.put(
+        TableProperties.FEATURE_PREFIX + TableFeature.CATALOG_MANAGED.specName(),
+        "client-override");
+    props.put(TableProperties.CLUSTERING_COLUMNS, "[[\"wrong\"]]");
     return props;
   }
 
@@ -305,6 +330,10 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         .dataSourceFormat(DataSourceFormat.DELTA)
         .columns(simpleSchema())
         .protocol(managedProtocol())
+        .domainMetadata(
+            new DomainMetadataUpdates()
+                .deltaClustering(
+                    new ClusteringDomainMetadata().clusteringColumns(List.of(List.of("id")))))
         .properties(fullManagedProperties(staging.getTableId().toString()));
   }
 

@@ -159,7 +159,7 @@ public class ColumnUtils {
 
   /**
    * Convert a Delta REST Catalog {@link StructField} into a UC {@link ColumnInfo}, mirroring
-   * {@code UCSingleCatalog.createTable}'s per-column projection so DRC-created tables render
+   * {@code UCSingleCatalog.createTable}'s per-column projection so Delta-created tables render
    * identically to Spark-created ones.
    *
    * <p>Fields populated (matching UCSingleCatalog exactly):
@@ -249,13 +249,13 @@ public class ColumnUtils {
     //   - INTERVAL: not a Delta primitive.
     //   - NULL ("void" in Spark JSON): UCSingleCatalog has a NullType branch because it runs
     //     upstream of Delta's NullType-drop -- a user's CREATE TABLE can carry NullType and UC
-    //     stores it before Delta strips it on write (SchemaUtils.dropNullTypeColumns). DRC runs
+    //     stores it before Delta strips it on write (SchemaUtils.dropNullTypeColumns). Delta runs
     //     downstream: Spark-Delta clients have already dropped NullType before sending, and
     //     Kernel rejects "void" on read (DataTypeJsonSerDe.voidTypeEncountered). No conforming
     //     Delta wire payload contains it.
     //   - CHAR / UDT: Spark's Delta writer normalizes CHAR/VARCHAR to STRING (via
     //     CharVarcharUtils) and unwraps UDTs to their underlying sqlType before persisting, so
-    //     DRC clients never send "char(n)" or {"type":"udt",...}.
+    //     Delta clients never send "char(n)" or {"type":"udt",...}.
     //   - TABLE_TYPE: UC-internal (foreign tables); doesn't flow over the Delta wire.
     String primitive = type.getType();
     return switch (primitive) {
