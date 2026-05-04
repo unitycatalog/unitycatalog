@@ -26,6 +26,7 @@ import io.unitycatalog.server.service.credential.gcp.StaticTestingCredentialGene
 import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -286,5 +287,96 @@ public class CloudCredentialVendorTest {
       assertThat(capturedRequest.roleArn()).isEqualTo(CREDENTIAL_ROLE_ARN);
       assertThat(capturedRequest.externalId()).isEqualTo(expectedExternalId);
     }
+  }
+
+  @Test
+  public void testStsClientHonorsAwsEndpointOverride() {
+    final String S3_PATH = "s3://my-bucket/path/to/data";
+    final String CUSTOM_ENDPOINT = "http://host.docker.internal:8333";
+
+    when(serverProperties.getS3Configurations())
+        .thenReturn(
+            Map.of(
+                NormalizedURL.from("s3://my-bucket"),
+                S3StorageConfig.builder()
+                    .bucketPath("s3://my-bucket")
+                    .region("us-east-1")
+                    .awsRoleArn("arn:aws:iam::000000000000:role/UCVendedRole")
+                    .accessKey("admin")
+                    .secretKey("admin")
+                    .endpoint(CUSTOM_ENDPOINT)
+                    .build()));
+
+    StsClient mockStsClient = Mockito.mock(StsClient.class);
+    when(mockStsClient.assumeRole(any(AssumeRoleRequest.class)))
+        .thenReturn(
+            AssumeRoleResponse.builder()
+                .credentials(
+                    Credentials.builder()
+                        .accessKeyId("ak")
+                        .secretAccessKey("sk")
+                        .sessionToken("st")
+                        .build())
+                .build());
+
+    StsClientBuilder mockBuilder = Mockito.mock(StsClientBuilder.class);
+    when(mockBuilder.region(any())).thenReturn(mockBuilder);
+    when(mockBuilder.credentialsProvider(any())).thenReturn(mockBuilder);
+    when(mockBuilder.endpointOverride(any())).thenReturn(mockBuilder);
+    when(mockBuilder.build()).thenReturn(mockStsClient);
+    ArgumentCaptor<URI> endpointCaptor = ArgumentCaptor.forClass(URI.class);
+
+    try (MockedStatic<StsClient> mockedStsClient = Mockito.mockStatic(StsClient.class)) {
+      mockedStsClient.when(StsClient::builder).thenReturn(mockBuilder);
+      AwsCredentialVendor awsCredentialVendor = new AwsCredentialVendor(serverProperties);
+      credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
+      vendCredential(S3_PATH, Set.of(CredentialContext.Privilege.SELECT));
+    }
+
+    verify(mockBuilder).endpointOverride(endpointCaptor.capture());
+    assertThat(endpointCaptor.getValue()).isEqualTo(URI.create(CUSTOM_ENDPOINT));
+  }
+
+  @Test
+  public void testStsClientSkipsEndpointOverrideWhenUnset() {
+    final String S3_PATH = "s3://my-bucket/path/to/data";
+
+    when(serverProperties.getS3Configurations())
+        .thenReturn(
+            Map.of(
+                NormalizedURL.from("s3://my-bucket"),
+                S3StorageConfig.builder()
+                    .bucketPath("s3://my-bucket")
+                    .region("us-east-1")
+                    .awsRoleArn("arn:aws:iam::123:role/r")
+                    .accessKey("ak")
+                    .secretKey("sk")
+                    .build()));
+
+    StsClient mockStsClient = Mockito.mock(StsClient.class);
+    when(mockStsClient.assumeRole(any(AssumeRoleRequest.class)))
+        .thenReturn(
+            AssumeRoleResponse.builder()
+                .credentials(
+                    Credentials.builder()
+                        .accessKeyId("ak")
+                        .secretAccessKey("sk")
+                        .sessionToken("st")
+                        .build())
+                .build());
+
+    StsClientBuilder mockBuilder = Mockito.mock(StsClientBuilder.class);
+    when(mockBuilder.region(any())).thenReturn(mockBuilder);
+    when(mockBuilder.credentialsProvider(any())).thenReturn(mockBuilder);
+    when(mockBuilder.build()).thenReturn(mockStsClient);
+
+    try (MockedStatic<StsClient> mockedStsClient = Mockito.mockStatic(StsClient.class)) {
+      mockedStsClient.when(StsClient::builder).thenReturn(mockBuilder);
+      AwsCredentialVendor awsCredentialVendor = new AwsCredentialVendor(serverProperties);
+      credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
+      vendCredential(S3_PATH, Set.of(CredentialContext.Privilege.SELECT));
+    }
+
+    verify(mockBuilder, Mockito.never()).endpointOverride(any());
   }
 }
