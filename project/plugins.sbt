@@ -20,7 +20,10 @@ addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.1.2")
 
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.2.0")
 
-addSbtPlugin("io.get-coursier" % "sbt-coursier" % "1.0.3")
+// sbt-coursier 1.0.3 (pre-sbt-1.3 standalone plugin) intentionally omitted: sbt 1.9.x ships
+// coursier as the default resolver, with modern retry/backoff against Maven Central. Adding
+// the old plugin pins coursier to a 2018-era build that mishandles Sonatype's throttling and
+// breaks resolution under load.
 
 addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "3.11.3")
 

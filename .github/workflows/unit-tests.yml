@@ -52,6 +52,7 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
+        cache: 'sbt'
 
     - name: Resolve Delta master version and commit SHA
       if: matrix.delta-version == 'master-SNAPSHOT'
