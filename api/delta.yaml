@@ -1557,6 +1557,7 @@ components:
       enum:
         - BadRequestException
         - InvalidParameterValueException
+        - UnsupportedTableFormatException
         - NotAuthorizedException
         - PermissionDeniedException
         - NotFoundException
@@ -1575,6 +1576,7 @@ components:
       x-enum-descriptions:
         - 'BadRequestException: (400) Malformed request or invalid action.'
         - 'InvalidParameterValueException: (400) Server-side validation failed (e.g., missing required fields or table features).'
+        - 'UnsupportedTableFormatException: (400) The table is not a Delta table, or a Delta table not yet supported by this endpoint. In any case, clients should fallback to the existing UC API.'
         - 'NotAuthorizedException: (401) Authentication credentials are missing, expired, or invalid.'
         - 'PermissionDeniedException: (403) Authenticated user does not have the necessary permissions.'
         - 'NotFoundException: (404) The requested resource does not exist.'

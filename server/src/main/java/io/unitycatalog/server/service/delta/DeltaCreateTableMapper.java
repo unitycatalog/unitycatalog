@@ -121,6 +121,7 @@ public final class DeltaCreateTableMapper {
       return DataSourceFormat.DELTA;
     }
     throw new BaseException(
-        ErrorCode.INVALID_ARGUMENT, "Unsupported data-source-format: " + format.getValue());
+        ErrorCode.UNSUPPORTED_TABLE_FORMAT,
+        "Unsupported data-source-format: " + format.getValue());
   }
 }
