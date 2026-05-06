@@ -3,17 +3,12 @@ package io.unitycatalog.server.sdk.access;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.api.SchemasApi;
-import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.CreateSchema;
-import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.SecurableType;
-import io.unitycatalog.client.model.TableOperation;
-import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -26,11 +21,10 @@ import org.junit.jupiter.api.Test;
  * identical staging-table access-control behavior; running the same {@code @Test} against both
  * ensures they don't drift.
  *
- * <p>This class does not import either {@code io.unitycatalog.client.api.TablesApi} or {@code
- * io.unitycatalog.client.delta.api.TablesApi}; subclasses encapsulate all surface-specific table
- * RPCs behind {@link #createStaging} and {@link #finalizeManagedTable}. Other APIs reachable
- * regardless of subclass (TemporaryCredentialsApi, SchemasApi) are used inline for cross-cutting
- * checks that don't vary by surface.
+ * <p>All surface-specific RPCs are encapsulated behind {@link #createStaging}, {@link
+ * #finalizeManagedTable}, and {@link #fetchTempCreds}; the abstract test body imports neither
+ * surface's TablesApi nor TemporaryCredentialsApi. SchemasApi is used inline because it's
+ * surface-independent.
  */
 public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
@@ -47,6 +41,16 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
   /** Surface-specific {@code createTable} RPC that finalizes a managed table from a staging. */
   protected abstract FinalizedTable finalizeManagedTable(
       ServerConfig config, StagingHandle staging, String name) throws Exception;
+
+  /**
+   * Surface-specific temporary-credentials RPC for the table identified by {@code tableId} (which
+   * may be a staging-table UUID or a regular-table UUID). The UC REST and Delta REST surfaces
+   * expose different RPCs ({@code generateTemporaryTableCredentials} vs {@code
+   * getStagingTableCredentials}) but both gate through the same {@code @AuthorizeResourceKey}-
+   * resolved ownership check, so the access-control semantics this test pins must hold on either
+   * surface; each subclass implements this against its own RPC.
+   */
+  protected abstract void fetchTempCreds(ServerConfig config, String tableId) throws Exception;
 
   /**
    * Test that attempting to create a managed table from another user's staging table fails with
@@ -83,10 +87,6 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
 
     ServerConfig userAConfig = createTestUserServerConfig(userAEmail);
     ServerConfig userBConfig = createTestUserServerConfig(userBEmail);
-    TemporaryCredentialsApi userATempCredsApi =
-        new TemporaryCredentialsApi(TestUtils.createApiClient(userAConfig));
-    TemporaryCredentialsApi userBTempCredsApi =
-        new TemporaryCredentialsApi(TestUtils.createApiClient(userBConfig));
 
     // Step 1: User A creates a staging table (surface-specific).
     StagingHandle staging =
@@ -94,36 +94,12 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
             userAConfig, TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
     assertThat(staging.location()).isNotNull();
 
-    // Step 2: Test temporary credentials generation
-    // User A (owner) should be able to get temporary credentials
-    GenerateTemporaryTableCredential tempCredRequest =
-        new GenerateTemporaryTableCredential()
-            .tableId(staging.id())
-            .operation(TableOperation.READ_WRITE);
-
-    TemporaryCredentials tempCredsA =
-        userATempCredsApi.generateTemporaryTableCredentials(tempCredRequest);
-    assertThat(tempCredsA).isNotNull();
-
-    // User B (non-owner) should fail to get temporary credentials with PERMISSION_DENIED
-    TestUtils.assertPermissionDenied(
-        () -> userBTempCredsApi.generateTemporaryTableCredentials(tempCredRequest));
-
-    // Delta REST getStagingTableCredentials follows the same OWNER-only authz.
-    io.unitycatalog.client.delta.api.TemporaryCredentialsApi userADeltaCredsApi =
-        new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(
-            TestUtils.createApiClient(userAConfig));
-    io.unitycatalog.client.delta.api.TemporaryCredentialsApi userBDeltaCredsApi =
-        new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(
-            TestUtils.createApiClient(userBConfig));
-    UUID stagingId = UUID.fromString(staging.id());
-
-    // User A (owner) -> allowed
-    assertThat(userADeltaCredsApi.getStagingTableCredentials(stagingId)).isNotNull();
-
-    // User B (non-owner) -> denied
-    TestUtils.assertPermissionDenied(
-        () -> userBDeltaCredsApi.getStagingTableCredentials(stagingId));
+    // Step 2: temp-creds access control on the staging table -- exercised against the subclass's
+    // own surface (UC REST generateTemporaryTableCredentials / Delta REST
+    // getStagingTableCredentials).
+    // Owner allowed; non-owner denied.
+    fetchTempCreds(userAConfig, staging.id());
+    TestUtils.assertPermissionDenied(() -> fetchTempCreds(userBConfig, staging.id()));
 
     // createStagingTable authz (catalog USE_CATALOG/OWNER + schema USE_SCHEMA+CREATE_TABLE OR
     // schema OWNER). Both surfaces share the same SpEL constant
@@ -184,14 +160,14 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
     assertThat(finalized.storageLocation()).isEqualTo(staging.location());
     assertThat(finalized.tableId()).isEqualTo(staging.id());
 
-    // Step 5: User B calls getStagingTableCredentials with User A's regular-table UUID.
-    // This is not the same as the SdkDeltaCredentialsTest case (owner passes regular-table UUID
-    // and gets 404 from the reject-regular-table logic); here the caller is a non-owner, so
-    // authz (@AuthorizeResourceKey(TABLE)) resolves the regular-table UUID in the graph, finds
-    // that User B is not OWNER, and rejects with 403 before the handler runs. The 404 path is
-    // therefore unreachable for non-owners -- which is fail-closed and the desired behavior.
-    UUID tableUuid = UUID.fromString(finalized.tableId());
-    TestUtils.assertPermissionDenied(
-        () -> userBDeltaCredsApi.getStagingTableCredentials(tableUuid));
+    // Step 5: User B calls the temp-creds RPC with User A's regular-table UUID. The
+    // surface-specific Delta {@code getStagingTableCredentials} handler has a "reject if not a
+    // staging table" branch that returns 404 -- but that 404 is unreachable for a non-owner
+    // because authz (@AuthorizeResourceKey resolves the UUID in the graph, finds User B is not
+    // OWNER) rejects with 403 before the handler runs. UC REST's
+    // {@code generateTemporaryTableCredentials} reaches the same 403 via its own ownership check.
+    // Either subclass's surface must exhibit the fail-closed 403; we don't pin which one wins for
+    // an owner-with-regular-UUID call here.
+    TestUtils.assertPermissionDenied(() -> fetchTempCreds(userBConfig, finalized.tableId()));
   }
 }

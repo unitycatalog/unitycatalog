@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sdk.access;
 
 import io.unitycatalog.client.delta.api.TablesApi;
+import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.CreateStagingTableRequest;
 import io.unitycatalog.client.delta.model.CreateTableRequest;
 import io.unitycatalog.client.delta.model.DataSourceFormat;
@@ -18,6 +19,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Runs the staging-table access-control suite against the Delta REST createStagingTable /
@@ -62,6 +64,12 @@ public class SdkDeltaStagingTableAccessControlTest extends SdkStagingTableAccess
                 TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, buildCreateRequest(staging, name));
     return new FinalizedTable(
         resp.getMetadata().getTableUuid().toString(), resp.getMetadata().getLocation());
+  }
+
+  @Override
+  protected void fetchTempCreds(ServerConfig config, String tableId) throws Exception {
+    new TemporaryCredentialsApi(TestUtils.createApiClient(config))
+        .getStagingTableCredentials(UUID.fromString(tableId));
   }
 
   private static TablesApi deltaTablesApi(ServerConfig config) {

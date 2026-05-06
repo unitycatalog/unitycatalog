@@ -1,13 +1,16 @@
 package io.unitycatalog.server.sdk.access;
 
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -56,5 +59,14 @@ public class SdkUCStagingTableAccessControlTest extends SdkStagingTableAccessCon
                     .storageLocation(staging.location())
                     .properties(Map.of(TableProperties.UC_TABLE_ID, staging.id())));
     return new FinalizedTable(info.getTableId(), info.getStorageLocation());
+  }
+
+  @Override
+  protected void fetchTempCreds(ServerConfig config, String tableId) throws Exception {
+    new TemporaryCredentialsApi(TestUtils.createApiClient(config))
+        .generateTemporaryTableCredentials(
+            new GenerateTemporaryTableCredential()
+                .tableId(tableId)
+                .operation(TableOperation.READ_WRITE));
   }
 }
