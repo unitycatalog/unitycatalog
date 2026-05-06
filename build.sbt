@@ -112,11 +112,6 @@ lazy val commonSettings = Seq(
   assembly / test := {}
 )
 
-// CoursierPlugin / useCoursier := true intentionally removed: they came from the
-// sbt-coursier 1.0.3 standalone plugin (also dropped in project/plugins.sbt). sbt 1.3+
-// uses coursier as the default resolver out of the box, with modern retry/backoff against
-// Maven Central.
-
 // Configure resolvers
 resolvers ++= Seq(
   "Maven Central" at "https://repo1.maven.org/maven2/",
