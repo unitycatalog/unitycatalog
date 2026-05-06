@@ -17,6 +17,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -266,6 +267,19 @@ public class ColumnUtils {
       column.comment(comment);
     }
     return column;
+  }
+
+  /**
+   * Project a list of Delta {@link StructField}s into UC {@link ColumnInfo}s, stamping each
+   * column's {@code position} from its index in the list. Used by both the create and update paths
+   * of the Delta REST Catalog so the wire-order-to-position mapping stays in one place.
+   */
+  public static List<ColumnInfo> toColumnInfos(List<StructField> fields) {
+    List<ColumnInfo> columns = new ArrayList<>(fields.size());
+    for (int i = 0; i < fields.size(); i++) {
+      columns.add(toColumnInfo(fields.get(i), i));
+    }
+    return columns;
   }
 
   /**
