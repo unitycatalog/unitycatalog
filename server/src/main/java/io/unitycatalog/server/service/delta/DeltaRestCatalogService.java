@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.delta;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
@@ -17,14 +18,17 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.delta.model.CatalogConfig;
 import io.unitycatalog.server.delta.model.CreateStagingTableRequest;
+import io.unitycatalog.server.delta.model.CreateTableRequest;
 import io.unitycatalog.server.delta.model.CredentialOperation;
 import io.unitycatalog.server.delta.model.CredentialsResponse;
 import io.unitycatalog.server.delta.model.LoadTableResponse;
 import io.unitycatalog.server.delta.model.StagingTableResponse;
+import io.unitycatalog.server.delta.model.TableType;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateStagingTable;
+import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CatalogRepository;
@@ -158,6 +162,46 @@ public class DeltaRestCatalogService extends AuthorizedService {
             stagingLocation,
             Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
     return DeltaStagingTableMapper.toStagingTableResponse(staging, credentials);
+  }
+
+  // ==================== Create Table API ====================
+
+  /**
+   * Create a Delta table. Both MANAGED and EXTERNAL are supported (at feature parity with the UC
+   * {@code TableService.createTable}). For MANAGED, the caller must have previously called {@code
+   * POST /staging-tables}, written the initial Delta commit at the returned staging location, and
+   * passes that same location back here. For EXTERNAL, the caller supplies any storage location
+   * they have rights on.
+   *
+   * <p>OWNER is the createTable-caller in both branches, matching UC REST {@code
+   * TableService.createTable}. EXTERNAL wires it via the {@code
+   * initializeHierarchicalAuthorization} call below. MANAGED reuses the staging-table UUID's auth
+   * row (already wired by {@code createStagingTable} under the staging-creator); {@code
+   * commitStagingTable} additionally enforces {@code callerId == staging.createdBy}, so a
+   * different principal cannot finalize someone else's staging — the staging-creator and the
+   * createTable-caller are always the same identity. The cross-principal rejection is pinned by
+   * {@code SdkStagingTableAccessControlTest#testManagedTableCreationByDifferentUserShouldFail}.
+   */
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
+  public LoadTableResponse createTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "location")
+          @AuthorizeKey(key = "table-type")
+          CreateTableRequest request) {
+    CreateTable createTable = DeltaCreateTableMapper.toCreateTable(catalog, schema, request);
+    LoadTableResponse response = tableRepository.createTableForDelta(createTable);
+    // Wire the new table into the auth hierarchy under its schema (mirrors
+    // TableService.createTable). MANAGED tables reuse the staging-table UUID, whose auth row
+    // was already created in createStagingTable, so re-init is unnecessary there.
+    if (request.getTableType() == TableType.EXTERNAL) {
+      initializeHierarchicalAuthorization(
+          response.getMetadata().getTableUuid().toString(),
+          schemaRepository.getSchemaIdOrThrow(catalog, schema).toString());
+    }
+    return response;
   }
 
   // ==================== Table Credentials API ====================
