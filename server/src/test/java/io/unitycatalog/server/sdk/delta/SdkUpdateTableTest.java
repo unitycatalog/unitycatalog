@@ -3,9 +3,11 @@ package io.unitycatalog.server.sdk.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.delta.model.AddCommitUpdate;
 import io.unitycatalog.client.delta.model.AssertEtag;
 import io.unitycatalog.client.delta.model.AssertTableUUID;
 import io.unitycatalog.client.delta.model.ClusteringDomainMetadata;
+import io.unitycatalog.client.delta.model.DeltaCommit;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.ErrorType;
@@ -15,6 +17,7 @@ import io.unitycatalog.client.delta.model.RemoveDomainMetadataUpdate;
 import io.unitycatalog.client.delta.model.RemovePropertiesUpdate;
 import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.SetDomainMetadataUpdate;
+import io.unitycatalog.client.delta.model.SetLatestBackfilledVersionUpdate;
 import io.unitycatalog.client.delta.model.SetPartitionColumnsUpdate;
 import io.unitycatalog.client.delta.model.SetPropertiesUpdate;
 import io.unitycatalog.client.delta.model.SetProtocolUpdate;
@@ -24,6 +27,8 @@ import io.unitycatalog.client.delta.model.StructField;
 import io.unitycatalog.client.delta.model.StructType;
 import io.unitycatalog.client.delta.model.TableRequirement;
 import io.unitycatalog.client.delta.model.TableUpdate;
+import io.unitycatalog.client.delta.model.UniformMetadata;
+import io.unitycatalog.client.delta.model.UniformMetadataIceberg;
 import io.unitycatalog.client.delta.model.UpdateSnapshotVersionUpdate;
 import io.unitycatalog.client.delta.model.UpdateTableRequest;
 import io.unitycatalog.server.base.ServerConfig;
@@ -530,6 +535,236 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                       new SetPropertiesUpdate().updates(Map.of("k", "v")))),
           ErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
           "Table is not a Delta table");
+    }
+
+    // -------- add-commit on managed Delta (+ version conflict) --------
+    {
+      Handle h = createDeltaManaged("tbl_commit", Map.of());
+      LoadTableResponse r1 =
+          updateTable(
+              h,
+              new AddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(1L)
+                          .timestamp(1700000001L)
+                          .fileName("00000001.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000001L)));
+      assertThat(r1.getCommits()).hasSize(1);
+      assertThat(r1.getCommits().get(0).getVersion()).isEqualTo(1L);
+      assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
+
+      // Replaying v1 should surface as a CommitVersionConflict (409). Pin assert-etag against
+      // the post-r1 etag so the conflict comes from the version check, not from assert-etag.
+      Handle h1 = h.withEtag(r1.getMetadata().getEtag());
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h1,
+                  new AddCommitUpdate()
+                      .commit(
+                          new DeltaCommit()
+                              .version(1L)
+                              .timestamp(1700000002L)
+                              .fileName("00000001b.json")
+                              .fileSize(1024L)
+                              .fileModificationTimestamp(1700000002L))),
+          ErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
+          "already accepted");
+
+      // Rejecting a v3 while the table is on v1 -- must be v1+1.
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h1,
+                  new AddCommitUpdate()
+                      .commit(
+                          new DeltaCommit()
+                              .version(3L)
+                              .timestamp(1700000003L)
+                              .fileName("00000003.json")
+                              .fileSize(1024L)
+                              .fileModificationTimestamp(1700000003L))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "next version");
+    }
+
+    // -------- add-commit + set-latest-backfilled-version in one request --------
+    // Exercises the combined commit+backfill path that reads getFirstAndLastCommits once for
+    // both actions, matching the UC REST postCommit behavior on a combined request.
+    {
+      Handle h = createDeltaManaged("tbl_commit_backfill", Map.of());
+      LoadTableResponse r1 =
+          updateTable(
+              h,
+              new AddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(1L)
+                          .timestamp(1700000001L)
+                          .fileName("00000001.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000001L)));
+      assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
+
+      // Now send v2 commit + backfill of v1 in a single request.
+      LoadTableResponse r2 =
+          updateTable(
+              h.withEtag(r1.getMetadata().getEtag()),
+              new AddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(2L)
+                          .timestamp(1700000002L)
+                          .fileName("00000002.json")
+                          .fileSize(2048L)
+                          .fileModificationTimestamp(1700000002L)),
+              new SetLatestBackfilledVersionUpdate().latestPublishedVersion(1L));
+      // v1 was removed by the backfill; only v2 remains in the unbackfilled set.
+      assertThat(r2.getLatestTableVersion()).isEqualTo(2L);
+      assertThat(r2.getCommits()).hasSize(1);
+      assertThat(r2.getCommits().get(0).getVersion()).isEqualTo(2L);
+    }
+
+    // -------- MANAGED add-commit + metadata change stamps lastUpdateVersion/timestamp --------
+    // A metadata-changing commit on a MANAGED table should update delta.lastUpdateVersion and
+    // delta.lastCommitTimestamp to the commit's version / timestamp, without the client having
+    // to send them in set-properties. A data-only commit (no metadata change in the request)
+    // leaves those unchanged.
+    {
+      Handle h = createDeltaManaged("tbl_commit_meta_stamp", Map.of());
+
+      // v1: add-commit + set-properties (metadata-changing) -> stamps both props.
+      LoadTableResponse r1 =
+          updateTable(
+              h,
+              new AddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(1L)
+                          .timestamp(1700000001L)
+                          .fileName("00000001.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000001L)),
+              new SetPropertiesUpdate().updates(Map.of("k", "v")));
+      assertThat(r1.getMetadata().getLastCommitVersion()).isEqualTo(1L);
+      assertThat(r1.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
+
+      // v2: add-commit with no metadata change -> previous values preserved.
+      LoadTableResponse r2 =
+          updateTable(
+              h.withEtag(r1.getMetadata().getEtag()),
+              new AddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(2L)
+                          .timestamp(1700000002L)
+                          .fileName("00000002.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000002L)));
+      assertThat(r2.getMetadata().getLastCommitVersion()).isEqualTo(1L);
+      assertThat(r2.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
+    }
+
+    // -------- add-commit with no commit block is rejected --------
+    {
+      Handle h = createDeltaManaged("tbl_commit_no_block", Map.of());
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new AddCommitUpdate()),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "add-commit requires a commit block");
+    }
+
+    // -------- set-latest-backfilled-version with no version is rejected --------
+    {
+      Handle h = createDeltaManaged("tbl_backfill_no_version", Map.of());
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetLatestBackfilledVersionUpdate()),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "set-latest-backfilled-version requires latest-published-version");
+    }
+
+    // -------- add-commit on EXTERNAL rejected --------
+    {
+      Handle h = createDeltaExternal("tbl_ext_commit");
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h,
+                  new AddCommitUpdate()
+                      .commit(
+                          new DeltaCommit()
+                              .version(1L)
+                              .timestamp(1700000001L)
+                              .fileName("00000001.json")
+                              .fileSize(1024L)
+                              .fileModificationTimestamp(1700000001L))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "MANAGED");
+    }
+
+    // -------- add-commit + uniform: mismatched version rejected --------
+    {
+      Handle h = createDeltaManaged("tbl_uniform_bad", Map.of());
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h,
+                  new AddCommitUpdate()
+                      .commit(
+                          new DeltaCommit()
+                              .version(1L)
+                              .timestamp(1700000001L)
+                              .fileName("00000001.json")
+                              .fileSize(1024L)
+                              .fileModificationTimestamp(1700000001L))
+                      .uniform(
+                          new UniformMetadata()
+                              .iceberg(
+                                  new UniformMetadataIceberg()
+                                      .metadataLocation("file:///tmp/ice/v2.json")
+                                      .convertedDeltaVersion(2L)
+                                      .convertedDeltaTimestamp(1700000001L)))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "converted-delta-version");
+    }
+
+    // -------- set-latest-backfilled-version alone on a table with prior commits --------
+    // Exercises the standalone backfill branch (handleBackfillOnlyCommit) that the combined
+    // add-commit + backfill test doesn't reach (that one goes through handleNormalCommit). The
+    // post-backfill commits list isn't asserted: markCommitAsLatestBackfilled issues a native
+    // SQL UPDATE that the session cache doesn't reflect in the same-transaction read used to
+    // build the response.
+    {
+      Handle h = createDeltaManaged("tbl_backfill_only", Map.of());
+      LoadTableResponse r1 =
+          updateTable(
+              h,
+              new AddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(1L)
+                          .timestamp(1700000001L)
+                          .fileName("00000001.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000001L)));
+      assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
+      LoadTableResponse r2 =
+          updateTable(
+              h.withEtag(r1.getMetadata().getEtag()),
+              new SetLatestBackfilledVersionUpdate().latestPublishedVersion(1L));
+      assertThat(r2.getLatestTableVersion()).isEqualTo(1L);
+      assertThat(r2.getMetadata().getEtag()).isNotEqualTo(r1.getMetadata().getEtag());
+    }
+
+    // -------- set-latest-backfilled-version on a table with no prior commits rejected --------
+    {
+      Handle h = createDeltaManaged("tbl_backfill_empty", Map.of());
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetLatestBackfilledVersionUpdate().latestPublishedVersion(1L)),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "Field can not be null: commit_info in onboarding commit");
     }
   }
 

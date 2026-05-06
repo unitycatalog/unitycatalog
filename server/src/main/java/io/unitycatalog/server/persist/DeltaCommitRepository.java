@@ -253,37 +253,47 @@ public class DeltaCommitRepository {
                 ErrorCode.TABLE_NOT_FOUND, "Table not found: " + commit.getTableId());
           }
           validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
-          List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
-          if (firstAndLastCommits.isEmpty()) {
-            handleOnboardingCommit(session, tableId, tableInfoDAO, commit, uniformFields);
-          } else {
-            DeltaCommitDAO firstCommitDAO = firstAndLastCommits.get(0);
-            DeltaCommitDAO lastCommitDAO = firstAndLastCommits.get(1);
-            assert firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion();
-            if (commit.getCommitInfo() == null) {
-              // This is already checked in validateCommit()
-              assert commit.getLatestBackfilledVersion() != null;
-              handleBackfillOnlyCommit(
-                  session,
-                  tableId,
-                  commit.getLatestBackfilledVersion(),
-                  firstCommitDAO.getCommitVersion(),
-                  lastCommitDAO.getCommitVersion());
-            } else {
-              handleNormalCommit(
-                  session,
-                  tableId,
-                  tableInfoDAO,
-                  commit,
-                  uniformFields,
-                  firstCommitDAO,
-                  lastCommitDAO);
-            }
-          }
+          postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields);
           return null;
         },
         "Error committing to table: " + commit.getTableId(),
         /* readOnly = */ false);
+  }
+
+  /**
+   * Shared core of {@link #postCommit} and {@link #applyCommitAndBackfillInSession}: read the
+   * first/last commits and route to {@link #handleOnboardingCommit} (no prior commits + commit info
+   * present), {@link #handleBackfillOnlyCommit} (prior commits + commit info absent), or {@link
+   * #handleNormalCommit} (prior commits + commit info present). Backfill-only on an empty commit
+   * log is rejected with a caller-aware message.
+   */
+  private void postCommitCore(
+      Session session,
+      UUID tableId,
+      TableInfoDAO tableInfoDAO,
+      DeltaCommit commit,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
+    List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
+    if (firstAndLastCommits.isEmpty()) {
+      handleOnboardingCommit(session, tableId, tableInfoDAO, commit, uniformFields);
+    } else {
+      DeltaCommitDAO firstCommitDAO = firstAndLastCommits.get(0);
+      DeltaCommitDAO lastCommitDAO = firstAndLastCommits.get(1);
+      assert firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion();
+      if (commit.getCommitInfo() == null) {
+        // This is already checked in validateCommit()
+        assert commit.getLatestBackfilledVersion() != null;
+        handleBackfillOnlyCommit(
+            session,
+            tableId,
+            commit.getLatestBackfilledVersion(),
+            firstCommitDAO.getCommitVersion(),
+            lastCommitDAO.getCommitVersion());
+      } else {
+        handleNormalCommit(
+            session, tableId, tableInfoDAO, commit, uniformFields, firstCommitDAO, lastCommitDAO);
+      }
+    }
   }
 
   /**
@@ -354,6 +364,82 @@ public class DeltaCommitRepository {
   }
 
   /**
+   * Apply commit-log changes (add-commit and/or set-latest-backfilled-version) for the Delta
+   * update-table endpoint, going through the shared {@link #postCommitCore} so the commit-log
+   * progression is identical to {@link #postCommit}. Differs from {@code postCommit} on three
+   * points:
+   *
+   * <ul>
+   *   <li>does not open its own transaction -- the caller ({@link
+   *       io.unitycatalog.server.persist.TableRepository}) holds it;
+   *   <li>does not validate table-URI equality -- the Delta endpoint resolves the table by name and
+   *       id;
+   *   <li>does not project commit metadata onto the DAO -- the Delta path sends metadata changes as
+   *       sibling {@code TableUpdate} actions which the mapper has already applied.
+   * </ul>
+   *
+   * <p>The metadata-location subpath check on {@code uniformFields} runs here (the table location
+   * comes from the DAO). Property/block-presence consistency is the caller's responsibility -- it
+   * has the post-update {@link MutablePropertyMap} view; this method only sees the DAO.
+   *
+   * @param session active Hibernate session owned by the caller's transaction.
+   * @param dao the table to commit.
+   * @param deltaCommitOpt the {@code add-commit} payload, if any; converted internally to the UC
+   *     {@link DeltaCommitInfo} shape before dispatch.
+   * @param uniformFields extracted + shape-validated UniForm-Iceberg fields from the same {@code
+   *     add-commit}, if any; must be empty when {@code deltaCommitOpt} is empty.
+   * @param latestBackfilledVersion the {@code set-latest-backfilled-version} target, if any. When
+   *     paired with {@code deltaCommitOpt}, the helper runs both in one read of the commit log.
+   */
+  public void applyCommitAndBackfillInSession(
+      Session session,
+      TableInfoDAO dao,
+      Optional<io.unitycatalog.server.delta.model.DeltaCommit> deltaCommitOpt,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      Optional<Long> latestBackfilledVersion) {
+    if (deltaCommitOpt.isEmpty() && latestBackfilledVersion.isEmpty() && uniformFields.isEmpty()) {
+      return;
+    }
+    // uniformFields has to be paired with a Delta commit
+    if (uniformFields.isPresent() && deltaCommitOpt.isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Uniform metadata requires an accompanying commit.");
+    }
+    serverProperties.checkManagedTableEnabled();
+    uniformFields.ifPresent(
+        uf ->
+            DeltaUniformUtils.requireMetadataLocationSubpath(
+                uf.metadataLocation(), NormalizedURL.from(dao.getUrl())));
+    Optional<DeltaCommitInfo> commitInfoOpt =
+        deltaCommitOpt.map(DeltaCommitRepository::toUcCommitInfo);
+    // Share the 5-field commit-info check with the UC REST validateCommit path.
+    commitInfoOpt.ifPresent(DeltaCommitRepository::validateCommitInfo);
+    postCommitCore(
+        session,
+        dao.getId(),
+        dao,
+        new DeltaCommit()
+            .commitInfo(commitInfoOpt.orElse(null))
+            .latestBackfilledVersion(latestBackfilledVersion.orElse(null)),
+        uniformFields);
+  }
+
+  /**
+   * Convert a Delta {@link io.unitycatalog.server.delta.model.DeltaCommit} into the UC {@link
+   * DeltaCommitInfo} shape so the Delta update path can flow through the shared commit-log helpers,
+   * which speak the UC wire shape.
+   */
+  private static DeltaCommitInfo toUcCommitInfo(
+      io.unitycatalog.server.delta.model.DeltaCommit commit) {
+    return new DeltaCommitInfo()
+        .version(commit.getVersion())
+        .timestamp(commit.getTimestamp())
+        .fileName(commit.getFileName())
+        .fileSize(commit.getFileSize())
+        .fileModificationTimestamp(commit.getFileModificationTimestamp());
+  }
+
+  /**
    * Handles a normal commit operation that adds a new version to the table.
    *
    * <p>A normal commit is any commit after the initial onboarding commit. It must include commit
@@ -395,7 +481,7 @@ public class DeltaCommitRepository {
     long newCommitVersion = commitInfo.getVersion();
     if (newCommitVersion <= lastCommitVersion) {
       throw new BaseException(
-          ErrorCode.ALREADY_EXISTS,
+          ErrorCode.COMMIT_VERSION_CONFLICT,
           "Commit version already accepted. Current table version is " + lastCommitVersion);
     }
     if (newCommitVersion > lastCommitVersion + 1) {
@@ -815,28 +901,7 @@ public class DeltaCommitRepository {
 
     // Validate the commit info object
     if (commit.getCommitInfo() != null) {
-      DeltaCommitInfo commitInfo = commit.getCommitInfo();
-      ValidationUtils.checkArgument(
-          commitInfo.getVersion() != null && commitInfo.getVersion() > 0,
-          "Field must be positive: %s",
-          DeltaCommitInfo.JSON_PROPERTY_VERSION);
-      ValidationUtils.checkArgument(
-          commitInfo.getTimestamp() != null && commitInfo.getTimestamp() > 0,
-          "Field must be positive: %s",
-          DeltaCommitInfo.JSON_PROPERTY_TIMESTAMP);
-      ValidationUtils.checkArgument(
-          commitInfo.getFileName() != null && !commitInfo.getFileName().isEmpty(),
-          "Field can not be empty: %s",
-          DeltaCommitInfo.JSON_PROPERTY_FILE_NAME);
-      ValidationUtils.checkArgument(
-          commitInfo.getFileSize() != null && commitInfo.getFileSize() > 0,
-          "Field must be positive: %s",
-          DeltaCommitInfo.JSON_PROPERTY_FILE_SIZE);
-      ValidationUtils.checkArgument(
-          commitInfo.getFileModificationTimestamp() != null
-              && commitInfo.getFileModificationTimestamp() > 0,
-          "Field must be positive: %s",
-          DeltaCommitInfo.JSON_PROPERTY_FILE_MODIFICATION_TIMESTAMP);
+      validateCommitInfo(commit.getCommitInfo());
       if (commit.getMetadata() != null) {
         DeltaMetadata metadata = commit.getMetadata();
         Optional<Map<String, String>> propertiesOpt =
@@ -871,6 +936,35 @@ public class DeltaCommitRepository {
             ErrorCode.INVALID_ARGUMENT, "metadata shouldn't be set for backfill only commit");
       }
     }
+  }
+
+  /**
+   * Validates the 5 required fields of a commit-info block (version, timestamp, file name, file
+   * size, file modification timestamp). Shared by {@link #validateCommit} (UC REST) and {@link
+   * #applyCommitAndBackfillInSession} (Delta update path, via {@link #toUcCommitInfo} first).
+   */
+  private static void validateCommitInfo(DeltaCommitInfo commitInfo) {
+    ValidationUtils.checkArgument(
+        commitInfo.getVersion() != null && commitInfo.getVersion() > 0,
+        "Field must be positive: %s",
+        DeltaCommitInfo.JSON_PROPERTY_VERSION);
+    ValidationUtils.checkArgument(
+        commitInfo.getTimestamp() != null && commitInfo.getTimestamp() > 0,
+        "Field must be positive: %s",
+        DeltaCommitInfo.JSON_PROPERTY_TIMESTAMP);
+    ValidationUtils.checkArgument(
+        commitInfo.getFileName() != null && !commitInfo.getFileName().isEmpty(),
+        "Field can not be empty: %s",
+        DeltaCommitInfo.JSON_PROPERTY_FILE_NAME);
+    ValidationUtils.checkArgument(
+        commitInfo.getFileSize() != null && commitInfo.getFileSize() > 0,
+        "Field must be positive: %s",
+        DeltaCommitInfo.JSON_PROPERTY_FILE_SIZE);
+    ValidationUtils.checkArgument(
+        commitInfo.getFileModificationTimestamp() != null
+            && commitInfo.getFileModificationTimestamp() > 0,
+        "Field must be positive: %s",
+        DeltaCommitInfo.JSON_PROPERTY_FILE_MODIFICATION_TIMESTAMP);
   }
 
   /**

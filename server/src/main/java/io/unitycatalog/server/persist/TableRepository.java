@@ -253,16 +253,20 @@ public class TableRepository {
 
   /**
    * Apply a Delta {@link UpdateTableRequest} in a single write transaction and return the refreshed
-   * {@link LoadTableResponse}.
+   * {@link LoadTableResponse}. Covers both pure metadata edits (set/remove-properties,
+   * set-protocol, set-columns, set-partition-columns, set-table-comment,
+   * set/remove-domain-metadata, update-metadata-snapshot-version) and CCv2 commit-log writes
+   * (add-commit + optional uniform metadata, set-latest-backfilled-version) -- the latter route
+   * through {@link DeltaCommitRepository#applyCommitAndBackfillInSession} so the commit-log
+   * progression matches the UC REST commit path.
    *
    * <p>The transaction makes exactly one {@code uc_properties} read (via {@link
-   * MutablePropertyMap#load}): all property-touching actions -- set/remove-properties,
-   * set-protocol, set/remove-domain-metadata, update-metadata-snapshot-version -- mutate the
-   * in-memory map, and a single diff-flush at the end applies only the keys that actually changed.
-   * Request classification runs before opening the transaction (see {@link
-   * DeltaUpdateTableMapper#collectRequest}); inside, requirement checks run first so a
-   * stale-snapshot conflict short-circuits before any write is persisted. The DAO's {@code
-   * updatedAt}/{@code updatedBy} advance once at the end; the resulting etag naturally rolls.
+   * MutablePropertyMap#load}): all property-touching actions mutate the in-memory map, and a single
+   * diff-flush at the end applies only the keys that actually changed. Request classification runs
+   * before opening the transaction (see {@link DeltaUpdateTableMapper#collectRequest}); inside,
+   * requirement checks run first so a stale-snapshot conflict short-circuits before any write is
+   * persisted. The DAO's {@code updatedAt}/{@code updatedBy} advance once at the end; the resulting
+   * etag naturally rolls.
    */
   public LoadTableResponse updateTableForDelta(
       String catalog, String schema, String table, UpdateTableRequest request) {
@@ -277,7 +281,8 @@ public class TableRepository {
           lockTableForDeltaUpdate(session, dao, catalog, schema, table);
           DeltaUpdateTableMapper.checkRequirements(dao, collected);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
-          DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected);
+          DeltaUpdateTableMapper.applyUpdates(
+              session, dao, properties, collected, repositories.getDeltaCommitRepository());
           properties.flush(session, dao.getId());
           dao.setUpdatedAt(new Date());
           dao.setUpdatedBy(callerId);
