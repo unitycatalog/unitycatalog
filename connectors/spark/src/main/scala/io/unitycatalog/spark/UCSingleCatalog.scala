@@ -1186,14 +1186,13 @@ private object UCProxy {
       sparkDeps: DependencyList)
       : UCDependencyList = {
     val ucDeps = new java.util.ArrayList[UCDependency]()
-    // `dependencies()` and `nameParts()` returns are now `java.util.List` (Spark switched
-    // from arrays to immutable Lists so records inherit value `equals`/`hashCode`); reach
-    // through `.asScala` to get the Scala iterable methods (`foreach`, `mkString`).
-    sparkDeps.dependencies().asScala.foreach {
+    // `dependencies()` and `nameParts()` return Java arrays; in Scala these have native
+    // `foreach` / `mkString` via the Array implicit conversion (no `.asScala` needed).
+    sparkDeps.dependencies().foreach {
       case td: TableDependency =>
         ucDeps.add(new UCDependency()
           .table(new UCTableDependency()
-            .tableFullName(td.nameParts().asScala.mkString("."))))
+            .tableFullName(td.nameParts().mkString("."))))
       case _ =>
       // UC OSS does not currently persist function dependencies; drop.
     }
@@ -1203,8 +1202,8 @@ private object UCProxy {
   /**
    * Converts the wire-format UC [[UCDependencyList]] back into Spark's typed
    * [[DependencyList]]. Splits UC's dot-joined `tableFullName` back into the structural
-   * `nameParts` accepted by the new varargs `Dependency.table(String...)` factory; same
-   * dot-flattening caveat as [[toUcDependencyList]].
+   * `nameParts` accepted by the `Dependency.table(String[])` factory; same dot-flattening
+   * caveat as [[toUcDependencyList]].
    */
   def fromUcDependencyList(
       ucDeps: UCDependencyList)
@@ -1216,11 +1215,10 @@ private object UCProxy {
       Option(d.getTable).map { td =>
         // `split("\\.", -1)` keeps trailing empty parts -- defensive against malformed
         // input from the wire (UC's server should never produce trailing dots).
-        Dependency.table(td.getTableFullName.split("\\.", -1): _*)
-          .asInstanceOf[Dependency]
+        Dependency.table(td.getTableFullName.split("\\.", -1)).asInstanceOf[Dependency]
       }
     }.toArray
-    DependencyList.of(sparkDeps: _*)
+    DependencyList.of(sparkDeps)
   }
 
   /**

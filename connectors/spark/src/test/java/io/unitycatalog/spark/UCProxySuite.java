@@ -248,15 +248,16 @@ public class UCProxySuite {
             .withQueryText("version: \"0.1\"\nsource: test_catalog.test_schema.events")
             .withCurrentCatalog(CATALOG_NAME)
             .withCurrentNamespace(NAMESPACE)
-            // Spark's `Dependency.table(...)` is now varargs over structural multi-part name
-            // parts (was a single dot-joined string). The matching mock UC payload below
-            // continues to use UC's legacy dot-joined `tableFullName` wire format -- the
-            // connector's `toUcDependencyList` joins / `fromUcDependencyList` splits at the
-            // boundary.
+            // Spark's `Dependency.table(...)` takes a `String[]` of structural multi-part
+            // name parts (was a single dot-joined string before PR #55487 introduced
+            // structural deps). The matching mock UC payload below continues to use UC's
+            // legacy dot-joined `tableFullName` wire format -- the connector's
+            // `toUcDependencyList` joins / `fromUcDependencyList` splits at the boundary.
             .withViewDependencies(
                 org.apache.spark.sql.connector.catalog.DependencyList.of(
-                    org.apache.spark.sql.connector.catalog.Dependency.table(
-                        "test_catalog", "test_schema", "events")))
+                    new org.apache.spark.sql.connector.catalog.Dependency[] {
+                        org.apache.spark.sql.connector.catalog.Dependency.table(
+                            new String[] {"test_catalog", "test_schema", "events"})}))
             .build();
 
     ColumnInfo ucColumn =
@@ -311,12 +312,11 @@ public class UCProxySuite {
     // Spark-side check: `fromUcDependencyList` split the wire dot-joined `tableFullName`
     // back into structural parts. This pins the full Spark structural -> UC wire ->
     // Spark structural round-trip.
-    // `dependencies()` and `nameParts()` return `java.util.List` since the Spark round-3
-    // commit -- AssertJ's `hasSize` / `containsExactly` accept both arrays and `Iterable`,
-    // but element access is now `.get(0)` (was `[0]`).
+    // `dependencies()` and `nameParts()` return Java arrays; AssertJ's `hasSize` /
+    // `containsExactly` accept both arrays and `Iterable`, and element access is `[0]`.
     org.apache.spark.sql.connector.catalog.TableDependency loadedDep =
         (org.apache.spark.sql.connector.catalog.TableDependency)
-            loaded.viewDependencies().dependencies().get(0);
+            loaded.viewDependencies().dependencies()[0];
     assertThat(loadedDep.nameParts()).containsExactly("test_catalog", "test_schema", "events");
   }
 
