@@ -3,7 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
-| **name** | **String** | Column name | [default to null] |
+| **name** | **String** | Column name. Case-preserving; unique case-insensitively within the parent StructType. | [default to null] |
 | **type** | [**DeltaType**](DeltaType.md) |  | [default to null] |
 | **nullable** | **Boolean** | Whether this column can be null | [default to null] |
 | **metadata** | [**StructFieldMetadata**](StructFieldMetadata.md) |  | [default to null] |
