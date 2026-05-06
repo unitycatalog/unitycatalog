@@ -2,6 +2,8 @@ package io.unitycatalog.spark
 
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.auth.TokenProvider
+import io.unitycatalog.client.delta.DeltaRestClientProvider
+import io.unitycatalog.client.delta.api.{TablesApi => DeltaTablesApi}
 import io.unitycatalog.client.model.{TableInfo, _}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
@@ -22,7 +24,7 @@ import org.sparkproject.guava.base.Preconditions
 
 import java.net.URI
 import java.util
-import java.util.Locale
+import java.util.{Locale, Optional}
 import scala.collection.JavaConverters._
 import scala.collection.convert.ImplicitConversions._
 import scala.collection.mutable.ArrayBuffer
@@ -34,15 +36,18 @@ import scala.language.existentials
 class UCSingleCatalog
   extends StagingTableCatalog
   with SupportsNamespaces
+  with DeltaRestClientProvider
   with Logging {
 
   private[this] var uri: URI = null
   private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
   private[this] var credScopedFsEnabled: Boolean = false
-  private[this] var apiClient: ApiClient = null;
+  private[this] var deltaRestApiEnabled: Boolean = false
+  private[this] var apiClient: ApiClient = null
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
+  private[this] var ucProxy: UCProxy = null
 
   @volatile private var delegate: TableCatalog = null
 
@@ -61,32 +66,43 @@ class UCSingleCatalog
     val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
       OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
+    deltaRestApiEnabled = OptionsUtil.getBoolean(options,
+      OptionsUtil.DELTA_REST_API_ENABLED,
+      OptionsUtil.DEFAULT_DELTA_REST_API_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
-    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
-      serverSidePlanningEnabled, apiClient, tablesApi, temporaryCredentialsApi)
-    proxy.initialize(name, options)
+    ucProxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
+      serverSidePlanningEnabled, deltaRestApiEnabled,
+      apiClient, tablesApi, temporaryCredentialsApi)
+    ucProxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
           .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
-        delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
+        delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(ucProxy)
         delegate.initialize(name, options)
         UCSingleCatalog.DELTA_CATALOG_LOADED.set(true)
       } catch {
         case e: ClassNotFoundException =>
           logWarning("DeltaCatalog is not available in the classpath", e)
-          delegate = proxy
+          delegate = ucProxy
       }
     } else {
-      delegate = proxy
+      delegate = ucProxy
     }
   }
 
   override def name(): String = delegate.name()
+
+  // Forward directly to UCProxy, not through `delegate`. In production `delegate` is
+  // DeltaCatalog, which does not implement DeltaRestClientProvider — routing through
+  // it would always return empty even when the flag is on.
+  override def getDeltaTablesApi(): Optional[DeltaTablesApi] = ucProxy.getDeltaTablesApi()
+
+  override def getApiClient(): ApiClient = ucProxy.getApiClient()
 
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
@@ -546,11 +562,27 @@ private class UCProxy(
     renewCredEnabled: Boolean,
     credScopedFsEnabled: Boolean,
     serverSidePlanningEnabled: Boolean,
+    deltaRestApiEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
+    temporaryCredentialsApi: TemporaryCredentialsApi)
+  extends TableCatalog
+  with SupportsNamespaces
+  with DeltaRestClientProvider
+  with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
+  // Null when DRC is disabled; constructed once at UCProxy ctor when enabled.
+  // The flag decides construction directly; callers see this through the Optional
+  // wrapper in getDeltaTablesApi().
+  private[this] val deltaTablesApi: DeltaTablesApi =
+    if (deltaRestApiEnabled) new DeltaTablesApi(apiClient) else null
+
+  override def getDeltaTablesApi(): Optional[DeltaTablesApi] =
+    Optional.ofNullable(deltaTablesApi)
+
+  // Always exposes the underlying ApiClient so callers can build legacy API wrappers.
+  override def getApiClient(): ApiClient = apiClient
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
