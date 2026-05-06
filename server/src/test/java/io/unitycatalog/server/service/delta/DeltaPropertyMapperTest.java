@@ -157,12 +157,14 @@ public class DeltaPropertyMapperTest {
             .domainMetadata(
                 new DomainMetadataUpdates()
                     .deltaRowTracking(new RowTrackingDomainMetadata().rowIdHighWaterMark(100L)))
-            .properties(Map.of("custom.key", "custom.value"));
+            .properties(Map.of("custom.key", "custom.value"))
+            .lastCommitTimestampMs(1700000000000L);
     Map<String, String> merged = DeltaPropertyMapper.buildStoredProperties(req);
     assertThat(merged)
         .containsEntry(featureKey(TableFeature.ROW_TRACKING.specName()), "supported")
         .containsEntry(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK, "100")
-        .containsEntry("custom.key", "custom.value");
+        .containsEntry("custom.key", "custom.value")
+        .containsEntry(TableProperties.LAST_COMMIT_TIMESTAMP, "1700000000000");
   }
 
   @Test

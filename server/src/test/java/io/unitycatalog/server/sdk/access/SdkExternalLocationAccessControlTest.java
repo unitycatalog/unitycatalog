@@ -530,7 +530,8 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
                                 new io.unitycatalog.client.delta.model.PrimitiveType().type("long"))
                             .nullable(true)
                             .metadata(java.util.Map.of()))))
-        .properties(java.util.Map.of("delta.enableDeletionVectors", "true"));
+        .properties(java.util.Map.of("delta.enableDeletionVectors", "true"))
+        .lastCommitTimestampMs(1700000000000L);
   }
 
   private CreateTable createExternalTableRequest(String name, String storageLocation) {
