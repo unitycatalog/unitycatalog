@@ -1,7 +1,7 @@
 package io.unitycatalog.spark.auth.storage;
 
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
-import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConf;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
 import org.apache.hadoop.shaded.com.google.common.base.Preconditions;

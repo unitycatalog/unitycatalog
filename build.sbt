@@ -597,7 +597,7 @@ lazy val serverShaded = (project in file("server-shaded"))
   )
 
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(client)
+  .dependsOn(client, hadoop)
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",

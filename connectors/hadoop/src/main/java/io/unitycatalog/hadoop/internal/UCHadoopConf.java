@@ -1,4 +1,4 @@
-package io.unitycatalog.spark;
+package io.unitycatalog.hadoop.internal;
 
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
