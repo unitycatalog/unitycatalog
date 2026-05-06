@@ -23,7 +23,9 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.Optional;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -187,6 +189,29 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
 
     // No-access user attempts to get commits should fail with 403 Forbidden
     assertPermissionDenied(() -> getCommits(noAccessUserCommitsApi));
+
+    // Cross-channel probe: the same GET with PAYLOAD-source fields moved to URL query params
+    // and no body. Regression guard for the PAYLOAD-on-body-less-GET class of bug: if someone
+    // makes a future change that either (a) fixes the decorator to fail-closed (-> 403) or
+    // (b) keeps the decorator as-is but adds query-param binding for DeltaGetCommits (-> would
+    // leak), the assertions below keep the "no data leak" invariant. Either 400 (binding) or
+    // 403 (authz) is acceptable; a 2xx with commit data is not.
+    HttpResponse<String> rawByQuery =
+        TestUtils.sendRawGet(
+            noAccessUserConfig,
+            "/api/2.1/unity-catalog/delta/preview/commits"
+                + "?tableId="
+                + tableInfo.getTableId()
+                + "&tableUri="
+                + tableInfo.getStorageLocation()
+                + "&startVersion=0",
+            Optional.empty());
+    assertThat(rawByQuery.statusCode())
+        .as("attacker must not receive commits via URL-query-only GET")
+        .isBetween(400, 499);
+    assertThat(rawByQuery.body())
+        .as("response must not contain commit data for an unauthorized caller")
+        .doesNotContain("\"commits\"");
 
     // read user can get commits
     DeltaGetCommitsResponse commits = getCommits(readUserCommitsApi);

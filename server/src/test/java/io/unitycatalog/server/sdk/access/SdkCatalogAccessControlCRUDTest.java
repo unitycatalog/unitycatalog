@@ -14,7 +14,9 @@ import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.Optional;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -104,6 +106,34 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
 
     // get catalog (principal-1) -> denied
     assertPermissionDenied(() -> principal1CatalogsApi.getCatalog("admincatalog1"));
+
+    // Cross-channel probe: the same GET with a JSON body that tries to override the path
+    // parameter. Authorization must still resolve from the URL; the body must not move the
+    // request into an unauthorized bypass path.
+    HttpResponse<String> rawWithBody =
+        TestUtils.sendRawGet(
+            principal1Config,
+            "/api/2.1/unity-catalog/catalogs/admincatalog1",
+            Optional.of("{\"name\":\"different\"}"));
+    assertThat(rawWithBody.statusCode())
+        .as("body on a URL-param GET must not bypass URL-driven authz")
+        .isEqualTo(403);
+
+    // Cross-channel probe 2: attacker omits the URL path segment entirely and moves the name
+    // into the body. This routes to listCatalogs (a different endpoint with per-user filtering),
+    // NOT getCatalog. The body's "name" field is not routed through authz, and the response must
+    // not leak admincatalog1 to principal-1 who lacks access.
+    HttpResponse<String> rawWithBodyNoPath =
+        TestUtils.sendRawGet(
+            principal1Config,
+            "/api/2.1/unity-catalog/catalogs",
+            Optional.of("{\"name\":\"admincatalog1\"}"));
+    assertThat(rawWithBodyNoPath.statusCode())
+        .as("listCatalogs must return 200 for a principal that can see at least their own catalog")
+        .isEqualTo(200);
+    assertThat(rawWithBodyNoPath.body())
+        .as("listCatalogs response must not leak catalogs the caller cannot see")
+        .doesNotContain("admincatalog1");
 
     // get catalog (regular-1) -> USE CATALOG -> allowed
     CatalogInfo getCatalog1AsRegular1 = regular1CatalogsApi.getCatalog("catalog1");
