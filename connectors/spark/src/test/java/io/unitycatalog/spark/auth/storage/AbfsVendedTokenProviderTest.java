@@ -9,7 +9,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConf;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.azurebfs.AbfsConfiguration;
 import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;

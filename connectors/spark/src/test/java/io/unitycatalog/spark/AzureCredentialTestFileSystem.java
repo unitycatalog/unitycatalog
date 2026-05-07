@@ -1,6 +1,6 @@
 package io.unitycatalog.spark;
 
-import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
+import static io.unitycatalog.hadoop.internal.UCHadoopConf.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.spark.auth.storage.AbfsVendedTokenProvider;

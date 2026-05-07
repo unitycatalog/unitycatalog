@@ -2,10 +2,10 @@ package io.unitycatalog.spark.auth.storage;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
+import io.unitycatalog.hadoop.internal.UCHadoopConf;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialGenerator;
-import io.unitycatalog.spark.UCHadoopConf;
 import java.util.Map;
 
 public class AbfsCredRenewITTest extends BaseCredRenewITTest {

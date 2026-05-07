@@ -20,11 +20,11 @@ import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
-import io.unitycatalog.server.utils.TableProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Collections;
 import java.util.Comparator;
@@ -863,13 +863,12 @@ public class DeltaCommitRepository {
         }
         if (propertiesOpt.isPresent()) {
           Optional<String> propertiesTableIdOpt =
-              propertiesOpt.map(p -> p.get(TableProperties.UC_TABLE_ID_KEY));
+              propertiesOpt.map(p -> p.get(TableProperties.UC_TABLE_ID));
           if (propertiesTableIdOpt.isEmpty()) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT,
                 String.format(
-                    "commit does not contain %s in the properties.",
-                    TableProperties.UC_TABLE_ID_KEY));
+                    "commit does not contain %s in the properties.", TableProperties.UC_TABLE_ID));
           }
           if (!propertiesTableIdOpt.get().equals(commit.getTableId())) {
             // This is to ensure that the Delta table's log on the file system has the table id
@@ -882,9 +881,7 @@ public class DeltaCommitRepository {
                 ErrorCode.INVALID_ARGUMENT,
                 String.format(
                     "the table being committed (%s) does not match the properties %s(%s).",
-                    commit.getTableId(),
-                    TableProperties.UC_TABLE_ID_KEY,
-                    propertiesTableIdOpt.get()));
+                    commit.getTableId(), TableProperties.UC_TABLE_ID, propertiesTableIdOpt.get()));
           }
         }
       }

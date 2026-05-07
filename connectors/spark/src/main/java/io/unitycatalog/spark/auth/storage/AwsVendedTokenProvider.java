@@ -1,6 +1,6 @@
 package io.unitycatalog.spark.auth.storage;
 
-import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConf;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;

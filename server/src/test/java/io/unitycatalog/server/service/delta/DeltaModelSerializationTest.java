@@ -2,10 +2,8 @@ package io.unitycatalog.server.service.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.unitycatalog.server.delta.model.AddCommitUpdate;
 import io.unitycatalog.server.delta.model.ArrayType;
 import io.unitycatalog.server.delta.model.AssertEtag;
@@ -33,7 +31,6 @@ import io.unitycatalog.server.delta.model.UniformMetadata;
 import io.unitycatalog.server.delta.model.UniformMetadataIceberg;
 import io.unitycatalog.server.delta.model.UpdateSnapshotVersionUpdate;
 import io.unitycatalog.server.delta.model.UpdateTableRequest;
-import io.unitycatalog.server.delta.serde.DeltaTypeModule;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -49,12 +46,7 @@ import org.junit.jupiter.api.Test;
  */
 public class DeltaModelSerializationTest {
 
-  private static final ObjectMapper MAPPER =
-      JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
-
-  static {
-    MAPPER.registerModule(new DeltaTypeModule());
-  }
+  private static final ObjectMapper MAPPER = DeltaRestCatalogMappers.MAPPER;
 
   private static String fixtureJson;
 

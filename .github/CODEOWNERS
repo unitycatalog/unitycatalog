@@ -6,6 +6,9 @@
 # Spark Connector
 /connectors/spark/ @tdas @openinx
 
+# Hadoop Connector
+/connectors/hadoop/ @tdas @openinx @TimothyW553
+
 # Java clients.
 /clients/java/ @tdas @openinx
 

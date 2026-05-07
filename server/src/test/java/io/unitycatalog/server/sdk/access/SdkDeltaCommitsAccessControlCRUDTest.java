@@ -22,8 +22,11 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -90,13 +93,15 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
     StagingTableInfo stagingTableInfo = adminTablesApi.createStagingTable(createStagingTable);
 
     // Then, create the managed table using the staging location
+    Map<String, String> properties = new HashMap<>(TestUtils.PROPERTIES);
+    properties.put(TableProperties.UC_TABLE_ID, stagingTableInfo.getId());
     CreateTable createTable =
         new CreateTable()
             .name(TestUtils.TABLE_NAME)
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
             .columns(COLUMNS)
-            .properties(TestUtils.PROPERTIES)
+            .properties(properties)
             .comment(TestUtils.COMMENT)
             .storageLocation(stagingTableInfo.getStagingLocation())
             .tableType(TableType.MANAGED)

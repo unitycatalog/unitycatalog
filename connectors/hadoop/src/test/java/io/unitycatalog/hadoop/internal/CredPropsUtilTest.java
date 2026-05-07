@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.auth;
+package io.unitycatalog.hadoop.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -7,15 +7,15 @@ import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import java.util.Collections;
 import java.util.Map;
+import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
 
 /**
- * Verifies that {@link CredPropsUtil} saves the original {@code fs.<scheme>.impl} values under
- * {@code fs.<scheme>.impl.original} before overriding them with {@link
- * io.unitycatalog.spark.fs.CredScopedFileSystem}, so that the real delegate can be restored in
- * {@code CredScopedFileSystem#newFileSystem}.
+ * Verifies that {@link io.unitycatalog.hadoop.internal.CredPropsUtil} saves the original {@code
+ * fs.<scheme>.impl} values under {@code fs.<scheme>.impl.original} before overriding them with
+ * CredScopedFileSystem, so that the real delegate can be restored in {@code
+ * CredScopedFileSystem#newFileSystem}.
  */
 class CredPropsUtilTest {
 
@@ -26,14 +26,15 @@ class CredPropsUtilTest {
 
   @Test
   void s3OriginalImplPreservedFromExistingProps() {
-    Map<String, String> fsImplProps =
-        Map.of("fs.s3.impl", CUSTOM_S3_IMPL, "fs.s3a.impl", CUSTOM_S3_IMPL);
+    Configuration conf = new Configuration(false);
+    conf.set("fs.s3.impl", CUSTOM_S3_IMPL);
+    conf.set("fs.s3a.impl", CUSTOM_S3_IMPL);
 
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             true,
-            fsImplProps,
+            conf,
             "s3",
             "http://uc",
             null,
@@ -51,7 +52,7 @@ class CredPropsUtilTest {
         CredPropsUtil.createTableCredProps(
             false,
             true,
-            Collections.emptyMap(),
+            new Configuration(false),
             "s3",
             "http://uc",
             null,
@@ -67,13 +68,14 @@ class CredPropsUtilTest {
 
   @Test
   void gsOriginalImplPreservedFromExistingProps() {
-    Map<String, String> fsImplProps = Map.of("fs.gs.impl", CUSTOM_GS_IMPL);
+    Configuration conf = new Configuration(false);
+    conf.set("fs.gs.impl", CUSTOM_GS_IMPL);
 
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             true,
-            fsImplProps,
+            conf,
             "gs",
             "http://uc",
             null,
@@ -86,14 +88,15 @@ class CredPropsUtilTest {
 
   @Test
   void abfsOriginalImplPreservedFromExistingProps() {
-    Map<String, String> fsImplProps =
-        Map.of("fs.abfs.impl", CUSTOM_ABFS_IMPL, "fs.abfss.impl", CUSTOM_ABFSS_IMPL);
+    Configuration conf = new Configuration(false);
+    conf.set("fs.abfs.impl", CUSTOM_ABFS_IMPL);
+    conf.set("fs.abfss.impl", CUSTOM_ABFSS_IMPL);
 
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             true,
-            fsImplProps,
+            conf,
             "abfs",
             "http://uc",
             null,
@@ -111,7 +114,7 @@ class CredPropsUtilTest {
         CredPropsUtil.createTableCredProps(
             false,
             true,
-            Collections.emptyMap(),
+            new Configuration(false),
             "gs",
             "http://uc",
             null,
@@ -129,7 +132,7 @@ class CredPropsUtilTest {
         CredPropsUtil.createTableCredProps(
             false,
             true,
-            Collections.emptyMap(),
+            new Configuration(false),
             "abfs",
             "http://uc",
             null,
@@ -149,7 +152,7 @@ class CredPropsUtilTest {
         CredPropsUtil.createTableCredProps(
             false,
             false,
-            Collections.emptyMap(),
+            new Configuration(false),
             "s3",
             "http://uc",
             null,

@@ -20,8 +20,6 @@ addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.1.2")
 
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.2.0")
 
-addSbtPlugin("io.get-coursier" % "sbt-coursier" % "1.0.3")
-
 addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "3.11.3")
 
 addSbtPlugin("net.aichler" % "sbt-jupiter-interface" % "0.11.1")

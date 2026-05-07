@@ -2,13 +2,15 @@ package io.unitycatalog.spark
 
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.auth.TokenProvider
-import io.unitycatalog.client.model.{TableInfo, _}
+import io.unitycatalog.client.model._
+import io.unitycatalog.client.model.TableInfo
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs
+import io.unitycatalog.spark.auth.AuthConfigUtils
 import io.unitycatalog.spark.compat.SparkCatalogCompatibility
-import io.unitycatalog.spark.fs.CredScopedFileSystem
 import io.unitycatalog.spark.utils.OptionsUtil
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -151,17 +153,14 @@ class UCSingleCatalog
 
     val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
       new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
-    val credentialProps = CredPropsUtil.createTableCredProps(
-      renewCredEnabled,
-      credScopedFsEnabled,
-      UCSingleCatalog.sessionHadoopFsImplProps(),
-      CatalogUtils.stringToURI(stagingLocation).getScheme,
-      uri.toString,
-      tokenProvider,
-      stagingTableId,
-      TableOperation.READ_WRITE,
-      temporaryCredentials,
-    )
+    val credentialProps = UCCredentialHadoopConfs
+      .builder(uri.toString, CatalogUtils.stringToURI(stagingLocation).getScheme)
+      .tokenProvider(tokenProvider)
+      .initialCredentials(temporaryCredentials)
+      .enableCredentialRenewal(renewCredEnabled)
+      .enableCredentialScopedFs(credScopedFsEnabled)
+      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+      .buildForTable(stagingTableId, TableOperation.READ_WRITE)
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     newProps
   }
@@ -259,17 +258,13 @@ class UCSingleCatalog
       new GenerateTemporaryTableCredential()
         .tableId(tableId).operation(TableOperation.READ_WRITE))
     val tableUriScheme = new Path(tableLocation).toUri.getScheme
-    val credentialProps = CredPropsUtil.createTableCredProps(
-      renewCredEnabled,
-      credScopedFsEnabled,
-      UCSingleCatalog.sessionHadoopFsImplProps(),
-      tableUriScheme,
-      uri.toString,
-      tokenProvider,
-      tableId,
-      TableOperation.READ_WRITE,
-      temporaryCredentials,
-    )
+    val credentialProps = UCCredentialHadoopConfs.builder(uri.toString, tableUriScheme)
+      .tokenProvider(tokenProvider)
+      .initialCredentials(temporaryCredentials)
+      .enableCredentialRenewal(renewCredEnabled)
+      .enableCredentialScopedFs(credScopedFsEnabled)
+      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+      .buildForTable(tableId, TableOperation.READ_WRITE)
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     newProps
   }
@@ -299,16 +294,14 @@ class UCSingleCatalog
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
 
-    val credentialProps = CredPropsUtil.createPathCredProps(
-      renewCredEnabled,
-      credScopedFsEnabled,
-      UCSingleCatalog.sessionHadoopFsImplProps(),
-      CatalogUtils.stringToURI(location).getScheme,
-      uri.toString,
-      tokenProvider,
-      location,
-      PathOperation.PATH_CREATE_TABLE,
-      cred)
+    val credentialProps = UCCredentialHadoopConfs
+      .builder(uri.toString, CatalogUtils.stringToURI(location).getScheme)
+      .tokenProvider(tokenProvider)
+      .initialCredentials(cred)
+      .enableCredentialRenewal(renewCredEnabled)
+      .enableCredentialScopedFs(credScopedFsEnabled)
+      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+      .buildForPath(location, PathOperation.PATH_CREATE_TABLE)
 
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     newProps
@@ -441,35 +434,16 @@ object UCSingleCatalog {
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
   /**
-   * Returns any user-configured {@code fs.<scheme>.impl} values from the current Spark session.
+   * Returns the current session's Hadoop configuration.
    *
-   * Passed to {@link io.unitycatalog.spark.auth.CredPropsUtil#saveAndOverride} so it can stash the
-   * original impl under {@code fs.<scheme>.impl.original} before replacing it with
-   * {@link io.unitycatalog.spark.fs.CredScopedFileSystem}. Without this, the stashed value would
-   * default to Hadoop's built-in class, causing {@code CredScopedFileSystem} to ignore any custom
-   * filesystem the user configured (e.g. a test double or alternative S3 driver).
+   * Passed to {@code UCCredentialHadoopConfs.Builder#hadoopConf} so
+   * that the builder can look up any existing {@code fs.<scheme>.impl} values before
+   * overriding them with the credential-scoped filesystem wrapper.
    */
-  def sessionHadoopFsImplProps(): util.Map[String, String] = {
-    SparkSession.getActiveSession match {
-      case None => new util.HashMap[String, String]()
-      case Some(session) =>
-        val conf = session.conf
-        val credScopedFsClass = classOf[CredScopedFileSystem].getName
-        val fsImplKeys = Set(
-          "fs.s3.impl", "fs.s3a.impl", "fs.gs.impl", "fs.abfs.impl", "fs.abfss.impl",
-          "fs.AbstractFileSystem.s3.impl", "fs.AbstractFileSystem.s3a.impl",
-          "fs.AbstractFileSystem.gs.impl", "fs.AbstractFileSystem.abfs.impl",
-          "fs.AbstractFileSystem.abfss.impl")
-        fsImplKeys
-          .flatMap { key =>
-            // Check both forms: unprefixed and spark.hadoop.-prefixed. Avoid hadoopConf.get(),
-            // which returns Hadoop built-in defaults even when the user never set the key.
-            conf.getOption(key).orElse(conf.getOption("spark.hadoop." + key))
-              .filter(_ != credScopedFsClass) // skip if already CredScopedFileSystem (prevents recursive wrapping)
-              .map(key -> _)
-          }
-          .toMap.asJava
-    }
+  def sessionHadoopConf(): Configuration = {
+    SparkSession.getActiveSession
+      .map(_.sparkContext.hadoopConfiguration)
+      .getOrElse(new Configuration())
   }
 
   def setCredentialProps(props: util.HashMap[String, String],
@@ -634,17 +608,13 @@ private class UCProxy(
     val extraSerdeProps = if (temporaryCredentials == null) {
       Map.empty[String, String].asJava
     } else {
-      CredPropsUtil.createTableCredProps(
-        renewCredEnabled,
-        credScopedFsEnabled,
-        UCSingleCatalog.sessionHadoopFsImplProps(),
-        locationUri.getScheme,
-        uri.toString,
-        tokenProvider,
-        tableId,
-        tableOp,
-        temporaryCredentials,
-      )
+      UCCredentialHadoopConfs.builder(uri.toString, locationUri.getScheme)
+        .tokenProvider(tokenProvider)
+        .initialCredentials(temporaryCredentials)
+        .enableCredentialRenewal(renewCredEnabled)
+        .enableCredentialScopedFs(credScopedFsEnabled)
+        .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+        .buildForTable(tableId, tableOp)
     }
 
     val storageProperties = (t.getProperties.asScala.toMap ++ extraSerdeProps).asJava

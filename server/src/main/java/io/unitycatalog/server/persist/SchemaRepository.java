@@ -126,6 +126,18 @@ public class SchemaRepository {
     return schemaInfo.getId();
   }
 
+  /**
+   * Returns the UUID of the named schema. Opens its own transaction, so callers that already have a
+   * {@code Session} should use {@link #getSchemaIdOrThrow(Session, String, String)} directly.
+   */
+  public UUID getSchemaIdOrThrow(String catalogName, String schemaName) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> getSchemaIdOrThrow(session, catalogName, schemaName),
+        "Failed to get schema id",
+        /* readOnly = */ true);
+  }
+
   private void validateSchemaNotExistInCatalog(
       Session session, String catalogName, String schemaName) {
     CatalogInfoDAO catalogDAO =

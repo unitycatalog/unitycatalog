@@ -119,10 +119,6 @@ lazy val commonSettings = Seq(
   assembly / test := {}
 )
 
-enablePlugins(CoursierPlugin)
-
-useCoursier := true
-
 // Configure resolvers
 resolvers ++= Seq(
   "Maven Central" at "https://repo1.maven.org/maven2/",
@@ -608,7 +604,7 @@ lazy val serverShaded = (project in file("server-shaded"))
   )
 
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(client)
+  .dependsOn(client, hadoop)
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",
@@ -699,6 +695,37 @@ lazy val spark = (project in file("connectors/spark"))
     }
   )
 
+lazy val hadoop = (project in file("connectors/hadoop"))
+  .dependsOn(client)
+  .enablePlugins(CheckstylePlugin)
+  .settings(
+    name := s"$artifactNamePrefix-hadoop",
+    commonSettings,
+    javaOnlyReleaseSettings,
+    javafmtCheckSettings(),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= javacRelease11,
+    libraryDependencies ++= Seq(
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion % Provided,
+      "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
+      "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
+    ),
+    libraryDependencies ++= Seq(
+      // Test dependencies
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion % Test,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
+    ),
+    Test / unmanagedJars += (serverShaded / assembly).value,
+  )
+
 lazy val integrationTests = (project in file("integration-tests"))
   .enablePlugins(CheckstylePlugin)
   .dependsOn(spark)
@@ -737,7 +764,7 @@ lazy val integrationTests = (project in file("integration-tests"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, pythonClient, server, cli, spark, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, cli, spark, hadoop, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),

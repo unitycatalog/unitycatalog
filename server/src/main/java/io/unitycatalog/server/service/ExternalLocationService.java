@@ -5,6 +5,7 @@ import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 import com.linecorp.armeria.common.HttpResponse;
+import io.unitycatalog.server.model.SecurableType;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
@@ -14,8 +15,8 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
-import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.ExternalLocationInfo;
@@ -25,10 +26,8 @@ import io.unitycatalog.server.persist.ExternalLocationRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
-import java.util.List;
-import java.util.Map;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
-import java.util.UUID;
 import lombok.SneakyThrows;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
@@ -37,8 +36,11 @@ public class ExternalLocationService extends AuthorizedService {
   private final MetastoreRepository metastoreRepository;
 
   @SneakyThrows
-  public ExternalLocationService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories);
+  public ExternalLocationService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
     this.externalLocationRepository = repositories.getExternalLocationRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
   }
@@ -51,8 +53,8 @@ public class ExternalLocationService extends AuthorizedService {
     """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createExternalLocation(
-      @AuthorizeResourceKeys({@AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")})
-          CreateExternalLocation createExternalLocation) {
+      @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
+      CreateExternalLocation createExternalLocation) {
     ExternalLocationInfo externalLocationInfo =
         externalLocationRepository.addExternalLocation(createExternalLocation);
     initializeBasicAuthorization(externalLocationInfo.getId());
@@ -66,13 +68,15 @@ public class ExternalLocationService extends AuthorizedService {
     """;
 
   @Get("")
-  @AuthorizeExpression("#defer")
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse listExternalLocations(
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
     ListExternalLocationsResponse locations =
         externalLocationRepository.listExternalLocations(maxResults, pageToken);
-    filterExternalLocations(LIST_AND_GET_AUTH_EXPRESSION, locations.getExternalLocations());
+    applyResponseFilter(SecurableType.EXTERNAL_LOCATION, locations.getExternalLocations());
     return HttpResponse.ofJson(locations);
   }
 
@@ -94,8 +98,8 @@ public class ExternalLocationService extends AuthorizedService {
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
-      @AuthorizeResourceKeys({@AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")})
-          UpdateExternalLocation updateRequest) {
+      @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
+      UpdateExternalLocation updateRequest) {
     return HttpResponse.ofJson(
         externalLocationRepository.updateExternalLocation(name, updateRequest));
   }
@@ -115,30 +119,4 @@ public class ExternalLocationService extends AuthorizedService {
     return HttpResponse.of(HttpStatus.OK);
   }
 
-  /**
-   * Filters a list of external locations based on the authorization expression.
-   *
-   * <p>This method removes external locations from the list that the current principal does not
-   * have permission to access according to the provided authorization expression. The filtering is
-   * done in-place by removing unauthorized entries from the list.
-   *
-   * @param expression The authorization expression to evaluate (e.g., checking for READ_FILES,
-   *     WRITE_FILES, or other permissions)
-   * @param entries The list of external location entries to filter (modified in-place)
-   */
-  public void filterExternalLocations(String expression, List<ExternalLocationInfo> entries) {
-    // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = userRepository.findPrincipalId();
-
-    evaluator.filter(
-        principalId,
-        expression,
-        entries,
-        externalLocationInfo ->
-            Map.of(
-                METASTORE,
-                metastoreRepository.getMetastoreId(),
-                EXTERNAL_LOCATION,
-                UUID.fromString(externalLocationInfo.getId())));
-  }
 }

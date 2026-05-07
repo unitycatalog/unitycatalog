@@ -11,7 +11,7 @@ import com.google.cloud.hadoop.util.HadoopCredentialsConfiguration.AccessTokenPr
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConf;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;

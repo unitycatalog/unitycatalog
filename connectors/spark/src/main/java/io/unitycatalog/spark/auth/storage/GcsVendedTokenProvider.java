@@ -2,7 +2,7 @@ package io.unitycatalog.spark.auth.storage;
 
 import com.google.cloud.hadoop.util.AccessTokenProvider;
 import io.unitycatalog.client.model.GcpOauthToken;
-import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConf;
 import java.io.IOException;
 import java.time.Instant;
 import org.apache.hadoop.conf.Configuration;
