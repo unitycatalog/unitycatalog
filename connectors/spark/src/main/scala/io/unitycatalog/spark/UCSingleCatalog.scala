@@ -34,6 +34,9 @@ import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
+import org.json4s.{JBool, JObject, JString, JValue}
+import org.json4s.JsonDSL._
+import org.json4s.jackson.JsonMethods
 import org.sparkproject.guava.base.Preconditions
 
 /**
@@ -982,9 +985,10 @@ private class UCProxy(
     val columns = t.getColumns.asScala.map { col =>
       // typeJson holds the canonical Spark column JSON written by `buildColumnInfos`
       // (StructField shape: `{name, type, nullable, metadata}`). Parse it back through
-      // Spark's public `Column.fromJson`, which round-trips dataType, nullable, comment,
-      // and metadata via `CatalogV2Util.{v2ColumnToStructField, structFieldToV2Column}`.
-      Column.fromJson(col.getTypeJson)
+      // the in-connector `UCColumnJson` helper, which round-trips dataType, nullable,
+      // comment, and metadata using only public Spark APIs (`Column.create` factory,
+      // `DataType.fromJson`).
+      UCColumnJson.parseStructFieldJson(col.getTypeJson)
     }.toArray
 
     val props = new util.HashMap[String, String]()
@@ -1229,11 +1233,11 @@ private object UCProxy {
    * The wire shape is the Spark `StructField` JSON (`{name, type, nullable, metadata}`),
    * matching the Databricks Runtime wire format.
    *
-   * Iterates `tableInfo.columns()` directly and uses the public Spark
-   * [[org.apache.spark.sql.connector.catalog.Column#toJson]] API to serialize each column
-   * to its canonical JSON form -- comment-vs-metadata handling, empty-metadata-as-null,
-   * and any future column attributes are taken care of inside Spark's
-   * `CatalogV2Util.{v2ColumnToStructField, structFieldToV2Column}` helpers.
+   * Iterates `tableInfo.columns()` directly and uses the in-connector [[UCColumnJson]]
+   * helper to serialize each column to its canonical StructField-shape JSON form. The
+   * helper uses only public Spark APIs (`Column.{name, dataType, nullable, comment,
+   * metadataInJSON}`, `DataType.json` / `DataType.fromJson`, `Column.create` factory) so
+   * no Spark `private[sql]` dependency is required.
    */
   def buildColumnInfos(
       tableInfo: TableInfo,
@@ -1245,7 +1249,7 @@ private object UCProxy {
       column.setNullable(col.nullable)
       column.setTypeText(col.dataType.catalogString)
       column.setTypeName(convertDataTypeToTypeName(col.dataType))
-      column.setTypeJson(col.toJson())
+      column.setTypeJson(UCColumnJson.buildStructFieldJson(col))
       column.setPosition(i)
       Option(col.comment).foreach(column.setComment(_))
       val partitionIdx = partitionColNames.indexWhere(_.equalsIgnoreCase(col.name))
@@ -1269,5 +1273,86 @@ private object UCProxy {
           throw new ApiException(s"Unsupported partition transform: $other")
       }
     }.toSeq
+  }
+}
+
+/**
+ * Helpers that round-trip a Spark V2 [[Column]] through the canonical "Spark `StructField`
+ * shape" JSON that Unity Catalog stores in `ColumnInfo.type_json`. Wire-format compatible
+ * with what Databricks Runtime emits via `StructField.toJson`.
+ *
+ * Implemented with json4s + Spark's already-public V2 surface only:
+ *
+ *   - [[Column.name]] / [[Column.dataType]] / [[Column.nullable]] / [[Column.comment]] /
+ *     [[Column.metadataInJSON]] -- public accessors on the V2 catalog `Column` interface.
+ *   - [[org.apache.spark.sql.types.DataType.json]] / [[DataType.fromJson]] -- public on
+ *     Spark `DataType`.
+ *   - [[Column.create]] (5-arg overload) -- public static factory on the V2 `Column`.
+ *
+ * No `private[sql]` helpers, no Spark API additions. The shape is just
+ * `{name, type, nullable, metadata}`.
+ *
+ * Comment handling mirrors Spark's StructField wire convention: comments live inside
+ * `metadata` under the `"comment"` key on the wire, but on the in-memory `Column` they are
+ * exposed via the dedicated [[Column.comment]] accessor. The helpers merge / strip the
+ * `"comment"` key at the JSON boundary so callers never see it duplicated.
+ */
+private[spark] object UCColumnJson {
+
+  /** Spark V2 -> wire: build the `StructField`-shape JSON for one [[Column]]. */
+  def buildStructFieldJson(col: Column): String = {
+    val typeNode: JValue = JsonMethods.parse(col.dataType.json)
+    // metadataInJSON may be null for fields without analyzer-attached metadata.
+    val baseMetadata: JObject = Option(col.metadataInJSON) match {
+      case Some(s) => JsonMethods.parse(s).asInstanceOf[JObject]
+      case None    => JObject(Nil)
+    }
+    val metadataNode: JObject = Option(col.comment) match {
+      case Some(c) => baseMetadata ~ ("comment" -> c)
+      case None    => baseMetadata
+    }
+    val fieldNode: JValue =
+      ("name"     -> col.name) ~
+        ("type"     -> typeNode) ~
+        ("nullable" -> col.nullable) ~
+        ("metadata" -> metadataNode)
+    JsonMethods.compact(JsonMethods.render(fieldNode))
+  }
+
+  /**
+   * Wire -> Spark V2: parse a `StructField`-shape JSON string back into a [[Column]].
+   *
+   * The `"comment"` key (if present in the wire metadata) is lifted out and passed to
+   * [[Column.create]] as the dedicated `comment` arg, NOT left in `metadataInJSON` --
+   * matches what Spark's own `CatalogV2Util.structFieldToV2Column` does on the v1 path.
+   */
+  def parseStructFieldJson(jsonStr: String): Column = {
+    val parsed = JsonMethods.parse(jsonStr)
+    val name = (parsed \ "name") match {
+      case JString(s) => s
+      case other      => throw new IllegalArgumentException(
+        s"Expected string `name` in StructField JSON, got: $other")
+    }
+    val typeNode = parsed \ "type"
+    val dataType = DataType.fromJson(JsonMethods.compact(JsonMethods.render(typeNode)))
+    val nullable = (parsed \ "nullable") match {
+      case JBool(b) => b
+      case other    => throw new IllegalArgumentException(
+        s"Expected boolean `nullable` in StructField JSON, got: $other")
+    }
+    val metadataObj = (parsed \ "metadata") match {
+      case obj: JObject => obj
+      case _            => JObject(Nil)
+    }
+    val (commentFields, otherFields) = metadataObj.obj.partition(_._1 == "comment")
+    val comment = commentFields.headOption.map(_._2) match {
+      case Some(JString(s)) => s
+      case _                => null
+    }
+    val metadataInJSON = otherFields match {
+      case Nil => null
+      case xs  => JsonMethods.compact(JsonMethods.render(JObject(xs)))
+    }
+    Column.create(name, dataType, nullable, comment, metadataInJSON)
   }
 }
