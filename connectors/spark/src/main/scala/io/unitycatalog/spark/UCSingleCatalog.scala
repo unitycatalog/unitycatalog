@@ -567,7 +567,18 @@ private class UCProxy(
       Option(col.getPartitionIndex).foreach { index =>
         partitionCols += col.getName -> index
       }
-      StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
+      // UC may return column types newer than this version of Spark understands (e.g. GEOMETRY).
+      // Fall back to BinaryType — the Parquet physical type for most such logical types — so the
+      // table is still usable for metadata ops and queries that don't reference the column.
+      val dataType = try {
+        DataType.fromDDL(col.getTypeText)
+      } catch {
+        case _: org.apache.spark.sql.AnalysisException | _: IllegalArgumentException =>
+          logWarning(s"Unsupported Unity Catalog column type '${col.getTypeText}' for column " +
+            s"'${col.getName}' in table ${t.getName}; falling back to BINARY.")
+          BinaryType
+      }
+      StructField(col.getName, dataType, col.getNullable)
         .withComment(col.getComment)
     }.toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
