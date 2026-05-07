@@ -6,13 +6,14 @@ import io.unitycatalog.client.model.{TableInfo, _}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
+import io.unitycatalog.spark.compat.SparkCatalogCompatibility
 import io.unitycatalog.spark.fs.CredScopedFileSystem
 import io.unitycatalog.spark.utils.OptionsUtil
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
+import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -439,33 +440,6 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
-  // Spark 4.2 adds a `serdeName` field to CatalogStorageFormat.copy. Dispatch through
-  // reflection so one connector jar can keep working across Spark 4.0/4.1/4.2 runtimes.
-  private[spark] def catalogStorageFormatWithLocation(
-      locationUri: URI,
-      properties: util.Map[String, String]): CatalogStorageFormat = {
-    val base = CatalogStorageFormat.empty
-    val copyMethod = base.getClass.getMethods.find { method =>
-      method.getName == "copy" && (method.getParameterCount == 6 || method.getParameterCount == 7)
-    }.getOrElse {
-      throw new IllegalStateException("Unsupported CatalogStorageFormat.copy signature")
-    }
-    val copyArgs = Array[AnyRef](
-      Some(locationUri),
-      base.inputFormat,
-      base.outputFormat,
-      base.serde,
-      Boolean.box(base.compressed),
-      properties.asScala.toMap
-    )
-    val effectiveArgs = copyMethod.getParameterCount match {
-      case 6 => copyArgs
-      case 7 => copyArgs :+ None
-      case _ => throw new IllegalStateException("Unsupported CatalogStorageFormat.copy arity")
-    }
-    copyMethod.invoke(base, effectiveArgs: _*).asInstanceOf[CatalogStorageFormat]
-  }
-
   /**
    * Returns any user-configured {@code fs.<scheme>.impl} values from the current Spark session.
    *
@@ -681,7 +655,8 @@ private class UCProxy(
       } else {
         CatalogTableType.EXTERNAL
       },
-      storage = UCSingleCatalog.catalogStorageFormatWithLocation(locationUri, storageProperties),
+      storage = SparkCatalogCompatibility.catalogStorageFormatWithLocation(
+        locationUri, storageProperties),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
       createTime = t.getCreatedAt,

@@ -20,8 +20,8 @@ jobs:
 
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
-      ${{ matrix.run-compile-only && 'Spark compile' || matrix.run-only-spark-tests && 'Spark tests' || 'All tests' }}
-      (Spark ${{ matrix.spark-version }}, Delta ${{ matrix.delta-version }})
+      ${{ matrix.validation-mode == 'spark-compile-only' && 'Spark compile' || matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
+      (Spark ${{ matrix.spark-version }}${{ matrix.delta-version != '' && format(', Delta {0}', matrix.delta-version) || '' }})
     continue-on-error: ${{ matrix.non-blocking || false }}
     strategy:
       fail-fast: false
@@ -32,27 +32,23 @@ jobs:
             # This is the primary combo: runs ALL tests (unit, spark, license).
             # Other combos run only spark connector tests since unit tests and
             # license checks don't depend on Spark/Delta versions.
-            run-compile-only: false
-            run-only-spark-tests: false
+            validation-mode: "all-tests"
             non-blocking: false
           - spark-version: "4.1.0"
             delta-version: "4.1.0"
-            run-compile-only: false
-            run-only-spark-tests: true
+            validation-mode: "spark-tests"
             non-blocking: false
           - spark-version: "4.1.0"
             delta-version: "master-SNAPSHOT"
-            run-compile-only: false
-            run-only-spark-tests: true
+            validation-mode: "spark-tests"
             # Cross-version testing with Delta master is informational; failures
             # indicate upcoming incompatibilities but should not block PRs.
             non-blocking: true
           - spark-version: "4.2.0-SNAPSHOT"
-            delta-version: "n/a"
-            run-compile-only: true
-            run-only-spark-tests: false
-            # Delta master does not yet publish a Spark 4.2 build, so keep an
-            # informational Spark 4.2 compile-only lane for the UC connector.
+            delta-version: ""
+            validation-mode: "spark-compile-only"
+            # Delta does not yet publish a Spark 4.2 artifact. This mode applies
+            # only to Spark 4.2; Spark 4.0/4.1 continue to run compile + tests.
             non-blocking: true
 
     steps:
@@ -98,7 +94,7 @@ jobs:
           spark/publishM2
 
     - name: Set effective Delta version
-      if: ${{ !matrix.run-compile-only }}
+      if: ${{ matrix.validation-mode != 'spark-compile-only' }}
       run: |
         if [[ "${{ matrix.delta-version }}" == "master-SNAPSHOT" ]]; then
           echo "DELTA_VERSION=${{ steps.delta-meta.outputs.version }}" >> $GITHUB_ENV
@@ -107,7 +103,7 @@ jobs:
         fi
 
     - name: Compile spark connector against Spark 4.2
-      if: matrix.run-compile-only
+      if: matrix.validation-mode == 'spark-compile-only'
       run: |
         build/sbt -DsparkVersion=${{ matrix.spark-version }} -J-Xmx2G \
           "project spark" \
@@ -117,17 +113,17 @@ jobs:
       # 'integrationTests' is not in root project, since we avoid running it via `./build/sbt test`,
       # Here, we explicitly compile `integrationTests` to catch compilation issues early.
     - name: Compile integration tests to verify compilation and checkstyle issues.
-      if: ${{ !matrix.run-compile-only }}
+      if: ${{ matrix.validation-mode != 'spark-compile-only' }}
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G integrationTests/test:compile
 
     - name: Build and verify the local deployment.
-      if: ${{ !matrix.run-compile-only }}
+      if: ${{ matrix.validation-mode != 'spark-compile-only' }}
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G clean package publishM2
 
     - name: Run tests with coverage
-      if: ${{ !matrix.run-compile-only }}
+      if: ${{ matrix.validation-mode != 'spark-compile-only' }}
       run: |
-        if [[ "${{ matrix.run-only-spark-tests }}" == "true" ]]; then
+        if [[ "${{ matrix.validation-mode }}" == "spark-tests" ]]; then
           echo "Running spark connector tests only"
           build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G spark/jacoco
         else
@@ -136,5 +132,5 @@ jobs:
         fi
 
     - name: Run license check
-      if: ${{ !matrix.run-only-spark-tests && !matrix.run-compile-only }}
+      if: matrix.validation-mode == 'all-tests'
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck

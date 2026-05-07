@@ -1,4 +1,4 @@
-package io.unitycatalog.spark
+package io.unitycatalog.spark.compat
 
 import java.net.URI
 import java.util
@@ -6,7 +6,7 @@ import java.util
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotNull, assertTrue}
 import org.junit.jupiter.api.Test
 
-class CatalogStorageFormatCompatSuite {
+class SparkCatalogCompatibilitySuite {
 
   @Test
   def catalogStorageFormatWithLocationPreservesLocationAndProperties(): Unit = {
@@ -14,7 +14,7 @@ class CatalogStorageFormatCompatSuite {
     val properties = new util.HashMap[String, String]()
     properties.put("delta.appendOnly", "true")
 
-    val storage = UCSingleCatalog.catalogStorageFormatWithLocation(location, properties)
+    val storage = SparkCatalogCompatibility.catalogStorageFormatWithLocation(location, properties)
 
     assertEquals(Some(location), storage.locationUri)
     assertEquals("true", storage.properties("delta.appendOnly"))
