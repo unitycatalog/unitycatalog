@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -32,9 +32,11 @@ class CredScopedFileSystemCacheTest {
 
   private static Configuration tableConf(String tableId, String op) {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, tableId);
-    conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, op);
+    conf.set(
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
+    conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, op);
     // Disable Hadoop's internal filesystem cache so newFileSystem() creates a fresh instance per
     // credential scope, making it possible to assert identity inequality across scopes.
     conf.set("fs.file.impl.disable.cache", "true");

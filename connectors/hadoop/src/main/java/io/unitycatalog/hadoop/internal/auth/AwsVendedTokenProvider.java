@@ -1,12 +1,13 @@
 package io.unitycatalog.hadoop.internal.auth;
 
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.util.Preconditions;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
+/** Hadoop S3A credentials provider backed by Unity Catalog temporary credentials. */
 public class AwsVendedTokenProvider extends GenericCredentialProvider
     implements AwsCredentialsProvider {
 
@@ -19,21 +20,21 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
 
   @Override
   public GenericCredential initGenericCredential(Configuration conf) {
-    if (conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY) != null
-        && conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY) != null
-        && conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN) != null) {
+    if (conf.get(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY) != null
+        && conf.get(UCHadoopConfConstants.S3A_INIT_SECRET_KEY) != null
+        && conf.get(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN) != null) {
 
-      String accessKey = conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY);
-      String secretKey = conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY);
-      String sessionToken = conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN);
+      String accessKey = conf.get(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY);
+      String secretKey = conf.get(UCHadoopConfConstants.S3A_INIT_SECRET_KEY);
+      String sessionToken = conf.get(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN);
 
       long expiredTimeMillis =
-          conf.getLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, Long.MAX_VALUE);
+          conf.getLong(UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, Long.MAX_VALUE);
       Preconditions.checkState(
           expiredTimeMillis > 0,
           "Expired time %s must be greater than 0, " + "please check configure key '%s'",
           expiredTimeMillis,
-          UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME);
+          UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME);
 
       return GenericCredential.forAws(accessKey, secretKey, sessionToken, expiredTimeMillis);
     } else {

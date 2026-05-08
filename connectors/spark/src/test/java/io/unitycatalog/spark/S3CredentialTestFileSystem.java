@@ -2,7 +2,7 @@ package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
 import java.io.IOException;
 import java.net.URI;
@@ -61,7 +61,7 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
       synchronized (this) {
         if (provider == null) {
           // Assert that it's the expected credential provider.
-          String clazz = conf.get(UCHadoopConf.S3A_CREDENTIALS_PROVIDER);
+          String clazz = conf.get(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER);
           if (Objects.equals(clazz, AwsVendedTokenProvider.class.getName())) {
             provider = new AwsVendedTokenProvider(conf);
           }

@@ -1,12 +1,14 @@
 package io.unitycatalog.hadoop;
 
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.delta.model.StorageCredential;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.DeltaStorageCredentialUtil;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -55,6 +57,7 @@ public final class UCCredentialHadoopConfs {
 
     private TokenProvider tokenProvider;
     private TemporaryCredentials initialCredentials;
+    private StorageCredential initialStorageCredential;
     private boolean credentialRenewalEnabled = true;
     private boolean credentialScopedFsEnabled = true;
     private Configuration hadoopConf = new Configuration(false);
@@ -80,9 +83,30 @@ public final class UCCredentialHadoopConfs {
      * (Required) The initial temporary credentials vended by UC (AWS session credentials, GCP OAuth
      * token, or Azure SAS). Typically, allocated once by the job driver and propagated to all
      * worker nodes so that each worker reuses the same credential rather than vending a new one.
+     *
+     * <p>Mutually exclusive with {@link #initialStorageCredential(StorageCredential)}.
      */
     public Builder initialCredentials(TemporaryCredentials initialCredentials) {
+      Preconditions.checkState(
+          initialStorageCredential == null,
+          "initialStorageCredential is already set; cannot also set initialCredentials. The two"
+              + " select different credentials APIs (UC vs UC Delta).");
       this.initialCredentials = initialCredentials;
+      return this;
+    }
+
+    /**
+     * (Required for UC Delta) The initial UC Delta storage credential returned by the UC Delta
+     * table API.
+     *
+     * <p>Mutually exclusive with {@link #initialCredentials(TemporaryCredentials)}.
+     */
+    public Builder initialStorageCredential(StorageCredential initialStorageCredential) {
+      Preconditions.checkState(
+          initialCredentials == null,
+          "initialCredentials is already set; cannot also set initialStorageCredential. The two"
+              + " select different credentials APIs (UC vs UC Delta).");
+      this.initialStorageCredential = initialStorageCredential;
       return this;
     }
 
@@ -132,7 +156,7 @@ public final class UCCredentialHadoopConfs {
       Preconditions.checkArgument(name != null && !name.isEmpty(), "engine version name required");
       Preconditions.checkArgument(
           version != null && !version.isEmpty(), "engine version value for '%s' required", name);
-      engineVersionProps.put(UCHadoopConf.UC_ENGINE_VERSION_PREFIX + name, version);
+      engineVersionProps.put(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + name, version);
     }
 
     /**
@@ -142,7 +166,7 @@ public final class UCCredentialHadoopConfs {
      * @throws IllegalStateException if a required field is missing
      */
     public Map<String, String> buildForTable(String tableId, TableOperation tableOperation) {
-      validate();
+      validateUcApi();
       return withEngineVersionProps(
           CredPropsUtil.createTableCredProps(
               credentialRenewalEnabled,
@@ -157,13 +181,59 @@ public final class UCCredentialHadoopConfs {
     }
 
     /**
+     * Builds Hadoop properties for a UC Delta table's storage location.
+     *
+     * @param tableId the UC table UUID, used to scope the credential cache and filesystem cache
+     * @param catalog the UC catalog name
+     * @param schema the UC schema name
+     * @param table the UC table name
+     * @param location the table storage location used to select a returned storage credential
+     * @return unmodifiable map; empty if the scheme is unrecognized
+     * @throws IllegalArgumentException if a table identity field is missing
+     * @throws IllegalStateException if a required builder field is missing
+     */
+    public Map<String, String> buildForTable(
+        String tableId, String catalog, String schema, String table, String location) {
+      Preconditions.checkArgument(tableId != null && !tableId.isEmpty(), "tableId is required");
+      Preconditions.checkArgument(catalog != null && !catalog.isEmpty(), "catalog is required");
+      Preconditions.checkArgument(schema != null && !schema.isEmpty(), "schema is required");
+      Preconditions.checkArgument(table != null && !table.isEmpty(), "table is required");
+      Preconditions.checkArgument(location != null && !location.isEmpty(), "location is required");
+      validateUcDeltaApi();
+      TemporaryCredentials tempCreds =
+          DeltaStorageCredentialUtil.toTemporaryCredentials(initialStorageCredential);
+      Map<String, String> props =
+          CredPropsUtil.createTableCredProps(
+              credentialRenewalEnabled,
+              credentialScopedFsEnabled,
+              hadoopConf,
+              scheme,
+              catalogUri,
+              tokenProvider,
+              tableId,
+              DeltaStorageCredentialUtil.toTableOperation(initialStorageCredential.getOperation()),
+              tempCreds);
+      if (props.isEmpty()) {
+        return props;
+      }
+      Map<String, String> deltaProps = new HashMap<>(props);
+      deltaProps.put(
+          UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, Boolean.TRUE.toString());
+      deltaProps.put(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY, catalog);
+      deltaProps.put(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY, schema);
+      deltaProps.put(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, table);
+      deltaProps.put(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
+      return withEngineVersionProps(Collections.unmodifiableMap(deltaProps));
+    }
+
+    /**
      * Builds Hadoop properties for an <em>external path</em>.
      *
      * @return unmodifiable map; empty if the scheme is unrecognized
      * @throws IllegalStateException if a required field is missing
      */
     public Map<String, String> buildForPath(String path, PathOperation pathOperation) {
-      validate();
+      validateUcApi();
       return withEngineVersionProps(
           CredPropsUtil.createPathCredProps(
               credentialRenewalEnabled,
@@ -186,11 +256,23 @@ public final class UCCredentialHadoopConfs {
       return Collections.unmodifiableMap(merged);
     }
 
-    private void validate() {
+    private void validateCommon() {
       Preconditions.checkState(
           !credentialRenewalEnabled || tokenProvider != null,
           "tokenProvider is required when credential renewal is enabled");
-      Preconditions.checkState(initialCredentials != null, "initialCredentials is required");
+    }
+
+    private void validateUcApi() {
+      validateCommon();
+      Preconditions.checkState(
+          initialCredentials != null, "initialCredentials is required for the UC credentials API");
+    }
+
+    private void validateUcDeltaApi() {
+      validateCommon();
+      Preconditions.checkState(
+          initialStorageCredential != null,
+          "initialStorageCredential is required for the UC Delta credentials API");
     }
   }
 }

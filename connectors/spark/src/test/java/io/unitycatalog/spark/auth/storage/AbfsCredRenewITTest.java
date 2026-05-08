@@ -2,7 +2,7 @@ package io.unitycatalog.spark.auth.storage;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AbfsVendedTokenProvider;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
@@ -57,7 +57,7 @@ public class AbfsCredRenewITTest extends BaseCredRenewITTest {
 
     @Override
     protected AbfsVendedTokenProvider createProvider() {
-      String clazz = getConf().get(UCHadoopConf.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE);
+      String clazz = getConf().get(UCHadoopConfConstants.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE);
       assertThat(clazz).isEqualTo(AbfsVendedTokenProvider.class.getName());
 
       AbfsVendedTokenProvider provider = new AbfsVendedTokenProvider();

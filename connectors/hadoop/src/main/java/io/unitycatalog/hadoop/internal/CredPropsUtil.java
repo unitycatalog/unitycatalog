@@ -1,9 +1,5 @@
 package io.unitycatalog.hadoop.internal;
 
-import static io.unitycatalog.hadoop.internal.UCHadoopConf.FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME;
-import static io.unitycatalog.hadoop.internal.UCHadoopConf.FS_AZURE_ACCOUNT_IS_HNS_ENABLED;
-import static io.unitycatalog.hadoop.internal.UCHadoopConf.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
-
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.model.AwsCredentials;
@@ -53,7 +49,7 @@ public class CredPropsUtil {
     }
 
     public T uri(String uri) {
-      builder.put(UCHadoopConf.UC_URI_KEY, uri);
+      builder.put(UCHadoopConfConstants.UC_URI_KEY, uri);
       return self();
     }
 
@@ -62,42 +58,42 @@ public class CredPropsUtil {
       // implementation. So let's add the prefix here.
       tokenProvider
           .configs()
-          .forEach((key, value) -> builder.put(UCHadoopConf.UC_AUTH_PREFIX + key, value));
+          .forEach((key, value) -> builder.put(UCHadoopConfConstants.UC_AUTH_PREFIX + key, value));
       return self();
     }
 
     public T uid(String uid) {
-      builder.put(UCHadoopConf.UC_CREDENTIALS_UID_KEY, uid);
+      builder.put(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, uid);
       return self();
     }
 
     public T credentialType(String credType) {
       Preconditions.checkArgument(
-          UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(credType)
-              || UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(credType),
+          UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(credType)
+              || UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(credType),
           "Invalid credential type '%s', must be either 'path' or 'table'.",
           credType);
-      builder.put(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, credType);
+      builder.put(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY, credType);
       return self();
     }
 
     public T tableId(String tableId) {
-      builder.put(UCHadoopConf.UC_TABLE_ID_KEY, tableId);
+      builder.put(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
       return self();
     }
 
     public T tableOperation(TableOperation tableOp) {
-      builder.put(UCHadoopConf.UC_TABLE_OPERATION_KEY, tableOp.getValue());
+      builder.put(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.getValue());
       return self();
     }
 
     public T path(String path) {
-      builder.put(UCHadoopConf.UC_PATH_KEY, path);
+      builder.put(UCHadoopConfConstants.UC_PATH_KEY, path);
       return self();
     }
 
     public T pathOperation(PathOperation pathOp) {
-      builder.put(UCHadoopConf.UC_PATH_OPERATION_KEY, pathOp.getValue());
+      builder.put(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, pathOp.getValue());
       return self();
     }
 
@@ -189,8 +185,8 @@ public class CredPropsUtil {
   private static class AbfsPropsBuilder extends PropsBuilder<AbfsPropsBuilder> {
 
     AbfsPropsBuilder(boolean credScopedFsEnabled, Configuration hadoopConf) {
-      set(FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, "SAS");
-      set(FS_AZURE_ACCOUNT_IS_HNS_ENABLED, "true");
+      set(UCHadoopConfConstants.FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, "SAS");
+      set(UCHadoopConfConstants.FS_AZURE_ACCOUNT_IS_HNS_ENABLED, "true");
       set("fs.abfs.impl.disable.cache", "true");
       set("fs.abfss.impl.disable.cache", "true");
 
@@ -243,18 +239,19 @@ public class CredPropsUtil {
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     S3PropsBuilder builder =
         new S3PropsBuilder(credScopedFsEnabled, hadoopConf)
-            .set(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AWS_VENDED_TOKEN_PROVIDER_CLASS)
+            .set(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER, AWS_VENDED_TOKEN_PROVIDER_CLASS)
             .uri(uri)
             .tokenProvider(tokenProvider)
             .uid(UUID.randomUUID().toString())
-            .set(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
-            .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
-            .set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
+            .set(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
+            .set(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
+            .set(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
 
     // For the static credential case, nullable expiration time is possible.
     if (tempCreds.getExpirationTime() != null) {
       builder.set(
-          UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, String.valueOf(tempCreds.getExpirationTime()));
+          UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME,
+          String.valueOf(tempCreds.getExpirationTime()));
     }
 
     return builder;
@@ -269,7 +266,7 @@ public class CredPropsUtil {
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
     return s3TempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
+        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
         .build();
@@ -284,7 +281,7 @@ public class CredPropsUtil {
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
     return s3TempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
+        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
         .build();
@@ -315,12 +312,12 @@ public class CredPropsUtil {
             .uri(uri)
             .tokenProvider(tokenProvider)
             .uid(UUID.randomUUID().toString())
-            .set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
+            .set(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
 
     // For the static credential case, nullable expiration time is possible.
     if (tempCreds.getExpirationTime() != null) {
       builder.set(
-          UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
+          UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
           String.valueOf(tempCreds.getExpirationTime()));
     }
 
@@ -336,7 +333,7 @@ public class CredPropsUtil {
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
     return gcsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
+        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
         .build();
@@ -351,7 +348,7 @@ public class CredPropsUtil {
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
     return gcsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
+        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
         .build();
@@ -374,16 +371,18 @@ public class CredPropsUtil {
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     AbfsPropsBuilder builder =
         new AbfsPropsBuilder(credScopedFsEnabled, hadoopConf)
-            .set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, ABFS_VENDED_TOKEN_PROVIDER_CLASS)
+            .set(
+                UCHadoopConfConstants.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE,
+                ABFS_VENDED_TOKEN_PROVIDER_CLASS)
             .uri(uri)
             .tokenProvider(tokenProvider)
             .uid(UUID.randomUUID().toString())
-            .set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
+            .set(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
 
     // For the static credential case, nullable expiration time is possible.
     if (tempCreds.getExpirationTime() != null) {
       builder.set(
-          UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
+          UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
           String.valueOf(tempCreds.getExpirationTime()));
     }
 
@@ -399,7 +398,7 @@ public class CredPropsUtil {
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
     return abfsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
+        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
         .build();
@@ -414,7 +413,7 @@ public class CredPropsUtil {
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
     return abfsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
+        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
         .build();

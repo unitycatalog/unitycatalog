@@ -2,7 +2,7 @@ package io.unitycatalog.hadoop.internal.fs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
@@ -62,9 +62,11 @@ class CredScopedKeyTest {
   @Test
   void createReturnsTableKey() {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "tid");
-    conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, "READ");
+    conf.set(
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid");
+    conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ");
 
     assertThat(CredScopedKey.create(URI.create("s3://b"), conf))
         .isInstanceOf(CredScopedKey.TableCredScopedKey.class)
@@ -74,9 +76,11 @@ class CredScopedKeyTest {
   @Test
   void createReturnsPathKey() {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    conf.set(UCHadoopConf.UC_PATH_KEY, "s3://b/p");
-    conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, "WRITE");
+    conf.set(
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    conf.set(UCHadoopConfConstants.UC_PATH_KEY, "s3://b/p");
+    conf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, "WRITE");
 
     assertThat(CredScopedKey.create(URI.create("s3://b"), conf))
         .isInstanceOf(CredScopedKey.PathCredScopedKey.class)
