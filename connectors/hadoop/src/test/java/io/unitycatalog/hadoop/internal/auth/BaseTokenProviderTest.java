@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.auth.storage;
+package io.unitycatalog.hadoop.internal.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,7 +38,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   public void before() {
     clockName = UUID.randomUUID().toString();
     clock = Clock.getManualClock(clockName);
-    GenericCredentialProvider.globalCache.invalidateAll();
+    GenericCredentialProvider.globalCache.clear();
   }
 
   @AfterEach
@@ -46,7 +46,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     Clock.removeManualClock(clockName);
     clock = null;
     clockName = null;
-    GenericCredentialProvider.globalCache.invalidateAll();
+    GenericCredentialProvider.globalCache.clear();
   }
 
   @Test
@@ -308,7 +308,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertThat(expectedSize).isEqualTo(creds.length);
     assertThat(GenericCredentialProvider.globalCache.size()).isEqualTo(expectedSize);
     for (TemporaryCredentials cred : creds) {
-      assertThat(GenericCredentialProvider.globalCache.asMap().values())
+      assertThat(GenericCredentialProvider.globalCache.values())
           .contains(new GenericCredential(cred));
     }
   }

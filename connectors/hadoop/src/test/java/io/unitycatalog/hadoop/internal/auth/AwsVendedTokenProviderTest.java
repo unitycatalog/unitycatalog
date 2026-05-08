@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.auth.storage;
+package io.unitycatalog.hadoop.internal.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;

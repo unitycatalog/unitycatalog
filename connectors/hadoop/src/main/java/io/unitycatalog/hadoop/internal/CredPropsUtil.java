@@ -30,14 +30,15 @@ public class CredPropsUtil {
   private CredPropsUtil() {}
 
   private static final String CRED_SCOPED_FS_CLASS =
-      "io.unitycatalog.spark.fs.CredScopedFileSystem";
-  private static final String CRED_SCOPED_AFS_CLASS = "io.unitycatalog.spark.fs.CredScopedFs";
+      "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem";
+  private static final String CRED_SCOPED_AFS_CLASS =
+      "io.unitycatalog.hadoop.internal.fs.CredScopedFs";
   private static final String AWS_VENDED_TOKEN_PROVIDER_CLASS =
-      "io.unitycatalog.spark.auth.storage.AwsVendedTokenProvider";
+      "io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider";
   private static final String GCS_VENDED_TOKEN_PROVIDER_CLASS =
-      "io.unitycatalog.spark.auth.storage.GcsVendedTokenProvider";
+      "io.unitycatalog.hadoop.internal.auth.GcsVendedTokenProvider";
   private static final String ABFS_VENDED_TOKEN_PROVIDER_CLASS =
-      "io.unitycatalog.spark.auth.storage.AbfsVendedTokenProvider";
+      "io.unitycatalog.hadoop.internal.auth.AbfsVendedTokenProvider";
   private static final String GCS_ACCESS_TOKEN_KEY = "fs.gs.auth.access.token.credential";
   private static final String GCS_ACCESS_TOKEN_EXPIRATION_KEY =
       "fs.gs.auth.access.token.expiration";

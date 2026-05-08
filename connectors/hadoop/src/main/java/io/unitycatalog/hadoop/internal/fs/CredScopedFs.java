@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.fs;
+package io.unitycatalog.hadoop.internal.fs;
 
 import java.io.IOException;
 import java.net.URI;
@@ -16,7 +16,7 @@ import org.apache.hadoop.fs.DelegateToFileSystem;
  * credential-scoped cache to find or create the real delegate.
  *
  * <p>Registered via {@code fs.AbstractFileSystem.<scheme>.impl} in {@link
- * io.unitycatalog.spark.auth.CredPropsUtil} when {@code credScopedFs.enabled} is {@code true}.
+ * io.unitycatalog.hadoop.internal.CredPropsUtil} when {@code credScopedFs.enabled} is {@code true}.
  */
 public class CredScopedFs extends DelegateToFileSystem {
   protected CredScopedFs(URI uri, Configuration conf) throws IOException, URISyntaxException {

@@ -1,33 +1,32 @@
-package io.unitycatalog.spark.auth.storage;
+package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.client.retry.RetryPolicy;
 import io.unitycatalog.hadoop.internal.UCHadoopConf;
-import io.unitycatalog.spark.ApiClientFactory;
+import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
-import org.sparkproject.guava.base.Preconditions;
-import org.sparkproject.guava.cache.Cache;
-import org.sparkproject.guava.cache.CacheBuilder;
+import org.apache.hadoop.util.Preconditions;
 
 public abstract class GenericCredentialProvider {
   // The credential cache, for saving QPS to unity catalog server.
-  static final Cache<String, GenericCredential> globalCache;
+  static final BoundedKeyedCache<String, GenericCredential> globalCache;
   private static final String UC_CREDENTIAL_CACHE_MAX_SIZE =
       "unitycatalog.credential.cache.maxSize";
-  private static final long UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
+  private static final int UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
 
   static {
-    long maxSize = Long.getLong(UC_CREDENTIAL_CACHE_MAX_SIZE, UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
-    globalCache = CacheBuilder.newBuilder().maximumSize(maxSize).build();
+    int maxSize =
+        Integer.getInteger(UC_CREDENTIAL_CACHE_MAX_SIZE, UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
+    globalCache = new BoundedKeyedCache<>(maxSize, ignored -> {});
   }
 
   private Configuration conf;
@@ -99,10 +98,17 @@ public abstract class GenericCredentialProvider {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
-          RetryPolicy retryPolicy = UCHadoopConf.createRequestRetryPolicy(conf);
+          // Propagate engine version metadata into the User-Agent header so the UC server can
+          // trace which engine versions are calling. Engines register these via
+          // UCCredentialHadoopConfs.Builder#addEngineVersions, which writes them into the Hadoop
+          // configuration under UC_ENGINE_VERSION_PREFIX.
           tempCredApi =
               new TemporaryCredentialsApi(
-                  ApiClientFactory.createApiClient(retryPolicy, ucUri, tokenProvider));
+                  ApiClientUtils.create(
+                      ucUri,
+                      tokenProvider,
+                      UCHadoopConf.createRequestRetryPolicy(conf),
+                      conf.getPropsWithPrefix(UCHadoopConf.UC_ENGINE_VERSION_PREFIX)));
         }
       }
     }

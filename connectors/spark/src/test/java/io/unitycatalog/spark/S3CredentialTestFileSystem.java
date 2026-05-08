@@ -3,7 +3,7 @@ package io.unitycatalog.spark;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.hadoop.internal.UCHadoopConf;
-import io.unitycatalog.spark.auth.storage.AwsVendedTokenProvider;
+import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Objects;

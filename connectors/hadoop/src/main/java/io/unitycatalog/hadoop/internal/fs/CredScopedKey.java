@@ -1,4 +1,4 @@
-package io.unitycatalog.spark.fs;
+package io.unitycatalog.hadoop.internal.fs;
 
 import io.unitycatalog.hadoop.internal.UCHadoopConf;
 import java.net.URI;

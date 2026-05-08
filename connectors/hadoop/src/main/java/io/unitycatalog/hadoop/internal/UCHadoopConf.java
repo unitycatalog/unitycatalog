@@ -47,6 +47,11 @@ public class UCHadoopConf {
   public static final String UC_AUTH_TYPE = "fs.unitycatalog.auth.type";
   public static final String UC_AUTH_TOKEN_KEY = "fs.unitycatalog.auth.token";
 
+  // Prefix for engine version metadata (e.g. fs.unitycatalog.engine.version.Spark=4.0.0). Values
+  // stored under this prefix are propagated to the User-Agent header on UC API calls so the
+  // server can trace which engine versions are calling.
+  public static final String UC_ENGINE_VERSION_PREFIX = "fs.unitycatalog.engine.version.";
+
   // Key representing the remaining time before expiration, used to trigger credentials renewal in
   // advance.
   public static final String UC_RENEWAL_LEAD_TIME_KEY = "fs.unitycatalog.renewal.leadTimeMillis";

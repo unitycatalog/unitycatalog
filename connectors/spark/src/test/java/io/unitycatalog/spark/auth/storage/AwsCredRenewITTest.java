@@ -3,6 +3,7 @@ package io.unitycatalog.spark.auth.storage;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
 import java.time.Instant;
 import java.util.Map;

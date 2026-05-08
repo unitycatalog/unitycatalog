@@ -6,6 +6,10 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
+import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 
@@ -54,6 +58,7 @@ public final class UCCredentialHadoopConfs {
     private boolean credentialRenewalEnabled = true;
     private boolean credentialScopedFsEnabled = true;
     private Configuration hadoopConf = new Configuration(false);
+    private final Map<String, String> engineVersionProps = new LinkedHashMap<>();
 
     private Builder(String uri, String scheme) {
       Preconditions.checkArgument(uri != null, "catalogUri is required");
@@ -112,6 +117,25 @@ public final class UCCredentialHadoopConfs {
     }
 
     /**
+     * Records engine versions (e.g. {@code Map.of("Spark", "4.0.0")}) to be propagated to the
+     * User-Agent header on UC API calls so the server can trace which engine versions are calling.
+     * Engines should typically register their own version plus any relevant runtime versions
+     * (Delta, Java, Scala, etc.).
+     */
+    public Builder addEngineVersions(Map<String, String> versions) {
+      Preconditions.checkNotNull(versions, "engine versions required");
+      versions.forEach(this::addEngineVersion);
+      return this;
+    }
+
+    private void addEngineVersion(String name, String version) {
+      Preconditions.checkArgument(name != null && !name.isEmpty(), "engine version name required");
+      Preconditions.checkArgument(
+          version != null && !version.isEmpty(), "engine version value for '%s' required", name);
+      engineVersionProps.put(UCHadoopConf.UC_ENGINE_VERSION_PREFIX + name, version);
+    }
+
+    /**
      * Builds Hadoop properties for a <em>table's</em> storage location.
      *
      * @return unmodifiable map; empty if the scheme is unrecognized
@@ -119,16 +143,17 @@ public final class UCCredentialHadoopConfs {
      */
     public Map<String, String> buildForTable(String tableId, TableOperation tableOperation) {
       validate();
-      return CredPropsUtil.createTableCredProps(
-          credentialRenewalEnabled,
-          credentialScopedFsEnabled,
-          hadoopConf,
-          scheme,
-          catalogUri,
-          tokenProvider,
-          tableId,
-          tableOperation,
-          initialCredentials);
+      return withEngineVersionProps(
+          CredPropsUtil.createTableCredProps(
+              credentialRenewalEnabled,
+              credentialScopedFsEnabled,
+              hadoopConf,
+              scheme,
+              catalogUri,
+              tokenProvider,
+              tableId,
+              tableOperation,
+              initialCredentials));
     }
 
     /**
@@ -139,16 +164,26 @@ public final class UCCredentialHadoopConfs {
      */
     public Map<String, String> buildForPath(String path, PathOperation pathOperation) {
       validate();
-      return CredPropsUtil.createPathCredProps(
-          credentialRenewalEnabled,
-          credentialScopedFsEnabled,
-          hadoopConf,
-          scheme,
-          catalogUri,
-          tokenProvider,
-          path,
-          pathOperation,
-          initialCredentials);
+      return withEngineVersionProps(
+          CredPropsUtil.createPathCredProps(
+              credentialRenewalEnabled,
+              credentialScopedFsEnabled,
+              hadoopConf,
+              scheme,
+              catalogUri,
+              tokenProvider,
+              path,
+              pathOperation,
+              initialCredentials));
+    }
+
+    private Map<String, String> withEngineVersionProps(Map<String, String> props) {
+      if (props.isEmpty() || engineVersionProps.isEmpty()) {
+        return props;
+      }
+      Map<String, String> merged = new HashMap<>(props);
+      merged.putAll(engineVersionProps);
+      return Collections.unmodifiableMap(merged);
     }
 
     private void validate() {

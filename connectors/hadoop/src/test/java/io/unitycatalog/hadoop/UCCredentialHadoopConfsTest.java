@@ -10,6 +10,7 @@ import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.hadoop.internal.UCHadoopConf;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
@@ -140,7 +141,7 @@ class UCCredentialHadoopConfsTest {
         .containsEntry("fs.unitycatalog.table.operation", TableOperation.READ_WRITE.getValue())
         .containsEntry(
             "fs.s3a.aws.credentials.provider",
-            "io.unitycatalog.spark.auth.storage.AwsVendedTokenProvider")
+            "io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider")
         .containsEntry("fs.s3a.init.access.key", "ak")
         .containsEntry("fs.s3a.init.secret.key", "sk")
         .containsEntry("fs.s3a.init.session.token", "st")
@@ -175,7 +176,7 @@ class UCCredentialHadoopConfsTest {
         .containsEntry("fs.unitycatalog.table.operation", TableOperation.READ.getValue())
         .containsEntry(
             "fs.gs.auth.access.token.provider",
-            "io.unitycatalog.spark.auth.storage.GcsVendedTokenProvider")
+            "io.unitycatalog.hadoop.internal.auth.GcsVendedTokenProvider")
         .containsEntry("fs.gs.init.oauth.token", "gcs-token")
         .containsEntry("fs.gs.init.oauth.token.expiration.time", String.valueOf(Long.MAX_VALUE))
         .doesNotContainKey("fs.gs.auth.access.token.credential");
@@ -198,7 +199,7 @@ class UCCredentialHadoopConfsTest {
         .containsEntry("fs.unitycatalog.table.operation", TableOperation.READ_WRITE.getValue())
         .containsEntry(
             "fs.azure.sas.token.provider.type",
-            "io.unitycatalog.spark.auth.storage.AbfsVendedTokenProvider")
+            "io.unitycatalog.hadoop.internal.auth.AbfsVendedTokenProvider")
         .containsEntry("fs.azure.init.sas.token", "sas-token")
         .doesNotContainKey("fs.azure.init.sas.token.expired.time")
         .doesNotContainKey("fs.azure.sas.fixed.token");
@@ -217,6 +218,42 @@ class UCCredentialHadoopConfsTest {
         .containsEntry("fs.unitycatalog.path", "s3://bucket/key")
         .containsEntry("fs.unitycatalog.path.operation", PathOperation.PATH_READ.getValue())
         .doesNotContainKey("fs.unitycatalog.table.id");
+  }
+
+  @Test
+  void engineVersionsAreIncludedInTableCredentialProps() {
+    Map<String, String> props =
+        renewalBuilder("s3")
+            .initialCredentials(s3Creds())
+            .addEngineVersions(Map.of("Spark", "4.0.0", "Delta", "3.3.0"))
+            .buildForTable("tid", TableOperation.READ);
+
+    assertThat(props)
+        .containsEntry(UCHadoopConf.UC_ENGINE_VERSION_PREFIX + "Spark", "4.0.0")
+        .containsEntry(UCHadoopConf.UC_ENGINE_VERSION_PREFIX + "Delta", "3.3.0");
+  }
+
+  @Test
+  void engineVersionsAreIncludedInPathCredentialProps() {
+    Map<String, String> props =
+        renewalBuilder("s3")
+            .initialCredentials(s3Creds())
+            .addEngineVersions(Map.of("Spark", "4.0.0"))
+            .buildForPath("s3://bucket/key", PathOperation.PATH_READ);
+
+    assertThat(props)
+        .containsEntry(UCHadoopConf.UC_ENGINE_VERSION_PREFIX + "Spark", "4.0.0")
+        .containsEntry("fs.unitycatalog.path", "s3://bucket/key");
+  }
+
+  @Test
+  void emptyEngineVersionThrows() {
+    assertThatThrownBy(
+            () ->
+                UCCredentialHadoopConfs.builder("http://uc", "s3")
+                    .addEngineVersions(Map.of("Spark", "")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Spark");
   }
 
   @Test
@@ -242,6 +279,28 @@ class UCCredentialHadoopConfsTest {
         staticBuilder("hdfs")
             .initialCredentials(s3Creds())
             .buildForTable("tid", TableOperation.READ);
+
+    assertThat(props).isEmpty();
+  }
+
+  @Test
+  void unknownTableSchemeWithEngineVersionsReturnsEmptyMap() {
+    Map<String, String> props =
+        staticBuilder("hdfs")
+            .initialCredentials(s3Creds())
+            .addEngineVersions(Map.of("Spark", "4.0.0"))
+            .buildForTable("tid", TableOperation.READ);
+
+    assertThat(props).isEmpty();
+  }
+
+  @Test
+  void unknownPathSchemeWithEngineVersionsReturnsEmptyMap() {
+    Map<String, String> props =
+        staticBuilder("hdfs")
+            .initialCredentials(s3Creds())
+            .addEngineVersions(Map.of("Spark", "4.0.0"))
+            .buildForPath("hdfs://bucket/key", PathOperation.PATH_READ);
 
     assertThat(props).isEmpty();
   }
