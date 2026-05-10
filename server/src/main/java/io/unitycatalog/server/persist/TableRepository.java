@@ -118,12 +118,7 @@ public class TableRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          TableInfoDAO dao = findTable(session, catalog, schema, table);
-          if (dao == null) {
-            throw new BaseException(
-                ErrorCode.TABLE_NOT_FOUND,
-                "Table not found: " + catalog + "." + schema + "." + table);
-          }
+          TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
           return NormalizedURL.from(dao.getUrl());
         },
         "Failed to get storage location of table " + catalog + "." + schema + "." + table,
@@ -212,10 +207,7 @@ public class TableRepository {
           String catalogName = parts[0];
           String schemaName = parts[1];
           String tableName = parts[2];
-          TableInfoDAO tableInfoDAO = findTable(session, catalogName, schemaName, tableName);
-          if (tableInfoDAO == null) {
-            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + fullName);
-          }
+          TableInfoDAO tableInfoDAO = findTableOrThrow(session, catalogName, schemaName, tableName);
           TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
               tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
@@ -245,12 +237,7 @@ public class TableRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          TableInfoDAO dao = findTable(session, catalog, schema, table);
-          if (dao == null) {
-            throw new BaseException(
-                ErrorCode.TABLE_NOT_FOUND,
-                "Table not found: " + catalog + "." + schema + "." + table);
-          }
+          TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
           // Guard non-Delta entries (metric views, parquet/csv/etc. tables) before they reach
           // `buildTableMetadata`. The downstream code calls `NormalizedURL.normalize(dao.getUrl())`
           // (throws "Path cannot be null or empty" when the row has no storage location, e.g.
@@ -440,15 +427,21 @@ public class TableRepository {
 
   public String getTableUniformMetadataLocation(
       Session session, String catalogName, String schemaName, String tableName) {
-    TableInfoDAO dao = findTable(session, catalogName, schemaName, tableName);
+    TableInfoDAO dao = findTableOrThrow(session, catalogName, schemaName, tableName);
     return dao.getUniformIcebergMetadataLocation();
   }
 
-  private TableInfoDAO findTable(
+  private TableInfoDAO findTableOrThrow(
       Session session, String catalogName, String schemaName, String tableName) {
     UUID schemaId =
         repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
-    return findBySchemaIdAndName(session, schemaId, tableName);
+    TableInfoDAO dao = findBySchemaIdAndName(session, schemaId, tableName);
+    if (dao == null) {
+      throw new BaseException(
+          ErrorCode.TABLE_NOT_FOUND,
+          "Table not found: " + catalogName + "." + schemaName + "." + tableName);
+    }
+    return dao;
   }
 
   public TableInfo createTable(CreateTable createTable) {
