@@ -74,6 +74,19 @@ public final class AuthorizeExpressions {
       """;
 
   /**
+   * Authorization policy for updating / committing to a table (UC REST {@code
+   * DeltaCommitsService.postCommit} and the Delta {@code updateTable}). The privilege bundle is the
+   * same as the UC REST commit path: USE_CATALOG on catalog, USE_SCHEMA on schema, and MODIFY on
+   * the table (OWNER satisfies each tier).
+   */
+  public static final String UPDATE_TABLE =
+      """
+      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+      #authorizeAny(#principal, #table, OWNER, MODIFY)
+      """;
+
+  /**
    * Authorization policy for vending table credentials. Admin-above-the-table privileges on
    * their own are not sufficient; the caller must have an explicit table-level privilege
    * matching the requested operation. {@code READ} needs OWNER or SELECT; {@code READ_WRITE}

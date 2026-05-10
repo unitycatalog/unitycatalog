@@ -130,4 +130,22 @@ public final class DeltaConsts {
    * now {@code "iceberg"} is the only supported value.
    */
   public static final String UNIVERSAL_FORMAT_ICEBERG = "iceberg";
+
+  /**
+   * Domain-metadata names as they appear in the Delta log and in {@code DomainMetadataUpdates} /
+   * {@code RemoveDomainMetadataUpdate.domains}. Each domain is projected onto a derived {@link
+   * TableProperties} key by the property mapper.
+   */
+  public static final class DomainMetadataNames {
+    private DomainMetadataNames() {}
+
+    /** Carries clustering-column paths; projects to {@link TableProperties#CLUSTERING_COLUMNS}. */
+    public static final String CLUSTERING = "delta.clustering";
+
+    /**
+     * Carries the row-tracking high water mark; projects to {@link
+     * TableProperties#ROW_TRACKING_ROW_ID_HIGH_WATER_MARK}.
+     */
+    public static final String ROW_TRACKING = "delta.rowTracking";
+  }
 }

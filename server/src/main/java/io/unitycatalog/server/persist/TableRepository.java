@@ -8,6 +8,7 @@ import io.unitycatalog.server.delta.model.StructType;
 import io.unitycatalog.server.delta.model.TableMetadata;
 import io.unitycatalog.server.delta.model.UniformMetadata;
 import io.unitycatalog.server.delta.model.UniformMetadataIceberg;
+import io.unitycatalog.server.delta.model.UpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -30,6 +31,7 @@ import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
+import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.Constants;
@@ -39,6 +41,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -251,7 +254,7 @@ public class TableRepository {
                 ErrorCode.UNSUPPORTED_TABLE_FORMAT,
                 "Table is not a Delta table: " + catalog + "." + schema + "." + table);
           }
-          return buildLoadTableResponse(session, dao, catalog, schema, table);
+          return buildLoadTableResponse(session, dao, Optional.empty(), catalog, schema, table);
         },
         "Failed to load table",
         /* readOnly = */ true,
@@ -259,13 +262,64 @@ public class TableRepository {
   }
 
   /**
-   * Build a {@link LoadTableResponse} from an already-loaded {@link TableInfoDAO}. Used by both
-   * {@link #loadTableForDelta} and {@link #createTableForDelta} so the post-load DAO → response
-   * assembly stays in one place.
+   * Apply a Delta {@link UpdateTableRequest} in a single write transaction and return the refreshed
+   * {@link LoadTableResponse}.
+   *
+   * <p>The transaction makes exactly one {@code uc_properties} read (via {@link
+   * MutablePropertyMap#load}): all property-touching actions -- set/remove-properties,
+   * set-protocol, set/remove-domain-metadata, update-metadata-snapshot-version -- mutate the
+   * in-memory map, and a single diff-flush at the end applies only the keys that actually changed.
+   * Request classification runs before opening the transaction (see {@link
+   * DeltaUpdateTableMapper#collectRequest}); inside, requirement checks run first so a
+   * stale-snapshot conflict short-circuits before any write is persisted. The DAO's {@code
+   * updatedAt}/{@code updatedBy} advance once at the end; the resulting etag naturally rolls.
+   */
+  public LoadTableResponse updateTableForDelta(
+      String catalog, String schema, String table, UpdateTableRequest request) {
+    DeltaUpdateTableMapper.CollectedRequest collected =
+        DeltaUpdateTableMapper.collectRequest(request);
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
+          DeltaUpdateTableMapper.checkRequirements(dao, collected);
+          MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          DeltaUpdateTableMapper.applyUpdates(dao, properties, collected);
+          properties.flush(session, dao.getId());
+          dao.setUpdatedAt(new Date());
+          dao.setUpdatedBy(callerId);
+          session.merge(dao);
+          session.flush();
+          return buildLoadTableResponse(
+              session, dao, Optional.of(properties.asMap()), catalog, schema, table);
+        },
+        "Failed to update table " + catalog + "." + schema + "." + table,
+        /* readOnly = */ false);
+  }
+
+  /**
+   * Build a {@link LoadTableResponse} from an already-loaded {@link TableInfoDAO}. Shared by {@link
+   * #loadTableForDelta}, {@link #createTableForDelta}, and {@link #updateTableForDelta} so the
+   * post-mutation DAO → response assembly stays in one place.
+   *
+   * @param properties when present, the caller-provided property map is reused for the response;
+   *     when empty, we re-read from the DB. The update path already loaded and mutated properties
+   *     via {@link MutablePropertyMap} and passes the post-flush view in, saving a query.
    */
   private LoadTableResponse buildLoadTableResponse(
-      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
-    TableMetadata metadata = buildTableMetadata(session, dao, catalog, schema, table);
+      Session session,
+      TableInfoDAO dao,
+      Optional<Map<String, String>> properties,
+      String catalog,
+      String schema,
+      String table) {
+    Map<String, String> props =
+        properties.orElseGet(
+            () ->
+                PropertyDAO.toMap(
+                    PropertyRepository.findProperties(session, dao.getId(), Constants.TABLE)));
+    TableMetadata metadata = buildTableMetadata(dao, props, catalog, schema, table);
 
     LoadTableResponse response = new LoadTableResponse();
     response.setMetadata(metadata);
@@ -283,20 +337,19 @@ public class TableRepository {
   }
 
   private TableMetadata buildTableMetadata(
-      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
+      TableInfoDAO dao,
+      Map<String, String> properties,
+      String catalog,
+      String schema,
+      String table) {
     TableMetadata metadata = new TableMetadata();
-    Long updatedAt = dao.getUpdatedAt() != null ? dao.getUpdatedAt().getTime() : null;
-    // Normal case: etag keyed on the table's last update time. If updatedAt is missing
-    // (shouldn't happen for a persisted table, but defensively handled), fall back to the
-    // table UUID so the etag stays unique per table rather than collapsing to "etag-null"
-    // across rows.
-    metadata.setEtag(updatedAt != null ? "etag-" + updatedAt : "etag-" + dao.getId());
+    metadata.setEtag(DeltaUpdateTableMapper.computeEtag(dao));
     metadata.setDataSourceFormat(toDeltaFormat(dao.getDataSourceFormat()));
     metadata.setTableType(toDeltaTableType(dao.getType()));
     metadata.setTableUuid(dao.getId());
     metadata.setLocation(NormalizedURL.normalize(dao.getUrl()));
     metadata.setCreatedTime(dao.getCreatedAt() != null ? dao.getCreatedAt().getTime() : null);
-    metadata.setUpdatedTime(updatedAt);
+    metadata.setUpdatedTime(dao.getUpdatedAt() != null ? dao.getUpdatedAt().getTime() : null);
     metadata.setSecurableType(io.unitycatalog.server.delta.model.SecurableType.TABLE);
 
     // Columns -- best-effort; corrupt data should not fail the entire response
@@ -322,18 +375,15 @@ public class TableRepository {
 
     populatePartitionColumns(metadata, cols, catalog, schema, table);
 
-    List<PropertyDAO> propDAOs =
-        PropertyRepository.findProperties(session, dao.getId(), Constants.TABLE);
-    Map<String, String> props = PropertyDAO.toMap(propDAOs);
-    metadata.setProperties(props);
+    metadata.setProperties(properties);
 
     // last-commit-version and last-commit-timestamp track only metadata-changing commits
     // (delta.lastUpdateVersion / delta.lastCommitTimestamp) and are written by the commit path.
     // They are distinct from CommitQueryResult.latestTableVersion, which advances on every
     // commit including data-only ones. Reading from table properties preserves that distinction.
-    parseLongProperty(props, TableProperties.LAST_UPDATE_VERSION)
+    parseLongProperty(properties, TableProperties.LAST_UPDATE_VERSION)
         .ifPresent(metadata::setLastCommitVersion);
-    parseLongProperty(props, TableProperties.LAST_COMMIT_TIMESTAMP)
+    parseLongProperty(properties, TableProperties.LAST_COMMIT_TIMESTAMP)
         .ifPresent(metadata::setLastCommitTimestampMs);
 
     return metadata;
@@ -468,6 +518,7 @@ public class TableRepository {
             buildLoadTableResponse(
                 session,
                 dao,
+                Optional.empty(),
                 createTable.getCatalogName(),
                 createTable.getSchemaName(),
                 createTable.getName()));
