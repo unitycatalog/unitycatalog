@@ -3,12 +3,11 @@ package io.unitycatalog.server.utils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.delta.model.ErrorResponse;
+import io.unitycatalog.client.delta.DeltaApiException;
 import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.ServerConfig;
@@ -16,6 +15,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
@@ -84,8 +84,6 @@ public class TestUtils {
     assertThat(ex.getCode()).isEqualTo(errorCode.getHttpStatus().code());
   }
 
-  private static final ObjectMapper DELTA_ERROR_MAPPER = new ObjectMapper();
-
   public static void assertDeltaApiException(
       Executable executable, ErrorType expectedType, String expectedMessageSubstring) {
     int expectedCode = ErrorCode.getDeltaHttpStatus(expectedType.getValue()).code();
@@ -93,17 +91,14 @@ public class TestUtils {
     // Check message first for better diagnostics on failure (includes the full response body)
     assertThat(ex.getMessage()).contains(expectedMessageSubstring);
     assertThat(ex.getCode()).isEqualTo(expectedCode);
-    try {
-      ErrorResponse errorResponse =
-          DELTA_ERROR_MAPPER.readValue(ex.getResponseBody(), ErrorResponse.class);
-      assertThat(errorResponse.getError().getCode()).isEqualTo(expectedCode);
-      assertThat(errorResponse.getError().getType()).isEqualTo(expectedType);
-      assertThat(errorResponse.getError().getMessage()).contains(expectedMessageSubstring);
-    } catch (Exception e) {
-      assertThat(false)
-          .as("Failed to parse Delta error response: " + ex.getResponseBody())
-          .isTrue();
-    }
+    Optional<DeltaApiException> deltaExOpt = DeltaApiException.from(ex);
+    assertThat(deltaExOpt)
+        .as("Failed to parse Delta error response: " + ex.getResponseBody())
+        .isPresent();
+    DeltaApiException delta = deltaExOpt.get();
+    assertThat(delta.getErrorCode()).isEqualTo(expectedCode);
+    assertThat(delta.getErrorType()).isEqualTo(expectedType);
+    assertThat(delta.getErrorMessage()).contains(expectedMessageSubstring);
   }
 
   /**
