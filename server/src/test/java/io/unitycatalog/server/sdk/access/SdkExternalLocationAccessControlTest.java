@@ -35,7 +35,6 @@ import lombok.Singular;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.function.Executable;
 
 public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
@@ -218,7 +217,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertCreateFailure(ExternalLocationsApi api, String name) {
-    assertPermissionDenied(() -> api.createExternalLocation(createRequest(name)));
+    TestUtils.assertPermissionDenied(() -> api.createExternalLocation(createRequest(name)));
   }
 
   @SneakyThrows
@@ -234,7 +233,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
       assertThat(retrieved.getUrl()).isNotNull().isNotEmpty();
     }
     for (String name : deniedExternalLocationNames) {
-      assertPermissionDenied(() -> api.getExternalLocation(name));
+      TestUtils.assertPermissionDenied(() -> api.getExternalLocation(name));
     }
     // Test list operation
     ListExternalLocationsResponse response = api.listExternalLocations(100, null);
@@ -261,7 +260,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertUpdateUrlFailure(ExternalLocationsApi api, String name) {
-    assertPermissionDenied(
+    TestUtils.assertPermissionDenied(
         () ->
             api.updateExternalLocation(
                 name, new UpdateExternalLocation().url("s3://test-bucket/fail-path-" + name)));
@@ -269,7 +268,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
   private void assertUpdateCredentialFailure(
       ExternalLocationsApi api, String name, String newCredentialName) {
-    assertPermissionDenied(
+    TestUtils.assertPermissionDenied(
         () ->
             api.updateExternalLocation(
                 name, new UpdateExternalLocation().credentialName(newCredentialName)));
@@ -282,7 +281,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertDeleteFailure(ExternalLocationsApi api, String name) {
-    assertPermissionDenied(() -> api.deleteExternalLocation(name, false));
+    TestUtils.assertPermissionDenied(() -> api.deleteExternalLocation(name, false));
   }
 
   /**
@@ -323,7 +322,8 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
         (apiClient, name, location) ->
             new TablesApi(apiClient)
                 .createTable(createExternalTableRequest(name, location))
-                .getStorageLocation());
+                .getStorageLocation(),
+      "PERMISSION_DENIED");
   }
 
   /**
@@ -340,7 +340,8 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
                     TestUtils.SCHEMA_NAME,
                     deltaExternalTableRequest(name, location))
                 .getMetadata()
-                .getLocation());
+                .getLocation(),
+      "PermissionDeniedException");
   }
 
   @FunctionalInterface
@@ -349,7 +350,8 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
     String create(ApiClient apiClient, String name, String location) throws Exception;
   }
 
-  private void runExternalTableVolumePermissionsTest(ExternalTableCreator tableCreator)
+  private void runExternalTableVolumePermissionsTest(
+      ExternalTableCreator tableCreator, String createTablePermissionDeniedMessage)
       throws Exception {
     // Create external location as userC
     String externalLocationName = "test_external_loc";
@@ -457,10 +459,14 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
         // Verify that we can not create another under the same path, or subdir, or parent
         for (String url : List.of(tableLocation, tableLocation + "/subdir", storageRoot)) {
-          assertPermissionDenied(() -> tableCreator.create(apiClient, tableName + "_another", url));
+          TestUtils.assertPermissionDenied(
+              () -> tableCreator.create(apiClient, tableName + "_another", url),
+              createTablePermissionDeniedMessage);
         }
       } else {
-        assertPermissionDenied(() -> tableCreator.create(apiClient, tableName, tableLocation));
+        TestUtils.assertPermissionDenied(
+            () -> tableCreator.create(apiClient, tableName, tableLocation),
+            createTablePermissionDeniedMessage);
       }
 
       // Verify that the Volume creation is as expected
@@ -475,35 +481,28 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
         // Verify that we can not create another under the same path, or subdir, or parent
         for (String url : List.of(volumeLocation, volumeLocation + "/subdir", storageRoot)) {
-          assertPermissionDenied(
+          TestUtils.assertPermissionDenied(
               () ->
                   volumesApi.createVolume(
                       createExternalVolumeRequest(volumeName + "_another", url)));
         }
       } else {
-        assertPermissionDenied(
+        TestUtils.assertPermissionDenied(
             () -> volumesApi.createVolume(createExternalVolumeRequest(volumeName, volumeLocation)));
       }
 
       // Verify that creation of a table at storage location of an existing volume should fail,
       // vice versa.
       if (testCase.expectCanCreateExternalTable && testCase.expectCanCreateExternalVolume) {
-        assertPermissionDenied(
+        TestUtils.assertPermissionDenied(
             () ->
                 volumesApi.createVolume(
                     createExternalVolumeRequest(volumeName + "_another", tableLocation)));
-        assertPermissionDenied(
-            () -> tableCreator.create(apiClient, tableName + "_another", volumeLocation));
+        TestUtils.assertPermissionDenied(
+            () -> tableCreator.create(apiClient, tableName + "_another", volumeLocation),
+            createTablePermissionDeniedMessage);
       }
     }
-  }
-
-  /**
-   * 403-only check that works for both UC REST and Delta error responses (their JSON bodies use
-   * different message conventions: {@code PERMISSION_DENIED} vs {@code PermissionDeniedException}).
-   */
-  private static void assertPermissionDenied(Executable executable) {
-    TestUtils.assertPermissionDenied(executable, "");
   }
 
   /** Minimum valid Delta CreateTableRequest for an EXTERNAL Delta table. */
