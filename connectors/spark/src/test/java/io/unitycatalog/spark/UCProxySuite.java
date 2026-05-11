@@ -34,7 +34,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.catalyst.analysis.ViewAlreadyExistsException;
@@ -256,8 +255,9 @@ public class UCProxySuite {
             .withViewDependencies(
                 org.apache.spark.sql.connector.catalog.DependencyList.of(
                     new org.apache.spark.sql.connector.catalog.Dependency[] {
-                        org.apache.spark.sql.connector.catalog.Dependency.table(
-                            new String[] {"test_catalog", "test_schema", "events"})}))
+                      org.apache.spark.sql.connector.catalog.Dependency.table(
+                          new String[] {"test_catalog", "test_schema", "events"})
+                    }))
             .build();
 
     ColumnInfo ucColumn =
@@ -361,18 +361,84 @@ public class UCProxySuite {
   // -- TableViewCatalog cross-type filtering --
 
   @Test
-  public void testLoadTableThrowsNoSuchTableForMetricView() throws Exception {
+  public void testLoadTableReturnsMetadataTableForMetricView() throws Exception {
+    // UCProxy.loadTable is intentionally permissive (returns MetadataTable+ViewInfo for
+    // view-like rows) so that when Delta's `super.loadTable` lands here through
+    // `DelegatingCatalogExtension`, the view shape can flow back unchanged via Delta's
+    // `case o => o` fallthrough. The contract that "loadTable rejects views" is enforced
+    // one layer up at `UCSingleCatalog.loadTable`, NOT here -- see the comment block on
+    // `UCSingleCatalog.loadTable` for why.
     TableInfo ucMetricView =
         new TableInfo()
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .name("mv1")
-            .tableType(TableType.METRIC_VIEW);
+            .tableType(TableType.METRIC_VIEW)
+            .viewDefinition("version: \"0.1\"");
     when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
         .thenReturn(ucMetricView);
 
-    assertThatThrownBy(() -> proxy.loadTable(Identifier.of(NAMESPACE, "mv1")))
-        .isInstanceOf(NoSuchTableException.class);
+    org.apache.spark.sql.connector.catalog.Table table =
+        proxy.loadTable(Identifier.of(NAMESPACE, "mv1"));
+
+    assertThat(table).isInstanceOf(MetadataTable.class);
+    assertThat(((MetadataTable) table).getTableInfo()).isInstanceOf(ViewInfo.class);
+  }
+
+  @Test
+  public void testLoadTableTriggersExactlyOneGetTableRpc() throws Exception {
+    // Regression guard for the double-RPC bug fixed in
+    // https://github.com/unitycatalog/unitycatalog/pull/1513 review feedback. Before the
+    // flip, `UCSingleCatalog.loadTableOrView` would call `getUcTable` for view
+    // classification, then re-fetch via `delegate.loadTable -> UCProxy.loadTableOrView ->
+    // getUcTable`, producing two `tablesApi.getTable` RPCs per identifier resolution. After
+    // the flip, `UCProxy.loadTable` is the single primitive and is called exactly once per
+    // resolution.
+    TableInfo ucTable =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("t1")
+            .tableType(TableType.EXTERNAL)
+            .storageLocation("file:///tmp/t1")
+            .dataSourceFormat(io.unitycatalog.client.model.DataSourceFormat.PARQUET)
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("id")
+                        .typeName(ColumnTypeName.INT)
+                        .typeText("int")
+                        .typeJson(
+                            "{\"name\":\"id\",\"type\":\"integer\","
+                                + "\"nullable\":true,\"metadata\":{}}")
+                        .nullable(true)
+                        .position(0)));
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+        .thenReturn(ucTable);
+
+    proxy.loadTable(Identifier.of(NAMESPACE, "t1"));
+    verify(mockTablesApi, org.mockito.Mockito.times(1))
+        .getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true));
+  }
+
+  @Test
+  public void testLoadTableOrViewTriggersExactlyOneGetTableRpc() throws Exception {
+    // Same regression guard but exercised through the `loadTableOrView` API surface.
+    // After the flip `loadTableOrView` is a thin passthrough to `loadTable`, so it must
+    // also stay at one RPC per call.
+    TableInfo ucMetricView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW)
+            .viewDefinition("version: \"0.1\"");
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+        .thenReturn(ucMetricView);
+
+    proxyRelations.loadTableOrView(Identifier.of(NAMESPACE, "mv1"));
+    verify(mockTablesApi, org.mockito.Mockito.times(1))
+        .getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true));
   }
 
   @Test

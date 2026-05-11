@@ -117,7 +117,20 @@ class UCSingleCatalog
 
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
-  override def loadTable(ident: Identifier): Table = delegate.loadTable(ident)
+  // `loadTable` must reject view-like rows per `TableViewCatalog`'s contract -- callers that
+  // explicitly want only tables (e.g. write paths) shouldn't accidentally get a view back.
+  // `delegate.loadTable` may return `MetadataTable + ViewInfo` for views (because
+  // `UCProxy.loadTable` is permissive to support the shared `loadTableOrView` chain), so we
+  // re-check the result here. Mirrors `TableViewCatalog.loadTable`'s default at
+  // [TableViewCatalog.java:174-181].
+  override def loadTable(ident: Identifier): Table = {
+    val t = delegate.loadTable(ident)
+    t match {
+      case mot: MetadataTable if mot.getTableInfo.isInstanceOf[ViewInfo] =>
+        throw new NoSuchTableException(ident)
+      case _ => t
+    }
+  }
 
   override def loadTable(ident: Identifier, version:  String): Table = delegate.loadTable(ident, version)
 
@@ -146,38 +159,18 @@ class UCSingleCatalog
     ucProxy.renameView(oldIdent, newIdent)
 
   /**
-   * `TableViewCatalog.loadTableOrView` is Spark's single-RPC perf entry point: the resolver
-   * calls it once per identifier and uses its return type to discriminate tables from views,
-   * instead of falling back from `loadTable` to `loadView`. We honor that contract by
-   * performing one UC `getTable` and dispatching on the UC `TableType`:
-   *
-   *   - If `UCSingleCatalog.isViewLikeTableType` accepts the row, we build a `ViewInfo` and
-   *     return it wrapped in a `MetadataTable`. Spark recognizes this shape and routes
-   *     resolution through the view path.
-   *   - Otherwise we forward to `delegate.loadTable`. That re-fetches via `UCProxy` so
-   *     DeltaCatalog (when present) can wrap the result and provide its Delta-specific
-   *     reader; views never need that wrapping, so we skip Delta entirely for them. The
-   *     extra `getTable` is intentional and avoids leaking Delta-specific behavior into the
-   *     view path.
+   * Single-RPC entry for `TableViewCatalog`. Forwards to `delegate.loadTable(ident)`, which
+   * (when `delegate` is Delta wrapping `UCProxy`) chains
+   * `Delta.loadTable -> super.loadTable (DelegatingCatalogExtension) -> UCProxy.loadTable`.
+   * `UCProxy.loadTable` issues exactly one UC `getTable` and returns either a `V1Table` for
+   * normal tables or a `MetadataTable + ViewInfo` for views; Delta's `case o => o`
+   * fallthrough returns the `MetadataTable` unchanged. Spark's resolver then discriminates on
+   * the returned type to route through the table or view path.
    *
    * The orthogonal `loadTable` / `loadView` overrides remain available: `loadTable` uses the
-   * Delta-aware delegate path and rejects view-like rows; `loadView` delegates to
-   * `UCProxy`, which inherits the `TableViewCatalog` default that derives from
-   * `UCProxy.loadTableOrView` and rejects table rows.
+   * Delta-aware delegate path and rejects view-like rows; `loadView` delegates to `ucProxy`.
    */
-  override def loadTableOrView(ident: Identifier): Table = {
-    val t = ucProxy.getUcTable(ident)
-    if (UCSingleCatalog.isViewLikeTableType(t.getTableType)) {
-      new MetadataTable(
-        ucProxy.toViewInfo(t),
-        // Spec recommends ident.toString() for the wrapper's `name()`; the resolver and
-        // DESCRIBE TABLE EXTENDED render the multi-part v2 identifier consistently with
-        // every other catalog this way.
-        ident.toString)
-    } else {
-      delegate.loadTable(ident)
-    }
-  }
+  override def loadTableOrView(ident: Identifier): Table = delegate.loadTable(ident)
 
   override def createTable(
       ident: Identifier,
@@ -285,7 +278,7 @@ class UCSingleCatalog
    */
   private def loadExistingManagedTablePropsForReplace(
       ident: Identifier,
-      tableInfo: TableInfo,
+      tableInfo: UCTableInfo,
       properties: util.Map[String, String],
       operation: String): util.Map[String, String] = {
     val fullTableName = UCSingleCatalog.fullTableNameForApi(name(), ident)
@@ -358,7 +351,7 @@ class UCSingleCatalog
       .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
   }
 
-  private def isCatalogManagedDeltaTable(tableInfo: TableInfo): Boolean = {
+  private def isCatalogManagedDeltaTable(tableInfo: UCTableInfo): Boolean = {
     val tableProperties = Option(tableInfo.getProperties)
     tableInfo.getTableType == TableType.MANAGED &&
     tableInfo.getDataSourceFormat == DataSourceFormat.DELTA &&
@@ -474,7 +467,7 @@ class UCSingleCatalog
    */
   private def resolveExistingTableForReplace(
       ident: Identifier,
-      allowMissingTable: Boolean): Option[TableInfo] = {
+      allowMissingTable: Boolean): Option[UCTableInfo] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val fullTableName = UCSingleCatalog.fullTableNameForApi(name(), ident)
     try {
@@ -731,15 +724,23 @@ private class UCProxy(
     }
   }
 
-  // Single-RPC perf path for `TableViewCatalog`. Calls UC `getTable` once and dispatches by
-  // `TableType`: a view-like row is wrapped in `MetadataTable(ViewInfo)`; everything else
-  // goes through `loadV1Table` (which generates temp credentials).
+  // Single-RPC perf path. Calls UC `getTable` once and dispatches by `TableType`: a view-like
+  // row is wrapped in `MetadataTable(ViewInfo)`; everything else goes through `loadV1Table`
+  // (which generates temp credentials).
   //
-  // `loadView`, `loadTable`, `tableExists`, and `viewExists` are inherited from
-  // `TableViewCatalog`'s defaults that derive from this method (see TableViewCatalog.java),
-  // matching the upstream `InMemoryTableViewCatalog` pattern. There is no need to override
-  // them -- they unwrap / discriminate the `MetadataTable + ViewInfo` shape automatically.
-  override def loadTableOrView(ident: Identifier): Table = {
+  // We override `loadTable` (rather than relying on `TableViewCatalog`'s default, which would
+  // throw `NoSuchTableException` for `MetadataTable + ViewInfo`). This lets the outer
+  // `UCSingleCatalog.loadTableOrView` collapse to `delegate.loadTable(ident)` -- when
+  // `delegate` is Delta wrapping this `UCProxy`, the call chain becomes
+  // `Delta.loadTable -> super.loadTable (DelegatingCatalogExtension) -> UCProxy.loadTable`,
+  // and Delta's `case o => o` fallthrough returns the `MetadataTable` unchanged for views.
+  // That eliminates the second `getTable` RPC the previous design needed (one in
+  // `UCSingleCatalog.loadTableOrView` for view classification, one in `delegate.loadTable`).
+  //
+  // `loadTableOrView` is a passthrough; `loadView`, `tableExists`, and `viewExists` are
+  // inherited from `TableViewCatalog`'s defaults, which discriminate the
+  // `MetadataTable + ViewInfo` shape against this `loadTable` automatically.
+  override def loadTable(ident: Identifier): Table = {
     val t = getUcTable(ident)
     if (UCSingleCatalog.isViewLikeTableType(t.getTableType)) {
       new MetadataTable(toViewInfo(t), ident.toString)
@@ -747,6 +748,8 @@ private class UCProxy(
       loadV1Table(ident, t)
     }
   }
+
+  override def loadTableOrView(ident: Identifier): Table = loadTable(ident)
 
   private def loadV1Table(
       ident: Identifier,
