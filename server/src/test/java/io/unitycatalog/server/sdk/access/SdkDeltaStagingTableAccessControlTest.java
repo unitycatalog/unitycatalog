@@ -10,6 +10,7 @@ import io.unitycatalog.client.delta.model.LoadTableResponse;
 import io.unitycatalog.client.delta.model.PrimitiveType;
 import io.unitycatalog.client.delta.model.StagingTableResponse;
 import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
 import io.unitycatalog.client.delta.model.StructType;
 import io.unitycatalog.client.delta.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
@@ -44,7 +45,7 @@ public class SdkDeltaStagingTableAccessControlTest extends SdkStagingTableAccess
                       .name("test_column")
                       .type(new PrimitiveType().type("integer"))
                       .nullable(true)
-                      .metadata(Map.of())));
+                      .metadata(new StructFieldMetadata())));
 
   @Override
   protected StagingHandle createStaging(
