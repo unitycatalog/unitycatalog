@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.ApiResponse;
 import io.unitycatalog.client.api.DeltaCommitsApi;
 import io.unitycatalog.client.delta.api.TablesApi;
 import io.unitycatalog.client.delta.model.LoadTableResponse;
@@ -83,6 +84,22 @@ public class SdkLoadTableTest extends BaseServerTest {
     } catch (ApiException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  @Test
+  public void testTableExistsEndpoint() throws Exception {
+    for (TableType tableType : List.of(TableType.MANAGED, TableType.EXTERNAL)) {
+      String tableName = "tbl_head_exists_" + tableType.getValue().toLowerCase();
+      Optional<String> storageLocation =
+          tableType == TableType.EXTERNAL
+              ? Optional.of("file:///tmp/uc_test/" + tableName)
+              : Optional.empty();
+      BaseTableCRUDTestEnv.createTestingTable(tableName, tableType, storageLocation, tableOps);
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
+    }
+
+    ApiException ex = assertThrows(ApiException.class, () -> tableExists("nonexistent"));
+    assertThat(ex.getCode()).isEqualTo(404);
   }
 
   @Test
@@ -404,6 +421,11 @@ public class SdkLoadTableTest extends BaseServerTest {
 
   private LoadTableResponse loadTable(String tableName) throws ApiException {
     return deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
+  }
+
+  private ApiResponse<Void> tableExists(String tableName) throws ApiException {
+    return deltaTablesApi.tableExistsWithHttpInfo(
+        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
   }
 
   private void updateUniformMetadata(

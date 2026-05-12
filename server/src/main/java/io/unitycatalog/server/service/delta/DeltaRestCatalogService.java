@@ -6,8 +6,11 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Head;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
@@ -123,6 +126,17 @@ public class DeltaRestCatalogService extends AuthorizedService {
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
     return tableRepository.loadTableForDelta(catalog, schema, table);
+  }
+
+  @Head("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse tableExists(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table) {
+    tableRepository.getTable(String.join(".", catalog, schema, table));
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   // ==================== Staging Table API ====================
