@@ -156,6 +156,7 @@ class UCSingleCatalog
       new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, CatalogUtils.stringToURI(stagingLocation).getScheme)
+      .addEngineVersions(ApiClientFactory.appEngineVersions())
       .tokenProvider(tokenProvider)
       .initialCredentials(temporaryCredentials)
       .enableCredentialRenewal(renewCredEnabled)
@@ -259,7 +260,9 @@ class UCSingleCatalog
       new GenerateTemporaryTableCredential()
         .tableId(tableId).operation(TableOperation.READ_WRITE))
     val tableUriScheme = new Path(tableLocation).toUri.getScheme
-    val credentialProps = UCCredentialHadoopConfs.builder(uri.toString, tableUriScheme)
+    val credentialProps = UCCredentialHadoopConfs
+      .builder(uri.toString, tableUriScheme)
+      .addEngineVersions(ApiClientFactory.appEngineVersions())
       .tokenProvider(tokenProvider)
       .initialCredentials(temporaryCredentials)
       .enableCredentialRenewal(renewCredEnabled)
@@ -297,6 +300,7 @@ class UCSingleCatalog
 
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, CatalogUtils.stringToURI(location).getScheme)
+      .addEngineVersions(ApiClientFactory.appEngineVersions())
       .tokenProvider(tokenProvider)
       .initialCredentials(cred)
       .enableCredentialRenewal(renewCredEnabled)
@@ -609,7 +613,9 @@ private class UCProxy(
     val extraSerdeProps = if (temporaryCredentials == null) {
       Map.empty[String, String].asJava
     } else {
-      UCCredentialHadoopConfs.builder(uri.toString, locationUri.getScheme)
+      UCCredentialHadoopConfs
+        .builder(uri.toString, locationUri.getScheme)
+        .addEngineVersions(ApiClientFactory.appEngineVersions())
         .tokenProvider(tokenProvider)
         .initialCredentials(temporaryCredentials)
         .enableCredentialRenewal(renewCredEnabled)

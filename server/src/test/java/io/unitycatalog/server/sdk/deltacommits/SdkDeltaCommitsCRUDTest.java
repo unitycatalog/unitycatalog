@@ -27,14 +27,16 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.DeltaCommitRepository;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
+import io.unitycatalog.server.service.delta.DeltaConsts;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.service.delta.DeltaUniformUtils;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.URI;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -237,9 +239,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     properties.putAll(additionalProperties);
     if (isUniFormEnabled) {
       properties.put(
-              DeltaCommitRepository.UNIFORM_ENABLED_FORMATS,
-              DeltaCommitRepository.ICEBERG_FORMAT
-      );
+          DeltaConsts.TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS,
+          DeltaConsts.UNIVERSAL_FORMAT_ICEBERG);
     }
     return new DeltaCommitMetadataProperties().properties(properties);
   }
@@ -420,7 +421,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
                 .setProperties(
                     new DeltaCommitMetadataProperties()
                         .properties(Map.of("randomProperty", "randomValue"))),
-        "commit does not contain io.unitycatalog.tableId in the properties");
+        "does not contain io.unitycatalog.tableId");
 
     // Commit with metadata but without io.unitycatalog.tableId in properties
     Map<String, String> properties1 = Map.of("customProperty", "customValue");
@@ -779,7 +780,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     DeltaUniform uniform = new DeltaUniform();
     DeltaUniformIceberg icebergMetadata =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .metadataLocation(URI.create(tableInfo.getStorageLocation() + "/_u/v1.json"))
             .convertedDeltaVersion(1L)  // Must match commit version
             .convertedDeltaTimestamp(timestamp1);
     uniform.setIceberg(icebergMetadata);
@@ -796,13 +797,13 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Verify the table's uniform metadata was updated
     verifyTableInfoDAO(dao ->
-        verifyUniformFields(dao, "s3://my-bucket/metadata/v1.json", 1L, timestamp1));
+        verifyUniformFields(dao, tableInfo.getStorageLocation() + "/_u/v1.json", 1L, timestamp1));
 
     // Update uniform metadata with a new commit
     String timestamp2 = Instant.now().toString();
     DeltaUniformIceberg icebergMetadata2 =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v2.json"))
+            .metadataLocation(URI.create(tableInfo.getStorageLocation() + "/_u/v2.json"))
             .convertedDeltaVersion(2L)  // Must match commit version
             .convertedDeltaTimestamp(timestamp2);
     DeltaUniform uniform2 = new DeltaUniform();
@@ -816,7 +817,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Verify the table's uniform metadata was updated to the latest
     verifyTableInfoDAO(dao ->
-        verifyUniformFields(dao, "s3://my-bucket/metadata/v2.json", 2L, timestamp2));
+        verifyUniformFields(dao, tableInfo.getStorageLocation() + "/_u/v2.json", 2L, timestamp2));
   }
 
   @Test
@@ -825,7 +826,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     DeltaUniform uniform = new DeltaUniform();
     DeltaUniformIceberg icebergMetadata =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .metadataLocation(URI.create(tableInfo.getStorageLocation() + "/_u/v1.json"))
             .convertedDeltaVersion(1L)  // Must match commit version
             .convertedDeltaTimestamp(timestamp1);
     uniform.setIceberg(icebergMetadata);
@@ -862,7 +863,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
       // Verify metadata fields
       assertEquals("Test table with both metadata and uniform", dao.getComment());
       // Verify uniform fields
-      verifyUniformFields(dao, "s3://my-bucket/metadata/v1.json", 1L, timestamp1);
+      verifyUniformFields(dao, tableInfo.getStorageLocation() + "/_u/v1.json", 1L, timestamp1);
     });
 
     // Now update with new metadata and uniform in a second commit
@@ -879,7 +880,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     String timestamp2 = Instant.now().toString();
     DeltaUniformIceberg icebergMetadata2 =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v2.json"))
+            .metadataLocation(URI.create(tableInfo.getStorageLocation() + "/_u/v2.json"))
             .convertedDeltaVersion(2L)  // Must match commit version
             .convertedDeltaTimestamp(timestamp2);
     DeltaUniform uniform2 = new DeltaUniform();
@@ -900,7 +901,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     verifyTableInfoDAO(dao -> {
       // Verify both metadata and uniform were updated to latest values
       assertEquals("Updated description", dao.getComment());
-      verifyUniformFields(dao, "s3://my-bucket/metadata/v2.json", 2L, timestamp2);
+      verifyUniformFields(dao, tableInfo.getStorageLocation() + "/_u/v2.json", 2L, timestamp2);
     });
   }
 
@@ -917,7 +918,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         ErrorCode.INVALID_ARGUMENT,
         "iceberg");
 
-    // Test 1: Missing metadata_location
+    // Test 1: Missing metadata-location
     DeltaUniformIceberg invalidIceberg1 =
         new DeltaUniformIceberg()
             .convertedDeltaVersion(100L)
@@ -930,12 +931,12 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(commit1),
         ErrorCode.INVALID_ARGUMENT,
-        "metadata_location");
+        "metadata-location");
 
     // Test 2: Missing converted_delta_version
     DeltaUniformIceberg invalidIceberg2 =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .metadataLocation(URI.create(tableInfo.getStorageLocation() + "/_u/v1.json"))
             .convertedDeltaTimestamp(Instant.now().toString());
     DeltaUniform invalidUniform2 =
         new DeltaUniform().iceberg(invalidIceberg2);
@@ -945,12 +946,12 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(commit2),
         ErrorCode.INVALID_ARGUMENT,
-        "converted_delta_version");
+        "converted-delta-version");
 
     // Test 3: Missing converted_delta_timestamp
     DeltaUniformIceberg invalidIceberg3 =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .metadataLocation(URI.create(tableInfo.getStorageLocation() + "/_u/v1.json"))
             .convertedDeltaVersion(100L);
     DeltaUniform invalidUniform3 =
         new DeltaUniform().iceberg(invalidIceberg3);
@@ -960,16 +961,16 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(commit3),
         ErrorCode.INVALID_ARGUMENT,
-        "converted_delta_timestamp");
+        "converted-delta-timestamp");
 
     // Test 4: Size exceeds limit
     // Create a very long metadata location that exceeds the maximum allowed size
     String longLocation =
-        "s3://my-bucket/metadata/"
-            + "x".repeat(DeltaCommitRepository.MAX_DELTA_UNIFORM_ICEBERG_SIZE);
+        tableInfo.getStorageLocation() + "/_u/"
+            + "x".repeat(DeltaUniformUtils.MAX_METADATA_LOCATION_CHARS);
     DeltaUniformIceberg invalidIceberg4 =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create(longLocation))
+            .metadataLocation(URI.create(longLocation))
             .convertedDeltaVersion(1L)  // Must match commit version
             .convertedDeltaTimestamp(Instant.now().toString());
     DeltaUniform invalidUniform4 =
@@ -980,12 +981,12 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(commit4),
         ErrorCode.INVALID_ARGUMENT,
-        "exceeds maximum allowed size");
+        "exceeds the maximum allowed");
 
     // Test 5: converted_delta_version doesn't match commit version
     DeltaUniformIceberg invalidIceberg5 =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .metadataLocation(URI.create(tableInfo.getStorageLocation() + "/_u/v1.json"))
             .convertedDeltaVersion(999L)  // Wrong version - commit is version 1
             .convertedDeltaTimestamp(Instant.now().toString());
     DeltaUniform invalidUniform5 =
@@ -997,6 +998,32 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         () -> deltaCommitsApi.commit(commit5),
         ErrorCode.INVALID_ARGUMENT,
         "must equal commit version");
+
+    // Test 6: metadata-location not a subpath of the table's storage root
+    // Mirrors the create-time check (DeltaUniformUtils.requireMetadataLocationSubpath) so a
+    // commit's Iceberg sidecar can't escape the table's storage tree -- otherwise table-level
+    // credential vending and lifecycle (delete/rename) wouldn't cover it. The commit enables
+    // UniForm via metadata so the subpath check (which lives after the property/block consistency
+    // check) is reachable.
+    DeltaMetadata uniformEnablingMetadata =
+        new DeltaMetadata()
+            .properties(
+                constructProperties(tableInfo.getTableId(), true /* isUniFormEnabled */));
+    DeltaUniformIceberg invalidIceberg6 =
+        new DeltaUniformIceberg()
+            // Sibling location, not under tableInfo.getStorageLocation().
+            .metadataLocation(URI.create("s3://elsewhere/iceberg/v1.json"))
+            .convertedDeltaVersion(1L)
+            .convertedDeltaTimestamp(Instant.now().toString());
+    DeltaUniform invalidUniform6 = new DeltaUniform().iceberg(invalidIceberg6);
+    DeltaCommit commit6 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
+            .metadata(uniformEnablingMetadata)
+            .uniform(invalidUniform6);
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit6),
+        ErrorCode.INVALID_ARGUMENT,
+        "must be a subpath");
   }
 
   @Test
@@ -1013,7 +1040,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     DeltaUniform uniform1 = new DeltaUniform();
     DeltaUniformIceberg icebergMetadata =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v1.json"))
+            .metadataLocation(URI.create(tableInfo.getStorageLocation() + "/_u/v1.json"))
             .convertedDeltaVersion(1L)
             .convertedDeltaTimestamp(Instant.now().toString());
     uniform1.setIceberg(icebergMetadata);
@@ -1037,7 +1064,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(commit2),
         ErrorCode.INVALID_ARGUMENT,
-        "Uniform metadata must be set when table has UniForm enabled");
+        "Uniform metadata must be set when 'delta.universalFormat.enabledFormats' includes 'iceberg'.");
     // Test 3:
     // Existing Table: uniform enabled;
     // Property Change: disable uniform;
@@ -1049,7 +1076,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
                 constructProperties(tableInfo.getTableId(), false /* isUniFormEnabled */));
     DeltaUniformIceberg icebergMetadata2 =
             new DeltaUniformIceberg()
-                    .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v2.json"))
+                    .metadataLocation(
+                            URI.create(tableInfo.getStorageLocation() + "/_u/v2.json"))
                     .convertedDeltaVersion(2L)
                     .convertedDeltaTimestamp(Instant.now().toString());
     uniform2.setIceberg(icebergMetadata2);
@@ -1060,7 +1088,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(commit3),
         ErrorCode.INVALID_ARGUMENT,
-        "Uniform metadata must not be set when table has UniForm disabled");
+        "Uniform metadata must not be set unless 'delta.universalFormat.enabledFormats' includes 'iceberg'.");
     // Test 4:
     // Existing Table: uniform enabled;
     // Property Change: disable uniform;
@@ -1080,7 +1108,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     String timestamp5 = Instant.now().toString();
     DeltaUniformIceberg icebergMetadata5 =
         new DeltaUniformIceberg()
-            .metadataLocation(java.net.URI.create("s3://my-bucket/metadata/v3.json"))
+            .metadataLocation(URI.create(tableInfo.getStorageLocation() + "/_u/v3.json"))
             .convertedDeltaVersion(3L)
             .convertedDeltaTimestamp(timestamp5);
     DeltaUniform uniform5 = new DeltaUniform().iceberg(icebergMetadata5);
@@ -1090,7 +1118,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(commit5),
         ErrorCode.INVALID_ARGUMENT,
-            "Uniform metadata must not be set when table has UniForm disabled");
+            "Uniform metadata must not be set unless 'delta.universalFormat.enabledFormats' includes 'iceberg'.");
     // Test 6:
     // Existing Table: uniform disabled;
     // Property Change: enable uniform;
@@ -1103,6 +1131,6 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
             () -> deltaCommitsApi.commit(commit6),
             ErrorCode.INVALID_ARGUMENT,
-            "Uniform metadata must be set when table has UniForm enabled");
+            "Uniform metadata must be set when 'delta.universalFormat.enabledFormats' includes 'iceberg'.");
   }
 }

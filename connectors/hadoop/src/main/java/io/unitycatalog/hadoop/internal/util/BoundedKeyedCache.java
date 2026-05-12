@@ -74,9 +74,15 @@ public final class BoundedKeyedCache<K, V> {
     evicted.forEach(evictionListener);
   }
 
-  int size() {
+  public int size() {
     synchronized (cacheLock) {
       return cache.size();
+    }
+  }
+
+  public List<V> values() {
+    synchronized (cacheLock) {
+      return new ArrayList<>(cache.values());
     }
   }
 

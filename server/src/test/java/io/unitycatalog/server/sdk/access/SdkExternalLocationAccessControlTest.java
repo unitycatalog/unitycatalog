@@ -1,7 +1,6 @@
 package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
-import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiClient;
@@ -22,7 +21,6 @@ import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.ExternalLocationInfo;
 import io.unitycatalog.client.model.ListExternalLocationsResponse;
 import io.unitycatalog.client.model.SecurableType;
-import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.UpdateExternalLocation;
 import io.unitycatalog.client.model.VolumeInfo;
@@ -219,7 +217,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertCreateFailure(ExternalLocationsApi api, String name) {
-    assertPermissionDenied(() -> api.createExternalLocation(createRequest(name)));
+    TestUtils.assertPermissionDenied(() -> api.createExternalLocation(createRequest(name)));
   }
 
   @SneakyThrows
@@ -235,7 +233,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
       assertThat(retrieved.getUrl()).isNotNull().isNotEmpty();
     }
     for (String name : deniedExternalLocationNames) {
-      assertPermissionDenied(() -> api.getExternalLocation(name));
+      TestUtils.assertPermissionDenied(() -> api.getExternalLocation(name));
     }
     // Test list operation
     ListExternalLocationsResponse response = api.listExternalLocations(100, null);
@@ -262,7 +260,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertUpdateUrlFailure(ExternalLocationsApi api, String name) {
-    assertPermissionDenied(
+    TestUtils.assertPermissionDenied(
         () ->
             api.updateExternalLocation(
                 name, new UpdateExternalLocation().url("s3://test-bucket/fail-path-" + name)));
@@ -270,7 +268,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
   private void assertUpdateCredentialFailure(
       ExternalLocationsApi api, String name, String newCredentialName) {
-    assertPermissionDenied(
+    TestUtils.assertPermissionDenied(
         () ->
             api.updateExternalLocation(
                 name, new UpdateExternalLocation().credentialName(newCredentialName)));
@@ -283,7 +281,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void assertDeleteFailure(ExternalLocationsApi api, String name) {
-    assertPermissionDenied(() -> api.deleteExternalLocation(name, false));
+    TestUtils.assertPermissionDenied(() -> api.deleteExternalLocation(name, false));
   }
 
   /**
@@ -320,6 +318,41 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
    */
   @Test
   public void testCreateExternalTableVolumePermissions() throws Exception {
+    runExternalTableVolumePermissionsTest(
+        (apiClient, name, location) ->
+            new TablesApi(apiClient)
+                .createTable(createExternalTableRequest(name, location))
+                .getStorageLocation(),
+      "PERMISSION_DENIED");
+  }
+
+  /**
+   * Test that creating external tables and volumes requires appropriate permissions on external
+   * locations, using Delta RPCs.
+   */
+  @Test
+  public void testCreateExternalTableVolumePermissionsViaDelta() throws Exception {
+    runExternalTableVolumePermissionsTest(
+        (apiClient, name, location) ->
+            new io.unitycatalog.client.delta.api.TablesApi(apiClient)
+                .createTable(
+                    TestUtils.CATALOG_NAME,
+                    TestUtils.SCHEMA_NAME,
+                    deltaExternalTableRequest(name, location))
+                .getMetadata()
+                .getLocation(),
+      "PermissionDeniedException");
+  }
+
+  @FunctionalInterface
+  private interface ExternalTableCreator {
+    /** Creates the table and returns the resulting storage location; throws on denial. */
+    String create(ApiClient apiClient, String name, String location) throws Exception;
+  }
+
+  private void runExternalTableVolumePermissionsTest(
+      ExternalTableCreator tableCreator, String createTablePermissionDeniedMessage)
+      throws Exception {
     // Create external location as userC
     String externalLocationName = "test_external_loc";
     String extLocationUrl = "s3://ext-bucket/tables";
@@ -420,21 +453,20 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
       // Verify that the Table creation is as expected
       String tableName = TestUtils.TABLE_NAME + counter;
       String tableLocation = storageRoot + "/" + tableName;
-      TablesApi tablesApi = new TablesApi(apiClient);
       if (testCase.expectCanCreateExternalTable) {
-        TableInfo tableInfo =
-            tablesApi.createTable(createExternalTableRequest(tableName, tableLocation));
-        assertThat(tableInfo).isNotNull();
-        assertThat(tableInfo.getStorageLocation()).startsWith(storageRoot);
+        String resultLocation = tableCreator.create(apiClient, tableName, tableLocation);
+        assertThat(resultLocation).startsWith(storageRoot);
 
         // Verify that we can not create another under the same path, or subdir, or parent
         for (String url : List.of(tableLocation, tableLocation + "/subdir", storageRoot)) {
-          assertPermissionDenied(
-              () -> tablesApi.createTable(createExternalTableRequest(tableName + "_another", url)));
+          TestUtils.assertPermissionDenied(
+              () -> tableCreator.create(apiClient, tableName + "_another", url),
+              createTablePermissionDeniedMessage);
         }
       } else {
-        assertPermissionDenied(
-            () -> tablesApi.createTable(createExternalTableRequest(tableName, tableLocation)));
+        TestUtils.assertPermissionDenied(
+            () -> tableCreator.create(apiClient, tableName, tableLocation),
+            createTablePermissionDeniedMessage);
       }
 
       // Verify that the Volume creation is as expected
@@ -449,29 +481,56 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
         // Verify that we can not create another under the same path, or subdir, or parent
         for (String url : List.of(volumeLocation, volumeLocation + "/subdir", storageRoot)) {
-          assertPermissionDenied(
+          TestUtils.assertPermissionDenied(
               () ->
                   volumesApi.createVolume(
                       createExternalVolumeRequest(volumeName + "_another", url)));
         }
       } else {
-        assertPermissionDenied(
+        TestUtils.assertPermissionDenied(
             () -> volumesApi.createVolume(createExternalVolumeRequest(volumeName, volumeLocation)));
       }
 
       // Verify that creation of a table at storage location of an existing volume should fail,
       // vice versa.
       if (testCase.expectCanCreateExternalTable && testCase.expectCanCreateExternalVolume) {
-        assertPermissionDenied(
+        TestUtils.assertPermissionDenied(
             () ->
                 volumesApi.createVolume(
                     createExternalVolumeRequest(volumeName + "_another", tableLocation)));
-        assertPermissionDenied(
-            () ->
-                tablesApi.createTable(
-                    createExternalTableRequest(tableName + "_another", volumeLocation)));
+        TestUtils.assertPermissionDenied(
+            () -> tableCreator.create(apiClient, tableName + "_another", volumeLocation),
+            createTablePermissionDeniedMessage);
       }
     }
+  }
+
+  /** Minimum valid Delta CreateTableRequest for an EXTERNAL Delta table. */
+  private static io.unitycatalog.client.delta.model.CreateTableRequest deltaExternalTableRequest(
+      String name, String location) {
+    return new io.unitycatalog.client.delta.model.CreateTableRequest()
+        .name(name)
+        .location(location)
+        .tableType(io.unitycatalog.client.delta.model.TableType.EXTERNAL)
+        .dataSourceFormat(io.unitycatalog.client.delta.model.DataSourceFormat.DELTA)
+        .protocol(
+            new io.unitycatalog.client.delta.model.DeltaProtocol()
+                .minReaderVersion(3)
+                .minWriterVersion(7)
+                .readerFeatures(List.of("deletionVectors"))
+                .writerFeatures(List.of("deletionVectors")))
+        .columns(
+            new io.unitycatalog.client.delta.model.StructType()
+                .type("struct")
+                .fields(
+                    List.of(
+                        new io.unitycatalog.client.delta.model.StructField()
+                            .name("id")
+                            .type(
+                                new io.unitycatalog.client.delta.model.PrimitiveType().type("long"))
+                            .nullable(true)
+                            .metadata(java.util.Map.of()))))
+        .properties(java.util.Map.of("delta.enableDeletionVectors", "true"));
   }
 
   private CreateTable createExternalTableRequest(String name, String storageLocation) {

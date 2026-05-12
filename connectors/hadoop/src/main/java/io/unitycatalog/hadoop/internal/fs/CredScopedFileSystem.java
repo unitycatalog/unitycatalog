@@ -1,13 +1,12 @@
-package io.unitycatalog.spark.fs;
+package io.unitycatalog.hadoop.internal.fs;
 
+import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
+import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
 import java.net.URI;
-import java.util.concurrent.ExecutionException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FilterFileSystem;
-import org.sparkproject.guava.cache.Cache;
-import org.sparkproject.guava.cache.CacheBuilder;
 
 /**
  * A Hadoop {@link FileSystem} wrapper that enables multiple credential scopes to coexist within a
@@ -31,14 +30,15 @@ import org.sparkproject.guava.cache.CacheBuilder;
  *
  * <ol>
  *   <li><b>Hadoop cache disabled for {@code CredScopedFileSystem} itself.</b> {@link
- *       io.unitycatalog.spark.auth.CredPropsUtil} sets {@code fs.<scheme>.impl.disable.cache=true}
- *       so that Hadoop always instantiates a fresh {@code CredScopedFileSystem} for each file
- *       access. Because {@code CredScopedFileSystem} is a thin, stateless wrapper, this is cheap.
+ *       io.unitycatalog.hadoop.internal.CredPropsUtil} sets {@code
+ *       fs.<scheme>.impl.disable.cache=true} so that Hadoop always instantiates a fresh {@code
+ *       CredScopedFileSystem} for each file access. Because {@code CredScopedFileSystem} is a thin,
+ *       stateless wrapper, this is cheap.
  *   <li><b>Global credential-scoped cache for the real delegate.</b> {@code CredScopedFileSystem}
  *       maintains a static {@link #CACHE} keyed by {@link CredScopedKey}, which encodes the
  *       credential scope (table ID + operation, or path + operation). On each {@link
  *       #initialize(URI, Configuration)} call the key is derived from the Hadoop {@link
- *       Configuration} injected by {@link io.unitycatalog.spark.auth.CredPropsUtil}, and the
+ *       Configuration} injected by {@link io.unitycatalog.hadoop.internal.CredPropsUtil}, and the
  *       corresponding real {@link FileSystem} (e.g. {@code S3AFileSystem}) is looked up or created.
  *       Requests that share the same credential scope therefore reuse the same underlying
  *       connection pool, while requests with different credentials transparently receive their own
@@ -53,7 +53,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   private static final String CRED_SCOPED_FS_CACHE_MAX_SIZE =
       "unitycatalog.credScopedFs.cache.maxSize";
-  private static final long CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
+  private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
 
   /**
    * LRU cache of real {@link FileSystem} instances keyed by credential scope. Evicted entries are
@@ -63,28 +63,17 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * {@code unitycatalog.credScopedFs.cache.maxSize}.
    */
   /** Visible for testing. */
-  static final Cache<CredScopedKey, FileSystem> CACHE;
+  static final BoundedKeyedCache<CredScopedKey, FileSystem> CACHE;
 
   static {
-    long maxSize =
-        Long.getLong(CRED_SCOPED_FS_CACHE_MAX_SIZE, CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT);
-    CACHE =
-        CacheBuilder.newBuilder()
-            .maximumSize(maxSize)
-            .<CredScopedKey, FileSystem>removalListener(
-                notification -> {
-                  try {
-                    notification.getValue().close();
-                  } catch (IOException e) {
-                    // ignore close failures on eviction
-                  }
-                })
-            .build();
+    int maxSize =
+        Integer.getInteger(CRED_SCOPED_FS_CACHE_MAX_SIZE, CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT);
+    CACHE = new BoundedKeyedCache<>(maxSize, CloseableUtils::closeQuietly);
   }
 
   /** Visible for testing only. Clears the static cache and closes all cached delegates. */
   static void clearCacheForTesting() {
-    CACHE.invalidateAll();
+    CACHE.clear();
   }
 
   /** Visible for testing only. Returns the cached delegate filesystem. */
@@ -95,16 +84,12 @@ public class CredScopedFileSystem extends FilterFileSystem {
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
     CredScopedKey key = CredScopedKey.create(uri, conf);
-    try {
-      this.fs = CACHE.get(key, () -> newFileSystem(uri, conf));
-    } catch (ExecutionException e) {
-      throw new IOException("Failed to initialize filesystem for key " + key, e.getCause());
-    }
+    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
   }
 
   /**
    * Restores {@code key} from its {@code key.original} side-channel saved by {@link
-   * io.unitycatalog.spark.auth.CredPropsUtil}, falling back to {@code defaultImpl} when the
+   * io.unitycatalog.hadoop.internal.CredPropsUtil}, falling back to {@code defaultImpl} when the
    * side-channel is absent.
    */
   private static void restoreImpl(Configuration fsConf, String key, String defaultImpl) {

@@ -4,8 +4,8 @@ import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import org.apache.hadoop.conf.Configuration;
 
-public class UCHadoopConf {
-  private UCHadoopConf() {}
+public class UCHadoopConfConstants {
+  private UCHadoopConfConstants() {}
 
   // Key for the AWS S3 credential provider, same as org.apache.hadoop.fs.s3a.Constants
   // #AWS_CREDENTIALS_PROVIDER, but defined here to avoid an extra hadoop-aws dependency.
@@ -47,6 +47,11 @@ public class UCHadoopConf {
   public static final String UC_AUTH_TYPE = "fs.unitycatalog.auth.type";
   public static final String UC_AUTH_TOKEN_KEY = "fs.unitycatalog.auth.token";
 
+  // Prefix for engine version metadata (e.g. fs.unitycatalog.engine.version.Spark=4.0.0). Values
+  // stored under this prefix are propagated to the User-Agent header on UC API calls so the
+  // server can trace which engine versions are calling.
+  public static final String UC_ENGINE_VERSION_PREFIX = "fs.unitycatalog.engine.version.";
+
   // Key representing the remaining time before expiration, used to trigger credentials renewal in
   // advance.
   public static final String UC_RENEWAL_LEAD_TIME_KEY = "fs.unitycatalog.renewal.leadTimeMillis";
@@ -60,9 +65,20 @@ public class UCHadoopConf {
   // credentials are indexed by this key and are not reused across different jobs.
   public static final String UC_CREDENTIALS_UID_KEY = "fs.unitycatalog.credentials.uid";
 
+  // Enables the UC Delta temporary credentials API. false uses the standard UC API.
+  public static final String UC_DELTA_CREDENTIALS_API_ENABLED_KEY =
+      "fs.unitycatalog.delta.credentials.api.enabled";
+  public static final boolean UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE = false;
+
   // Keys for table based temporary credential requests
   public static final String UC_TABLE_ID_KEY = "fs.unitycatalog.table.id";
   public static final String UC_TABLE_OPERATION_KEY = "fs.unitycatalog.table.operation";
+
+  // Keys for UC Delta table credential requests.
+  public static final String UC_DELTA_CATALOG_KEY = "fs.unitycatalog.delta.catalog";
+  public static final String UC_DELTA_SCHEMA_KEY = "fs.unitycatalog.delta.schema";
+  public static final String UC_DELTA_TABLE_NAME_KEY = "fs.unitycatalog.delta.table.name";
+  public static final String UC_DELTA_LOCATION_KEY = "fs.unitycatalog.delta.location";
 
   // Keys for path based temporary credential requests.
   public static final String UC_PATH_KEY = "fs.unitycatalog.path";
