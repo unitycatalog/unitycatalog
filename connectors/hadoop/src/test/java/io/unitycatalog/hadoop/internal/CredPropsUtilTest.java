@@ -2,6 +2,8 @@ package io.unitycatalog.hadoop.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.delta.model.CredentialOperation;
@@ -10,8 +12,12 @@ import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import io.unitycatalog.hadoop.internal.auth.TempCredentialApi;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -622,6 +628,118 @@ class CredPropsUtilTest {
     Map<String, String> versions =
         Map.of(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Spark", "4.0.0");
     assertThat(CredPropsUtil.mergeEngineVersionProps(empty, versions)).isSameAs(empty);
+  }
+
+  // Fetch-method orchestration tests: capture the req-conf assembled by each fetch* method
+  // before it would hit the wire, and assert the resulting props are credential-bearing.
+
+  @AfterEach
+  void resetFactory() {
+    CredPropsUtil.tempCredApiFactory = TempCredentialApi::create;
+  }
+
+  @Test
+  void fetchTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
+    AtomicReference<Configuration> captured = new AtomicReference<>();
+    CredPropsUtil.tempCredApiFactory =
+        (apiClient, conf) -> {
+          captured.set(conf);
+          return mockTempCredentialApi(s3Creds());
+        };
+
+    Map<String, String> props =
+        CredPropsUtil.fetchTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            io.unitycatalog.hadoop.TableOperation.READ_WRITE,
+            Map.of());
+
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
+        .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_TABLE_ID_KEY)).isEqualTo("tid");
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY))
+        .isEqualTo("READ_WRITE");
+    assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
+  }
+
+  @Test
+  void fetchDeltaTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
+    AtomicReference<Configuration> captured = new AtomicReference<>();
+    CredPropsUtil.tempCredApiFactory =
+        (apiClient, conf) -> {
+          captured.set(conf);
+          return mockTempCredentialApi(s3Creds());
+        };
+
+    Map<String, String> props =
+        CredPropsUtil.fetchDeltaTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            tokenProvider(),
+            UCDeltaTableIdentifier.of("cat", "sch", "tab"),
+            "s3://bucket/key",
+            io.unitycatalog.hadoop.TableOperation.READ,
+            Map.of());
+
+    assertThat(
+            captured
+                .get()
+                .getBoolean(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, false))
+        .isTrue();
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY)).isEqualTo("READ");
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY)).isEqualTo("cat");
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY)).isEqualTo("sch");
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY)).isEqualTo("tab");
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY))
+        .isEqualTo("s3://bucket/key");
+    assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
+  }
+
+  @Test
+  void fetchPathCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
+    AtomicReference<Configuration> captured = new AtomicReference<>();
+    CredPropsUtil.tempCredApiFactory =
+        (apiClient, conf) -> {
+          captured.set(conf);
+          return mockTempCredentialApi(s3Creds());
+        };
+
+    Map<String, String> props =
+        CredPropsUtil.fetchPathCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            tokenProvider(),
+            "s3://bucket/key",
+            io.unitycatalog.hadoop.PathOperation.PATH_CREATE_TABLE,
+            Map.of());
+
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
+        .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_PATH_KEY)).isEqualTo("s3://bucket/key");
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_PATH_OPERATION_KEY))
+        .isEqualTo("PATH_CREATE_TABLE");
+    assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
+  }
+
+  private static TempCredentialApi mockTempCredentialApi(TemporaryCredentials creds) {
+    TempCredentialApi api = mock(TempCredentialApi.class);
+    try {
+      when(api.createCredential()).thenReturn(new GenericCredential(creds));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+    return api;
   }
 
   private static TokenProvider tokenProvider() {

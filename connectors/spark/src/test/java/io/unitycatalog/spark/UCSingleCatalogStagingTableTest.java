@@ -11,11 +11,17 @@ import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.hadoop.internal.CredPropsUtil;
+import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import io.unitycatalog.hadoop.internal.auth.TempCredentialApi;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.Map;
@@ -27,6 +33,7 @@ import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -69,6 +76,13 @@ public class UCSingleCatalogStagingTableTest {
     catalog = new UCSingleCatalog();
     mockDelegate = mock(StagingTableCatalog.class);
     setDelegate(catalog, mockDelegate);
+    setField(
+        catalog, "tokenProvider", TokenProvider.create(Map.of("type", "static", "token", "tok")));
+  }
+
+  @AfterEach
+  public void tearDown() {
+    CredPropsUtil.tempCredApiFactory = TempCredentialApi::create;
   }
 
   @Test
@@ -118,13 +132,25 @@ public class UCSingleCatalogStagingTableTest {
 
   @Test
   public void testStageCreateOrReplaceMissingManagedTableUsesManagedCreatePath() throws Exception {
+    // Use a recognized scheme (gs) so the credential fetch path actually runs, then mock the
+    // TempCredentialApi factory so the test runs without a real UC server. file:// would
+    // short-circuit before any fetch, making the verify() below vacuously true.
+    TempCredentialApi mockCredApi = mock(TempCredentialApi.class);
+    when(mockCredApi.createCredential())
+        .thenReturn(
+            new GenericCredential(
+                new TemporaryCredentials()
+                    .gcpOauthToken(new GcpOauthToken().oauthToken("token"))
+                    .expirationTime(Long.MAX_VALUE)));
+    CredPropsUtil.tempCredApiFactory = (apiClient, conf) -> mockCredApi;
+
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
     mockMissingTableLookup(mocks.tablesApi);
     when(mockDelegate.stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any()))
         .thenReturn(mocks.staged);
     when(mocks.tablesApi.createStagingTable(any(CreateStagingTable.class)))
         .thenReturn(
-            new StagingTableInfo().id("staging-id").stagingLocation("file:///tmp/uc-staging"));
+            new StagingTableInfo().id("staging-id").stagingLocation("gs://uc-staging/table"));
 
     StagedTable result =
         catalog.stageCreateOrReplace(IDENT, SCHEMA, PARTITIONS, MANAGED_DELTA_PROPS);
@@ -133,9 +159,10 @@ public class UCSingleCatalogStagingTableTest {
     ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
 
     verify(mocks.tablesApi).createStagingTable(any(CreateStagingTable.class));
+    verify(mockCredApi).createCredential();
     verify(mockDelegate).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
     assertThat(propsCaptor.getValue())
-        .containsEntry(TableCatalog.PROP_LOCATION, "file:///tmp/uc-staging")
+        .containsEntry(TableCatalog.PROP_LOCATION, "gs://uc-staging/table")
         .containsEntry(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
         .containsEntry(UCTableProperties.UC_TABLE_ID_KEY, "staging-id");
     assertThat(result).isSameAs(mocks.staged);

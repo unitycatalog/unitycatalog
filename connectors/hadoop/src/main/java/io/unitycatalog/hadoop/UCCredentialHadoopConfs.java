@@ -164,12 +164,12 @@ public final class UCCredentialHadoopConfs {
     public Map<String, String> buildForTable(
         String catalog, String schema, String table, TableOperation operation, String location)
         throws ApiException {
-      UCDeltaTableIdentifier identifier = UCDeltaTableIdentifier.of(catalog, schema, table);
-      Preconditions.checkArgument(operation != null, "operation is required");
-      Preconditions.checkArgument(location != null && !location.isEmpty(), "location is required");
       if (!isRecognizedScheme()) {
         return Collections.emptyMap();
       }
+      UCDeltaTableIdentifier identifier = UCDeltaTableIdentifier.of(catalog, schema, table);
+      Preconditions.checkArgument(operation != null, "operation is required");
+      Preconditions.checkArgument(location != null && !location.isEmpty(), "location is required");
       Preconditions.checkState(tokenProvider != null, "tokenProvider is required");
       return CredPropsUtil.mergeEngineVersionProps(
           CredPropsUtil.fetchDeltaTableCredProps(

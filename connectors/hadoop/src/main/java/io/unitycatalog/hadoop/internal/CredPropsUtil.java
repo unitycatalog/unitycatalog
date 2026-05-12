@@ -31,6 +31,18 @@ import org.apache.hadoop.conf.Configuration;
 public class CredPropsUtil {
   private CredPropsUtil() {}
 
+  /**
+   * Factory seam for {@link TempCredentialApi#create(ApiClient, Configuration)}, swappable from
+   * tests so the fetch methods can be exercised without a real UC server. Test-only; production
+   * code must not depend on the swap behavior.
+   */
+  @FunctionalInterface
+  public interface TempCredentialApiFactory {
+    TempCredentialApi create(ApiClient apiClient, Configuration conf);
+  }
+
+  public static volatile TempCredentialApiFactory tempCredApiFactory = TempCredentialApi::create;
+
   private static final String CRED_SCOPED_FS_CLASS =
       "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem";
   private static final String CRED_SCOPED_AFS_CLASS =
@@ -655,7 +667,8 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
     reqConf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.getValue());
     TemporaryCredentials creds =
-        TempCredentialApi.create(createApiClient(catalogUri, tokenProvider, appVersions), reqConf)
+        tempCredApiFactory
+            .create(createApiClient(catalogUri, tokenProvider, appVersions), reqConf)
             .createCredential()
             .temporaryCredentials();
     return createTableCredProps(
@@ -697,7 +710,8 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, identifier.table());
     reqConf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
     TemporaryCredentials creds =
-        TempCredentialApi.create(createApiClient(catalogUri, tokenProvider, appVersions), reqConf)
+        tempCredApiFactory
+            .create(createApiClient(catalogUri, tokenProvider, appVersions), reqConf)
             .createCredential()
             .temporaryCredentials();
     return createDeltaTableCredProps(
@@ -737,7 +751,8 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_PATH_KEY, path);
     reqConf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, pathOp.getValue());
     TemporaryCredentials creds =
-        TempCredentialApi.create(createApiClient(catalogUri, tokenProvider, appVersions), reqConf)
+        tempCredApiFactory
+            .create(createApiClient(catalogUri, tokenProvider, appVersions), reqConf)
             .createCredential()
             .temporaryCredentials();
     return createPathCredProps(

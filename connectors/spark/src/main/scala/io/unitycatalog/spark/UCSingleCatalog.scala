@@ -596,6 +596,13 @@ private class UCProxy(
         }
     }
 
+    // buildForTable also returns empty without throwing when the storage scheme is unsupported
+    // (e.g. file://). Pre-PR, that path threw ApiException and the catch above flipped SSP;
+    // preserve that behavior so SSP-enabled tables on unsupported schemes still work.
+    if (extraSerdeProps.isEmpty && serverSidePlanningEnabled) {
+      enableServerSidePlanningConfig(identifier)
+    }
+
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {

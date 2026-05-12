@@ -51,17 +51,24 @@ class UCCredentialHadoopConfsTest {
 
   @Test
   void unrecognizedSchemeReturnsEmptyWithoutFetchingCredentials() throws Exception {
+    // Unroutable URL: any actual HTTP attempt would throw and fail the test.
+    TokenProvider tp = TokenProvider.create(Map.of("type", "static", "token", "tok"));
+    String unroutableUri = "http://127.0.0.1:1/uc";
+
     assertThat(
-            UCCredentialHadoopConfs.builder("http://uc", "file")
+            UCCredentialHadoopConfs.builder(unroutableUri, "file")
+                .tokenProvider(tp)
                 .buildForTable("tid", TableOperation.READ))
         .isEmpty();
     assertThat(
-            UCCredentialHadoopConfs.builder("http://uc", "file")
+            UCCredentialHadoopConfs.builder(unroutableUri, "file")
+                .tokenProvider(tp)
                 .buildForTable(
                     "catalog", "schema", "table", TableOperation.READ_WRITE, "file:///tmp/t"))
         .isEmpty();
     assertThat(
-            UCCredentialHadoopConfs.builder("http://uc", "file")
+            UCCredentialHadoopConfs.builder(unroutableUri, "file")
+                .tokenProvider(tp)
                 .buildForPath("file:///tmp/t", PathOperation.PATH_CREATE_TABLE))
         .isEmpty();
   }
@@ -120,5 +127,31 @@ class UCCredentialHadoopConfsTest {
                     .buildForTable("catalog", "schema", "table", TableOperation.READ_WRITE, null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("location is required");
+  }
+
+  @Test
+  void pathOperationValuesRoundTripThroughSdkEnum() {
+    // Hadoop enum strings must match SDK enum strings exactly — otherwise the UC
+    // server rejects the request at runtime and no other test catches it.
+    for (PathOperation hadoopOp : PathOperation.values()) {
+      io.unitycatalog.client.model.PathOperation sdkOp =
+          io.unitycatalog.client.model.PathOperation.fromValue(hadoopOp.getValue());
+      assertThat(sdkOp.getValue()).isEqualTo(hadoopOp.getValue());
+    }
+  }
+
+  @Test
+  void tableOperationValuesRoundTripThroughBothSdkEnums() {
+    // Hadoop TableOperation is used on both the REST and Delta paths, so it must
+    // round-trip through both SDK enums.
+    for (TableOperation hadoopOp : TableOperation.values()) {
+      io.unitycatalog.client.model.TableOperation restOp =
+          io.unitycatalog.client.model.TableOperation.fromValue(hadoopOp.getValue());
+      assertThat(restOp.getValue()).isEqualTo(hadoopOp.getValue());
+
+      io.unitycatalog.client.delta.model.CredentialOperation deltaOp =
+          io.unitycatalog.client.delta.model.CredentialOperation.fromValue(hadoopOp.getValue());
+      assertThat(deltaOp.getValue()).isEqualTo(hadoopOp.getValue());
+    }
   }
 }
