@@ -1,5 +1,5 @@
 package io.unitycatalog.server;
-
+// CI trigger: no-op comment to exercise full build without GCS mirror
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
