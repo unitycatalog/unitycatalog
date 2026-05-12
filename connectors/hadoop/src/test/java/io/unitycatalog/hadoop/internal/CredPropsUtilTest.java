@@ -366,6 +366,264 @@ class CredPropsUtilTest {
         .hasMessageContaining("UC Delta table identifier cannot be set with tableId");
   }
 
+  // UC REST table and path credential props.
+
+  @Test
+  void s3TableRenewalCredsHaveExpectedKeys() {
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            TableOperation.READ_WRITE,
+            s3Creds());
+
+    assertThat(props)
+        .containsEntry(UCHadoopConfConstants.UC_URI_KEY, "http://uc")
+        .containsEntry(UCHadoopConfConstants.UC_AUTH_TYPE, "static")
+        .containsEntry(
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
+        .containsKey(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY)
+        .containsEntry(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid")
+        .containsEntry(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ_WRITE")
+        .containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak")
+        .containsEntry(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, "sk")
+        .containsEntry(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st")
+        .doesNotContainKey("fs.s3a.access.key");
+  }
+
+  @Test
+  void s3TableStaticCredsHaveExpectedKeys() {
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            s3Creds());
+
+    assertThat(props)
+        .containsEntry("fs.s3a.access.key", "ak")
+        .containsEntry("fs.s3a.secret.key", "sk")
+        .containsEntry("fs.s3a.session.token", "st")
+        .doesNotContainKey(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY);
+  }
+
+  @Test
+  void gcsTableRenewalCredsHaveExpectedKeys() {
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "gs",
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            TableOperation.READ,
+            gcsCreds());
+
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
+        .containsEntry(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, "token")
+        .containsEntry(
+            UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
+            String.valueOf(Long.MAX_VALUE))
+        .doesNotContainKey("fs.gs.auth.access.token.credential");
+  }
+
+  @Test
+  void abfsTableRenewalCredsHaveExpectedKeys() {
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "abfs",
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            TableOperation.READ_WRITE,
+            abfsCreds());
+
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
+        .containsEntry(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, "sas")
+        .doesNotContainKey("fs.azure.sas.fixed.token");
+  }
+
+  @Test
+  void s3PathRenewalCredsHaveExpectedKeys() {
+    Map<String, String> props =
+        CredPropsUtil.createPathCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            tokenProvider(),
+            "s3://bucket/key",
+            io.unitycatalog.client.model.PathOperation.PATH_READ,
+            s3Creds());
+
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
+        .containsEntry(UCHadoopConfConstants.UC_PATH_KEY, "s3://bucket/key")
+        .containsEntry(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, "PATH_READ")
+        .doesNotContainKey(UCHadoopConfConstants.UC_TABLE_ID_KEY);
+  }
+
+  @Test
+  void returnedTableCredMapIsUnmodifiable() {
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            s3Creds());
+
+    assertThatThrownBy(() -> props.put("k", "v")).isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void unknownSchemeReturnsEmptyTableCredMap() {
+    assertThat(
+            CredPropsUtil.createTableCredProps(
+                false,
+                false,
+                new Configuration(false),
+                "hdfs",
+                "http://uc",
+                null,
+                "tid",
+                TableOperation.READ,
+                s3Creds()))
+        .isEmpty();
+  }
+
+  @Test
+  void unknownSchemeReturnsEmptyPathCredMap() {
+    assertThat(
+            CredPropsUtil.createPathCredProps(
+                false,
+                false,
+                new Configuration(false),
+                "hdfs",
+                "http://uc",
+                null,
+                "hdfs://nn/key",
+                io.unitycatalog.client.model.PathOperation.PATH_READ,
+                s3Creds()))
+        .isEmpty();
+  }
+
+  // Engine version merging.
+
+  @Test
+  void engineVersionsMergedIntoNonEmptyProps() {
+    Map<String, String> credProps =
+        CredPropsUtil.createTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            s3Creds());
+    Map<String, String> engineVersionProps =
+        Map.of(
+            UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Spark", "4.0.0",
+            UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Delta", "3.3.0");
+
+    Map<String, String> merged =
+        CredPropsUtil.mergeEngineVersionProps(credProps, engineVersionProps);
+
+    assertThat(merged)
+        .containsEntry(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Spark", "4.0.0")
+        .containsEntry(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Delta", "3.3.0")
+        .containsKey("fs.s3a.access.key");
+  }
+
+  @Test
+  void engineVersionsMergeIsUnmodifiable() {
+    Map<String, String> credProps =
+        CredPropsUtil.createTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            s3Creds());
+    Map<String, String> merged =
+        CredPropsUtil.mergeEngineVersionProps(
+            credProps, Map.of(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Spark", "4.0.0"));
+
+    assertThatThrownBy(() -> merged.put("k", "v"))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void engineVersionsMergeReturnsOriginalWhenVersionsEmpty() {
+    Map<String, String> credProps =
+        CredPropsUtil.createTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            s3Creds());
+
+    assertThat(CredPropsUtil.mergeEngineVersionProps(credProps, Map.of())).isSameAs(credProps);
+  }
+
+  @Test
+  void engineVersionsMergeReturnsOriginalWhenPropsEmpty() {
+    Map<String, String> empty =
+        CredPropsUtil.createTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "hdfs",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            s3Creds());
+
+    assertThat(empty).isEmpty();
+    Map<String, String> versions =
+        Map.of(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Spark", "4.0.0");
+    assertThat(CredPropsUtil.mergeEngineVersionProps(empty, versions)).isSameAs(empty);
+  }
+
   private static TokenProvider tokenProvider() {
     return TokenProvider.create(Map.of("type", "static", "token", "tok"));
   }

@@ -11,13 +11,11 @@ import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
-import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
-import io.unitycatalog.client.model.TemporaryCredentials;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.Map;
@@ -60,7 +58,6 @@ public class UCSingleCatalogStagingTableTest {
 
   private static final class ManagedReplaceMocks {
     final TablesApi tablesApi = mock(TablesApi.class);
-    final TemporaryCredentialsApi tempCredsApi = mock(TemporaryCredentialsApi.class);
     final StagedTable staged = mock(StagedTable.class);
   }
 
@@ -128,7 +125,6 @@ public class UCSingleCatalogStagingTableTest {
     when(mocks.tablesApi.createStagingTable(any(CreateStagingTable.class)))
         .thenReturn(
             new StagingTableInfo().id("staging-id").stagingLocation("file:///tmp/uc-staging"));
-    setTemporaryCredentialsApi(mocks.tempCredsApi);
 
     StagedTable result =
         catalog.stageCreateOrReplace(IDENT, SCHEMA, PARTITIONS, MANAGED_DELTA_PROPS);
@@ -137,7 +133,6 @@ public class UCSingleCatalogStagingTableTest {
     ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
 
     verify(mocks.tablesApi).createStagingTable(any(CreateStagingTable.class));
-    verify(mocks.tempCredsApi).generateTemporaryTableCredentials(any());
     verify(mockDelegate).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
     assertThat(propsCaptor.getValue())
         .containsEntry(TableCatalog.PROP_LOCATION, "file:///tmp/uc-staging")
@@ -212,7 +207,6 @@ public class UCSingleCatalogStagingTableTest {
     assertThat(propsCaptor.getValue())
         .containsEntry(TableCatalog.PROP_PROVIDER, "delta")
         .containsEntry("delta.appendOnly", "true");
-    verify(mocks.tempCredsApi).generateTemporaryTableCredentials(any());
   }
 
   @Test
@@ -237,7 +231,6 @@ public class UCSingleCatalogStagingTableTest {
         .containsEntry(
             UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
-    verify(mocks.tempCredsApi).generateTemporaryTableCredentials(any());
   }
 
   @Test
@@ -284,7 +277,6 @@ public class UCSingleCatalogStagingTableTest {
         .containsEntry(
             UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
-    verify(mocks.tempCredsApi).generateTemporaryTableCredentials(any());
   }
 
   @Test
@@ -322,7 +314,6 @@ public class UCSingleCatalogStagingTableTest {
     ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
 
     verify(mocks.tablesApi, never()).createStagingTable(any(CreateStagingTable.class));
-    verify(mocks.tempCredsApi).generateTemporaryTableCredentials(any());
     if (createOrReplace) {
       verify(mockDelegate)
           .stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
@@ -343,7 +334,6 @@ public class UCSingleCatalogStagingTableTest {
   private ManagedReplaceMocks mockExistingManagedReplace(boolean createOrReplace) throws Exception {
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
     mockExistingTableLookup(mocks.tablesApi, existingManagedDeltaTableInfo());
-    setTemporaryCredentialsApi(mocks.tempCredsApi);
     if (createOrReplace) {
       when(mockDelegate.stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any()))
           .thenReturn(mocks.staged);
@@ -428,6 +418,7 @@ public class UCSingleCatalogStagingTableTest {
     when(mockDelegate.name()).thenReturn("main");
     when(tablesApi.getTable(eq("main.schema.table"), eq(false), eq(false))).thenReturn(tableInfo);
     setField(catalog, "tablesApi", tablesApi);
+    setCatalogUri(catalog);
   }
 
   private void mockMissingTableLookup(TablesApi tablesApi) throws Exception {
@@ -435,12 +426,10 @@ public class UCSingleCatalogStagingTableTest {
     when(tablesApi.getTable(eq("main.schema.table"), eq(false), eq(false)))
         .thenThrow(new ApiException(404, "not found"));
     setField(catalog, "tablesApi", tablesApi);
+    setCatalogUri(catalog);
   }
 
-  private void setTemporaryCredentialsApi(TemporaryCredentialsApi tempCredsApi) throws Exception {
-    when(tempCredsApi.generateTemporaryTableCredentials(any()))
-        .thenReturn(new TemporaryCredentials());
-    setField(catalog, "temporaryCredentialsApi", tempCredsApi);
+  private static void setCatalogUri(UCSingleCatalog catalog) {
     setField(catalog, "uri", URI.create("http://localhost"));
   }
 

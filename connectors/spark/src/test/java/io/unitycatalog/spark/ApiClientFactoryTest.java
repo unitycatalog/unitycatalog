@@ -7,13 +7,8 @@ import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.model.AwsCredentials;
-import io.unitycatalog.client.model.TableOperation;
-import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
-import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
-import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.util.Map;
@@ -137,29 +132,12 @@ public class ApiClientFactoryTest {
   }
 
   @Test
-  public void testAppEngineVersionsCanBeAddedToHadoopCredentialProps() {
+  public void testAppEngineVersionsContainsExpectedKeys() {
     Map<String, String> versions = ApiClientFactory.appEngineVersions();
-    Map<String, String> props =
-        UCCredentialHadoopConfs.builder(TEST_URI.toString(), "s3")
-            .enableCredentialRenewal(false)
-            .initialCredentials(s3Creds())
-            .addEngineVersions(versions)
-            .buildForTable("tid", TableOperation.READ);
-
     assertThat(versions).containsKeys("Spark", "Delta", "Java", "Scala");
-    versions.forEach(
-        (name, version) ->
-            assertThat(props)
-                .containsEntry(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + name, version));
   }
 
   private static TokenProvider createStaticTokenProvider(String token) {
     return TokenProvider.create(Map.of("type", "static", "token", token));
-  }
-
-  private static TemporaryCredentials s3Creds() {
-    return new TemporaryCredentials()
-        .awsTempCredentials(
-            new AwsCredentials().accessKeyId("ak").secretAccessKey("sk").sessionToken("st"));
   }
 }
