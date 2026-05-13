@@ -45,8 +45,9 @@ acquire_sbt_jar () {
   elif [[ "${SBT_VERSION}" == "1.5.5" ]] && [[ -n "${SBT_1_5_5_MIRROR_JAR_URL}" ]]; then
     URL1="${SBT_1_5_5_MIRROR_JAR_URL}"
   else
-    URL1=${DEFAULT_ARTIFACT_REPOSITORY:-${MAVEN_PROXY_URL:-https://repo1.maven.org/maven2}}/org/scala-sbt/sbt-launch/${SBT_VERSION}/sbt-launch-${SBT_VERSION}.jar
+    URL1=${DEFAULT_ARTIFACT_REPOSITORY:-${MAVEN_PROXY_URL:-https://maven-central.storage-download.googleapis.com/maven2}}/org/scala-sbt/sbt-launch/${SBT_VERSION}/sbt-launch-${SBT_VERSION}.jar
   fi
+  BACKUP_URL="https://repo1.maven.org/maven2/org/scala-sbt/sbt-launch/${SBT_VERSION}/sbt-launch-${SBT_VERSION}.jar"
 
   JAR=build/sbt-launch-${SBT_VERSION}.jar
   sbt_jar=$JAR
@@ -69,7 +70,19 @@ acquire_sbt_jar () {
     fi
     fi
     if [ ! -f "${JAR}" ]; then
-    # We failed to download
+    # Primary download failed, retry from Maven Central directly
+    printf 'Download from %s failed. Retrying from %s\n' "${URL1}" "${BACKUP_URL}"
+    JAR_DL="${JAR}.part"
+    if [ $(command -v curl) ]; then
+      curl --fail --location --silent ${BACKUP_URL} > "${JAR_DL}" &&\
+        mv "${JAR_DL}" "${JAR}"
+    elif [ $(command -v wget) ]; then
+      wget --quiet ${BACKUP_URL} -O "${JAR_DL}" &&\
+        mv "${JAR_DL}" "${JAR}"
+    fi
+    fi
+    if [ ! -f "${JAR}" ]; then
+    # Both downloads failed
     printf "Our attempt to download sbt locally to ${JAR} failed. Please install sbt manually from https://www.scala-sbt.org/\n"
     exit -1
     fi
