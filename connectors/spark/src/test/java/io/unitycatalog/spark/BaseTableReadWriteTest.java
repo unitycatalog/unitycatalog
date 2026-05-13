@@ -606,6 +606,20 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
         name, dataTypeJson, nullable, metadataJson);
   }
 
+  /**
+   * Expected metadata JSON for a CHAR(n) / VARCHAR(n) column. Delta managed tables on Delta 4.2+
+   * carry Spark's internal {@code __CHAR_VARCHAR_TYPE_STRING} marker (added by DeltaCatalog when
+   * processing the create-table schema). Other formats (Parquet external) and Delta external tables
+   * don't see the marker. The test is gated to Delta 4.2+ for managed tables via {@link
+   * #canUpdateColumnsToUC()}, so this branch only triggers when the marker is present.
+   */
+  protected String charVarcharMetadata(String typeText) {
+    if (isManagedTable() && tableFormat().equalsIgnoreCase("DELTA")) {
+      return String.format("{\"__CHAR_VARCHAR_TYPE_STRING\":\"%s\"}", typeText);
+    }
+    return "{}";
+  }
+
   // Currently this test only works for non-Delta tables. Later it will work for more.
   @Test
   @EnabledIf("canUpdateColumnsToUC")
@@ -681,6 +695,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "char_test ",
                 ColumnTypeName.CHAR,
                 "char(10)",
+                true,
+                charVarcharMetadata("char(10)"),
                 "\"char(10)\""),
             new ColSpec(
                 "col_varchar",
@@ -689,6 +705,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "varchar_test",
                 ColumnTypeName.STRING,
                 "varchar(20)",
+                true,
+                charVarcharMetadata("varchar(20)"),
                 "\"varchar(20)\""),
             new ColSpec(
                 "col_binary",
