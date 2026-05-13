@@ -10,7 +10,7 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import org.apache.hadoop.conf.Configuration;
 
 /** Adapts the UC Delta temporary credentials SDK API for Hadoop token providers. */
-final class UCDeltaTempCredentialApi implements TempCredentialApi {
+final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher {
   private final TemporaryCredentialsApi api;
   private final CredentialOperation operation;
   private final String catalog;
@@ -18,7 +18,7 @@ final class UCDeltaTempCredentialApi implements TempCredentialApi {
   private final String tableName;
   private final String location;
 
-  UCDeltaTempCredentialApi(Configuration conf, TemporaryCredentialsApi api) {
+  UCDeltaGenericCredentialFetcher(Configuration conf, TemporaryCredentialsApi api) {
     Preconditions.checkNotNull(api, "api is required");
     this.api = api;
     this.operation =

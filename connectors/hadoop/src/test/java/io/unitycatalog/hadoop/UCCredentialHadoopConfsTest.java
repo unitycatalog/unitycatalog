@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs.PathOperation;
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs.TableOperation;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 

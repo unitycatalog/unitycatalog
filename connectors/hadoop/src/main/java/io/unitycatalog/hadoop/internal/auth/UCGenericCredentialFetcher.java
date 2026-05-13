@@ -12,12 +12,12 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import org.apache.hadoop.conf.Configuration;
 
 /** Adapts the standard Unity Catalog temporary credentials SDK API for Hadoop token providers. */
-final class UCTempCredentialApi implements TempCredentialApi {
+final class UCGenericCredentialFetcher implements GenericCredentialFetcher {
   private final TemporaryCredentialsApi api;
   private final GenerateTemporaryPathCredential pathRequest;
   private final GenerateTemporaryTableCredential tableRequest;
 
-  UCTempCredentialApi(Configuration conf, TemporaryCredentialsApi api) {
+  UCGenericCredentialFetcher(Configuration conf, TemporaryCredentialsApi api) {
     Preconditions.checkNotNull(api, "api is required");
     this.api = api;
     String type = conf.get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY);

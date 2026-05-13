@@ -12,8 +12,9 @@ import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
-import io.unitycatalog.hadoop.internal.auth.TempCredentialApi;
+import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
@@ -635,16 +636,16 @@ class CredPropsUtilTest {
 
   @AfterEach
   void resetFactory() {
-    CredPropsUtil.tempCredApiFactory = TempCredentialApi::create;
+    CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
   }
 
   @Test
   void fetchTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
     AtomicReference<Configuration> captured = new AtomicReference<>();
-    CredPropsUtil.tempCredApiFactory =
+    CredPropsUtil.genericCredFetcherFactory =
         (apiClient, conf) -> {
           captured.set(conf);
-          return mockTempCredentialApi(s3Creds());
+          return mockGenericCredentialFetcher(s3Creds());
         };
 
     Map<String, String> props =
@@ -656,7 +657,7 @@ class CredPropsUtilTest {
             "http://uc",
             tokenProvider(),
             "tid",
-            io.unitycatalog.hadoop.TableOperation.READ_WRITE,
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(captured.get().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
@@ -670,10 +671,10 @@ class CredPropsUtilTest {
   @Test
   void fetchDeltaTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
     AtomicReference<Configuration> captured = new AtomicReference<>();
-    CredPropsUtil.tempCredApiFactory =
+    CredPropsUtil.genericCredFetcherFactory =
         (apiClient, conf) -> {
           captured.set(conf);
-          return mockTempCredentialApi(s3Creds());
+          return mockGenericCredentialFetcher(s3Creds());
         };
 
     Map<String, String> props =
@@ -686,7 +687,7 @@ class CredPropsUtilTest {
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tab"),
             "s3://bucket/key",
-            io.unitycatalog.hadoop.TableOperation.READ,
+            UCCredentialHadoopConfs.TableOperation.READ,
             Map.of());
 
     assertThat(
@@ -706,10 +707,10 @@ class CredPropsUtilTest {
   @Test
   void fetchPathCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
     AtomicReference<Configuration> captured = new AtomicReference<>();
-    CredPropsUtil.tempCredApiFactory =
+    CredPropsUtil.genericCredFetcherFactory =
         (apiClient, conf) -> {
           captured.set(conf);
-          return mockTempCredentialApi(s3Creds());
+          return mockGenericCredentialFetcher(s3Creds());
         };
 
     Map<String, String> props =
@@ -721,7 +722,7 @@ class CredPropsUtilTest {
             "http://uc",
             tokenProvider(),
             "s3://bucket/key",
-            io.unitycatalog.hadoop.PathOperation.PATH_CREATE_TABLE,
+            UCCredentialHadoopConfs.PathOperation.PATH_CREATE_TABLE,
             Map.of());
 
     assertThat(captured.get().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
@@ -732,8 +733,8 @@ class CredPropsUtilTest {
     assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
   }
 
-  private static TempCredentialApi mockTempCredentialApi(TemporaryCredentials creds) {
-    TempCredentialApi api = mock(TempCredentialApi.class);
+  private static GenericCredentialFetcher mockGenericCredentialFetcher(TemporaryCredentials creds) {
+    GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {
       when(api.createCredential()).thenReturn(new GenericCredential(creds));
     } catch (Exception e) {

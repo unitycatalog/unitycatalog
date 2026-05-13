@@ -32,6 +32,49 @@ public final class UCCredentialHadoopConfs {
   private UCCredentialHadoopConfs() {}
 
   /**
+   * The access operation requested for a Unity Catalog table credential.
+   *
+   * <p>Shared across both the UC REST credentials API and the UC Delta credentials API.
+   *
+   * @since 0.5.0
+   */
+  public enum TableOperation {
+    READ("READ"),
+    READ_WRITE("READ_WRITE");
+
+    private final String value;
+
+    TableOperation(String value) {
+      this.value = value;
+    }
+
+    public String getValue() {
+      return value;
+    }
+  }
+
+  /**
+   * The access operation requested for a Unity Catalog external path credential.
+   *
+   * @since 0.5.0
+   */
+  public enum PathOperation {
+    PATH_READ("PATH_READ"),
+    PATH_READ_WRITE("PATH_READ_WRITE"),
+    PATH_CREATE_TABLE("PATH_CREATE_TABLE");
+
+    private final String value;
+
+    PathOperation(String value) {
+      this.value = value;
+    }
+
+    public String getValue() {
+      return value;
+    }
+  }
+
+  /**
    * Creates a new {@link Builder} with the two required fields.
    *
    * @param catalogUri the Unity Catalog server base URI, e.g. {@code "https://my-uc-server"}

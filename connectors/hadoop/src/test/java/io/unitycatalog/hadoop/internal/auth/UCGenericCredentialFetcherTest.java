@@ -19,14 +19,14 @@ import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-class UCTempCredentialApiTest {
+class UCGenericCredentialFetcherTest {
 
   @Test
   void factoryRequiresUcUri() {
     Configuration conf = BaseTokenProviderTest.newTableBasedConf();
     conf.unset(UCHadoopConfConstants.UC_URI_KEY);
 
-    assertThatThrownBy(() -> TempCredentialApi.create(conf))
+    assertThatThrownBy(() -> GenericCredentialFetcher.create(conf))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConfConstants.UC_URI_KEY);
   }
@@ -37,7 +37,7 @@ class UCTempCredentialApiTest {
     conf.unset(UCHadoopConfConstants.UC_AUTH_TYPE);
     conf.unset(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY);
 
-    assertThatThrownBy(() -> TempCredentialApi.create(conf))
+    assertThatThrownBy(() -> GenericCredentialFetcher.create(conf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Required configuration key 'type' is missing or empty");
   }
@@ -48,7 +48,7 @@ class UCTempCredentialApiTest {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     when(api.generateTemporaryTableCredentials(any())).thenReturn(new TemporaryCredentials());
 
-    TempCredentialApi credentialApi = new UCTempCredentialApi(conf, api);
+    GenericCredentialFetcher credentialFetcher = new UCGenericCredentialFetcher(conf, api);
 
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
@@ -58,7 +58,7 @@ class UCTempCredentialApiTest {
     conf.set(UCHadoopConfConstants.UC_PATH_KEY, "s3://mutated/path");
     conf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ_WRITE.getValue());
 
-    credentialApi.createCredential();
+    credentialFetcher.createCredential();
 
     ArgumentCaptor<GenerateTemporaryTableCredential> request =
         ArgumentCaptor.forClass(GenerateTemporaryTableCredential.class);
@@ -74,7 +74,7 @@ class UCTempCredentialApiTest {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     when(api.generateTemporaryPathCredentials(any())).thenReturn(new TemporaryCredentials());
 
-    TempCredentialApi credentialApi = new UCTempCredentialApi(conf, api);
+    GenericCredentialFetcher credentialFetcher = new UCGenericCredentialFetcher(conf, api);
 
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
@@ -84,7 +84,7 @@ class UCTempCredentialApiTest {
     conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, "mutated-table-id");
     conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, TableOperation.READ_WRITE.getValue());
 
-    credentialApi.createCredential();
+    credentialFetcher.createCredential();
 
     ArgumentCaptor<GenerateTemporaryPathCredential> request =
         ArgumentCaptor.forClass(GenerateTemporaryPathCredential.class);

@@ -13,7 +13,7 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
-import io.unitycatalog.hadoop.internal.auth.TempCredentialApi;
+import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,16 +32,17 @@ public class CredPropsUtil {
   private CredPropsUtil() {}
 
   /**
-   * Factory seam for {@link TempCredentialApi#create(ApiClient, Configuration)}, swappable from
-   * tests so the fetch methods can be exercised without a real UC server. Test-only; production
-   * code must not depend on the swap behavior.
+   * Factory seam for {@link GenericCredentialFetcher#create(ApiClient, Configuration)}, swappable
+   * from tests so the fetch methods can be exercised without a real UC server. Test-only;
+   * production code must not depend on the swap behavior.
    */
   @FunctionalInterface
-  public interface TempCredentialApiFactory {
-    TempCredentialApi create(ApiClient apiClient, Configuration conf);
+  public interface GenericCredentialFetcherFactory {
+    GenericCredentialFetcher create(ApiClient apiClient, Configuration conf);
   }
 
-  public static volatile TempCredentialApiFactory tempCredApiFactory = TempCredentialApi::create;
+  public static volatile GenericCredentialFetcherFactory genericCredFetcherFactory =
+      GenericCredentialFetcher::create;
 
   private static final String CRED_SCOPED_FS_CLASS =
       "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem";
@@ -656,7 +657,7 @@ public class CredPropsUtil {
       String catalogUri,
       TokenProvider tokenProvider,
       String tableId,
-      io.unitycatalog.hadoop.TableOperation tableOp,
+      UCCredentialHadoopConfs.TableOperation tableOp,
       Map<String, String> appVersions)
       throws ApiException {
     TableOperation clientOp = TableOperation.fromValue(tableOp.getValue());
@@ -667,7 +668,7 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
     reqConf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.getValue());
     TemporaryCredentials creds =
-        tempCredApiFactory
+        genericCredFetcherFactory
             .create(createApiClient(catalogUri, tokenProvider, appVersions), reqConf)
             .createCredential()
             .temporaryCredentials();
@@ -698,7 +699,7 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       UCDeltaTableIdentifier identifier,
       String location,
-      io.unitycatalog.hadoop.TableOperation tableOp,
+      UCCredentialHadoopConfs.TableOperation tableOp,
       Map<String, String> appVersions)
       throws ApiException {
     CredentialOperation clientOp = CredentialOperation.fromValue(tableOp.getValue());
@@ -710,7 +711,7 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, identifier.table());
     reqConf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
     TemporaryCredentials creds =
-        tempCredApiFactory
+        genericCredFetcherFactory
             .create(createApiClient(catalogUri, tokenProvider, appVersions), reqConf)
             .createCredential()
             .temporaryCredentials();
@@ -740,7 +741,7 @@ public class CredPropsUtil {
       String catalogUri,
       TokenProvider tokenProvider,
       String path,
-      io.unitycatalog.hadoop.PathOperation pathOp,
+      UCCredentialHadoopConfs.PathOperation pathOp,
       Map<String, String> appVersions)
       throws ApiException {
     PathOperation clientOp = PathOperation.fromValue(pathOp.getValue());
@@ -751,7 +752,7 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_PATH_KEY, path);
     reqConf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, pathOp.getValue());
     TemporaryCredentials creds =
-        tempCredApiFactory
+        genericCredFetcherFactory
             .create(createApiClient(catalogUri, tokenProvider, appVersions), reqConf)
             .createCredential()
             .temporaryCredentials();

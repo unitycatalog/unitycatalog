@@ -33,7 +33,7 @@ public abstract class GenericCredentialProvider {
   private boolean credCacheEnabled;
 
   private volatile GenericCredential credential;
-  private volatile TempCredentialApi credentialApi;
+  private volatile GenericCredentialFetcher credentialFetcher;
 
   protected void initialize(Configuration conf) {
     this.conf = conf;
@@ -80,15 +80,15 @@ public abstract class GenericCredentialProvider {
     return credential;
   }
 
-  TempCredentialApi tempCredentialApi() {
-    if (credentialApi == null) {
+  GenericCredentialFetcher genericCredentialFetcher() {
+    if (credentialFetcher == null) {
       synchronized (this) {
-        if (credentialApi == null) {
-          credentialApi = TempCredentialApi.create(conf);
+        if (credentialFetcher == null) {
+          credentialFetcher = GenericCredentialFetcher.create(conf);
         }
       }
     }
-    return credentialApi;
+    return credentialFetcher;
   }
 
   private GenericCredential renewCredential() throws ApiException {
@@ -99,12 +99,12 @@ public abstract class GenericCredentialProvider {
         if (cached != null && !cached.readyToRenew(clock, renewalLeadTimeMillis)) {
           return cached;
         }
-        GenericCredential created = tempCredentialApi().createCredential();
+        GenericCredential created = genericCredentialFetcher().createCredential();
         globalCache.put(credUid, created);
         return created;
       }
     } else {
-      return tempCredentialApi().createCredential();
+      return genericCredentialFetcher().createCredential();
     }
   }
 }
