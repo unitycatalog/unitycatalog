@@ -24,6 +24,7 @@ import io.unitycatalog.client.delta.model.SetProtocolUpdate;
 import io.unitycatalog.client.delta.model.SetSchemaUpdate;
 import io.unitycatalog.client.delta.model.SetTableCommentUpdate;
 import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
 import io.unitycatalog.client.delta.model.StructType;
 import io.unitycatalog.client.delta.model.TableRequirement;
 import io.unitycatalog.client.delta.model.TableUpdate;
@@ -226,12 +227,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .name("new_id")
                                       .type(new PrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(Map.of()),
+                                      .metadata(new StructFieldMetadata()),
                                   new StructField()
                                       .name("flag")
                                       .type(new PrimitiveType().type("boolean"))
                                       .nullable(true)
-                                      .metadata(Map.of())))),
+                                      .metadata(new StructFieldMetadata())))),
               new SetPartitionColumnsUpdate().partitionColumns(List.of("flag")));
       assertThat(r.getMetadata().getColumns().getFields())
           .extracting(StructField::getName)
@@ -314,12 +315,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .name("id")
                                       .type(new PrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(Map.of()),
+                                      .metadata(new StructFieldMetadata()),
                                   new StructField()
                                       .name("flag")
                                       .type(new PrimitiveType().type("boolean"))
                                       .nullable(true)
-                                      .metadata(Map.of())))));
+                                      .metadata(new StructFieldMetadata())))));
       assertThat(r.getMetadata().getColumns().getFields())
           .extracting(StructField::getName)
           .containsExactly("id", "flag");
@@ -350,7 +351,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                           .name("id2")
                                           .type(new PrimitiveType().type("long"))
                                           .nullable(false)
-                                          .metadata(Map.of()))))),
+                                          .metadata(new StructFieldMetadata()))))),
           ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "partition-columns references unknown column: id");
     }
@@ -926,7 +927,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .name("c1")
                                       .type(new PrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(Map.of())))));
+                                      .metadata(new StructFieldMetadata())))));
       assertThat(r.getMetadata().getLastCommitVersion()).isEqualTo(1L);
       assertThat(r.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
     }

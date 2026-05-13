@@ -270,7 +270,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
                 "io.unitycatalog.tableId": "%s",
                 "delta.inCommitTimestampEnablementVersion": "0",
                 "delta.inCommitTimestampEnablementTimestamp": "1700000000000"
-              }
+              },
+              "last-commit-timestamp-ms": 1700000000000
             }
             """,
             staging.getLocation(), columnJson, staging.getTableId().toString());
