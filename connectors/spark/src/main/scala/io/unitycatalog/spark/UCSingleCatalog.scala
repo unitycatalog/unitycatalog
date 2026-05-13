@@ -1,12 +1,13 @@
 package io.unitycatalog.spark
 
-import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
+import io.unitycatalog.client.api.{SchemasApi, TablesApi}
 import io.unitycatalog.client.auth.TokenProvider
 import io.unitycatalog.client.model._
 import io.unitycatalog.client.model.TableInfo
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs.{PathOperation, TableOperation}
 import io.unitycatalog.spark.auth.AuthConfigUtils
 import io.unitycatalog.spark.utils.OptionsUtil
 import org.apache.hadoop.conf.Configuration
@@ -43,7 +44,6 @@ class UCSingleCatalog
   private[this] var renewCredEnabled: Boolean = false
   private[this] var credScopedFsEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
-  private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
 
   @volatile private var delegate: TableCatalog = null
@@ -66,10 +66,9 @@ class UCSingleCatalog
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
-    temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
     val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
-      serverSidePlanningEnabled, apiClient, tablesApi, temporaryCredentialsApi)
+      serverSidePlanningEnabled, apiClient, tablesApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -150,13 +149,11 @@ class UCSingleCatalog
     // user-specified but system-generated, which is exactly the case here.
     newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
 
-    val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
-      new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, CatalogUtils.stringToURI(stagingLocation).getScheme)
-      .addEngineVersions(ApiClientFactory.appEngineVersions())
+      .addAppVersions(ApiClientFactory.appEngineVersions())
       .tokenProvider(tokenProvider)
-      .initialCredentials(temporaryCredentials)
+      .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
       .enableCredentialScopedFs(credScopedFsEnabled)
       .hadoopConf(UCSingleCatalog.sessionHadoopConf())
@@ -254,15 +251,12 @@ class UCSingleCatalog
     newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
 
     // Finally, vend fresh READ_WRITE credentials for the existing table location.
-    val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
-      new GenerateTemporaryTableCredential()
-        .tableId(tableId).operation(TableOperation.READ_WRITE))
     val tableUriScheme = new Path(tableLocation).toUri.getScheme
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, tableUriScheme)
-      .addEngineVersions(ApiClientFactory.appEngineVersions())
+      .addAppVersions(ApiClientFactory.appEngineVersions())
       .tokenProvider(tokenProvider)
-      .initialCredentials(temporaryCredentials)
+      .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
       .enableCredentialScopedFs(credScopedFsEnabled)
       .hadoopConf(UCSingleCatalog.sessionHadoopConf())
@@ -291,16 +285,14 @@ class UCSingleCatalog
       properties: util.Map[String, String]): util.Map[String, String] = {
     val location = properties.get(TableCatalog.PROP_LOCATION)
     assert(location != null)
-    val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
-      new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
 
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, CatalogUtils.stringToURI(location).getScheme)
-      .addEngineVersions(ApiClientFactory.appEngineVersions())
+      .addAppVersions(ApiClientFactory.appEngineVersions())
       .tokenProvider(tokenProvider)
-      .initialCredentials(cred)
+      .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
       .enableCredentialScopedFs(credScopedFsEnabled)
       .hadoopConf(UCSingleCatalog.sessionHadoopConf())
@@ -525,8 +517,7 @@ private class UCProxy(
     credScopedFsEnabled: Boolean,
     serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
-    tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
+    tablesApi: TablesApi) extends TableCatalog with SupportsNamespaces with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
 
@@ -576,50 +567,44 @@ private class UCProxy(
     }.toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
-    var tableOp = TableOperation.READ_WRITE
-    val temporaryCredentials = {
-      try {
-        temporaryCredentialsApi
-          .generateTemporaryTableCredentials(
-            // TODO: at this time, we don't know if the table will be read or written. For now we always
-            //       request READ_WRITE credentials as the server doesn't distinguish between READ and
-            //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
-            //       for read or write, we can request the proper credential after fixing Spark.
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-          )
-      }       catch {
-        case e: ApiException =>
-          logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
-          try {
-            tableOp = TableOperation.READ
-            temporaryCredentialsApi
-              .generateTemporaryTableCredentials(
-                new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-              )
-          } catch {
-            case e: ApiException =>
-              logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
-              if (serverSidePlanningEnabled) null else throw e
-          }
-      }
-    }
 
-    if (serverSidePlanningEnabled && temporaryCredentials == null) {
-      enableServerSidePlanningConfig(identifier)
-    }
-
-    val extraSerdeProps = if (temporaryCredentials == null) {
-      Map.empty[String, String].asJava
-    } else {
+    val credBuilder =
       UCCredentialHadoopConfs
         .builder(uri.toString, locationUri.getScheme)
-        .addEngineVersions(ApiClientFactory.appEngineVersions())
+        .addAppVersions(ApiClientFactory.appEngineVersions())
         .tokenProvider(tokenProvider)
-        .initialCredentials(temporaryCredentials)
+        .apiClient(apiClient)
         .enableCredentialRenewal(renewCredEnabled)
         .enableCredentialScopedFs(credScopedFsEnabled)
         .hadoopConf(UCSingleCatalog.sessionHadoopConf())
-        .buildForTable(tableId, tableOp)
+
+    // TODO: at this time, we don't know if the table will be read or written. For now we always
+    //       request READ_WRITE credentials as the server doesn't distinguish between READ and
+    //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
+    //       for read or write, we can request the proper credential after fixing Spark.
+    val extraSerdeProps = try {
+      credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
+    } catch {
+      case e: ApiException =>
+        logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
+        try {
+          credBuilder.buildForTable(tableId, TableOperation.READ)
+        } catch {
+          case e: ApiException =>
+            logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
+            if (serverSidePlanningEnabled) {
+              enableServerSidePlanningConfig(identifier)
+              Map.empty[String, String].asJava
+            } else {
+              throw e
+            }
+        }
+    }
+
+    // For unrecognized schemes (e.g. file://) the credential switch returns empty without props;
+    // treat that the same as a failed fetch so SSP-enabled tables on unsupported schemes still work.
+    if (extraSerdeProps.isEmpty && serverSidePlanningEnabled) {
+      enableServerSidePlanningConfig(identifier)
     }
 
     val sparkTable = CatalogTable(
