@@ -635,6 +635,7 @@ public class CredPropsUtil {
       boolean credScopedFsEnabled,
       Configuration hadoopConf,
       String scheme,
+      ApiClient apiClient,
       String catalogUri,
       TokenProvider tokenProvider,
       String tableId,
@@ -648,7 +649,8 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
     reqConf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.value());
     TemporaryCredentials creds =
-        fetchTemporaryCredentials(catalogUri, tokenProvider, engineVersionProps, reqConf);
+        fetchTemporaryCredentials(
+            apiClient, catalogUri, tokenProvider, engineVersionProps, reqConf);
     return mergeEngineVersionProps(
         createTableCredProps(
             renewCredEnabled,
@@ -672,6 +674,7 @@ public class CredPropsUtil {
       boolean credScopedFsEnabled,
       Configuration hadoopConf,
       String scheme,
+      ApiClient apiClient,
       String catalogUri,
       TokenProvider tokenProvider,
       UCDeltaTableIdentifier identifier,
@@ -687,7 +690,8 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, identifier.table());
     reqConf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
     TemporaryCredentials creds =
-        fetchTemporaryCredentials(catalogUri, tokenProvider, engineVersionProps, reqConf);
+        fetchTemporaryCredentials(
+            apiClient, catalogUri, tokenProvider, engineVersionProps, reqConf);
     return mergeEngineVersionProps(
         createDeltaTableCredProps(
             renewCredEnabled,
@@ -709,6 +713,7 @@ public class CredPropsUtil {
       boolean credScopedFsEnabled,
       Configuration hadoopConf,
       String scheme,
+      ApiClient apiClient,
       String catalogUri,
       TokenProvider tokenProvider,
       String path,
@@ -722,7 +727,8 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_PATH_KEY, path);
     reqConf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, pathOp.value());
     TemporaryCredentials creds =
-        fetchTemporaryCredentials(catalogUri, tokenProvider, engineVersionProps, reqConf);
+        fetchTemporaryCredentials(
+            apiClient, catalogUri, tokenProvider, engineVersionProps, reqConf);
     return mergeEngineVersionProps(
         createPathCredProps(
             renewCredEnabled,
@@ -738,13 +744,18 @@ public class CredPropsUtil {
   }
 
   private static TemporaryCredentials fetchTemporaryCredentials(
+      ApiClient apiClient,
       String catalogUri,
       TokenProvider tokenProvider,
       Map<String, String> engineVersionProps,
       Configuration reqConf)
       throws ApiException {
+    ApiClient client =
+        apiClient != null
+            ? apiClient
+            : createApiClient(catalogUri, tokenProvider, engineVersionProps);
     return genericCredFetcherFactory
-        .create(createApiClient(catalogUri, tokenProvider, engineVersionProps), reqConf)
+        .create(client, reqConf)
         .createCredential()
         .temporaryCredentials();
   }

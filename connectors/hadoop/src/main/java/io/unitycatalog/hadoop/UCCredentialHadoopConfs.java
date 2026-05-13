@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop;
 
+import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Preconditions;
@@ -79,6 +80,7 @@ public final class UCCredentialHadoopConfs {
     private final String scheme;
 
     private TokenProvider tokenProvider;
+    private ApiClient apiClient;
     private boolean credentialRenewalEnabled = true;
     private boolean credentialScopedFsEnabled = true;
 
@@ -95,6 +97,16 @@ public final class UCCredentialHadoopConfs {
     /** The token provider for UC authentication. Required for all credential operations. */
     public Builder tokenProvider(TokenProvider tokenProvider) {
       this.tokenProvider = tokenProvider;
+      return this;
+    }
+
+    /**
+     * An existing {@link ApiClient} to reuse for the initial credential fetch. When set, no new
+     * HTTP connection pool is created. When absent, one is created from {@code catalogUri} and
+     * {@code tokenProvider}.
+     */
+    public Builder apiClient(ApiClient apiClient) {
+      this.apiClient = apiClient;
       return this;
     }
 
@@ -162,6 +174,7 @@ public final class UCCredentialHadoopConfs {
           credentialScopedFsEnabled,
           hadoopConf,
           scheme,
+          apiClient,
           catalogUri,
           tokenProvider,
           tableId,
@@ -195,6 +208,7 @@ public final class UCCredentialHadoopConfs {
           credentialScopedFsEnabled,
           hadoopConf,
           scheme,
+          apiClient,
           catalogUri,
           tokenProvider,
           identifier,
@@ -218,6 +232,7 @@ public final class UCCredentialHadoopConfs {
           credentialScopedFsEnabled,
           hadoopConf,
           scheme,
+          apiClient,
           catalogUri,
           tokenProvider,
           path,
