@@ -52,30 +52,6 @@ class UCCredentialHadoopConfsTest {
   }
 
   @Test
-  void unrecognizedSchemeReturnsEmptyWithoutFetchingCredentials() throws Exception {
-    // Unroutable URL: any actual HTTP attempt would throw and fail the test.
-    TokenProvider tp = TokenProvider.create(Map.of("type", "static", "token", "tok"));
-    String unroutableUri = "http://127.0.0.1:1/uc";
-
-    assertThat(
-            UCCredentialHadoopConfs.builder(unroutableUri, "file")
-                .tokenProvider(tp)
-                .buildForTable("tid", TableOperation.READ))
-        .isEmpty();
-    assertThat(
-            UCCredentialHadoopConfs.builder(unroutableUri, "file")
-                .tokenProvider(tp)
-                .buildForTable(
-                    "catalog", "schema", "table", TableOperation.READ_WRITE, "file:///tmp/t"))
-        .isEmpty();
-    assertThat(
-            UCCredentialHadoopConfs.builder(unroutableUri, "file")
-                .tokenProvider(tp)
-                .buildForPath("file:///tmp/t", PathOperation.PATH_CREATE_TABLE))
-        .isEmpty();
-  }
-
-  @Test
   void emptyEngineVersionThrows() {
     assertThatThrownBy(
             () ->

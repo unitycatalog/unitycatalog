@@ -33,7 +33,7 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
 
     TestAwsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi tempCredApi) {
       super(conf);
-      this.credentialFetcher = new UCGenericCredentialFetcher(conf, tempCredApi);
+      this.credentialFetcher = GenericCredentialFetcher.forUc(conf, tempCredApi);
     }
 
     @Override

@@ -48,7 +48,7 @@ class UCGenericCredentialFetcherTest {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     when(api.generateTemporaryTableCredentials(any())).thenReturn(new TemporaryCredentials());
 
-    GenericCredentialFetcher credentialFetcher = new UCGenericCredentialFetcher(conf, api);
+    GenericCredentialFetcher credentialFetcher = GenericCredentialFetcher.forUc(conf, api);
 
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
@@ -74,7 +74,7 @@ class UCGenericCredentialFetcherTest {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     when(api.generateTemporaryPathCredentials(any())).thenReturn(new TemporaryCredentials());
 
-    GenericCredentialFetcher credentialFetcher = new UCGenericCredentialFetcher(conf, api);
+    GenericCredentialFetcher credentialFetcher = GenericCredentialFetcher.forUc(conf, api);
 
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,

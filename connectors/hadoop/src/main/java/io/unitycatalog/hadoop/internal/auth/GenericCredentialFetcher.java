@@ -19,6 +19,18 @@ import org.apache.hadoop.conf.Configuration;
 public interface GenericCredentialFetcher {
   GenericCredential createCredential() throws ApiException;
 
+  /** Creates a fetcher backed by the standard UC temporary credentials API. */
+  static GenericCredentialFetcher forUc(
+      Configuration conf, io.unitycatalog.client.api.TemporaryCredentialsApi api) {
+    return new UCGenericCredentialFetcher(conf, api);
+  }
+
+  /** Creates a fetcher backed by the UC Delta temporary credentials API. */
+  static GenericCredentialFetcher forUcDelta(
+      Configuration conf, io.unitycatalog.client.delta.api.TemporaryCredentialsApi api) {
+    return new UCDeltaGenericCredentialFetcher(conf, api);
+  }
+
   /**
    * Creates a {@link GenericCredentialFetcher} from an already-built {@link ApiClient} and a Hadoop
    * configuration containing only the credential-request keys (type, table/path id, operation, and
@@ -31,11 +43,10 @@ public interface GenericCredentialFetcher {
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY,
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE);
     if (useDeltaCredentialsApi) {
-      return new UCDeltaGenericCredentialFetcher(
+      return forUcDelta(
           conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
     } else {
-      return new UCGenericCredentialFetcher(
-          conf, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
+      return forUc(conf, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
     }
   }
 

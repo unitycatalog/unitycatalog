@@ -641,8 +641,6 @@ public class CredPropsUtil {
       UCCredentialHadoopConfs.TableOperation tableOp,
       Map<String, String> engineVersionProps)
       throws ApiException {
-    if (!isRecognizedScheme(scheme)) return Collections.emptyMap();
-    TableOperation clientOp = TableOperation.fromValue(tableOp.value());
     Configuration reqConf = new Configuration(false);
     reqConf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
@@ -650,10 +648,7 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
     reqConf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.value());
     TemporaryCredentials creds =
-        genericCredFetcherFactory
-            .create(createApiClient(catalogUri, tokenProvider, engineVersionProps), reqConf)
-            .createCredential()
-            .temporaryCredentials();
+        fetchTemporaryCredentials(catalogUri, tokenProvider, engineVersionProps, reqConf);
     return mergeEngineVersionProps(
         createTableCredProps(
             renewCredEnabled,
@@ -663,7 +658,7 @@ public class CredPropsUtil {
             catalogUri,
             tokenProvider,
             tableId,
-            clientOp,
+            TableOperation.fromValue(tableOp.value()),
             creds),
         engineVersionProps);
   }
@@ -684,8 +679,6 @@ public class CredPropsUtil {
       UCCredentialHadoopConfs.TableOperation tableOp,
       Map<String, String> engineVersionProps)
       throws ApiException {
-    if (!isRecognizedScheme(scheme)) return Collections.emptyMap();
-    CredentialOperation clientOp = CredentialOperation.fromValue(tableOp.value());
     Configuration reqConf = new Configuration(false);
     reqConf.set(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
     reqConf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.value());
@@ -694,10 +687,7 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, identifier.table());
     reqConf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
     TemporaryCredentials creds =
-        genericCredFetcherFactory
-            .create(createApiClient(catalogUri, tokenProvider, engineVersionProps), reqConf)
-            .createCredential()
-            .temporaryCredentials();
+        fetchTemporaryCredentials(catalogUri, tokenProvider, engineVersionProps, reqConf);
     return mergeEngineVersionProps(
         createDeltaTableCredProps(
             renewCredEnabled,
@@ -708,7 +698,7 @@ public class CredPropsUtil {
             tokenProvider,
             identifier,
             location,
-            clientOp,
+            CredentialOperation.fromValue(tableOp.value()),
             creds),
         engineVersionProps);
   }
@@ -725,8 +715,6 @@ public class CredPropsUtil {
       UCCredentialHadoopConfs.PathOperation pathOp,
       Map<String, String> engineVersionProps)
       throws ApiException {
-    if (!isRecognizedScheme(scheme)) return Collections.emptyMap();
-    PathOperation clientOp = PathOperation.fromValue(pathOp.value());
     Configuration reqConf = new Configuration(false);
     reqConf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
@@ -734,10 +722,7 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_PATH_KEY, path);
     reqConf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, pathOp.value());
     TemporaryCredentials creds =
-        genericCredFetcherFactory
-            .create(createApiClient(catalogUri, tokenProvider, engineVersionProps), reqConf)
-            .createCredential()
-            .temporaryCredentials();
+        fetchTemporaryCredentials(catalogUri, tokenProvider, engineVersionProps, reqConf);
     return mergeEngineVersionProps(
         createPathCredProps(
             renewCredEnabled,
@@ -747,16 +732,21 @@ public class CredPropsUtil {
             catalogUri,
             tokenProvider,
             path,
-            clientOp,
+            PathOperation.fromValue(pathOp.value()),
             creds),
         engineVersionProps);
   }
 
-  private static boolean isRecognizedScheme(String scheme) {
-    return "s3".equals(scheme)
-        || "gs".equals(scheme)
-        || "abfs".equals(scheme)
-        || "abfss".equals(scheme);
+  private static TemporaryCredentials fetchTemporaryCredentials(
+      String catalogUri,
+      TokenProvider tokenProvider,
+      Map<String, String> engineVersionProps,
+      Configuration reqConf)
+      throws ApiException {
+    return genericCredFetcherFactory
+        .create(createApiClient(catalogUri, tokenProvider, engineVersionProps), reqConf)
+        .createCredential()
+        .temporaryCredentials();
   }
 
   private static Map<String, String> mergeEngineVersionProps(

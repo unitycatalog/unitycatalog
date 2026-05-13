@@ -35,17 +35,11 @@ public final class UCCredentialHadoopConfs {
    * @since 0.5.0
    */
   public enum TableOperation {
-    READ("READ"),
-    READ_WRITE("READ_WRITE");
-
-    private final String value;
-
-    TableOperation(String value) {
-      this.value = value;
-    }
+    READ,
+    READ_WRITE;
 
     public String value() {
-      return value;
+      return name();
     }
   }
 
@@ -55,18 +49,12 @@ public final class UCCredentialHadoopConfs {
    * @since 0.5.0
    */
   public enum PathOperation {
-    PATH_READ("PATH_READ"),
-    PATH_READ_WRITE("PATH_READ_WRITE"),
-    PATH_CREATE_TABLE("PATH_CREATE_TABLE");
-
-    private final String value;
-
-    PathOperation(String value) {
-      this.value = value;
-    }
+    PATH_READ,
+    PATH_READ_WRITE,
+    PATH_CREATE_TABLE;
 
     public String value() {
-      return value;
+      return name();
     }
   }
 

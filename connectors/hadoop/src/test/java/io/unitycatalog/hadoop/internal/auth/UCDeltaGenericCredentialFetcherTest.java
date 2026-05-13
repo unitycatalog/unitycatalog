@@ -43,7 +43,7 @@ class UCDeltaGenericCredentialFetcherTest {
     when(api.getTableCredentials(CredentialOperation.READ_WRITE, "main", "default", "events"))
         .thenReturn(response);
 
-    GenericCredential cred = new UCDeltaGenericCredentialFetcher(conf, api).createCredential();
+    GenericCredential cred = GenericCredentialFetcher.forUcDelta(conf, api).createCredential();
 
     assertThat(cred).isNotNull();
     TemporaryCredentials out = cred.temporaryCredentials();
@@ -77,7 +77,7 @@ class UCDeltaGenericCredentialFetcherTest {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     when(api.getTableCredentials(CredentialOperation.READ_WRITE, "main", "default", "events"))
         .thenReturn(response);
-    GenericCredentialFetcher credentialFetcher = new UCDeltaGenericCredentialFetcher(conf, api);
+    GenericCredentialFetcher credentialFetcher = GenericCredentialFetcher.forUcDelta(conf, api);
 
     conf.set(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY, "mutated-catalog");
     conf.set(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY, "mutated-schema");
@@ -103,13 +103,13 @@ class UCDeltaGenericCredentialFetcherTest {
     when(api.getTableCredentials(CredentialOperation.READ_WRITE, "main", "default", "events"))
         .thenReturn(null);
 
-    assertThatThrownBy(() -> new UCDeltaGenericCredentialFetcher(conf, api).createCredential())
+    assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(conf, api).createCredential())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("returned no credentials response");
   }
 
   @Test
-  void constructorThrowsWhenConfMissingCatalog() {
+  void factoryThrowsWhenConfMissingCatalog() {
     Configuration conf = new Configuration(false);
     conf.set(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY, "s");
     conf.set(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, "n");
@@ -117,13 +117,13 @@ class UCDeltaGenericCredentialFetcherTest {
     conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ");
 
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
-    assertThatThrownBy(() -> new UCDeltaGenericCredentialFetcher(conf, api))
+    assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(conf, api))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("fs.unitycatalog.delta.catalog");
   }
 
   @Test
-  void constructorRejectsUnsupportedTableOperation() {
+  void factoryRejectsUnsupportedTableOperation() {
     Configuration conf = new Configuration(false);
     conf.set(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY, "c");
     conf.set(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY, "s");
@@ -132,7 +132,7 @@ class UCDeltaGenericCredentialFetcherTest {
     conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "UNKNOWN");
 
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
-    assertThatThrownBy(() -> new UCDeltaGenericCredentialFetcher(conf, api))
+    assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(conf, api))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }
