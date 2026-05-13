@@ -3,7 +3,6 @@ package io.unitycatalog.server.utils;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.delta.model.ArrayType;
 import io.unitycatalog.server.delta.model.DecimalType;
@@ -154,27 +153,22 @@ public class ColumnUtils {
   }
 
   /**
-   * Validate that a UC column stores typeJson as Spark StructField JSON. The Spark connector and
-   * Delta REST APIs depend on name, type, nullable, and metadata being present in this payload.
+   * Validate that a UC column stores {@code typeJson} as Spark {@link StructField} JSON.
    */
   public static void validateTypeJson(ColumnInfo column) {
     if (column == null) {
       throw invalidTypeJson(null, "column cannot be null");
     }
-    JsonNode typeJson = parseTypeJson(column);
-    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_NAME);
-    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_TYPE);
-    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_NULLABLE);
-    JsonNode metadata = requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_METADATA);
-    if (!metadata.isObject()) {
-      throw invalidTypeJson(column, "type_json.metadata must be a JSON object");
-    }
-
     StructField field;
     try {
       field = toStructField(column);
     } catch (IllegalStateException e) {
       throw invalidTypeJson(column, e.getMessage(), e);
+    }
+    try {
+      validateStructField(field, "type_json");
+    } catch (BaseException e) {
+      throw invalidTypeJson(column, e.getErrorMessage(), e);
     }
     if (!field.getName().equals(column.getName())) {
       throw invalidTypeJson(
@@ -189,29 +183,6 @@ public class ColumnUtils {
               "field nullable %s does not match column nullable %s",
               field.getNullable(), column.getNullable()));
     }
-  }
-
-  private static JsonNode parseTypeJson(ColumnInfo column) {
-    if (column.getTypeJson() == null || column.getTypeJson().isEmpty()) {
-      throw invalidTypeJson(column, "type_json cannot be null or empty");
-    }
-    try {
-      JsonNode typeJson = TYPE_MAPPER.readTree(column.getTypeJson());
-      if (typeJson == null || !typeJson.isObject()) {
-        throw invalidTypeJson(column, "type_json must be a JSON object");
-      }
-      return typeJson;
-    } catch (JsonProcessingException e) {
-      throw invalidTypeJson(column, "Failed to parse typeJson: " + column.getTypeJson(), e);
-    }
-  }
-
-  private static JsonNode requireTypeJsonField(ColumnInfo column, JsonNode typeJson, String name) {
-    JsonNode field = typeJson.get(name);
-    if (field == null || field.isNull()) {
-      throw invalidTypeJson(column, "type_json." + name + " is required");
-    }
-    return field;
   }
 
   private static BaseException invalidTypeJson(ColumnInfo column, String message) {
@@ -244,7 +215,9 @@ public class ColumnUtils {
     List<StructField> fields = structType.getFields();
     Set<String> seen = new HashSet<>();
     for (int i = 0; i < fields.size(); i++) {
-      validateStructField(fields.get(i), path + ".fields[" + i + "]");
+      String fieldPath = path + ".fields[" + i + "]";
+      requireNonNull(fields.get(i), fieldPath);
+      validateStructField(fields.get(i), fieldPath);
       String name = fields.get(i).getName();
       if (!seen.add(name)) {
         throw new BaseException(
