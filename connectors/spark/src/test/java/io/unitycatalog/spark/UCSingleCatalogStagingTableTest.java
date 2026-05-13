@@ -21,7 +21,7 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
-import io.unitycatalog.hadoop.internal.auth.TempCredentialApi;
+import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.Map;
@@ -82,7 +82,7 @@ public class UCSingleCatalogStagingTableTest {
 
   @AfterEach
   public void tearDown() {
-    CredPropsUtil.tempCredApiFactory = TempCredentialApi::create;
+    CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
   }
 
   @Test
@@ -133,16 +133,16 @@ public class UCSingleCatalogStagingTableTest {
   @Test
   public void testStageCreateOrReplaceMissingManagedTableUsesManagedCreatePath() throws Exception {
     // Use a recognized scheme (gs) so the credential fetch path actually runs, then mock the
-    // TempCredentialApi factory so the test runs without a real UC server. file:// would
+    // GenericCredentialFetcher factory so the test runs without a real UC server. file:// would
     // short-circuit before any fetch, making the verify() below vacuously true.
-    TempCredentialApi mockCredApi = mock(TempCredentialApi.class);
+    GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
     when(mockCredApi.createCredential())
         .thenReturn(
             new GenericCredential(
                 new TemporaryCredentials()
                     .gcpOauthToken(new GcpOauthToken().oauthToken("token"))
                     .expirationTime(Long.MAX_VALUE)));
-    CredPropsUtil.tempCredApiFactory = (apiClient, conf) -> mockCredApi;
+    CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
     mockMissingTableLookup(mocks.tablesApi);
