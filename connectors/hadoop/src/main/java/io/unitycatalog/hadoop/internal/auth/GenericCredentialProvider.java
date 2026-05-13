@@ -2,10 +2,10 @@ package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.util.Preconditions;
 
 /**
  * Base class for Hadoop credential providers backed by Unity Catalog temporary credentials.

@@ -36,7 +36,7 @@ class UCCredentialHadoopConfsTest {
             () ->
                 UCCredentialHadoopConfs.builder("http://uc", "s3")
                     .buildForTable("tid", TableOperation.READ))
-        .isInstanceOf(IllegalStateException.class)
+        .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("tokenProvider");
   }
 
@@ -47,7 +47,7 @@ class UCCredentialHadoopConfsTest {
                 UCCredentialHadoopConfs.builder("http://uc", "s3")
                     .buildForTable(
                         "catalog", "schema", "table", TableOperation.READ_WRITE, "s3://b/t"))
-        .isInstanceOf(IllegalStateException.class)
+        .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("tokenProvider");
   }
 
@@ -137,8 +137,8 @@ class UCCredentialHadoopConfsTest {
     // server rejects the request at runtime and no other test catches it.
     for (PathOperation hadoopOp : PathOperation.values()) {
       io.unitycatalog.client.model.PathOperation sdkOp =
-          io.unitycatalog.client.model.PathOperation.fromValue(hadoopOp.getValue());
-      assertThat(sdkOp.getValue()).isEqualTo(hadoopOp.getValue());
+          io.unitycatalog.client.model.PathOperation.fromValue(hadoopOp.value());
+      assertThat(sdkOp.getValue()).isEqualTo(hadoopOp.value());
     }
   }
 
@@ -148,12 +148,12 @@ class UCCredentialHadoopConfsTest {
     // round-trip through both SDK enums.
     for (TableOperation hadoopOp : TableOperation.values()) {
       io.unitycatalog.client.model.TableOperation restOp =
-          io.unitycatalog.client.model.TableOperation.fromValue(hadoopOp.getValue());
-      assertThat(restOp.getValue()).isEqualTo(hadoopOp.getValue());
+          io.unitycatalog.client.model.TableOperation.fromValue(hadoopOp.value());
+      assertThat(restOp.getValue()).isEqualTo(hadoopOp.value());
 
       io.unitycatalog.client.delta.model.CredentialOperation deltaOp =
-          io.unitycatalog.client.delta.model.CredentialOperation.fromValue(hadoopOp.getValue());
-      assertThat(deltaOp.getValue()).isEqualTo(hadoopOp.getValue());
+          io.unitycatalog.client.delta.model.CredentialOperation.fromValue(hadoopOp.value());
+      assertThat(deltaOp.getValue()).isEqualTo(hadoopOp.value());
     }
   }
 }

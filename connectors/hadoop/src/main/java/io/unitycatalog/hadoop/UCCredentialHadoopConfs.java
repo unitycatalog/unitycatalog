@@ -6,8 +6,6 @@ import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
@@ -34,8 +32,6 @@ public final class UCCredentialHadoopConfs {
   /**
    * The access operation requested for a Unity Catalog table credential.
    *
-   * <p>Shared across both the UC REST credentials API and the UC Delta credentials API.
-   *
    * @since 0.5.0
    */
   public enum TableOperation {
@@ -48,7 +44,7 @@ public final class UCCredentialHadoopConfs {
       this.value = value;
     }
 
-    public String getValue() {
+    public String value() {
       return value;
     }
   }
@@ -69,7 +65,7 @@ public final class UCCredentialHadoopConfs {
       this.value = value;
     }
 
-    public String getValue() {
+    public String value() {
       return value;
     }
   }
@@ -97,6 +93,7 @@ public final class UCCredentialHadoopConfs {
     private TokenProvider tokenProvider;
     private boolean credentialRenewalEnabled = true;
     private boolean credentialScopedFsEnabled = true;
+
     private Configuration hadoopConf = new Configuration(false);
     private final Map<String, String> engineVersionProps = new LinkedHashMap<>();
 
@@ -163,30 +160,24 @@ public final class UCCredentialHadoopConfs {
     }
 
     /**
-     * Builds Hadoop properties for a <em>table's</em> storage location using the UC REST
-     * credentials API.
+     * Builds Hadoop properties for a table using the UC REST credentials API.
      *
      * @return unmodifiable map; empty if the scheme is unrecognized
-     * @throws IllegalStateException if {@code tokenProvider} is not set
+     * @throws IllegalArgumentException if {@code tokenProvider} is not set
      * @throws ApiException if the credential fetch from the UC REST API fails
      */
     public Map<String, String> buildForTable(String tableId, TableOperation tableOperation)
         throws ApiException {
-      if (!isRecognizedScheme()) {
-        return Collections.emptyMap();
-      }
-      Preconditions.checkState(tokenProvider != null, "tokenProvider is required");
-      return CredPropsUtil.mergeEngineVersionProps(
-          CredPropsUtil.fetchTableCredProps(
-              credentialRenewalEnabled,
-              credentialScopedFsEnabled,
-              hadoopConf,
-              scheme,
-              catalogUri,
-              tokenProvider,
-              tableId,
-              tableOperation,
-              appVersions()),
+      Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
+      return CredPropsUtil.fetchTableCredProps(
+          credentialRenewalEnabled,
+          credentialScopedFsEnabled,
+          hadoopConf,
+          scheme,
+          catalogUri,
+          tokenProvider,
+          tableId,
+          tableOperation,
           engineVersionProps);
     }
 
@@ -200,32 +191,27 @@ public final class UCCredentialHadoopConfs {
      * @param operation the credential operation to request from the UC Delta credentials API
      * @param location the table storage location used to select a returned storage credential
      * @return unmodifiable map; empty if the scheme is unrecognized
-     * @throws IllegalArgumentException if a table identity, operation, or location field is missing
-     * @throws IllegalStateException if {@code tokenProvider} is not set
+     * @throws IllegalArgumentException if a table identity, operation, location field, or {@code
+     *     tokenProvider} is missing
      * @throws ApiException if the credential fetch from the UC Delta API fails
      */
     public Map<String, String> buildForTable(
         String catalog, String schema, String table, TableOperation operation, String location)
         throws ApiException {
-      if (!isRecognizedScheme()) {
-        return Collections.emptyMap();
-      }
       UCDeltaTableIdentifier identifier = UCDeltaTableIdentifier.of(catalog, schema, table);
       Preconditions.checkArgument(operation != null, "operation is required");
       Preconditions.checkArgument(location != null && !location.isEmpty(), "location is required");
-      Preconditions.checkState(tokenProvider != null, "tokenProvider is required");
-      return CredPropsUtil.mergeEngineVersionProps(
-          CredPropsUtil.fetchDeltaTableCredProps(
-              credentialRenewalEnabled,
-              credentialScopedFsEnabled,
-              hadoopConf,
-              scheme,
-              catalogUri,
-              tokenProvider,
-              identifier,
-              location,
-              operation,
-              appVersions()),
+      Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
+      return CredPropsUtil.fetchDeltaTableCredProps(
+          credentialRenewalEnabled,
+          credentialScopedFsEnabled,
+          hadoopConf,
+          scheme,
+          catalogUri,
+          tokenProvider,
+          identifier,
+          location,
+          operation,
           engineVersionProps);
     }
 
@@ -233,44 +219,22 @@ public final class UCCredentialHadoopConfs {
      * Builds Hadoop properties for an <em>external path</em> using the UC REST credentials API.
      *
      * @return unmodifiable map; empty if the scheme is unrecognized
-     * @throws IllegalStateException if {@code tokenProvider} is not set
+     * @throws IllegalArgumentException if {@code tokenProvider} is not set
      * @throws ApiException if the credential fetch from the UC REST API fails
      */
     public Map<String, String> buildForPath(String path, PathOperation pathOperation)
         throws ApiException {
-      if (!isRecognizedScheme()) {
-        return Collections.emptyMap();
-      }
-      Preconditions.checkState(tokenProvider != null, "tokenProvider is required");
-      return CredPropsUtil.mergeEngineVersionProps(
-          CredPropsUtil.fetchPathCredProps(
-              credentialRenewalEnabled,
-              credentialScopedFsEnabled,
-              hadoopConf,
-              scheme,
-              catalogUri,
-              tokenProvider,
-              path,
-              pathOperation,
-              appVersions()),
+      Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
+      return CredPropsUtil.fetchPathCredProps(
+          credentialRenewalEnabled,
+          credentialScopedFsEnabled,
+          hadoopConf,
+          scheme,
+          catalogUri,
+          tokenProvider,
+          path,
+          pathOperation,
           engineVersionProps);
-    }
-
-    private Map<String, String> appVersions() {
-      Map<String, String> result = new HashMap<>();
-      String prefix = UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX;
-      engineVersionProps.forEach(
-          (k, v) -> {
-            if (k.startsWith(prefix)) result.put(k.substring(prefix.length()), v);
-          });
-      return result;
-    }
-
-    private boolean isRecognizedScheme() {
-      return "s3".equals(scheme)
-          || "gs".equals(scheme)
-          || "abfs".equals(scheme)
-          || "abfss".equals(scheme);
     }
   }
 }

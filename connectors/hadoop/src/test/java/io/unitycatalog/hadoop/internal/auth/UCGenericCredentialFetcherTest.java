@@ -28,7 +28,7 @@ class UCGenericCredentialFetcherTest {
 
     assertThatThrownBy(() -> GenericCredentialFetcher.create(conf))
         .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConfConstants.UC_URI_KEY);
+        .hasMessageContaining(UCHadoopConfConstants.UC_URI_KEY);
   }
 
   @Test

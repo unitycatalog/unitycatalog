@@ -33,15 +33,18 @@ public interface GenericCredentialFetcher {
     if (useDeltaCredentialsApi) {
       return new UCDeltaGenericCredentialFetcher(
           conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
+    } else {
+      return new UCGenericCredentialFetcher(
+          conf, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
     }
-    return new UCGenericCredentialFetcher(
-        conf, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
   }
 
   static GenericCredentialFetcher create(Configuration conf) {
     String ucUriStr = conf.get(UCHadoopConfConstants.UC_URI_KEY);
     Preconditions.checkNotNull(
-        ucUriStr, "'%s' is not set in hadoop configuration", UCHadoopConfConstants.UC_URI_KEY);
+        ucUriStr,
+        "Failed to create GenericCredentialFetcher, the '%s' is not set in hadoop configuration",
+        UCHadoopConfConstants.UC_URI_KEY);
     ApiClient apiClient =
         ApiClientUtils.create(
             URI.create(ucUriStr),

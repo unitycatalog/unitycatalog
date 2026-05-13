@@ -6,7 +6,8 @@ import io.unitycatalog.client.model._
 import io.unitycatalog.client.model.TableInfo
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.hadoop.{PathOperation, TableOperation, UCCredentialHadoopConfs}
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs.{PathOperation, TableOperation}
 import io.unitycatalog.spark.auth.AuthConfigUtils
 import io.unitycatalog.spark.utils.OptionsUtil
 import org.apache.hadoop.conf.Configuration
