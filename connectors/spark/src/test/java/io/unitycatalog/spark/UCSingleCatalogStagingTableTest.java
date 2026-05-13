@@ -72,12 +72,16 @@ public class UCSingleCatalogStagingTableTest {
   private StagingTableCatalog mockDelegate;
 
   @BeforeEach
-  public void setUp() {
+  public void setUp() throws Exception {
     catalog = new UCSingleCatalog();
     mockDelegate = mock(StagingTableCatalog.class);
     setDelegate(catalog, mockDelegate);
     setField(
         catalog, "tokenProvider", TokenProvider.create(Map.of("type", "static", "token", "tok")));
+    GenericCredentialFetcher mockFetcher = mock(GenericCredentialFetcher.class);
+    when(mockFetcher.createCredential())
+        .thenReturn(new GenericCredential(new TemporaryCredentials()));
+    CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockFetcher;
   }
 
   @AfterEach

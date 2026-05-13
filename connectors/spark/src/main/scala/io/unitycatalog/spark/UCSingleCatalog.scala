@@ -601,9 +601,8 @@ private class UCProxy(
         }
     }
 
-    // buildForTable also returns empty without throwing when the storage scheme is unsupported
-    // (e.g. file://). Pre-PR, that path threw ApiException and the catch above flipped SSP;
-    // preserve that behavior so SSP-enabled tables on unsupported schemes still work.
+    // For unrecognized schemes (e.g. file://) the credential switch returns empty without props;
+    // treat that the same as a failed fetch so SSP-enabled tables on unsupported schemes still work.
     if (extraSerdeProps.isEmpty && serverSidePlanningEnabled) {
       enableServerSidePlanningConfig(identifier)
     }
