@@ -7,6 +7,11 @@ import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.util.Objects;
 
+/**
+ * Internal credential wrapper used by Hadoop token providers.
+ *
+ * <p>This class normalizes UC SDK temporary credentials into cloud-specific credential values.
+ */
 public class GenericCredential {
   private final TemporaryCredentials tempCred;
 

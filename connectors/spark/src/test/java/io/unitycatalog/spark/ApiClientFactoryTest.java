@@ -13,7 +13,7 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.util.Map;
@@ -149,7 +149,8 @@ public class ApiClientFactoryTest {
     assertThat(versions).containsKeys("Spark", "Delta", "Java", "Scala");
     versions.forEach(
         (name, version) ->
-            assertThat(props).containsEntry(UCHadoopConf.UC_ENGINE_VERSION_PREFIX + name, version));
+            assertThat(props)
+                .containsEntry(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + name, version));
   }
 
   private static TokenProvider createStaticTokenProvider(String token) {

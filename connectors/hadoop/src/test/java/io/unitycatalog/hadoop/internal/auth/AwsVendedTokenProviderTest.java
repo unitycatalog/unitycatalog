@@ -6,7 +6,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -29,16 +29,16 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
   }
 
   static class TestAwsVendedTokenProvider extends AwsVendedTokenProvider {
-    private final TemporaryCredentialsApi tempCredApi;
+    private final TempCredentialApi credentialApi;
 
     TestAwsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi tempCredApi) {
       super(conf);
-      this.tempCredApi = tempCredApi;
+      this.credentialApi = new UCTempCredentialApi(conf, tempCredApi);
     }
 
     @Override
-    protected TemporaryCredentialsApi temporaryCredentialsApi() {
-      return tempCredApi;
+    TempCredentialApi tempCredentialApi() {
+      return credentialApi;
     }
   }
 
@@ -58,10 +58,15 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
 
   @Override
   protected void setInitialCred(Configuration conf, TemporaryCredentials cred) {
-    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, cred.getAwsTempCredentials().getAccessKeyId());
-    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, cred.getAwsTempCredentials().getSecretAccessKey());
-    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, cred.getAwsTempCredentials().getSessionToken());
-    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, cred.getExpirationTime());
+    conf.set(
+        UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, cred.getAwsTempCredentials().getAccessKeyId());
+    conf.set(
+        UCHadoopConfConstants.S3A_INIT_SECRET_KEY,
+        cred.getAwsTempCredentials().getSecretAccessKey());
+    conf.set(
+        UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN,
+        cred.getAwsTempCredentials().getSessionToken());
+    conf.setLong(UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, cred.getExpirationTime());
   }
 
   @Override
@@ -83,25 +88,11 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
   public void testConstructor() {
     Configuration conf = new Configuration();
 
-    // Verify the UC URI validation error message.
-    assertThatThrownBy(() -> new AwsVendedTokenProvider(conf))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI_KEY);
-
-    // Verify the UC Token validation error message.
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    assertThatThrownBy(() -> new AwsVendedTokenProvider(conf))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Required configuration key 'type' is missing or empty");
-
-    // Verify the UID validation error message.
-    conf.set(UCHadoopConf.UC_AUTH_TYPE, "static");
-    conf.set(UCHadoopConf.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
     assertThatThrownBy(() -> new AwsVendedTokenProvider(conf))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage(
             "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
-            UCHadoopConf.UC_CREDENTIALS_UID_KEY);
+            UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
   }
 
   @Test

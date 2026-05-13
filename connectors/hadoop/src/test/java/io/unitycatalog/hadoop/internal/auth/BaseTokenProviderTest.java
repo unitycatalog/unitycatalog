@@ -10,7 +10,7 @@ import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.time.Duration;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
@@ -52,8 +52,8 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testTableTemporaryCredentialsRenew() throws Exception {
     Configuration conf = newTableBasedConf();
-    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 2000L);
     TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 3000L);
@@ -83,8 +83,8 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testTableTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = newTableBasedConf();
-    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     // Use the generated credential to initialize the provider.
     TemporaryCredentials cred0 = newTempCred("0", clock.now().toEpochMilli() + 2000L);
@@ -126,8 +126,8 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testPathTemporaryCredentialsRenew() throws Exception {
     Configuration conf = newPathBasedConf();
-    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 2000L);
     TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 3000L);
@@ -157,8 +157,8 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testPathTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = newPathBasedConf();
-    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     // Use the generated credential to initialize the provider.
     TemporaryCredentials cred0 = newTempCred("0", clock.now().toEpochMilli() + 2000L);
@@ -199,20 +199,20 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testGlobalCredCache() throws Exception {
     Configuration tableAconf = newTableBasedConf("tableA");
-    tableAconf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    tableAconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    tableAconf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    tableAconf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     Configuration tableBconf = newTableBasedConf("tableB");
-    tableBconf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    tableBconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    tableBconf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    tableBconf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     Configuration pathAconf = newPathBasedConf("pathA");
-    pathAconf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    pathAconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    pathAconf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    pathAconf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     Configuration pathBconf = newPathBasedConf("pathB");
-    pathBconf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    pathBconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    pathBconf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    pathBconf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     // Mock the temporary table credential API.
@@ -315,15 +315,17 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   public static Configuration newTableBasedConf(String tableId) {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_AUTH_TYPE, "static");
-    conf.set(UCHadoopConf.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
-    conf.set(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
+    conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
+    conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
+    conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For table-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, tableId);
-    conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
+    conf.set(
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
+    conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
 
     return conf;
   }
@@ -334,15 +336,17 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   public static Configuration newPathBasedConf(String path) {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_AUTH_TYPE, "static");
-    conf.set(UCHadoopConf.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
-    conf.set(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
+    conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
+    conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
+    conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For path-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    conf.set(UCHadoopConf.UC_PATH_KEY, path);
-    conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
+    conf.set(
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    conf.set(UCHadoopConfConstants.UC_PATH_KEY, path);
+    conf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
 
     return conf;
   }

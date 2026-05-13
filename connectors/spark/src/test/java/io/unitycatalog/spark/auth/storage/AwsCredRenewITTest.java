@@ -2,7 +2,7 @@ package io.unitycatalog.spark.auth.storage;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
 import java.time.Instant;
@@ -59,7 +59,7 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
 
     @Override
     protected AwsCredentialsProvider createProvider() {
-      String clazz = getConf().get(UCHadoopConf.S3A_CREDENTIALS_PROVIDER);
+      String clazz = getConf().get(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER);
       assertThat(clazz).isEqualTo(AwsVendedTokenProvider.class.getName());
 
       // This will validate if the hadoop configuration is correct or not, since it will fail the

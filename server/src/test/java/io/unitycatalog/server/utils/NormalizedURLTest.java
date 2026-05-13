@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.server.exception.BaseException;
+import java.net.URI;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -86,7 +87,8 @@ public class NormalizedURLTest {
 
     assertThrows(BaseException.class, () -> NormalizedURL.from(""));
     assertThrows(BaseException.class, () -> NormalizedURL.from("  "));
-    assertThat(NormalizedURL.from(null)).isNull();
+    assertThat(NormalizedURL.from((String) null)).isNull();
+    assertThat(NormalizedURL.from((URI) null)).isNull();
   }
 
   @Test

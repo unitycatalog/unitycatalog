@@ -11,7 +11,7 @@ import com.google.cloud.hadoop.util.HadoopCredentialsConfiguration.AccessTokenPr
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -26,16 +26,16 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
   }
 
   static class TestGcsVendedTokenProvider extends GcsVendedTokenProvider {
-    private final TemporaryCredentialsApi mockApi;
+    private final TempCredentialApi credentialApi;
 
     TestGcsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
       setConf(conf);
-      this.mockApi = mockApi;
+      this.credentialApi = new UCTempCredentialApi(conf, mockApi);
     }
 
     @Override
-    protected TemporaryCredentialsApi temporaryCredentialsApi() {
-      return mockApi;
+    TempCredentialApi tempCredentialApi() {
+      return credentialApi;
     }
   }
 
@@ -54,9 +54,10 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
   @Override
   protected void setInitialCred(Configuration conf, TemporaryCredentials cred) {
     assertThat(cred.getGcpOauthToken()).isNotNull();
-    conf.set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, cred.getGcpOauthToken().getOauthToken());
+    conf.set(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, cred.getGcpOauthToken().getOauthToken());
     if (cred.getExpirationTime() != null) {
-      conf.setLong(UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME, cred.getExpirationTime());
+      conf.setLong(
+          UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME, cred.getExpirationTime());
     }
   }
 
@@ -83,21 +84,10 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
     GcsVendedTokenProvider provider = new GcsVendedTokenProvider();
 
     assertThatThrownBy(() -> provider.setConf(conf))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI_KEY);
-
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    assertThatThrownBy(() -> provider.setConf(conf))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Required configuration key 'type' is missing or empty");
-
-    conf.set(UCHadoopConf.UC_AUTH_TYPE, "static");
-    conf.set(UCHadoopConf.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
-    assertThatThrownBy(() -> provider.setConf(conf))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage(
             "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
-            UCHadoopConf.UC_CREDENTIALS_UID_KEY);
+            UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
   }
 
   @Test
@@ -109,9 +99,10 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
     conf.set("fs.gs.project.id", "test-project");
     conf.set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
     conf.set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName());
-    conf.set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, "dummy-token");
+    conf.set(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, "dummy-token");
     conf.setLong(
-        UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME, System.currentTimeMillis() + 60_000);
+        UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
+        System.currentTimeMillis() + 60_000);
 
     try (FileSystem fs = FileSystem.newInstance(new URI("gs://test-bucket0"), conf)) {
       assertThat(fs.getClass().getName()).isEqualTo(ghfsClassName);

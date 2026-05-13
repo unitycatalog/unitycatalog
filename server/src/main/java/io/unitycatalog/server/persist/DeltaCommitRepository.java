@@ -12,15 +12,14 @@ import io.unitycatalog.server.model.DeltaCommitMetadataProperties;
 import io.unitycatalog.server.model.DeltaGetCommits;
 import io.unitycatalog.server.model.DeltaGetCommitsResponse;
 import io.unitycatalog.server.model.DeltaMetadata;
-import io.unitycatalog.server.model.DeltaUniform;
-import io.unitycatalog.server.model.DeltaUniformIceberg;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
-import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.service.delta.DeltaUniformUtils;
+import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -87,12 +86,6 @@ public class DeltaCommitRepository {
    * configurable server property.
    */
   private static final int NUM_COMMITS_PER_BATCH = 20;
-
-  /** The maximum size of the JSON that contains the Delta-to-Iceberg conversion information */
-  public static final int MAX_DELTA_UNIFORM_ICEBERG_SIZE = 65535; // The limit from DAO
-
-  public static final String ICEBERG_FORMAT = "iceberg";
-  public static final String UNIFORM_ENABLED_FORMATS = "delta.universalFormat.enabledFormats";
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
@@ -245,6 +238,11 @@ public class DeltaCommitRepository {
   public void postCommit(DeltaCommit commit) {
     serverProperties.checkManagedTableEnabled();
     validateCommit(commit);
+    // Extract + shape-validate uniform fields outside the transaction. The subpath check (which
+    // needs the table URL) happens later inside validateTableForCommit; everything else
+    // uniform-related is settled here.
+    Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields =
+        DeltaUniformUtils.getUniformFields(commit);
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -254,10 +252,10 @@ public class DeltaCommitRepository {
             throw new BaseException(
                 ErrorCode.TABLE_NOT_FOUND, "Table not found: " + commit.getTableId());
           }
-          validateTableForCommit(session, commit, tableInfoDAO);
+          validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
           List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
           if (firstAndLastCommits.isEmpty()) {
-            handleOnboardingCommit(session, tableId, tableInfoDAO, commit);
+            handleOnboardingCommit(session, tableId, tableInfoDAO, commit, uniformFields);
           } else {
             DeltaCommitDAO firstCommitDAO = firstAndLastCommits.get(0);
             DeltaCommitDAO lastCommitDAO = firstAndLastCommits.get(1);
@@ -273,7 +271,13 @@ public class DeltaCommitRepository {
                   lastCommitDAO.getCommitVersion());
             } else {
               handleNormalCommit(
-                  session, tableId, tableInfoDAO, commit, firstCommitDAO, lastCommitDAO);
+                  session,
+                  tableId,
+                  tableInfoDAO,
+                  commit,
+                  uniformFields,
+                  firstCommitDAO,
+                  lastCommitDAO);
             }
           }
           return null;
@@ -299,14 +303,18 @@ public class DeltaCommitRepository {
    * @throws BaseException if the commit info is null
    */
   private static void handleOnboardingCommit(
-      Session session, UUID tableId, TableInfoDAO tableInfoDAO, DeltaCommit commit) {
+      Session session,
+      UUID tableId,
+      TableInfoDAO tableInfoDAO,
+      DeltaCommit commit,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
     DeltaCommitInfo commitInfo = commit.getCommitInfo();
     ValidationUtils.checkArgument(
         commitInfo != null,
         "Field can not be null: %s in onboarding commit",
         DeltaCommit.JSON_PROPERTY_COMMIT_INFO);
     saveCommit(session, tableId, commitInfo);
-    updateTableFromCommit(session, tableId, tableInfoDAO, commit);
+    updateTableFromCommit(session, tableId, tableInfoDAO, commit, uniformFields);
   }
 
   /**
@@ -378,6 +386,7 @@ public class DeltaCommitRepository {
       UUID tableId,
       TableInfoDAO tableInfoDAO,
       DeltaCommit commit,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       DeltaCommitDAO firstCommitDAO,
       DeltaCommitDAO lastCommitDAO) {
     DeltaCommitInfo commitInfo = Objects.requireNonNull(commit.getCommitInfo());
@@ -410,7 +419,7 @@ public class DeltaCommitRepository {
     checkCommitLimit(
         tableId, newCommitVersion, latestBackfilledVersion, firstCommitDAO, lastCommitDAO);
     saveCommit(session, tableId, commitInfo);
-    updateTableFromCommit(session, tableId, tableInfoDAO, commit);
+    updateTableFromCommit(session, tableId, tableInfoDAO, commit, uniformFields);
     latestBackfilledVersion.ifPresent(
         latestBackfilled ->
             backfillCommits(
@@ -703,7 +712,11 @@ public class DeltaCommitRepository {
    * @param commit the commit request containing optional metadata and uniform information
    */
   private static void updateTableFromCommit(
-      Session session, UUID tableId, TableInfoDAO tableInfoDAO, DeltaCommit commit) {
+      Session session,
+      UUID tableId,
+      TableInfoDAO tableInfoDAO,
+      DeltaCommit commit,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
     boolean hasUpdates = false;
 
     if (commit.getMetadata() != null) {
@@ -711,8 +724,8 @@ public class DeltaCommitRepository {
       hasUpdates = true;
     }
 
-    if (commit.getUniform() != null) {
-      updateTableUniform(tableInfoDAO, commit.getUniform());
+    if (uniformFields.isPresent()) {
+      DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
       hasUpdates = true;
     }
 
@@ -771,24 +784,6 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Updates table uniform metadata based on the uniform information provided in a commit.
-   *
-   * <p>This method updates the table's UniForm conversion metadata, including Iceberg metadata
-   * location, converted Delta version, and conversion timestamp.
-   *
-   * @param tableInfoDAO the table information data access object to update
-   * @param uniform the uniform metadata containing conversion information
-   */
-  private static void updateTableUniform(TableInfoDAO tableInfoDAO, DeltaUniform uniform) {
-    DeltaUniformIceberg icebergMetadata = uniform.getIceberg();
-    tableInfoDAO.setUniformIcebergMetadataLocation(
-        NormalizedURL.normalize(icebergMetadata.getMetadataLocation().toString()));
-    tableInfoDAO.setUniformIcebergConvertedDeltaVersion(icebergMetadata.getConvertedDeltaVersion());
-    tableInfoDAO.setUniformIcebergConvertedDeltaTimestamp(
-        Date.from(java.time.Instant.parse(icebergMetadata.getConvertedDeltaTimestamp())));
-  }
-
-  /**
    * Validates the structure and content of a commit request.
    *
    * <p>This method performs comprehensive validation including:
@@ -802,7 +797,6 @@ public class DeltaCommitRepository {
    *       table ID
    *   <li>If commit info is absent: ensures this is a valid backfill-only commit with backfilled
    *       version set
-   *   <li>If uniform is present: validates required fields and size limits
    * </ul>
    *
    * @param commit the commit request to validate
@@ -862,27 +856,7 @@ public class DeltaCommitRepository {
               "At least one of description, properties, or schema must be set in commit.metadata");
         }
         if (propertiesOpt.isPresent()) {
-          Optional<String> propertiesTableIdOpt =
-              propertiesOpt.map(p -> p.get(TableProperties.UC_TABLE_ID));
-          if (propertiesTableIdOpt.isEmpty()) {
-            throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT,
-                String.format(
-                    "commit does not contain %s in the properties.", TableProperties.UC_TABLE_ID));
-          }
-          if (!propertiesTableIdOpt.get().equals(commit.getTableId())) {
-            // This is to ensure that the Delta table's log on the file system has the table id
-            // stored as a property. An extra check to ensure that the filesystem-based information
-            // and the catalog-based information is in sync. for example, if some buggy connector
-            // accidentally updated table A on the file system, but send the commit to table B in
-            // UC, then this check will catch it as table A's properties in the log will have a
-            // different id than the table B's id in UC.
-            throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT,
-                String.format(
-                    "the table being committed (%s) does not match the properties %s(%s).",
-                    commit.getTableId(), TableProperties.UC_TABLE_ID, propertiesTableIdOpt.get()));
-          }
+          UcManagedDeltaContract.validateTableIdProperty(propertiesOpt.get(), commit.getTableId());
         }
       }
     } else {
@@ -897,63 +871,6 @@ public class DeltaCommitRepository {
             ErrorCode.INVALID_ARGUMENT, "metadata shouldn't be set for backfill only commit");
       }
     }
-
-    // Validate uniform metadata if present
-    if (commit.getUniform() != null) {
-      validateUniformIceberg(commit, commit.getUniform());
-    }
-  }
-
-  /**
-   * Validates Delta UniForm Iceberg metadata to ensure all required fields are present, the size is
-   * within limits, and the converted delta version matches the commit version.
-   *
-   * @param commit the commit containing version information
-   * @param uniform the uniform metadata to validate
-   * @throws BaseException if validation fails
-   */
-  private static void validateUniformIceberg(DeltaCommit commit, DeltaUniform uniform) {
-    if (uniform == null) {
-      return; // DeltaUniform is optional
-    }
-
-    // If uniform is specified, iceberg must be set
-    ValidationUtils.checkArgument(
-        uniform.getIceberg() != null, "Field cannot be null in uniform: iceberg");
-
-    DeltaUniformIceberg iceberg = uniform.getIceberg();
-
-    // Validate that all required fields are present
-    ValidationUtils.checkArgument(
-        iceberg.getMetadataLocation() != null,
-        "Field cannot be null in uniform.iceberg: metadata_location");
-    ValidationUtils.checkArgument(
-        iceberg.getConvertedDeltaVersion() != null,
-        "Field cannot be null in uniform.iceberg: converted_delta_version");
-    ValidationUtils.checkArgument(
-        iceberg.getConvertedDeltaTimestamp() != null
-            && !iceberg.getConvertedDeltaTimestamp().isEmpty(),
-        "Field cannot be null or empty in uniform.iceberg: converted_delta_timestamp");
-
-    // Validate that convertedDeltaVersion matches the commit version
-    if (commit.getCommitInfo() != null) {
-      ValidationUtils.checkArgument(
-          iceberg.getConvertedDeltaVersion().equals(commit.getCommitInfo().getVersion()),
-          "uniform.iceberg.converted_delta_version (%d) must equal commit version (%d)",
-          iceberg.getConvertedDeltaVersion(),
-          commit.getCommitInfo().getVersion());
-    }
-
-    // We check the size of the Delta-to-Iceberg conversion information here to fail early if
-    // it exceeds the maximum size of DAO limit. The size is not accurate in terms of the size of
-    // the object in the database but serves as a sanity check to ensure that we're not storing
-    // excessively large objects.
-    int size = iceberg.getMetadataLocation().toString().length();
-    ValidationUtils.checkArgument(
-        size <= MAX_DELTA_UNIFORM_ICEBERG_SIZE,
-        "Delta UniForm Iceberg metadata size (%d bytes) exceeds maximum allowed size (%d bytes)",
-        size,
-        MAX_DELTA_UNIFORM_ICEBERG_SIZE);
   }
 
   /**
@@ -986,19 +903,25 @@ public class DeltaCommitRepository {
   }
 
   /**
-   * Validates that a table is eligible for the commit and that the commit's table URI matches.
+   * Validate that the table is eligible for the commit and the commit's table URI matches.
    *
-   * <p>This method first validates the table meets all requirements for Delta commits, then ensures
-   * the table URI specified in the commit request matches the table's registered URI. URIs are
-   * standardized before comparison to handle format variations.
+   * <ul>
+   *   <li>Table eligibility ({@link #validateTable}: MANAGED + DELTA + non-null URL).
+   *   <li>Table URI equality: the URI in the commit must match the registered table URL after
+   *       normalization.
+   *   <li>UniForm subpath: when {@code uniformFields} is present, its {@code metadata-location}
+   *       must be a subpath of the table's storage root.
+   *   <li>UniForm property/block consistency via {@link #validateUniformMetadataPresence}.
+   * </ul>
    *
-   * @param session the Hibernate session for database operations
-   * @param commit the commit request containing the table URI
-   * @param tableInfoDAO the table information data access object
-   * @throws BaseException if validation fails or URIs don't match
+   * <p>{@code uniformFields} is the already-validated, already-normalized output of {@link
+   * DeltaUniformUtils#getUniformFields(DeltaCommit)}; this method only does the table-aware checks.
    */
   private static void validateTableForCommit(
-      Session session, DeltaCommit commit, TableInfoDAO tableInfoDAO) {
+      Session session,
+      DeltaCommit commit,
+      TableInfoDAO tableInfoDAO,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
     validateTable(tableInfoDAO);
     NormalizedURL commitTableUri = NormalizedURL.from(commit.getTableUri());
     NormalizedURL tableUri = NormalizedURL.from(tableInfoDAO.getUrl());
@@ -1007,6 +930,8 @@ public class DeltaCommitRepository {
         "Table URI in commit %s does not match the table path %s",
         commit.getTableUri(),
         tableInfoDAO.getUrl());
+    uniformFields.ifPresent(
+        uf -> DeltaUniformUtils.requireMetadataLocationSubpath(uf.metadataLocation(), tableUri));
     validateUniformMetadataPresence(session, commit, tableInfoDAO);
   }
 
@@ -1036,24 +961,7 @@ public class DeltaCommitRepository {
           PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE);
       effectiveProperties = PropertyDAO.toMap(properties);
     }
-    // Check if table has UniForm enabled after this commit
-    boolean uniformEnabled =
-        ICEBERG_FORMAT.equals(effectiveProperties.get(UNIFORM_ENABLED_FORMATS));
-    if (uniformEnabled) {
-      ValidationUtils.checkArgument(
-          commit.getUniform() != null,
-          "Uniform metadata must be set when table has UniForm enabled after the commit. "
-              + "UniForm is enabled when property '%s'='%s'",
-          UNIFORM_ENABLED_FORMATS,
-          ICEBERG_FORMAT);
-    } else {
-      ValidationUtils.checkArgument(
-          commit.getUniform() == null,
-          "Uniform metadata must not be set when table has UniForm disabled after the commit. "
-              + "UniForm is disabled when table does not have property '%s'='%s'",
-          UNIFORM_ENABLED_FORMATS,
-          ICEBERG_FORMAT);
-    }
+    DeltaUniformUtils.validateConsistency(effectiveProperties, commit.getUniform() != null);
   }
 
   /**

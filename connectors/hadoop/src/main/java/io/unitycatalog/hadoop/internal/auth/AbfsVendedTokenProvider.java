@@ -1,11 +1,12 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
 import org.apache.hadoop.util.Preconditions;
 
+/** Hadoop ABFS SAS token provider backed by Unity Catalog temporary credentials. */
 public class AbfsVendedTokenProvider extends GenericCredentialProvider implements SASTokenProvider {
   public static final String ACCESS_TOKEN_KEY = "fs.azure.sas.fixed.token";
 
@@ -18,21 +19,22 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
 
   @Override
   public GenericCredential initGenericCredential(Configuration conf) {
-    if (conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN) != null
-        && conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME) != null) {
+    if (conf.get(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN) != null
+        && conf.get(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME) != null) {
 
-      String sasToken = conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN);
+      String sasToken = conf.get(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN);
       Preconditions.checkNotNull(
           sasToken,
           "Azure SAS token not set, please check " + "'%s' in hadoop configuration",
-          UCHadoopConf.AZURE_INIT_SAS_TOKEN);
+          UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN);
 
-      long expiredTimeMillis = conf.getLong(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, 0L);
+      long expiredTimeMillis =
+          conf.getLong(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, 0L);
       Preconditions.checkState(
           expiredTimeMillis > 0,
           "Azure SAS token expired time must be greater than 0, please check '%s' in hadoop "
               + "configuration",
-          UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME);
+          UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME);
 
       return GenericCredential.forAzure(sasToken, expiredTimeMillis);
     } else {

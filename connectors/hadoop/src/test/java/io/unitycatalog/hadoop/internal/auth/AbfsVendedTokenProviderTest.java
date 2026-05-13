@@ -1,18 +1,17 @@
 package io.unitycatalog.hadoop.internal.auth;
 
-import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME;
-import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
-import static org.apache.hadoop.fs.azurebfs.services.AuthType.SAS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.azurebfs.AbfsConfiguration;
+import org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys;
 import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
+import org.apache.hadoop.fs.azurebfs.services.AuthType;
 import org.junit.jupiter.api.Test;
 
 public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVendedTokenProvider> {
@@ -23,16 +22,16 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
   }
 
   static class TestAbfsVendedTokenProvider extends AbfsVendedTokenProvider {
-    private final TemporaryCredentialsApi mockApi;
+    private final TempCredentialApi credentialApi;
 
     TestAbfsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
       initialize(conf);
-      this.mockApi = mockApi;
+      this.credentialApi = new UCTempCredentialApi(conf, mockApi);
     }
 
     @Override
-    protected TemporaryCredentialsApi temporaryCredentialsApi() {
-      return mockApi;
+    TempCredentialApi tempCredentialApi() {
+      return credentialApi;
     }
   }
 
@@ -51,8 +50,9 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
   protected void setInitialCred(Configuration conf, TemporaryCredentials cred) {
     assertThat(cred.getAzureUserDelegationSas()).isNotNull();
     assertThat(cred.getExpirationTime()).isNotNull();
-    conf.set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, cred.getAzureUserDelegationSas().getSasToken());
-    conf.setLong(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, cred.getExpirationTime());
+    conf.set(
+        UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, cred.getAzureUserDelegationSas().getSasToken());
+    conf.setLong(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, cred.getExpirationTime());
   }
 
   @Override
@@ -70,32 +70,20 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
     Configuration conf = new Configuration();
     AbfsVendedTokenProvider provider = new AbfsVendedTokenProvider();
 
-    // Verify the UC URI validation error message.
-    assertThatThrownBy(() -> provider.initialize(conf))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI_KEY);
-
-    // Verify the UC Token validation error message.
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    assertThatThrownBy(() -> provider.initialize(conf))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Required configuration key 'type' is missing or empty");
-
-    // Verify the UID validation error message.
-    conf.set(UCHadoopConf.UC_AUTH_TYPE, "static");
-    conf.set(UCHadoopConf.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
     assertThatThrownBy(() -> provider.initialize(conf))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage(
             "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
-            UCHadoopConf.UC_CREDENTIALS_UID_KEY);
+            UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
   }
 
   @Test
   public void testLoadProvider() throws Exception {
     Configuration conf = newTableBasedConf();
-    conf.setEnum(FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, SAS);
-    conf.set(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName());
+    conf.setEnum(ConfigurationKeys.FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, AuthType.SAS);
+    conf.set(
+        ConfigurationKeys.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE,
+        AbfsVendedTokenProvider.class.getName());
 
     AbfsConfiguration abfsConf = new AbfsConfiguration(conf, "account");
 

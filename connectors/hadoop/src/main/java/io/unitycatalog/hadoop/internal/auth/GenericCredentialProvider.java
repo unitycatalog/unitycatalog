@@ -1,21 +1,18 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.internal.Clock;
-import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
-import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
-import io.unitycatalog.client.model.PathOperation;
-import io.unitycatalog.client.model.TableOperation;
-import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.hadoop.internal.UCHadoopConf;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
-import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.util.Preconditions;
 
+/**
+ * Base class for Hadoop credential providers backed by Unity Catalog temporary credentials.
+ *
+ * <p>Subclasses expose cloud-specific provider interfaces while this class handles renewal and
+ * cache lookup.
+ */
 public abstract class GenericCredentialProvider {
   // The credential cache, for saving QPS to unity catalog server.
   static final BoundedKeyedCache<String, GenericCredential> globalCache;
@@ -32,43 +29,34 @@ public abstract class GenericCredentialProvider {
   private Configuration conf;
   private Clock clock;
   private long renewalLeadTimeMillis;
-  private URI ucUri;
-  private TokenProvider tokenProvider;
   private String credUid;
   private boolean credCacheEnabled;
 
   private volatile GenericCredential credential;
-  private volatile TemporaryCredentialsApi tempCredApi;
+  private volatile TempCredentialApi credentialApi;
 
   protected void initialize(Configuration conf) {
     this.conf = conf;
 
     // Use the test clock if one is intentionally configured for testing.
-    String clockName = conf.get(UCHadoopConf.UC_TEST_CLOCK_NAME);
+    String clockName = conf.get(UCHadoopConfConstants.UC_TEST_CLOCK_NAME);
     this.clock = clockName != null ? Clock.getManualClock(clockName) : Clock.systemClock();
 
     this.renewalLeadTimeMillis =
         conf.getLong(
-            UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, UCHadoopConf.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
+            UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
+            UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
 
-    String ucUriStr = conf.get(UCHadoopConf.UC_URI_KEY);
-    Preconditions.checkNotNull(
-        ucUriStr, "'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI_KEY);
-    this.ucUri = URI.create(ucUriStr);
-
-    // Initialize the UCTokenProvider.
-    this.tokenProvider = TokenProvider.create(conf.getPropsWithPrefix(UCHadoopConf.UC_AUTH_PREFIX));
-
-    this.credUid = conf.get(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
+    this.credUid = conf.get(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
     Preconditions.checkState(
         credUid != null && !credUid.isEmpty(),
         "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
-        UCHadoopConf.UC_CREDENTIALS_UID_KEY);
+        UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
 
     this.credCacheEnabled =
         conf.getBoolean(
-            UCHadoopConf.UC_CREDENTIAL_CACHE_ENABLED_KEY,
-            UCHadoopConf.UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE);
+            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY,
+            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE);
 
     // The initialized credentials passing-through the hadoop configuration.
     this.credential = initGenericCredential(conf);
@@ -92,28 +80,15 @@ public abstract class GenericCredentialProvider {
     return credential;
   }
 
-  protected TemporaryCredentialsApi temporaryCredentialsApi() {
-    // Retry is automatically handled by RetryingHttpClient when configured
-    // via fs.unitycatalog.request.retry*
-    if (tempCredApi == null) {
+  TempCredentialApi tempCredentialApi() {
+    if (credentialApi == null) {
       synchronized (this) {
-        if (tempCredApi == null) {
-          // Propagate engine version metadata into the User-Agent header so the UC server can
-          // trace which engine versions are calling. Engines register these via
-          // UCCredentialHadoopConfs.Builder#addEngineVersions, which writes them into the Hadoop
-          // configuration under UC_ENGINE_VERSION_PREFIX.
-          tempCredApi =
-              new TemporaryCredentialsApi(
-                  ApiClientUtils.create(
-                      ucUri,
-                      tokenProvider,
-                      UCHadoopConf.createRequestRetryPolicy(conf),
-                      conf.getPropsWithPrefix(UCHadoopConf.UC_ENGINE_VERSION_PREFIX)));
+        if (credentialApi == null) {
+          credentialApi = TempCredentialApi.create(conf);
         }
       }
     }
-
-    return tempCredApi;
+    return credentialApi;
   }
 
   private GenericCredential renewCredential() throws ApiException {
@@ -124,47 +99,12 @@ public abstract class GenericCredentialProvider {
         if (cached != null && !cached.readyToRenew(clock, renewalLeadTimeMillis)) {
           return cached;
         }
-        // Renew the credential and update the cache.
-        GenericCredential renewed = createGenericCredentials();
-        globalCache.put(credUid, renewed);
-        return renewed;
+        GenericCredential created = tempCredentialApi().createCredential();
+        globalCache.put(credUid, created);
+        return created;
       }
     } else {
-      return createGenericCredentials();
+      return tempCredentialApi().createCredential();
     }
-  }
-
-  private GenericCredential createGenericCredentials() throws ApiException {
-    TemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
-
-    // Generate the temporary credential via requesting UnityCatalog.
-    TemporaryCredentials tempCred;
-    String type = conf.get(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY);
-    if (UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
-      String path = conf.get(UCHadoopConf.UC_PATH_KEY);
-      String pathOperation = conf.get(UCHadoopConf.UC_PATH_OPERATION_KEY);
-
-      tempCred =
-          tempCredApi.generateTemporaryPathCredentials(
-              new GenerateTemporaryPathCredential()
-                  .url(path)
-                  .operation(PathOperation.fromValue(pathOperation)));
-    } else if (UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)) {
-      String tableId = conf.get(UCHadoopConf.UC_TABLE_ID_KEY);
-      String tableOperation = conf.get(UCHadoopConf.UC_TABLE_OPERATION_KEY);
-
-      tempCred =
-          tempCredApi.generateTemporaryTableCredentials(
-              new GenerateTemporaryTableCredential()
-                  .tableId(tableId)
-                  .operation(TableOperation.fromValue(tableOperation)));
-    } else {
-      throw new IllegalArgumentException(
-          String.format(
-              "Unsupported unity catalog temporary credentials type '%s', please check '%s'",
-              type, UCHadoopConf.UC_CREDENTIALS_TYPE_KEY));
-    }
-
-    return new GenericCredential(tempCred);
   }
 }

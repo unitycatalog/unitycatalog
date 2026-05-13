@@ -28,7 +28,6 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateStagingTable;
-import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CatalogRepository;
@@ -191,8 +190,10 @@ public class DeltaRestCatalogService extends AuthorizedService {
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "location")
           @AuthorizeKey(key = "table-type")
           CreateTableRequest request) {
-    CreateTable createTable = DeltaCreateTableMapper.toCreateTable(catalog, schema, request);
-    LoadTableResponse response = tableRepository.createTableForDelta(createTable);
+    DeltaCreateTableMapper.Result mapped =
+        DeltaCreateTableMapper.toCreateTable(catalog, schema, request);
+    LoadTableResponse response = tableRepository.createTableForDelta(
+        mapped.createTable(), mapped.uniformIcebergFields());
     // Wire the new table into the auth hierarchy under its schema (mirrors
     // TableService.createTable). MANAGED tables reuse the staging-table UUID, whose auth row
     // was already created in createStagingTable, so re-init is unnecessary there.
