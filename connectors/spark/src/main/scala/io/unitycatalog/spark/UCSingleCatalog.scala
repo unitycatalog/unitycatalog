@@ -151,7 +151,7 @@ class UCSingleCatalog
 
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, CatalogUtils.stringToURI(stagingLocation).getScheme)
-      .addEngineVersions(ApiClientFactory.appEngineVersions())
+      .addAppVersions(ApiClientFactory.appEngineVersions())
       .tokenProvider(tokenProvider)
       .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
@@ -254,7 +254,7 @@ class UCSingleCatalog
     val tableUriScheme = new Path(tableLocation).toUri.getScheme
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, tableUriScheme)
-      .addEngineVersions(ApiClientFactory.appEngineVersions())
+      .addAppVersions(ApiClientFactory.appEngineVersions())
       .tokenProvider(tokenProvider)
       .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
@@ -290,7 +290,7 @@ class UCSingleCatalog
 
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, CatalogUtils.stringToURI(location).getScheme)
-      .addEngineVersions(ApiClientFactory.appEngineVersions())
+      .addAppVersions(ApiClientFactory.appEngineVersions())
       .tokenProvider(tokenProvider)
       .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
@@ -571,7 +571,7 @@ private class UCProxy(
     val credBuilder =
       UCCredentialHadoopConfs
         .builder(uri.toString, locationUri.getScheme)
-        .addEngineVersions(ApiClientFactory.appEngineVersions())
+        .addAppVersions(ApiClientFactory.appEngineVersions())
         .tokenProvider(tokenProvider)
         .apiClient(apiClient)
         .enableCredentialRenewal(renewCredEnabled)

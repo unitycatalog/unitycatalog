@@ -50,7 +50,8 @@ class CredPropsUtilTest {
             null,
             "tid",
             TableOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props.get("fs.s3.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
     assertThat(props.get("fs.s3a.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
@@ -68,7 +69,8 @@ class CredPropsUtilTest {
             null,
             "tid",
             TableOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props.get("fs.s3.impl.original"))
         .isEqualTo("org.apache.hadoop.fs.s3a.S3AFileSystem");
@@ -91,7 +93,8 @@ class CredPropsUtilTest {
             null,
             "tid",
             TableOperation.READ_WRITE,
-            gcsCreds());
+            gcsCreds(),
+            Map.of());
 
     assertThat(props.get("fs.gs.impl.original")).isEqualTo(CUSTOM_GS_IMPL);
   }
@@ -112,7 +115,8 @@ class CredPropsUtilTest {
             null,
             "tid",
             TableOperation.READ_WRITE,
-            abfsCreds());
+            abfsCreds(),
+            Map.of());
 
     assertThat(props.get("fs.abfs.impl.original")).isEqualTo(CUSTOM_ABFS_IMPL);
     assertThat(props.get("fs.abfss.impl.original")).isEqualTo(CUSTOM_ABFSS_IMPL);
@@ -130,7 +134,8 @@ class CredPropsUtilTest {
             null,
             "tid",
             TableOperation.READ_WRITE,
-            gcsCreds());
+            gcsCreds(),
+            Map.of());
 
     assertThat(props.get("fs.gs.impl.original"))
         .isEqualTo("com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
@@ -148,7 +153,8 @@ class CredPropsUtilTest {
             null,
             "tid",
             TableOperation.READ_WRITE,
-            abfsCreds());
+            abfsCreds(),
+            Map.of());
 
     assertThat(props.get("fs.abfs.impl.original"))
         .isEqualTo("org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem");
@@ -168,7 +174,8 @@ class CredPropsUtilTest {
             null,
             "tid",
             TableOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props).doesNotContainKey("fs.s3.impl.original");
     assertThat(props).doesNotContainKey("fs.s3a.impl.original");
@@ -189,7 +196,8 @@ class CredPropsUtilTest {
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
             CredentialOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props)
         .containsEntry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true")
@@ -221,7 +229,8 @@ class CredPropsUtilTest {
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "gs://bucket/tbl",
             CredentialOperation.READ,
-            gcsCreds());
+            gcsCreds(),
+            Map.of());
 
     assertThat(props)
         .containsEntry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true")
@@ -249,7 +258,8 @@ class CredPropsUtilTest {
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "abfss://container@account.dfs.core.windows.net/tbl",
             CredentialOperation.READ_WRITE,
-            abfsCreds());
+            abfsCreds(),
+            Map.of());
 
     assertThat(props)
         .containsEntry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true")
@@ -277,7 +287,8 @@ class CredPropsUtilTest {
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
             CredentialOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props)
         .containsEntry("fs.s3a.access.key", "ak")
@@ -300,7 +311,8 @@ class CredPropsUtilTest {
                 UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
                 "hdfs://namenode/tbl",
                 CredentialOperation.READ_WRITE,
-                s3Creds()))
+                s3Creds(),
+                Map.of()))
         .isEmpty();
   }
 
@@ -321,7 +333,8 @@ class CredPropsUtilTest {
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
             CredentialOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props.get("fs.s3.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
     assertThat(props.get("fs.s3a.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
@@ -340,7 +353,8 @@ class CredPropsUtilTest {
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
             CredentialOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props)
         .doesNotContainKey("fs.s3.impl.original")
@@ -387,7 +401,8 @@ class CredPropsUtilTest {
             tokenProvider(),
             "tid",
             TableOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props)
         .containsEntry(UCHadoopConfConstants.UC_URI_KEY, "http://uc")
@@ -416,7 +431,8 @@ class CredPropsUtilTest {
             null,
             "tid",
             TableOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props)
         .containsEntry("fs.s3a.access.key", "ak")
@@ -437,7 +453,8 @@ class CredPropsUtilTest {
             tokenProvider(),
             "tid",
             TableOperation.READ,
-            gcsCreds());
+            gcsCreds(),
+            Map.of());
 
     assertThat(props)
         .containsEntry(
@@ -462,7 +479,8 @@ class CredPropsUtilTest {
             tokenProvider(),
             "tid",
             TableOperation.READ_WRITE,
-            abfsCreds());
+            abfsCreds(),
+            Map.of());
 
     assertThat(props)
         .containsEntry(
@@ -484,7 +502,8 @@ class CredPropsUtilTest {
             tokenProvider(),
             "s3://bucket/key",
             io.unitycatalog.client.model.PathOperation.PATH_READ,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThat(props)
         .containsEntry(
@@ -507,7 +526,8 @@ class CredPropsUtilTest {
             null,
             "tid",
             TableOperation.READ_WRITE,
-            s3Creds());
+            s3Creds(),
+            Map.of());
 
     assertThatThrownBy(() -> props.put("k", "v")).isInstanceOf(UnsupportedOperationException.class);
   }
@@ -524,7 +544,8 @@ class CredPropsUtilTest {
                 null,
                 "tid",
                 TableOperation.READ,
-                s3Creds()))
+                s3Creds(),
+                Map.of()))
         .isEmpty();
   }
 
@@ -540,7 +561,8 @@ class CredPropsUtilTest {
                 null,
                 "hdfs://nn/key",
                 io.unitycatalog.client.model.PathOperation.PATH_READ,
-                s3Creds()))
+                s3Creds(),
+                Map.of()))
         .isEmpty();
   }
 
@@ -650,17 +672,14 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void fetchTableCredPropsIncludesEngineVersionProps() throws Exception {
+  void fetchTableCredPropsIncludesAppVersionProps() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, conf) -> mockGenericCredentialFetcher(s3Creds());
-    Map<String, String> engineVersionProps =
-        Map.of(
-            UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Spark", "4.0.0",
-            UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Delta", "3.3.0");
+    Map<String, String> appVersions = Map.of("Spark", "4.0.0", "Delta", "3.3.0");
 
     Map<String, String> props =
         CredPropsUtil.fetchTableCredProps(
-            false,
+            true,
             false,
             new Configuration(false),
             "s3",
@@ -669,12 +688,12 @@ class CredPropsUtilTest {
             tokenProvider(),
             "tid",
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
-            engineVersionProps);
+            appVersions);
 
     assertThat(props)
         .containsEntry(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Spark", "4.0.0")
         .containsEntry(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + "Delta", "3.3.0")
-        .containsKey("fs.s3a.access.key");
+        .containsKey(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY);
     assertThatThrownBy(() -> props.put("k", "v")).isInstanceOf(UnsupportedOperationException.class);
   }
 

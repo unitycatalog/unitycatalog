@@ -144,6 +144,12 @@ public class CredPropsUtil {
       return self();
     }
 
+    public T appVersions(Map<String, String> appVersions) {
+      appVersions.forEach(
+          (k, v) -> builder.put(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + k, v));
+      return self();
+    }
+
     /**
      * Saves the current value of {@code key} from {@code hadoopProps} (falling back to {@code
      * defaultOriginal}) under {@code key + ".original"}, then overrides {@code key} with {@code
@@ -311,11 +317,13 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String tableId,
       TableOperation tableOp,
-      TemporaryCredentials tempCreds) {
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
     return s3TempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
+        .appVersions(appVersions)
         .build();
   }
 
@@ -326,11 +334,13 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String path,
       PathOperation pathOp,
-      TemporaryCredentials tempCreds) {
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
     return s3TempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
+        .appVersions(appVersions)
         .build();
   }
 
@@ -378,11 +388,13 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String tableId,
       TableOperation tableOp,
-      TemporaryCredentials tempCreds) {
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
     return gcsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
+        .appVersions(appVersions)
         .build();
   }
 
@@ -393,11 +405,13 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String path,
       PathOperation pathOp,
-      TemporaryCredentials tempCreds) {
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
     return gcsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
+        .appVersions(appVersions)
         .build();
   }
 
@@ -443,11 +457,13 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String tableId,
       TableOperation tableOp,
-      TemporaryCredentials tempCreds) {
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
     return abfsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
+        .appVersions(appVersions)
         .build();
   }
 
@@ -458,11 +474,13 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String path,
       PathOperation pathOp,
-      TemporaryCredentials tempCreds) {
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
     return abfsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
         .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
+        .appVersions(appVersions)
         .build();
   }
 
@@ -489,7 +507,8 @@ public class CredPropsUtil {
       UCDeltaTableIdentifier identifier,
       String location,
       CredentialOperation credentialOp,
-      TemporaryCredentials tempCreds) {
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
@@ -497,6 +516,7 @@ public class CredPropsUtil {
                   credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
               .ucDeltaTableIdentifier(identifier, location)
               .credentialOperation(credentialOp)
+              .appVersions(appVersions)
               .build();
         } else {
           return s3FixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
@@ -507,6 +527,7 @@ public class CredPropsUtil {
                   credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
               .ucDeltaTableIdentifier(identifier, location)
               .credentialOperation(credentialOp)
+              .appVersions(appVersions)
               .build();
         } else {
           return gsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
@@ -518,6 +539,7 @@ public class CredPropsUtil {
                   credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
               .ucDeltaTableIdentifier(identifier, location)
               .credentialOperation(credentialOp)
+              .appVersions(appVersions)
               .build();
         } else {
           return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
@@ -549,19 +571,34 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String tableId,
       TableOperation tableOp,
-      TemporaryCredentials tempCreds) {
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
           return s3TableTempCredProps(
-              credScopedFsEnabled, hadoopConf, uri, tokenProvider, tableId, tableOp, tempCreds);
+              credScopedFsEnabled,
+              hadoopConf,
+              uri,
+              tokenProvider,
+              tableId,
+              tableOp,
+              tempCreds,
+              appVersions);
         } else {
           return s3FixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
         }
       case "gs":
         if (renewCredEnabled) {
           return gsTableTempCredProps(
-              credScopedFsEnabled, hadoopConf, uri, tokenProvider, tableId, tableOp, tempCreds);
+              credScopedFsEnabled,
+              hadoopConf,
+              uri,
+              tokenProvider,
+              tableId,
+              tableOp,
+              tempCreds,
+              appVersions);
         } else {
           return gsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
         }
@@ -569,7 +606,14 @@ public class CredPropsUtil {
       case "abfs":
         if (renewCredEnabled) {
           return abfsTableTempCredProps(
-              credScopedFsEnabled, hadoopConf, uri, tokenProvider, tableId, tableOp, tempCreds);
+              credScopedFsEnabled,
+              hadoopConf,
+              uri,
+              tokenProvider,
+              tableId,
+              tableOp,
+              tempCreds,
+              appVersions);
         } else {
           return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
         }
@@ -600,19 +644,34 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String path,
       PathOperation pathOp,
-      TemporaryCredentials tempCreds) {
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
           return s3PathTempCredProps(
-              credScopedFsEnabled, hadoopConf, uri, tokenProvider, path, pathOp, tempCreds);
+              credScopedFsEnabled,
+              hadoopConf,
+              uri,
+              tokenProvider,
+              path,
+              pathOp,
+              tempCreds,
+              appVersions);
         } else {
           return s3FixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
         }
       case "gs":
         if (renewCredEnabled) {
           return gsPathTempCredProps(
-              credScopedFsEnabled, hadoopConf, uri, tokenProvider, path, pathOp, tempCreds);
+              credScopedFsEnabled,
+              hadoopConf,
+              uri,
+              tokenProvider,
+              path,
+              pathOp,
+              tempCreds,
+              appVersions);
         } else {
           return gsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
         }
@@ -620,7 +679,14 @@ public class CredPropsUtil {
       case "abfs":
         if (renewCredEnabled) {
           return abfsPathTempCredProps(
-              credScopedFsEnabled, hadoopConf, uri, tokenProvider, path, pathOp, tempCreds);
+              credScopedFsEnabled,
+              hadoopConf,
+              uri,
+              tokenProvider,
+              path,
+              pathOp,
+              tempCreds,
+              appVersions);
         } else {
           return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
         }
@@ -640,7 +706,7 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String tableId,
       UCCredentialHadoopConfs.TableOperation tableOp,
-      Map<String, String> engineVersionProps)
+      Map<String, String> appVersions)
       throws ApiException {
     Configuration reqConf = new Configuration(false);
     reqConf.set(
@@ -649,20 +715,18 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
     reqConf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.value());
     TemporaryCredentials creds =
-        fetchTemporaryCredentials(
-            apiClient, catalogUri, tokenProvider, engineVersionProps, reqConf);
-    return mergeEngineVersionProps(
-        createTableCredProps(
-            renewCredEnabled,
-            credScopedFsEnabled,
-            hadoopConf,
-            scheme,
-            catalogUri,
-            tokenProvider,
-            tableId,
-            TableOperation.fromValue(tableOp.value()),
-            creds),
-        engineVersionProps);
+        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, reqConf);
+    return createTableCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        hadoopConf,
+        scheme,
+        catalogUri,
+        tokenProvider,
+        tableId,
+        TableOperation.fromValue(tableOp.value()),
+        creds,
+        appVersions);
   }
 
   /**
@@ -680,7 +744,7 @@ public class CredPropsUtil {
       UCDeltaTableIdentifier identifier,
       String location,
       UCCredentialHadoopConfs.TableOperation tableOp,
-      Map<String, String> engineVersionProps)
+      Map<String, String> appVersions)
       throws ApiException {
     Configuration reqConf = new Configuration(false);
     reqConf.set(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
@@ -690,21 +754,19 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, identifier.table());
     reqConf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
     TemporaryCredentials creds =
-        fetchTemporaryCredentials(
-            apiClient, catalogUri, tokenProvider, engineVersionProps, reqConf);
-    return mergeEngineVersionProps(
-        createDeltaTableCredProps(
-            renewCredEnabled,
-            credScopedFsEnabled,
-            hadoopConf,
-            scheme,
-            catalogUri,
-            tokenProvider,
-            identifier,
-            location,
-            CredentialOperation.fromValue(tableOp.value()),
-            creds),
-        engineVersionProps);
+        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, reqConf);
+    return createDeltaTableCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        hadoopConf,
+        scheme,
+        catalogUri,
+        tokenProvider,
+        identifier,
+        location,
+        CredentialOperation.fromValue(tableOp.value()),
+        creds,
+        appVersions);
   }
 
   /** Fetches path credentials from the UC REST API and builds Hadoop configuration properties. */
@@ -718,7 +780,7 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       String path,
       UCCredentialHadoopConfs.PathOperation pathOp,
-      Map<String, String> engineVersionProps)
+      Map<String, String> appVersions)
       throws ApiException {
     Configuration reqConf = new Configuration(false);
     reqConf.set(
@@ -727,57 +789,37 @@ public class CredPropsUtil {
     reqConf.set(UCHadoopConfConstants.UC_PATH_KEY, path);
     reqConf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, pathOp.value());
     TemporaryCredentials creds =
-        fetchTemporaryCredentials(
-            apiClient, catalogUri, tokenProvider, engineVersionProps, reqConf);
-    return mergeEngineVersionProps(
-        createPathCredProps(
-            renewCredEnabled,
-            credScopedFsEnabled,
-            hadoopConf,
-            scheme,
-            catalogUri,
-            tokenProvider,
-            path,
-            PathOperation.fromValue(pathOp.value()),
-            creds),
-        engineVersionProps);
+        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, reqConf);
+    return createPathCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        hadoopConf,
+        scheme,
+        catalogUri,
+        tokenProvider,
+        path,
+        PathOperation.fromValue(pathOp.value()),
+        creds,
+        appVersions);
   }
 
   private static TemporaryCredentials fetchTemporaryCredentials(
       ApiClient apiClient,
       String catalogUri,
       TokenProvider tokenProvider,
-      Map<String, String> engineVersionProps,
+      Map<String, String> appVersions,
       Configuration reqConf)
       throws ApiException {
     ApiClient client =
-        apiClient != null
-            ? apiClient
-            : createApiClient(catalogUri, tokenProvider, engineVersionProps);
+        apiClient != null ? apiClient : createApiClient(catalogUri, tokenProvider, appVersions);
     return genericCredFetcherFactory
         .create(client, reqConf)
         .createCredential()
         .temporaryCredentials();
   }
 
-  private static Map<String, String> mergeEngineVersionProps(
-      Map<String, String> props, Map<String, String> engineVersionProps) {
-    if (props.isEmpty() || engineVersionProps.isEmpty()) {
-      return props;
-    }
-    Map<String, String> merged = new HashMap<>(props);
-    merged.putAll(engineVersionProps);
-    return Collections.unmodifiableMap(merged);
-  }
-
   private static ApiClient createApiClient(
-      String catalogUri, TokenProvider tokenProvider, Map<String, String> engineVersionProps) {
-    Map<String, String> appVersions = new HashMap<>();
-    String prefix = UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX;
-    engineVersionProps.forEach(
-        (k, v) -> {
-          if (k.startsWith(prefix)) appVersions.put(k.substring(prefix.length()), v);
-        });
+      String catalogUri, TokenProvider tokenProvider, Map<String, String> appVersions) {
     return ApiClientUtils.create(
         URI.create(catalogUri),
         tokenProvider,

@@ -6,7 +6,6 @@ import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
-import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
@@ -85,7 +84,7 @@ public final class UCCredentialHadoopConfs {
     private boolean credentialScopedFsEnabled = true;
 
     private Configuration hadoopConf = new Configuration(false);
-    private final Map<String, String> engineVersionProps = new LinkedHashMap<>();
+    private final Map<String, String> appVersions = new LinkedHashMap<>();
 
     private Builder(String catalogUri, String scheme) {
       Preconditions.checkArgument(catalogUri != null, "catalogUri is required");
@@ -141,22 +140,22 @@ public final class UCCredentialHadoopConfs {
     }
 
     /**
-     * Records engine versions (e.g. {@code Map.of("Spark", "4.0.0")}) to be propagated to the
-     * User-Agent header on UC API calls so the server can trace which engine versions are calling.
-     * Engines should typically register their own version plus any relevant runtime versions
+     * Records app versions (e.g. {@code Map.of("Spark", "4.0.0")}) to be propagated to the
+     * User-Agent header on UC API calls so the server can trace which app versions are calling.
+     * Callers should typically register the engine version plus any relevant runtime versions
      * (Delta, Java, Scala, etc.).
      */
-    public Builder addEngineVersions(Map<String, String> versions) {
-      Preconditions.checkNotNull(versions, "engine versions required");
-      versions.forEach(this::addEngineVersion);
+    public Builder addAppVersions(Map<String, String> versions) {
+      Preconditions.checkNotNull(versions, "app versions required");
+      versions.forEach(this::addAppVersion);
       return this;
     }
 
-    private void addEngineVersion(String name, String version) {
-      Preconditions.checkArgument(name != null && !name.isEmpty(), "engine version name required");
+    private void addAppVersion(String name, String version) {
+      Preconditions.checkArgument(name != null && !name.isEmpty(), "app version name required");
       Preconditions.checkArgument(
-          version != null && !version.isEmpty(), "engine version value for '%s' required", name);
-      engineVersionProps.put(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + name, version);
+          version != null && !version.isEmpty(), "app version value for '%s' required", name);
+      appVersions.put(name, version);
     }
 
     /**
@@ -179,7 +178,7 @@ public final class UCCredentialHadoopConfs {
           tokenProvider,
           tableId,
           tableOperation,
-          engineVersionProps);
+          appVersions);
     }
 
     /**
@@ -214,7 +213,7 @@ public final class UCCredentialHadoopConfs {
           identifier,
           location,
           operation,
-          engineVersionProps);
+          appVersions);
     }
 
     /**
@@ -237,7 +236,7 @@ public final class UCCredentialHadoopConfs {
           tokenProvider,
           path,
           pathOperation,
-          engineVersionProps);
+          appVersions);
     }
   }
 }

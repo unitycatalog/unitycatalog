@@ -52,11 +52,11 @@ class UCCredentialHadoopConfsTest {
   }
 
   @Test
-  void emptyEngineVersionThrows() {
+  void emptyAppVersionThrows() {
     assertThatThrownBy(
             () ->
                 UCCredentialHadoopConfs.builder("http://uc", "s3")
-                    .addEngineVersions(Map.of("Spark", "")))
+                    .addAppVersions(Map.of("Spark", "")))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Spark");
   }
