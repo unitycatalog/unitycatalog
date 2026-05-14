@@ -24,12 +24,6 @@ lazy val scala213 = "2.13.17"
 lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
 lazy val sparkVersion = sys.props.getOrElse("sparkVersion", "4.0.0")
 lazy val sparkMajorMinorVersion = sparkVersion.split("\\.").take(2).mkString(".")
-lazy val sparkResolvers =
-  if (sparkVersion.endsWith("-SNAPSHOT")) {
-    Seq("Apache Snapshots" at "https://repository.apache.org/content/repositories/snapshots/")
-  } else {
-    Seq.empty
-  }
 lazy val hadoopVersion = "3.4.2"
 
 // Library versions
@@ -66,7 +60,6 @@ lazy val commonSettings = Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
   ),
   resolvers += Resolver.mavenLocal,
-  resolvers ++= sparkResolvers,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
@@ -122,7 +115,7 @@ lazy val commonSettings = Seq(
 // Configure resolvers
 resolvers ++= Seq(
   "Maven Central" at "https://repo1.maven.org/maven2/",
-) ++ sparkResolvers
+)
 
 // enforce java code style
 def javafmtCheckSettings() = Seq(
@@ -608,6 +601,15 @@ lazy val spark = (project in file("connectors/spark"))
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",
+    // Publish as `unitycatalog-spark_${shortVersion}_2.13` (e.g. `unitycatalog-spark_4.0_2.13`)
+    // to ship one connector artifact per supported Spark major.minor. See
+    // [[CrossSparkVersions.sparkVersionedModuleName]]. Setting `-DskipSparkSuffix=true`
+    // restores the legacy un-suffixed coordinates for backward-compat release passes.
+    Keys.moduleName := CrossSparkVersions.sparkVersionedModuleName(name.value),
+    // Add `src/main/scala-shims/spark-${shortVersion}/` and the matching test dir as
+    // per-Spark-version source directories. PR1 just creates the empty dirs; PR2 will
+    // place the TableViewCatalog stub and MetricViewSupport trait inside them.
+    CrossSparkVersions.sparkSourceDirSettings,
     scalaVersion := scala213,
     crossScalaVersions := Seq(scala213),
     commonSettings,
@@ -631,6 +633,12 @@ lazy val spark = (project in file("connectors/spark"))
         "-processorpath",
         lombokPath
       )
+    },
+    // Allow building against a custom Spark assembly dir (e.g. a from-source Spark 4.2 build),
+    // in addition to the resolved Maven artifact. The local jars take precedence on the classpath.
+    Compile / unmanagedJars ++= {
+      val sparkAssemblyDir = sys.props.get("sparkAssemblyDir").map(file).filter(_.exists)
+      sparkAssemblyDir.toSeq.flatMap(d => (d ** "*.jar").get.classpath)
     },
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
@@ -657,6 +665,9 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
+      // Cross-Spark Delta dep: matches the active Spark major.minor. Released Delta versions
+      // exist for 4.0 and 4.1; 4.2 needs a SNAPSHOT until Delta publishes a stable 4.2 build,
+      // so CI passes `-DdeltaVersion=4.1.0-SNAPSHOT` for the 4.2 matrix cell.
       "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
@@ -745,6 +756,8 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
       "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
+      // Cross-Spark Delta dep: matches the active Spark major.minor (see
+      // `connectors/spark/build.sbt`-block comment for the version-pinning rules).
       "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
