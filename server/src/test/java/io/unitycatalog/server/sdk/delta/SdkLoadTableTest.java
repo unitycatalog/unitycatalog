@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.delta;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -87,22 +88,6 @@ public class SdkLoadTableTest extends BaseServerTest {
   }
 
   @Test
-  public void testTableExistsEndpoint() throws Exception {
-    for (TableType tableType : List.of(TableType.MANAGED, TableType.EXTERNAL)) {
-      String tableName = "tbl_head_exists_" + tableType.getValue().toLowerCase();
-      Optional<String> storageLocation =
-          tableType == TableType.EXTERNAL
-              ? Optional.of("file:///tmp/uc_test/" + tableName)
-              : Optional.empty();
-      BaseTableCRUDTestEnv.createTestingTable(tableName, tableType, storageLocation, tableOps);
-      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
-    }
-
-    ApiException ex = assertThrows(ApiException.class, () -> tableExists("nonexistent"));
-    assertThat(ex.getCode()).isEqualTo(404);
-  }
-
-  @Test
   public void testLoadTableEndpoints() throws Exception {
     // -------- External DELTA table: typed columns, no commits --------
     {
@@ -135,6 +120,8 @@ public class SdkLoadTableTest extends BaseServerTest {
                                   + "\"nullable\":true,\"metadata\":{}}")
                           .position(1)
                           .nullable(true))));
+
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
 
       LoadTableResponse response = loadTable(tableName);
       TableMetadata metadata = response.getMetadata();
@@ -172,6 +159,8 @@ public class SdkLoadTableTest extends BaseServerTest {
               tableName, TableType.MANAGED, Optional.empty(), tableOps);
       String tableId = tableInfo.getTableId();
       String tableUri = tableInfo.getStorageLocation();
+
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
 
       // Load before any commits: version 0, empty list
       LoadTableResponse r1 = loadTable(tableName);
@@ -234,6 +223,9 @@ public class SdkLoadTableTest extends BaseServerTest {
       ApiException ex = assertThrows(ApiException.class, () -> loadTable("nonexistent"));
       assertThat(ex.getMessage()).contains("Table not found");
       assertThat(ex.getCode()).isEqualTo(404);
+
+      // HEAD responses carry no body, so assert only the status code.
+      assertApiExceptionStatusOnly(() -> tableExists("nonexistent"), 404);
     }
 
     // -------- Full metadata: partition columns + property-derived fields + uniform Iceberg
@@ -294,6 +286,8 @@ public class SdkLoadTableTest extends BaseServerTest {
           icebergLocation,
           icebergVersion,
           new Date(icebergTimestampMs));
+
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
 
       LoadTableResponse response = loadTable(tableName);
       TableMetadata metadata = response.getMetadata();
@@ -360,6 +354,8 @@ public class SdkLoadTableTest extends BaseServerTest {
                           .partitionIndex(2)
                           .nullable(true))));
 
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
+
       assertThat(loadTable(tableName).getMetadata().getPartitionColumns()).isEmpty();
     }
 
@@ -385,6 +381,8 @@ public class SdkLoadTableTest extends BaseServerTest {
                                   + "\"nullable\":false,\"metadata\":{}}")
                           .position(0)
                           .nullable(false))));
+
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
 
       LoadTableResponse response = loadTable(tableName);
       assertThat(response.getMetadata()).isNotNull();
@@ -412,6 +410,8 @@ public class SdkLoadTableTest extends BaseServerTest {
                           .typeJson("not json at all")
                           .position(0)
                           .nullable(false))));
+
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
 
       LoadTableResponse response = loadTable(tableName);
       assertThat(response.getMetadata()).isNotNull();
