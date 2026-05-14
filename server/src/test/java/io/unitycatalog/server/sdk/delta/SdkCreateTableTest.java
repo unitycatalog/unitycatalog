@@ -488,7 +488,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             new DomainMetadataUpdates()
                 .deltaClustering(
                     new ClusteringDomainMetadata().clusteringColumns(List.of(List.of("id")))))
-        .properties(fullManagedProperties(staging.getTableId().toString()));
+        .properties(fullManagedProperties(staging.getTableId().toString()))
+        .lastCommitTimestampMs(1700000000000L);
   }
 
   /**
@@ -503,7 +504,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         .dataSourceFormat(DataSourceFormat.DELTA)
         .columns(simpleSchema())
         .protocol(managedProtocol())
-        .properties(fullManagedProperties("00000000-0000-0000-0000-000000000000"));
+        .properties(fullManagedProperties("00000000-0000-0000-0000-000000000000"))
+        .lastCommitTimestampMs(1700000000000L);
   }
 
   /** Build an EXTERNAL Delta table request at an arbitrary storage path. */
@@ -521,7 +523,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                 .minWriterVersion(7)
                 .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
                 .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
-        .properties(Map.of("delta.enableDeletionVectors", "true"));
+        .properties(Map.of("delta.enableDeletionVectors", "true"))
+        .lastCommitTimestampMs(1700000000000L);
   }
 
   /** {@code delta.feature.<name>} for the stored UC property assertions. */

@@ -87,7 +87,8 @@ public class DeltaCreateTableMapperTest {
         .dataSourceFormat(DataSourceFormat.DELTA)
         .columns(simpleColumns())
         .protocol(managedProtocol())
-        .properties(fullManagedProperties("uuid-x"));
+        .properties(fullManagedProperties("uuid-x"))
+        .lastCommitTimestampMs(1700000000000L);
   }
 
   /** A minimal EXTERNAL createTable request (UC mirrors whatever the client sends). */
@@ -104,7 +105,8 @@ public class DeltaCreateTableMapperTest {
                 .minWriterVersion(7)
                 .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
                 .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
-        .properties(Map.of());
+        .properties(Map.of())
+        .lastCommitTimestampMs(1700000000000L);
   }
 
   private static StructType simpleColumns() {

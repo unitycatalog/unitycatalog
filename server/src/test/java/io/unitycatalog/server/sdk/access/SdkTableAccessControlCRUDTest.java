@@ -275,7 +275,8 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
                         .minWriterVersion(7)
                         .readerFeatures(List.of("deletionVectors"))
                         .writerFeatures(List.of("deletionVectors")))
-                .properties(Map.of("delta.enableDeletionVectors", "true")));
+                .properties(Map.of("delta.enableDeletionVectors", "true"))
+                .lastCommitTimestampMs(1700000000000L));
     assertThat(
             regular1DeltaApi
                 .loadTable("cat_pr1", "sch_pr1", deltaExternalName)

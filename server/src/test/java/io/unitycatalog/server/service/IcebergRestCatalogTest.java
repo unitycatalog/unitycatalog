@@ -184,7 +184,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         new ColumnInfo()
             .name("as_int")
             .typeText("INTEGER")
-            .typeJson("{\"type\": \"integer\"}")
+            .typeJson(
+                "{\"name\":\"as_int\",\"type\":\"integer\"," + "\"nullable\":true,\"metadata\":{}}")
             .typeName(ColumnTypeName.INT)
             .typePrecision(10)
             .typeScale(0)
@@ -195,7 +196,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         new ColumnInfo()
             .name("as_string")
             .typeText("VARCHAR(255)")
-            .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
+            .typeJson(
+                "{\"name\":\"as_string\",\"type\":\"string\","
+                    + "\"nullable\":true,\"metadata\":{}}")
             .typeName(ColumnTypeName.STRING)
             .position(1)
             .comment("String column")

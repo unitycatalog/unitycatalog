@@ -58,7 +58,9 @@ public abstract class BaseManagedLocationTest extends BaseCRUDTest {
           new ColumnInfo()
               .name("as_int")
               .typeText("INTEGER")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson(
+                  "{\"name\":\"as_int\",\"type\":\"integer\","
+                      + "\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .comment("Integer column")
