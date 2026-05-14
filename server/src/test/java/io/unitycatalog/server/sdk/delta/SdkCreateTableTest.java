@@ -118,13 +118,14 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     assertThat(extResp.getMetadata().getLocation()).isEqualTo(externalLocation);
 
     // -------- ICEBERG rejected --------
-    assertDeltaInvalidParam(
+    TestUtils.assertDeltaApiException(
         () ->
             deltaTablesApi.createTable(
                 TestUtils.CATALOG_NAME2,
                 TestUtils.SCHEMA_NAME2,
                 managedTableRequest("tbl_iceberg", "s3://test-bucket0/unused")
                     .dataSourceFormat(DataSourceFormat.ICEBERG)),
+        ErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
         "Unsupported data-source-format");
 
     // -------- name missing --------
