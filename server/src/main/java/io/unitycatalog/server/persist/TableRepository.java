@@ -261,7 +261,7 @@ public class TableRepository {
           if (dao.getDataSourceFormat() == null
               || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
             throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT,
+                ErrorCode.UNSUPPORTED_TABLE_FORMAT,
                 "Table is not a Delta table: " + catalog + "." + schema + "." + table);
           }
           return buildLoadTableResponse(session, dao, catalog, schema, table);
