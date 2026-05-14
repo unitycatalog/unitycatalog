@@ -12,9 +12,10 @@ import io.unitycatalog.server.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.TableRepository.TableStorageLocationInfo;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
-import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
 
 import java.util.Collections;
 import java.util.Set;
@@ -28,11 +29,14 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 public class TemporaryTableCredentialsService {
   private final TableRepository tableRepository;
   private final StorageCredentialVendor storageCredentialVendor;
+  private final ServerProperties serverProperties;
 
   public TemporaryTableCredentialsService(StorageCredentialVendor storageCredentialVendor,
-                                          Repositories repositories) {
+                                          Repositories repositories,
+                                          ServerProperties serverProperties) {
     this.storageCredentialVendor = storageCredentialVendor;
     this.tableRepository = repositories.getTableRepository();
+    this.serverProperties = serverProperties;
   }
 
   @Post("")
@@ -42,9 +46,13 @@ public class TemporaryTableCredentialsService {
       @AuthorizeKey(key = "operation")
       GenerateTemporaryTableCredential generateTemporaryTableCredential) {
     String tableId = generateTemporaryTableCredential.getTableId();
-    NormalizedURL storageLocation = tableRepository.getStorageLocationForTableOrStagingTable(
-        UUID.fromString(tableId));
-    return HttpResponse.ofJson(storageCredentialVendor.vendCredential(storageLocation,
+    TableStorageLocationInfo info =
+        tableRepository.getStorageLocationForTableOrStagingTable(UUID.fromString(tableId));
+    serverProperties.checkDeltaApiOnlyForManagedTable(
+        info.tableType(),
+        "GET /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials"
+            + " (or /delta/v1/staging-tables/{table_id}/credentials for unfinalized staging)");
+    return HttpResponse.ofJson(storageCredentialVendor.vendCredential(info.url(),
             tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
   }
 

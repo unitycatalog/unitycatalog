@@ -43,6 +43,10 @@ public class DeltaCommitsService extends AuthorizedService {
   public HttpResponse postCommit(
       @AuthorizeResourceKey(value = TABLE, key = "table_id")
       DeltaCommit commit) {
+    // The UC REST commit endpoint only accepts MANAGED Delta tables (enforced downstream by
+    // validateTableForCommit), so the gate applies unconditionally here.
+    serverProperties.checkDeltaApiOnlyEnabled(
+        "POST /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} with action add-commit");
     deltaCommitRepository.postCommit(commit);
     return HttpResponse.of(HttpStatus.OK);
   }
@@ -57,6 +61,9 @@ public class DeltaCommitsService extends AuthorizedService {
   public HttpResponse getCommits(
     @AuthorizeResourceKey(value = TABLE, key = "table_id")
     DeltaGetCommits rpc) {
+    // Same as postCommit above -- managed-Delta-only by contract; gate unconditionally.
+    serverProperties.checkDeltaApiOnlyEnabled(
+        "GET /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} (commits[])");
     return HttpResponse.ofJson(deltaCommitRepository.getCommits(rpc));
   }
 }

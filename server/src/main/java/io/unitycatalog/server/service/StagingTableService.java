@@ -51,6 +51,10 @@ public class StagingTableService extends AuthorizedService {
       })
       CreateStagingTable createStagingTable) {
     assert createStagingTable != null;
+    // A staging table can only ever finalize into a MANAGED Delta table, so the
+    // managed-tables-use-delta-api-only gate applies unconditionally here.
+    serverProperties.checkDeltaApiOnlyEnabled(
+        "POST /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables");
     StagingTableInfo createdStagingTable =
         stagingTableRepository.createStagingTable(createStagingTable);
     String catalog = createdStagingTable.getCatalogName();

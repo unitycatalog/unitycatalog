@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
@@ -217,5 +218,29 @@ public class ServerPropertiesTest {
           .as("Property %s from etc/conf/server.properties should match default", property.getKey())
           .isEqualTo(serverProperties.get(property));
     }
+  }
+
+  @Test
+  public void testCheckDeltaApiOnlyForManagedTable() {
+    ServerProperties serverProperties1 = new ServerProperties();
+    serverProperties1.checkDeltaApiOnlyForManagedTable(TableType.MANAGED, "endpoint_name");
+    serverProperties1.checkDeltaApiOnlyForManagedTable(TableType.EXTERNAL, "endpoint_name");
+    serverProperties1.checkDeltaApiOnlyForManagedTable(TableType.METRIC_VIEW, "endpoint_name");
+    serverProperties1.checkDeltaApiOnlyEnabled("endpoint_name");
+
+    Properties props = new Properties();
+    props.setProperty(Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey(), "true");
+    ServerProperties serverProperties2 = new ServerProperties(props);
+    serverProperties2.checkDeltaApiOnlyForManagedTable(TableType.EXTERNAL, "endpoint_name");
+    serverProperties2.checkDeltaApiOnlyForManagedTable(TableType.METRIC_VIEW, "endpoint_name");
+    assertThatThrownBy(
+            () ->
+                serverProperties2.checkDeltaApiOnlyForManagedTable(
+                    TableType.MANAGED, "endpoint_name"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("endpoint is disabled for MANAGED Delta tables when");
+    assertThatThrownBy(() -> serverProperties2.checkDeltaApiOnlyEnabled("endpoint_name"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("endpoint is disabled when");
   }
 }

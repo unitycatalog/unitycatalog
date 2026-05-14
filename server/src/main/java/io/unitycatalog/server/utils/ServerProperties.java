@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
@@ -197,6 +198,8 @@ public class ServerProperties {
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false", BOOLEAN_VALIDATOR),
+    MANAGED_TABLE_USE_DELTA_API_ONLY(
+        "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
     // `storage-root.*` are replaced by managed storage locations of catalog and schema.
     MODEL_STORAGE_ROOT("storage-root.models", STORAGE_PATH_VALIDATOR), // Deprecated
     TABLE_STORAGE_ROOT("storage-root.tables", STORAGE_PATH_VALIDATOR), // Deprecated
@@ -450,6 +453,49 @@ public class ServerProperties {
           ErrorCode.INVALID_ARGUMENT,
           "MANAGED table is an experimental feature and is currently disabled. "
               + "To enable it, set 'server.managed-table.enabled=true' in server.properties");
+    }
+  }
+
+  /**
+   * Reject the UC request when MANAGED_TABLES_USE_DELTA_API_ONLY is on and the targeted table is
+   * MANAGED. Call from UC endpoints whose Delta equivalent should be used instead. Any non-MANAGED
+   * table would continue to work: EXTERNAL, METRIC_VIEW etc.
+   *
+   * @param tableType the table type to check; only {@link TableType#MANAGED} triggers the gate.
+   * @param deltaEndpoint full Delta endpoint to suggest in the error, e.g. {@code "POST
+   *     /delta/v1/catalogs/{catalog}/schemas/{schema}/tables"}.
+   */
+  public void checkDeltaApiOnlyForManagedTable(TableType tableType, String deltaEndpoint) {
+    if (tableType == TableType.MANAGED
+        && isTrueOrEnable(get(Property.MANAGED_TABLE_USE_DELTA_API_ONLY))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "This Unity Catalog endpoint is disabled for MANAGED Delta tables when "
+              + Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey()
+              + "=true. Use the Delta endpoint "
+              + deltaEndpoint
+              + " instead.");
+    }
+  }
+
+  /**
+   * Similar to checkDeltaApiOnlyForManagedTable, reject the UC request when
+   * MANAGED_TABLES_USE_DELTA_API_ONLY is on and the target endpoint is for MANAGED tables only. In
+   * this case it doesn't need to check table type. Call from UC endpoints whose Delta equivalent
+   * should be used instead.
+   *
+   * @param deltaEndpoint full Delta endpoint to suggest in the error, e.g. {@code "POST
+   *     /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables"}.
+   */
+  public void checkDeltaApiOnlyEnabled(String deltaEndpoint) {
+    if (isTrueOrEnable(get(Property.MANAGED_TABLE_USE_DELTA_API_ONLY))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "This Unity Catalog endpoint is disabled when "
+              + Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey()
+              + "=true. Use the Delta endpoint "
+              + deltaEndpoint
+              + " instead.");
     }
   }
 

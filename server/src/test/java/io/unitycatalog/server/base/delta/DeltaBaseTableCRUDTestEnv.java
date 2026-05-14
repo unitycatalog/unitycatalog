@@ -77,13 +77,23 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
   }
 
   /**
-   * Stage and finalize a MANAGED Delta table via Delta REST. Always seeds a {@code
-   * deltaRowTracking} domain so update-side tests can exercise remove-domain-metadata against a
-   * non-empty state; callers that don't care are unaffected.
+   * Stage and finalize a MANAGED Delta table via Delta REST. Stages internally; use {@link
+   * #createDeltaManaged(String, StagingTableResponse, Map)} if the test needs to retain or
+   * inspect the staging response between staging and finalize (e.g. to assert intermediate state
+   * against the staging row).
+   *
+   * <p>Always seeds a {@code deltaRowTracking} domain so update-side tests can exercise
+   * remove-domain-metadata against a non-empty state; callers that don't care are unaffected.
    */
   protected Handle createDeltaManaged(String tableName, Map<String, String> extraProperties)
       throws ApiException {
-    StagingTableResponse staging = createDeltaStaging(tableName);
+    return createDeltaManaged(tableName, createDeltaStaging(tableName), extraProperties);
+  }
+
+  /** Finalize a MANAGED Delta table against an already-created {@code staging} response. */
+  protected Handle createDeltaManaged(
+      String tableName, StagingTableResponse staging, Map<String, String> extraProperties)
+      throws ApiException {
     Map<String, String> properties =
         new HashMap<>(managedContractProperties(staging.getTableId().toString()));
     properties.putAll(extraProperties);
