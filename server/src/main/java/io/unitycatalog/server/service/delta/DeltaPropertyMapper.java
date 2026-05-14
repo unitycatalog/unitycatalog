@@ -3,6 +3,7 @@ package io.unitycatalog.server.service.delta;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.CreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
@@ -14,10 +15,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Maps Delta REST Catalog {@code protocol} and {@code domain-metadata} blocks onto UC table
- * properties. Designed to be shared by create, update, and commit endpoints: the mapping rules are
- * specified by the Delta spec and don't vary by endpoint (only create is wired up today; update and
- * commit are on follow-ups).
+ * Assembles the stored UC table-property map from a Delta {@link CreateTableRequest} and the
+ * per-block helpers ({@link #deriveFromProtocol} / {@link #deriveFromDomainMetadata}). Designed to
+ * be shared by create, update, and commit endpoints: the mapping rules are specified by the Delta
+ * spec and don't vary by endpoint (only create is wired up today; update and commit are on
+ * follow-ups).
  *
  * <p>Every feature in {@code protocol.reader-features} and {@code protocol.writer-features} yields
  * {@code delta.feature.<name> = supported}. Reader-writer features (which appear in both lists)
@@ -55,16 +57,17 @@ public final class DeltaPropertyMapper {
    * silently override the projection. Client-only properties (e.g. {@code
    * delta.rowTracking.materializedRowIdColumnName}) flow through untouched.
    */
-  public static Map<String, String> buildStoredProperties(
-      DeltaProtocol protocol,
-      DomainMetadataUpdates domainMetadata,
-      Map<String, String> clientProperties) {
+  public static Map<String, String> buildStoredProperties(CreateTableRequest req) {
     Map<String, String> merged = new HashMap<>();
-    if (clientProperties != null) {
-      merged.putAll(clientProperties);
+    if (req.getProperties() != null) {
+      merged.putAll(req.getProperties());
     }
-    deriveFromProtocol(merged, protocol);
-    deriveFromDomainMetadata(merged, domainMetadata);
+    deriveFromProtocol(merged, req.getProtocol());
+    deriveFromDomainMetadata(merged, req.getDomainMetadata());
+    if (req.getLastCommitTimestampMs() != null) {
+      merged.put(
+          TableProperties.LAST_COMMIT_TIMESTAMP, String.valueOf(req.getLastCommitTimestampMs()));
+    }
     return merged;
   }
 

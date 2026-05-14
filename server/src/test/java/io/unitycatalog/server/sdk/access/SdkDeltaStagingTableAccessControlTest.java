@@ -100,6 +100,7 @@ public class SdkDeltaStagingTableAccessControlTest extends SdkStagingTableAccess
                 .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
                 .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES))
         .columns(SCHEMA)
-        .properties(properties);
+        .properties(properties)
+        .lastCommitTimestampMs(1700000000000L);
   }
 }
