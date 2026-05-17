@@ -58,12 +58,17 @@ object ReleaseSettings {
       sys.env.getOrElse("SONATYPE_USERNAME", ""),
       sys.env.getOrElse("SONATYPE_PASSWORD", "")
     ),
+    credentials += Credentials(
+      "Sonatype Nexus Repository Manager",
+      "central.sonatype.com",
+      sys.env.getOrElse("SONATYPE_USERNAME", ""),
+      sys.env.getOrElse("SONATYPE_PASSWORD", "")
+    ),
     publishTo := {
-      val ossrhBase = "https://ossrh-staging-api.central.sonatype.com/"
       if (isSnapshot.value) {
-        Some("snapshots" at ossrhBase + "content/repositories/snapshots")
+        Some("snapshots" at "https://central.sonatype.com/repository/maven-snapshots/")
       } else {
-        Some("releases" at ossrhBase + "service/local/staging/deploy/maven2")
+        Some("releases" at "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2")
       }
     },
     licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0")),
@@ -100,7 +105,7 @@ object ReleaseSettings {
   lazy val rootReleaseSettings = Seq(
     publishArtifact := false,
     publish / skip := true,
-    publishTo := Some("snapshots" at "https://ossrh-staging-api.central.sonatype.com/content/repositories/snapshots"),
+    publishTo := Some("snapshots" at "https://central.sonatype.com/repository/maven-snapshots/"),
     releaseCrossBuild := false,
     crossScalaVersions := Nil,
     releaseProcess := Seq[ReleaseStep](

@@ -51,10 +51,39 @@ The following table lists the configurable parameters of the Unity Catalog chart
 	</thead>
 	<tbody>
 		<tr>
-			<td>auth.authorizationUrl</td>
+			<td>auth.allowedIssuers</td>
+			<td>string</td>
+			<td><pre lang="">
+https://accounts.google.com
+</pre>
+</td>
+			<td>Comma-separated list of allowed token issuers
+
+When authorization is enabled, tokens will only be accepted from issuers in this list.
+
+Example for Google: `https://accounts.google.com`
+Example for Microsoft Entra ID: `https://login.microsoftonline.com/{tenant-id}/v2.0`
+</td>
+		</tr>
+		<tr>
+			<td>auth.audiences</td>
 			<td>string</td>
 			<td><pre lang="">
 not set
+</pre>
+</td>
+			<td>Comma-separated list of expected JWT audience values
+
+When authorization is enabled, tokens must contain one of these audience values.
+This ensures tokens are intended for this Unity Catalog instance.
+Typically your application's client ID or API identifier.
+</td>
+		</tr>
+		<tr>
+			<td>auth.authorizationUrl</td>
+			<td>string</td>
+			<td><pre lang="">
+https://accounts.google.com/o/oauth2/auth
 </pre>
 </td>
 			<td>OAuth authorization URL
@@ -100,8 +129,8 @@ false
 		<tr>
 			<td>auth.provider</td>
 			<td>string</td>
-			<td><pre lang="json">
-"google"
+			<td><pre lang="">
+google
 </pre>
 </td>
 			<td>OAuth provider
@@ -124,7 +153,7 @@ not set
 			<td>auth.tokenUrl</td>
 			<td>string</td>
 			<td><pre lang="">
-not set
+https://oauth2.googleapis.com/token
 </pre>
 </td>
 			<td>OAuth token URL

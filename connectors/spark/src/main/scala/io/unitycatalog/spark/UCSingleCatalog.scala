@@ -499,6 +499,19 @@ private class UCProxy(
     }
     createTable.setStorageLocation(storageLocation)
 
+    val partitionColNames: Seq[String] = partitions.flatMap { t =>
+      t.name() match {
+        case "identity" =>
+          val fieldNames = t.references().flatMap(_.fieldNames())
+          require(fieldNames.length == 1,
+            s"Expected single-field partition reference but got: ${fieldNames.mkString(".")}")
+          Some(fieldNames.head)
+        case "cluster_by" =>
+          None
+        case other =>
+          throw new ApiException(s"Unsupported partition transform: $other")
+      }
+    }.toSeq
     val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
       val column = new ColumnInfo()
       column.setName(field.name)
@@ -506,10 +519,12 @@ private class UCProxy(
         column.setComment(field.getComment.get)
       }
       column.setNullable(field.nullable)
-      column.setTypeText(field.dataType.simpleString)
+      column.setTypeText(field.dataType.catalogString)
       column.setTypeName(convertDataTypeToTypeName(field.dataType))
       column.setTypeJson(field.dataType.json)
       column.setPosition(i)
+      val partitionIdx = partitionColNames.indexWhere(_.equalsIgnoreCase(field.name))
+      if (partitionIdx >= 0) column.setPartitionIndex(partitionIdx)
       column
     }
     val comment = Option(properties.get(TableCatalog.PROP_COMMENT))
@@ -539,18 +554,28 @@ private class UCProxy(
 
   private def convertDataTypeToTypeName(dataType: DataType): ColumnTypeName = {
     dataType match {
-      case StringType => ColumnTypeName.STRING
-      case BooleanType => ColumnTypeName.BOOLEAN
-      case ShortType => ColumnTypeName.SHORT
-      case IntegerType => ColumnTypeName.INT
-      case LongType => ColumnTypeName.LONG
-      case FloatType => ColumnTypeName.FLOAT
-      case DoubleType => ColumnTypeName.DOUBLE
-      case ByteType => ColumnTypeName.BYTE
-      case BinaryType => ColumnTypeName.BINARY
-      case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
-      case TimestampType => ColumnTypeName.TIMESTAMP
-      case _ => throw new ApiException("DataType not supported: " + dataType.simpleString)
+      case _: BooleanType => ColumnTypeName.BOOLEAN
+      case _: ByteType => ColumnTypeName.BYTE
+      case _: ShortType => ColumnTypeName.SHORT
+      case _: IntegerType => ColumnTypeName.INT
+      case _: LongType => ColumnTypeName.LONG
+      case _: FloatType => ColumnTypeName.FLOAT
+      case _: DoubleType => ColumnTypeName.DOUBLE
+      case _: DateType => ColumnTypeName.DATE
+      case _: TimestampType => ColumnTypeName.TIMESTAMP
+      case _: TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
+      case _: CharType => ColumnTypeName.CHAR
+      case _: StringType | _: VarcharType => ColumnTypeName.STRING
+      case _: BinaryType => ColumnTypeName.BINARY
+      case _: DecimalType => ColumnTypeName.DECIMAL
+      case _: DayTimeIntervalType | _: YearMonthIntervalType =>
+        ColumnTypeName.INTERVAL
+      case _: ArrayType => ColumnTypeName.ARRAY
+      case _: StructType => ColumnTypeName.STRUCT
+      case _: MapType => ColumnTypeName.MAP
+      case _: NullType => ColumnTypeName.NULL
+      case _: UserDefinedType[_] => ColumnTypeName.USER_DEFINED_TYPE
+      case _ => ColumnTypeName.UNKNOWN_DEFAULT_OPEN_API
     }
   }
 

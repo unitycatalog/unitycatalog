@@ -138,7 +138,7 @@ public class SchemaRepository {
         .ifPresent(
             schemaInfoDAO -> {
               throw new BaseException(
-                  ErrorCode.ALREADY_EXISTS, "Schema already exists: " + schemaName);
+                  ErrorCode.SCHEMA_ALREADY_EXISTS, "Schema already exists: " + schemaName);
             });
   }
 

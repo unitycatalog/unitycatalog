@@ -1,5 +1,6 @@
 package io.unitycatalog.server.exception;
 
+import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
@@ -26,6 +27,11 @@ public class GlobalExceptionHandler implements ExceptionHandlerFunction {
               baseException.getErrorMessage(),
               baseException.getCause(),
               baseException.getMetadata()));
+    } else if (cause instanceof JWTVerificationException) {
+      return HttpResponse.ofJson(
+          HttpStatus.UNAUTHORIZED,
+          createErrorResponse(
+              ErrorCode.UNAUTHENTICATED, "Invalid access token.", cause, new HashMap<>()));
     } else if (cause instanceof Scim2RuntimeException) {
       ScimException scimException = (ScimException) cause.getCause();
       return HttpResponse.ofJson(

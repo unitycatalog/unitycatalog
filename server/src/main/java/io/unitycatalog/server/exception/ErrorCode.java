@@ -21,7 +21,14 @@ public enum ErrorCode {
   UNIMPLEMENTED(12, 501),
   INTERNAL(13, 500),
   UNAVAILABLE(14, 503),
-  DATA_LOSS(15, 500);
+  DATA_LOSS(15, 500),
+  // UC-specific "already exists" error codes for backwards compatibility (all HTTP 400)
+  RESOURCE_ALREADY_EXISTS(16, 400),
+  CATALOG_ALREADY_EXISTS(17, 400),
+  SCHEMA_ALREADY_EXISTS(18, 400),
+  TABLE_ALREADY_EXISTS(19, 400),
+  STORAGE_CREDENTIAL_ALREADY_EXISTS(20, 400),
+  EXTERNAL_LOCATION_ALREADY_EXISTS(21, 400);
 
   private final int code;
   private final HttpStatus httpStatus;

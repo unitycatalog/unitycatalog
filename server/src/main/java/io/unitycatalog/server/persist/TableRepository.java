@@ -196,7 +196,8 @@ public class TableRepository {
           TableInfoDAO existingTable =
               findBySchemaIdAndName(session, schemaId, createTable.getName());
           if (existingTable != null) {
-            throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + fullName);
+            throw new BaseException(
+                ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
           // The table ID will either be a new random one or the id of staging table, depending

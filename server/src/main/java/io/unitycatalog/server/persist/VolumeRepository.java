@@ -56,7 +56,7 @@ public class VolumeRepository {
           UUID schemaId = catalogAndSchemaDao.schemaInfoDAO().getId();
           if (getVolumeDAO(session, schemaId, createVolumeRequest.getName()) != null) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS,
+                ErrorCode.RESOURCE_ALREADY_EXISTS,
                 "Volume already exists: " + createVolumeRequest.getName());
           }
 
@@ -227,7 +227,7 @@ public class VolumeRepository {
                 getVolumeDAO(session, catalog, schema, updateVolumeRequest.getNewName());
             if (existingVolume != null) {
               throw new BaseException(
-                  ErrorCode.ALREADY_EXISTS,
+                  ErrorCode.RESOURCE_ALREADY_EXISTS,
                   "Volume already exists: " + updateVolumeRequest.getNewName());
             }
           }
