@@ -20,10 +20,10 @@ jobs:
 
     # Build a human-readable job name from the matrix entry, e.g.:
     #   "All tests (Spark 4.0.0, Delta 4.1.0)"
-    #   "[Non Blocking] Spark compile (Spark 4.2.0-SNAPSHOT)"
+    #   "[Non Blocking] Spark tests (Spark 4.2.0-SNAPSHOT, Delta master-SNAPSHOT)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
-      ${{ matrix.validation-mode == 'spark-compile-only' && 'Spark compile' || matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
+      ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
       (Spark ${{ matrix.spark-version }}${{ matrix.delta-version != '' && format(', Delta {0}', matrix.delta-version) || '' }})
     continue-on-error: ${{ matrix.non-blocking || false }}
     strategy:
@@ -48,10 +48,10 @@ jobs:
             # indicate upcoming incompatibilities but should not block PRs.
             non-blocking: true
           - spark-version: "4.2.0-SNAPSHOT"
-            delta-version: ""
-            validation-mode: "spark-compile-only"
-            # Delta does not yet publish a Spark 4.2 artifact. This mode applies
-            # only to Spark 4.2; Spark 4.0/4.1 continue to run compile + tests.
+            delta-version: "master-SNAPSHOT"
+            delta-repo: "seewishnew/delta"
+            delta-ref: "enable-spark-master-cross-build"
+            validation-mode: "spark-tests"
             non-blocking: true
 
     steps:
@@ -67,9 +67,20 @@ jobs:
       if: matrix.delta-version == 'master-SNAPSHOT'
       id: delta-meta
       run: |
-        DELTA_SHA=$(git ls-remote https://github.com/delta-io/delta.git HEAD | cut -f1)
-        DELTA_VER=$(curl -fsSL https://raw.githubusercontent.com/delta-io/delta/master/version.sbt \
+        DELTA_REPO="${{ matrix.delta-repo || 'delta-io/delta' }}"
+        DELTA_REF="${{ matrix.delta-ref || 'master' }}"
+        DELTA_SHA=$(git ls-remote "https://github.com/$DELTA_REPO.git" "$DELTA_REF" | cut -f1)
+        if [ -z "$DELTA_SHA" ]; then
+          DELTA_SHA=$(git ls-remote "https://github.com/$DELTA_REPO.git" HEAD | cut -f1)
+        fi
+        DELTA_VER=$(curl -fsSL "https://raw.githubusercontent.com/$DELTA_REPO/$DELTA_REF/version.sbt" \
+              | grep -oP '(?<=")[^"]*-SNAPSHOT(?=")') || \
+          DELTA_VER=$(curl -fsSL "https://raw.githubusercontent.com/$DELTA_REPO/master/version.sbt" \
               | grep -oP '(?<=")[^"]*-SNAPSHOT(?=")')
+        if [ -z "$DELTA_VER" ]; then
+          echo "::error::Failed to resolve Delta SNAPSHOT version from $DELTA_REPO/$DELTA_REF"
+          exit 1
+        fi
         echo "sha=$DELTA_SHA" >> $GITHUB_OUTPUT
         echo "version=$DELTA_VER" >> $GITHUB_OUTPUT
 
@@ -79,17 +90,17 @@ jobs:
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.m2/repository/io/delta
-        key: delta-snapshot-${{ steps.delta-meta.outputs.sha }}
+        key: delta-snapshot-${{ matrix.delta-repo || 'delta-io/delta' }}-${{ steps.delta-meta.outputs.sha }}
 
-    - name: Build Delta SNAPSHOT from master and publish to local Maven
+    - name: Build Delta SNAPSHOT from source and publish to local Maven
       if: matrix.delta-version == 'master-SNAPSHOT' && steps.delta-cache.outputs.cache-hit != 'true'
       run: |
+        DELTA_REPO="${{ matrix.delta-repo || 'delta-io/delta' }}"
+        DELTA_REF="${{ matrix.delta-ref || 'master' }}"
         SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
-        git clone --depth=1 https://github.com/delta-io/delta.git /tmp/delta
+        git clone --depth=1 --branch="$DELTA_REF" "https://github.com/$DELTA_REPO.git" /tmp/delta || \
+          git clone --depth=1 "https://github.com/$DELTA_REPO.git" /tmp/delta
         cd /tmp/delta
-        # Publish only delta-spark and the modules its POM references at SNAPSHOT:
-        # storage (dependsOn) and the kernel artifacts re-added via pomPostProcess.
-        # This avoids compiling unrelated Delta projects (hudi, iceberg, flink, connect, ...).
         build/sbt -DsparkVersion=$SPARK_MAJOR_MINOR \
           storage/publishM2 \
           kernelApi/publishM2 \
@@ -98,7 +109,6 @@ jobs:
           spark/publishM2
 
     - name: Set effective Delta version
-      if: ${{ matrix.validation-mode != 'spark-compile-only' }}
       run: |
         if [[ "${{ matrix.delta-version }}" == "master-SNAPSHOT" ]]; then
           echo "DELTA_VERSION=${{ steps.delta-meta.outputs.version }}" >> $GITHUB_ENV
@@ -106,29 +116,18 @@ jobs:
           echo "DELTA_VERSION=${{ matrix.delta-version }}" >> $GITHUB_ENV
         fi
 
-    - name: Compile spark connector against Spark 4.2
-      if: matrix.validation-mode == 'spark-compile-only'
-      run: |
-        build/sbt -DsparkVersion=${{ matrix.spark-version }} -J-Xmx2G \
-          "project spark" \
-          "set libraryDependencies := libraryDependencies.value.filterNot(_.organization == \"io.delta\")" \
-          compile
-
       # 'integrationTests' is not in root project, since we avoid running it via `./build/sbt test`,
       # Here, we explicitly compile `integrationTests` to catch compilation issues early.
     - name: Compile integration tests to verify compilation and checkstyle issues.
-      if: ${{ matrix.validation-mode != 'spark-compile-only' }}
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G integrationTests/test:compile
 
     - name: Build and verify the local deployment.
-      if: ${{ matrix.validation-mode != 'spark-compile-only' }}
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G clean package publishM2
 
     - name: Run tests with coverage
-      if: ${{ matrix.validation-mode != 'spark-compile-only' }}
       run: |
         if [[ "${{ matrix.validation-mode }}" == "spark-tests" ]]; then
-          echo "Running spark connector tests only"
+          echo "Running spark connector tests"
           build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G spark/jacoco
         else
           echo "Running all tests"

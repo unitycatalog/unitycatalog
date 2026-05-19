@@ -22,9 +22,9 @@ lazy val javacRelease17 = Seq("--release", "17")
 lazy val scala213 = "2.13.17"
 
 lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
-lazy val sparkVersion = sys.props.getOrElse("sparkVersion", "4.0.0")
-lazy val sparkMajorMinorVersion = sparkVersion.split("\\.").take(2).mkString(".")
-lazy val hadoopVersion = "3.4.2"
+lazy val sparkVersion = CrossSparkVersions.getSparkVersionSpec().fullVersion
+lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
+lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
@@ -602,6 +602,12 @@ lazy val spark = (project in file("connectors/spark"))
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",
+    Keys.moduleName := CrossSparkVersions.sparkVersionedModuleName(name.value),
+    CrossSparkVersions.sparkDependentSettings,
+    Compile / unmanagedJars ++= {
+      val sparkAssemblyDir = sys.props.get("sparkAssemblyDir").map(file).filter(_.exists)
+      sparkAssemblyDir.toSeq.flatMap(d => (d ** "*.jar").get.classpath)
+    },
     scalaVersion := scala213,
     crossScalaVersions := Seq(scala213),
     commonSettings,
