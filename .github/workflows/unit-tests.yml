@@ -18,6 +18,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    # Build a human-readable job name from the matrix entry, e.g.:
+    #   "All tests (Spark 4.0.0, Delta 4.1.0)"
+    #   "[Non Blocking] Spark compile (Spark 4.2.0-SNAPSHOT)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
       ${{ matrix.validation-mode == 'spark-compile-only' && 'Spark compile' || matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
