@@ -30,6 +30,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Function;
 
 /**
  * Translates a Delta {@link UpdateTableRequest} into in-memory mutations on a {@link TableInfoDAO}
@@ -45,12 +46,6 @@ import java.util.TreeSet;
  * loads state once and flushes the diff.
  */
 public final class DeltaUpdateTableMapper {
-
-  /** Domain metadata name to which derived property key it owns. */
-  private static final Map<String, String> DOMAIN_TO_PROPERTY_KEY =
-      Map.of(
-          DomainMetadataNames.CLUSTERING, TableProperties.CLUSTERING_COLUMNS,
-          DomainMetadataNames.ROW_TRACKING, TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK);
 
   private DeltaUpdateTableMapper() {}
 
@@ -142,9 +137,9 @@ public final class DeltaUpdateTableMapper {
 
     void putOnce(TableRequirement req) {
       if (req instanceof AssertTableUUID u) {
-        assertTableUuid = fillOnce(assertTableUuid, u);
+        assertTableUuid = fillOnce(assertTableUuid, u, TableRequirement::getType);
       } else if (req instanceof AssertEtag e) {
-        assertEtag = fillOnce(assertEtag, e);
+        assertEtag = fillOnce(assertEtag, e, TableRequirement::getType);
       } else {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
@@ -165,19 +160,19 @@ public final class DeltaUpdateTableMapper {
 
     void putOnce(TableUpdate update) {
       if (update instanceof SetPropertiesUpdate u) {
-        setProperties = fillOnce(setProperties, u);
+        setProperties = fillOnce(setProperties, u, TableUpdate::getAction);
       } else if (update instanceof RemovePropertiesUpdate u) {
-        removeProperties = fillOnce(removeProperties, u);
+        removeProperties = fillOnce(removeProperties, u, TableUpdate::getAction);
       } else if (update instanceof SetProtocolUpdate u) {
-        setProtocol = fillOnce(setProtocol, u);
+        setProtocol = fillOnce(setProtocol, u, TableUpdate::getAction);
       } else if (update instanceof SetTableCommentUpdate u) {
-        setTableComment = fillOnce(setTableComment, u);
+        setTableComment = fillOnce(setTableComment, u, TableUpdate::getAction);
       } else if (update instanceof SetDomainMetadataUpdate u) {
-        setDomainMetadata = fillOnce(setDomainMetadata, u);
+        setDomainMetadata = fillOnce(setDomainMetadata, u, TableUpdate::getAction);
       } else if (update instanceof RemoveDomainMetadataUpdate u) {
-        removeDomainMetadata = fillOnce(removeDomainMetadata, u);
+        removeDomainMetadata = fillOnce(removeDomainMetadata, u, TableUpdate::getAction);
       } else if (update instanceof UpdateSnapshotVersionUpdate u) {
-        updateSnapshotVersion = fillOnce(updateSnapshotVersion, u);
+        updateSnapshotVersion = fillOnce(updateSnapshotVersion, u, TableUpdate::getAction);
       } else {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
@@ -200,20 +195,12 @@ public final class DeltaUpdateTableMapper {
     return c;
   }
 
-  private static <T extends TableUpdate> Optional<T> fillOnce(Optional<T> slot, T value) {
+  /** One-shot slot fill; {@code nameFn} extracts the action/type name for the error message. */
+  private static <T> Optional<T> fillOnce(Optional<T> slot, T value, Function<T, String> nameFn) {
     if (slot.isPresent()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "At most one " + value.getAction() + " is allowed per request.");
-    }
-    return Optional.of(value);
-  }
-
-  private static <T extends TableRequirement> Optional<T> fillOnce(Optional<T> slot, T value) {
-    if (slot.isPresent()) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "At most one " + value.getType() + " is allowed per request.");
+          "At most one " + nameFn.apply(value) + " is allowed per request.");
     }
     return Optional.of(value);
   }
@@ -244,7 +231,18 @@ public final class DeltaUpdateTableMapper {
     }
   }
 
-  /** Shared by the {@code loadTable} response builder and the {@code assert-etag} check. */
+  /**
+   * Shared by the {@code loadTable} response builder and the {@code assert-etag} check.
+   *
+   * <p>Known weakness: ms-precision {@code updated_at}. If a state-changing update lands in the
+   * same wall-clock millisecond as the client's prior read, the etag doesn't advance and a
+   * follow-up {@code assert-etag} passes against state the client never observed. The Delta
+   * update path holds {@code PESSIMISTIC_WRITE} on the row, so two concurrent {@code
+   * updateTableForDelta} calls cannot both pass {@code assert-etag} against the same stale
+   * snapshot. {@code assert-etag} is an optional client-side optimization anyway; the
+   * authoritative serialization for CCv2 commits is the version conflict check in the commit
+   * endpoint.
+   */
   public static String computeEtag(TableInfoDAO dao) {
     return dao.getUpdatedAt() != null
         ? "etag-" + dao.getUpdatedAt().getTime()
@@ -257,12 +255,12 @@ public final class DeltaUpdateTableMapper {
   public static void applyUpdates(
       TableInfoDAO dao, MutablePropertyMap properties, CollectedRequest collected) {
     CollectedUpdates c = collected.updates();
-    c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
+    c.setProtocol.ifPresent(u -> applySetProtocol(dao, properties, u.getProtocol()));
     c.setProperties.ifPresent(u -> applySetProperties(properties, u.getUpdates()));
     c.removeProperties.ifPresent(u -> applyRemoveProperties(properties, u.getRemovals()));
     c.setDomainMetadata.ifPresent(u -> applySetDomainMetadata(properties, u.getUpdates()));
     c.removeDomainMetadata.ifPresent(u -> applyRemoveDomainMetadata(properties, u.getDomains()));
-    c.setTableComment.ifPresent(u -> dao.setComment(u.getComment()));
+    c.setTableComment.ifPresent(u -> applySetTableComment(dao, u));
     c.updateSnapshotVersion.ifPresent(u -> applyUpdateSnapshotVersion(dao, properties, u));
   }
 
@@ -280,28 +278,35 @@ public final class DeltaUpdateTableMapper {
     properties.removeAll(toRemove);
   }
 
-  /** Full replacement of the protocol block only; other stored property keys are left alone. */
-  private static void applySetProtocol(MutablePropertyMap properties, DeltaProtocol protocol) {
-    if (protocol == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "set-protocol requires a protocol.");
-    }
+  /**
+   * Full replacement of the protocol block; other stored properties are left alone. MANAGED tables
+   * re-validate against the UC catalog-managed contract so required features can't be stripped.
+   */
+  private static void applySetProtocol(
+      TableInfoDAO dao, MutablePropertyMap properties, DeltaProtocol protocol) {
+    ValidationUtils.checkNotNull(protocol, "set-protocol requires a protocol.");
     properties.removeMatchingPrefix(TableProperties.FEATURE_PREFIX);
     Map<String, String> derived = new HashMap<>();
     DeltaPropertyMapper.deriveFromProtocol(derived, protocol);
     properties.putAll(derived);
+    if (TableType.MANAGED.toString().equals(dao.getType())) {
+      UcManagedDeltaContract.validate(protocol, /* domainMetadata= */ null, properties.asMap());
+    }
   }
 
   private static void applySetDomainMetadata(
       MutablePropertyMap properties, DomainMetadataUpdates updates) {
-    if (updates == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "set-domain-metadata requires an updates block.");
-    }
+    ValidationUtils.checkNotNull(updates, "set-domain-metadata requires an updates block.");
     Map<String, String> derived = new HashMap<>();
     DeltaPropertyMapper.deriveFromDomainMetadata(derived, updates);
-    if (!derived.isEmpty()) {
-      properties.putAll(derived);
+    if (derived.isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "set-domain-metadata requires at least one domain entry. "
+              + "Supported domains: "
+              + new TreeSet<>(DeltaPropertyMapper.DOMAIN_TO_PROPERTY_KEY.keySet()));
     }
+    properties.putAll(derived);
   }
 
   private static void applyRemoveDomainMetadata(
@@ -310,7 +315,7 @@ public final class DeltaUpdateTableMapper {
       return;
     }
     for (String domain : domains) {
-      String propertyKey = DOMAIN_TO_PROPERTY_KEY.get(domain);
+      String propertyKey = DeltaPropertyMapper.DOMAIN_TO_PROPERTY_KEY.get(domain);
       if (propertyKey == null) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT, "Unknown domain in remove-domain-metadata: " + domain);
@@ -319,12 +324,18 @@ public final class DeltaUpdateTableMapper {
     }
   }
 
+  private static void applySetTableComment(TableInfoDAO dao, SetTableCommentUpdate update) {
+    ValidationUtils.checkNotNull(update.getComment(), "set-table-comment requires a comment.");
+    dao.setComment(update.getComment());
+  }
+
   private static void applyUpdateSnapshotVersion(
       TableInfoDAO dao, MutablePropertyMap properties, UpdateSnapshotVersionUpdate update) {
     if (!TableType.EXTERNAL.toString().equals(dao.getType())) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "update-metadata-snapshot-version is only supported for EXTERNAL tables.");
+          "update-metadata-snapshot-version is only supported for EXTERNAL Delta tables; "
+              + "for MANAGED tables, use the Delta commit endpoint.");
     }
     ValidationUtils.checkNotNull(update.getLastCommitVersion(),
       "update-metadata-snapshot-version requires last-commit-version.");

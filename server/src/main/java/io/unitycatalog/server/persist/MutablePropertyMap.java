@@ -92,8 +92,7 @@ public final class MutablePropertyMap {
 
   /**
    * Persist only the keys that changed since {@link #load}: delete keys removed, insert keys added,
-   * update keys whose value differs. No-op for keys whose value is unchanged. This is where every
-   * property mutation in the transaction becomes a single batch of DB writes.
+   * update keys whose value differs. No-op for keys whose value is unchanged.
    */
   public void flush(Session session, UUID tableId) {
     // Deletions: loaded keys no longer present in the current view.

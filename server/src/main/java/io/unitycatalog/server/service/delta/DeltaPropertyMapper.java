@@ -9,6 +9,7 @@ import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.service.delta.DeltaConsts.DomainMetadataNames;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import java.util.HashMap;
 import java.util.List;
@@ -85,6 +86,15 @@ public final class DeltaPropertyMapper {
     addFeatureProperties(props, protocol.getWriterFeatures());
   }
 
+  /**
+   * Domain-name -> stored-table-property-key projection, shared by the set and remove sides so they
+   * cannot drift.
+   */
+  public static final Map<String, String> DOMAIN_TO_PROPERTY_KEY =
+      Map.of(
+          DomainMetadataNames.CLUSTERING, TableProperties.CLUSTERING_COLUMNS,
+          DomainMetadataNames.ROW_TRACKING, TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK);
+
   /** Adds the table properties implied by a domain-metadata block into {@code props} in-place. */
   public static void deriveFromDomainMetadata(
       Map<String, String> props, DomainMetadataUpdates domainMetadata) {
@@ -93,12 +103,14 @@ public final class DeltaPropertyMapper {
     if (clustering != null && clustering.getClusteringColumns() != null) {
       // Use a proper JSON encoder rather than string-joining so nested column paths don't
       // collapse into dotted strings.
-      props.put(TableProperties.CLUSTERING_COLUMNS, toJson(clustering.getClusteringColumns()));
+      props.put(
+          DOMAIN_TO_PROPERTY_KEY.get(DomainMetadataNames.CLUSTERING),
+          toJson(clustering.getClusteringColumns()));
     }
     RowTrackingDomainMetadata rowTracking = domainMetadata.getDeltaRowTracking();
     if (rowTracking != null && rowTracking.getRowIdHighWaterMark() != null) {
       props.put(
-          TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK,
+          DOMAIN_TO_PROPERTY_KEY.get(DomainMetadataNames.ROW_TRACKING),
           String.valueOf(rowTracking.getRowIdHighWaterMark()));
     }
   }

@@ -25,10 +25,13 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.delta.DeltaBaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,6 +58,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
   }
 
+  @Override
+  protected TableOperations createTableOperations(ServerConfig serverConfig) {
+    // Needed by the non-Delta guard test to plant a parquet EXTERNAL row.
+    return new SdkTableOperations(TestUtils.createApiClient(serverConfig));
+  }
+
   @Test
   public void testUpdateTableEndpoints() throws Exception {
     // -------- umbrella: bundle every action the API supports on a managed table into one RPC.
@@ -66,14 +75,18 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           createDeltaManaged(
               "tbl_umbrella", Map.of("keep", "v1", "update_me", "v_old", "drop_me", "v3"));
 
+      // Must keep the managed-contract required features; adding CLUSTERING proves features are
+      // replaced (not merged) by what the request carries.
+      List<String> newWriterFeatures =
+          new ArrayList<>(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES);
+      newWriterFeatures.add(TableFeature.ROW_TRACKING.specName());
+      newWriterFeatures.add(TableFeature.CLUSTERING.specName());
       DeltaProtocol newProtocol =
           new DeltaProtocol()
-              .minReaderVersion(3)
-              .minWriterVersion(7)
-              .readerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName()))
-              .writerFeatures(
-                  List.of(
-                      TableFeature.V2_CHECKPOINT.specName(), TableFeature.ROW_TRACKING.specName()));
+              .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+              .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+              .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+              .writerFeatures(newWriterFeatures);
       DomainMetadataUpdates newDM =
           new DomainMetadataUpdates()
               .deltaClustering(
@@ -97,8 +110,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           .containsEntry("update_me", "v_new")
           .containsEntry("added", "v4")
           .doesNotContainKeys("drop_me", "missing");
-      // set-protocol fully replaces delta.feature.* with entries derived from the new protocol;
-      // pre-existing managed-contract features (catalogManaged etc.) must be cleared.
+      // set-protocol fully replaces delta.feature.* with entries derived from the new protocol.
       assertThat(featurePropertiesIn(props1)).isEqualTo(featurePropertiesOf(newProtocol));
       // set-DM is additive: clustering JSON-encoded; rowTracking from create time still present.
       assertThat(props1)
@@ -246,11 +258,77 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-domain-metadata requires an updates block");
 
-      // remove-domain-metadata referencing an unknown domain name.
+      // set-domain-metadata with a non-null but empty block -- silent no-op, reject loudly.
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetDomainMetadataUpdate().updates(new DomainMetadataUpdates())),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "set-domain-metadata requires at least one domain entry");
+
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetTableCommentUpdate().comment(null)),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "set-table-comment requires a comment");
+
       TestUtils.assertDeltaApiException(
           () -> updateTable(h, new RemoveDomainMetadataUpdate().domains(List.of("delta.unknown"))),
           ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "Unknown domain in remove-domain-metadata");
+
+      // set-protocol on MANAGED must keep every catalog-managed required feature.
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h,
+                  new SetProtocolUpdate()
+                      .protocol(
+                          new DeltaProtocol()
+                              .minReaderVersion(3)
+                              .minWriterVersion(7)
+                              .readerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName()))
+                              .writerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName())))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "catalogManaged");
+    }
+
+    // -------- set-protocol on EXTERNAL with a non-contract protocol is allowed --------
+    // EXTERNAL tables are not subject to the catalog-managed contract; pins that the MANAGED
+    // re-validation guard doesn't over-block.
+    {
+      Handle external = createDeltaExternal("tbl_setproto_external");
+      LoadTableResponse r =
+          updateTable(
+              external,
+              new SetProtocolUpdate()
+                  .protocol(
+                      new DeltaProtocol()
+                          .minReaderVersion(3)
+                          .minWriterVersion(7)
+                          .readerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName()))
+                          .writerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName()))));
+      // Post-update feature set is exactly what was sent; no catalog-managed features injected.
+      Map<String, String> props = r.getMetadata().getProperties();
+      assertThat(props).containsEntry(TableProperties.FEATURE_PREFIX + "v2Checkpoint", "supported");
+      assertThat(props).doesNotContainKey(TableProperties.FEATURE_PREFIX + "catalogManaged");
+    }
+
+    // -------- non-Delta table is rejected before any mutation commits --------
+    {
+      io.unitycatalog.client.model.TableInfo external =
+          createTestingTable(
+              "tbl_external_parquet",
+              io.unitycatalog.client.model.TableType.EXTERNAL,
+              Optional.of(testDirectoryRoot.toString()),
+              io.unitycatalog.client.model.DataSourceFormat.PARQUET,
+              tableOperations);
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  external.getName(),
+                  requestWith(
+                      UUID.fromString(external.getTableId()),
+                      new SetPropertiesUpdate().updates(Map.of("k", "v")))),
+          ErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
+          "Table is not a Delta table");
     }
   }
 

@@ -70,7 +70,7 @@ public final class UcManagedDeltaContract {
   /**
    * Required properties whose value the engine must compute at commit time. The staging response
    * sends them with {@code null} values; the createTable request must echo them back with non-null
-   * values the engine substituted. Currently empty.
+   * values the engine substituted. This is placeholder for adding properties in the future.
    */
   public static final List<String> ENGINE_GENERATED_PROPERTY_KEYS = List.of();
 

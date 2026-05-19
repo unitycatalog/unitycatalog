@@ -39,6 +39,7 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import jakarta.persistence.PessimisticLockException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -50,6 +51,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -241,19 +243,7 @@ public class TableRepository {
         sessionFactory,
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
-          // Guard non-Delta entries (metric views, parquet/csv/etc. tables) before they reach
-          // `buildTableMetadata`. The downstream code calls `NormalizedURL.normalize(dao.getUrl())`
-          // (throws "Path cannot be null or empty" when the row has no storage location, e.g.
-          // metric views) and `DataSourceFormat.fromValue(dao.getDataSourceFormat())` (throws
-          // IllegalArgumentException on null), both of which surface as misleading errors to a
-          // Delta REST client that simply asked for a name that happens to live in the same
-          // schema. Sibling guard to `DeltaCommitRepository.validateTable`.
-          if (dao.getDataSourceFormat() == null
-              || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
-            throw new BaseException(
-                ErrorCode.UNSUPPORTED_TABLE_FORMAT,
-                "Table is not a Delta table: " + catalog + "." + schema + "." + table);
-          }
+          requireDeltaTable(dao, catalog, schema, table);
           return buildLoadTableResponse(session, dao, Optional.empty(), catalog, schema, table);
         },
         "Failed to load table",
@@ -283,6 +273,8 @@ public class TableRepository {
         sessionFactory,
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
+          requireDeltaTable(dao, catalog, schema, table);
+          lockTableForDeltaUpdate(session, dao, catalog, schema, table);
           DeltaUpdateTableMapper.checkRequirements(dao, collected);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
           DeltaUpdateTableMapper.applyUpdates(dao, properties, collected);
@@ -296,6 +288,44 @@ public class TableRepository {
         },
         "Failed to update table " + catalog + "." + schema + "." + table,
         /* readOnly = */ false);
+  }
+
+  /**
+   * Reject non-Delta entries (metric views, parquet, etc.) at the Delta REST surface so downstream
+   * Delta-shaped reads don't throw misleading errors, and so update-path mutations can't commit
+   * against a row whose response would then fail on the way out. Sibling guard to {@code
+   * DeltaCommitRepository.validateTable}.
+   */
+  private static void requireDeltaTable(
+      TableInfoDAO dao, String catalog, String schema, String table) {
+    if (dao.getDataSourceFormat() == null
+        || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
+      throw new BaseException(
+          ErrorCode.UNSUPPORTED_TABLE_FORMAT,
+          "Table is not a Delta table: " + catalog + "." + schema + "." + table);
+    }
+  }
+
+  /**
+   * Acquire {@code SELECT ... FOR UPDATE} on the table row and refresh in-memory state, so two
+   * concurrent {@link #updateTableForDelta} calls serialize. Lock-wait timeouts and deadlock
+   * victims surface as {@code UPDATE_REQUIREMENT_CONFLICT} (409) instead of a generic 500.
+   */
+  private static void lockTableForDeltaUpdate(
+      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
+    try {
+      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
+    } catch (PessimisticLockException e) {
+      throw new BaseException(
+          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
+          "Concurrent update in progress on "
+              + catalog
+              + "."
+              + schema
+              + "."
+              + table
+              + "; retry the request.");
+    }
   }
 
   /**
