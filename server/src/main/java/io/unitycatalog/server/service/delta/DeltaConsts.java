@@ -1,8 +1,8 @@
 package io.unitycatalog.server.service.delta;
 
 /**
- * Spec-defined Delta protocol identifiers referenced by the Delta REST Catalog surface. Centralized
- * here so that feature-specific server decisions (e.g. "MANAGED tables must declare {@code
+ * Spec-defined Delta protocol identifiers referenced by the UC Delta API surface. Centralized here
+ * so that feature-specific server decisions (e.g. "MANAGED tables must declare {@code
  * catalogManaged}") and required-property declarations cannot silently mismatch the strings the
  * client actually writes into the Delta log.
  */
@@ -61,7 +61,7 @@ public final class DeltaConsts {
   }
 
   /**
-   * Table-property keys referenced by the Delta REST Catalog surface. The {@code delta.*} keys are
+   * Table-property keys referenced by the UC Delta API surface. The {@code delta.*} keys are
    * defined by the Delta protocol; {@link #UC_TABLE_ID} is the UC-namespace rule-based property
    * that binds a Delta table to its UC-allocated UUID.
    *

@@ -225,7 +225,7 @@ public class TableRepository {
   }
 
   /**
-   * Load a table for the Delta REST Catalog API in a single REPEATABLE_READ transaction.
+   * Load a table for the UC Delta API in a single REPEATABLE_READ transaction.
    *
    * <p>Returns a {@link LoadTableResponse} containing:
    *
@@ -529,9 +529,9 @@ public class TableRepository {
   }
 
   /**
-   * Create a table and return the Delta REST Catalog {@link LoadTableResponse} in a single
-   * transaction. The DAO persisted during create is the same one used to build the response, so
-   * there's no second lookup or risk of a reader observing an intermediate state.
+   * Create a table and return the UC Delta API {@link LoadTableResponse} in a single transaction.
+   * The DAO persisted during create is the same one used to build the response, so there's no
+   * second lookup or risk of a reader observing an intermediate state.
    *
    * <p>If {@code uniformFields} is non-empty the table is registered as UniForm-enabled: the
    * already-validated, already-normalized Iceberg fields (computed once in {@code

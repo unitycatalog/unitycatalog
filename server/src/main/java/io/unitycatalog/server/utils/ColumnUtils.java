@@ -232,7 +232,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Convert a Delta REST Catalog {@link StructField} into a UC {@link ColumnInfo}, mirroring
+   * Convert a UC Delta API {@link StructField} into a UC {@link ColumnInfo}, mirroring
    * {@code UCSingleCatalog.createTable}'s per-column projection so Delta-created tables render
    * identically to Spark-created ones.
    *
@@ -358,7 +358,7 @@ public class ColumnUtils {
    * at the first partition-column name that does not match any column in {@code columns}.
    *
    * <p>The input {@code columns} list is mutated in place. Designed to be shared between the
-   * Delta REST Catalog create and update/commit paths -- both take a kebab-case {@code
+   * UC Delta API create and update/commit paths -- both take a kebab-case {@code
    * partition-columns} list of names from the wire and project it onto UC's
    * partition-index-per-column representation (only create is wired up today).
    *
