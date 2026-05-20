@@ -43,6 +43,7 @@ jobs:
             non-blocking: false
           - spark-version: "4.1.0"
             delta-version: "master-SNAPSHOT"
+            delta-skip-uc-auto-build: true
             validation-mode: "spark-tests"
             # Cross-version testing with Delta master is informational; failures
             # indicate upcoming incompatibilities but should not block PRs.
@@ -51,6 +52,7 @@ jobs:
             delta-version: "master-SNAPSHOT"
             delta-repo: "seewishnew/delta"
             delta-ref: "enable-spark-master-cross-build"
+            delta-skip-uc-auto-build: true
             validation-mode: "spark-tests"
             non-blocking: true
 
@@ -101,7 +103,12 @@ jobs:
         git clone --depth=1 --branch="$DELTA_REF" "https://github.com/$DELTA_REPO.git" /tmp/delta || \
           git clone --depth=1 "https://github.com/$DELTA_REPO.git" /tmp/delta
         cd /tmp/delta
+        SKIP_UC_FLAG=""
+        if [[ "${{ matrix.delta-skip-uc-auto-build }}" == "true" ]]; then
+          SKIP_UC_FLAG="-Ddelta.autoBuildPinnedUnityCatalog=false"
+        fi
         build/sbt -DsparkVersion=$SPARK_MAJOR_MINOR \
+          $SKIP_UC_FLAG \
           storage/publishM2 \
           kernelApi/publishM2 \
           kernelDefaults/publishM2 \
