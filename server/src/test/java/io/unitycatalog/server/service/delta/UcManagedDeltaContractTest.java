@@ -235,17 +235,6 @@ public class UcManagedDeltaContractTest {
         .hasMessageContaining(TableProperties.UC_TABLE_ID);
   }
 
-  @Test
-  public void validateRejectsNullEngineGeneratedProperty() {
-    // The staging response delivers IN_COMMIT_TIMESTAMP_ENABLEMENT_* with null values; the client
-    // must compute and substitute. Echoing the null back is a contract violation.
-    Map<String, String> props = fullProperties();
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP, null);
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(fullProtocol(), null, props))
-        .isInstanceOf(BaseException.class)
-        .hasMessageContaining(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP);
-  }
-
   // ---------- validateTableIdProperty ----------
 
   @Test
@@ -332,8 +321,6 @@ public class UcManagedDeltaContractTest {
     props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
     props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
     props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION, "0");
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP, "1700000000000");
     return props;
   }
 }

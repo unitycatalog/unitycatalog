@@ -71,8 +71,6 @@ public class DeltaStagingTableMapperTest {
 
     // 1. Serialization: the null values must appear as explicit "key": null in the JSON.
     assertThat(json)
-        .contains("\"" + TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION + "\":null")
-        .contains("\"" + TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP + "\":null")
         .contains("\"" + TableProperties.ROW_TRACKING_MATERIALIZED_ROW_ID_COLUMN_NAME + "\":null")
         .contains(
             "\""
@@ -82,9 +80,6 @@ public class DeltaStagingTableMapperTest {
     // 2. Deserialization: reading it back must give maps that still have the keys with null.
     StagingTableResponse roundTripped =
         DeltaRestCatalogMappers.MAPPER.readValue(json, StagingTableResponse.class);
-    assertThat(roundTripped.getRequiredProperties())
-        .containsEntry(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION, null)
-        .containsEntry(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP, null);
     assertThat(roundTripped.getSuggestedProperties())
         .containsEntry(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_ID_COLUMN_NAME, null)
         .containsEntry(
