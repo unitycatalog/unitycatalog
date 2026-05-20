@@ -351,6 +351,10 @@ public final class DeltaUpdateTableMapper {
       List<StructField> fields =
           ValidationUtils.checkNotNull(
               columns.getFields(), "set-columns requires columns.fields.");
+      if (fields.isEmpty()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
+      }
       newColumns = ColumnUtils.toColumnInfos(fields);
     } else {
       newColumns = ColumnInfoDAO.toList(dao.getColumns());
@@ -358,10 +362,15 @@ public final class DeltaUpdateTableMapper {
     }
     // Source of the partition list: the request when set-partition-columns is present, otherwise
     // the existing DAO's partition columns (preserved by name across a column-only action).
-    List<String> partitionNames =
-        setPartition
-            .map(SetPartitionColumnsUpdate::getPartitionColumns)
-            .orElseGet(() -> currentPartitionColumnNames(dao));
+    List<String> partitionNames;
+    if (setPartition.isPresent()) {
+      partitionNames =
+          ValidationUtils.checkNotNull(
+              setPartition.get().getPartitionColumns(),
+              "set-partition-columns requires a partition-columns list.");
+    } else {
+      partitionNames = currentPartitionColumnNames(dao);
+    }
     ColumnUtils.applyPartitionColumns(newColumns, partitionNames);
     List<ColumnInfoDAO> newColumnDAOs = ColumnInfoDAO.fromList(newColumns);
     newColumnDAOs.forEach(

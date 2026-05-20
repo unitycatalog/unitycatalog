@@ -252,6 +252,26 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           "set-columns requires a columns block");
     }
 
+    // -------- set-columns with an empty fields list is rejected --------
+    {
+      Handle h = createDeltaExternal("tbl_setcols_empty_fields");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetSchemaUpdate().columns(new StructType().fields(List.of()))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "set-columns requires at least one column");
+    }
+
+    // -------- set-partition-columns with a null partition-columns field is rejected --------
+    // The Java client model defaults the field to an empty list, so an explicit null is needed
+    // to exercise the wire-level "field missing" case (Jackson NON_NULL inclusion omits it).
+    {
+      Handle h = createDeltaExternal("tbl_setpart_null_field");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(null)),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "set-partition-columns requires a partition-columns list");
+    }
+
     // -------- set-partition-columns alone --------
     // The partition-only branch of the unified schema/partition path: the existing schema is
     // carried over (with partition indices cleared) and re-stamped with the requested partition

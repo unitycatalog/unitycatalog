@@ -272,7 +272,7 @@ public class ColumnUtils {
   /**
    * Project a list of Delta {@link StructField}s into UC {@link ColumnInfo}s, stamping each
    * column's {@code position} from its index in the list. Used by both the create and update paths
-   * of the Delta REST Catalog so the wire-order-to-position mapping stays in one place.
+   * of the UC Delta API so the wire-order-to-position mapping stays in one place.
    */
   public static List<ColumnInfo> toColumnInfos(List<StructField> fields) {
     List<ColumnInfo> columns = new ArrayList<>(fields.size());
