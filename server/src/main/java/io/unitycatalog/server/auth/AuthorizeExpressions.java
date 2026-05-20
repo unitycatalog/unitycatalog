@@ -6,7 +6,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
  * Shared {@link AuthorizeExpression} string constants.
  *
  * <p>When the same logical operation is exposed through multiple endpoints (e.g. the UC REST API
- * and the Delta REST Catalog API both vending table credentials), each endpoint's
+ * and the UC Delta API both vending table credentials), each endpoint's
  * {@code @AuthorizeExpression} must grant identical access -- otherwise a caller's permissions
  * depend on which URL they happen to hit. Extracting the expression here makes the two sites
  * share a single source of truth, so drift becomes a compile-time impossibility instead of a
@@ -39,7 +39,7 @@ public final class AuthorizeExpressions {
 
   /**
    * Authorization policy for creating a staging table (UC REST {@code POST /staging-tables} and
-   * Delta REST Catalog {@code createStagingTable}). Catalog {@code USE_CATALOG}/{@code OWNER}
+   * UC Delta API {@code createStagingTable}). Catalog {@code USE_CATALOG}/{@code OWNER}
    * plus either schema {@code OWNER} or schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. Catalog
    * OWNER alone is not sufficient.
    */
@@ -52,7 +52,7 @@ public final class AuthorizeExpressions {
       """;
 
   /**
-   * Authorization policy for creating a table (UC REST {@code POST /tables} and Delta REST Catalog
+   * Authorization policy for creating a table (UC REST {@code POST /tables} and UC Delta API
    * {@code createTable}). Catalog {@code USE_CATALOG}/{@code OWNER} plus either schema
    * {@code OWNER} or schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. For EXTERNAL tables, the
    * caller additionally needs {@code OWNER}/{@code CREATE_EXTERNAL_TABLE} on the external location

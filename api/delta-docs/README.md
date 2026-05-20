@@ -1,4 +1,4 @@
-# Documentation for Delta REST Catalog API
+# Documentation for UC Delta API
 
 <a name="documentation-for-api-endpoints"></a>
 ## Documentation for API Endpoints

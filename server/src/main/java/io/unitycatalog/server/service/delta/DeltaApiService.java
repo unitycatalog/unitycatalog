@@ -26,7 +26,7 @@ import io.unitycatalog.server.delta.model.StagingTableResponse;
 import io.unitycatalog.server.delta.model.TableType;
 import io.unitycatalog.server.delta.model.UpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
+import io.unitycatalog.server.exception.DeltaApiExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
@@ -46,13 +46,13 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Delta REST Catalog Service -- REST API for Delta tables.
+ * UC Delta API service -- REST API for Delta tables.
  *
  * <p>Enables Delta clients (e.g., Delta Spark, Delta Kernel) to create, read, write, and manage
  * managed and external Delta tables.
  */
-@ExceptionHandler(DeltaRestExceptionHandler.class)
-public class DeltaRestCatalogService extends AuthorizedService {
+@ExceptionHandler(DeltaApiExceptionHandler.class)
+public class DeltaApiService extends AuthorizedService {
 
   private static final List<String> ENDPOINTS =
       List.of(
@@ -75,7 +75,7 @@ public class DeltaRestCatalogService extends AuthorizedService {
   private final StagingTableRepository stagingTableRepository;
   private final StorageCredentialVendor storageCredentialVendor;
 
-  public DeltaRestCatalogService(
+  public DeltaApiService(
       UnityCatalogAuthorizer authorizer,
       Repositories repositories,
       ServerProperties serverProperties,

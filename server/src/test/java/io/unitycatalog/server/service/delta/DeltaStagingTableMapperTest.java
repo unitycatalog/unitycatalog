@@ -67,7 +67,7 @@ public class DeltaStagingTableMapperTest {
         DeltaStagingTableMapper.toStagingTableResponse(
             sampleStagingInfo(), new TemporaryCredentials());
 
-    String json = DeltaRestCatalogMappers.MAPPER.writeValueAsString(resp);
+    String json = DeltaApiMappers.MAPPER.writeValueAsString(resp);
 
     // 1. Serialization: the null values must appear as explicit "key": null in the JSON.
     assertThat(json)
@@ -79,7 +79,7 @@ public class DeltaStagingTableMapperTest {
 
     // 2. Deserialization: reading it back must give maps that still have the keys with null.
     StagingTableResponse roundTripped =
-        DeltaRestCatalogMappers.MAPPER.readValue(json, StagingTableResponse.class);
+        DeltaApiMappers.MAPPER.readValue(json, StagingTableResponse.class);
     assertThat(roundTripped.getSuggestedProperties())
         .containsEntry(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_ID_COLUMN_NAME, null)
         .containsEntry(

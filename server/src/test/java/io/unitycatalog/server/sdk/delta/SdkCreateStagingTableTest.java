@@ -27,9 +27,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Integration tests for the Delta REST Catalog {@code POST /v1/.../staging-tables} endpoint.
- * Consolidated into one test with sections so the server start + mock-cloud setup runs once. Each
- * section uses a distinct table name so they don't collide.
+ * Integration tests for the UC Delta API {@code POST /v1/.../staging-tables} endpoint. Consolidated
+ * into one test with sections so the server start + mock-cloud setup runs once. Each section uses a
+ * distinct table name so they don't collide.
  */
 public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
 
@@ -180,7 +180,7 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
     catalogOperations.createCatalog(
         new CreateCatalog()
             .name(TestUtils.CATALOG_NAME2)
-            .storageRoot("s3://test-bucket0/catalogs/drc"));
+            .storageRoot("s3://test-bucket0/catalogs/delta-api"));
     schemaOperations.createSchema(
         new CreateSchema().name(TestUtils.SCHEMA_NAME2).catalogName(TestUtils.CATALOG_NAME2));
   }

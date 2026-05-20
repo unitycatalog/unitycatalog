@@ -7,10 +7,10 @@ import io.unitycatalog.server.delta.model.ErrorResponse;
 import java.util.Arrays;
 
 /**
- * Exception handler for Delta REST Catalog API. Converts exceptions to JSON error responses using
- * the generated ErrorResponse/ErrorModel/ErrorType from delta.yaml.
+ * Exception handler for the UC Delta API. Converts exceptions to JSON error responses using the
+ * generated ErrorResponse/ErrorModel/ErrorType from delta.yaml.
  */
-public class DeltaRestExceptionHandler extends BaseExceptionHandler {
+public class DeltaApiExceptionHandler extends BaseExceptionHandler {
 
   @Override
   protected HttpResponse createErrorResponse(BaseException exception) {

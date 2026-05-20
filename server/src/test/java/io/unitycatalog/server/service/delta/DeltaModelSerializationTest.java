@@ -46,7 +46,7 @@ import org.junit.jupiter.api.Test;
  */
 public class DeltaModelSerializationTest {
 
-  private static final ObjectMapper MAPPER = DeltaRestCatalogMappers.MAPPER;
+  private static final ObjectMapper MAPPER = DeltaApiMappers.MAPPER;
 
   private static String fixtureJson;
 
