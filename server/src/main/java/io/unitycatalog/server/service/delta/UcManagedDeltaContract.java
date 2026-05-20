@@ -70,12 +70,9 @@ public final class UcManagedDeltaContract {
   /**
    * Required properties whose value the engine must compute at commit time. The staging response
    * sends them with {@code null} values; the createTable request must echo them back with non-null
-   * values the engine substituted.
+   * values the engine substituted. Currently empty.
    */
-  public static final List<String> ENGINE_GENERATED_PROPERTY_KEYS =
-      List.of(
-          TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION,
-          TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP);
+  public static final List<String> ENGINE_GENERATED_PROPERTY_KEYS = List.of();
 
   /**
    * Suggested properties. Null values mean the client generates the value at commit time (required
@@ -102,7 +99,8 @@ public final class UcManagedDeltaContract {
    *   <li>every declared domain-metadata entry is backed by the matching writer feature;
    *   <li>every fixed-value required property equals the expected value;
    *   <li>the UC table-id property is set;
-   *   <li>the engine-generated required properties are present with non-null values.
+   *   <li>every entry in {@link #ENGINE_GENERATED_PROPERTY_KEYS} (if any) is present with a
+   *       non-null value.
    * </ul>
    *
    * <p>Apply only when the table is UC catalog-managed (i.e. MANAGED). EXTERNAL tables don't go

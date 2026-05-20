@@ -146,9 +146,6 @@ public class DeltaCreateTableMapperTest {
     props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
     props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
     props.put(TableProperties.UC_TABLE_ID, tableId);
-    // Engine-generated values: any non-null placeholder satisfies the contract.
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION, "0");
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP, "1700000000000");
     return props;
   }
 

@@ -459,8 +459,6 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
     props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
     props.put(TableProperties.UC_TABLE_ID, tableId);
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION, "0");
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP, "1700000000000");
     // User-specified properties under server-derived keys are overridden by the structured
     // protocol/domain-metadata blocks. End-to-end override is pinned by the assertions on
     // featureKey(CATALOG_MANAGED) and CLUSTERING_COLUMNS in testCreateTableEndpoint.

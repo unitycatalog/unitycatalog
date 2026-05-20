@@ -106,9 +106,11 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
         .containsEntry(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true")
         // The rule-based property binds the Delta table to the UC-allocated tableId.
         .containsEntry(TableProperties.UC_TABLE_ID, resp.getTableId().toString())
-        // Engine-managed (tied to inCommitTimestamp); null value = engine computes at commit time.
-        .containsEntry(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION, null)
-        .containsEntry(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP, null);
+        // ICT enablement version/timestamp are not advertised: catalog-managed tables enable
+        // inCommitTimestamp at version 0, and per the Delta protocol the enablement
+        // properties only apply when ICT was enabled mid-table.
+        .doesNotContainKey(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION)
+        .doesNotContainKey(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP);
     assertThat(resp.getSuggestedProperties())
         .containsEntry(TableProperties.ENABLE_ROW_TRACKING, "true")
         // Null value = client generates a UUID-suffixed column name when enabling row tracking.
