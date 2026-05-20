@@ -1,7 +1,6 @@
 package io.unitycatalog.server.service.delta;
 
 import io.unitycatalog.server.delta.model.CreateTableRequest;
-import io.unitycatalog.server.delta.model.StructField;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -10,7 +9,6 @@ import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -81,11 +79,7 @@ public final class DeltaCreateTableMapper {
         DeltaUniformUtils.getUniformFields(req.getUniform());
     DeltaUniformUtils.validateCreate(uniformFields, NormalizedURL.from(req.getLocation()));
 
-    List<ColumnInfo> columns = new ArrayList<>();
-    List<StructField> fields = req.getColumns().getFields();
-    for (int i = 0; i < fields.size(); i++) {
-      columns.add(ColumnUtils.toColumnInfo(fields.get(i), i));
-    }
+    List<ColumnInfo> columns = ColumnUtils.toColumnInfos(req.getColumns().getFields());
     ColumnUtils.applyPartitionColumns(columns, req.getPartitionColumns());
 
     CreateTable createTable =

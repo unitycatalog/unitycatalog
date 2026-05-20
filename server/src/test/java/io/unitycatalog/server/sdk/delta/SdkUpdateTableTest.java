@@ -10,13 +10,18 @@ import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.client.delta.model.LoadTableResponse;
+import io.unitycatalog.client.delta.model.PrimitiveType;
 import io.unitycatalog.client.delta.model.RemoveDomainMetadataUpdate;
 import io.unitycatalog.client.delta.model.RemovePropertiesUpdate;
 import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.SetDomainMetadataUpdate;
+import io.unitycatalog.client.delta.model.SetPartitionColumnsUpdate;
 import io.unitycatalog.client.delta.model.SetPropertiesUpdate;
 import io.unitycatalog.client.delta.model.SetProtocolUpdate;
+import io.unitycatalog.client.delta.model.SetSchemaUpdate;
 import io.unitycatalog.client.delta.model.SetTableCommentUpdate;
+import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructType;
 import io.unitycatalog.client.delta.model.TableRequirement;
 import io.unitycatalog.client.delta.model.TableUpdate;
 import io.unitycatalog.client.delta.model.UpdateSnapshotVersionUpdate;
@@ -198,6 +203,151 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                       .lastCommitTimestampMs(1700000000000L)),
           ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "EXTERNAL");
+    }
+
+    // -------- set-columns + set-partition-columns --------
+    {
+      Handle h = createDeltaExternal("tbl_setcols");
+      LoadTableResponse r =
+          updateTable(
+              h,
+              new SetSchemaUpdate()
+                  .columns(
+                      new StructType()
+                          .type("struct")
+                          .fields(
+                              List.of(
+                                  new StructField()
+                                      .name("new_id")
+                                      .type(new PrimitiveType().type("long"))
+                                      .nullable(false)
+                                      .metadata(Map.of()),
+                                  new StructField()
+                                      .name("flag")
+                                      .type(new PrimitiveType().type("boolean"))
+                                      .nullable(true)
+                                      .metadata(Map.of())))),
+              new SetPartitionColumnsUpdate().partitionColumns(List.of("flag")));
+      assertThat(r.getMetadata().getColumns().getFields())
+          .extracting(StructField::getName)
+          .containsExactly("new_id", "flag");
+      assertThat(r.getMetadata().getPartitionColumns()).containsExactly("flag");
+    }
+
+    // -------- set-partition-columns references unknown column --------
+    {
+      Handle h = createDeltaExternal("tbl_setpart_bad");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(List.of("nope"))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "partition-columns references unknown column: nope");
+    }
+
+    // -------- set-columns with no columns block is rejected --------
+    {
+      Handle h = createDeltaExternal("tbl_setcols_no_block");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetSchemaUpdate()),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "set-columns requires a columns block");
+    }
+
+    // -------- set-columns with an empty fields list is rejected --------
+    {
+      Handle h = createDeltaExternal("tbl_setcols_empty_fields");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetSchemaUpdate().columns(new StructType().fields(List.of()))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "set-columns requires at least one column");
+    }
+
+    // -------- set-partition-columns with a null partition-columns field is rejected --------
+    // The Java client model defaults the field to an empty list, so an explicit null is needed
+    // to exercise the wire-level "field missing" case (Jackson NON_NULL inclusion omits it).
+    {
+      Handle h = createDeltaExternal("tbl_setpart_null_field");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(null)),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "set-partition-columns requires a partition-columns list");
+    }
+
+    // -------- set-partition-columns alone --------
+    // The partition-only branch of the unified schema/partition path: the existing schema is
+    // carried over (with partition indices cleared) and re-stamped with the requested partition
+    // list. Verify the partition is set and the column list itself is unchanged.
+    {
+      Handle h = createDeltaExternal("tbl_setpart_only");
+      LoadTableResponse r =
+          updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(List.of("amount")));
+      assertThat(r.getMetadata().getColumns().getFields())
+          .extracting(StructField::getName)
+          .containsExactly("id", "amount");
+      assertThat(r.getMetadata().getPartitionColumns()).containsExactly("amount");
+    }
+
+    // -------- set-columns alone preserves existing partition columns by name --------
+    // Establish a partitioned table partitioned by id, then send set-columns alone with a new
+    // schema that still contains id. Partition list must survive the schema swap; a silent
+    // clear would desynchronize the partition list from the column definitions.
+    // (createDeltaExternal seeds (id long, amount double); only `id` exists in both old and new.)
+    {
+      Handle h = createDeltaExternal("tbl_setcols_preserve_part");
+      LoadTableResponse partitionSetup =
+          updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(List.of("id")));
+      Handle h1 = h.withEtag(partitionSetup.getMetadata().getEtag());
+      LoadTableResponse r =
+          updateTable(
+              h1,
+              new SetSchemaUpdate()
+                  .columns(
+                      new StructType()
+                          .type("struct")
+                          .fields(
+                              List.of(
+                                  new StructField()
+                                      .name("id")
+                                      .type(new PrimitiveType().type("long"))
+                                      .nullable(false)
+                                      .metadata(Map.of()),
+                                  new StructField()
+                                      .name("flag")
+                                      .type(new PrimitiveType().type("boolean"))
+                                      .nullable(true)
+                                      .metadata(Map.of())))));
+      assertThat(r.getMetadata().getColumns().getFields())
+          .extracting(StructField::getName)
+          .containsExactly("id", "flag");
+      assertThat(r.getMetadata().getPartitionColumns()).containsExactly("id");
+    }
+
+    // -------- set-columns alone that drops a previously-partition column is rejected --------
+    // Partition is on `id`; the new schema replaces `id` with `id2`. Silent partition clearing
+    // would leave the table inconsistent, so this must fail with the unknown-column error.
+    {
+      Handle h = createDeltaExternal("tbl_setcols_drop_part");
+      Handle h1 =
+          h.withEtag(
+              updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(List.of("id")))
+                  .getMetadata()
+                  .getEtag());
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h1,
+                  new SetSchemaUpdate()
+                      .columns(
+                          new StructType()
+                              .type("struct")
+                              .fields(
+                                  List.of(
+                                      new StructField()
+                                          .name("id2")
+                                          .type(new PrimitiveType().type("long"))
+                                          .nullable(false)
+                                          .metadata(Map.of()))))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "partition-columns references unknown column: id");
     }
 
     // -------- assert-etag conflict: mutate once to roll the etag, then resubmit with the stale

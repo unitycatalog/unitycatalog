@@ -7,21 +7,29 @@ import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.RemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.RemovePropertiesUpdate;
 import io.unitycatalog.server.delta.model.SetDomainMetadataUpdate;
+import io.unitycatalog.server.delta.model.SetPartitionColumnsUpdate;
 import io.unitycatalog.server.delta.model.SetPropertiesUpdate;
 import io.unitycatalog.server.delta.model.SetProtocolUpdate;
+import io.unitycatalog.server.delta.model.SetSchemaUpdate;
 import io.unitycatalog.server.delta.model.SetTableCommentUpdate;
+import io.unitycatalog.server.delta.model.StructField;
+import io.unitycatalog.server.delta.model.StructType;
 import io.unitycatalog.server.delta.model.TableRequirement;
 import io.unitycatalog.server.delta.model.TableUpdate;
 import io.unitycatalog.server.delta.model.UpdateSnapshotVersionUpdate;
 import io.unitycatalog.server.delta.model.UpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.MutablePropertyMap;
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.delta.DeltaConsts.DomainMetadataNames;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -30,7 +38,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.hibernate.Session;
 
 /**
  * Translates a Delta {@link UpdateTableRequest} into in-memory mutations on a {@link TableInfoDAO}
@@ -153,6 +164,8 @@ public final class DeltaUpdateTableMapper {
     private Optional<SetPropertiesUpdate> setProperties = Optional.empty();
     private Optional<RemovePropertiesUpdate> removeProperties = Optional.empty();
     private Optional<SetProtocolUpdate> setProtocol = Optional.empty();
+    private Optional<SetSchemaUpdate> setSchema = Optional.empty();
+    private Optional<SetPartitionColumnsUpdate> setPartitionColumns = Optional.empty();
     private Optional<SetTableCommentUpdate> setTableComment = Optional.empty();
     private Optional<SetDomainMetadataUpdate> setDomainMetadata = Optional.empty();
     private Optional<RemoveDomainMetadataUpdate> removeDomainMetadata = Optional.empty();
@@ -165,6 +178,10 @@ public final class DeltaUpdateTableMapper {
         removeProperties = fillOnce(removeProperties, u, TableUpdate::getAction);
       } else if (update instanceof SetProtocolUpdate u) {
         setProtocol = fillOnce(setProtocol, u, TableUpdate::getAction);
+      } else if (update instanceof SetSchemaUpdate u) {
+        setSchema = fillOnce(setSchema, u, TableUpdate::getAction);
+      } else if (update instanceof SetPartitionColumnsUpdate u) {
+        setPartitionColumns = fillOnce(setPartitionColumns, u, TableUpdate::getAction);
       } else if (update instanceof SetTableCommentUpdate u) {
         setTableComment = fillOnce(setTableComment, u, TableUpdate::getAction);
       } else if (update instanceof SetDomainMetadataUpdate u) {
@@ -253,8 +270,12 @@ public final class DeltaUpdateTableMapper {
 
   /** Actions run in canonical order, not request order. */
   public static void applyUpdates(
-      TableInfoDAO dao, MutablePropertyMap properties, CollectedRequest collected) {
+      Session session,
+      TableInfoDAO dao,
+      MutablePropertyMap properties,
+      CollectedRequest collected) {
     CollectedUpdates c = collected.updates();
+    applySchemaAndPartitionColumns(session, dao, c.setSchema, c.setPartitionColumns);
     c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
     c.setProperties.ifPresent(u -> applySetProperties(properties, u.getUpdates()));
     c.removeProperties.ifPresent(u -> applyRemoveProperties(properties, u.getRemovals()));
@@ -298,6 +319,77 @@ public final class DeltaUpdateTableMapper {
     Map<String, String> derived = new HashMap<>();
     DeltaPropertyMapper.deriveFromProtocol(derived, protocol);
     properties.putAll(derived);
+  }
+
+  /**
+   * Apply schema and/or partition-column changes by building the post-update column list once and
+   * swapping the DAO column collection. The spec frames {@code set-columns} and {@code
+   * set-partition-columns} as independent actions; the absent action's concern is preserved from
+   * the existing DAO so a column-only request can't silently desync the partition list (and vice
+   * versa). If a partition column is missing from the resulting schema, the request is rejected
+   * with {@code partition-columns references unknown column: ...}.
+   *
+   * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
+   * clean up the old rows; the intervening flush ensures the deletes hit the DB before the
+   * inserts, so the {@code (table_id, ordinal_position, name)} unique constraint doesn't trip.
+   */
+  private static void applySchemaAndPartitionColumns(
+      Session session,
+      TableInfoDAO dao,
+      Optional<SetSchemaUpdate> setSchema,
+      Optional<SetPartitionColumnsUpdate> setPartition) {
+    if (setSchema.isEmpty() && setPartition.isEmpty()) {
+      return;
+    }
+    // Source of the new schema: the request when set-columns is present, otherwise the existing
+    // DAO with partition indices cleared so applyPartitionColumns can re-stamp them below.
+    List<ColumnInfo> newColumns;
+    if (setSchema.isPresent()) {
+      StructType columns =
+          ValidationUtils.checkNotNull(
+              setSchema.get().getColumns(), "set-columns requires a columns block.");
+      List<StructField> fields =
+          ValidationUtils.checkNotNull(
+              columns.getFields(), "set-columns requires columns.fields.");
+      if (fields.isEmpty()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
+      }
+      newColumns = ColumnUtils.toColumnInfos(fields);
+    } else {
+      newColumns = ColumnInfoDAO.toList(dao.getColumns());
+      newColumns.forEach(c -> c.setPartitionIndex(null));
+    }
+    // Source of the partition list: the request when set-partition-columns is present, otherwise
+    // the existing DAO's partition columns (preserved by name across a column-only action).
+    List<String> partitionNames;
+    if (setPartition.isPresent()) {
+      partitionNames =
+          ValidationUtils.checkNotNull(
+              setPartition.get().getPartitionColumns(),
+              "set-partition-columns requires a partition-columns list.");
+    } else {
+      partitionNames = currentPartitionColumnNames(dao);
+    }
+    ColumnUtils.applyPartitionColumns(newColumns, partitionNames);
+    List<ColumnInfoDAO> newColumnDAOs = ColumnInfoDAO.fromList(newColumns);
+    newColumnDAOs.forEach(
+        c -> {
+          c.setId(UUID.randomUUID());
+          c.setTable(dao);
+        });
+    dao.getColumns().clear();
+    session.flush();
+    dao.getColumns().addAll(newColumnDAOs);
+  }
+
+  /** Names of the DAO's partition columns, ordered by partition index. */
+  private static List<String> currentPartitionColumnNames(TableInfoDAO dao) {
+    return ColumnInfoDAO.toList(dao.getColumns()).stream()
+        .filter(c -> c.getPartitionIndex() != null)
+        .sorted(Comparator.comparingInt(ColumnInfo::getPartitionIndex))
+        .map(ColumnInfo::getName)
+        .collect(Collectors.toList());
   }
 
   private static void applySetDomainMetadata(
