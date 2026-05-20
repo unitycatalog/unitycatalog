@@ -128,6 +128,39 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           .containsKey(TableProperties.CLUSTERING_COLUMNS);
     }
 
+    // -------- set-protocol-drops-feature + sibling remove-DM in same RPC succeeds (post-apply
+    // validation). Follow-up set-DM that re-introduces the dropped domain then fails.
+    {
+      Handle h = createDeltaManaged("tbl_setproto_drops_dm", Map.of());
+      LoadTableResponse r =
+          updateTable(
+              h,
+              new SetProtocolUpdate()
+                  .protocol(
+                      new DeltaProtocol()
+                          .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                          .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                          .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                          .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES)),
+              new RemoveDomainMetadataUpdate().domains(List.of("delta.rowTracking")));
+      assertThat(r.getMetadata().getProperties())
+          .doesNotContainKey(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK)
+          .doesNotContainKey(TableProperties.FEATURE_PREFIX + "rowTracking");
+
+      Handle h2 = h.withEtag(r.getMetadata().getEtag());
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h2,
+                  new SetDomainMetadataUpdate()
+                      .updates(
+                          new DomainMetadataUpdates()
+                              .deltaRowTracking(
+                                  new RowTrackingDomainMetadata().rowIdHighWaterMark(1L)))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "rowTracking");
+    }
+
     // -------- update-metadata-snapshot-version --------
     {
       Handle external = createDeltaExternal("tbl_snapshot_external");
@@ -288,6 +321,24 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .writerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName())))),
           ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "catalogManaged");
+
+      // set-protocol that satisfies all required features but drops rowTracking, while the table
+      // still carries delta.rowTracking.rowIdHighWaterMark from create-time seeding. The
+      // post-update validation synthesizes the effective domain metadata from properties and
+      // catches the missing writer feature.
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h,
+                  new SetProtocolUpdate()
+                      .protocol(
+                          new DeltaProtocol()
+                              .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
+                              .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
+                              .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
+                              .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          "rowTracking");
     }
 
     // -------- set-protocol on EXTERNAL with a non-contract protocol is allowed --------

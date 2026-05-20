@@ -255,13 +255,26 @@ public final class DeltaUpdateTableMapper {
   public static void applyUpdates(
       TableInfoDAO dao, MutablePropertyMap properties, CollectedRequest collected) {
     CollectedUpdates c = collected.updates();
-    c.setProtocol.ifPresent(u -> applySetProtocol(dao, properties, u.getProtocol()));
+    c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
     c.setProperties.ifPresent(u -> applySetProperties(properties, u.getUpdates()));
     c.removeProperties.ifPresent(u -> applyRemoveProperties(properties, u.getRemovals()));
     c.setDomainMetadata.ifPresent(u -> applySetDomainMetadata(properties, u.getUpdates()));
     c.removeDomainMetadata.ifPresent(u -> applyRemoveDomainMetadata(properties, u.getDomains()));
     c.setTableComment.ifPresent(u -> applySetTableComment(dao, u));
     c.updateSnapshotVersion.ifPresent(u -> applyUpdateSnapshotVersion(dao, properties, u));
+    // Re-validate the MANAGED contract against the final post-apply state. set-protocol runs
+    // full validation; set-domain-metadata alone only needs the DM-vs-writer-features check.
+    if (TableType.MANAGED.toString().equals(dao.getType())) {
+      DomainMetadataUpdates effectiveDm =
+          DeltaPropertyMapper.synthesizeDomainMetadataFromProperties(properties.asMap());
+      if (c.setProtocol.isPresent()) {
+        UcManagedDeltaContract.validate(
+            c.setProtocol.get().getProtocol(), effectiveDm, properties.asMap());
+      } else if (c.setDomainMetadata.isPresent()) {
+        UcManagedDeltaContract.validateDomainMetadataAgainstWriterFeatures(
+            DeltaPropertyMapper.extractFeaturesFromProperties(properties.asMap()), effectiveDm);
+      }
+    }
   }
 
   private static void applySetProperties(MutablePropertyMap properties, Map<String, String> toSet) {
@@ -278,20 +291,13 @@ public final class DeltaUpdateTableMapper {
     properties.removeAll(toRemove);
   }
 
-  /**
-   * Full replacement of the protocol block; other stored properties are left alone. MANAGED tables
-   * re-validate against the UC catalog-managed contract so required features can't be stripped.
-   */
-  private static void applySetProtocol(
-      TableInfoDAO dao, MutablePropertyMap properties, DeltaProtocol protocol) {
+  /** Full replacement of the protocol block; other stored properties are left alone. */
+  private static void applySetProtocol(MutablePropertyMap properties, DeltaProtocol protocol) {
     ValidationUtils.checkNotNull(protocol, "set-protocol requires a protocol.");
     properties.removeMatchingPrefix(TableProperties.FEATURE_PREFIX);
     Map<String, String> derived = new HashMap<>();
     DeltaPropertyMapper.deriveFromProtocol(derived, protocol);
     properties.putAll(derived);
-    if (TableType.MANAGED.toString().equals(dao.getType())) {
-      UcManagedDeltaContract.validate(protocol, /* domainMetadata= */ null, properties.asMap());
-    }
   }
 
   private static void applySetDomainMetadata(
