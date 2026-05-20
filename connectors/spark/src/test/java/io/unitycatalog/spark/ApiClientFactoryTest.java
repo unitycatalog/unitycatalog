@@ -131,6 +131,12 @@ public class ApiClientFactoryTest {
     assertThat(javaIndex).isLessThan(scalaIndex);
   }
 
+  @Test
+  public void testAppEngineVersionsContainsExpectedKeys() {
+    Map<String, String> versions = ApiClientFactory.appEngineVersions();
+    assertThat(versions).containsKeys("Spark", "Delta", "Java", "Scala");
+  }
+
   private static TokenProvider createStaticTokenProvider(String token) {
     return TokenProvider.create(Map.of("type", "static", "token", token));
   }

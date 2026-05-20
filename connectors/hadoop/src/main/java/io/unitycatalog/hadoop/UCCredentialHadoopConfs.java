@@ -1,11 +1,12 @@
 package io.unitycatalog.hadoop;
 
+import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Preconditions;
-import io.unitycatalog.client.model.PathOperation;
-import io.unitycatalog.client.model.TableOperation;
-import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
+import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 
@@ -16,7 +17,6 @@ import org.apache.hadoop.conf.Configuration;
  * <pre>{@code
  * Map<String, String> props = UCCredentialHadoopConfs.builder(uri, "s3")
  *     .tokenProvider(tokenProvider)
- *     .initialCredentials(creds)
  *     .enableCredentialRenewal(true)
  *     .enableCredentialScopedFs(true)
  *     .hadoopConf(hadoopConf)
@@ -28,6 +28,35 @@ import org.apache.hadoop.conf.Configuration;
 public final class UCCredentialHadoopConfs {
 
   private UCCredentialHadoopConfs() {}
+
+  /**
+   * The access operation requested for a Unity Catalog table credential.
+   *
+   * @since 0.5.0
+   */
+  public enum TableOperation {
+    READ,
+    READ_WRITE;
+
+    public String value() {
+      return name();
+    }
+  }
+
+  /**
+   * The access operation requested for a Unity Catalog external path credential.
+   *
+   * @since 0.5.0
+   */
+  public enum PathOperation {
+    PATH_READ,
+    PATH_READ_WRITE,
+    PATH_CREATE_TABLE;
+
+    public String value() {
+      return name();
+    }
+  }
 
   /**
    * Creates a new {@link Builder} with the two required fields.
@@ -50,34 +79,33 @@ public final class UCCredentialHadoopConfs {
     private final String scheme;
 
     private TokenProvider tokenProvider;
-    private TemporaryCredentials initialCredentials;
+    private ApiClient apiClient;
     private boolean credentialRenewalEnabled = true;
     private boolean credentialScopedFsEnabled = true;
-    private Configuration hadoopConf = new Configuration(false);
 
-    private Builder(String uri, String scheme) {
-      Preconditions.checkArgument(uri != null, "catalogUri is required");
+    private Configuration hadoopConf = new Configuration(false);
+    private final Map<String, String> appVersions = new LinkedHashMap<>();
+
+    private Builder(String catalogUri, String scheme) {
+      Preconditions.checkArgument(catalogUri != null, "catalogUri is required");
       Preconditions.checkArgument(scheme != null, "scheme is required");
-      this.catalogUri = uri;
+      this.catalogUri = catalogUri;
       this.scheme = scheme;
     }
 
-    /**
-     * The token provider for UC authentication. Required by default (since credential renewal is
-     * enabled by default); may be {@code null} only when credential renewal is explicitly disabled.
-     */
+    /** The token provider for UC authentication. Required for all credential operations. */
     public Builder tokenProvider(TokenProvider tokenProvider) {
       this.tokenProvider = tokenProvider;
       return this;
     }
 
     /**
-     * (Required) The initial temporary credentials vended by UC (AWS session credentials, GCP OAuth
-     * token, or Azure SAS). Typically, allocated once by the job driver and propagated to all
-     * worker nodes so that each worker reuses the same credential rather than vending a new one.
+     * An existing {@link ApiClient} to reuse for the initial credential fetch. When set, no new
+     * HTTP connection pool is created. When absent, one is created from {@code catalogUri} and
+     * {@code tokenProvider}.
      */
-    public Builder initialCredentials(TemporaryCredentials initialCredentials) {
-      this.initialCredentials = initialCredentials;
+    public Builder apiClient(ApiClient apiClient) {
+      this.apiClient = apiClient;
       return this;
     }
 
@@ -112,50 +140,103 @@ public final class UCCredentialHadoopConfs {
     }
 
     /**
-     * Builds Hadoop properties for a <em>table's</em> storage location.
+     * Records app versions (e.g. {@code Map.of("Spark", "4.0.0")}) to be propagated to the
+     * User-Agent header on UC API calls so the server can trace which app versions are calling.
+     * Callers should typically register the engine version plus any relevant runtime versions
+     * (Delta, Java, Scala, etc.).
+     */
+    public Builder addAppVersions(Map<String, String> versions) {
+      Preconditions.checkNotNull(versions, "app versions required");
+      versions.forEach(this::addAppVersion);
+      return this;
+    }
+
+    private void addAppVersion(String name, String version) {
+      Preconditions.checkArgument(name != null && !name.isEmpty(), "app version name required");
+      Preconditions.checkArgument(
+          version != null && !version.isEmpty(), "app version value for '%s' required", name);
+      appVersions.put(name, version);
+    }
+
+    /**
+     * Builds Hadoop properties for a table using the UC REST credentials API.
      *
      * @return unmodifiable map; empty if the scheme is unrecognized
-     * @throws IllegalStateException if a required field is missing
+     * @throws IllegalArgumentException if {@code tokenProvider} is not set
+     * @throws ApiException if the credential fetch from the UC REST API fails
      */
-    public Map<String, String> buildForTable(String tableId, TableOperation tableOperation) {
-      validate();
-      return CredPropsUtil.createTableCredProps(
+    public Map<String, String> buildForTable(String tableId, TableOperation tableOperation)
+        throws ApiException {
+      Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
+      return CredPropsUtil.fetchTableCredProps(
           credentialRenewalEnabled,
           credentialScopedFsEnabled,
           hadoopConf,
           scheme,
+          apiClient,
           catalogUri,
           tokenProvider,
           tableId,
           tableOperation,
-          initialCredentials);
+          appVersions);
     }
 
     /**
-     * Builds Hadoop properties for an <em>external path</em>.
+     * Builds Hadoop properties for a UC Delta table's storage location using the UC Delta
+     * credentials API.
      *
+     * @param catalog the UC catalog name
+     * @param schema the UC schema name
+     * @param table the UC table name
+     * @param operation the credential operation to request from the UC Delta credentials API
+     * @param location the table storage location used to select a returned storage credential
      * @return unmodifiable map; empty if the scheme is unrecognized
-     * @throws IllegalStateException if a required field is missing
+     * @throws IllegalArgumentException if a table identity, operation, location field, or {@code
+     *     tokenProvider} is missing
+     * @throws ApiException if the credential fetch from the UC Delta API fails
      */
-    public Map<String, String> buildForPath(String path, PathOperation pathOperation) {
-      validate();
-      return CredPropsUtil.createPathCredProps(
+    public Map<String, String> buildForTable(
+        String catalog, String schema, String table, TableOperation operation, String location)
+        throws ApiException {
+      UCDeltaTableIdentifier identifier = UCDeltaTableIdentifier.of(catalog, schema, table);
+      Preconditions.checkArgument(operation != null, "operation is required");
+      Preconditions.checkArgument(location != null && !location.isEmpty(), "location is required");
+      Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
+      return CredPropsUtil.fetchDeltaTableCredProps(
           credentialRenewalEnabled,
           credentialScopedFsEnabled,
           hadoopConf,
           scheme,
+          apiClient,
+          catalogUri,
+          tokenProvider,
+          identifier,
+          location,
+          operation,
+          appVersions);
+    }
+
+    /**
+     * Builds Hadoop properties for an <em>external path</em> using the UC REST credentials API.
+     *
+     * @return unmodifiable map; empty if the scheme is unrecognized
+     * @throws IllegalArgumentException if {@code tokenProvider} is not set
+     * @throws ApiException if the credential fetch from the UC REST API fails
+     */
+    public Map<String, String> buildForPath(String path, PathOperation pathOperation)
+        throws ApiException {
+      Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
+      return CredPropsUtil.fetchPathCredProps(
+          credentialRenewalEnabled,
+          credentialScopedFsEnabled,
+          hadoopConf,
+          scheme,
+          apiClient,
           catalogUri,
           tokenProvider,
           path,
           pathOperation,
-          initialCredentials);
-    }
-
-    private void validate() {
-      Preconditions.checkState(
-          !credentialRenewalEnabled || tokenProvider != null,
-          "tokenProvider is required when credential renewal is enabled");
-      Preconditions.checkState(initialCredentials != null, "initialCredentials is required");
+          appVersions);
     }
   }
 }
