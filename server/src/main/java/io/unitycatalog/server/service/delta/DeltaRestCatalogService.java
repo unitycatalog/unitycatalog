@@ -8,6 +8,7 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Head;
@@ -32,6 +33,7 @@ import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
+import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.Repositories;
@@ -136,6 +138,28 @@ public class DeltaRestCatalogService extends AuthorizedService {
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
     tableRepository.getTable(String.join(".", catalog, schema, table));
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  // ==================== Delete Table API ====================
+
+  /**
+   * Delete a table by three-part name. Mirrors {@link
+   * io.unitycatalog.server.service.TableService#deleteTable}, but returns 204 No Content per
+   * {@code delta.yaml} (the UC counterpart returns 200).
+   */
+  @Delete("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse deleteTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table) {
+    String fullName = catalog + "." + schema + "." + table;
+    TableInfo tableInfo = tableRepository.getTable(fullName);
+    tableRepository.deleteTable(fullName);
+    removeHierarchicalAuthorizations(
+        tableInfo.getTableId(), schemaRepository.getSchemaIdOrThrow(catalog, schema).toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 

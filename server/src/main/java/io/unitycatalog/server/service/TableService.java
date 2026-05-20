@@ -138,13 +138,7 @@ public class TableService extends AuthorizedService {
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #table, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
   public HttpResponse deleteTable(
       @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName) {
     TableInfo tableInfo = tableRepository.getTable(fullName);
