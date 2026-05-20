@@ -24,6 +24,7 @@ import io.unitycatalog.server.delta.model.CredentialsResponse;
 import io.unitycatalog.server.delta.model.LoadTableResponse;
 import io.unitycatalog.server.delta.model.StagingTableResponse;
 import io.unitycatalog.server.delta.model.TableType;
+import io.unitycatalog.server.delta.model.UpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.DeltaRestExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -203,6 +204,27 @@ public class DeltaRestCatalogService extends AuthorizedService {
           schemaRepository.getSchemaIdOrThrow(catalog, schema).toString());
     }
     return response;
+  }
+
+  // ==================== Update Table API ====================
+
+  /**
+   * Apply a list of metadata edits (and optional pre-conditions) to an existing Delta table:
+   * set-properties / remove-properties, set-protocol, set-columns, set-partition-columns,
+   * set-table-comment, set-domain-metadata / remove-domain-metadata. External-table-only
+   * post-commit-hook updates go through update-metadata-snapshot-version. Authorization mirrors
+   * the UC REST commit endpoint ({@code DeltaCommitsService.postCommit}) so a caller's privileges
+   * don't vary by URL.
+   */
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
+  @ProducesJson
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  public LoadTableResponse updateTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
+      UpdateTableRequest request) {
+    return tableRepository.updateTableForDelta(catalog, schema, table, request);
   }
 
   // ==================== Table Credentials API ====================
