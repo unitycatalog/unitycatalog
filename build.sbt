@@ -530,6 +530,7 @@ lazy val cli = (project in file("examples") / "cli")
   .dependsOn(serverModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")
+  .dependsOn(hadoop)
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-cli",
