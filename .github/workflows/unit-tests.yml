@@ -43,7 +43,6 @@ jobs:
             non-blocking: false
           - spark-version: "4.1.0"
             delta-version: "master-SNAPSHOT"
-            delta-skip-uc-auto-build: true
             validation-mode: "spark-tests"
             # Cross-version testing with Delta master is informational; failures
             # indicate upcoming incompatibilities but should not block PRs.
@@ -52,6 +51,8 @@ jobs:
             delta-version: "master-SNAPSHOT"
             delta-repo: "seewishnew/delta"
             delta-ref: "enable-spark-master-cross-build"
+            # SNAPSHOT Spark: disable Delta's UC auto-build (we pre-publish UC
+            # at the expected coordinate in the build step below instead).
             delta-skip-uc-auto-build: true
             validation-mode: "spark-tests"
             non-blocking: true
@@ -106,6 +107,7 @@ jobs:
         SKIP_UC_FLAG=""
         if [[ "${{ matrix.delta-skip-uc-auto-build }}" == "true" ]]; then
           SKIP_UC_FLAG="-Ddelta.autoBuildPinnedUnityCatalog=false"
+          SPARK_MAJOR_MINOR=$SPARK_MAJOR_MINOR bash project/scripts/setup_unitycatalog_main.sh
         fi
         build/sbt -DsparkVersion=$SPARK_MAJOR_MINOR \
           $SKIP_UC_FLAG \
