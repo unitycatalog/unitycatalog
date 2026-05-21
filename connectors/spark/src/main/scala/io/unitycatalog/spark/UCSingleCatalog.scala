@@ -49,6 +49,15 @@ class UCSingleCatalog
   private[this] var apiClient: ApiClient = null;
   private[this] var tablesApi: TablesApi = null
 
+  // When true, callers that target managed Delta tables skip the legacy UC staging step here and
+  // let the Delta catalog stage the table via the UC Delta API instead.
+  private[this] var deltaRestApiEnabled: Boolean = false
+
+  // Set to true after the bundled Delta library successfully loads in `initialize`. Used
+  // (alongside `deltaRestApiEnabled` and a Delta version check) to decide whether managed
+  // Delta creates can take the new path.
+  private[this] var deltaCatalogLoaded: Boolean = false
+
   @volatile private var delegate: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
@@ -66,6 +75,7 @@ class UCSingleCatalog
     val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
       OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
       OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
+    deltaRestApiEnabled = options.getBoolean("deltaRestApi.enabled", false)
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
@@ -80,6 +90,7 @@ class UCSingleCatalog
         delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
         delegate.initialize(name, options)
         UCSingleCatalog.DELTA_CATALOG_LOADED.set(true)
+        deltaCatalogLoaded = true
       } catch {
         case e: ClassNotFoundException =>
           logWarning("DeltaCatalog is not available in the classpath", e)
@@ -88,6 +99,24 @@ class UCSingleCatalog
     } else {
       delegate = proxy
     }
+  }
+
+  /** See [[DeltaAvailability.isDeltaRestApiReady]] for the predicate. */
+  private def deltaRestApiReady: Boolean =
+    DeltaAvailability.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
+
+  /**
+   * Returns the properties UC should pass to the Delta catalog delegate for a managed Delta
+   * CREATE / CTAS. When the UC Delta API path is ready, we skip UC's legacy
+   * `createStagingTable` and pass the caller-supplied properties through untouched -- the
+   * Delta catalog stages and finalizes via the UC Delta API. Otherwise we fall back to the
+   * legacy staging path so older Delta builds keep working.
+   */
+  private def managedDeltaCreatePropsForDelegate(
+      ident: Identifier,
+      properties: util.Map[String, String]): util.Map[String, String] = {
+    if (deltaRestApiReady) properties
+    else stageManagedDeltaTableAndGetProps(ident, properties)
   }
 
   override def name(): String = delegate.name()
@@ -118,7 +147,7 @@ class UCSingleCatalog
 
     if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
       validateManagedDeltaCreateProperties(properties)
-      val newProps = stageManagedDeltaTableAndGetProps(ident, properties)
+      val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
       delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
       val newProps = prepareExternalTableProperties(properties)
@@ -416,7 +445,7 @@ class UCSingleCatalog
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val stagingCatalog = requireStagingCatalog("CREATE TABLE AS SELECT (CTAS)")
     if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
-      val newProps = stageManagedDeltaTableAndGetProps(ident, properties)
+      val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
       stagingCatalog.stageCreate(ident, schema, partitions, newProps)
     } else if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
       val newProps = prepareExternalTableProperties(properties)
