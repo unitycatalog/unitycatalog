@@ -11,7 +11,7 @@ import sbtrelease.ReleasePlugin.autoImport.ReleaseStep
  * Mirrors the pattern from Delta Lake's CrossSparkVersions.scala, trimmed to UC's needs.
  *
  * Key concepts:
- *   - SparkVersionSpec: version metadata (full version, shim source dir, resolvers)
+ *   - SparkVersionSpec: version metadata (full version, shim source dir)
  *   - DEFAULT: latest stable Spark version (used when -DsparkVersion is not set)
  *   - sparkVersionedModuleName: appends _X.Y suffix to artifact names
  *   - sparkSourceDirSettings: wires per-version shim source dirs

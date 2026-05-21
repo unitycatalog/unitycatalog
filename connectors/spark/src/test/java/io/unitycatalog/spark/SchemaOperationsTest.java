@@ -10,6 +10,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.catalyst.analysis.NamespaceAlreadyExistsException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +31,9 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
     assertThat(session.catalog().databaseExists("my_test_database")).isFalse();
   }
 
+  // On Spark 4.2+ (SPARK-55250), this exercises the UCProxy.createNamespace catch
+  // clause. On Spark 4.0/4.1, the pre-check in CreateNamespaceExec prevents reaching
+  // the catch, but the SQL-level IF NOT EXISTS behavior is still correct.
   @Test
   public void testCreateSchemaIfNotExists() {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
@@ -40,6 +44,19 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
     assertThat(session.catalog().databaseExists("my_ifne_test_db")).isTrue();
     sql("DROP DATABASE %s.my_ifne_test_db", CATALOG_NAME);
     assertThat(session.catalog().databaseExists("my_ifne_test_db")).isFalse();
+  }
+
+  @Test
+  public void testCreateExistingSchemaThrows() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    session.catalog().setCurrentCatalog(CATALOG_NAME);
+    sql("CREATE DATABASE my_duplicate_db");
+    try {
+      assertThatThrownBy(() -> sql("CREATE DATABASE my_duplicate_db"))
+          .isInstanceOf(NamespaceAlreadyExistsException.class);
+    } finally {
+      sql("DROP DATABASE %s.my_duplicate_db", CATALOG_NAME);
+    }
   }
 
   @Test

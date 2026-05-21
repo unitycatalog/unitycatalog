@@ -51,7 +51,7 @@ jobs:
             delta-version: "master-SNAPSHOT"
             # SNAPSHOT Spark requires building Delta from source, but Delta's
             # ensurePinnedUnityCatalog auto-build would clone and build UC at a
-            # pinned coordinate that doesn't match what this CI job publishes.
+            # pinned UC version that doesn't match what this CI job publishes.
             # Disable auto-build and run Delta's setup script explicitly instead
             # (see the Build Delta SNAPSHOT step below).
             delta-skip-uc-auto-build: true
@@ -64,7 +64,7 @@ jobs:
       uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
       with:
         java-version: '17'
-        distribution: 'temurin'
+        distribution: 'zulu'
         cache: 'sbt'
 
     - name: Clone Delta master
