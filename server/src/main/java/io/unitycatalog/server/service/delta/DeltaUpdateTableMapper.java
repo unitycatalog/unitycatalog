@@ -24,9 +24,7 @@ import io.unitycatalog.server.delta.model.UpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
-import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
-import io.unitycatalog.server.persist.DeltaCommitRepository;
 import io.unitycatalog.server.persist.MutablePropertyMap;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -180,10 +178,13 @@ public final class DeltaUpdateTableMapper {
         Optional.empty();
 
     /**
-     * True if this request carries at least one action that changes table metadata (properties,
-     * protocol, schema, partition columns, comment, domain metadata).
+     * True if this request carries at least one MANAGED-applicable metadata-changing action
+     * (properties, protocol, schema, partition columns, comment, domain metadata). Used to gate
+     * the auto-stamping of {@code delta.lastUpdateVersion} / {@code delta.lastCommitTimestamp} on
+     * a MANAGED {@code add-commit}. {@code update-metadata-snapshot-version} is intentionally
+     * omitted: it is EXTERNAL-only and so can never co-occur with {@code add-commit}.
      */
-    boolean hasMetadataChange() {
+    boolean hasManagedTableMetadataChange() {
       return setProperties.isPresent()
           || removeProperties.isPresent()
           || setProtocol.isPresent()
@@ -297,22 +298,30 @@ public final class DeltaUpdateTableMapper {
   // ---------------------------------------------------------------------- apply updates
 
   /**
-   * Apply the updates to the DAO and property map, delegating the commit-log actions ({@code
-   * add-commit}, {@code set-latest-backfilled-version}) to {@code commitRepo}.
+   * What the commit-log actions ({@code add-commit}, {@code set-latest-backfilled-version}) prepare
+   * for the caller to dispatch via {@code DeltaCommitRepository.applyCommitAndBackfillInSession}.
+   * Kept as a value type so the mapper stays free of the commit-repo dependency.
+   */
+  public record CommitDispatch(
+      Optional<DeltaCommit> commit,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      Optional<Long> latestBackfilledVersion) {}
+
+  /**
+   * Apply the updates to the DAO and property map, returning the commit-log dispatch (if any) for
+   * the caller to forward to {@code DeltaCommitRepository}.
    *
    * <p>Actions run in canonical order (not request order): schema + partition columns first (one
-   * combined pass when both are present); then protocol / properties / domain-metadata / comment /
-   * snapshot version so the UniForm-presence check sees the post-update property map; finally
-   * commit + backfill passed as a single pair to {@link
-   * DeltaCommitRepository#applyCommitAndBackfillInSession} so the shared helper reads the commit
-   * log only once.
+   * combined pass via {@link #applySchemaAndPartitionColumns} when both are present); then protocol
+   * / properties / domain-metadata / comment / snapshot version so the UniForm-presence check sees
+   * the post-update property map; finally the commit + backfill pair is shaped into a {@link
+   * CommitDispatch}.
    */
-  public static void applyUpdates(
+  public static Optional<CommitDispatch> applyUpdates(
       Session session,
       TableInfoDAO dao,
       MutablePropertyMap properties,
-      CollectedRequest collected,
-      DeltaCommitRepository commitRepo) {
+      CollectedRequest collected) {
     CollectedUpdates c = collected.updates();
     applySchemaAndPartitionColumns(session, dao, c.setSchema, c.setPartitionColumns);
     c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
@@ -336,15 +345,15 @@ public final class DeltaUpdateTableMapper {
       }
     }
     if (c.addCommit.isPresent() || c.setLatestBackfilledVersion.isPresent()) {
-      applyCommitAndBackfill(
-          session,
-          dao,
-          properties,
-          c.addCommit,
-          c.setLatestBackfilledVersion,
-          c.hasMetadataChange(),
-          commitRepo);
+      return Optional.of(
+          prepareCommitAndBackfill(
+              dao,
+              properties,
+              c.addCommit,
+              c.setLatestBackfilledVersion,
+              c.hasManagedTableMetadataChange()));
     }
+    return Optional.empty();
   }
 
   private static void applySetProperties(MutablePropertyMap properties, Map<String, String> toSet) {
@@ -497,35 +506,32 @@ public final class DeltaUpdateTableMapper {
   // ---------------------------------------------------------------------- commit + backfill
 
   /**
-   * Mapper-side glue for the {@code add-commit} and {@code set-latest-backfilled-version} actions.
-   * Handles the cross-action validation and snapshot-property bookkeeping that the repo helper
-   * doesn't see, then delegates the actual commit-log mutation to {@link
-   * DeltaCommitRepository#applyCommitAndBackfillInSession}:
+   * Mapper-side preparation for the {@code add-commit} and {@code set-latest-backfilled-version}
+   * actions: cross-action validation plus snapshot-property bookkeeping. Returns the
+   * {@link CommitDispatch} the caller forwards to {@code
+   * DeltaCommitRepository.applyCommitAndBackfillInSession} so the mapper stays free of the
+   * commit-repo dependency.
    *
    * <ul>
-   *   <li>require MANAGED Delta -- both actions are only legal on UC catalog-managed Delta tables;
+   *   <li>require MANAGED -- both actions are only legal on UC catalog-managed Delta tables (DELTA
+   *       format is guaranteed by the caller's prior {@code requireDeltaTable});
    *   <li>extract and shape-validate uniform fields when {@code add-commit} carries them;
    *   <li>pin uniform.iceberg.converted-delta-version equal to commit.version (the commit-time
    *       check that the create-time uniform validator can't run because there is no commit
    *       version at create);
-   *   <li>run the UniForm presence-consistency check against the post-update property map (sibling
-   *       set-properties / remove-properties / set-protocol / set-domain-metadata actions have
-   *       already been applied to {@code properties} by the time we get here);
-   *   <li>stamp {@code delta.lastUpdateVersion} / {@code delta.lastCommitTimestamp} on MANAGED
-   *       tables when the commit is metadata-changing, since UC is the authoritative commit
-   *       coordinator and the client shouldn't have to send them separately;
+   *   <li>run the UniForm presence-consistency check against the post-update property map;
+   *   <li>stamp {@code delta.lastUpdateVersion} / {@code delta.lastCommitTimestamp} when the
+   *       commit is metadata-changing;
    *   <li>read {@code latest-published-version} off the backfill action and reject if it's null.
    * </ul>
    */
-  private static void applyCommitAndBackfill(
-      Session session,
+  private static CommitDispatch prepareCommitAndBackfill(
       TableInfoDAO dao,
       MutablePropertyMap properties,
       Optional<AddCommitUpdate> addCommitOpt,
       Optional<SetLatestBackfilledVersionUpdate> backfillOpt,
-      boolean hasMetadataChange,
-      DeltaCommitRepository commitRepo) {
-    requireManagedDelta(dao);
+      boolean hasManagedTableMetadataChange) {
+    requireManaged(dao);
     Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields = Optional.empty();
     Optional<DeltaCommit> commitOpt = Optional.empty();
     if (addCommitOpt.isPresent()) {
@@ -534,48 +540,40 @@ public final class DeltaUpdateTableMapper {
           ValidationUtils.checkNotNull(
               addCommit.getCommit(), "add-commit requires a commit block.");
       commitOpt = Optional.of(commit);
-      // Extract + shape-validate uniform fields. The commit-time-specific check (uniform.iceberg
-      // .converted-delta-version must equal commit.version) is applied here -- the create-time
-      // overload doesn't enforce it because there is no commit version at create time.
       uniformFields = DeltaUniformUtils.getUniformFields(addCommit.getUniform());
       uniformFields.ifPresent(
-          f ->
-              ValidationUtils.checkArgument(
-                  f.convertedDeltaVersion().equals(commit.getVersion()),
-                  "uniform.iceberg.converted-delta-version (%d) must equal commit version (%d)",
-                  f.convertedDeltaVersion(),
-                  commit.getVersion()));
-      // Property/block-presence consistency runs against the post-update property map (sibling
-      // set-properties / remove-properties / set-protocol / set-domain-metadata actions have
-      // already been applied to `properties`).
+          f -> DeltaUniformUtils.requireConvertedDeltaVersionEquals(f, commit.getVersion()));
       DeltaUniformUtils.validateConsistency(properties.asMap(), uniformFields.isPresent());
       // For MANAGED tables, a metadata-changing add-commit advances the snapshot bookkeeping
-      // properties. The client doesn't need to supply them separately; UC is the authoritative
-      // commit coordinator and knows the version / timestamp of the commit it just accepted.
-      if (hasMetadataChange) {
+      // properties. UC is the authoritative commit coordinator, so the client doesn't need to
+      // send them separately.
+      if (hasManagedTableMetadataChange) {
         properties.put(TableProperties.LAST_UPDATE_VERSION, String.valueOf(commit.getVersion()));
         properties.put(
             TableProperties.LAST_COMMIT_TIMESTAMP, String.valueOf(commit.getTimestamp()));
       }
     }
+    // The Delta wire field is named `latest-published-version`; the UC repo's parameter is
+    // `latestBackfilledVersion` (same value, different perspective). Keep the local aligned with
+    // the repo so the call site reads cleanly.
     Optional<Long> latestBackfilledVersion =
-        backfillOpt.map(SetLatestBackfilledVersionUpdate::getLatestPublishedVersion);
-    if (backfillOpt.isPresent() && latestBackfilledVersion.isEmpty()) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "set-latest-backfilled-version requires latest-published-version.");
-    }
-    commitRepo.applyCommitAndBackfillInSession(
-        session, dao, commitOpt, uniformFields, latestBackfilledVersion);
+        backfillOpt.map(
+            b ->
+                ValidationUtils.checkNotNull(
+                    b.getLatestPublishedVersion(),
+                    "set-latest-backfilled-version requires latest-published-version."));
+    return new CommitDispatch(commitOpt, uniformFields, latestBackfilledVersion);
   }
 
-  private static void requireManagedDelta(TableInfoDAO dao) {
-    if (!TableType.MANAGED.toString().equals(dao.getType())
-        || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
+  /**
+   * Reject non-MANAGED tables at the commit/backfill entry. DELTA format is guaranteed by the
+   * caller's prior {@code requireDeltaTable}, so we only check the type here.
+   */
+  private static void requireManaged(TableInfoDAO dao) {
+    if (!TableType.MANAGED.toString().equals(dao.getType())) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "add-commit and set-latest-backfilled-version are only supported for MANAGED Delta "
-            + "tables.");
+          "add-commit and set-latest-backfilled-version require a MANAGED Delta table.");
     }
   }
 }

@@ -37,6 +37,7 @@ public enum ErrorCode {
   UNAUTHENTICATED(16, 401, ErrorType.NOT_AUTHORIZED_EXCEPTION),
   RESOURCE_EXHAUSTED(8, 429, ErrorType.RESOURCE_EXHAUSTED_EXCEPTION),
   FAILED_PRECONDITION(9, 400, ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION),
+  // Generic "aborted" code for non-commit callers (e.g. JwksOperations, ModelRepository)
   ABORTED(10, 409, ErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION),
   // Dedicated code for CCv2 commit-version replay conflicts.
   COMMIT_VERSION_CONFLICT(10, 409, ErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION),

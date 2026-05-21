@@ -264,8 +264,8 @@ public class DeltaCommitRepository {
    * Shared core of {@link #postCommit} and {@link #applyCommitAndBackfillInSession}: read the
    * first/last commits and route to {@link #handleOnboardingCommit} (no prior commits + commit info
    * present), {@link #handleBackfillOnlyCommit} (prior commits + commit info absent), or {@link
-   * #handleNormalCommit} (prior commits + commit info present). Backfill-only on an empty commit
-   * log is rejected with a caller-aware message.
+   * #handleNormalCommit} (prior commits + commit info present). A backfill-only request against an
+   * empty commit log is rejected here directly with a caller-aware message.
    */
   private void postCommitCore(
       Session session,
@@ -275,14 +275,24 @@ public class DeltaCommitRepository {
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
     List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
     if (firstAndLastCommits.isEmpty()) {
+      if (commit.getCommitInfo() == null) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "Backfill request requires a prior commit; the table's commit log is empty.");
+      }
       handleOnboardingCommit(session, tableId, tableInfoDAO, commit, uniformFields);
     } else {
       DeltaCommitDAO firstCommitDAO = firstAndLastCommits.get(0);
       DeltaCommitDAO lastCommitDAO = firstAndLastCommits.get(1);
-      assert firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion();
+      ValidationUtils.checkArgument(
+          firstCommitDAO.getCommitVersion() <= lastCommitDAO.getCommitVersion(),
+          "Inconsistent commit log: first commit version > last commit version.");
       if (commit.getCommitInfo() == null) {
-        // This is already checked in validateCommit()
-        assert commit.getLatestBackfilledVersion() != null;
+        // latestBackfilledVersion non-null guaranteed upstream (UC REST: validateCommit;
+        // Delta update: DeltaUpdateTableMapper checkNotNull).
+        ValidationUtils.checkNotNull(
+            commit.getLatestBackfilledVersion(),
+            "latest-backfilled-version is required when commit-info is absent.");
         handleBackfillOnlyCommit(
             session,
             tableId,
@@ -379,8 +389,13 @@ public class DeltaCommitRepository {
    * </ul>
    *
    * <p>The metadata-location subpath check on {@code uniformFields} runs here (the table location
-   * comes from the DAO). Property/block-presence consistency is the caller's responsibility -- it
-   * has the post-update {@link MutablePropertyMap} view; this method only sees the DAO.
+   * comes from the DAO). Property/block-presence consistency is the responsibility of {@link
+   * io.unitycatalog.server.service.delta.DeltaUpdateTableMapper#applyUpdates}, which runs against
+   * the post-update {@link MutablePropertyMap} view; this method only sees the DAO.
+   *
+   * <p>Package-private because the only caller today is {@link
+   * io.unitycatalog.server.persist.TableRepository}; widen the visibility once a second caller
+   * needs it.
    *
    * @param session active Hibernate session owned by the caller's transaction.
    * @param dao the table to commit.
@@ -388,19 +403,19 @@ public class DeltaCommitRepository {
    *     {@link DeltaCommitInfo} shape before dispatch.
    * @param uniformFields extracted + shape-validated UniForm-Iceberg fields from the same {@code
    *     add-commit}, if any; must be empty when {@code deltaCommitOpt} is empty.
-   * @param latestBackfilledVersion the {@code set-latest-backfilled-version} target, if any. When
-   *     paired with {@code deltaCommitOpt}, the helper runs both in one read of the commit log.
+   * @param latestBackfilledVersion the {@code set-latest-backfilled-version} target, if any. Same
+   *     value as the Delta wire field {@code latest-published-version}. When paired with {@code
+   *     deltaCommitOpt}, the helper runs both in one read of the commit log.
    */
-  public void applyCommitAndBackfillInSession(
+  void applyCommitAndBackfillInSession(
       Session session,
       TableInfoDAO dao,
       Optional<io.unitycatalog.server.delta.model.DeltaCommit> deltaCommitOpt,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<Long> latestBackfilledVersion) {
-    if (deltaCommitOpt.isEmpty() && latestBackfilledVersion.isEmpty() && uniformFields.isEmpty()) {
-      return;
-    }
-    // uniformFields has to be paired with a Delta commit
+    ValidationUtils.checkArgument(
+        deltaCommitOpt.isPresent() || latestBackfilledVersion.isPresent(),
+        "At least one of add-commit or set-latest-backfilled-version is required.");
     if (uniformFields.isPresent() && deltaCommitOpt.isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "Uniform metadata requires an accompanying commit.");
@@ -412,7 +427,7 @@ public class DeltaCommitRepository {
                 uf.metadataLocation(), NormalizedURL.from(dao.getUrl())));
     Optional<DeltaCommitInfo> commitInfoOpt =
         deltaCommitOpt.map(DeltaCommitRepository::toUcCommitInfo);
-    // Share the 5-field commit-info check with the UC REST validateCommit path.
+    // Same per-field commit-info check as the UC REST validateCommit path.
     commitInfoOpt.ifPresent(DeltaCommitRepository::validateCommitInfo);
     postCommitCore(
         session,

@@ -281,8 +281,17 @@ public class TableRepository {
           lockTableForDeltaUpdate(session, dao, catalog, schema, table);
           DeltaUpdateTableMapper.checkRequirements(dao, collected);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
-          DeltaUpdateTableMapper.applyUpdates(
-              session, dao, properties, collected, repositories.getDeltaCommitRepository());
+          DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected)
+              .ifPresent(
+                  d ->
+                      repositories
+                          .getDeltaCommitRepository()
+                          .applyCommitAndBackfillInSession(
+                              session,
+                              dao,
+                              d.commit(),
+                              d.uniformFields(),
+                              d.latestBackfilledVersion()));
           properties.flush(session, dao.getId());
           dao.setUpdatedAt(new Date());
           dao.setUpdatedBy(callerId);
