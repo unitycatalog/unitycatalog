@@ -657,7 +657,12 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
+    ) ++ (
+      // delta-spark is only needed for tests. When callers only need publishLocal/publishM2
+      // (e.g. Delta's setup_unitycatalog_main.sh), the matching Delta artifact may not exist
+      // yet. Pass -Duc.skipTestDeps=true to exclude it and avoid resolution failures.
+      if (sys.props.getOrElse("uc.skipTestDeps", "false").toBoolean) Seq.empty
+      else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
@@ -745,10 +750,12 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
       "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
-      "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
+    ) ++ (
+      if (sys.props.getOrElse("uc.skipTestDeps", "false").toBoolean) Seq.empty
+      else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
