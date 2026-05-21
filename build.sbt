@@ -24,12 +24,6 @@ lazy val scala213 = "2.13.17"
 lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
 lazy val sparkVersion = sys.props.getOrElse("sparkVersion", "4.0.0")
 lazy val sparkMajorMinorVersion = sparkVersion.split("\\.").take(2).mkString(".")
-lazy val sparkResolvers =
-  if (sparkVersion.endsWith("-SNAPSHOT")) {
-    Seq("Apache Snapshots" at "https://repository.apache.org/content/repositories/snapshots/")
-  } else {
-    Seq.empty
-  }
 lazy val hadoopVersion = "3.4.2"
 
 // Library versions
@@ -66,7 +60,6 @@ lazy val commonSettings = Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
   ),
   resolvers += Resolver.mavenLocal,
-  resolvers ++= sparkResolvers,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
@@ -122,7 +115,7 @@ lazy val commonSettings = Seq(
 // Configure resolvers
 resolvers ++= Seq(
   "Maven Central" at "https://repo1.maven.org/maven2/",
-) ++ sparkResolvers
+)
 
 // enforce java code style
 def javafmtCheckSettings() = Seq(
