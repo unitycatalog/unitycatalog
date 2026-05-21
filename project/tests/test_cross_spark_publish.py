@@ -19,9 +19,11 @@ The script will:
 """
 
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import List, Set
 
 # Spark-related module (gets a Spark version suffix)
 # Template format: {suffix} = short Spark version suffix (e.g., "", "_4.0")
@@ -76,14 +78,15 @@ class CrossSparkPublishTest:
         self.uc_version = self._get_uc_version()
 
     def _get_uc_version(self) -> str:
+        version_re = re.compile(r'version\s*:=\s*"([^"]+)"')
         with open(self.uc_root / "version.sbt", "r") as f:
             for line in f:
-                if "version :=" in line:
-                    return line.split('"')[1]
+                m = version_re.search(line)
+                if m:
+                    return m.group(1)
         sys.exit("Error: Could not parse version from version.sbt")
 
     def clean_maven_cache(self) -> None:
-        import shutil
         m2_repo = Path.home() / ".m2" / "repository" / "io" / "unitycatalog"
         if m2_repo.exists():
             print(f"Cleaning Maven cache: {m2_repo}")
@@ -92,7 +95,7 @@ class CrossSparkPublishTest:
         else:
             print("  Maven cache already clean\n")
 
-    def find_spark_jars(self):
+    def find_spark_jars(self) -> Set[str]:
         """Finds UC Spark connector JAR files from Maven local repository."""
         m2_repo = Path.home() / ".m2" / "repository" / "io" / "unitycatalog"
         if not m2_repo.exists():
@@ -107,7 +110,7 @@ class CrossSparkPublishTest:
                         found_jars.add(jar_file.name)
         return found_jars
 
-    def run_sbt_command(self, description: str, command: list) -> bool:
+    def run_sbt_command(self, description: str, command: List[str]) -> bool:
         print(f"  {description}")
         try:
             subprocess.run(
@@ -122,7 +125,7 @@ class CrossSparkPublishTest:
             print(f"  FAIL: Command failed: {' '.join(command)}")
             return False
 
-    def validate_jars(self, expected: set, test_name: str) -> bool:
+    def validate_jars(self, expected: Set[str], test_name: str) -> bool:
         found = self.find_spark_jars()
 
         print(f"\n{test_name} - Found JARs ({len(found)} total):")
@@ -262,7 +265,7 @@ class CrossSparkPublishTest:
                 return False
 
         # Build expected JARs
-        expected: set = set()
+        expected: Set[str] = set()
 
         # Step 1: Without suffix
         no_suffix_spec = SparkVersionSpec(suffix="")
