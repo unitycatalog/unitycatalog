@@ -187,6 +187,12 @@ object CrossSparkVersions extends AutoPlugin {
           Command.process(scoped, s)
         }
       }
+    },
+    commands += Command.command("showSparkVersions") { state =>
+      SparkVersionSpec.ALL_SPECS.foreach { spec =>
+        println(spec.fullVersion)
+      }
+      state
     }
   )
 }

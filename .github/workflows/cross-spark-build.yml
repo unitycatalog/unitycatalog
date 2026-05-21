@@ -1,0 +1,37 @@
+name: "Cross-Spark Build"
+on:
+  push:
+    branches: [main, branch-*]
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+  pull_request:
+    branches: [main, branch-*]
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: "Build Test"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'sbt'
+
+      - name: Set up Python
+        uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
+        with:
+          python-version: '3.9'
+
+      - name: Run cross-Spark build test
+        run: python project/tests/test_cross_spark_publish.py
