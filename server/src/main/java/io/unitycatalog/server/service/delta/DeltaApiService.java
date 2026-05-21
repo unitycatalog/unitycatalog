@@ -209,12 +209,14 @@ public class DeltaApiService extends AuthorizedService {
   // ==================== Update Table API ====================
 
   /**
-   * Apply a list of metadata edits (and optional pre-conditions) to an existing Delta table:
-   * set-properties / remove-properties, set-protocol, set-columns, set-partition-columns,
-   * set-table-comment, set-domain-metadata / remove-domain-metadata. External-table-only
-   * post-commit-hook updates go through update-metadata-snapshot-version. Authorization mirrors
-   * the UC REST commit endpoint ({@code DeltaCommitsService.postCommit}) so a caller's privileges
-   * don't vary by URL.
+   * Apply a list of updates (and optional pre-conditions) to an existing Delta table. Covers both
+   * pure metadata edits -- set-properties / remove-properties, set-protocol, set-columns, set-
+   * partition-columns, set-table-comment, set-domain-metadata / remove-domain-metadata -- and the
+   * CCv2 commit flow via add-commit (+ optional uniform for UniForm tables) and
+   * set-latest-backfilled-version. External-table-only post-commit-hook updates go through
+   * update-metadata-snapshot-version. Authorization mirrors the UC REST commit endpoint
+   * ({@link io.unitycatalog.server.service.DeltaCommitsService#postCommit}) so a caller's
+   * privileges don't vary by URL.
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
   @ProducesJson

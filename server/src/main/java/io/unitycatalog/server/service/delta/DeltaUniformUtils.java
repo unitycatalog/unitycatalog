@@ -190,13 +190,22 @@ public final class DeltaUniformUtils {
             Optional.ofNullable(iceberg.getBaseConvertedDeltaVersion()));
     requireBasicShape(fields);
     if (commit.getCommitInfo() != null) {
-      ValidationUtils.checkArgument(
-          fields.convertedDeltaVersion().equals(commit.getCommitInfo().getVersion()),
-          "uniform.iceberg.converted-delta-version (%d) must equal commit version (%d)",
-          fields.convertedDeltaVersion(),
-          commit.getCommitInfo().getVersion());
+      requireConvertedDeltaVersionEquals(fields, commit.getCommitInfo().getVersion());
     }
     return Optional.of(fields);
+  }
+
+  /**
+   * Pin {@code uniform.iceberg.converted-delta-version == commit.version} -- the commit-time
+   * atomicity rule, shared by the UC REST commit path and the Delta {@code add-commit} path.
+   */
+  public static void requireConvertedDeltaVersionEquals(
+      UniformIcebergFields fields, long commitVersion) {
+    ValidationUtils.checkArgument(
+        fields.convertedDeltaVersion().equals(commitVersion),
+        "uniform.iceberg.converted-delta-version (%d) must equal commit version (%d)",
+        fields.convertedDeltaVersion(),
+        commitVersion);
   }
 
   /**
