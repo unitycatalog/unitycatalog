@@ -49,8 +49,6 @@ jobs:
             non-blocking: true
           - spark-version: "4.2.0-SNAPSHOT"
             delta-version: "master-SNAPSHOT"
-            delta-repo: "seewishnew/delta"
-            delta-ref: "enable-spark-master-cross-build"
             # SNAPSHOT Spark: disable Delta's UC auto-build (we pre-publish UC
             # at the expected coordinate in the build step below instead).
             delta-skip-uc-auto-build: true
