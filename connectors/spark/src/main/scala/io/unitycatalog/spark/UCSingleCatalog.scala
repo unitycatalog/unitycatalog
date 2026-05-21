@@ -15,7 +15,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
+import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog._
@@ -828,7 +828,13 @@ private class UCProxy(
     createSchema.setCatalogName(this.name)
     createSchema.setName(namespace.head)
     createSchema.setProperties(metadata)
-    schemasApi.createSchema(createSchema)
+    try {
+      schemasApi.createSchema(createSchema)
+    } catch {
+      case e: ApiException if e.getResponseBody != null &&
+        e.getResponseBody.contains("SCHEMA_ALREADY_EXISTS") =>
+        throw new NamespaceAlreadyExistsException(namespace)
+    }
   }
 
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
