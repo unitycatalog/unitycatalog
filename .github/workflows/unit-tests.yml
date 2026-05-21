@@ -67,20 +67,13 @@ jobs:
         distribution: 'zulu'
         cache: 'sbt'
 
-    - name: Clone Delta master
+    - name: Clone Delta master and resolve version
       if: matrix.delta-version == 'master-SNAPSHOT'
       id: delta-meta
       run: |
-        git clone --depth=1 --branch=master "https://github.com/delta-io/delta.git" /tmp/delta || \
-          git clone --depth=1 "https://github.com/delta-io/delta.git" /tmp/delta
-        DELTA_SHA=$(git -C /tmp/delta rev-parse HEAD)
-        DELTA_VER=$(grep -oP '(?<=")[^"]*-SNAPSHOT(?=")' /tmp/delta/version.sbt)
-        if [ -z "$DELTA_VER" ]; then
-          echo "::error::Failed to resolve Delta SNAPSHOT version from /tmp/delta/version.sbt"
-          exit 1
-        fi
-        echo "sha=$DELTA_SHA" >> $GITHUB_OUTPUT
-        echo "version=$DELTA_VER" >> $GITHUB_OUTPUT
+        export DELTA_DIR=/tmp/delta
+        export SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
+        bash project/scripts/build_delta_from_source.sh --meta-only
 
     - name: Cache Delta SNAPSHOT local Maven artifacts
       if: matrix.delta-version == 'master-SNAPSHOT'
@@ -93,20 +86,10 @@ jobs:
     - name: Build Delta SNAPSHOT and publish to local Maven
       if: matrix.delta-version == 'master-SNAPSHOT' && steps.delta-cache.outputs.cache-hit != 'true'
       run: |
-        SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
-        cd /tmp/delta
-        SKIP_UC_FLAG=""
-        if [[ "${{ matrix.delta-skip-uc-auto-build }}" == "true" ]]; then
-          SKIP_UC_FLAG="-Ddelta.autoBuildPinnedUnityCatalog=false"
-          SPARK_MAJOR_MINOR=$SPARK_MAJOR_MINOR bash project/scripts/setup_unitycatalog_main.sh
-        fi
-        build/sbt -DsparkVersion=$SPARK_MAJOR_MINOR \
-          $SKIP_UC_FLAG \
-          storage/publishM2 \
-          kernelApi/publishM2 \
-          kernelDefaults/publishM2 \
-          kernelUnityCatalog/publishM2 \
-          spark/publishM2
+        export DELTA_DIR=/tmp/delta
+        export SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
+        export SKIP_UC_AUTO_BUILD="${{ matrix.delta-skip-uc-auto-build || 'false' }}"
+        bash project/scripts/build_delta_from_source.sh
 
     - name: Set effective Delta version
       run: |
