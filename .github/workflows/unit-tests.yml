@@ -81,7 +81,7 @@ jobs:
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.m2/repository/io/delta
-        key: delta-snapshot-${{ steps.delta-meta.outputs.sha }}
+        key: delta-snapshot-spark-${{ matrix.spark-version }}-${{ steps.delta-meta.outputs.sha }}
 
     - name: Build Delta SNAPSHOT and publish to local Maven
       if: matrix.delta-version == 'master-SNAPSHOT' && steps.delta-cache.outputs.cache-hit != 'true'
