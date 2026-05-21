@@ -49,8 +49,11 @@ jobs:
             non-blocking: true
           - spark-version: "4.2.0-SNAPSHOT"
             delta-version: "master-SNAPSHOT"
-            # SNAPSHOT Spark: disable Delta's UC auto-build (we pre-publish UC
-            # at the expected coordinate in the build step below instead).
+            # SNAPSHOT Spark requires building Delta from source, but Delta's
+            # ensurePinnedUnityCatalog auto-build would clone and build UC at a
+            # pinned coordinate that doesn't match what this CI job publishes.
+            # Disable auto-build and run Delta's setup script explicitly instead
+            # (see the Build Delta SNAPSHOT step below).
             delta-skip-uc-auto-build: true
             validation-mode: "spark-tests"
             non-blocking: true
@@ -68,18 +71,16 @@ jobs:
       if: matrix.delta-version == 'master-SNAPSHOT'
       id: delta-meta
       run: |
-        DELTA_REPO="${{ matrix.delta-repo || 'delta-io/delta' }}"
-        DELTA_REF="${{ matrix.delta-ref || 'master' }}"
-        DELTA_SHA=$(git ls-remote "https://github.com/$DELTA_REPO.git" "$DELTA_REF" | cut -f1)
+        DELTA_SHA=$(git ls-remote "https://github.com/delta-io/delta.git" "master" | cut -f1)
         if [ -z "$DELTA_SHA" ]; then
-          DELTA_SHA=$(git ls-remote "https://github.com/$DELTA_REPO.git" HEAD | cut -f1)
+          DELTA_SHA=$(git ls-remote "https://github.com/delta-io/delta.git" HEAD | cut -f1)
         fi
-        DELTA_VER=$(curl -fsSL "https://raw.githubusercontent.com/$DELTA_REPO/$DELTA_REF/version.sbt" \
+        DELTA_VER=$(curl -fsSL "https://raw.githubusercontent.com/delta-io/delta/master/version.sbt" \
               | grep -oP '(?<=")[^"]*-SNAPSHOT(?=")') || \
-          DELTA_VER=$(curl -fsSL "https://raw.githubusercontent.com/$DELTA_REPO/master/version.sbt" \
+          DELTA_VER=$(curl -fsSL "https://raw.githubusercontent.com/delta-io/delta/master/version.sbt" \
               | grep -oP '(?<=")[^"]*-SNAPSHOT(?=")')
         if [ -z "$DELTA_VER" ]; then
-          echo "::error::Failed to resolve Delta SNAPSHOT version from $DELTA_REPO/$DELTA_REF"
+          echo "::error::Failed to resolve Delta SNAPSHOT version from delta-io/delta/master"
           exit 1
         fi
         echo "sha=$DELTA_SHA" >> $GITHUB_OUTPUT
@@ -91,16 +92,14 @@ jobs:
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.m2/repository/io/delta
-        key: delta-snapshot-${{ matrix.delta-repo || 'delta-io/delta' }}-${{ steps.delta-meta.outputs.sha }}
+        key: delta-snapshot-${{ steps.delta-meta.outputs.sha }}
 
     - name: Build Delta SNAPSHOT from source and publish to local Maven
       if: matrix.delta-version == 'master-SNAPSHOT' && steps.delta-cache.outputs.cache-hit != 'true'
       run: |
-        DELTA_REPO="${{ matrix.delta-repo || 'delta-io/delta' }}"
-        DELTA_REF="${{ matrix.delta-ref || 'master' }}"
         SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
-        git clone --depth=1 --branch="$DELTA_REF" "https://github.com/$DELTA_REPO.git" /tmp/delta || \
-          git clone --depth=1 "https://github.com/$DELTA_REPO.git" /tmp/delta
+        git clone --depth=1 --branch=master "https://github.com/delta-io/delta.git" /tmp/delta || \
+          git clone --depth=1 "https://github.com/delta-io/delta.git" /tmp/delta
         cd /tmp/delta
         SKIP_UC_FLAG=""
         if [[ "${{ matrix.delta-skip-uc-auto-build }}" == "true" ]]; then

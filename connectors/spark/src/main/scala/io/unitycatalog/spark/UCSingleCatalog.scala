@@ -828,10 +828,15 @@ private class UCProxy(
     createSchema.setCatalogName(this.name)
     createSchema.setName(namespace.head)
     createSchema.setProperties(metadata)
+    // SPARK-55250 (Spark 4.2+): CreateNamespaceExec no longer pre-checks
+    // namespaceExists() before calling createNamespace(). It relies on the
+    // catalog throwing NamespaceAlreadyExistsException for IF NOT EXISTS
+    // handling. On Spark 4.0/4.1 the pre-check prevents this path.
     try {
       schemasApi.createSchema(createSchema)
     } catch {
-      case e: ApiException if e.getResponseBody != null &&
+      case e: ApiException if (e.getCode == 400 || e.getCode == 409) &&
+        e.getResponseBody != null &&
         e.getResponseBody.contains("SCHEMA_ALREADY_EXISTS") =>
         throw new NamespaceAlreadyExistsException(namespace)
     }

@@ -31,6 +31,18 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   }
 
   @Test
+  public void testCreateSchemaIfNotExists() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    session.catalog().setCurrentCatalog(CATALOG_NAME);
+    sql("CREATE DATABASE my_ifne_test_db");
+    assertThat(session.catalog().databaseExists("my_ifne_test_db")).isTrue();
+    sql("CREATE DATABASE IF NOT EXISTS my_ifne_test_db");
+    assertThat(session.catalog().databaseExists("my_ifne_test_db")).isTrue();
+    sql("DROP DATABASE %s.my_ifne_test_db", CATALOG_NAME);
+    assertThat(session.catalog().databaseExists("my_ifne_test_db")).isFalse();
+  }
+
+  @Test
   public void testSetCurrentDB() {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, TestUtils.CATALOG_NAME);
     session.catalog().setCurrentCatalog(TestUtils.CATALOG_NAME);

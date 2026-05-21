@@ -21,8 +21,7 @@ import sbtrelease.ReleasePlugin.autoImport.ReleaseStep
 
 case class SparkVersionSpec(
   fullVersion: String,
-  additionalSourceDir: String,
-  additionalResolvers: Seq[Resolver] = Seq.empty
+  additionalSourceDir: String
 ) {
   def shortVersion: String = fullVersion.split("\\.").take(2).mkString(".")
   def isSnapshot: Boolean = fullVersion.contains("SNAPSHOT")
@@ -42,10 +41,7 @@ object SparkVersionSpec {
 
   val spark42Snapshot = SparkVersionSpec(
     fullVersion = "4.2.0-SNAPSHOT",
-    additionalSourceDir = "scala-shims/spark-4.2",
-    additionalResolvers = Seq(
-      "Apache Snapshots" at "https://repository.apache.org/content/repositories/snapshots/"
-    )
+    additionalSourceDir = "scala-shims/spark-4.2"
   )
 
   val DEFAULT: SparkVersionSpec = spark41
@@ -87,7 +83,6 @@ object CrossSparkVersions extends AutoPlugin {
    * Settings for Spark-dependent modules. Includes:
    * - sparkVersion setting (enables dynamic discovery by runOnlyForReleasableSparkModules)
    * - Per-version shim source directories for main and test
-   * - Version-specific resolvers
    */
   def sparkDependentSettings: Seq[Setting[_]] = {
     val spec = getSparkVersionSpec()
@@ -96,8 +91,7 @@ object CrossSparkVersions extends AutoPlugin {
       Compile / unmanagedSourceDirectories +=
         (Compile / baseDirectory).value / "src" / "main" / spec.additionalSourceDir,
       Test / unmanagedSourceDirectories +=
-        (Test / baseDirectory).value / "src" / "test" / spec.additionalSourceDir,
-      resolvers ++= spec.additionalResolvers
+        (Test / baseDirectory).value / "src" / "test" / spec.additionalSourceDir
     )
   }
 
@@ -164,11 +158,10 @@ object CrossSparkVersions extends AutoPlugin {
       val task = args.mkString(" ")
       val extracted = sbt.Project.extract(state)
       val sparkVersionKey = autoImport.sparkVersion
-      val publishArtifactKey = SettingKey[Boolean]("publishArtifact")
-
       val sparkModules = extracted.structure.allProjectRefs.filter { ref =>
         val hasSpark = (ref / sparkVersionKey).get(extracted.structure.data).isDefined
-        val publishable = (ref / publishArtifactKey).get(extracted.structure.data).getOrElse(true)
+        // Reads project-scoped publishArtifact (not Test/publishArtifact from build.sbt).
+        val publishable = (ref / Keys.publishArtifact).get(extracted.structure.data).getOrElse(true)
         hasSpark && publishable
       }
 
