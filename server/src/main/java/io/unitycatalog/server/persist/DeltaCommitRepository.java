@@ -290,9 +290,7 @@ public class DeltaCommitRepository {
       if (commit.getCommitInfo() == null) {
         // latestBackfilledVersion non-null guaranteed upstream (UC REST: validateCommit;
         // Delta update: DeltaUpdateTableMapper checkNotNull).
-        ValidationUtils.checkNotNull(
-            commit.getLatestBackfilledVersion(),
-            "latest-backfilled-version is required when commit-info is absent.");
+        assert (commit.getLatestBackfilledVersion() != null);
         handleBackfillOnlyCommit(
             session,
             tableId,
@@ -410,13 +408,13 @@ public class DeltaCommitRepository {
   void applyCommitAndBackfillInSession(
       Session session,
       TableInfoDAO dao,
-      Optional<io.unitycatalog.server.delta.model.DeltaCommit> deltaCommitOpt,
+      Optional<DeltaCommitInfo> commitInfoOpt,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<Long> latestBackfilledVersion) {
     ValidationUtils.checkArgument(
-        deltaCommitOpt.isPresent() || latestBackfilledVersion.isPresent(),
+        commitInfoOpt.isPresent() || latestBackfilledVersion.isPresent(),
         "At least one of add-commit or set-latest-backfilled-version is required.");
-    if (uniformFields.isPresent() && deltaCommitOpt.isEmpty()) {
+    if (uniformFields.isPresent() && commitInfoOpt.isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "Uniform metadata requires an accompanying commit.");
     }
@@ -425,8 +423,6 @@ public class DeltaCommitRepository {
         uf ->
             DeltaUniformUtils.requireMetadataLocationSubpath(
                 uf.metadataLocation(), NormalizedURL.from(dao.getUrl())));
-    Optional<DeltaCommitInfo> commitInfoOpt =
-        deltaCommitOpt.map(DeltaCommitRepository::toUcCommitInfo);
     // Same per-field commit-info check as the UC REST validateCommit path.
     commitInfoOpt.ifPresent(DeltaCommitRepository::validateCommitInfo);
     postCommitCore(
@@ -437,21 +433,6 @@ public class DeltaCommitRepository {
             .commitInfo(commitInfoOpt.orElse(null))
             .latestBackfilledVersion(latestBackfilledVersion.orElse(null)),
         uniformFields);
-  }
-
-  /**
-   * Convert a Delta {@link io.unitycatalog.server.delta.model.DeltaCommit} into the UC {@link
-   * DeltaCommitInfo} shape so the Delta update path can flow through the shared commit-log helpers,
-   * which speak the UC wire shape.
-   */
-  private static DeltaCommitInfo toUcCommitInfo(
-      io.unitycatalog.server.delta.model.DeltaCommit commit) {
-    return new DeltaCommitInfo()
-        .version(commit.getVersion())
-        .timestamp(commit.getTimestamp())
-        .fileName(commit.getFileName())
-        .fileSize(commit.getFileSize())
-        .fileModificationTimestamp(commit.getFileModificationTimestamp());
   }
 
   /**
@@ -956,7 +937,7 @@ public class DeltaCommitRepository {
   /**
    * Validates the 5 required fields of a commit-info block (version, timestamp, file name, file
    * size, file modification timestamp). Shared by {@link #validateCommit} (UC REST) and {@link
-   * #applyCommitAndBackfillInSession} (Delta update path, via {@link #toUcCommitInfo} first).
+   * #applyCommitAndBackfillInSession} (Delta update path, via {@code toUcCommitInfo} first).
    */
   private static void validateCommitInfo(DeltaCommitInfo commitInfo) {
     ValidationUtils.checkArgument(

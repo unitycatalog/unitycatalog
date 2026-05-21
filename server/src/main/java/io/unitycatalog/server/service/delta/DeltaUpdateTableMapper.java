@@ -24,6 +24,7 @@ import io.unitycatalog.server.delta.model.UpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
+import io.unitycatalog.server.model.DeltaCommitInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.MutablePropertyMap;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
@@ -303,7 +304,7 @@ public final class DeltaUpdateTableMapper {
    * Kept as a value type so the mapper stays free of the commit-repo dependency.
    */
   public record CommitDispatch(
-      Optional<DeltaCommit> commit,
+      Optional<DeltaCommitInfo> commit,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
       Optional<Long> latestBackfilledVersion) {}
 
@@ -562,7 +563,23 @@ public final class DeltaUpdateTableMapper {
                 ValidationUtils.checkNotNull(
                     b.getLatestPublishedVersion(),
                     "set-latest-backfilled-version requires latest-published-version."));
-    return new CommitDispatch(commitOpt, uniformFields, latestBackfilledVersion);
+    return new CommitDispatch(
+        commitOpt.map(DeltaUpdateTableMapper::toUcCommitInfo),
+        uniformFields,
+        latestBackfilledVersion);
+  }
+
+  /**
+   * Convert a Delta {@link DeltaCommit} into the UC {@link DeltaCommitInfo} shape so the Delta
+   * update path can flow through the shared commit-log helpers, which speak the UC wire shape.
+   */
+  private static DeltaCommitInfo toUcCommitInfo(DeltaCommit commit) {
+    return new DeltaCommitInfo()
+        .version(commit.getVersion())
+        .timestamp(commit.getTimestamp())
+        .fileName(commit.getFileName())
+        .fileSize(commit.getFileSize())
+        .fileModificationTimestamp(commit.getFileModificationTimestamp());
   }
 
   /**
