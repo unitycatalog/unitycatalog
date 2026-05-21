@@ -67,26 +67,10 @@ jobs:
         distribution: 'zulu'
         cache: 'sbt'
 
-    - name: Clone Delta master and resolve version
+    - name: Build Delta SNAPSHOT from source
       if: matrix.delta-version == 'master-SNAPSHOT'
-      id: delta-meta
+      id: delta-build
       run: |
-        export DELTA_DIR=/tmp/delta
-        export SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
-        bash project/scripts/build_delta_from_source.sh --meta-only
-
-    - name: Cache Delta SNAPSHOT local Maven artifacts
-      if: matrix.delta-version == 'master-SNAPSHOT'
-      id: delta-cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-      with:
-        path: ~/.m2/repository/io/delta
-        key: delta-snapshot-spark-${{ matrix.spark-version }}-${{ steps.delta-meta.outputs.sha }}
-
-    - name: Build Delta SNAPSHOT and publish to local Maven
-      if: matrix.delta-version == 'master-SNAPSHOT' && steps.delta-cache.outputs.cache-hit != 'true'
-      run: |
-        export DELTA_DIR=/tmp/delta
         export SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
         export SKIP_UC_AUTO_BUILD="${{ matrix.delta-skip-uc-auto-build || 'false' }}"
         bash project/scripts/build_delta_from_source.sh
@@ -94,7 +78,7 @@ jobs:
     - name: Set effective Delta version
       run: |
         if [[ "${{ matrix.delta-version }}" == "master-SNAPSHOT" ]]; then
-          echo "DELTA_VERSION=${{ steps.delta-meta.outputs.version }}" >> $GITHUB_ENV
+          echo "DELTA_VERSION=${{ steps.delta-build.outputs.version }}" >> $GITHUB_ENV
         else
           echo "DELTA_VERSION=${{ matrix.delta-version }}" >> $GITHUB_ENV
         fi
