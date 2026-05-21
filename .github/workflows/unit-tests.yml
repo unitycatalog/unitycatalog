@@ -67,20 +67,16 @@ jobs:
         distribution: 'temurin'
         cache: 'sbt'
 
-    - name: Resolve Delta master version and commit SHA
+    - name: Clone Delta master
       if: matrix.delta-version == 'master-SNAPSHOT'
       id: delta-meta
       run: |
-        DELTA_SHA=$(git ls-remote "https://github.com/delta-io/delta.git" "master" | cut -f1)
-        if [ -z "$DELTA_SHA" ]; then
-          DELTA_SHA=$(git ls-remote "https://github.com/delta-io/delta.git" HEAD | cut -f1)
-        fi
-        DELTA_VER=$(curl -fsSL "https://raw.githubusercontent.com/delta-io/delta/master/version.sbt" \
-              | grep -oP '(?<=")[^"]*-SNAPSHOT(?=")') || \
-          DELTA_VER=$(curl -fsSL "https://raw.githubusercontent.com/delta-io/delta/master/version.sbt" \
-              | grep -oP '(?<=")[^"]*-SNAPSHOT(?=")')
+        git clone --depth=1 --branch=master "https://github.com/delta-io/delta.git" /tmp/delta || \
+          git clone --depth=1 "https://github.com/delta-io/delta.git" /tmp/delta
+        DELTA_SHA=$(git -C /tmp/delta rev-parse HEAD)
+        DELTA_VER=$(grep -oP '(?<=")[^"]*-SNAPSHOT(?=")' /tmp/delta/version.sbt)
         if [ -z "$DELTA_VER" ]; then
-          echo "::error::Failed to resolve Delta SNAPSHOT version from delta-io/delta/master"
+          echo "::error::Failed to resolve Delta SNAPSHOT version from /tmp/delta/version.sbt"
           exit 1
         fi
         echo "sha=$DELTA_SHA" >> $GITHUB_OUTPUT
@@ -94,12 +90,10 @@ jobs:
         path: ~/.m2/repository/io/delta
         key: delta-snapshot-${{ steps.delta-meta.outputs.sha }}
 
-    - name: Build Delta SNAPSHOT from source and publish to local Maven
+    - name: Build Delta SNAPSHOT and publish to local Maven
       if: matrix.delta-version == 'master-SNAPSHOT' && steps.delta-cache.outputs.cache-hit != 'true'
       run: |
         SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
-        git clone --depth=1 --branch=master "https://github.com/delta-io/delta.git" /tmp/delta || \
-          git clone --depth=1 "https://github.com/delta-io/delta.git" /tmp/delta
         cd /tmp/delta
         SKIP_UC_FLAG=""
         if [[ "${{ matrix.delta-skip-uc-auto-build }}" == "true" ]]; then
