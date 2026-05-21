@@ -151,6 +151,14 @@ class UCSingleCatalog
       val newProps = prepareExternalTableProperties(properties)
       delegate.createTable(ident, columns, partitions, newProps)
     } else {
+      // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't store non-Delta managed
+      // tables. Surface the same friendly error the legacy staging path used to produce.
+      // Path-based identifiers (e.g. `delta`.`/tmp/foo`) fall through to the delegate -- their
+      // ident shape is what `isManagedDeltaTable` excluded above.
+      val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
+      if (!isPathTable && !UCSingleCatalog.hasDeltaProvider(properties)) {
+        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
+      }
       // TODO: for path-based tables, Spark should generate a location property using the qualified
       //       path string.
       delegate.createTable(ident, columns, partitions, properties)
@@ -403,9 +411,10 @@ class UCSingleCatalog
         properties,
         "CREATE OR REPLACE TABLE")
     }.getOrElse {
-      // Creating a new table.
+      // Creating a new table -- route through the same gate as `createTable` so a fresh
+      // CREATE OR REPLACE picks up the UC Delta API path when it's available.
       validateManagedDeltaCreateProperties(properties)
-      stageManagedDeltaTableAndGetProps(ident, properties)
+      managedDeltaCreatePropsForDelegate(ident, properties)
     }
     UCSingleCatalog.requireProviderSpecified("CREATE OR REPLACE TABLE", newProps)
     stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
@@ -493,21 +502,26 @@ object UCSingleCatalog {
   }
 
   /**
-   * Determines whether a table should be created as a managed table.
+   * Determines whether a table should be created as a managed Delta table.
    *
-   * A table is considered managed if it has no EXTERNAL clause, no LOCATION clause,
+   * A Delta table is considered managed if it has no EXTERNAL clause, no LOCATION clause,
    * and is not a path-based table (e.g., parquet.`/file/path`).
    *
    * @param properties the table properties from the CREATE TABLE command
    * @param ident the table identifier
-   * @return true if the table should be managed, false otherwise
+   * @return true if the table should be managed Delta table, false otherwise
    */
   private def isManagedDeltaTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
-    !hasExternalClause && !hasLocationClause && !isPathTable
+    hasDeltaProvider(properties) && !hasExternalClause && !hasLocationClause && !isPathTable
   }
+
+  /** Returns true when `USING <format>` is `delta`. */
+  def hasDeltaProvider(properties: util.Map[String, String]): Boolean =
+    Option(properties.get(TableCatalog.PROP_PROVIDER))
+      .exists(_.equalsIgnoreCase("delta"))
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
     if (namespace.length > 1) {
