@@ -66,16 +66,14 @@ class UCSingleCatalog
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
     tokenProvider = TokenProvider.create(AuthConfigUtils.buildAuthConfigs(options));
-    renewCredEnabled = OptionsUtil.getBoolean(options,
-      OptionsUtil.RENEW_CREDENTIAL_ENABLED,
-      OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
-    credScopedFsEnabled = OptionsUtil.getBoolean(options,
-      OptionsUtil.CRED_SCOPED_FS_ENABLED,
-      OptionsUtil.DEFAULT_CRED_SCOPED_FS_ENABLED)
-    val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
-      OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
-      OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
-    deltaRestApiEnabled = options.getBoolean("deltaRestApi.enabled", false)
+    renewCredEnabled = options.getBoolean(
+      OptionsUtil.RENEW_CREDENTIAL_ENABLED, OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+    credScopedFsEnabled = options.getBoolean(
+      OptionsUtil.CRED_SCOPED_FS_ENABLED, OptionsUtil.DEFAULT_CRED_SCOPED_FS_ENABLED)
+    val serverSidePlanningEnabled = options.getBoolean(
+      OptionsUtil.SERVER_SIDE_PLANNING_ENABLED, OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
+    deltaRestApiEnabled = options.getBoolean(
+      OptionsUtil.DELTA_API_ENABLED, OptionsUtil.DEFAULT_DELTA_API_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
@@ -101,9 +99,9 @@ class UCSingleCatalog
     }
   }
 
-  /** See [[DeltaAvailability.isDeltaRestApiReady]] for the predicate. */
+  /** See [[DeltaVersionUtils.isDeltaRestApiReady]] for the predicate. */
   private def deltaRestApiReady: Boolean =
-    DeltaAvailability.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
+    DeltaVersionUtils.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
 
   /**
    * Returns the properties UC should pass to the Delta catalog delegate for a managed Delta
@@ -457,6 +455,7 @@ class UCSingleCatalog
 }
 
 object UCSingleCatalog {
+  // DeltaCatalog loading status for testing purpose.
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
