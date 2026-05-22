@@ -27,6 +27,14 @@ lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
 // for dynamic module discovery in runOnlyForReleasableSparkModules.
 lazy val sparkVersion = CrossSparkVersions.getSparkVersionSpec().fullVersion
 lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
+
+// delta-spark is only needed for tests. When callers only need publishLocal/publishM2
+// (e.g. Delta's setup_unitycatalog_main.sh), the matching Delta artifact may not exist
+// yet. Pass -DskipDeltaSpark=true to exclude it and avoid resolution failures.
+def deltaSparkTestDeps: Seq[ModuleID] =
+  if (sys.props.getOrElse("skipDeltaSpark", "false").toBoolean) Seq.empty
+  else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
+
 // Apache Snapshots resolver is in build/sbt-config/repositories (global).
 // No per-module sparkResolvers needed.
 lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
@@ -663,13 +671,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-    ) ++ (
-      // delta-spark is only needed for tests. When callers only need publishLocal/publishM2
-      // (e.g. Delta's setup_unitycatalog_main.sh), the matching Delta artifact may not exist
-      // yet. Pass -Duc.skipTestDeps=true to exclude it and avoid resolution failures.
-      if (sys.props.getOrElse("uc.skipTestDeps", "false").toBoolean) Seq.empty
-      else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
-    ),
+    ) ++ deltaSparkTestDeps,
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
@@ -759,10 +761,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-    ) ++ (
-      if (sys.props.getOrElse("uc.skipTestDeps", "false").toBoolean) Seq.empty
-      else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
-    ),
+    ) ++ deltaSparkTestDeps,
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
