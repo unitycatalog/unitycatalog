@@ -49,6 +49,8 @@ jobs:
             non-blocking: true
           - spark-version: "4.2.0-SNAPSHOT"
             delta-version: "master-SNAPSHOT"
+            delta-repo: "https://github.com/seewishnew/delta.git"
+            delta-branch: "uc-cross-build-shadow"
             validation-mode: "spark-tests"
             non-blocking: true
 
@@ -76,6 +78,8 @@ jobs:
       id: delta-build
       run: |
         export SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
+        export DELTA_REPO="${{ matrix.delta-repo || 'https://github.com/delta-io/delta.git' }}"
+        export DELTA_BRANCH="${{ matrix.delta-branch || 'master' }}"
         bash project/scripts/build_delta_from_source.sh
 
     - name: Set effective Delta version
