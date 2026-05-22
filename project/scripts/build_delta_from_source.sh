@@ -4,8 +4,14 @@
 set -euo pipefail
 
 DELTA_DIR="${DELTA_DIR:-/tmp/delta}"
-SKIP_UC_AUTO_BUILD="${SKIP_UC_AUTO_BUILD:-false}"
 META_ONLY=false
+
+# Read UC version from the checkout directory (before cd-ing to Delta).
+UC_VERSION=$(sed -n 's/.*version := "\([^"]*\)".*/\1/p' version.sbt)
+if [ -z "$UC_VERSION" ]; then
+  echo "::error::Failed to resolve UC version from version.sbt"
+  exit 1
+fi
 
 for arg in "$@"; do
   case "$arg" in
@@ -24,7 +30,7 @@ fi
 
 # ── Resolve metadata ────────────────────────────────────────────────────────
 DELTA_SHA=$(git -C "$DELTA_DIR" rev-parse HEAD)
-DELTA_VER=$(grep -oP '(?<=")[^"]*-SNAPSHOT(?=")' "$DELTA_DIR/version.sbt")
+DELTA_VER=$(sed -n 's/.*version := "\([^"]*-SNAPSHOT\)".*/\1/p' "$DELTA_DIR/version.sbt")
 if [ -z "$DELTA_VER" ]; then
   echo "::error::Failed to resolve Delta SNAPSHOT version from $DELTA_DIR/version.sbt"
   exit 1
@@ -49,14 +55,16 @@ fi
 SPARK_MAJOR_MINOR="${SPARK_MAJOR_MINOR:?SPARK_MAJOR_MINOR is required for build (e.g. 4.1)}"
 cd "$DELTA_DIR"
 
-SKIP_UC_FLAG=""
-if [ "$SKIP_UC_AUTO_BUILD" = "true" ]; then
-  SKIP_UC_FLAG="-Ddelta.autoBuildPinnedUnityCatalog=false"
-  SPARK_MAJOR_MINOR=$SPARK_MAJOR_MINOR bash project/scripts/setup_unitycatalog_main.sh
-fi
-
+# UC jars are already in ~/.m2 from the workflow's pre-Delta publishM2 step.
+# -DunityCatalogVersion makes Delta resolve them directly; the autoBuild flag
+# is a safety net (redundant when -DunityCatalogVersion is set, but explicit).
+# publishM2 only (not publishLocal): Delta's ivy.xml lists internal modules
+# (delta-spark-v1, delta-spark-v2) that aren't published separately. The M2 POM
+# filters them via pomPostProcess. UC's build/sbt forces maven-local in the
+# resolver chain, so ~/.m2 artifacts are found.
 build/sbt -DsparkVersion="$SPARK_MAJOR_MINOR" \
-  $SKIP_UC_FLAG \
+  -Ddelta.autoBuildPinnedUnityCatalog=false \
+  -DunityCatalogVersion="$UC_VERSION" \
   storage/publishM2 \
   kernelApi/publishM2 \
   kernelDefaults/publishM2 \

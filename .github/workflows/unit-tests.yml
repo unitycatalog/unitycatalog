@@ -49,12 +49,6 @@ jobs:
             non-blocking: true
           - spark-version: "4.2.0-SNAPSHOT"
             delta-version: "master-SNAPSHOT"
-            # SNAPSHOT Spark requires building Delta from source, but Delta's
-            # ensurePinnedUnityCatalog auto-build would clone and build UC at a
-            # pinned UC version that doesn't match what this CI job publishes.
-            # Disable auto-build and run Delta's setup script explicitly instead
-            # (see the Build Delta SNAPSHOT step below).
-            delta-skip-uc-auto-build: true
             validation-mode: "spark-tests"
             non-blocking: true
 
@@ -67,12 +61,21 @@ jobs:
         distribution: 'zulu'
         cache: 'sbt'
 
+    # Publish UC to local caches BEFORE building Delta — Delta's build resolves
+    # UC artifacts from ~/.ivy2/local via -DunityCatalogVersion.
+    - name: Build, package, and publish UC locally
+      run: |
+        SKIP_DELTA=""
+        if [[ "${{ matrix.delta-version }}" == "master-SNAPSHOT" ]]; then
+          SKIP_DELTA="-DskipDeltaSpark=true"
+        fi
+        build/sbt -DsparkVersion=${{ matrix.spark-version }} $SKIP_DELTA -J-Xmx2G package publishLocal publishM2
+
     - name: Build Delta SNAPSHOT from source
       if: matrix.delta-version == 'master-SNAPSHOT'
       id: delta-build
       run: |
         export SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
-        export SKIP_UC_AUTO_BUILD="${{ matrix.delta-skip-uc-auto-build || 'false' }}"
         bash project/scripts/build_delta_from_source.sh
 
     - name: Set effective Delta version
@@ -87,9 +90,6 @@ jobs:
       # Here, we explicitly compile `integrationTests` to catch compilation issues early.
     - name: Compile integration tests to verify compilation and checkstyle issues.
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G integrationTests/test:compile
-
-    - name: Build and verify the local deployment.
-      run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G clean package publishM2
 
     - name: Run tests with coverage
       run: |

@@ -28,9 +28,9 @@ lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
 lazy val sparkVersion = CrossSparkVersions.getSparkVersionSpec().fullVersion
 lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
 
-// delta-spark is only needed for tests. When callers only need publishLocal/publishM2
-// (e.g. Delta's setup_unitycatalog_main.sh), the matching Delta artifact may not exist
-// yet. Pass -DskipDeltaSpark=true to exclude it and avoid resolution failures.
+// delta-spark is only needed for tests. When UC is published to local Maven before
+// Delta is built (e.g. CI pre-Delta publishM2 step), the matching Delta artifact may
+// not exist yet. Pass -DskipDeltaSpark=true to exclude it and avoid resolution failures.
 def deltaSparkTestDeps: Seq[ModuleID] =
   if (sys.props.getOrElse("skipDeltaSpark", "false").toBoolean) Seq.empty
   else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
