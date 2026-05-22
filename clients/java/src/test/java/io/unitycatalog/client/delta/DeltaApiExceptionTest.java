@@ -71,4 +71,42 @@ public class DeltaApiExceptionTest {
     assertThat(upgraded).isPresent();
     assertThat(upgraded.get()).isInstanceOf(ApiException.class);
   }
+
+  @Test
+  public void fromReturnsEmptyWhenErrorFieldIsNull() {
+    // `{"error":null}` -- the envelope is well-formed but carries no error block. Treated the
+    // same as a missing envelope: from() returns empty so callers fall back to the raw
+    // ApiException.
+    ApiException source = new ApiException(500, "msg", null, "{\"error\":null}");
+    assertThat(DeltaApiException.from(source)).isEmpty();
+  }
+
+  @Test
+  public void parsesEmptyErrorBlockWithNullSubfields() {
+    // `{"error":{}}` -- the error block is present but every subfield is null. By design we return
+    // a present DeltaApiException (the envelope was parseable) with null typed accessors; callers
+    // wanting a "no useful info" signal should null-check the accessors. Locks the best-effort
+    // contract described in the from() Javadoc.
+    DeltaApiException delta =
+        DeltaApiException.from(new ApiException(400, "msg", null, "{\"error\":{}}")).orElseThrow();
+    assertThat(delta.getErrorCode()).isNull();
+    assertThat(delta.getErrorType()).isNull();
+    assertThat(delta.getErrorMessage()).isNull();
+    assertThat(delta.getError()).isNotNull();
+  }
+
+  @Test
+  public void tolerantOfUnknownFields() {
+    // Pins the FAIL_ON_UNKNOWN_PROPERTIES=false setting in createObjectMapper(). If someone
+    // removes that configure() call, this test catches the regression: a server emitting a new
+    // spec field would otherwise stop parsing entirely.
+    String body =
+        "{\"error\":{\"code\":404,\"type\":\"NoSuchTableException\","
+            + "\"message\":\"Table not found\",\"unknownField\":\"ignored\"}}";
+    DeltaApiException delta =
+        DeltaApiException.from(new ApiException(404, "msg", null, body)).orElseThrow();
+    assertThat(delta.getErrorCode()).isEqualTo(404);
+    assertThat(delta.getErrorType()).isEqualTo(ErrorType.NO_SUCH_TABLE_EXCEPTION);
+    assertThat(delta.getErrorMessage()).isEqualTo("Table not found");
+  }
 }

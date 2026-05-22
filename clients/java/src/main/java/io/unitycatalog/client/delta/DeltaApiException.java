@@ -1,5 +1,6 @@
 package io.unitycatalog.client.delta;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.model.ErrorModel;
@@ -33,7 +34,14 @@ import java.util.Optional;
  */
 public class DeltaApiException extends ApiException {
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final ObjectMapper MAPPER = createObjectMapper();
+
+  protected static ObjectMapper createObjectMapper() {
+    ObjectMapper mapper = new ObjectMapper();
+    mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    mapper.enable(DeserializationFeature.READ_ENUMS_USING_TO_STRING);
+    return mapper;
+  }
 
   /** {@code null} if the response body wasn't parseable as a Delta error envelope. */
   private final ErrorModel error;
