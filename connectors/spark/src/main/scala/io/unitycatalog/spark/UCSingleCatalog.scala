@@ -106,6 +106,18 @@ class UCSingleCatalog
     DeltaVersionUtils.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
 
   /**
+   * REPLACE / CREATE OR REPLACE delegation gate.
+   *
+   *   - Delegate when: UC Delta API is wired in AND request specifies Delta provider.
+   *   - Existing-table validation (MANAGED, Delta, catalog-managed) is enforced by the
+   *     Delta-side `buildReplaceProps` after loading; we do not pre-check it here.
+   *   - Non-Delta REPLACE stays on the legacy path; its rejection error is unchanged.
+   */
+  private def shouldDelegateReplaceToDeltaApi(properties: util.Map[String, String]): Boolean = {
+    shouldUseDeltaAPI && UCSingleCatalog.hasDeltaProvider(properties)
+  }
+
+  /**
    * Returns the properties UC should pass to the Delta catalog delegate for a managed Delta
    * CREATE / CTAS. When the UC Delta API path is ready, we skip UC's legacy
    * `createStagingTable` and pass the caller-supplied properties through untouched -- the
@@ -387,6 +399,10 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     val stagingCatalog = requireStagingCatalog("REPLACE TABLE")
+    if (shouldDelegateReplaceToDeltaApi(properties)) {
+      // Defer load + augment to the Delta-side `buildReplaceProps`.
+      return stagingCatalog.stageReplace(ident, schema, partitions, properties)
+    }
     val existingTable = resolveExistingTableForReplace(ident, allowMissingTable = false)
     val newProps = loadExistingManagedTablePropsForReplace(
       ident,
@@ -404,6 +420,10 @@ class UCSingleCatalog
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     val stagingCatalog = requireStagingCatalog("CREATE OR REPLACE TABLE")
+    if (shouldDelegateReplaceToDeltaApi(properties)) {
+      // Defer existence-probe + branch (create-staging vs replace) to the Delta catalog.
+      return stagingCatalog.stageCreateOrReplace(ident, schema, partitions, properties)
+    }
     val existingTable = resolveExistingTableForReplace(ident, allowMissingTable = true)
     val newProps = existingTable.map { tableInfo =>
       // Replacing existing table.
