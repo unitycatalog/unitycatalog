@@ -78,7 +78,7 @@ jobs:
     - name: Set effective Delta version
       run: |
         if [[ "${{ matrix.delta-version }}" == "master-SNAPSHOT" ]]; then
-          echo "DELTA_VERSION=${{ steps.delta-build.outputs.version }}" >> $GITHUB_ENV
+          echo "DELTA_VERSION=${{ steps.delta-build.outputs.DELTA_VERSION }}" >> $GITHUB_ENV
         else
           echo "DELTA_VERSION=${{ matrix.delta-version }}" >> $GITHUB_ENV
         fi

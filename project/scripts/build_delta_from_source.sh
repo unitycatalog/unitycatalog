@@ -19,8 +19,7 @@ if [ -d "$DELTA_DIR/.git" ]; then
   echo "Delta already cloned at $DELTA_DIR -- skipping clone."
 else
   echo "Cloning delta-io/delta into $DELTA_DIR ..."
-  git clone --depth=1 --branch=master "https://github.com/delta-io/delta.git" "$DELTA_DIR" || \
-    git clone --depth=1 "https://github.com/delta-io/delta.git" "$DELTA_DIR"
+  git clone --depth=1 --branch=master "https://github.com/delta-io/delta.git" "$DELTA_DIR"
 fi
 
 # ── Resolve metadata ────────────────────────────────────────────────────────
@@ -39,8 +38,8 @@ emit_output() {
   echo "$key=$value"
 }
 
-emit_output "sha" "$DELTA_SHA"
-emit_output "version" "$DELTA_VER"
+emit_output "DELTA_SHA" "$DELTA_SHA"
+emit_output "DELTA_VERSION" "$DELTA_VER"
 
 if $META_ONLY; then
   exit 0
