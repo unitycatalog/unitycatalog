@@ -126,7 +126,8 @@ object CrossSparkVersions extends AutoPlugin {
       println(s"[info] $description")
       println(s"[info] Running: ${cmd.mkString(" ")}")
       println(s"[info] ========================================")
-      val exitCode = scala.sys.process.Process(cmd, baseDir).!
+      val envVars = sys.env.toSeq
+      val exitCode = scala.sys.process.Process(cmd, baseDir, envVars: _*).!
       if (exitCode != 0) {
         sys.error(s"$description failed with exit code $exitCode")
       }

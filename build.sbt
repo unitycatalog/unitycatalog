@@ -22,8 +22,13 @@ lazy val javacRelease17 = Seq("--release", "17")
 lazy val scala213 = "2.13.17"
 
 lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
+// Intentionally shadows CrossSparkVersions.autoImport.sparkVersion (SettingKey).
+// This String val is used for libraryDependencies coordinates; the SettingKey is used
+// for dynamic module discovery in runOnlyForReleasableSparkModules.
 lazy val sparkVersion = CrossSparkVersions.getSparkVersionSpec().fullVersion
 lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
+// Apache Snapshots resolver is in build/sbt-config/repositories (global).
+// No per-module sparkResolvers needed.
 lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
@@ -530,7 +535,6 @@ lazy val cli = (project in file("examples") / "cli")
   .dependsOn(serverModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")
-  .dependsOn(hadoop)
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-cli",
@@ -602,6 +606,8 @@ lazy val spark = (project in file("connectors/spark"))
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",
+    // Append Spark major.minor suffix to the artifact name so each Spark version
+    // publishes under a distinct coordinate (e.g. unitycatalog-spark_4.1_2.13).
     Keys.moduleName := CrossSparkVersions.sparkVersionedModuleName(name.value),
     CrossSparkVersions.sparkDependentSettings,
     Compile / unmanagedJars ++= {
