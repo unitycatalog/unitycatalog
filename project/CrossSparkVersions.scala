@@ -15,7 +15,6 @@ import scala.util.parsing.json.JSON
  *   - DEFAULT: latest stable Spark version (used when -DsparkVersion is not set)
  *   - sparkVersionedModuleName: appends _X.Y suffix to artifact names
  *   - sparkSourceDirSettings: wires per-version shim source dirs
- *   - runOnlyForReleasableSparkModules: discovers and runs tasks on Spark-dependent modules
  */
 
 case class SparkVersionSpec(
@@ -92,7 +91,7 @@ object CrossSparkVersions extends AutoPlugin {
 
   /**
    * Settings for Spark-dependent modules. Includes:
-   * - sparkVersion setting (enables dynamic discovery by runOnlyForReleasableSparkModules)
+   * - sparkVersion setting (queryable via `show spark/sparkVersion`)
    * - Per-version shim source directories for main and test
    */
   def sparkDependentSettings: Seq[Setting[_]] = {
@@ -106,46 +105,4 @@ object CrossSparkVersions extends AutoPlugin {
     )
   }
 
-  override lazy val projectSettings = Seq(
-    commands += Command.args("runOnlyForReleasableSparkModules", "<task>") { (state, args) =>
-      if (args.isEmpty) {
-        sys.error(
-          "Usage: runOnlyForReleasableSparkModules <task>\n" +
-          "Example: build/sbt -DsparkVersion=4.0 \"runOnlyForReleasableSparkModules publishM2\""
-        )
-      }
-
-      val task = args.mkString(" ")
-      val extracted = sbt.Project.extract(state)
-      val sparkVersionKey = autoImport.sparkVersion
-      val sparkModules = extracted.structure.allProjectRefs.filter { ref =>
-        val hasSpark = (ref / sparkVersionKey).get(extracted.structure.data).isDefined
-        // Reads project-scoped publishArtifact (not Test/publishArtifact from build.sbt).
-        val publishable = (ref / Keys.publishArtifact).get(extracted.structure.data).getOrElse(true)
-        hasSpark && publishable
-      }
-
-      if (sparkModules.isEmpty) {
-        println("[warn] No publishable Spark-dependent modules found")
-        state
-      } else {
-        val names = sparkModules.map(_.project).mkString(", ")
-        println(s"[info] Running '$task' on Spark-dependent modules: $names")
-        sparkModules.foldLeft(state) { (s, ref) =>
-          val scoped = if (task.startsWith("+")) {
-            s"+${ref.project}/${task.stripPrefix("+")}"
-          } else {
-            s"${ref.project}/$task"
-          }
-          Command.process(scoped, s)
-        }
-      }
-    },
-    commands += Command.command("showSparkVersions") { state =>
-      SparkVersionSpec.ALL_SPECS.foreach { spec =>
-        println(spec.fullVersion)
-      }
-      state
-    }
-  )
 }

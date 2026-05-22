@@ -115,6 +115,7 @@ object ReleaseSettings {
       setReleaseVersion,
       commitReleaseVersion,
       tagRelease,
+      releaseStepCommandAndRemaining("+publishSigned"),
       setNextVersion,
       commitNextVersion
     )

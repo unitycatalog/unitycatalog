@@ -262,11 +262,11 @@ class CrossSparkPublishTest:
             if "SNAPSHOT" in spark_version:
                 continue
             if not self.run_sbt_command(
-                f'Step 2: build/sbt -DsparkVersion={spark_version} "runOnlyForReleasableSparkModules publishM2"',
+                f"Step 2: build/sbt -DsparkVersion={spark_version} spark/publishM2",
                 [
                     "build/sbt",
                     f"-DsparkVersion={spark_version}",
-                    "runOnlyForReleasableSparkModules publishM2",
+                    "spark/publishM2",
                 ],
             ):
                 return False

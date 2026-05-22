@@ -23,8 +23,8 @@ lazy val scala213 = "2.13.17"
 
 lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
 // Intentionally shadows CrossSparkVersions.autoImport.sparkVersion (SettingKey).
-// This String val is used for libraryDependencies coordinates; the SettingKey is used
-// for dynamic module discovery in runOnlyForReleasableSparkModules.
+// This String val is used for libraryDependencies coordinates; the SettingKey is
+// queryable in SBT via `show spark/sparkVersion`.
 lazy val sparkVersion = CrossSparkVersions.getSparkVersionSpec().fullVersion
 lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
 
@@ -618,10 +618,6 @@ lazy val spark = (project in file("connectors/spark"))
     // publishes under a distinct coordinate (e.g. unitycatalog-spark_4.1_2.13).
     Keys.moduleName := CrossSparkVersions.sparkVersionedModuleName(name.value),
     CrossSparkVersions.sparkDependentSettings,
-    Compile / unmanagedJars ++= {
-      val sparkAssemblyDir = sys.props.get("sparkAssemblyDir").map(file).filter(_.exists)
-      sparkAssemblyDir.toSeq.flatMap(d => (d ** "*.jar").get.classpath)
-    },
     scalaVersion := scala213,
     crossScalaVersions := Seq(scala213),
     commonSettings,
