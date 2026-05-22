@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.unitycatalog.server.delta.serde.DeltaTypeModule;
 
 /**
- * Shared Jackson configuration for Delta REST Catalog endpoints.
+ * Shared Jackson configuration for UC Delta API endpoints.
  *
  * <p>The same mapper is used both by the server's request / response converters (see {@code
  * UnityCatalogServer#addDeltaApiServices}) and by tests that want to pin the exact wire-format the
@@ -19,11 +19,11 @@ import io.unitycatalog.server.delta.serde.DeltaTypeModule;
  * (de)serializers of polymorphic Delta types. Callers must treat the instance as effectively
  * immutable -- do not register additional modules or change inclusion policies on it.
  */
-public final class DeltaRestCatalogMappers {
+public final class DeltaApiMappers {
 
-  private DeltaRestCatalogMappers() {}
+  private DeltaApiMappers() {}
 
-  /** The mapper used by the Delta REST Catalog request and response converters. */
+  /** The mapper used by the UC Delta API request and response converters. */
   public static final ObjectMapper MAPPER = buildMapper();
 
   private static ObjectMapper buildMapper() {

@@ -23,7 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * E2E tests for the Delta REST Catalog {@code DELETE table} endpoint (204 on success, 404 on
+ * E2E tests for the UC Delta API {@code DELETE table} endpoint (204 on success, 404 on
  * missing).
  */
 public class SdkDeleteTableTest extends BaseServerTest {

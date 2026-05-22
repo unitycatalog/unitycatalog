@@ -41,8 +41,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
 /**
- * Integration tests for the Delta REST Catalog {@code POST /v1/.../tables} endpoint. Consolidated
- * into one test with sections so the server start + mock-cloud setup runs once. Covers both MANAGED
+ * Integration tests for the UC Delta API {@code POST /v1/.../tables} endpoint. Consolidated into
+ * one test with sections so the server start + mock-cloud setup runs once. Covers both MANAGED
  * (staging-finalize) and EXTERNAL flows plus the protocol / domain-metadata validation rules.
  */
 public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
@@ -401,7 +401,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     catalogOperations.createCatalog(
         new CreateCatalog()
             .name(TestUtils.CATALOG_NAME2)
-            .storageRoot("s3://test-bucket0/catalogs/drc"));
+            .storageRoot("s3://test-bucket0/catalogs/delta-api"));
     schemaOperations.createSchema(
         new CreateSchema().name(TestUtils.SCHEMA_NAME2).catalogName(TestUtils.CATALOG_NAME2));
   }
@@ -459,8 +459,6 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
     props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
     props.put(TableProperties.UC_TABLE_ID, tableId);
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION, "0");
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP, "1700000000000");
     // User-specified properties under server-derived keys are overridden by the structured
     // protocol/domain-metadata blocks. End-to-end override is pinned by the assertions on
     // featureKey(CATALOG_MANAGED) and CLUSTERING_COLUMNS in testCreateTableEndpoint.

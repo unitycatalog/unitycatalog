@@ -18,7 +18,7 @@ servers:
   - url: http://localhost:8080/api/2.1/unity-catalog
     description: Localhost reference server
 info:
-  title: Delta REST Catalog API
+  title: UC Delta API
   summary: REST API for Delta Lake table catalog operations
   version: '1.0'
   description: |

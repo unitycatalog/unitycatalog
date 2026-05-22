@@ -15,7 +15,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
-/** Access control tests for the Delta REST Catalog /config endpoint. */
+/** Access control tests for the UC Delta API /config endpoint. */
 public class DeltaConfigAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
   @Override

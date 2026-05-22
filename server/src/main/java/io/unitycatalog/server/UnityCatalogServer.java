@@ -50,8 +50,8 @@ import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
-import io.unitycatalog.server.service.delta.DeltaRestCatalogMappers;
-import io.unitycatalog.server.service.delta.DeltaRestCatalogService;
+import io.unitycatalog.server.service.delta.DeltaApiMappers;
+import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
@@ -302,14 +302,13 @@ public class UnityCatalogServer {
       Repositories repositories,
       ServerProperties serverProperties,
       StorageCredentialVendor storageCredentialVendor) {
-    LOGGER.info("Adding Delta REST Catalog API services...");
-    DeltaRestCatalogService deltaRestService =
-        new DeltaRestCatalogService(
-            authorizer, repositories, serverProperties, storageCredentialVendor);
-    ObjectMapper deltaMapper = DeltaRestCatalogMappers.MAPPER;
+    LOGGER.info("Adding UC Delta API services...");
+    DeltaApiService deltaApiService =
+        new DeltaApiService(authorizer, repositories, serverProperties, storageCredentialVendor);
+    ObjectMapper deltaMapper = DeltaApiMappers.MAPPER;
     armeriaServerBuilder.annotatedService(
         BASE_PATH,
-        deltaRestService,
+        deltaApiService,
         new JacksonRequestConverterFunction(deltaMapper),
         new JacksonResponseConverterFunction(deltaMapper));
   }
