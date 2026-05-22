@@ -9,13 +9,14 @@ import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs.{PathOperation, TableOperation}
 import io.unitycatalog.spark.auth.AuthConfigUtils
+import io.unitycatalog.spark.compat.SparkCatalogCompatibility
 import io.unitycatalog.spark.utils.OptionsUtil
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
+import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -609,6 +610,7 @@ private class UCProxy(
       enableServerSidePlanningConfig(identifier)
     }
 
+    val storageProperties = (t.getProperties.asScala.toMap ++ extraSerdeProps).asJava
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -616,10 +618,8 @@ private class UCProxy(
       } else {
         CatalogTableType.EXTERNAL
       },
-      storage = CatalogStorageFormat.empty.copy(
-        locationUri = Some(locationUri),
-        properties = t.getProperties.asScala.toMap ++ extraSerdeProps
-      ),
+      storage = SparkCatalogCompatibility.catalogStorageFormatWithLocation(
+        locationUri, storageProperties),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
       createTime = t.getCreatedAt,

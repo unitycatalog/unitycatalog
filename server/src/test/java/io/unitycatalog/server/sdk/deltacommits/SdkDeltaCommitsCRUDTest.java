@@ -493,7 +493,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertApiException(
         () -> deltaCommitsApi.commit(createBackfillOnlyCommitObject(1L)),
         ErrorCode.INVALID_ARGUMENT,
-        "Field can not be null: commit_info in onboarding commit");
+        "Backfill request requires a prior commit");
 
     // Create 5 commits
     for (long i = 1; i <= 5; i++) {

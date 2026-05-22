@@ -30,8 +30,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Integration tests for the Delta REST Catalog credential-vending endpoints. One test with
- * sections, to amortize the server + mock-cloud setup cost.
+ * Integration tests for the UC Delta API credential-vending endpoints. One test with sections, to
+ * amortize the server + mock-cloud setup cost.
  *
  * <p>Uses {@link BaseCRUDTestWithMockCredentials} which configures mock cloud-credential
  * infrastructure so {@code s3://test-bucket0/...} paths can be vended. Authorization is NOT enabled

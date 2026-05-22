@@ -9,8 +9,8 @@ import java.util.List;
 
 /**
  * Maps Unity Catalog's nested {@link TemporaryCredentials} (with provider-specific sub-objects) to
- * Delta REST Catalog's flat {@link StorageCredential} wire format (with a provider-agnostic typed
- * config of {@code s3.*} / {@code azure.*} / {@code gcs.*} fields).
+ * UC Delta API's flat {@link StorageCredential} wire format (with a provider-agnostic typed config
+ * of {@code s3.*} / {@code azure.*} / {@code gcs.*} fields).
  *
  * <p>The spec currently returns a single-element {@code storage-credentials} array; the response
  * type is an array to allow future multi-credential responses (e.g., federated access) without a

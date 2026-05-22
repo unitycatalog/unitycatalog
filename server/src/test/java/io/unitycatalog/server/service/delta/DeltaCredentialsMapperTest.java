@@ -118,10 +118,10 @@ public class DeltaCredentialsMapperTest {
 
   /**
    * Pins the sparse-JSON wire contract. StorageCredentialConfig is a typed POJO whose unset fields
-   * are null in Java. The Delta REST Catalog ObjectMapper is configured with {@link
-   * JsonInclude.Include#NON_NULL} in {@link DeltaRestCatalogMappers} so the response omits keys for
-   * clouds that don't apply. If that mapper config is ever changed (or the generated class is
-   * regenerated with a default {@code USE_DEFAULTS} policy), this test fails loudly.
+   * are null in Java. The UC Delta API ObjectMapper is configured with {@link
+   * JsonInclude.Include#NON_NULL} in {@link DeltaApiMappers} so the response omits keys for clouds
+   * that don't apply. If that mapper config is ever changed (or the generated class is regenerated
+   * with a default {@code USE_DEFAULTS} policy), this test fails loudly.
    */
   @Test
   public void testSparseJsonOmitsUnpopulatedKeys() throws Exception {
@@ -140,9 +140,9 @@ public class DeltaCredentialsMapperTest {
             .get(0)
             .getConfig();
 
-    // Use the same mapper as the Delta REST Catalog response converter, so a change to the
+    // Use the same mapper as the UC Delta API response converter, so a change to the
     // wire-format config (e.g. inclusion policy) is caught here instead of drifting silently.
-    String json = DeltaRestCatalogMappers.MAPPER.writeValueAsString(config);
+    String json = DeltaApiMappers.MAPPER.writeValueAsString(config);
 
     assertThat(json)
         .contains("\"s3.access-key-id\":\"AKIA123\"")

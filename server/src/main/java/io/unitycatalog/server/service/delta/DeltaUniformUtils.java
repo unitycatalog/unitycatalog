@@ -190,13 +190,22 @@ public final class DeltaUniformUtils {
             Optional.ofNullable(iceberg.getBaseConvertedDeltaVersion()));
     requireBasicShape(fields);
     if (commit.getCommitInfo() != null) {
-      ValidationUtils.checkArgument(
-          fields.convertedDeltaVersion().equals(commit.getCommitInfo().getVersion()),
-          "uniform.iceberg.converted-delta-version (%d) must equal commit version (%d)",
-          fields.convertedDeltaVersion(),
-          commit.getCommitInfo().getVersion());
+      requireConvertedDeltaVersionEquals(fields, commit.getCommitInfo().getVersion());
     }
     return Optional.of(fields);
+  }
+
+  /**
+   * Pin {@code uniform.iceberg.converted-delta-version == commit.version} -- the commit-time
+   * atomicity rule, shared by the UC REST commit path and the Delta {@code add-commit} path.
+   */
+  public static void requireConvertedDeltaVersionEquals(
+      UniformIcebergFields fields, long commitVersion) {
+    ValidationUtils.checkArgument(
+        fields.convertedDeltaVersion().equals(commitVersion),
+        "uniform.iceberg.converted-delta-version (%d) must equal commit version (%d)",
+        fields.convertedDeltaVersion(),
+        commitVersion);
   }
 
   /**
@@ -264,11 +273,11 @@ public final class DeltaUniformUtils {
   /**
    * Throw {@code INVALID_ARGUMENT} unless {@code metadataLocation} is strictly inside {@code
    * tableLocation}. Both inputs are typed {@link NormalizedURL} so callers normalize once at the
-   * boundary rather than this helper re-normalizing on every call. The Delta REST Catalog spec
-   * requires the Iceberg sidecar metadata to live under the table's storage root so table-level
-   * credential vending and lifecycle (delete/rename) cover it -- a path outside the root would be
-   * orphaned when the table is dropped. Shared between create-time ({@link #validateCreate}) and
-   * commit-time ({@code DeltaCommitRepository.validateTableForCommit}) call sites.
+   * boundary rather than this helper re-normalizing on every call. The UC Delta API spec requires
+   * the Iceberg sidecar metadata to live under the table's storage root so table-level credential
+   * vending and lifecycle (delete/rename) cover it -- a path outside the root would be orphaned
+   * when the table is dropped. Shared between create-time ({@link #validateCreate}) and commit-time
+   * ({@code DeltaCommitRepository.validateTableForCommit}) call sites.
    */
   public static void requireMetadataLocationSubpath(
       NormalizedURL metadataLocation, NormalizedURL tableLocation) {
