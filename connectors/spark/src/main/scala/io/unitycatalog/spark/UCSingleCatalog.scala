@@ -38,7 +38,7 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.json4s.{JBool, JObject, JString, JValue}
 import org.json4s.JsonDSL._
-import org.json4s.jackson.JsonMethods
+import org.json4s.jackson.JsonMethods.{compact, parse, render}
 import org.sparkproject.guava.base.Preconditions
 
 /**
@@ -906,7 +906,7 @@ private[spark] class UCProxy(
       column.setNullable(field.nullable)
       column.setTypeText(field.dataType.catalogString)
       column.setTypeName(convertDataTypeToTypeName(field.dataType))
-      column.setTypeJson(field.dataType.json)
+      column.setTypeJson(toStructFieldJson(field))
       column.setPosition(i)
       val partitionIdx = partitionColNames.indexWhere(_.equalsIgnoreCase(field.name))
       if (partitionIdx >= 0) column.setPartitionIndex(partitionIdx)
@@ -930,6 +930,14 @@ private[spark] class UCProxy(
         throw new TableAlreadyExistsException(ident)
     }
     loadTable(ident)
+  }
+
+  private def toStructFieldJson(field: StructField): String = {
+    compact(render(
+      ("name" -> field.name) ~
+        ("type" -> parse(field.dataType.json)) ~
+        ("nullable" -> field.nullable) ~
+        ("metadata" -> parse(field.metadata.json))))
   }
 
   private def extractSqlConfigs(properties: util.Map[String, String]): util.Map[String, String] = {
