@@ -1169,10 +1169,10 @@ private[spark] object UCColumnJson {
 
   /** Spark V2 -> wire: build the `StructField`-shape JSON for one [[Column]]. */
   def buildStructFieldJson(col: Column): String = {
-    val typeNode: JValue = JsonMethods.parse(col.dataType.json)
+    val typeNode: JValue = parse(col.dataType.json)
     // metadataInJSON may be null for fields without analyzer-attached metadata.
     val baseMetadata: JObject = Option(col.metadataInJSON) match {
-      case Some(s) => JsonMethods.parse(s).asInstanceOf[JObject]
+      case Some(s) => parse(s).asInstanceOf[JObject]
       case None    => JObject(Nil)
     }
     val metadataNode: JObject = Option(col.comment) match {
@@ -1184,7 +1184,7 @@ private[spark] object UCColumnJson {
         ("type"     -> typeNode) ~
         ("nullable" -> col.nullable) ~
         ("metadata" -> metadataNode)
-    JsonMethods.compact(JsonMethods.render(fieldNode))
+    compact(render(fieldNode))
   }
 
   /**
@@ -1195,14 +1195,14 @@ private[spark] object UCColumnJson {
    * matches what Spark's own `CatalogV2Util.structFieldToV2Column` does on the v1 path.
    */
   def parseStructFieldJson(jsonStr: String): Column = {
-    val parsed = JsonMethods.parse(jsonStr)
+    val parsed = parse(jsonStr)
     val name = (parsed \ "name") match {
       case JString(s) => s
       case other      => throw new IllegalArgumentException(
         s"Expected string `name` in StructField JSON, got: $other")
     }
     val typeNode = parsed \ "type"
-    val dataType = DataType.fromJson(JsonMethods.compact(JsonMethods.render(typeNode)))
+    val dataType = DataType.fromJson(compact(render(typeNode)))
     val nullable = (parsed \ "nullable") match {
       case JBool(b) => b
       case other    => throw new IllegalArgumentException(
@@ -1219,7 +1219,7 @@ private[spark] object UCColumnJson {
     }
     val metadataInJSON = otherFields match {
       case Nil => null
-      case xs  => JsonMethods.compact(JsonMethods.render(JObject(xs)))
+      case xs  => compact(render(JObject(xs)))
     }
     Column.create(name, dataType, nullable, comment, metadataInJSON)
   }
