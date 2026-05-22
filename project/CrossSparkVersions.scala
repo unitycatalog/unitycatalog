@@ -1,6 +1,7 @@
 import sbt._
 import sbt.Keys._
 import sbtrelease.ReleasePlugin.autoImport.ReleaseStep
+import scala.util.parsing.json.JSON
 
 /**
  * Cross-Spark build and publish infrastructure for the UC Spark connector.
@@ -29,23 +30,35 @@ case class SparkVersionSpec(
 
 object SparkVersionSpec {
 
-  val spark40 = SparkVersionSpec(
-    fullVersion = "4.0.0",
-    additionalSourceDir = "scala-shims/spark-4.0"
-  )
+  private def loadFromJson(): (String, Seq[SparkVersionSpec]) = {
+    val jsonFile = new java.io.File("project/spark-versions.json")
+    val source = scala.io.Source.fromFile(jsonFile)
+    try {
+      JSON.parseFull(source.mkString) match {
+        case Some(map: Map[String, Any] @unchecked) =>
+          val default = map("default").asInstanceOf[String]
+          val versions = map("versions").asInstanceOf[List[Map[String, Any]]].map { v =>
+            SparkVersionSpec(
+              v("version").asInstanceOf[String],
+              v("sourceDir").asInstanceOf[String]
+            )
+          }
+          (default, versions)
+        case _ =>
+          sys.error("Failed to parse project/spark-versions.json")
+      }
+    } finally source.close()
+  }
 
-  val spark41 = SparkVersionSpec(
-    fullVersion = "4.1.0",
-    additionalSourceDir = "scala-shims/spark-4.1"
-  )
+  private val (defaultVersion, allSpecs) = loadFromJson()
 
-  val spark42Snapshot = SparkVersionSpec(
-    fullVersion = "4.2.0-SNAPSHOT",
-    additionalSourceDir = "scala-shims/spark-4.2"
-  )
-
-  val DEFAULT: SparkVersionSpec = spark41
-  val ALL_SPECS: Seq[SparkVersionSpec] = Seq(spark40, spark41, spark42Snapshot)
+  val ALL_SPECS: Seq[SparkVersionSpec] = allSpecs
+  val DEFAULT: SparkVersionSpec = ALL_SPECS.find(_.fullVersion == defaultVersion).getOrElse {
+    sys.error(
+      s"Default version '$defaultVersion' not found in spark-versions.json versions: " +
+        ALL_SPECS.map(_.fullVersion).mkString(", ")
+    )
+  }
 }
 
 object CrossSparkVersions extends AutoPlugin {

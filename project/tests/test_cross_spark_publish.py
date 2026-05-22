@@ -11,13 +11,14 @@ Usage:
     python project/tests/test_cross_spark_publish.py
 
 The script will:
-1. Validate Spark versions in this test match CrossSparkVersions.scala
+1. Load Spark versions from project/spark-versions.json (shared source of truth)
 2. Test default publishM2 publishes Spark module WITH suffix
 3. Test skipSparkSuffix=true publishes WITHOUT suffix (backward compatibility)
 4. Test per-version publish for each non-snapshot Spark version
 5. Exit with status 0 on success, 1 on failure
 """
 
+import json
 import re
 import shutil
 import subprocess
@@ -56,14 +57,20 @@ class SparkVersionSpec(object):
         return self.spark_related_jars + self.non_spark_related_jars
 
 
-# Spark versions to test — must mirror CrossSparkVersions.scala
-SPARK_VERSIONS = {
-    "4.0.0": SparkVersionSpec(suffix="_4.0"),
-    "4.1.0": SparkVersionSpec(suffix="_4.1"),
-    "4.2.0-SNAPSHOT": SparkVersionSpec(suffix="_4.2"),
-}
+def _load_spark_versions():
+    """Loads Spark version specs from the shared JSON source of truth."""
+    json_path = Path(__file__).parent.parent / "spark-versions.json"
+    with open(json_path) as f:
+        data = json.load(f)
+    versions = {}
+    for entry in data["versions"]:
+        ver = entry["version"]
+        short = "_" + ".".join(ver.split(".")[:2])
+        versions[ver] = SparkVersionSpec(suffix=short)
+    return data["default"], versions
 
-DEFAULT_SPARK = "4.1.0"
+
+DEFAULT_SPARK, SPARK_VERSIONS = _load_spark_versions()
 
 
 def substitute_version(jar_templates, uc_version):
@@ -283,56 +290,6 @@ class CrossSparkPublishTest:
 
         return self.validate_jars(expected, "Cross-Spark Workflow")
 
-    def validate_spark_versions(self) -> None:
-        """Validates that Spark versions in this test match CrossSparkVersions.scala."""
-        try:
-            result = subprocess.run(
-                ["build/sbt", "showSparkVersions"],
-                cwd=self.uc_root,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-                check=True,
-            )
-
-            version_pattern = re.compile(r"^\d+\.\d+\.\d+(-SNAPSHOT)?$")
-            build_versions = set()
-            for line in result.stdout.strip().split("\n"):
-                line = line.strip()
-                if version_pattern.match(line):
-                    build_versions.add(line)
-
-            test_versions = set(SPARK_VERSIONS.keys())
-
-            if build_versions != test_versions:
-                missing_in_test = build_versions - test_versions
-                extra_in_test = test_versions - build_versions
-
-                print("\n" + "=" * 70)
-                print("ERROR: Spark version mismatch between test and build")
-                print("=" * 70)
-
-                if missing_in_test:
-                    print(f"\n  Build defines these versions, missing in test:")
-                    for v in sorted(missing_in_test):
-                        print(f"    {v}")
-
-                if extra_in_test:
-                    print(f"\n  Test defines these versions, missing in build:")
-                    for v in sorted(extra_in_test):
-                        print(f"    {v}")
-
-                print(
-                    "\nPlease update SPARK_VERSIONS in this test to match CrossSparkVersions.scala."
-                )
-                print("=" * 70 + "\n")
-                sys.exit(1)
-
-            print(f"  Spark versions validated: {', '.join(sorted(build_versions))}\n")
-
-        except subprocess.CalledProcessError as e:
-            print(f"Warning: Could not validate Spark versions: {e}\n")
-
 
 def main():
     try:
@@ -347,7 +304,6 @@ def main():
         print()
 
         test = CrossSparkPublishTest(uc_root)
-        test.validate_spark_versions()
 
         t1 = test.test_default_publish()
         t2 = test.test_backward_compat_publish()
