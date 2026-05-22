@@ -49,6 +49,8 @@ class UCSingleCatalog
   private[this] var apiClient: ApiClient = null;
   private[this] var tablesApi: TablesApi = null
 
+  // TODO: move this Delta loading logic into a separate base class DeltaSupport
+
   // When true, callers that target managed Delta tables skip the legacy UC staging step here and
   // let the Delta catalog stage the table via the UC Delta API instead.
   private[this] var deltaRestApiEnabled: Boolean = false
@@ -100,7 +102,7 @@ class UCSingleCatalog
   }
 
   /** See [[DeltaVersionUtils.isDeltaRestApiReady]] for the predicate. */
-  private def deltaRestApiReady: Boolean =
+  private def shouldUseDeltaAPI: Boolean =
     DeltaVersionUtils.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
 
   /**
@@ -113,7 +115,7 @@ class UCSingleCatalog
   private def managedDeltaCreatePropsForDelegate(
       ident: Identifier,
       properties: util.Map[String, String]): util.Map[String, String] = {
-    if (deltaRestApiReady) properties
+    if (shouldUseDeltaAPI) properties
     else stageManagedDeltaTableAndGetProps(ident, properties)
   }
 
@@ -143,22 +145,22 @@ class UCSingleCatalog
       throw new ApiException("Cannot create EXTERNAL TABLE without location.")
     }
 
-    if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
-      validateManagedDeltaCreateProperties(properties)
-      val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
-      delegate.createTable(ident, columns, partitions, newProps)
+    if (UCSingleCatalog.isManagedTable(properties, ident)) {
+      if (UCSingleCatalog.hasDeltaProvider(properties)) {
+        // Managed Delta table
+        validateManagedDeltaCreateProperties(properties)
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
+        delegate.createTable(ident, columns, partitions, newProps)
+      } else {
+        // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
+        // tables. Surface the same friendly error the legacy staging path used to produce.
+        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
+      }
     } else if (hasLocationClause) {
       val newProps = prepareExternalTableProperties(properties)
       delegate.createTable(ident, columns, partitions, newProps)
     } else {
-      // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't store non-Delta managed
-      // tables. Surface the same friendly error the legacy staging path used to produce.
-      // Path-based identifiers (e.g. `delta`.`/tmp/foo`) fall through to the delegate -- their
-      // ident shape is what `isManagedDeltaTable` excluded above.
-      val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
-      if (!isPathTable && !UCSingleCatalog.hasDeltaProvider(properties)) {
-        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
-      }
+      // Path-based identifiers (e.g. `delta`.`/tmp/foo`) fall through to the delegate.
       // TODO: for path-based tables, Spark should generate a location property using the qualified
       //       path string.
       delegate.createTable(ident, columns, partitions, properties)
@@ -451,9 +453,16 @@ class UCSingleCatalog
       properties: util.Map[String, String]): StagedTable = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val stagingCatalog = requireStagingCatalog("CREATE TABLE AS SELECT (CTAS)")
-    if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
-      val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
-      stagingCatalog.stageCreate(ident, schema, partitions, newProps)
+    if (UCSingleCatalog.isManagedTable(properties, ident)) {
+      if (UCSingleCatalog.hasDeltaProvider(properties)) {
+        // Managed Delta table
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
+        stagingCatalog.stageCreate(ident, schema, partitions, newProps)
+      } else {
+        // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
+        // tables. Surface the same friendly error the legacy staging path used to produce.
+        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
+      }
     } else if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
       val newProps = prepareExternalTableProperties(properties)
       stagingCatalog.stageCreate(ident, schema, partitions, newProps)
@@ -502,20 +511,20 @@ object UCSingleCatalog {
   }
 
   /**
-   * Determines whether a table should be created as a managed Delta table.
+   * Determines whether a table should be created as a managed table.
    *
-   * A Delta table is considered managed if it has no EXTERNAL clause, no LOCATION clause,
+   * A table is considered managed if it has no EXTERNAL clause, no LOCATION clause,
    * and is not a path-based table (e.g., parquet.`/file/path`).
    *
    * @param properties the table properties from the CREATE TABLE command
    * @param ident the table identifier
-   * @return true if the table should be managed Delta table, false otherwise
+   * @return true if the table should be managed, false otherwise
    */
-  private def isManagedDeltaTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
+  private def isManagedTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
-    hasDeltaProvider(properties) && !hasExternalClause && !hasLocationClause && !isPathTable
+    !hasExternalClause && !hasLocationClause && !isPathTable
   }
 
   /** Returns true when `USING <format>` is `delta`. */
