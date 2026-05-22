@@ -1,6 +1,5 @@
 import sbt._
 import sbt.Keys._
-import sbtrelease.ReleasePlugin.autoImport.ReleaseStep
 import scala.util.parsing.json.JSON
 
 /**
@@ -16,7 +15,6 @@ import scala.util.parsing.json.JSON
  *   - DEFAULT: latest stable Spark version (used when -DsparkVersion is not set)
  *   - sparkVersionedModuleName: appends _X.Y suffix to artifact names
  *   - sparkSourceDirSettings: wires per-version shim source dirs
- *   - crossSparkReleaseSteps: orchestrates multi-version release publishing
  *   - runOnlyForReleasableSparkModules: discovers and runs tasks on Spark-dependent modules
  */
 
@@ -106,58 +104,6 @@ object CrossSparkVersions extends AutoPlugin {
       Test / unmanagedSourceDirectories +=
         (Test / baseDirectory).value / "src" / "test" / spec.additionalSourceDir
     )
-  }
-
-  /**
-   * Release steps that publish artifacts for all Spark versions.
-   *
-   * Step 1: publish ALL modules WITHOUT Spark suffix (backward compat)
-   * Step 2+: publish Spark-dependent modules WITH suffix for each non-snapshot version
-   *
-   * Each step runs as a subprocess so SBT reloads with the correct settings.
-   */
-  def crossSparkReleaseSteps(task: String): Seq[ReleaseStep] = {
-
-    def runSbtSubprocess(state: State, sbtArgs: Seq[String], description: String): State = {
-      val extracted = Project.extract(state)
-      val baseDir = extracted.get(ThisBuild / Keys.baseDirectory)
-      val cmd = Seq(s"${baseDir.getAbsolutePath}/build/sbt") ++ sbtArgs
-      println(s"[info] ========================================")
-      println(s"[info] $description")
-      println(s"[info] Running: ${cmd.mkString(" ")}")
-      println(s"[info] ========================================")
-      val envVars = sys.env.toSeq
-      val exitCode = scala.sys.process.Process(cmd, baseDir, envVars: _*).!
-      if (exitCode != 0) {
-        sys.error(s"$description failed with exit code $exitCode")
-      }
-      state
-    }
-
-    val backwardCompatStep: ReleaseStep = { (state: State) =>
-      runSbtSubprocess(
-        state,
-        Seq("-DskipSparkSuffix=true", task),
-        "Publishing all modules without Spark suffix (backward compat)"
-      )
-    }
-
-    val suffixedSteps: Seq[ReleaseStep] = SparkVersionSpec.ALL_SPECS
-      .filterNot(_.isSnapshot)
-      .map { spec =>
-        { (state: State) =>
-          runSbtSubprocess(
-            state,
-            Seq(
-              s"-DsparkVersion=${spec.fullVersion}",
-              s"runOnlyForReleasableSparkModules $task"
-            ),
-            s"Publishing Spark-dependent modules with suffix for Spark ${spec.fullVersion}"
-          )
-        }: ReleaseStep
-      }
-
-    backwardCompatStep +: suffixedSteps
   }
 
   override lazy val projectSettings = Seq(
