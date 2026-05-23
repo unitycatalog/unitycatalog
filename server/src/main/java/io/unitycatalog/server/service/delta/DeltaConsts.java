@@ -98,7 +98,7 @@ public final class DeltaConsts {
      * of segment names, so nested columns stay as arrays rather than collapsing to dotted strings).
      * Mirrors the {@code delta.clustering} domain-metadata entry.
      */
-    public static final String CLUSTERING_COLUMNS = "delta.clusteringColumns";
+    public static final String CLUSTERING_COLUMNS = "clusteringColumns";
 
     /**
      * Row-tracking high water mark, mirroring the {@code delta.rowTracking.rowIdHighWaterMark} from
@@ -113,6 +113,12 @@ public final class DeltaConsts {
      * name as it appears in {@code protocol.reader-features} / {@code protocol.writer-features}.
      */
     public static final String FEATURE_PREFIX = "delta.feature.";
+
+    /** Derived property from {@code protocol.min-reader-version}. */
+    public static final String MIN_READER_VERSION = "delta.minReaderVersion";
+
+    /** Derived property from {@code protocol.min-writer-version}. */
+    public static final String MIN_WRITER_VERSION = "delta.minWriterVersion";
 
     /**
      * UniForm enabled-formats property: a comma-separated list naming the additional formats to

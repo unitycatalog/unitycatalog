@@ -21,7 +21,7 @@ import java.util.Optional;
  * the DELTA-only format rule apply to all tables. The full UC catalog-managed contract ({@link
  * UcManagedDeltaContract}) applies only to MANAGED tables; EXTERNAL tables skip contract validation
  * but still go through the same {@link DeltaPropertyMapper} projection, so derived
- * {@code delta.feature.*} and {@code delta.clusteringColumns} entries override any client-supplied
+ * {@code delta.feature.*} and {@code clusteringColumns} entries override any client-supplied
  * values under those keys.
  */
 public final class DeltaCreateTableMapper {
