@@ -49,6 +49,17 @@ class UCSingleCatalog
   private[this] var apiClient: ApiClient = null;
   private[this] var tablesApi: TablesApi = null
 
+  // TODO: move this Delta loading logic into a separate base class DeltaSupport
+
+  // When true, callers that target managed Delta tables skip the legacy UC staging step here and
+  // let the Delta catalog stage the table via the UC Delta API instead.
+  private[this] var deltaRestApiEnabled: Boolean = false
+
+  // Set to true after the bundled Delta library successfully loads in `initialize`. Used
+  // (alongside `deltaRestApiEnabled` and a Delta version check) to decide whether managed
+  // Delta creates can take the new path.
+  private[this] var deltaCatalogLoaded: Boolean = false
+
   @volatile private var delegate: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
@@ -57,15 +68,14 @@ class UCSingleCatalog
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
     tokenProvider = TokenProvider.create(AuthConfigUtils.buildAuthConfigs(options));
-    renewCredEnabled = OptionsUtil.getBoolean(options,
-      OptionsUtil.RENEW_CREDENTIAL_ENABLED,
-      OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
-    credScopedFsEnabled = OptionsUtil.getBoolean(options,
-      OptionsUtil.CRED_SCOPED_FS_ENABLED,
-      OptionsUtil.DEFAULT_CRED_SCOPED_FS_ENABLED)
-    val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
-      OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
-      OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
+    renewCredEnabled = options.getBoolean(
+      OptionsUtil.RENEW_CREDENTIAL_ENABLED, OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+    credScopedFsEnabled = options.getBoolean(
+      OptionsUtil.CRED_SCOPED_FS_ENABLED, OptionsUtil.DEFAULT_CRED_SCOPED_FS_ENABLED)
+    val serverSidePlanningEnabled = options.getBoolean(
+      OptionsUtil.SERVER_SIDE_PLANNING_ENABLED, OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
+    deltaRestApiEnabled = options.getBoolean(
+      OptionsUtil.DELTA_API_ENABLED, OptionsUtil.DEFAULT_DELTA_API_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
@@ -80,6 +90,7 @@ class UCSingleCatalog
         delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
         delegate.initialize(name, options)
         UCSingleCatalog.DELTA_CATALOG_LOADED.set(true)
+        deltaCatalogLoaded = true
       } catch {
         case e: ClassNotFoundException =>
           logWarning("DeltaCatalog is not available in the classpath", e)
@@ -88,6 +99,24 @@ class UCSingleCatalog
     } else {
       delegate = proxy
     }
+  }
+
+  /** See [[DeltaVersionUtils.isDeltaRestApiReady]] for the predicate. */
+  private def shouldUseDeltaAPI: Boolean =
+    DeltaVersionUtils.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
+
+  /**
+   * Returns the properties UC should pass to the Delta catalog delegate for a managed Delta
+   * CREATE / CTAS. When the UC Delta API path is ready, we skip UC's legacy
+   * `createStagingTable` and pass the caller-supplied properties through untouched -- the
+   * Delta catalog stages and finalizes via the UC Delta API. Otherwise we fall back to the
+   * legacy staging path so older Delta builds keep working.
+   */
+  private def managedDeltaCreatePropsForDelegate(
+      ident: Identifier,
+      properties: util.Map[String, String]): util.Map[String, String] = {
+    if (shouldUseDeltaAPI) properties
+    else stageManagedDeltaTableAndGetProps(ident, properties)
   }
 
   override def name(): String = delegate.name()
@@ -116,14 +145,22 @@ class UCSingleCatalog
       throw new ApiException("Cannot create EXTERNAL TABLE without location.")
     }
 
-    if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
-      validateManagedDeltaCreateProperties(properties)
-      val newProps = stageManagedDeltaTableAndGetProps(ident, properties)
-      delegate.createTable(ident, columns, partitions, newProps)
+    if (UCSingleCatalog.isManagedTable(properties, ident)) {
+      if (UCSingleCatalog.hasDeltaProvider(properties)) {
+        // Managed Delta table
+        validateManagedDeltaCreateProperties(properties)
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
+        delegate.createTable(ident, columns, partitions, newProps)
+      } else {
+        // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
+        // tables. Surface the same friendly error the legacy staging path used to produce.
+        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
+      }
     } else if (hasLocationClause) {
       val newProps = prepareExternalTableProperties(properties)
       delegate.createTable(ident, columns, partitions, newProps)
     } else {
+      // Path-based identifiers (e.g. `delta`.`/tmp/foo`) fall through to the delegate.
       // TODO: for path-based tables, Spark should generate a location property using the qualified
       //       path string.
       delegate.createTable(ident, columns, partitions, properties)
@@ -376,9 +413,10 @@ class UCSingleCatalog
         properties,
         "CREATE OR REPLACE TABLE")
     }.getOrElse {
-      // Creating a new table.
+      // Creating a new table -- route through the same gate as `createTable` so a fresh
+      // CREATE OR REPLACE picks up the UC Delta API path when it's available.
       validateManagedDeltaCreateProperties(properties)
-      stageManagedDeltaTableAndGetProps(ident, properties)
+      managedDeltaCreatePropsForDelegate(ident, properties)
     }
     UCSingleCatalog.requireProviderSpecified("CREATE OR REPLACE TABLE", newProps)
     stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
@@ -415,9 +453,16 @@ class UCSingleCatalog
       properties: util.Map[String, String]): StagedTable = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val stagingCatalog = requireStagingCatalog("CREATE TABLE AS SELECT (CTAS)")
-    if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
-      val newProps = stageManagedDeltaTableAndGetProps(ident, properties)
-      stagingCatalog.stageCreate(ident, schema, partitions, newProps)
+    if (UCSingleCatalog.isManagedTable(properties, ident)) {
+      if (UCSingleCatalog.hasDeltaProvider(properties)) {
+        // Managed Delta table
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
+        stagingCatalog.stageCreate(ident, schema, partitions, newProps)
+      } else {
+        // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
+        // tables. Surface the same friendly error the legacy staging path used to produce.
+        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
+      }
     } else if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
       val newProps = prepareExternalTableProperties(properties)
       stagingCatalog.stageCreate(ident, schema, partitions, newProps)
@@ -428,6 +473,7 @@ class UCSingleCatalog
 }
 
 object UCSingleCatalog {
+  // DeltaCatalog loading status for testing purpose.
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
@@ -474,12 +520,17 @@ object UCSingleCatalog {
    * @param ident the table identifier
    * @return true if the table should be managed, false otherwise
    */
-  private def isManagedDeltaTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
+  private def isManagedTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
     !hasExternalClause && !hasLocationClause && !isPathTable
   }
+
+  /** Returns true when `USING <format>` is `delta`. */
+  def hasDeltaProvider(properties: util.Map[String, String]): Boolean =
+    Option(properties.get(TableCatalog.PROP_PROVIDER))
+      .exists(_.equalsIgnoreCase("delta"))
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
     if (namespace.length > 1) {
