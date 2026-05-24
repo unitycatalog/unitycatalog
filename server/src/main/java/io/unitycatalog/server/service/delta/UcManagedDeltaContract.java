@@ -39,17 +39,22 @@ public final class UcManagedDeltaContract {
   public static final List<TableFeature> REQUIRED_FEATURES =
       List.of(
           TableFeature.CATALOG_MANAGED,
-          TableFeature.DELETION_VECTORS,
           TableFeature.V2_CHECKPOINT,
           TableFeature.VACUUM_PROTOCOL_CHECK,
           TableFeature.IN_COMMIT_TIMESTAMP);
 
   /**
    * Suggested features. {@code domainMetadata} is conditionally required with {@code rowTracking}
-   * but is advertised as suggested so clients that enable row tracking enable it too.
+   * but is advertised as suggested so clients that enable row tracking enable it too. {@code
+   * deletionVectors} is suggested rather than required because Iceberg V2 export is not compatible
+   * with it; clients that enable Iceberg uniform must opt out.
    */
   public static final List<TableFeature> SUGGESTED_FEATURES =
-      List.of(TableFeature.COLUMN_MAPPING, TableFeature.DOMAIN_METADATA, TableFeature.ROW_TRACKING);
+      List.of(
+          TableFeature.COLUMN_MAPPING,
+          TableFeature.DELETION_VECTORS,
+          TableFeature.DOMAIN_METADATA,
+          TableFeature.ROW_TRACKING);
 
   // Wire-format spec-name lists, computed once from the typed feature lists above.
   public static final List<String> REQUIRED_READER_FEATURES = readerFeaturesOf(REQUIRED_FEATURES);
@@ -64,7 +69,6 @@ public final class UcManagedDeltaContract {
   public static final Map<String, String> REQUIRED_FIXED_PROPERTIES =
       Map.of(
           TableProperties.CHECKPOINT_POLICY, "v2",
-          TableProperties.ENABLE_DELETION_VECTORS, "true",
           TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
 
   /**
@@ -83,6 +87,7 @@ public final class UcManagedDeltaContract {
 
   private static Map<String, String> buildSuggestedProperties() {
     Map<String, String> props = new HashMap<>();
+    props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
     props.put(TableProperties.ENABLE_ROW_TRACKING, "true");
     props.put(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_ID_COLUMN_NAME, null);
     props.put(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME, null);
