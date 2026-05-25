@@ -7,7 +7,6 @@ package io.unitycatalog.spark
 
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
 import org.apache.spark.sql.connector.catalog.{
-  Column,
   Identifier,
   MetadataTable,
   Table,
@@ -83,9 +82,6 @@ trait ViewSupport extends TableViewCatalog { self: UCSingleCatalog =>
   override def createTable(
       ident: Identifier,
       tableInfo: TableInfo): Table = {
-    val columns = tableInfo.columns().map { field =>
-      Column.create(field.name, field.dataType, field.comment, field.metadata)
-    }.toArray
-    createTable(ident, columns, tableInfo.partitions(), tableInfo.properties())
+    createTable(ident, tableInfo.columns(), tableInfo.partitions(), tableInfo.properties())
   }
 }
