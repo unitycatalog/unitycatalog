@@ -136,7 +136,7 @@ an LLM), which are exposed with a UC interface through the use of the `unitycata
 from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit
 
 # Pass the UC function name that we created to the constructor
-toolkit = UCFunctionToolkit(function_names=[func_name])
+toolkit = UCFunctionToolkit(function_names=[func_name], client=client)
 
 # Get the LlamaIndex-compatible tools definitions
 tools = toolkit.tools
