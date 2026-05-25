@@ -23,42 +23,52 @@ from unitycatalog.client import (
 
 @pytest.fixture(scope="session", autouse=True)
 def uc_server():
-    # Start server
+    log_file = "/tmp/server_log.txt"
+    process = None
     try:
-        log_file = "/tmp/server_log.txt"
-        with open(log_file, 'w') as fp:
-            process = subprocess.Popen("bin/start-uc-server", shell=True, stdout=fp, stderr=fp, preexec_fn=os.setsid)
-            print(f">> Started server with PID {os.getpgid(process.pid)}")
-            return_code = process.poll()
-            if return_code is not None:
-                with open(log_file, 'r') as lf:
-                    print(f"Error starting process:\n{lf.read()}")
-                raise Exception(f"Failed to start server. Return code: {return_code}")
-            print(">> Waiting for server to accept connections ...")
-            for _ in range(90):
-                try:
-                    response = requests.head("http://localhost:8081", timeout=60)
-                    if response.status_code == 200:
-                        print("Server is running.")
-                        break
-                except requests.RequestException as e:
-                    pass
+        fp = open(log_file, "w")
+        try:
+            process = subprocess.Popen(
+                "bin/start-uc-server",
+                shell=True,
+                stdout=fp,
+                stderr=fp,
+                preexec_fn=os.setsid,
+            )
+        finally:
+            fp.close()
 
-                time.sleep(2)
-            else:
-                with open(log_file, 'r') as lf:
-                    print(f">> Server is taking too long to get ready, failing tests. Log:\n{lf.read()}")
-                raise Exception(f"Server took too long to start. Log:\n{lf.read()}")
+        print(f">> Started server with PID {os.getpgid(process.pid)}")
+        print(">> Waiting for server to accept connections ...")
+        for _ in range(90):
+            if process.poll() is not None:
+                with open(log_file, "r") as lf:
+                    log = lf.read()
+                raise Exception(
+                    f"Server exited early (rc={process.returncode}). Log:\n{log}"
+                )
+            try:
+                response = requests.head("http://localhost:8081", timeout=5)
+                if response.status_code < 500:
+                    print("Server is running.")
+                    break
+            except requests.RequestException:
+                pass
+            time.sleep(2)
+        else:
+            with open(log_file, "r") as lf:
+                log = lf.read()
+            raise Exception(f"Server took too long to start. Log:\n{log}")
+
         yield
 
-    # Stop server
     finally:
-        try:
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-            print(">> Stopped the server")
-        except ProcessLookupError:
-            # Process already terminated
-            pass
+        if process is not None:
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                print(">> Stopped the server")
+            except ProcessLookupError:
+                pass
 
 
 @pytest_asyncio.fixture()
