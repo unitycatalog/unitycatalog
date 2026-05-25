@@ -25,7 +25,9 @@ import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -204,6 +206,32 @@ public class DeltaKernelUtils {
         at.addRule();
       }
       return at.render();
+    } catch (Exception e) {
+      throw new IllegalArgumentException("Failed to read Delta table", e);
+    }
+  }
+
+  public static List<Map<String, String>> readDeltaTableAsRecords(
+      String tablePath, TemporaryCredentials temporaryCredentials, int maxResults) {
+    Engine engine = getEngine(URI.create(tablePath), temporaryCredentials);
+    try {
+      Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
+      Snapshot snapshot = table.getLatestSnapshot(engine);
+      StructType readSchema = snapshot.getSchema();
+      ScanBuilder scanBuilder = snapshot.getScanBuilder().withReadSchema(readSchema);
+      List<Row> rowData =
+          DeltaKernelReadUtils.readData(engine, readSchema, scanBuilder.build(), maxResults);
+
+      List<Map<String, String>> records = new ArrayList<>();
+      for (Row row : rowData) {
+        Map<String, String> record = new LinkedHashMap<>();
+        for (int colOrdinal = 0; colOrdinal < readSchema.length(); colOrdinal++) {
+          String colName = readSchema.at(colOrdinal).getName();
+          record.put(colName, DeltaKernelReadUtils.getValue(row, colOrdinal));
+        }
+        records.add(record);
+      }
+      return records;
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to read Delta table", e);
     }

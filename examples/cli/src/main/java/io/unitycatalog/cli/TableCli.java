@@ -57,7 +57,7 @@ public class TableCli {
         output = getTable(tablesApi, json);
         break;
       case CliUtils.READ:
-        output = readTable(temporaryCredentialsApi, tablesApi, json);
+        output = readTable(temporaryCredentialsApi, tablesApi, json, cmd);
         break;
       case CliUtils.WRITE:
         output = writeTable(temporaryCredentialsApi, tablesApi, json);
@@ -220,8 +220,11 @@ public class TableCli {
   }
 
   private static String readTable(
-      TemporaryCredentialsApi temporaryCredentialsApi, TablesApi tablesApi, JSONObject json)
-      throws ApiException {
+      TemporaryCredentialsApi temporaryCredentialsApi,
+      TablesApi tablesApi,
+      JSONObject json,
+      CommandLine cmd)
+      throws ApiException, JsonProcessingException {
     String fullTableName = json.getString(CliParams.FULL_NAME.getServerParam());
     TableInfo info =
         tablesApi.getTable(
@@ -242,6 +245,15 @@ public class TableCli {
               new GenerateTemporaryTableCredential()
                   .tableId(tableId)
                   .operation(TableOperation.READ));
+      boolean jsonOutput =
+          cmd.hasOption(CliUtils.OUTPUT)
+              && ("json".equals(cmd.getOptionValue(CliUtils.OUTPUT))
+                  || "jsonPretty".equals(cmd.getOptionValue(CliUtils.OUTPUT)));
+      if (jsonOutput) {
+        return objectWriter.writeValueAsString(
+            DeltaKernelUtils.readDeltaTableAsRecords(
+                info.getStorageLocation(), temporaryCredentials, maxResults));
+      }
       return DeltaKernelUtils.readDeltaTable(
           info.getStorageLocation(), temporaryCredentials, maxResults);
     } catch (Exception e) {
