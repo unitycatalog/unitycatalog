@@ -6,7 +6,15 @@
 package io.unitycatalog.spark
 
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
-import org.apache.spark.sql.connector.catalog.{Identifier, MetadataTable, Table, TableInfo, TableViewCatalog, ViewInfo}
+import org.apache.spark.sql.connector.catalog.{
+  Column,
+  Identifier,
+  MetadataTable,
+  Table,
+  TableInfo,
+  TableViewCatalog,
+  ViewInfo
+}
 
 /**
  * Spark-4.2-only mixin providing the view-side overrides that
@@ -68,16 +76,16 @@ trait ViewSupport extends TableViewCatalog { self: UCSingleCatalog =>
   override def loadTableOrView(ident: Identifier): Table = delegate.loadTable(ident)
 
   /**
-   * Spark-4.2-only `createTable(Identifier, TableInfo)` overload. The Spark 4.2
-   * `TableCatalog` interface added this overload that takes the new
-   * `org.apache.spark.sql.connector.catalog.TableInfo` typed payload (extends to
-   * `ViewInfo` for view creates). Delegates to the existing column/partitions/properties
-   * overload through `delegate`.
+   * Spark-4.2-only `createTable(Identifier, TableInfo)` overload. Spark 4.2 routes CREATE TABLE
+   * through this entry point; reuse the shared 4-arg path so external-table validation and
+   * managed-Delta staging stay centralized.
    */
   override def createTable(
       ident: Identifier,
       tableInfo: TableInfo): Table = {
-    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    delegate.createTable(ident, tableInfo)
+    val columns = tableInfo.columns().map { field =>
+      Column.create(field.name, field.dataType, field.comment, field.metadata)
+    }.toArray
+    createTable(ident, columns, tableInfo.partitions(), tableInfo.properties())
   }
 }

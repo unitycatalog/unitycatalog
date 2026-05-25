@@ -1090,7 +1090,9 @@ private[spark] class UCProxy(
     try {
       schemasApi.createSchema(createSchema)
     } catch {
-      case e: ApiException if e.getCode == 409 =>
+      case e: ApiException if (e.getCode == 400 || e.getCode == 409) &&
+        e.getResponseBody != null &&
+        e.getResponseBody.contains("SCHEMA_ALREADY_EXISTS") =>
         throw new NamespaceAlreadyExistsException(namespace)
     }
   }

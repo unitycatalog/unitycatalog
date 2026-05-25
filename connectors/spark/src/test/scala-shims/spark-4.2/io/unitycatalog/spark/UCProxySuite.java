@@ -399,6 +399,7 @@ public class UCProxySuite {
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .name("t1")
+            .tableId("test-table-id")
             .tableType(TableType.EXTERNAL)
             .storageLocation("file:///tmp/t1")
             .dataSourceFormat(io.unitycatalog.client.model.DataSourceFormat.PARQUET)

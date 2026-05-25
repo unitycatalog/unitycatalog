@@ -70,6 +70,14 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
 
   override def loadTableOrView(ident: Identifier): Table = loadTable(ident)
 
+  override def loadView(ident: Identifier): ViewInfo = {
+    val t = getUcTable(ident)
+    if (!UCSingleCatalog.isViewLikeTableType(t.getTableType)) {
+      throw new NoSuchViewException(ident)
+    }
+    toViewInfo(t)
+  }
+
   override def createView(ident: Identifier, info: ViewInfo): ViewInfo = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val properties: util.Map[String, String] = info.properties()
