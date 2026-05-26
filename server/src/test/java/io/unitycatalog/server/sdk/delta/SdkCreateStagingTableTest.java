@@ -82,36 +82,37 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
     assertThat(resp.getRequiredProtocol().getReaderFeatures())
         .containsExactlyInAnyOrder(
             TableFeature.CATALOG_MANAGED.specName(),
-            TableFeature.DELETION_VECTORS.specName(),
             TableFeature.V2_CHECKPOINT.specName(),
             TableFeature.VACUUM_PROTOCOL_CHECK.specName());
     assertThat(resp.getRequiredProtocol().getWriterFeatures())
         .containsExactlyInAnyOrder(
             TableFeature.CATALOG_MANAGED.specName(),
-            TableFeature.DELETION_VECTORS.specName(),
             TableFeature.IN_COMMIT_TIMESTAMP.specName(),
             TableFeature.V2_CHECKPOINT.specName(),
             TableFeature.VACUUM_PROTOCOL_CHECK.specName());
     assertThat(resp.getSuggestedProtocol().getReaderFeatures())
-        .containsExactlyInAnyOrder(TableFeature.COLUMN_MAPPING.specName());
+        .containsExactlyInAnyOrder(
+            TableFeature.COLUMN_MAPPING.specName(), TableFeature.DELETION_VECTORS.specName());
     assertThat(resp.getSuggestedProtocol().getWriterFeatures())
         .containsExactlyInAnyOrder(
             TableFeature.COLUMN_MAPPING.specName(),
+            TableFeature.DELETION_VECTORS.specName(),
             TableFeature.DOMAIN_METADATA.specName(),
             TableFeature.ROW_TRACKING.specName());
 
     assertThat(resp.getRequiredProperties())
         .containsEntry(TableProperties.CHECKPOINT_POLICY, "v2")
-        .containsEntry(TableProperties.ENABLE_DELETION_VECTORS, "true")
         .containsEntry(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true")
         // The rule-based property binds the Delta table to the UC-allocated tableId.
         .containsEntry(TableProperties.UC_TABLE_ID, resp.getTableId().toString())
+        .doesNotContainKey(TableProperties.ENABLE_DELETION_VECTORS)
         // ICT enablement version/timestamp are not advertised: catalog-managed tables enable
         // inCommitTimestamp at version 0, and per the Delta protocol the enablement
         // properties only apply when ICT was enabled mid-table.
         .doesNotContainKey(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION)
         .doesNotContainKey(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP);
     assertThat(resp.getSuggestedProperties())
+        .containsEntry(TableProperties.ENABLE_DELETION_VECTORS, "true")
         .containsEntry(TableProperties.ENABLE_ROW_TRACKING, "true")
         // Null value = client generates a UUID-suffixed column name when enabling row tracking.
         .containsEntry(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_ID_COLUMN_NAME, null)

@@ -72,6 +72,8 @@ public final class DeltaPropertyMapper {
       merged.put(
           TableProperties.LAST_COMMIT_TIMESTAMP, String.valueOf(req.getLastCommitTimestampMs()));
     }
+    // For createTable it's always the 0 commit
+    merged.put(TableProperties.LAST_UPDATE_VERSION, "0");
     return merged;
   }
 
@@ -85,6 +87,8 @@ public final class DeltaPropertyMapper {
    */
   public static void deriveFromProtocol(Map<String, String> props, DeltaProtocol protocol) {
     if (protocol == null) return;
+    props.put(TableProperties.MIN_READER_VERSION, protocol.getMinReaderVersion().toString());
+    props.put(TableProperties.MIN_WRITER_VERSION, protocol.getMinWriterVersion().toString());
     addFeatureProperties(props, protocol.getReaderFeatures());
     addFeatureProperties(props, protocol.getWriterFeatures());
   }

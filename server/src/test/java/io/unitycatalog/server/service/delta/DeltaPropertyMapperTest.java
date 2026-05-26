@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,6 +50,8 @@ public class DeltaPropertyMapperTest {
     Map<String, String> props = new HashMap<>();
     DeltaPropertyMapper.deriveFromProtocol(props, protocol);
     assertThat(props)
+        .containsEntry(TableProperties.MIN_READER_VERSION, "3")
+        .containsEntry(TableProperties.MIN_WRITER_VERSION, "7")
         .containsEntry(featureKey(TableFeature.CATALOG_MANAGED.specName()), "supported")
         .containsEntry(featureKey(TableFeature.DELETION_VECTORS.specName()), "supported")
         .containsEntry(featureKey(TableFeature.V2_CHECKPOINT.specName()), "supported")
@@ -63,11 +66,14 @@ public class DeltaPropertyMapperTest {
   }
 
   @Test
-  public void deriveFromProtocolEmptyFeatureListsIsNoop() {
+  public void deriveFromProtocolEmptyFeatureListsStillEmitsVersionProps() {
     DeltaProtocol protocol = new DeltaProtocol().minReaderVersion(3).minWriterVersion(7);
     Map<String, String> props = new HashMap<>();
     DeltaPropertyMapper.deriveFromProtocol(props, protocol);
-    assertThat(props).isEmpty();
+    assertThat(props)
+        .containsOnly(
+            entry(TableProperties.MIN_READER_VERSION, "3"),
+            entry(TableProperties.MIN_WRITER_VERSION, "7"));
   }
 
   // ---------- deriveFromDomainMetadata ----------
@@ -141,8 +147,10 @@ public class DeltaPropertyMapperTest {
 
   @Test
   public void mergeTolerantOfAllNulls() {
-    // Empty request: no protocol, no domain-metadata, no properties, no timestamp.
-    assertThat(DeltaPropertyMapper.buildStoredProperties(new CreateTableRequest())).isEmpty();
+    // Empty request: no protocol, no domain-metadata, no properties, no timestamp. The only
+    // entry produced is the unconditional delta.lastUpdateVersion=0 from buildStoredProperties.
+    assertThat(DeltaPropertyMapper.buildStoredProperties(new CreateTableRequest()))
+        .containsOnly(entry(TableProperties.LAST_UPDATE_VERSION, "0"));
   }
 
   @Test
@@ -164,7 +172,8 @@ public class DeltaPropertyMapperTest {
         .containsEntry(featureKey(TableFeature.ROW_TRACKING.specName()), "supported")
         .containsEntry(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK, "100")
         .containsEntry("custom.key", "custom.value")
-        .containsEntry(TableProperties.LAST_COMMIT_TIMESTAMP, "1700000000000");
+        .containsEntry(TableProperties.LAST_COMMIT_TIMESTAMP, "1700000000000")
+        .containsEntry(TableProperties.LAST_UPDATE_VERSION, "0");
   }
 
   @Test
