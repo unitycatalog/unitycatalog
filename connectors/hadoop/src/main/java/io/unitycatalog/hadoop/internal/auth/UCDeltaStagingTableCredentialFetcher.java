@@ -17,15 +17,10 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
   private final String stagingTableLocation;
 
   UCDeltaStagingTableCredentialFetcher(Configuration conf, TemporaryCredentialsApi api) {
-    // Initial the temporary credentials API.
     Preconditions.checkNotNull(api, "Temporary credentials API is required");
     this.api = api;
-
-    // Initial the staging table id.
-    String rawId = require(conf, UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
-    this.stagingTableId = UUID.fromString(rawId);
-
-    // Initial the staging table location.
+    this.stagingTableId =
+        UUID.fromString(require(conf, UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY));
     this.stagingTableLocation =
         require(conf, UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY);
   }

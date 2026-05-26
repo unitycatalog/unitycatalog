@@ -49,18 +49,15 @@ public interface GenericCredentialFetcher {
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY,
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE);
     if (useDeltaCredentialsApi) {
+      io.unitycatalog.client.delta.api.TemporaryCredentialsApi deltaApi =
+          new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient);
       String stagingTableId = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
       if (stagingTableId != null && !stagingTableId.isEmpty()) {
-        // Get the credential for the staging table, via UC Delta API.
-        return forUcDeltaStagingTable(
-            conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
+        return forUcDeltaStagingTable(conf, deltaApi);
       } else {
-        // Get the credentials for the normal table, via UC Delta API.
-        return forUcDelta(
-            conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
+        return forUcDelta(conf, deltaApi);
       }
     } else {
-      // Get the credentials for either path or table, via legacy UC API.
       return forUc(conf, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
     }
   }

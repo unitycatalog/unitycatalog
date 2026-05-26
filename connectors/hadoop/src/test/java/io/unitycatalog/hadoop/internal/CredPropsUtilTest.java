@@ -879,6 +879,8 @@ class CredPropsUtilTest {
             "s3://bucket/staging",
             Map.of());
 
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY))
+        .isEqualTo("true");
     assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY))
         .isEqualTo("staging-uuid");
     assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY))

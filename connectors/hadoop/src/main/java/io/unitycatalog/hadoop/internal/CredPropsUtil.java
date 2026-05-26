@@ -860,6 +860,7 @@ public class CredPropsUtil {
       Map<String, String> appVersions)
       throws ApiException {
     Configuration reqConf = new Configuration(false);
+    reqConf.set(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
     reqConf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId);
     reqConf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, location);
     TemporaryCredentials creds =
