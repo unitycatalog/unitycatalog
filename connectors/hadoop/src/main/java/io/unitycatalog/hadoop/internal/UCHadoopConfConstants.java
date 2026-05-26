@@ -83,6 +83,8 @@ public class UCHadoopConfConstants {
   // Key for UC Delta staging table credential requests.
   public static final String UC_DELTA_STAGING_TABLE_ID_KEY =
       "fs.unitycatalog.delta.staging.table.id";
+  public static final String UC_DELTA_STAGING_TABLE_LOCATION_KEY =
+      "fs.unitycatalog.delta.staging.table.location";
 
   // Keys for path based temporary credential requests.
   public static final String UC_PATH_KEY = "fs.unitycatalog.path";

@@ -52,7 +52,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
     GenericCredentialFetcher fetcher = GenericCredentialFetcher.forUcDeltaStagingTable(conf, api);
 
     conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, UUID.randomUUID().toString());
-    conf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, "s3://bucket/mutated");
+    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://bucket/mutated");
 
     fetcher.createCredential();
 
@@ -75,7 +75,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
   @Test
   void factoryThrowsWhenConfMissingStagingTableId() {
     Configuration conf = new Configuration(false);
-    conf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, LOCATION);
+    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, LOCATION);
 
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     assertThatThrownBy(() -> GenericCredentialFetcher.forUcDeltaStagingTable(conf, api))
@@ -91,13 +91,13 @@ class UCDeltaStagingTableCredentialFetcherTest {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     assertThatThrownBy(() -> GenericCredentialFetcher.forUcDeltaStagingTable(conf, api))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY);
+        .hasMessageContaining(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY);
   }
 
   private static Configuration stagingConf() {
     Configuration conf = new Configuration(false);
     conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, STAGING_ID.toString());
-    conf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, LOCATION);
+    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, LOCATION);
     return conf;
   }
 

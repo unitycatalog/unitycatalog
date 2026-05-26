@@ -11,16 +11,23 @@ import org.apache.hadoop.conf.Configuration;
 
 /** Adapts the UC Delta staging table credentials SDK API for Hadoop token providers. */
 final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFetcher {
+
   private final TemporaryCredentialsApi api;
   private final UUID stagingTableId;
-  private final String location;
+  private final String stagingTableLocation;
 
   UCDeltaStagingTableCredentialFetcher(Configuration conf, TemporaryCredentialsApi api) {
-    Preconditions.checkNotNull(api, "api is required");
+    // Initial the temporary credentials API.
+    Preconditions.checkNotNull(api, "Temporary credentials API is required");
     this.api = api;
+
+    // Initial the staging table id.
     String rawId = require(conf, UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
     this.stagingTableId = UUID.fromString(rawId);
-    this.location = require(conf, UCHadoopConfConstants.UC_DELTA_LOCATION_KEY);
+
+    // Initial the staging table location.
+    this.stagingTableLocation =
+        require(conf, UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY);
   }
 
   @Override
@@ -30,16 +37,19 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
         response != null,
         "UC Delta API returned no credentials response for staging table '%s'.",
         stagingTableId);
+
     return new GenericCredential(
         DeltaStorageCredentialUtil.toTemporaryCredentials(
             DeltaStorageCredentialUtil.selectForLocation(
-                location, response.getStorageCredentials())));
+                stagingTableLocation, response.getStorageCredentials())));
   }
 
   private static String require(Configuration conf, String key) {
     String value = conf.get(key);
     Preconditions.checkArgument(
-        value != null && !value.isEmpty(), "'%s' is not set in hadoop configuration", key);
+        value != null && !value.isEmpty(),
+        "The required '%s' is not set in hadoop configuration",
+        key);
     return value;
   }
 }

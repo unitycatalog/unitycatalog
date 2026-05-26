@@ -121,13 +121,13 @@ public class CredPropsUtil {
       return self();
     }
 
-    public T deltaStagingTableId(String stagingTableId, String location) {
+    public T ucDeltaStagingTableId(String stagingTableId, String location) {
       Preconditions.checkState(
           !builder.containsKey(UCHadoopConfConstants.UC_TABLE_ID_KEY)
               && !builder.containsKey(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY),
           "deltaStagingTableId cannot be set with tableId or UC Delta table identifier");
       builder.put(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId);
-      builder.put(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
+      builder.put(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, location);
       return self();
     }
 
@@ -590,7 +590,7 @@ public class CredPropsUtil {
         if (renewCredEnabled) {
           return s3TempCredPropsBuilder(
                   credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-              .deltaStagingTableId(stagingTableId, location)
+              .ucDeltaStagingTableId(stagingTableId, location)
               .appVersions(appVersions)
               .build();
         } else {
@@ -600,7 +600,7 @@ public class CredPropsUtil {
         if (renewCredEnabled) {
           return gcsTempCredPropsBuilder(
                   credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-              .deltaStagingTableId(stagingTableId, location)
+              .ucDeltaStagingTableId(stagingTableId, location)
               .appVersions(appVersions)
               .build();
         } else {
@@ -611,7 +611,7 @@ public class CredPropsUtil {
         if (renewCredEnabled) {
           return abfsTempCredPropsBuilder(
                   credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-              .deltaStagingTableId(stagingTableId, location)
+              .ucDeltaStagingTableId(stagingTableId, location)
               .appVersions(appVersions)
               .build();
         } else {
@@ -860,7 +860,7 @@ public class CredPropsUtil {
       throws ApiException {
     Configuration reqConf = new Configuration(false);
     reqConf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId);
-    reqConf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
+    reqConf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, location);
     TemporaryCredentials creds =
         fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, reqConf);
     return createDeltaStagingTableCredProps(

@@ -50,7 +50,7 @@ public interface GenericCredentialFetcher {
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE);
     if (useDeltaCredentialsApi) {
       String stagingTableId = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
-      if (stagingTableId != null) {
+      if (stagingTableId != null && !stagingTableId.isEmpty()) {
         // Get the credential for the staging table, via UC Delta API.
         return forUcDeltaStagingTable(
             conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
