@@ -43,19 +43,18 @@ import org.apache.hadoop.fs.FileSystem;
 public interface CredScopedKey {
 
   static CredScopedKey create(URI uri, Configuration conf) {
-    // Case 1: Delta staging table — keyed by staging table UUID + location.
-    String stagingTableId = conf.get(UC_DELTA_STAGING_TABLE_ID_KEY);
-    if (stagingTableId != null && !stagingTableId.isEmpty()) {
-      String location = conf.get(UC_DELTA_STAGING_TABLE_LOCATION_KEY);
-      return new DeltaStagingTableCredScopedKey(stagingTableId, location);
-    }
-
     String type = conf.get(UC_CREDENTIALS_TYPE_KEY);
     boolean isDeltaApi =
         conf.getBoolean(
             UC_DELTA_CREDENTIALS_API_ENABLED_KEY, UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE);
+    String stagingTableId = conf.get(UC_DELTA_STAGING_TABLE_ID_KEY);
 
-    if (UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
+    if (stagingTableId != null && !stagingTableId.isEmpty()) {
+      // Case 1: Delta staging table — keyed by staging table UUID + location.
+      String location = conf.get(UC_DELTA_STAGING_TABLE_LOCATION_KEY);
+      return new DeltaStagingTableCredScopedKey(stagingTableId, location);
+
+    } else if (UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
       // Case 2: Path-based credentials — keyed by path + operation.
       String path = conf.get(UC_PATH_KEY);
       String pathOp = conf.get(UC_PATH_OPERATION_KEY);
