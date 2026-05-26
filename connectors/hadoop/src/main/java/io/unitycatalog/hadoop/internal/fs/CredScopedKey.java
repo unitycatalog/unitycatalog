@@ -28,6 +28,7 @@ import org.apache.hadoop.fs.FileSystem;
 public interface CredScopedKey {
 
   static CredScopedKey create(URI uri, Configuration conf) {
+    // Case 1: Delta staging table — keyed by staging table UUID + location.
     String stagingTableId = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
     if (stagingTableId != null && !stagingTableId.isEmpty()) {
       String location = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY);
@@ -35,27 +36,38 @@ public interface CredScopedKey {
     }
 
     String type = conf.get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY);
-    if (UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
-      String path = conf.get(UCHadoopConfConstants.UC_PATH_KEY);
-      String pathOperation = conf.get(UCHadoopConfConstants.UC_PATH_OPERATION_KEY);
-      return new PathCredScopedKey(path, pathOperation);
-    } else if (UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)) {
-      String tableOperation = conf.get(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY);
-      if (conf.getBoolean(
-          UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY,
-          UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE)) {
-        String catalog = conf.get(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY);
-        String schema = conf.get(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY);
-        String tableName = conf.get(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY);
-        String location = conf.get(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY);
-        UCDeltaTableIdentifier identifier = UCDeltaTableIdentifier.of(catalog, schema, tableName);
-        return new DeltaTableCredScopedKey(identifier, tableOperation, location);
-      }
-      String tableId = conf.get(UCHadoopConfConstants.UC_TABLE_ID_KEY);
-      return new TableCredScopedKey(tableId, tableOperation);
-    }
+    boolean isDeltaApi =
+        conf.getBoolean(
+            UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY,
+            UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE);
 
-    return new DefaultCredScopedKey(uri, conf);
+    if (UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
+      // Case 2: Path-based credentials — keyed by path + operation.
+      String path = conf.get(UCHadoopConfConstants.UC_PATH_KEY);
+      String pathOp = conf.get(UCHadoopConfConstants.UC_PATH_OPERATION_KEY);
+      return new PathCredScopedKey(path, pathOp);
+
+    } else if (UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type) && isDeltaApi) {
+      // Case 3: Delta table — keyed by catalog.schema.table + operation + location.
+      String tableOp = conf.get(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY);
+      UCDeltaTableIdentifier identifier =
+          UCDeltaTableIdentifier.of(
+              conf.get(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY),
+              conf.get(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY),
+              conf.get(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY));
+      String location = conf.get(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY);
+      return new DeltaTableCredScopedKey(identifier, tableOp, location);
+
+    } else if (UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)) {
+      // Case 4: UC table (legacy API) — keyed by table ID + operation.
+      String tableOp = conf.get(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY);
+      String tableId = conf.get(UCHadoopConfConstants.UC_TABLE_ID_KEY);
+      return new TableCredScopedKey(tableId, tableOp);
+
+    } else {
+      // Case 5: Fallback — keyed by URI scheme + authority.
+      return new DefaultCredScopedKey(uri, conf);
+    }
   }
 
   class PathCredScopedKey implements CredScopedKey {
