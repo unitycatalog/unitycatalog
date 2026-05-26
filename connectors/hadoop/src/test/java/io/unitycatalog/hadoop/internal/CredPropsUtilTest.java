@@ -697,6 +697,99 @@ class CredPropsUtilTest {
     assertThatThrownBy(() -> props.put("k", "v")).isInstanceOf(UnsupportedOperationException.class);
   }
 
+  // GCS conflict-check setting propagation.
+
+  @Test
+  void gcsConflictCheckDefaultsFalse() {
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "gs",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            gcsCreds(),
+            Map.of());
+
+    assertThat(props).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
+  }
+
+  @Test
+  void gcsConflictCheckRespectsUserOverrideToTrue() {
+    Configuration conf = new Configuration(false);
+    conf.set("fs.gs.create.items.conflict.check.enable", "true");
+
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false,
+            false,
+            conf,
+            "gs",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            gcsCreds(),
+            Map.of());
+
+    assertThat(props).containsEntry("fs.gs.create.items.conflict.check.enable", "true");
+  }
+
+  @Test
+  void gcsConflictCheckDefaultWithRenewalEnabled() {
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "gs",
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            TableOperation.READ_WRITE,
+            gcsCreds(),
+            Map.of());
+
+    assertThat(props).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
+  }
+
+  @Test
+  void gcsConflictCheckDefaultPathAndDeltaCredProps() {
+    Map<String, String> pathProps =
+        CredPropsUtil.createPathCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "gs",
+            "http://uc",
+            null,
+            "gs://bucket/key",
+            io.unitycatalog.client.model.PathOperation.PATH_READ,
+            gcsCreds(),
+            Map.of());
+
+    assertThat(pathProps).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
+
+    Map<String, String> deltaProps =
+        CredPropsUtil.createDeltaTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "gs",
+            "http://uc",
+            null,
+            UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
+            "gs://bucket/tbl",
+            CredentialOperation.READ_WRITE,
+            gcsCreds(),
+            Map.of());
+
+    assertThat(deltaProps).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
+  }
+
   private static GenericCredentialFetcher mockGenericCredentialFetcher(TemporaryCredentials creds) {
     GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {

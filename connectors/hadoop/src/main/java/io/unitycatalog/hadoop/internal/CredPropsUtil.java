@@ -57,6 +57,7 @@ public class CredPropsUtil {
   private static final String GCS_ACCESS_TOKEN_KEY = "fs.gs.auth.access.token.credential";
   private static final String GCS_ACCESS_TOKEN_EXPIRATION_KEY =
       "fs.gs.auth.access.token.expiration";
+  private static final String GCS_CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
   private static final String ABFS_FIXED_SAS_TOKEN_KEY = "fs.azure.sas.fixed.token";
 
   private abstract static class PropsBuilder<T extends PropsBuilder<T>> {
@@ -211,8 +212,11 @@ public class CredPropsUtil {
   private static class GcsPropsBuilder extends PropsBuilder<GcsPropsBuilder> {
 
     GcsPropsBuilder(boolean credScopedFsEnabled, Configuration hadoopConf) {
-      // Common properties for GCS.
-      set("fs.gs.create.items.conflict.check.enable", "true");
+      // The upstream GCS connector defaults this to true which causes the connector to
+      // stat every ancestor directory on file creation. With UC-vended downscoped tokens
+      // (scoped to a table's path prefix) these ancestor stats return 403. Default to
+      // false; users with broader credentials can opt back in via Hadoop/Spark config.
+      set(GCS_CONFLICT_CHECK_KEY, hadoopConf.get(GCS_CONFLICT_CHECK_KEY, "false"));
       set("fs.gs.impl.disable.cache", "true");
 
       if (credScopedFsEnabled) {
