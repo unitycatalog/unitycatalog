@@ -98,16 +98,18 @@ public class CredPropsUtil {
 
     public T tableId(String tableId) {
       Preconditions.checkState(
-          !builder.containsKey(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY),
-          "tableId cannot be set with UC Delta table identifier");
+          !builder.containsKey(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY)
+              && !builder.containsKey(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY),
+          "tableId cannot be set with UC Delta table or staging table identifier");
       builder.put(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
       return self();
     }
 
     public T ucDeltaTableIdentifier(UCDeltaTableIdentifier identifier, String location) {
       Preconditions.checkState(
-          !builder.containsKey(UCHadoopConfConstants.UC_TABLE_ID_KEY),
-          "UC Delta table identifier cannot be set with tableId");
+          !builder.containsKey(UCHadoopConfConstants.UC_TABLE_ID_KEY)
+              && !builder.containsKey(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY),
+          "UC Delta table identifier cannot be set with tableId or staging table identifier");
       builder.put(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
       builder.put(
           UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,

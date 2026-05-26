@@ -503,7 +503,7 @@ class CredPropsUtilTest {
 
     assertThatThrownBy(() -> builder.tableId("table-id"))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("tableId cannot be set with UC Delta table identifier");
+        .hasMessageContaining("tableId cannot be set");
   }
 
   @Test
@@ -517,7 +517,32 @@ class CredPropsUtilTest {
                 builder.ucDeltaTableIdentifier(
                     UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "s3://bucket/tbl"))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("UC Delta table identifier cannot be set with tableId");
+        .hasMessageContaining("UC Delta table identifier cannot be set");
+  }
+
+  @Test
+  void propsBuilderRejectsTableIdAfterStagingTableId() {
+    CredPropsUtil.S3PropsBuilder builder =
+        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
+    builder.deltaStagingTableId("staging-id", "s3://bucket/staging");
+
+    assertThatThrownBy(() -> builder.tableId("table-id"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("tableId cannot be set");
+  }
+
+  @Test
+  void propsBuilderRejectsDeltaTableIdentifierAfterStagingTableId() {
+    CredPropsUtil.S3PropsBuilder builder =
+        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
+    builder.deltaStagingTableId("staging-id", "s3://bucket/staging");
+
+    assertThatThrownBy(
+            () ->
+                builder.ucDeltaTableIdentifier(
+                    UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "s3://bucket/tbl"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("UC Delta table identifier cannot be set");
   }
 
   @Test

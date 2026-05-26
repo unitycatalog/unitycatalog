@@ -71,7 +71,7 @@ public final class UCCredentialHadoopConfs {
 
   /**
    * Collects credential settings and produces Hadoop configuration properties via {@link
-   * #buildForTable} or {@link #buildForPath}.
+   * #buildForTable}, {@link #buildForStagingTable}, or {@link #buildForPath}.
    */
   public static final class Builder {
 
