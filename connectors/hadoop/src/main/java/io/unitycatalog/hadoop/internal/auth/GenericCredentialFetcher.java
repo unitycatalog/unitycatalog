@@ -44,19 +44,23 @@ public interface GenericCredentialFetcher {
    * apiClient} already carries authentication.
    */
   static GenericCredentialFetcher create(ApiClient apiClient, Configuration conf) {
-    String stagingTableId = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
-    if (stagingTableId != null) {
-      return forUcDeltaStagingTable(
-          conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
-    }
     boolean useDeltaCredentialsApi =
         conf.getBoolean(
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY,
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE);
     if (useDeltaCredentialsApi) {
-      return forUcDelta(
-          conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
+      String stagingTableId = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
+      if (stagingTableId != null) {
+        // Get the credential for the staging table, via UC Delta API.
+        return forUcDeltaStagingTable(
+            conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
+      } else {
+        // Get the credentials for the normal table, via UC Delta API.
+        return forUcDelta(
+            conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
+      }
     } else {
+      // Get the credentials for either path or table, via legacy UC API.
       return forUc(conf, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
     }
   }
