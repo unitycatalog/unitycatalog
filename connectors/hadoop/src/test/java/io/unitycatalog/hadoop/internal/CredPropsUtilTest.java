@@ -382,6 +382,7 @@ class CredPropsUtilTest {
         .containsEntry(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "staging-uuid")
         .containsEntry(
             UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://bucket/staging")
+        .containsEntry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true")
         .containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak")
         .containsEntry(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, "sk")
         .containsEntry(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st")
@@ -408,6 +409,7 @@ class CredPropsUtilTest {
         .containsEntry(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "staging-uuid")
         .containsEntry(
             UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "gs://bucket/staging")
+        .containsEntry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true")
         .containsEntry(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, "token");
   }
 
@@ -431,6 +433,7 @@ class CredPropsUtilTest {
         .containsEntry(
             UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY,
             "abfss://container@account.dfs.core.windows.net/staging")
+        .containsEntry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true")
         .containsEntry(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, "sas");
   }
 

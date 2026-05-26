@@ -126,6 +126,7 @@ public class CredPropsUtil {
           !builder.containsKey(UCHadoopConfConstants.UC_TABLE_ID_KEY)
               && !builder.containsKey(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY),
           "deltaStagingTableId cannot be set with tableId or UC Delta table identifier");
+      builder.put(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
       builder.put(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId);
       builder.put(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, location);
       return self();

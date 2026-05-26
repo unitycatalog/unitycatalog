@@ -10,13 +10,15 @@ import org.apache.hadoop.fs.FileSystem;
 /**
  * Cache key that identifies a credential scope for {@link CredScopedFileSystem}.
  *
- * <p>There are four implementations:
+ * <p>There are five implementations:
  *
  * <ul>
  *   <li>{@link TableCredScopedKey} — keyed by table ID and operation; used for table-level
  *       temporary credentials via the UC credentials API.
  *   <li>{@link DeltaTableCredScopedKey} — keyed by table identity, operation, and location; used
  *       for table-level temporary credentials via the UC Delta credentials API.
+ *   <li>{@link DeltaStagingTableCredScopedKey} — keyed by staging table ID and location; used for
+ *       staging-table-level temporary credentials via the UC Delta credentials API.
  *   <li>{@link PathCredScopedKey} — keyed by path and operation; used for path-level temporary
  *       credentials.
  *   <li>{@link DefaultCredScopedKey} — keyed by URI scheme and authority; used as a fallback when
@@ -26,6 +28,12 @@ import org.apache.hadoop.fs.FileSystem;
 public interface CredScopedKey {
 
   static CredScopedKey create(URI uri, Configuration conf) {
+    String stagingTableId = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
+    if (stagingTableId != null && !stagingTableId.isEmpty()) {
+      String location = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY);
+      return new DeltaStagingTableCredScopedKey(stagingTableId, location);
+    }
+
     String type = conf.get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY);
     if (UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
       String path = conf.get(UCHadoopConfConstants.UC_PATH_KEY);
@@ -140,6 +148,39 @@ public interface CredScopedKey {
           + identifier
           + ", op="
           + tableOperation
+          + ", location="
+          + location
+          + "}";
+    }
+  }
+
+  class DeltaStagingTableCredScopedKey implements CredScopedKey {
+    private final String stagingTableId;
+    private final String location;
+
+    public DeltaStagingTableCredScopedKey(String stagingTableId, String location) {
+      this.stagingTableId = stagingTableId;
+      this.location = location;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (!(o instanceof DeltaStagingTableCredScopedKey)) return false;
+      DeltaStagingTableCredScopedKey that = (DeltaStagingTableCredScopedKey) o;
+      return Objects.equals(stagingTableId, that.stagingTableId)
+          && Objects.equals(location, that.location);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(stagingTableId, location);
+    }
+
+    @Override
+    public String toString() {
+      return "DeltaStagingTableCredScopedKey{stagingTableId="
+          + stagingTableId
           + ", location="
           + location
           + "}";
