@@ -20,7 +20,7 @@ jobs:
 
     # Build a human-readable job name from the matrix entry, e.g.:
     #   "All tests (Spark 4.0.0, Delta 4.1.0)"
-    #   "[Non Blocking] Spark tests (Spark 4.2.0-SNAPSHOT, Delta master-SNAPSHOT)"
+    #   "[Non Blocking] Spark tests (Spark 4.2.0-preview5, Delta master-SNAPSHOT)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
       ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
@@ -47,7 +47,7 @@ jobs:
             # Cross-version testing with Delta master is informational; failures
             # indicate upcoming incompatibilities but should not block PRs.
             non-blocking: true
-          - spark-version: "4.2.0-SNAPSHOT"
+          - spark-version: "4.2.0-preview5"
             delta-version: "master-SNAPSHOT"
             validation-mode: "spark-tests"
             non-blocking: true
