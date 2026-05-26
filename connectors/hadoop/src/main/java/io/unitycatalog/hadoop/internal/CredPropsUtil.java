@@ -119,6 +119,16 @@ public class CredPropsUtil {
       return self();
     }
 
+    public T deltaStagingTableId(String stagingTableId, String location) {
+      Preconditions.checkState(
+          !builder.containsKey(UCHadoopConfConstants.UC_TABLE_ID_KEY)
+              && !builder.containsKey(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY),
+          "deltaStagingTableId cannot be set with tableId or UC Delta table identifier");
+      builder.put(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId);
+      builder.put(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
+      return self();
+    }
+
     public T tableOperation(TableOperation tableOp) {
       builder.put(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.getValue());
       return self();
@@ -550,6 +560,67 @@ public class CredPropsUtil {
   }
 
   /**
+   * Builds the Hadoop configuration properties needed to access a Delta staging table's storage.
+   *
+   * @param renewCredEnabled when {@code true}, configures a vended-token provider that
+   *     automatically refreshes credentials before expiry; when {@code false}, embeds the initial
+   *     credentials as static keys.
+   * @param credScopedFsEnabled when {@code true}, overrides {@code fs.<scheme>.impl} with
+   *     CredScopedFileSystem so that filesystem instances are reused per credential scope rather
+   *     than created anew for every file access.
+   * @param hadoopConf the engine's existing Hadoop configuration, used to read any previously
+   *     configured {@code fs.<scheme>.impl} values before they are overridden by
+   *     CredScopedFileSystem.
+   */
+  public static Map<String, String> createDeltaStagingTableCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Configuration hadoopConf,
+      String scheme,
+      String uri,
+      TokenProvider tokenProvider,
+      String stagingTableId,
+      String location,
+      TemporaryCredentials tempCreds,
+      Map<String, String> appVersions) {
+    switch (scheme) {
+      case "s3":
+        if (renewCredEnabled) {
+          return s3TempCredPropsBuilder(
+                  credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
+              .deltaStagingTableId(stagingTableId, location)
+              .appVersions(appVersions)
+              .build();
+        } else {
+          return s3FixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
+        }
+      case "gs":
+        if (renewCredEnabled) {
+          return gcsTempCredPropsBuilder(
+                  credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
+              .deltaStagingTableId(stagingTableId, location)
+              .appVersions(appVersions)
+              .build();
+        } else {
+          return gsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
+        }
+      case "abfss":
+      case "abfs":
+        if (renewCredEnabled) {
+          return abfsTempCredPropsBuilder(
+                  credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
+              .deltaStagingTableId(stagingTableId, location)
+              .appVersions(appVersions)
+              .build();
+        } else {
+          return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
+        }
+      default:
+        return Collections.emptyMap();
+    }
+  }
+
+  /**
    * Builds the Hadoop configuration properties needed to access a table's storage location.
    *
    * @param renewCredEnabled when {@code true}, configures a vended-token provider that
@@ -765,6 +836,40 @@ public class CredPropsUtil {
         identifier,
         location,
         CredentialOperation.fromValue(tableOp.value()),
+        creds,
+        appVersions);
+  }
+
+  /**
+   * Fetches Delta staging table credentials from the UC Delta API and builds Hadoop configuration
+   * properties.
+   */
+  public static Map<String, String> fetchDeltaStagingTableCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Configuration hadoopConf,
+      String scheme,
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      String stagingTableId,
+      String location,
+      Map<String, String> appVersions)
+      throws ApiException {
+    Configuration reqConf = new Configuration(false);
+    reqConf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId);
+    reqConf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
+    TemporaryCredentials creds =
+        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, reqConf);
+    return createDeltaStagingTableCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        hadoopConf,
+        scheme,
+        catalogUri,
+        tokenProvider,
+        stagingTableId,
+        location,
         creds,
         appVersions);
   }

@@ -31,6 +31,12 @@ public interface GenericCredentialFetcher {
     return new UCDeltaGenericCredentialFetcher(conf, api);
   }
 
+  /** Creates a fetcher backed by the UC Delta staging table credentials API. */
+  static GenericCredentialFetcher forUcDeltaStagingTable(
+      Configuration conf, io.unitycatalog.client.delta.api.TemporaryCredentialsApi api) {
+    return new UCDeltaStagingTableCredentialFetcher(conf, api);
+  }
+
   /**
    * Creates a {@link GenericCredentialFetcher} from an already-built {@link ApiClient} and a Hadoop
    * configuration containing only the credential-request keys (type, table/path id, operation, and
@@ -38,6 +44,11 @@ public interface GenericCredentialFetcher {
    * apiClient} already carries authentication.
    */
   static GenericCredentialFetcher create(ApiClient apiClient, Configuration conf) {
+    String stagingTableId = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
+    if (stagingTableId != null) {
+      return forUcDeltaStagingTable(
+          conf, new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient));
+    }
     boolean useDeltaCredentialsApi =
         conf.getBoolean(
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY,
