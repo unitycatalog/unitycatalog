@@ -347,7 +347,7 @@ class UCSingleCatalog
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    delegate.alterTable(ident, changes: _*)
   }
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
