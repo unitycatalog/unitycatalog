@@ -118,10 +118,17 @@ class CrossSparkPublishTest:
         return found_jars
 
     def run_sbt_command(self, description: str, command: List[str]) -> bool:
+        # The Test-scoped delta-spark dependency is only required for running tests,
+        # not for publishing. Some Spark versions (e.g. previews) have no matching
+        # Delta release yet, which would otherwise fail `update` during `publishM2`.
+        # `publishM2` doesn't include Test deps in the POM, so skipping is safe here.
+        augmented = list(command)
+        if augmented and augmented[0].endswith("sbt"):
+            augmented.insert(1, "-DskipDeltaSpark=true")
         print(f"  {description}")
         try:
             subprocess.run(
-                command,
+                augmented,
                 cwd=self.uc_root,
                 check=True,
                 stdout=subprocess.DEVNULL,
@@ -129,7 +136,7 @@ class CrossSparkPublishTest:
             )
             return True
         except subprocess.CalledProcessError:
-            print(f"  FAIL: Command failed: {' '.join(command)}")
+            print(f"  FAIL: Command failed: {' '.join(augmented)}")
             return False
 
     def validate_jars(self, expected: Set[str], test_name: str) -> bool:
