@@ -57,6 +57,10 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
             .master("local[*]")
             .config("spark.sql.shuffle.partitions", "4")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
+    // Opt this test process into the UC Delta API path for managed Delta creates via
+    // `-Duc.test.deltaRestApi.enabled=true`. Off by default so existing tests keep their
+    // legacy behavior.
+    boolean deltaRestApiEnabled = Boolean.getBoolean("uc.test.deltaRestApi.enabled");
     for (String catalog : catalogs) {
       String catalogConf = "spark.sql.catalog." + catalog;
       builder =
@@ -66,7 +70,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
               .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
               .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
               .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred)
-              .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFsEnabled);
+              .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFsEnabled)
+              .config(catalogConf + ".deltaRestApi.enabled", deltaRestApiEnabled);
       if (!List.of(SPARK_CATALOG, CATALOG_NAME).contains(catalog)) {
         createTestCatalog(catalog);
       }

@@ -302,7 +302,9 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
                         .name("id")
                         .typeText("integer")
                         .typeName(ColumnTypeName.INT)
-                        .typeJson("{\"type\": \"integer\"}")
+                        .typeJson(
+                            "{\"name\":\"id\",\"type\":\"integer\","
+                                + "\"nullable\":true,\"metadata\":{}}")
                         .position(0)));
     tableOperations.createTable(createTableRequest);
 

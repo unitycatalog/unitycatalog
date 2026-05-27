@@ -131,7 +131,8 @@ public class CatalogRepository {
 
   public CatalogInfoDAO getCatalogDaoOrThrow(Session session, String name) {
     return RepositoryUtils.getCatalogDaoOpt(session, name)
-        .orElseThrow(() -> new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name));
+        .orElseThrow(
+            () -> new BaseException(ErrorCode.CATALOG_NOT_FOUND, "Catalog not found: " + name));
   }
 
   public UUID getCatalogIdOrThrow(Session session, String catalogName) {

@@ -21,10 +21,23 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.17"
 
-lazy val deltaVersion = "4.1.0"
-lazy val sparkVersion = sys.props.getOrElse("sparkVersion", "4.0.0")
-lazy val sparkMajorMinorVersion = sparkVersion.split("\\.").take(2).mkString(".")
-lazy val hadoopVersion = "3.4.2"
+lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
+// Intentionally shadows CrossSparkVersions.autoImport.sparkVersion (SettingKey).
+// This String val is used for libraryDependencies coordinates; the SettingKey is
+// queryable in SBT via `show spark/sparkVersion`.
+lazy val sparkVersion = CrossSparkVersions.getSparkVersionSpec().fullVersion
+lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
+
+// delta-spark is only needed for tests. When UC is published to local Maven before
+// Delta is built (e.g. CI pre-Delta publishM2 step), the matching Delta artifact may
+// not exist yet. Pass -DskipDeltaSpark=true to exclude it and avoid resolution failures.
+def deltaSparkTestDeps: Seq[ModuleID] =
+  if (sys.props.getOrElse("skipDeltaSpark", "false").toBoolean) Seq.empty
+  else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
+
+// Apache Snapshots resolver is in build/sbt-config/repositories (global).
+// No per-module sparkResolvers needed.
+lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
@@ -112,10 +125,6 @@ lazy val commonSettings = Seq(
   assembly / test := {}
 )
 
-enablePlugins(CoursierPlugin)
-
-useCoursier := true
-
 // Configure resolvers
 resolvers ++= Seq(
   "Maven Central" at "https://repo1.maven.org/maven2/",
@@ -199,8 +208,9 @@ lazy val client = (project in file("clients/java"))
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
     (Compile / doc) := ((Compile / doc) dependsOn generate).value,
 
-    // Add custom test sources from clients/java directory
+    // Add custom test sources and shared test resources from clients/java directory
     Test / unmanagedSourceDirectories += (file(".") / "clients" / "java" / "src" / "test" / "java"),
+    Test / unmanagedResourceDirectories += (file(".") / "server" / "src" / "test" / "resources"),
 
     // Generate from both all.yaml and delta.yaml into the same output directory
     generate := {
@@ -210,7 +220,8 @@ lazy val client = (project in file("clients/java"))
         "useJakartaEe" -> "true",
         "hideGenerationTimestamp" -> "true",
         "openApiNullable" -> "false",
-        "enumUnknownDefaultCase" -> "true")
+        "enumUnknownDefaultCase" -> "true",
+        "useOneOfDiscriminatorLookup" -> "true")
       OpenApiHelper.generate(
         outputDir = outputDir,
         specs = Seq(
@@ -226,8 +237,7 @@ lazy val client = (project in file("clients/java"))
             invokerPackage = s"$orgName.client",
             apiPackage = s"$orgName.client.delta.api",
             modelPackage = s"$orgName.client.delta.model",
-            additionalProperties = commonProps,
-            globalProperties = Map("apis" -> "", "models" -> ""),
+            additionalProperties = commonProps
           )
         )
       )
@@ -600,10 +610,14 @@ lazy val serverShaded = (project in file("server-shaded"))
   )
 
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(client)
+  .dependsOn(client, hadoop)
   .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",
+    // Append Spark major.minor suffix to the artifact name so each Spark version
+    // publishes under a distinct coordinate (e.g. unitycatalog-spark_4.1_2.13).
+    Keys.moduleName := CrossSparkVersions.sparkVersionedModuleName(name.value),
+    CrossSparkVersions.sparkDependentSettings,
     scalaVersion := scala213,
     crossScalaVersions := Seq(scala213),
     commonSettings,
@@ -653,8 +667,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
-    ),
+    ) ++ deltaSparkTestDeps,
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
@@ -691,6 +704,37 @@ lazy val spark = (project in file("connectors/spark"))
     }
   )
 
+lazy val hadoop = (project in file("connectors/hadoop"))
+  .dependsOn(client)
+  .enablePlugins(CheckstylePlugin)
+  .settings(
+    name := s"$artifactNamePrefix-hadoop",
+    commonSettings,
+    javaOnlyReleaseSettings,
+    javafmtCheckSettings(),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= javacRelease11,
+    libraryDependencies ++= Seq(
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion % Provided,
+      "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
+      "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
+    ),
+    libraryDependencies ++= Seq(
+      // Test dependencies
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion % Test,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
+    ),
+    Test / unmanagedJars += (serverShaded / assembly).value,
+  )
+
 lazy val integrationTests = (project in file("integration-tests"))
   .enablePlugins(CheckstylePlugin)
   .dependsOn(spark)
@@ -710,11 +754,10 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
       "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
-      "io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-    ),
+    ) ++ deltaSparkTestDeps,
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
@@ -729,7 +772,7 @@ lazy val integrationTests = (project in file("integration-tests"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, pythonClient, server, cli, spark, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, cli, spark, hadoop, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),

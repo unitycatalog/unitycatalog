@@ -1,6 +1,7 @@
 package io.unitycatalog.client.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -207,6 +208,108 @@ public class HttpRetryHandlerTest {
     assertThat(result.statusCode()).isEqualTo(200);
     // Retry delays: 50ms (after exception) + 100ms (after 503) = 150ms total.
     assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(150)));
+  }
+
+  @Test
+  public void testRetriesExhaustedOnRetryableStatusReturnsLastResponse()
+      throws IOException, InterruptedException {
+    // When every attempt returns a retryable status (e.g., 429), the handler should return the
+    // last response so the caller can see the original status code / body, not a synthetic
+    // IOException.
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder()
+            .maxAttempts(3)
+            .initDelayMs(10L)
+            .delayMultiplier(1.0)
+            .delayJitterFactor(0.0)
+            .build();
+
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/rate-limited")).build();
+    HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
+
+    HttpResponse<String> response429 = createMockResponse(429, "Rate limit body");
+    when(mockClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenReturn(response429);
+
+    HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
+    HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
+
+    verify(mockClient, times(3))
+        .send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    assertThat(result.statusCode()).isEqualTo(429);
+    // Body from the original response survives the retry loop.
+    assertThat(result.body()).isEqualTo("Rate limit body");
+  }
+
+  @Test
+  public void testRetriesExhaustedOnRecoverableExceptionStillThrows() {
+    // Regression guard: when every attempt throws a recoverable IOException, the handler
+    // should still propagate the original exception (not swallow it into a response).
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder()
+            .maxAttempts(2)
+            .initDelayMs(10L)
+            .delayMultiplier(1.0)
+            .delayJitterFactor(0.0)
+            .build();
+
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/flaky")).build();
+    HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
+
+    java.net.SocketTimeoutException timeout = new java.net.SocketTimeoutException("timed out");
+    try {
+      when(mockClient.send(
+              ArgumentMatchers.any(HttpRequest.class),
+              ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+          .thenThrow(timeout);
+    } catch (IOException | InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+
+    HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
+    assertThatThrownBy(() -> handler.call(mockClient, mockRequest, bodyHandler)).isSameAs(timeout);
+  }
+
+  @Test
+  public void testExceptionThenRetryableResponseReturnsResponse()
+      throws IOException, InterruptedException {
+    // The per-iteration reset of lastException / lastResponse is load-bearing: if attempts 1-2
+    // throw a recoverable exception and attempt 3 returns a retryable status, the final result
+    // should be the retryable response (not the stale exception).
+    RetryPolicy retryPolicy =
+        JitterDelayRetryPolicy.builder()
+            .maxAttempts(3)
+            .initDelayMs(10L)
+            .delayMultiplier(1.0)
+            .delayJitterFactor(0.0)
+            .build();
+
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/mixed")).build();
+    HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
+
+    HttpResponse<String> response429 = createMockResponse(429, "Too Many Requests");
+    when(mockClient.send(
+            ArgumentMatchers.any(HttpRequest.class),
+            ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenThrow(new java.net.SocketTimeoutException("attempt 1"))
+        .thenThrow(new java.net.SocketTimeoutException("attempt 2"))
+        .thenReturn(response429);
+
+    HttpRetryHandler handler = new HttpRetryHandler(retryPolicy, clock);
+    HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
+
+    assertThat(result.statusCode()).isEqualTo(429);
+    assertThat(result.body()).isEqualTo("Too Many Requests");
   }
 
   @SuppressWarnings("unchecked")

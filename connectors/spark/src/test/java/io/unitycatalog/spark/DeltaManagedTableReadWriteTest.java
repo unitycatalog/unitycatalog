@@ -39,6 +39,11 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   private static final String DELTA_TABLE = "test_delta";
 
   @Override
+  protected boolean isManagedTable() {
+    return true;
+  }
+
+  @Override
   protected List<TableDdlMode> supportedTableDdlModes() {
     return List.of(TableDdlMode.CREATE);
   }
@@ -146,8 +151,14 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
                   .filter(row -> !List.of("i", "s").contains(row.getString(0)))
                   .collect(Collectors.toMap(row -> row.getString(0), row -> row.getString(1)));
 
-          // Make sure the table created is managed and catalogManaged
-          assertThat(describeResult.get("Name")).isEqualTo(fullTableName);
+          // Make sure the table created is managed and catalogManaged.
+          // Spark 4.2 (SPARK-56678) replaced the "Name" row with structured
+          // "Catalog"/"Namespace"/"Database"/"Table" rows in DESC EXTENDED.
+          if (describeResult.containsKey("Name")) {
+            assertThat(describeResult.get("Name")).isEqualTo(fullTableName);
+          } else {
+            assertThat(describeResult.get("Table")).isEqualTo(tableName);
+          }
           assertThat(describeResult.get("Type")).isEqualTo("MANAGED");
           assertThat(describeResult.get("Provider")).isEqualToIgnoringCase("delta");
           assertThat(describeResult.get("Is_managed_location")).isEqualTo("true");

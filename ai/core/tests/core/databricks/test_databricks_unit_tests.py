@@ -1094,7 +1094,9 @@ def test_warehouse_id_is_stored(mock_workspace_client):
 def test_warehouse_id_skips_spark_session(mock_workspace_client):
     """When warehouse_id is set, no Spark session is initialised."""
     with patch.object(
-        DatabricksFunctionClient, "set_spark_session", side_effect=AssertionError("should not be called")
+        DatabricksFunctionClient,
+        "set_spark_session",
+        side_effect=AssertionError("should not be called"),
     ):
         client = DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="abc123")
     assert client.spark is None
@@ -1131,7 +1133,9 @@ def test_execute_function_with_warehouse_scalar(mock_workspace_client, mock_func
     assert call_kwargs["warehouse_id"] == "wh-1"
 
 
-def test_execute_function_with_warehouse_polls_on_pending(mock_workspace_client, mock_function_info):
+def test_execute_function_with_warehouse_polls_on_pending(
+    mock_workspace_client, mock_function_info
+):
     """Client polls until the statement finishes when the first response is PENDING."""
     from databricks.sdk.service.sql import StatementState
 

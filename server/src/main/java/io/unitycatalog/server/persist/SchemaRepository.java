@@ -112,7 +112,8 @@ public class SchemaRepository {
         .orElseThrow(
             () ->
                 new BaseException(
-                    ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName));
+                    ErrorCode.SCHEMA_NOT_FOUND,
+                    "Schema not found: " + catalogName + "." + schemaName));
   }
 
   public SchemaInfoDAO getSchemaDaoOrThrow(Session session, String catalogName, String schemaName) {
@@ -123,6 +124,18 @@ public class SchemaRepository {
   public UUID getSchemaIdOrThrow(Session session, String catalogName, String schemaName) {
     SchemaInfoDAO schemaInfo = getSchemaDaoOrThrow(session, catalogName, schemaName);
     return schemaInfo.getId();
+  }
+
+  /**
+   * Returns the UUID of the named schema. Opens its own transaction, so callers that already have a
+   * {@code Session} should use {@link #getSchemaIdOrThrow(Session, String, String)} directly.
+   */
+  public UUID getSchemaIdOrThrow(String catalogName, String schemaName) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> getSchemaIdOrThrow(session, catalogName, schemaName),
+        "Failed to get schema id",
+        /* readOnly = */ true);
   }
 
   private void validateSchemaNotExistInCatalog(

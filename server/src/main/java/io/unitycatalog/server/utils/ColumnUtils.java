@@ -1,10 +1,29 @@
 package io.unitycatalog.server.utils;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.server.delta.model.ArrayType;
+import io.unitycatalog.server.delta.model.DecimalType;
+import io.unitycatalog.server.delta.model.DeltaType;
+import io.unitycatalog.server.delta.model.MapType;
+import io.unitycatalog.server.delta.model.StructField;
+import io.unitycatalog.server.delta.model.StructType;
+import io.unitycatalog.server.delta.serde.DeltaTypeModule;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class ColumnUtils {
 
@@ -63,5 +82,319 @@ public class ColumnUtils {
             columnInfoDAO.getName(),
             columnInfoDAO.isNullable(),
             getPrecisionAndScale(columnInfoDAO)));
+  }
+
+  // ObjectMapper for reading/writing Spark's camelCase typeJson.
+  // Getter mixins override the generated kebab-case @JsonProperty
+  // so both ser and deser use camelCase.
+  private static final ObjectMapper TYPE_MAPPER = createTypeMapper();
+
+  private static ObjectMapper createTypeMapper() {
+    ObjectMapper mapper = new ObjectMapper();
+    mapper.registerModule(new DeltaTypeModule());
+    mapper.addMixIn(ArrayType.class, CamelCaseArrayMixin.class);
+    mapper.addMixIn(MapType.class, CamelCaseMapMixin.class);
+    return mapper;
+  }
+
+  abstract static class CamelCaseArrayMixin {
+    @JsonProperty("elementType")
+    abstract DeltaType getElementType();
+
+    @JsonSetter("elementType")
+    abstract void setElementType(DeltaType v);
+
+    @JsonProperty("containsNull")
+    abstract Boolean getContainsNull();
+
+    @JsonSetter("containsNull")
+    abstract void setContainsNull(Boolean v);
+  }
+
+  abstract static class CamelCaseMapMixin {
+    @JsonProperty("keyType")
+    abstract DeltaType getKeyType();
+
+    @JsonSetter("keyType")
+    abstract void setKeyType(DeltaType v);
+
+    @JsonProperty("valueType")
+    abstract DeltaType getValueType();
+
+    @JsonSetter("valueType")
+    abstract void setValueType(DeltaType v);
+
+    @JsonProperty("valueContainsNull")
+    abstract Boolean getValueContainsNull();
+
+    @JsonSetter("valueContainsNull")
+    abstract void setValueContainsNull(Boolean v);
+  }
+
+  /**
+   * Convert a UC ColumnInfo to a Delta REST API StructField by parsing typeJson directly. The
+   * typeJson is in Spark's StructField format and contains the complete field definition (name,
+   * type, nullable, metadata). Only partitionIndex comes from ColumnInfo, not typeJson.
+   */
+  public static StructField toStructField(ColumnInfo column) {
+    String typeJson = column.getTypeJson();
+    if (typeJson == null || typeJson.isEmpty()) {
+      throw new IllegalStateException("Column " + column.getName() + " has null/empty typeJson");
+    }
+    try {
+      return TYPE_MAPPER.readValue(typeJson, StructField.class);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException(
+          "Failed to parse typeJson for column " + column.getName() + ": " + typeJson, e);
+    }
+  }
+
+  /**
+   * Validate that a UC column stores typeJson as Spark StructField JSON. The Spark connector and
+   * Delta REST APIs depend on name, type, nullable, and metadata being present in this payload.
+   */
+  public static void validateTypeJson(ColumnInfo column) {
+    if (column == null) {
+      throw invalidTypeJson(null, "column cannot be null");
+    }
+    JsonNode typeJson = parseTypeJson(column);
+    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_NAME);
+    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_TYPE);
+    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_NULLABLE);
+    JsonNode metadata = requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_METADATA);
+    if (!metadata.isObject()) {
+      throw invalidTypeJson(column, "type_json.metadata must be a JSON object");
+    }
+
+    StructField field;
+    try {
+      field = toStructField(column);
+    } catch (IllegalStateException e) {
+      throw invalidTypeJson(column, e.getMessage(), e);
+    }
+    if (!field.getName().equals(column.getName())) {
+      throw invalidTypeJson(
+          column,
+          String.format(
+              "field name %s does not match column name %s", field.getName(), column.getName()));
+    }
+    if (column.getNullable() != null && !field.getNullable().equals(column.getNullable())) {
+      throw invalidTypeJson(
+          column,
+          String.format(
+              "field nullable %s does not match column nullable %s",
+              field.getNullable(), column.getNullable()));
+    }
+  }
+
+  private static JsonNode parseTypeJson(ColumnInfo column) {
+    if (column.getTypeJson() == null || column.getTypeJson().isEmpty()) {
+      throw invalidTypeJson(column, "type_json cannot be null or empty");
+    }
+    try {
+      JsonNode typeJson = TYPE_MAPPER.readTree(column.getTypeJson());
+      if (typeJson == null || !typeJson.isObject()) {
+        throw invalidTypeJson(column, "type_json must be a JSON object");
+      }
+      return typeJson;
+    } catch (JsonProcessingException e) {
+      throw invalidTypeJson(column, "Failed to parse typeJson: " + column.getTypeJson(), e);
+    }
+  }
+
+  private static JsonNode requireTypeJsonField(ColumnInfo column, JsonNode typeJson, String name) {
+    JsonNode field = typeJson.get(name);
+    if (field == null || field.isNull()) {
+      throw invalidTypeJson(column, "type_json." + name + " is required");
+    }
+    return field;
+  }
+
+  private static BaseException invalidTypeJson(ColumnInfo column, String message) {
+    return invalidTypeJson(column, message, null);
+  }
+
+  private static BaseException invalidTypeJson(ColumnInfo column, String message, Throwable cause) {
+    String columnName = column != null && column.getName() != null ? column.getName() : "<unknown>";
+    return new BaseException(
+        ErrorCode.INVALID_ARGUMENT,
+        "Invalid type_json for column " + columnName + ": " + message,
+        cause);
+  }
+
+  /** Serialize a Delta StructField to Spark's camelCase typeJson format for UC database storage. */
+  public static String toTypeJson(StructField field) {
+    try {
+      return TYPE_MAPPER.writeValueAsString(field);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException(
+          "Failed to serialize typeJson for field " + field.getName(), e);
+    }
+  }
+
+  /**
+   * Convert a UC Delta API {@link StructField} into a UC {@link ColumnInfo}, mirroring
+   * {@code UCSingleCatalog.createTable}'s per-column projection so Delta-created tables render
+   * identically to Spark-created ones.
+   *
+   * <p>Fields populated (matching UCSingleCatalog exactly):
+   * <ul>
+   *   <li>{@code name}, {@code nullable}, {@code position}
+   *   <li>{@code comment} -- only when present in {@code metadata.comment} (UCSingleCatalog
+   *       skips the setter when {@code field.getComment().isEmpty}); when absent the field is
+   *       left at its default {@code null}, which produces the same wire shape
+   *   <li>{@code typeJson} -- {@code field.dataType.json}, the Spark-format column spec
+   *   <li>{@code typeName} -- {@code convertDataTypeToTypeName(field.dataType)}
+   *   <li>{@code typeText} -- {@code field.dataType.catalogString}
+   * </ul>
+   *
+   * <p>Fields intentionally not populated (matching UCSingleCatalog):
+   * {@code typePrecision}, {@code typeScale}, {@code typeIntervalType}, {@code partitionIndex}
+   * ({@code partitionIndex} is stamped separately by {@link #applyPartitionColumns}).
+   */
+  public static ColumnInfo toColumnInfo(StructField field, int position) {
+    DeltaType type = field.getType();
+    ColumnInfo column =
+        new ColumnInfo()
+            .name(field.getName())
+            .nullable(Boolean.TRUE.equals(field.getNullable()))
+            .position(position)
+            .typeJson(toTypeJson(field))
+            .typeName(resolveColumnTypeName(type))
+            .typeText(toCatalogString(type));
+    String comment = extractComment(field);
+    if (comment != null) {
+      column.comment(comment);
+    }
+    return column;
+  }
+
+  /**
+   * Project a list of Delta {@link StructField}s into UC {@link ColumnInfo}s, stamping each
+   * column's {@code position} from its index in the list. Used by both the create and update paths
+   * of the UC Delta API so the wire-order-to-position mapping stays in one place.
+   */
+  public static List<ColumnInfo> toColumnInfos(List<StructField> fields) {
+    List<ColumnInfo> columns = new ArrayList<>(fields.size());
+    for (int i = 0; i < fields.size(); i++) {
+      columns.add(toColumnInfo(fields.get(i), i));
+    }
+    return columns;
+  }
+
+  /**
+   * Render a {@link DeltaType} as a Spark-style catalog string -- the same format produced by
+   * {@code org.apache.spark.sql.types.DataType#catalogString}. Primitives go through the shared
+   * {@link #typeNameVsTypeText} override map (so {@code long}→{@code bigint}, {@code
+   * integer}→{@code int}, etc.); decimals include precision/scale; array/map/struct recurse.
+   *
+   * @throws BaseException with {@code INVALID_ARGUMENT} if {@code type} (or any nested element /
+   *     key / value / field type) is an unsupported Delta primitive -- this method delegates the
+   *     primitive lookup to {@link #resolveColumnTypeName}, which throws on unknown names.
+   */
+  public static String toCatalogString(DeltaType type) {
+    if (type instanceof DecimalType d) {
+      return "decimal" + getPrecisionAndScale(d.getPrecision(), d.getScale());
+    }
+    if (type instanceof ArrayType a) {
+      return "array<" + toCatalogString(a.getElementType()) + ">";
+    }
+    if (type instanceof MapType m) {
+      return "map<" + toCatalogString(m.getKeyType()) + "," + toCatalogString(m.getValueType())
+          + ">";
+    }
+    if (type instanceof StructType s) {
+      List<StructField> fields = s.getFields() != null ? s.getFields() : List.of();
+      StringBuilder sb = new StringBuilder("struct<");
+      for (int i = 0; i < fields.size(); i++) {
+        if (i > 0) sb.append(",");
+        StructField f = fields.get(i);
+        sb.append(f.getName()).append(":").append(toCatalogString(f.getType()));
+      }
+      return sb.append(">").toString();
+    }
+    return getTypeText(resolveColumnTypeName(type));
+  }
+
+  private static String extractComment(StructField field) {
+    Map<String, Object> metadata = field.getMetadata();
+    if (metadata == null) return null;
+    Object comment = metadata.get("comment");
+    return comment instanceof String s ? s : null;
+  }
+
+  private static ColumnTypeName resolveColumnTypeName(DeltaType type) {
+    if (type instanceof ArrayType) return ColumnTypeName.ARRAY;
+    if (type instanceof DecimalType) return ColumnTypeName.DECIMAL;
+    if (type instanceof MapType) return ColumnTypeName.MAP;
+    if (type instanceof StructType) return ColumnTypeName.STRUCT;
+    // PrimitiveType: the discriminator string IS the primitive name. The accepted set is the
+    // closed list of Delta-protocol primitives -- Kernel's BasePrimitiveType registry. Reject
+    // with INVALID_ARGUMENT for anything else; the server-side ColumnTypeName enum has no
+    // UNKNOWN_DEFAULT_OPEN_API sentinel (OpenAPI generator adds it only for clients).
+    //
+    // Not handled, and why:
+    //   - INTERVAL: not a Delta primitive.
+    //   - NULL ("void" in Spark JSON): UCSingleCatalog has a NullType branch because it runs
+    //     upstream of Delta's NullType-drop -- a user's CREATE TABLE can carry NullType and UC
+    //     stores it before Delta strips it on write (SchemaUtils.dropNullTypeColumns). Delta runs
+    //     downstream: Spark-Delta clients have already dropped NullType before sending, and
+    //     Kernel rejects "void" on read (DataTypeJsonSerDe.voidTypeEncountered). No conforming
+    //     Delta wire payload contains it.
+    //   - CHAR / UDT: Spark's Delta writer normalizes CHAR/VARCHAR to STRING (via
+    //     CharVarcharUtils) and unwraps UDTs to their underlying sqlType before persisting, so
+    //     Delta clients never send "char(n)" or {"type":"udt",...}.
+    //   - TABLE_TYPE: UC-internal (foreign tables); doesn't flow over the Delta wire.
+    String primitive = type.getType();
+    return switch (primitive) {
+      case "boolean" -> ColumnTypeName.BOOLEAN;
+      case "byte" -> ColumnTypeName.BYTE;
+      case "short" -> ColumnTypeName.SHORT;
+      case "integer" -> ColumnTypeName.INT;
+      case "long" -> ColumnTypeName.LONG;
+      case "float" -> ColumnTypeName.FLOAT;
+      case "double" -> ColumnTypeName.DOUBLE;
+      case "date" -> ColumnTypeName.DATE;
+      case "timestamp" -> ColumnTypeName.TIMESTAMP;
+      case "timestamp_ntz" -> ColumnTypeName.TIMESTAMP_NTZ;
+      case "string" -> ColumnTypeName.STRING;
+      case "binary" -> ColumnTypeName.BINARY;
+      case "variant" -> ColumnTypeName.VARIANT;
+      default ->
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT, "Unsupported Delta primitive type: " + primitive);
+    };
+  }
+
+  /**
+   * Stamp each {@link ColumnInfo} whose name appears in {@code partitionColumns} with its
+   * partition index (the position within {@code partitionColumns}). Throws {@code INVALID_ARGUMENT}
+   * at the first partition-column name that does not match any column in {@code columns}.
+   *
+   * <p>The input {@code columns} list is mutated in place. Designed to be shared between the
+   * UC Delta API create and update/commit paths -- both take a kebab-case {@code
+   * partition-columns} list of names from the wire and project it onto UC's
+   * partition-index-per-column representation (only create is wired up today).
+   *
+   * <p>Runs in {@code O(|columns| + |partitionColumns|)}: builds a name → ColumnInfo lookup once,
+   * then walks {@code partitionColumns} stamping indices and rejecting unknown names inline.
+   */
+  public static void applyPartitionColumns(
+      List<ColumnInfo> columns, List<String> partitionColumns) {
+    if (partitionColumns == null || partitionColumns.isEmpty()) {
+      return;
+    }
+    Map<String, ColumnInfo> columnsByName =
+        columns.stream().collect(Collectors.toMap(ColumnInfo::getName, Function.identity()));
+    for (int i = 0; i < partitionColumns.size(); i++) {
+      String partName = partitionColumns.get(i);
+      ColumnInfo match = columnsByName.get(partName);
+      if (match == null) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition-columns references unknown column: " + partName);
+      }
+      match.setPartitionIndex(i);
+    }
   }
 }

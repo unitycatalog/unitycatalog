@@ -11,8 +11,32 @@ case class OpenApiSpec(
   globalProperties: Map[String, String] = Map.empty
 )
 
-/** Helper to run the OpenAPI generator programmatically with arbitrary config.
- *  Used to generate from multiple spec files within a single sbt project.
+/**
+ * Runs the OpenAPI generator programmatically, supporting multiple spec files
+ * per sbt project. This calls the same CodegenConfigurator + DefaultGenerator
+ * API that the official sbt-openapi-generator plugin uses internally:
+ * https://github.com/OpenAPITools/sbt-openapi-generator/blob/v7.9.0/src/main/scala/org/openapitools/generator/sbt/plugin/tasks/OpenApiGenerateTask.scala
+ *
+ * The plugin's openApiInputSpec is a single SettingKey[String], so it only
+ * accepts one spec file per sbt project. To generate from both all.yaml and
+ * delta.yaml into the same output directory (so models share the same
+ * classpath), we call the generator in a loop over multiple OpenApiSpec
+ * entries.
+ *
+ * Differences from the plugin:
+ * - Added: loop over multiple specs, packageName parameter (for Python),
+ *   per-instance suppression of test/metadata generation via
+ *   setGeneratorPropertyDefault (equivalent to the plugin's
+ *   openApiGenerateModelTests := SettingDisabled).
+ * - Removed: ~30 config knobs not needed here (verbose, validateSpec,
+ *   skipOverwrite, templateDir, auth, gitHost, importMappings,
+ *   typeMappings, etc.). These all have sensible defaults in
+ *   CodegenConfigurator.
+ * - No behavioral change in generated code: the output is identical to
+ *   what the plugin would produce with the same inputs.
+ *
+ * Projects that only generate from a single spec (controlApi,
+ * controlModels) still use the plugin directly.
  */
 object OpenApiHelper {
   def generate(

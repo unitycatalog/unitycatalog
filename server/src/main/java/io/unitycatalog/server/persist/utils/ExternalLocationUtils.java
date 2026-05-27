@@ -297,7 +297,7 @@ public class ExternalLocationUtils {
       // This is an invalid internal state. We never allow external locations with
       // overlapping URLs.
       throw new BaseException(
-          ErrorCode.FAILED_PRECONDITION,
+          ErrorCode.INTERNAL,
           "More than one external location with URL '" + url + "' exist.");
     }
 
@@ -306,7 +306,7 @@ public class ExternalLocationUtils {
     CredentialDAO credentialDAO = session.get(CredentialDAO.class, credentialId);
     if (credentialDAO == null) {
       throw new BaseException(
-          ErrorCode.FAILED_PRECONDITION,
+          ErrorCode.INTERNAL,
           String.format("Credential %s for '%s' not found.", credentialId, url));
     }
     return Optional.of(credentialDAO);

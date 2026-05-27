@@ -79,8 +79,8 @@ public class StagingTableRepository {
    *     location
    * @throws BaseException with ErrorCode.ALREADY_EXISTS if a regular table with the same name
    *     already exists in the schema
-   * @throws BaseException with ErrorCode.NOT_FOUND if the specified catalog or schema does not
-   *     exist
+   * @throws BaseException with ErrorCode.CATALOG_NOT_FOUND or ErrorCode.SCHEMA_NOT_FOUND if the
+   *     specified catalog or schema does not exist
    */
   public StagingTableInfo createStagingTable(CreateStagingTable createStagingTable) {
     serverProperties.checkManagedTableEnabled();
@@ -129,8 +129,8 @@ public class StagingTableRepository {
    * @param callerId the identifier of the user attempting to commit the staging table
    * @param storageLocation the normalized storage location URL of the staging table to commit
    * @return StagingTableDAO the committed staging table data access object
-   * @throws BaseException with ErrorCode.NOT_FOUND if no staging table exists at the specified
-   *     location
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no staging table exists at the
+   *     specified location
    * @throws BaseException with ErrorCode.PERMISSION_DENIED if the caller is not the owner of the
    *     staging table
    * @throws BaseException with ErrorCode.FAILED_PRECONDITION if the staging table has already been
@@ -141,7 +141,8 @@ public class StagingTableRepository {
     serverProperties.checkManagedTableEnabled();
     StagingTableDAO stagingTableDAO = findByStagingLocation(session, storageLocation);
     if (stagingTableDAO == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Staging table not found: " + storageLocation);
+      throw new BaseException(
+          ErrorCode.TABLE_NOT_FOUND, "Staging table not found: " + storageLocation);
     }
     if (!Objects.equals(stagingTableDAO.getCreatedBy(), callerId)) {
       throw new BaseException(

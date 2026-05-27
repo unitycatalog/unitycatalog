@@ -104,6 +104,59 @@ object PythonClientPostBuild {
       }
     }
     moveGeneratedUnityCatalog(log, openApiOutputDir)
+    patchDeltaTypeModule(log, baseDir, openApiOutputDir)
+  }
+
+  /**
+   * Copies the hand-written delta_type_module.py into the generated delta package
+   * and appends an import to the generated __init__.py so the patch is applied
+   * automatically when the package is imported.
+   */
+  def patchDeltaTypeModule(
+      log: Logger,
+      baseDir: File,
+      openApiOutputDir: String
+  ): Unit = {
+    val srcModule = baseDir.toPath.resolve("src")
+      .resolve("unitycatalog").resolve("delta").resolve("serde").resolve("delta_type_module.py")
+    val targetDir = Paths.get(openApiOutputDir, "src", "unitycatalog", "delta")
+    val targetSerdeDir = targetDir.resolve("serde")
+    val targetModule = targetSerdeDir.resolve("delta_type_module.py")
+    val targetInit = targetDir.resolve("__init__.py")
+
+    if (!Files.exists(srcModule)) {
+      log.warn(s"delta_type_module.py not found at $srcModule, skipping patch")
+      return
+    }
+    if (!Files.exists(targetDir)) {
+      log.warn(s"Delta package not found at $targetDir, skipping patch")
+      return
+    }
+
+    // Copy the module into serde/ subdirectory
+    Files.createDirectories(targetSerdeDir)
+    Files.copy(srcModule, targetModule, StandardCopyOption.REPLACE_EXISTING)
+    // Create __init__.py for the serde package
+    val serdeInit = targetSerdeDir.resolve("__init__.py")
+    if (!Files.exists(serdeInit)) {
+      Files.writeString(serdeInit, "")
+    }
+    log.info(s"Copied delta_type_module.py to $targetModule")
+
+    // Append import to models/__init__.py so the patch activates on any model import
+    val modelsInit = targetDir.resolve("models").resolve("__init__.py")
+    if (Files.exists(modelsInit)) {
+      val patchLine = "\n# Auto-import DeltaType string-or-object patch\nimport unitycatalog.delta.serde.delta_type_module  # noqa: F401\n"
+      val content = new String(Files.readAllBytes(modelsInit))
+      if (!content.contains("delta_type_module")) {
+        Files.write(modelsInit, (content + patchLine).getBytes)
+        log.info(s"Patched $modelsInit with delta_type_module import")
+      } else {
+        log.info(s"$modelsInit already patched, skipping")
+      }
+    } else {
+      log.warn(s"$modelsInit not found, skipping patch")
+    }
   }
 
     /**

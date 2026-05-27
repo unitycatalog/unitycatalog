@@ -43,14 +43,20 @@ public class AuthorizeKeyLocator {
   /**
    * Extracts the variable name from a key. For resources, returns their securable type as variable
    * name. e.g. "external_location" For other keys, returns the key name in annotated parameters or
-   * the last segment of the payload parameter. e.g. "config.operation" returns "operation"
+   * the last segment of the payload parameter. e.g. "config.operation" returns "operation".
+   *
+   * <p>Hyphens in the key are mapped to underscores so kebab-case payload fields (such as Delta
+   * REST Catalog's {@code table-type}) form valid SpEL identifiers like {@code #table_type}. The
+   * payload lookup still uses the original key verbatim; this transformation affects only the SpEL
+   * variable name.
    */
   public String getVariableName() {
     if (type.isPresent()) {
       return type.get().getValue();
     }
     int lastDot = key.lastIndexOf('.');
-    return lastDot >= 0 ? key.substring(lastDot + 1) : key;
+    String name = lastDot >= 0 ? key.substring(lastDot + 1) : key;
+    return name.replace('-', '_');
   }
 
   public static AuthorizeKeyLocator from(AuthorizeResourceKey key, Parameter parameter) {
@@ -63,22 +69,32 @@ public class AuthorizeKeyLocator {
 
   private static AuthorizeKeyLocator from(
       Optional<SecurableType> type, String key, Parameter parameter) {
-    if (!key.isEmpty()) {
-      // Explicitly declaring a key, so it's the source is from the payload data
-      return AuthorizeKeyLocator.builder().source(Source.PAYLOAD).type(type).key(key).build();
-    } else {
-      // No key defined so implicitly referencing an (annotated) (query) parameter
-      Param param = parameter.getAnnotation(Param.class);
-      if (param != null) {
-        return AuthorizeKeyLocator.builder()
-            .source(Source.PARAM)
-            .type(type)
-            .key(param.value())
-            .build();
-      } else {
-        throw new RuntimeException(
-            "Couldn't find param key for authorization key: " + parameter.getName());
+    Param param = parameter.getAnnotation(Param.class);
+    if (param != null) {
+      // @Param bound: source is the URL query/path. If a key is explicitly set it must equal
+      // @Param.value() so the SpEL variable name and URL parameter name agree; leaving it empty
+      // reuses @Param.value() for both.
+      if (!key.isEmpty() && !key.equals(param.value())) {
+        throw new IllegalStateException(
+            "Authorization key=\""
+                + key
+                + "\" on parameter "
+                + parameter.getName()
+                + " must match its companion @Param(\""
+                + param.value()
+                + "\")");
       }
+      return AuthorizeKeyLocator.builder()
+          .source(Source.PARAM)
+          .type(type)
+          .key(param.value())
+          .build();
     }
+    // No @Param: the key names a request body field.
+    if (key.isEmpty()) {
+      throw new RuntimeException(
+          "Couldn't find param key for authorization key: " + parameter.getName());
+    }
+    return AuthorizeKeyLocator.builder().source(Source.PAYLOAD).type(type).key(key).build();
   }
 }

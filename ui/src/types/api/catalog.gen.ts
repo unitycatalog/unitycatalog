@@ -762,6 +762,9 @@ export interface components {
       updated_by?: string;
       /** @description Unique identifier for the table. */
       table_id?: string;
+      /** @description Definition text for view-like table types such as VIEW, MATERIALIZED_VIEW, STREAMING_TABLE, and METRIC_VIEW. The format depends on the table type (SQL for views, YAML for metric views). */
+      view_definition?: string;
+      view_dependencies?: components['schemas']['DependencyList'];
     };
     CreateTable: {
       /** @description Name of table, relative to parent schema. */
@@ -771,14 +774,17 @@ export interface components {
       /** @description Name of parent schema relative to its parent catalog. */
       schema_name: string;
       table_type: components['schemas']['TableType'];
-      data_source_format: components['schemas']['DataSourceFormat'];
+      data_source_format?: components['schemas']['DataSourceFormat'];
       /** @description The array of __ColumnInfo__ definitions of the table's columns. */
       columns: components['schemas']['ColumnInfo'][];
       /** @description Storage root URL for external table */
-      storage_location: string;
+      storage_location?: string;
       /** @description User-provided free-form text description. */
       comment?: string;
       properties?: components['schemas']['SecurablePropertiesMap'];
+      /** @description Definition text for view-like table types such as VIEW, MATERIALIZED_VIEW, STREAMING_TABLE, and METRIC_VIEW. The format depends on the table type (SQL for views, YAML for metric views). */
+      view_definition?: string;
+      view_dependencies?: components['schemas']['DependencyList'];
     };
     ListTablesResponse: {
       /** @description An array of table information objects. */
@@ -2467,6 +2473,7 @@ export enum ColumnTypeName {
 export enum TableType {
   MANAGED = 'MANAGED',
   EXTERNAL = 'EXTERNAL',
+  METRIC_VIEW = 'METRIC_VIEW',
 }
 export enum DataSourceFormat {
   DELTA = 'DELTA',
