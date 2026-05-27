@@ -108,6 +108,53 @@ class UCCredentialHadoopConfsTest {
   }
 
   @Test
+  void missingTokenProviderThrowsForStagingTable() throws Exception {
+    assertThatThrownBy(
+            () ->
+                UCCredentialHadoopConfs.builder("http://uc", "s3")
+                    .buildForStagingTable("staging-id", "s3://bucket/staging"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("tokenProvider");
+  }
+
+  @Test
+  void stagingTableBuildRejectsMissingFields() {
+    TokenProvider tp = TokenProvider.create(Map.of("type", "static", "token", "tok"));
+
+    assertThatThrownBy(
+            () ->
+                UCCredentialHadoopConfs.builder("http://uc", "s3")
+                    .tokenProvider(tp)
+                    .buildForStagingTable(null, "s3://bucket/staging"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("stagingTableId is required");
+
+    assertThatThrownBy(
+            () ->
+                UCCredentialHadoopConfs.builder("http://uc", "s3")
+                    .tokenProvider(tp)
+                    .buildForStagingTable("", "s3://bucket/staging"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("stagingTableId is required");
+
+    assertThatThrownBy(
+            () ->
+                UCCredentialHadoopConfs.builder("http://uc", "s3")
+                    .tokenProvider(tp)
+                    .buildForStagingTable("staging-id", null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("location is required");
+
+    assertThatThrownBy(
+            () ->
+                UCCredentialHadoopConfs.builder("http://uc", "s3")
+                    .tokenProvider(tp)
+                    .buildForStagingTable("staging-id", ""))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("location is required");
+  }
+
+  @Test
   void pathOperationValuesRoundTripThroughSdkEnum() {
     // Hadoop enum strings must match SDK enum strings exactly — otherwise the UC
     // server rejects the request at runtime and no other test catches it.

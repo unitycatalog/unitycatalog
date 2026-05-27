@@ -71,7 +71,7 @@ public final class UCCredentialHadoopConfs {
 
   /**
    * Collects credential settings and produces Hadoop configuration properties via {@link
-   * #buildForTable} or {@link #buildForPath}.
+   * #buildForTable}, {@link #buildForStagingTable}, or {@link #buildForPath}.
    */
   public static final class Builder {
 
@@ -213,6 +213,37 @@ public final class UCCredentialHadoopConfs {
           identifier,
           location,
           operation,
+          appVersions);
+    }
+
+    /**
+     * Builds Hadoop properties for a <em>Delta staging table</em> using the UC Delta staging table
+     * credentials API ({@code GET /delta/v1/staging-tables/{table_id}/credentials}).
+     *
+     * @param stagingTableId the staging table UUID
+     * @param location the staging table storage location, used to select the matching storage
+     *     credential from the response
+     * @return unmodifiable map; empty if the scheme is unrecognized
+     * @throws IllegalArgumentException if {@code stagingTableId}, {@code location}, or {@code
+     *     tokenProvider} is missing
+     * @throws ApiException if the credential fetch from the UC Delta API fails
+     */
+    public Map<String, String> buildForStagingTable(String stagingTableId, String location)
+        throws ApiException {
+      Preconditions.checkArgument(
+          stagingTableId != null && !stagingTableId.isEmpty(), "stagingTableId is required");
+      Preconditions.checkArgument(location != null && !location.isEmpty(), "location is required");
+      Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
+      return CredPropsUtil.fetchDeltaStagingTableCredProps(
+          credentialRenewalEnabled,
+          credentialScopedFsEnabled,
+          hadoopConf,
+          scheme,
+          apiClient,
+          catalogUri,
+          tokenProvider,
+          stagingTableId,
+          location,
           appVersions);
     }
 

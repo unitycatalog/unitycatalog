@@ -361,6 +361,144 @@ class CredPropsUtilTest {
         .doesNotContainKey("fs.s3a.impl.original");
   }
 
+  // For Delta staging table API.
+
+  @Test
+  void s3DeltaStagingTableCredsHaveExpectedKeys() {
+    Map<String, String> props =
+        CredPropsUtil.createDeltaStagingTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            tokenProvider(),
+            "staging-uuid",
+            "s3://bucket/staging",
+            s3Creds(),
+            Map.of());
+
+    assertThat(props)
+        .containsEntry(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "staging-uuid")
+        .containsEntry(
+            UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://bucket/staging")
+        .containsEntry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true")
+        .containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak")
+        .containsEntry(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, "sk")
+        .containsEntry(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st")
+        .doesNotContainKey(UCHadoopConfConstants.UC_TABLE_ID_KEY)
+        .doesNotContainKey(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY);
+  }
+
+  @Test
+  void gcsDeltaStagingTableCredsHaveExpectedKeys() {
+    Map<String, String> props =
+        CredPropsUtil.createDeltaStagingTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "gs",
+            "http://uc",
+            tokenProvider(),
+            "staging-uuid",
+            "gs://bucket/staging",
+            gcsCreds(),
+            Map.of());
+
+    assertThat(props)
+        .containsEntry(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "staging-uuid")
+        .containsEntry(
+            UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "gs://bucket/staging")
+        .containsEntry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true")
+        .containsEntry(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, "token");
+  }
+
+  @Test
+  void abfsDeltaStagingTableCredsHaveExpectedKeys() {
+    Map<String, String> props =
+        CredPropsUtil.createDeltaStagingTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "abfss",
+            "http://uc",
+            tokenProvider(),
+            "staging-uuid",
+            "abfss://container@account.dfs.core.windows.net/staging",
+            abfsCreds(),
+            Map.of());
+
+    assertThat(props)
+        .containsEntry(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "staging-uuid")
+        .containsEntry(
+            UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY,
+            "abfss://container@account.dfs.core.windows.net/staging")
+        .containsEntry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true")
+        .containsEntry(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, "sas");
+  }
+
+  @Test
+  void deltaStagingTableStaticCredsEmbedCloudKeysAndOmitStagingKeys() {
+    Map<String, String> props =
+        CredPropsUtil.createDeltaStagingTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            null,
+            "staging-uuid",
+            "s3://bucket/staging",
+            s3Creds(),
+            Map.of());
+
+    assertThat(props)
+        .containsEntry("fs.s3a.access.key", "ak")
+        .containsEntry("fs.s3a.secret.key", "sk")
+        .containsEntry("fs.s3a.session.token", "st")
+        .doesNotContainKey(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
+  }
+
+  @Test
+  void deltaStagingTableUnknownSchemeReturnsEmptyMap() {
+    assertThat(
+            CredPropsUtil.createDeltaStagingTableCredProps(
+                false,
+                false,
+                new Configuration(false),
+                "hdfs",
+                "http://uc",
+                null,
+                "staging-uuid",
+                "hdfs://namenode/staging",
+                s3Creds(),
+                Map.of()))
+        .isEmpty();
+  }
+
+  @Test
+  void s3DeltaStagingTableOriginalImplPreservedWithCredScopedFs() {
+    Configuration conf = new Configuration(false);
+    conf.set("fs.s3.impl", CUSTOM_S3_IMPL);
+    conf.set("fs.s3a.impl", CUSTOM_S3_IMPL);
+
+    Map<String, String> props =
+        CredPropsUtil.createDeltaStagingTableCredProps(
+            true,
+            true,
+            conf,
+            "s3",
+            "http://uc",
+            tokenProvider(),
+            "staging-uuid",
+            "s3://bucket/staging",
+            s3Creds(),
+            Map.of());
+
+    assertThat(props.get("fs.s3.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
+    assertThat(props.get("fs.s3a.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
+  }
+
   @Test
   void propsBuilderRejectsTableIdAfterDeltaTableIdentifier() {
     CredPropsUtil.S3PropsBuilder builder =
@@ -370,7 +508,7 @@ class CredPropsUtilTest {
 
     assertThatThrownBy(() -> builder.tableId("table-id"))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("tableId cannot be set with UC Delta table identifier");
+        .hasMessageContaining("tableId cannot be set");
   }
 
   @Test
@@ -384,7 +522,55 @@ class CredPropsUtilTest {
                 builder.ucDeltaTableIdentifier(
                     UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "s3://bucket/tbl"))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("UC Delta table identifier cannot be set with tableId");
+        .hasMessageContaining("UC Delta table identifier cannot be set");
+  }
+
+  @Test
+  void propsBuilderRejectsTableIdAfterStagingTableId() {
+    CredPropsUtil.S3PropsBuilder builder =
+        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
+    builder.ucDeltaStagingTableId("staging-id", "s3://bucket/staging");
+
+    assertThatThrownBy(() -> builder.tableId("table-id"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("tableId cannot be set");
+  }
+
+  @Test
+  void propsBuilderRejectsDeltaTableIdentifierAfterStagingTableId() {
+    CredPropsUtil.S3PropsBuilder builder =
+        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
+    builder.ucDeltaStagingTableId("staging-id", "s3://bucket/staging");
+
+    assertThatThrownBy(
+            () ->
+                builder.ucDeltaTableIdentifier(
+                    UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "s3://bucket/tbl"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("UC Delta table identifier cannot be set");
+  }
+
+  @Test
+  void propsBuilderRejectsStagingTableIdAfterTableId() {
+    CredPropsUtil.S3PropsBuilder builder =
+        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
+    builder.tableId("table-id");
+
+    assertThatThrownBy(() -> builder.ucDeltaStagingTableId("staging-id", "s3://bucket/staging"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("deltaStagingTableId cannot be set");
+  }
+
+  @Test
+  void propsBuilderRejectsStagingTableIdAfterDeltaTableIdentifier() {
+    CredPropsUtil.S3PropsBuilder builder =
+        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
+    builder.ucDeltaTableIdentifier(
+        UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "s3://bucket/tbl");
+
+    assertThatThrownBy(() -> builder.ucDeltaStagingTableId("staging-id", "s3://bucket/staging"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("deltaStagingTableId cannot be set");
   }
 
   // UC REST table and path credential props.
@@ -668,6 +854,37 @@ class CredPropsUtilTest {
     assertThat(captured.get().get(UCHadoopConfConstants.UC_PATH_KEY)).isEqualTo("s3://bucket/key");
     assertThat(captured.get().get(UCHadoopConfConstants.UC_PATH_OPERATION_KEY))
         .isEqualTo("PATH_CREATE_TABLE");
+    assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
+  }
+
+  @Test
+  void fetchDeltaStagingTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
+    AtomicReference<Configuration> captured = new AtomicReference<>();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, conf) -> {
+          captured.set(conf);
+          return mockGenericCredentialFetcher(s3Creds());
+        };
+
+    Map<String, String> props =
+        CredPropsUtil.fetchDeltaStagingTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "s3",
+            null,
+            "http://uc",
+            tokenProvider(),
+            "staging-uuid",
+            "s3://bucket/staging",
+            Map.of());
+
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY))
+        .isEqualTo("true");
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY))
+        .isEqualTo("staging-uuid");
+    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY))
+        .isEqualTo("s3://bucket/staging");
     assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
   }
 

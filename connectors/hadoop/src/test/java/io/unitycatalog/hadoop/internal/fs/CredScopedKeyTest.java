@@ -169,6 +169,52 @@ class CredScopedKeyTest {
         .isEqualTo(new CredScopedKey.TableCredScopedKey("tid", "READ"));
   }
 
+  @Test
+  void deltaStagingTableKeyEqualWhenSameFields() {
+    assertThat(new CredScopedKey.DeltaStagingTableCredScopedKey("stid-1", "s3://b/staging"))
+        .isEqualTo(new CredScopedKey.DeltaStagingTableCredScopedKey("stid-1", "s3://b/staging"))
+        .hasSameHashCodeAs(
+            new CredScopedKey.DeltaStagingTableCredScopedKey("stid-1", "s3://b/staging"));
+  }
+
+  @Test
+  void deltaStagingTableKeyNotEqualWhenDifferentId() {
+    assertThat(new CredScopedKey.DeltaStagingTableCredScopedKey("stid-1", "s3://b/staging"))
+        .isNotEqualTo(new CredScopedKey.DeltaStagingTableCredScopedKey("stid-2", "s3://b/staging"));
+  }
+
+  @Test
+  void deltaStagingTableKeyNotEqualWhenDifferentLocation() {
+    assertThat(new CredScopedKey.DeltaStagingTableCredScopedKey("stid-1", "s3://b/loc1"))
+        .isNotEqualTo(new CredScopedKey.DeltaStagingTableCredScopedKey("stid-1", "s3://b/loc2"));
+  }
+
+  @Test
+  void createReturnsDeltaStagingTableKey() {
+    Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "stid-1");
+    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://b/staging");
+
+    assertThat(CredScopedKey.create(URI.create("s3://b"), conf))
+        .isInstanceOf(CredScopedKey.DeltaStagingTableCredScopedKey.class)
+        .isEqualTo(new CredScopedKey.DeltaStagingTableCredScopedKey("stid-1", "s3://b/staging"));
+  }
+
+  @Test
+  void stagingTableKeyTakesPriorityOverTableType() {
+    Configuration conf = new Configuration();
+    conf.set(
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid");
+    conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ");
+    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "stid-1");
+    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://b/staging");
+
+    assertThat(CredScopedKey.create(URI.create("s3://b"), conf))
+        .isInstanceOf(CredScopedKey.DeltaStagingTableCredScopedKey.class);
+  }
+
   private static Configuration deltaTableConf(String location, String uid) {
     Configuration conf = new Configuration();
     conf.set(
