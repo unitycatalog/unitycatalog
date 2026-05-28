@@ -44,8 +44,9 @@ NON_SPARK_RELATED_JAR_TEMPLATES = [
 class SparkVersionSpec(object):
     """Configuration for a specific Spark version."""
 
-    def __init__(self, suffix):
+    def __init__(self, suffix, requires_spark_commit=False):
         self.suffix = suffix
+        self.requires_spark_commit = requires_spark_commit
         self.spark_related_jars = [
             jar.format(suffix=self.suffix, version="{version}")
             for jar in SPARK_RELATED_JAR_TEMPLATES
@@ -66,7 +67,10 @@ def _load_spark_versions():
     for entry in data["versions"]:
         ver = entry["version"]
         short = "_" + ".".join(ver.split(".")[:2])
-        versions[ver] = SparkVersionSpec(suffix=short)
+        versions[ver] = SparkVersionSpec(
+            suffix=short,
+            requires_spark_commit=entry.get("requiresSparkCommit", False),
+        )
     return data["default"], versions
 
 
@@ -222,8 +226,8 @@ class CrossSparkPublishTest:
 
         all_passed = True
         for spark_version, spark_spec in SPARK_VERSIONS.items():
-            if "SNAPSHOT" in spark_version:
-                print(f"\n  Skipping snapshot version: {spark_version}")
+            if "SNAPSHOT" in spark_version or spark_spec.requires_spark_commit:
+                print(f"\n  Skipping source-built or snapshot version: {spark_version}")
                 continue
 
             self.clean_maven_cache()
@@ -266,7 +270,7 @@ class CrossSparkPublishTest:
 
         # Step 2: Publish WITH suffix for each non-snapshot version
         for spark_version, spark_spec in SPARK_VERSIONS.items():
-            if "SNAPSHOT" in spark_version:
+            if "SNAPSHOT" in spark_version or spark_spec.requires_spark_commit:
                 continue
             if not self.run_sbt_command(
                 f"Step 2: build/sbt -DsparkVersion={spark_version} spark/publishM2",
@@ -289,7 +293,7 @@ class CrossSparkPublishTest:
 
         # Step 2: With suffix for each non-snapshot
         for spark_version, spark_spec in SPARK_VERSIONS.items():
-            if "SNAPSHOT" in spark_version:
+            if "SNAPSHOT" in spark_version or spark_spec.requires_spark_commit:
                 continue
             expected.update(
                 substitute_version(spark_spec.spark_related_jars, self.uc_version)

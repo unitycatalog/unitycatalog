@@ -3,6 +3,8 @@
 # to local Maven (~/.m2). Designed for CI but works locally too.
 set -euo pipefail
 
+DELTA_REPO="${DELTA_REPO:-https://github.com/delta-io/delta.git}"
+DELTA_REF="${DELTA_REF:-master}"
 DELTA_DIR="${DELTA_DIR:-/tmp/delta}"
 META_ONLY=false
 
@@ -22,11 +24,14 @@ done
 
 # ── Clone ────────────────────────────────────────────────────────────────────
 if [ -d "$DELTA_DIR/.git" ]; then
-  echo "Delta already cloned at $DELTA_DIR -- skipping clone."
+  echo "Delta already cloned at $DELTA_DIR -- fetching $DELTA_REF."
+  git -C "$DELTA_DIR" fetch "$DELTA_REPO" "$DELTA_REF"
 else
-  echo "Cloning delta-io/delta into $DELTA_DIR ..."
-  git clone --depth=1 --branch=master "https://github.com/delta-io/delta.git" "$DELTA_DIR"
+  echo "Cloning Delta from $DELTA_REPO into $DELTA_DIR ..."
+  git clone "$DELTA_REPO" "$DELTA_DIR"
+  git -C "$DELTA_DIR" fetch "$DELTA_REPO" "$DELTA_REF"
 fi
+git -C "$DELTA_DIR" checkout --detach FETCH_HEAD
 
 # ── Resolve metadata ────────────────────────────────────────────────────────
 DELTA_SHA=$(git -C "$DELTA_DIR" rev-parse HEAD)
@@ -52,7 +57,15 @@ if $META_ONLY; then
 fi
 
 # ── Build & publish to local Maven ───────────────────────────────────────────
-SPARK_MAJOR_MINOR="${SPARK_MAJOR_MINOR:?SPARK_MAJOR_MINOR is required for build (e.g. 4.1)}"
+SPARK_VERSION="${SPARK_VERSION:-${SPARK_MAJOR_MINOR:-}}"
+SPARK_VERSION="${SPARK_VERSION:?SPARK_VERSION or SPARK_MAJOR_MINOR is required for build (e.g. 4.1)}"
+SPARK_COMMIT_ARGS=()
+if [[ -n "${SPARK_COMMIT:-}" ]]; then
+  SPARK_COMMIT_ARGS+=("-DsparkCommit=$SPARK_COMMIT")
+fi
+if [[ -n "${SPARK_ARTIFACT_VERSION:-}" ]]; then
+  SPARK_COMMIT_ARGS+=("-DsparkArtifactVersion=$SPARK_ARTIFACT_VERSION")
+fi
 cd "$DELTA_DIR"
 
 # UC jars are already in ~/.m2 from the workflow's pre-Delta publishM2 step.
@@ -62,7 +75,8 @@ cd "$DELTA_DIR"
 # (delta-spark-v1, delta-spark-v2) that aren't published separately. The M2 POM
 # filters them via pomPostProcess. UC's build/sbt forces maven-local in the
 # resolver chain, so ~/.m2 artifacts are found.
-build/sbt -DsparkVersion="$SPARK_MAJOR_MINOR" \
+build/sbt -DsparkVersion="$SPARK_VERSION" \
+  "${SPARK_COMMIT_ARGS[@]}" \
   -Ddelta.autoBuildPinnedUnityCatalog=false \
   -DunityCatalogVersion="$UC_VERSION" \
   storage/publishM2 \
