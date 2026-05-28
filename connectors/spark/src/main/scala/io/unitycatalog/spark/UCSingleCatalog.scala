@@ -478,15 +478,19 @@ object UCSingleCatalog {
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
   /**
-   * Returns the current session's Hadoop configuration.
+   * Returns the current session's Hadoop configuration, blended with any session-scoped
+   * SQLConf overrides (this is what Spark SQL itself uses; see SPARK-23514).
    *
-   * Passed to {@code UCCredentialHadoopConfs.Builder#hadoopConf} so
-   * that the builder can look up any existing {@code fs.<scheme>.impl} values before
-   * overriding them with the credential-scoped filesystem wrapper.
+   * Passed to {@code UCCredentialHadoopConfs.Builder#hadoopConf} so that the builder can look up
+   * any existing {@code fs.<scheme>.impl} values before overriding them with the credential-scoped
+   * filesystem wrapper. Using {@code sessionState.newHadoopConf()} (instead of
+   * {@code sparkContext.hadoopConfiguration}) ensures the lookup also sees Hadoop properties set
+   * directly via {@code SparkSession.Builder.config("fs.<scheme>.impl", ...)} or {@code SET}
+   * commands, not only those prefixed with {@code spark.hadoop.}.
    */
   def sessionHadoopConf(): Configuration = {
     SparkSession.getActiveSession
-      .map(_.sparkContext.hadoopConfiguration)
+      .map(_.sessionState.newHadoopConf())
       .getOrElse(new Configuration())
   }
 
