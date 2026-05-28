@@ -198,12 +198,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
   @Test
   public void testManagedDeltaReplaceRejectsMetadataChanges() {
-    // Use the legacy (renewCred=false, credScopedFs=false) catalog options because this test
-    // asserts the legacy Delta rejection codes. With credScopedFs enabled, the existing
-    // catalogManaged Delta REPLACE path on Delta master-SNAPSHOT no longer surfaces those
-    // legacy error codes, even though the parameterized create/RTAS coverage in subclasses
-    // exercises (renewCred=true|false, credScopedFs=true|false) combinations elsewhere.
-    session = createSparkSessionWithCatalogs(false, false, SPARK_CATALOG, CATALOG_NAME);
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     ensureSparkCatalogSchemaExists();
     String fullTableName =
         setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
