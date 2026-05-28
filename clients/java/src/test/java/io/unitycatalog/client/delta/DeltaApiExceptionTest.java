@@ -51,25 +51,26 @@ public class DeltaApiExceptionTest {
 
   @Test
   public void constructorTolerantOfUnparseableBody() {
-    // The public constructor is lenient: parse failures leave error == null rather than throw.
-    // Callers wanting a hard parse failure should use from() and react to the empty Optional.
-    DeltaApiException delta = new DeltaApiException(new ApiException(400, "msg", null, "not json"));
-    assertThat(delta.getError()).isNull();
-    assertThat(delta.getErrorCode()).isNull();
-    assertThat(delta.getErrorType()).isNull();
-    assertThat(delta.getErrorMessage()).isNull();
-    // Passthrough still works.
-    assertThat(delta.getCode()).isEqualTo(400);
-    assertThat(delta.getResponseBody()).isEqualTo("not json");
+    // The public constructor is lenient: parse failures leave error == empty rather than throw.
+    Optional<DeltaApiException> delta =
+        DeltaApiException.from(new ApiException(400, "msg", null, "not json"));
+    assertThat(delta).isEmpty();
   }
 
   @Test
   public void resultIsAlsoAnApiException() {
-    // Callers that catch ApiException continue to work after the upgrade.
-    Optional<DeltaApiException> upgraded =
-        DeltaApiException.from(new ApiException(404, "msg", null, VALID_BODY));
-    assertThat(upgraded).isPresent();
-    assertThat(upgraded.get()).isInstanceOf(ApiException.class);
+    // Callers that catch ApiException continue to work after the upgrade..
+    DeltaApiException upgraded =
+        DeltaApiException.from(
+                new ApiException("msg", new RuntimeException("re"), 404, null, VALID_BODY))
+            .get();
+    assertThat(upgraded).isInstanceOf(ApiException.class);
+    assertThat(upgraded.getErrorCode()).isEqualTo(404);
+    // The cause is the original ApiException
+    assertThat(upgraded.getCause()).isInstanceOf(ApiException.class);
+    ApiException cause = (ApiException) upgraded.getCause();
+    // The cause.cause is the original cause RuntimeException
+    assertThat(cause.getCause()).isInstanceOf(RuntimeException.class);
   }
 
   @Test

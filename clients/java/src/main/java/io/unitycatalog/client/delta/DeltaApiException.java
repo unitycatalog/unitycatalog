@@ -1,5 +1,6 @@
 package io.unitycatalog.client.delta;
 
+import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiException;
@@ -36,7 +37,7 @@ public class DeltaApiException extends ApiException {
 
   private static final ObjectMapper MAPPER = createObjectMapper();
 
-  protected static ObjectMapper createObjectMapper() {
+  private static ObjectMapper createObjectMapper() {
     ObjectMapper mapper = new ObjectMapper();
     mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     mapper.enable(DeserializationFeature.READ_ENUMS_USING_TO_STRING);
@@ -53,10 +54,10 @@ public class DeltaApiException extends ApiException {
    * wanting a hard parse failure should use {@link #from(ApiException)} instead and react to an
    * empty {@link Optional}.
    */
-  public DeltaApiException(ApiException source) {
+  private DeltaApiException(ApiException source) {
     super(
         source.getMessage(),
-        source.getCause(),
+        source, // preserve original ApiException stack/cause
         source.getCode(),
         source.getResponseHeaders(),
         source.getResponseBody());
@@ -65,9 +66,8 @@ public class DeltaApiException extends ApiException {
 
   /**
    * Lenient upgrade: returns a {@link DeltaApiException} only when the response body parses cleanly
-   * as a Delta error envelope. {@link Optional#empty()} typically means the response wasn't from
-   * the Delta surface, or the server emitted a non-spec body -- in either case the caller can fall
-   * back to the generic {@link ApiException} it was given.
+   * as a Delta error envelope. Returns empty when the body is null/empty, isn't valid JSON, is
+   * missing the error envelope, or has "error": null.
    */
   public static Optional<DeltaApiException> from(ApiException ex) {
     DeltaApiException upgraded = new DeltaApiException(ex);
@@ -84,7 +84,7 @@ public class DeltaApiException extends ApiException {
     return error == null ? null : error.getCode();
   }
 
-  /** {@code error.type}: spec-defined error-type enum, e.g. {@code TABLE_NOT_FOUND_EXCEPTION}. */
+  /** {@code error.type}: spec-defined error-type enum, e.g. {@code NO_SUCH_TABLE_EXCEPTION}. */
   public ErrorType getErrorType() {
     return error == null ? null : error.getType();
   }
@@ -101,7 +101,7 @@ public class DeltaApiException extends ApiException {
     try {
       ErrorResponse response = MAPPER.readValue(body, ErrorResponse.class);
       return response == null ? null : response.getError();
-    } catch (Exception e) {
+    } catch (JacksonException e) {
       return null;
     }
   }
