@@ -400,9 +400,12 @@ class UCSingleCatalog
       properties: util.Map[String, String]): StagedTable = {
     val stagingCatalog = requireStagingCatalog("REPLACE TABLE")
     if (shouldDelegateReplaceToDeltaApi(properties)) {
-      // Defer load + augment to the Delta-side `buildReplaceProps`.
+      // Defer load + augment to the Delta-side `buildReplaceProps`. UCSingleCatalog no longer
+      // loads the existing table and prepare the properties for replace as this will be done by
+      // Delta instead.
       return stagingCatalog.stageReplace(ident, schema, partitions, properties)
     }
+    // The following becomes dead code when Delta API is turned on
     val existingTable = resolveExistingTableForReplace(ident, allowMissingTable = false)
     val newProps = loadExistingManagedTablePropsForReplace(
       ident,
@@ -422,8 +425,12 @@ class UCSingleCatalog
     val stagingCatalog = requireStagingCatalog("CREATE OR REPLACE TABLE")
     if (shouldDelegateReplaceToDeltaApi(properties)) {
       // Defer existence-probe + branch (create-staging vs replace) to the Delta catalog.
+      // UCSingleCatalog no longer loads the existing table and prepare the properties for replace,
+      // or create a staging table if table doesn't exist yet, as this will be done by Delta catalog
+      // instead.
       return stagingCatalog.stageCreateOrReplace(ident, schema, partitions, properties)
     }
+    // The following becomes dead code when Delta API is turned on
     val existingTable = resolveExistingTableForReplace(ident, allowMissingTable = true)
     val newProps = existingTable.map { tableInfo =>
       // Replacing existing table.
