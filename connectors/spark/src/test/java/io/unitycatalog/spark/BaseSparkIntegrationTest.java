@@ -46,12 +46,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   protected SparkSession createSparkSessionWithCatalogs(String... catalogs) {
-    // Flip credScopedFsEnabled on by default to match the new connector default
-    // (DEFAULT_CRED_SCOPED_FS_ENABLED = true). Keep renewCred off here: tests that need
-    // credential renewal already opt in via the 3-arg overload, and the (renewCred=true,
-    // credScopedFs=true) combination is not part of the existing cloudParameters() coverage
-    // (see {@link LocalDeltaManagedTableReadWriteTest} / {@link S3DeltaManagedTableReadWriteTest}).
-    return createSparkSessionWithCatalogs(false, true, catalogs);
+    return createSparkSessionWithCatalogs(true, true, catalogs);
   }
 
   protected SparkSession createSparkSessionWithCatalogs(
