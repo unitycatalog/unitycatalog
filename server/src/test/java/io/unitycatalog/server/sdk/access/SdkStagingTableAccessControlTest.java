@@ -3,49 +3,54 @@ package io.unitycatalog.server.sdk.access;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.api.SchemasApi;
-import io.unitycatalog.client.api.TablesApi;
-import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.delta.model.CreateStagingTableRequest;
-import io.unitycatalog.client.model.ColumnInfo;
-import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateSchema;
-import io.unitycatalog.client.model.CreateStagingTable;
-import io.unitycatalog.client.model.CreateTable;
-import io.unitycatalog.client.model.DataSourceFormat;
-import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.SecurableType;
-import io.unitycatalog.client.model.StagingTableInfo;
-import io.unitycatalog.client.model.TableInfo;
-import io.unitycatalog.client.model.TableOperation;
-import io.unitycatalog.client.model.TableType;
-import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
  * Access control tests for staging tables that require authorization to be enabled.
  *
- * <p>This test class extends {@link SdkAccessControlBaseCRUDTest} which provides common support
- * functionality for SDK-based access control tests, including user management, permission
- * management, and resource setup.
+ * <p>Abstract base class. {@link SdkUCStagingTableAccessControlTest} runs the suite using UC REST
+ * createStagingTable / createTable; {@link SdkDeltaStagingTableAccessControlTest} runs the same
+ * suite against the Delta REST endpoints. The two surfaces share the persist-layer cross-principal
+ * check at {@code StagingTableRepository.commitStagingTable}, so both subclasses must observe
+ * identical staging-table access-control behavior; running the same {@code @Test} against both
+ * ensures they don't drift.
+ *
+ * <p>All surface-specific RPCs are encapsulated behind {@link #createStaging}, {@link
+ * #finalizeManagedTable}, and {@link #fetchTempCreds}; the abstract test body imports neither
+ * surface's TablesApi nor TemporaryCredentialsApi. SchemasApi is used inline because it's
+ * surface-independent.
  */
-public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTest {
+public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
-  private final List<ColumnInfo> columns =
-      List.of(
-          new ColumnInfo()
-              .name("test_column")
-              .typeText("INTEGER")
-              .typeJson("{\"type\": \"integer\"}")
-              .typeName(ColumnTypeName.INT)
-              .position(0)
-              .nullable(true));
+  /** Just-created staging table identifier (id + storage location). */
+  protected record StagingHandle(String id, String location) {}
+
+  /** Result of finalizing a managed table from a staging location. */
+  protected record FinalizedTable(String tableId, String storageLocation) {}
+
+  /** Surface-specific {@code createStagingTable} RPC. */
+  protected abstract StagingHandle createStaging(
+      ServerConfig config, String catalog, String schema, String name) throws Exception;
+
+  /** Surface-specific {@code createTable} RPC that finalizes a managed table from a staging. */
+  protected abstract FinalizedTable finalizeManagedTable(
+      ServerConfig config, StagingHandle staging, String name) throws Exception;
+
+  /**
+   * Surface-specific temporary-credentials RPC for the table identified by {@code tableId} (which
+   * may be a staging-table UUID or a regular-table UUID). The UC REST and Delta REST surfaces
+   * expose different RPCs ({@code generateTemporaryTableCredentials} vs {@code
+   * getStagingTableCredentials}) but both gate through the same {@code @AuthorizeResourceKey}-
+   * resolved ownership check, so the access-control semantics this test pins must hold on either
+   * surface; each subclass implements this against its own RPC.
+   */
+  protected abstract void fetchTempCreds(ServerConfig config, String tableId) throws Exception;
 
   /**
    * Test that attempting to create a managed table from another user's staging table fails with
@@ -80,78 +85,40 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
           Privileges.CREATE_TABLE);
     }
 
-    // Create API clients for both users
     ServerConfig userAConfig = createTestUserServerConfig(userAEmail);
     ServerConfig userBConfig = createTestUserServerConfig(userBEmail);
-    TablesApi userATablesApi = new TablesApi(TestUtils.createApiClient(userAConfig));
-    TablesApi userBTablesApi = new TablesApi(TestUtils.createApiClient(userBConfig));
-    TemporaryCredentialsApi userATempCredsApi =
-        new TemporaryCredentialsApi(TestUtils.createApiClient(userAConfig));
-    TemporaryCredentialsApi userBTempCredsApi =
-        new TemporaryCredentialsApi(TestUtils.createApiClient(userBConfig));
 
-    // Step 1: User A creates a staging table
-    CreateStagingTable createStagingTableRequest =
-        new CreateStagingTable()
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .name(TestUtils.TABLE_NAME);
+    // Step 1: User A creates a staging table (surface-specific).
+    StagingHandle staging =
+        createStaging(
+            userAConfig, TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME);
+    assertThat(staging.location()).isNotNull();
 
-    StagingTableInfo stagingTableInfo =
-        userATablesApi.createStagingTable(createStagingTableRequest);
-    assertThat(stagingTableInfo).isNotNull();
-    assertThat(stagingTableInfo.getStagingLocation()).isNotNull();
+    // Step 2: temp-creds access control on the staging table -- exercised against the subclass's
+    // own surface (UC REST generateTemporaryTableCredentials / Delta REST
+    // getStagingTableCredentials).
+    // Owner allowed; non-owner denied.
+    fetchTempCreds(userAConfig, staging.id());
+    TestUtils.assertPermissionDenied(() -> fetchTempCreds(userBConfig, staging.id()));
 
-    // Step 2: Test temporary credentials generation
-    // User A (owner) should be able to get temporary credentials
-    GenerateTemporaryTableCredential tempCredRequest =
-        new GenerateTemporaryTableCredential()
-            .tableId(stagingTableInfo.getId())
-            .operation(TableOperation.READ_WRITE);
+    // createStagingTable authz (catalog USE_CATALOG/OWNER + schema USE_SCHEMA+CREATE_TABLE OR
+    // schema OWNER). Both surfaces share the same SpEL constant
+    // AuthorizeExpressions.CREATE_STAGING_TABLE; this section exercises both arms of the OR
+    // through the abstract createStaging so each subclass tests its own RPC.
 
-    TemporaryCredentials tempCredsA =
-        userATempCredsApi.generateTemporaryTableCredentials(tempCredRequest);
-    assertThat(tempCredsA).isNotNull();
-
-    // User B (non-owner) should fail to get temporary credentials with PERMISSION_DENIED
-    TestUtils.assertPermissionDenied(
-        () -> userBTempCredsApi.generateTemporaryTableCredentials(tempCredRequest));
-
-    // Delta REST getStagingTableCredentials follows the same OWNER-only authz.
-    io.unitycatalog.client.delta.api.TemporaryCredentialsApi userADeltaCredsApi =
-        new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(
-            TestUtils.createApiClient(userAConfig));
-    io.unitycatalog.client.delta.api.TemporaryCredentialsApi userBDeltaCredsApi =
-        new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(
-            TestUtils.createApiClient(userBConfig));
-    UUID stagingId = UUID.fromString(stagingTableInfo.getId());
-
-    // User A (owner) -> allowed
-    assertThat(userADeltaCredsApi.getStagingTableCredentials(stagingId)).isNotNull();
-
-    // User B (non-owner) -> denied
-    TestUtils.assertPermissionDenied(
-        () -> userBDeltaCredsApi.getStagingTableCredentials(stagingId));
-
-    // Delta REST createStagingTable: same authz rule as UC REST StagingTableService (catalog
-    // USE_CATALOG/OWNER + schema USE_SCHEMA+CREATE_TABLE OR schema OWNER). Verify here that both
-    // entry points grant equivalent access so they don't silently drift apart.
-
-    // User A covers the `USE_SCHEMA + CREATE_TABLE` arm of the OR -- User A's schema grants
-    // are USE_SCHEMA + CREATE_TABLE (set up at the top of the test), but NOT OWNER.
+    // User A covers the `USE_SCHEMA + CREATE_TABLE` arm -- granted at the top of the test, but
+    // not schema OWNER.
     assertThat(
-            deltaTablesApi(userAConfig)
-                .createStagingTable(
-                    TestUtils.CATALOG_NAME,
-                    TestUtils.SCHEMA_NAME,
-                    new CreateStagingTableRequest().name("drc_staging_allowed_via_use_schema")))
+            createStaging(
+                userAConfig,
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                "staging_allowed_via_use_schema"))
         .isNotNull();
 
-    // User D covers the `schema OWNER` arm of the OR. OWNER is not grantable via the API (it's
-    // implicit from creating a resource), so User D creates their own schema and then creates a
-    // staging table in it -- with no explicit CREATE_TABLE grant, only the schema OWNER path can
-    // admit this call. Pairing with User A above, both branches of the OR in
-    // AuthorizeExpressions.CREATE_STAGING_TABLE are exercised.
+    // User D covers the `schema OWNER` arm. OWNER is not grantable via the API (it's implicit from
+    // creating a resource), so User D creates their own schema and then creates a staging table in
+    // it -- with no explicit CREATE_TABLE grant, only the schema OWNER path can admit this call.
     String userDEmail = "user_d@example.com";
     String userDSchema = "user_d_schema";
     createTestUser(userDEmail, "User D");
@@ -165,11 +132,11 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
     new SchemasApi(TestUtils.createApiClient(userDConfig))
         .createSchema(new CreateSchema().name(userDSchema).catalogName(TestUtils.CATALOG_NAME));
     assertThat(
-            deltaTablesApi(userDConfig)
-                .createStagingTable(
-                    TestUtils.CATALOG_NAME,
-                    userDSchema,
-                    new CreateStagingTableRequest().name("drc_staging_allowed_via_schema_owner")))
+            createStaging(
+                userDConfig,
+                TestUtils.CATALOG_NAME,
+                userDSchema,
+                "staging_allowed_via_schema_owner"))
         .isNotNull();
 
     // User C has USE_CATALOG only (neither arm of the OR satisfied) -- denied.
@@ -180,50 +147,27 @@ public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTe
     ServerConfig userCConfig = createTestUserServerConfig(userCEmail);
     TestUtils.assertPermissionDenied(
         () ->
-            deltaTablesApi(userCConfig)
-                .createStagingTable(
-                    TestUtils.CATALOG_NAME,
-                    TestUtils.SCHEMA_NAME,
-                    new CreateStagingTableRequest().name("drc_staging_denied")));
+            createStaging(
+                userCConfig, TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "staging_denied"));
 
-    // Step 3: User B attempts to create a managed table using User A's staging location
-    CreateTable createTableRequest =
-        new CreateTable()
-            .name(TestUtils.TABLE_NAME)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .columns(columns)
-            .tableType(TableType.MANAGED)
-            .dataSourceFormat(DataSourceFormat.DELTA)
-            .storageLocation(stagingTableInfo.getStagingLocation())
-            .properties(Map.of(TableProperties.UC_TABLE_ID, stagingTableInfo.getId()))
-            .comment("Table created by different user - should fail");
-
-    // This by user B should fail with PERMISSION_DENIED and a message identifying the check.
+    // Steps 3+4: User B's createTable on User A's staging is rejected at commitStagingTable;
+    // User A's same request succeeds and produces a regular table that reuses the staging UUID
+    // and storage location.
     TestUtils.assertPermissionDenied(
-        () -> userBTablesApi.createTable(createTableRequest),
+        () -> finalizeManagedTable(userBConfig, staging, TestUtils.TABLE_NAME),
         "User attempts to create table on a staging location without ownership");
+    FinalizedTable finalized = finalizeManagedTable(userAConfig, staging, TestUtils.TABLE_NAME);
+    assertThat(finalized.storageLocation()).isEqualTo(staging.location());
+    assertThat(finalized.tableId()).isEqualTo(staging.id());
 
-    // Step 4: The same request by user A should succeed
-    TableInfo tableInfo = userATablesApi.createTable(createTableRequest);
-    assertThat(tableInfo).isNotNull();
-    assertThat(tableInfo.getStorageLocation()).isEqualTo(stagingTableInfo.getStagingLocation());
-    assertThat(tableInfo.getTableId()).isEqualTo(stagingTableInfo.getId());
-
-    // Step 5: User B calls getStagingTableCredentials with User A's regular-table UUID.
-    // This is not the same as the SdkDeltaCredentialsTest case (owner passes regular-table UUID
-    // and gets 404 from the reject-regular-table logic); here the caller is a non-owner, so
-    // authz (@AuthorizeResourceKey(TABLE)) resolves the regular-table UUID in the graph, finds
-    // that User B is not OWNER, and rejects with 403 before the handler runs. The 404 path is
-    // therefore unreachable for non-owners -- which is fail-closed and the desired behavior.
-    UUID tableUuid = UUID.fromString(tableInfo.getTableId());
-    TestUtils.assertPermissionDenied(
-        () -> userBDeltaCredsApi.getStagingTableCredentials(tableUuid));
-  }
-
-  // FQCN kept at this single site because io.unitycatalog.client.delta.api.TablesApi has the same
-  // simple name as io.unitycatalog.client.api.TablesApi that's imported for createTable above.
-  private static io.unitycatalog.client.delta.api.TablesApi deltaTablesApi(ServerConfig config) {
-    return new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(config));
+    // Step 5: User B calls the temp-creds RPC with User A's regular-table UUID. The
+    // surface-specific Delta {@code getStagingTableCredentials} handler has a "reject if not a
+    // staging table" branch that returns 404 -- but that 404 is unreachable for a non-owner
+    // because authz (@AuthorizeResourceKey resolves the UUID in the graph, finds User B is not
+    // OWNER) rejects with 403 before the handler runs. UC REST's
+    // {@code generateTemporaryTableCredentials} reaches the same 403 via its own ownership check.
+    // Either subclass's surface must exhibit the fail-closed 403; we don't pin which one wins for
+    // an owner-with-regular-UUID call here.
+    TestUtils.assertPermissionDenied(() -> fetchTempCreds(userBConfig, finalized.tableId()));
   }
 }

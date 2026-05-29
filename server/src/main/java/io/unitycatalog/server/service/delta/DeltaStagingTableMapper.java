@@ -13,10 +13,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Builds the Delta REST Catalog {@link StagingTableResponse} from the UC {@link StagingTableInfo}
- * plus freshly-vended cloud credentials. The required / suggested protocol and properties served
- * here are pulled from {@link UcManagedDeltaContract}, which is the single source of truth for the
- * UC catalog-managed Delta table contract; create / update / commit endpoints validate against that
+ * Builds the UC Delta API {@link StagingTableResponse} from the UC {@link StagingTableInfo} plus
+ * freshly-vended cloud credentials. The required / suggested protocol and properties served here
+ * are pulled from {@link UcManagedDeltaContract}, which is the single source of truth for the UC
+ * catalog-managed Delta table contract; create / update / commit endpoints validate against that
  * same contract.
  */
 public final class DeltaStagingTableMapper {

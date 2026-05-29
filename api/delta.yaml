@@ -18,7 +18,7 @@ servers:
   - url: http://localhost:8080/api/2.1/unity-catalog
     description: Localhost reference server
 info:
-  title: Delta REST Catalog API
+  title: UC Delta API
   summary: REST API for Delta Lake table catalog operations
   version: '1.0'
   description: |
@@ -579,14 +579,6 @@ components:
         - MANAGED
         - EXTERNAL
 
-    SecurableType:
-      type: string
-      description: The type of securable object.
-      enum:
-        - TABLE
-        - VIEW
-
-
     CredentialOperation:
       type: string
       description: |
@@ -775,6 +767,19 @@ components:
             type: string
         domain-metadata:
           $ref: '#/components/schemas/DomainMetadataUpdates'
+        last-commit-timestamp-ms:
+          type: integer
+          format: int64
+          description: |
+            Timestamp of version 0 (the commit the client wrote  before calling this endpoint),
+            in epoch milliseconds.
+        uniform:
+          $ref: '#/components/schemas/UniformMetadata'
+          description: |
+            Optional UniForm conversion metadata. When present, the table is registered as
+            UniForm-enabled, so readers can access it via either the Delta or Iceberg REST
+            Catalog. The engine generates the Iceberg metadata file at the supplied
+            metadata-location before calling createTable.
       required:
         - name
         - location
@@ -783,6 +788,7 @@ components:
         - columns
         - protocol
         - properties
+        - last-commit-timestamp-ms
       example:
         name: "sales"
         location: "s3://bucket/warehouse/catalog/schema/sales"
@@ -861,8 +867,6 @@ components:
           type: integer
           format: int64
           description: Last update time in epoch milliseconds
-        securable-type:
-          $ref: '#/components/schemas/SecurableType'
         columns:
           $ref: '#/components/schemas/StructType'
         partition-columns:
@@ -891,7 +895,6 @@ components:
         - location
         - created-time
         - updated-time
-        - securable-type
         - columns
         - properties
 
@@ -1491,14 +1494,6 @@ components:
                   type: integer
                   format: int64
                   description: Number of bytes removed by this commit
-                num-clustered-bytes-added:
-                  type: integer
-                  format: int64
-                  description: Number of clustered bytes added by this commit
-                num-clustered-bytes-removed:
-                  type: integer
-                  format: int64
-                  description: Number of clustered bytes removed by this commit
                 num-rows-inserted:
                   type: integer
                   format: int64
@@ -1550,6 +1545,7 @@ components:
       enum:
         - BadRequestException
         - InvalidParameterValueException
+        - UnsupportedTableFormatException
         - NotAuthorizedException
         - PermissionDeniedException
         - NotFoundException
@@ -1568,6 +1564,7 @@ components:
       x-enum-descriptions:
         - 'BadRequestException: (400) Malformed request or invalid action.'
         - 'InvalidParameterValueException: (400) Server-side validation failed (e.g., missing required fields or table features).'
+        - 'UnsupportedTableFormatException: (400) The table is not a Delta table, or a Delta table not yet supported by this endpoint. In any case, clients should fallback to the existing UC API.'
         - 'NotAuthorizedException: (401) Authentication credentials are missing, expired, or invalid.'
         - 'PermissionDeniedException: (403) Authenticated user does not have the necessary permissions.'
         - 'NotFoundException: (404) The requested resource does not exist.'

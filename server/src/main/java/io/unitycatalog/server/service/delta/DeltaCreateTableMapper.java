@@ -1,7 +1,6 @@
 package io.unitycatalog.server.service.delta;
 
 import io.unitycatalog.server.delta.model.CreateTableRequest;
-import io.unitycatalog.server.delta.model.StructField;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -9,27 +8,38 @@ import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ColumnUtils;
-import java.util.ArrayList;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Converts a Delta REST Catalog {@link CreateTableRequest} (with typed Delta columns and kebab-case
- * field names) into the UC {@link CreateTable} (with UC {@link ColumnInfo}s and
- * partition-index-per-column). The server holds path params for catalog and schema; the rest comes
- * from the request body.
+ * Converts a Delta {@link CreateTableRequest} (with typed Delta columns and kebab-case field names)
+ * into the UC {@link CreateTable} (with UC {@link ColumnInfo}s and partition-index-per-column). The
+ * server holds path params for catalog and schema; the rest comes from the request body.
  *
  * <p>Required-field checks (name, location, columns, protocol, table-type, data-source-format) and
  * the DELTA-only format rule apply to all tables. The full UC catalog-managed contract ({@link
  * UcManagedDeltaContract}) applies only to MANAGED tables; EXTERNAL tables skip contract validation
  * but still go through the same {@link DeltaPropertyMapper} projection, so derived
- * {@code delta.feature.*} and {@code delta.clusteringColumns} entries override any client-supplied
+ * {@code delta.feature.*} and {@code clusteringColumns} entries override any client-supplied
  * values under those keys.
  */
 public final class DeltaCreateTableMapper {
 
   private DeltaCreateTableMapper() {}
 
-  public static CreateTable toCreateTable(String catalog, String schema, CreateTableRequest req) {
+  /**
+   * Result of mapping a {@link CreateTableRequest}: the assembled UC {@link CreateTable} together
+   * with the validated, normalized UniForm Iceberg fields ({@code Optional.empty()} when no
+   * UniForm metadata was supplied). Callers thread the uniform fields straight to {@code
+   * TableRepository.createTableForDelta} so the metadata-location is normalized exactly once at
+   * the request boundary.
+   */
+  public record Result(
+      CreateTable createTable,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformIcebergFields) {}
+
+  public static Result toCreateTable(String catalog, String schema, CreateTableRequest req) {
     if (req == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Request body is required.");
     }
@@ -49,6 +59,10 @@ public final class DeltaCreateTableMapper {
     if (req.getProtocol() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "protocol is required.");
     }
+    if (req.getLastCommitTimestampMs() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "last-commit-timestamp-ms is required.");
+    }
 
     // MANAGED-only: full UC catalog-managed contract (protocol versions + features + reader-subset
     // + domain-metadata consistency + properties). EXTERNAL tables get a pass: UC mirrors what the
@@ -58,25 +72,28 @@ public final class DeltaCreateTableMapper {
           req.getProtocol(), req.getDomainMetadata(), req.getProperties());
     }
 
-    List<ColumnInfo> columns = new ArrayList<>();
-    List<StructField> fields = req.getColumns().getFields();
-    for (int i = 0; i < fields.size(); i++) {
-      columns.add(ColumnUtils.toColumnInfo(fields.get(i), i));
-    }
+    // Uniform property/block consistency mirrors the addCommit-time check (shared via
+    // DeltaUniformUtils) so a table never starts in a state the next commit would reject.
+    DeltaUniformUtils.validateConsistency(req.getProperties(), req.getUniform() != null);
+    Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields =
+        DeltaUniformUtils.getUniformFields(req.getUniform());
+    DeltaUniformUtils.validateCreate(uniformFields, NormalizedURL.from(req.getLocation()));
+
+    List<ColumnInfo> columns = ColumnUtils.toColumnInfos(req.getColumns().getFields());
     ColumnUtils.applyPartitionColumns(columns, req.getPartitionColumns());
 
-    return new CreateTable()
-        .name(req.getName())
-        .catalogName(catalog)
-        .schemaName(schema)
-        .tableType(tableType)
-        .dataSourceFormat(toUCDataSourceFormat(req.getDataSourceFormat()))
-        .columns(columns)
-        .comment(req.getComment())
-        .storageLocation(req.getLocation())
-        .properties(
-            DeltaPropertyMapper.buildStoredProperties(
-                req.getProtocol(), req.getDomainMetadata(), req.getProperties()));
+    CreateTable createTable =
+        new CreateTable()
+            .name(req.getName())
+            .catalogName(catalog)
+            .schemaName(schema)
+            .tableType(tableType)
+            .dataSourceFormat(toUCDataSourceFormat(req.getDataSourceFormat()))
+            .columns(columns)
+            .comment(req.getComment())
+            .storageLocation(req.getLocation())
+        .properties(DeltaPropertyMapper.buildStoredProperties(req));
+    return new Result(createTable, uniformFields);
   }
 
   private static TableType toUCTableType(io.unitycatalog.server.delta.model.TableType type) {
@@ -99,6 +116,7 @@ public final class DeltaCreateTableMapper {
       return DataSourceFormat.DELTA;
     }
     throw new BaseException(
-        ErrorCode.INVALID_ARGUMENT, "Unsupported data-source-format: " + format.getValue());
+        ErrorCode.UNSUPPORTED_TABLE_FORMAT,
+        "Unsupported data-source-format: " + format.getValue());
   }
 }

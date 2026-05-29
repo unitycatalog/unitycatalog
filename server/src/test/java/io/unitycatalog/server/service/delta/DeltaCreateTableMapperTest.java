@@ -30,7 +30,8 @@ public class DeltaCreateTableMapperTest {
 
   @Test
   public void happyPathManagedBuildsCreateTable() {
-    CreateTable created = DeltaCreateTableMapper.toCreateTable("cat", "sch", baseManagedRequest());
+    CreateTable created =
+        DeltaCreateTableMapper.toCreateTable("cat", "sch", baseManagedRequest()).createTable();
 
     assertThat(created.getName()).isEqualTo("tbl");
     assertThat(created.getCatalogName()).isEqualTo("cat");
@@ -62,7 +63,7 @@ public class DeltaCreateTableMapperTest {
                     .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
             .properties(Map.of());
 
-    CreateTable created = DeltaCreateTableMapper.toCreateTable("cat", "sch", req);
+    CreateTable created = DeltaCreateTableMapper.toCreateTable("cat", "sch", req).createTable();
     assertThat(created.getTableType()).isEqualTo(io.unitycatalog.server.model.TableType.EXTERNAL);
   }
 
@@ -86,7 +87,8 @@ public class DeltaCreateTableMapperTest {
         .dataSourceFormat(DataSourceFormat.DELTA)
         .columns(simpleColumns())
         .protocol(managedProtocol())
-        .properties(fullManagedProperties("uuid-x"));
+        .properties(fullManagedProperties("uuid-x"))
+        .lastCommitTimestampMs(1700000000000L);
   }
 
   /** A minimal EXTERNAL createTable request (UC mirrors whatever the client sends). */
@@ -103,7 +105,8 @@ public class DeltaCreateTableMapperTest {
                 .minWriterVersion(7)
                 .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
                 .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
-        .properties(Map.of());
+        .properties(Map.of())
+        .lastCommitTimestampMs(1700000000000L);
   }
 
   private static StructType simpleColumns() {
@@ -143,9 +146,6 @@ public class DeltaCreateTableMapperTest {
     props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
     props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
     props.put(TableProperties.UC_TABLE_ID, tableId);
-    // Engine-generated values: any non-null placeholder satisfies the contract.
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION, "0");
-    props.put(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP, "1700000000000");
     return props;
   }
 

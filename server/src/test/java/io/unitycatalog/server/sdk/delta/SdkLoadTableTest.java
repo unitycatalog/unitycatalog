@@ -42,9 +42,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * End-to-end tests for the Delta REST Catalog loadTable endpoint. Consolidated into a single test
- * with sections so the BaseServerTest setUp/tearDown (server start + DB reset per test) runs once
- * for all scenarios. Each section creates its own uniquely-named table so they don't collide.
+ * End-to-end tests for the UC Delta API loadTable endpoint. Consolidated into a single test with
+ * sections so the BaseServerTest setUp/tearDown (server start + DB reset per test) runs once for
+ * all scenarios. Each section creates its own uniquely-named table so they don't collide.
  */
 public class SdkLoadTableTest extends BaseServerTest {
 
@@ -377,24 +377,26 @@ public class SdkLoadTableTest extends BaseServerTest {
     // -------- Corrupt typeJson: empty schema rather than 5xx --------
     {
       String tableName = "tbl_corrupt_json";
-      tableOps.createTable(
-          new CreateTable()
-              .name(tableName)
-              .catalogName(TestUtils.CATALOG_NAME)
-              .schemaName(TestUtils.SCHEMA_NAME)
-              .tableType(TableType.MANAGED)
-              .dataSourceFormat(DataSourceFormat.DELTA)
-              .columns(
-                  List.of(
-                      new ColumnInfo()
-                          .name("id")
-                          .typeName(ColumnTypeName.LONG)
-                          .typeText("bigint")
-                          // Malformed typeJson -- loadTable should swallow the parse error and
-                          // return an empty schema rather than 5xx'ing.
-                          .typeJson("not json at all")
-                          .position(0)
-                          .nullable(false))));
+      TableInfo tableInfo =
+          tableOps.createTable(
+              new CreateTable()
+                  .name(tableName)
+                  .catalogName(TestUtils.CATALOG_NAME)
+                  .schemaName(TestUtils.SCHEMA_NAME)
+                  .tableType(TableType.MANAGED)
+                  .dataSourceFormat(DataSourceFormat.DELTA)
+                  .columns(
+                      List.of(
+                          new ColumnInfo()
+                              .name("id")
+                              .typeName(ColumnTypeName.LONG)
+                              .typeText("bigint")
+                              .typeJson(
+                                  "{\"name\":\"id\",\"type\":\"long\","
+                                      + "\"nullable\":false,\"metadata\":{}}")
+                              .position(0)
+                              .nullable(false))));
+      corruptFirstColumnTypeJson(UUID.fromString(tableInfo.getTableId()), "not json at all");
 
       LoadTableResponse response = loadTable(tableName);
       assertThat(response.getMetadata()).isNotNull();
@@ -404,6 +406,16 @@ public class SdkLoadTableTest extends BaseServerTest {
 
   private LoadTableResponse loadTable(String tableName) throws ApiException {
     return deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
+  }
+
+  private void corruptFirstColumnTypeJson(UUID tableId, String typeJson) {
+    var sessionFactory = hibernateConfigurator.getSessionFactory();
+    try (Session session = sessionFactory.openSession()) {
+      Transaction tx = session.beginTransaction();
+      TableInfoDAO dao = session.get(TableInfoDAO.class, tableId);
+      dao.getColumns().get(0).setTypeJson(typeJson);
+      tx.commit();
+    }
   }
 
   private void updateUniformMetadata(

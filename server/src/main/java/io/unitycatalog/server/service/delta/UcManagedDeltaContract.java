@@ -39,17 +39,22 @@ public final class UcManagedDeltaContract {
   public static final List<TableFeature> REQUIRED_FEATURES =
       List.of(
           TableFeature.CATALOG_MANAGED,
-          TableFeature.DELETION_VECTORS,
           TableFeature.V2_CHECKPOINT,
           TableFeature.VACUUM_PROTOCOL_CHECK,
           TableFeature.IN_COMMIT_TIMESTAMP);
 
   /**
    * Suggested features. {@code domainMetadata} is conditionally required with {@code rowTracking}
-   * but is advertised as suggested so clients that enable row tracking enable it too.
+   * but is advertised as suggested so clients that enable row tracking enable it too. {@code
+   * deletionVectors} is suggested rather than required because Iceberg V2 export is not compatible
+   * with it; clients that enable Iceberg uniform must opt out.
    */
   public static final List<TableFeature> SUGGESTED_FEATURES =
-      List.of(TableFeature.COLUMN_MAPPING, TableFeature.DOMAIN_METADATA, TableFeature.ROW_TRACKING);
+      List.of(
+          TableFeature.COLUMN_MAPPING,
+          TableFeature.DELETION_VECTORS,
+          TableFeature.DOMAIN_METADATA,
+          TableFeature.ROW_TRACKING);
 
   // Wire-format spec-name lists, computed once from the typed feature lists above.
   public static final List<String> REQUIRED_READER_FEATURES = readerFeaturesOf(REQUIRED_FEATURES);
@@ -64,18 +69,14 @@ public final class UcManagedDeltaContract {
   public static final Map<String, String> REQUIRED_FIXED_PROPERTIES =
       Map.of(
           TableProperties.CHECKPOINT_POLICY, "v2",
-          TableProperties.ENABLE_DELETION_VECTORS, "true",
           TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
 
   /**
    * Required properties whose value the engine must compute at commit time. The staging response
    * sends them with {@code null} values; the createTable request must echo them back with non-null
-   * values the engine substituted.
+   * values the engine substituted. This is placeholder for adding properties in the future.
    */
-  public static final List<String> ENGINE_GENERATED_PROPERTY_KEYS =
-      List.of(
-          TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION,
-          TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP);
+  public static final List<String> ENGINE_GENERATED_PROPERTY_KEYS = List.of();
 
   /**
    * Suggested properties. Null values mean the client generates the value at commit time (required
@@ -86,6 +87,7 @@ public final class UcManagedDeltaContract {
 
   private static Map<String, String> buildSuggestedProperties() {
     Map<String, String> props = new HashMap<>();
+    props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
     props.put(TableProperties.ENABLE_ROW_TRACKING, "true");
     props.put(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_ID_COLUMN_NAME, null);
     props.put(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME, null);
@@ -102,7 +104,8 @@ public final class UcManagedDeltaContract {
    *   <li>every declared domain-metadata entry is backed by the matching writer feature;
    *   <li>every fixed-value required property equals the expected value;
    *   <li>the UC table-id property is set;
-   *   <li>the engine-generated required properties are present with non-null values.
+   *   <li>every entry in {@link #ENGINE_GENERATED_PROPERTY_KEYS} (if any) is present with a
+   *       non-null value.
    * </ul>
    *
    * <p>Apply only when the table is UC catalog-managed (i.e. MANAGED). EXTERNAL tables don't go
@@ -149,21 +152,24 @@ public final class UcManagedDeltaContract {
 
   /**
    * Cross-check the client's claim against UC's own state: {@code properties[UC_TABLE_ID]} must
-   * equal the UC-allocated UUID for the table being created or updated. The {@code expectedTableId}
-   * is the source of truth -- the staging table's UUID at create time, the existing table's UUID at
-   * update time. {@link #validate} only checks presence; this method checks identity.
+   * equal the UC-allocated UUID for the table being created or committed against. The {@code
+   * expectedTableId} is the source of truth -- the staging table's UUID at create time, the
+   * existing table's UUID at commit time. Shared between {@link DeltaCreateTableMapper}'s
+   * MANAGED-create path and {@code DeltaCommitRepository}'s commit-metadata-property path so the
+   * two cannot drift. {@link #validate} only checks presence; this method checks identity.
    */
   public static void validateTableIdProperty(
       Map<String, String> properties, String expectedTableId) {
     ValidationUtils.checkNotNull(expectedTableId, "expectedTableId is required.");
     String actual = properties != null ? properties.get(TableProperties.UC_TABLE_ID) : null;
-    if (!expectedTableId.equals(actual)) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          String.format(
-              "Property %s (%s) does not match the table id (%s).",
-              TableProperties.UC_TABLE_ID, actual, expectedTableId));
-    }
+    ValidationUtils.checkNotNull(
+        actual, "Properties does not contain " + TableProperties.UC_TABLE_ID + ".");
+    ValidationUtils.checkArgument(
+        expectedTableId.equals(actual),
+        "the table id (%s) does not match the properties %s(%s).",
+        expectedTableId,
+        TableProperties.UC_TABLE_ID,
+        actual);
   }
 
   private static void validateRequiredVersions(DeltaProtocol protocol) {
@@ -210,18 +216,21 @@ public final class UcManagedDeltaContract {
     }
   }
 
-  /**
-   * Validates that each declared domain-metadata entry is backed by the matching writer feature in
-   * the protocol. A {@code delta.clustering} entry requires the {@code clustering} feature; a
-   * {@code delta.rowTracking} entry requires the {@code rowTracking} feature. Null domain-metadata
-   * is permitted; null protocol is treated as "no writer features declared" so any non-null
-   * domain-metadata fails.
-   */
   private static void validateDomainMetadataAgainstProtocol(
       DeltaProtocol protocol, DomainMetadataUpdates domainMetadata) {
+    Set<String> writerFeatures =
+        protocol.getWriterFeatures() != null ? Set.copyOf(protocol.getWriterFeatures()) : Set.of();
+    validateDomainMetadataAgainstWriterFeatures(writerFeatures, domainMetadata);
+  }
+
+  /**
+   * Cross-checks that each declared domain-metadata entry has a backing writer feature. Public so
+   * the update path can call it with writer-features reconstructed from stored properties when no
+   * {@code set-protocol} is in the request.
+   */
+  public static void validateDomainMetadataAgainstWriterFeatures(
+      Set<String> writerFeatures, DomainMetadataUpdates domainMetadata) {
     if (domainMetadata == null) return;
-    List<String> writerFeatures =
-        protocol.getWriterFeatures() != null ? protocol.getWriterFeatures() : List.of();
     if (domainMetadata.getDeltaClustering() != null
         && !writerFeatures.contains(TableFeature.CLUSTERING.specName())) {
       throw new BaseException(

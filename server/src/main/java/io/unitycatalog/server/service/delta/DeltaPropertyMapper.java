@@ -1,23 +1,29 @@
 package io.unitycatalog.server.service.delta;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.CreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.service.delta.DeltaConsts.DomainMetadataNames;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Maps Delta REST Catalog {@code protocol} and {@code domain-metadata} blocks onto UC table
- * properties. Designed to be shared by create, update, and commit endpoints: the mapping rules are
- * specified by the Delta spec and don't vary by endpoint (only create is wired up today; update and
- * commit are on follow-ups).
+ * Assembles the stored UC table-property map from a Delta {@link CreateTableRequest} and the
+ * per-block helpers ({@link #deriveFromProtocol} / {@link #deriveFromDomainMetadata}). Designed to
+ * be shared by create, update, and commit endpoints: the mapping rules are specified by the Delta
+ * spec and don't vary by endpoint (only create is wired up today; update and commit are on
+ * follow-ups).
  *
  * <p>Every feature in {@code protocol.reader-features} and {@code protocol.writer-features} yields
  * {@code delta.feature.<name> = supported}. Reader-writer features (which appear in both lists)
@@ -55,16 +61,19 @@ public final class DeltaPropertyMapper {
    * silently override the projection. Client-only properties (e.g. {@code
    * delta.rowTracking.materializedRowIdColumnName}) flow through untouched.
    */
-  public static Map<String, String> buildStoredProperties(
-      DeltaProtocol protocol,
-      DomainMetadataUpdates domainMetadata,
-      Map<String, String> clientProperties) {
+  public static Map<String, String> buildStoredProperties(CreateTableRequest req) {
     Map<String, String> merged = new HashMap<>();
-    if (clientProperties != null) {
-      merged.putAll(clientProperties);
+    if (req.getProperties() != null) {
+      merged.putAll(req.getProperties());
     }
-    deriveFromProtocol(merged, protocol);
-    deriveFromDomainMetadata(merged, domainMetadata);
+    deriveFromProtocol(merged, req.getProtocol());
+    deriveFromDomainMetadata(merged, req.getDomainMetadata());
+    if (req.getLastCommitTimestampMs() != null) {
+      merged.put(
+          TableProperties.LAST_COMMIT_TIMESTAMP, String.valueOf(req.getLastCommitTimestampMs()));
+    }
+    // For createTable it's always the 0 commit
+    merged.put(TableProperties.LAST_UPDATE_VERSION, "0");
     return merged;
   }
 
@@ -78,9 +87,20 @@ public final class DeltaPropertyMapper {
    */
   public static void deriveFromProtocol(Map<String, String> props, DeltaProtocol protocol) {
     if (protocol == null) return;
+    props.put(TableProperties.MIN_READER_VERSION, protocol.getMinReaderVersion().toString());
+    props.put(TableProperties.MIN_WRITER_VERSION, protocol.getMinWriterVersion().toString());
     addFeatureProperties(props, protocol.getReaderFeatures());
     addFeatureProperties(props, protocol.getWriterFeatures());
   }
+
+  /**
+   * Domain-name -> stored-table-property-key projection, shared by the set and remove sides so they
+   * cannot drift.
+   */
+  public static final Map<String, String> DOMAIN_TO_PROPERTY_KEY =
+      Map.of(
+          DomainMetadataNames.CLUSTERING, TableProperties.CLUSTERING_COLUMNS,
+          DomainMetadataNames.ROW_TRACKING, TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK);
 
   /** Adds the table properties implied by a domain-metadata block into {@code props} in-place. */
   public static void deriveFromDomainMetadata(
@@ -90,14 +110,68 @@ public final class DeltaPropertyMapper {
     if (clustering != null && clustering.getClusteringColumns() != null) {
       // Use a proper JSON encoder rather than string-joining so nested column paths don't
       // collapse into dotted strings.
-      props.put(TableProperties.CLUSTERING_COLUMNS, toJson(clustering.getClusteringColumns()));
+      props.put(
+          DOMAIN_TO_PROPERTY_KEY.get(DomainMetadataNames.CLUSTERING),
+          toJson(clustering.getClusteringColumns()));
     }
     RowTrackingDomainMetadata rowTracking = domainMetadata.getDeltaRowTracking();
     if (rowTracking != null && rowTracking.getRowIdHighWaterMark() != null) {
       props.put(
-          TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK,
+          DOMAIN_TO_PROPERTY_KEY.get(DomainMetadataNames.ROW_TRACKING),
           String.valueOf(rowTracking.getRowIdHighWaterMark()));
     }
+  }
+
+  /**
+   * Inverse of {@link #deriveFromDomainMetadata}: reconstruct the effective {@link
+   * DomainMetadataUpdates} from currently-stored UC properties, so the update path can validate
+   * against entries still projected from those properties.
+   */
+  public static DomainMetadataUpdates synthesizeDomainMetadataFromProperties(
+      Map<String, String> props) {
+    DomainMetadataUpdates dm = new DomainMetadataUpdates();
+    String clusteringJson = props.get(TableProperties.CLUSTERING_COLUMNS);
+    if (clusteringJson != null) {
+      try {
+        List<List<String>> cols =
+            JSON.readValue(clusteringJson, new TypeReference<List<List<String>>>() {});
+        dm.deltaClustering(new ClusteringDomainMetadata().clusteringColumns(cols));
+      } catch (JsonProcessingException e) {
+        throw new BaseException(
+            ErrorCode.INTERNAL,
+            String.format(
+                "Corrupt stored property %s: %s",
+                TableProperties.CLUSTERING_COLUMNS, e.getMessage()));
+      }
+    }
+    String highWaterMark = props.get(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK);
+    if (highWaterMark != null) {
+      try {
+        dm.deltaRowTracking(
+            new RowTrackingDomainMetadata().rowIdHighWaterMark(Long.parseLong(highWaterMark)));
+      } catch (NumberFormatException e) {
+        throw new BaseException(
+            ErrorCode.INTERNAL,
+            String.format(
+                "Corrupt stored property %s: %s",
+                TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK, e.getMessage()));
+      }
+    }
+    return dm;
+  }
+
+  /**
+   * Reads the {@code delta.feature.*} keys back out as a feature set. Safe to treat as
+   * writer-features since the Delta spec makes every reader-feature also a writer-feature.
+   */
+  public static Set<String> extractFeaturesFromProperties(Map<String, String> props) {
+    Set<String> features = new HashSet<>();
+    for (String key : props.keySet()) {
+      if (key.startsWith(TableProperties.FEATURE_PREFIX)) {
+        features.add(key.substring(TableProperties.FEATURE_PREFIX.length()));
+      }
+    }
+    return features;
   }
 
   private static void addFeatureProperties(Map<String, String> props, List<String> features) {

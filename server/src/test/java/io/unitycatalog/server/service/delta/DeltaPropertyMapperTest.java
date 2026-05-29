@@ -1,10 +1,12 @@
 package io.unitycatalog.server.service.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.CreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
@@ -48,6 +50,8 @@ public class DeltaPropertyMapperTest {
     Map<String, String> props = new HashMap<>();
     DeltaPropertyMapper.deriveFromProtocol(props, protocol);
     assertThat(props)
+        .containsEntry(TableProperties.MIN_READER_VERSION, "3")
+        .containsEntry(TableProperties.MIN_WRITER_VERSION, "7")
         .containsEntry(featureKey(TableFeature.CATALOG_MANAGED.specName()), "supported")
         .containsEntry(featureKey(TableFeature.DELETION_VECTORS.specName()), "supported")
         .containsEntry(featureKey(TableFeature.V2_CHECKPOINT.specName()), "supported")
@@ -62,11 +66,14 @@ public class DeltaPropertyMapperTest {
   }
 
   @Test
-  public void deriveFromProtocolEmptyFeatureListsIsNoop() {
+  public void deriveFromProtocolEmptyFeatureListsStillEmitsVersionProps() {
     DeltaProtocol protocol = new DeltaProtocol().minReaderVersion(3).minWriterVersion(7);
     Map<String, String> props = new HashMap<>();
     DeltaPropertyMapper.deriveFromProtocol(props, protocol);
-    assertThat(props).isEmpty();
+    assertThat(props)
+        .containsOnly(
+            entry(TableProperties.MIN_READER_VERSION, "3"),
+            entry(TableProperties.MIN_WRITER_VERSION, "7"));
   }
 
   // ---------- deriveFromDomainMetadata ----------
@@ -126,9 +133,12 @@ public class DeltaPropertyMapperTest {
             .minReaderVersion(3)
             .minWriterVersion(7)
             .writerFeatures(List.of(TableFeature.CATALOG_MANAGED.specName()));
-    Map<String, String> client =
-        Map.of(featureKey(TableFeature.CATALOG_MANAGED.specName()), "client-override");
-    Map<String, String> merged = DeltaPropertyMapper.buildStoredProperties(protocol, null, client);
+    CreateTableRequest req =
+        new CreateTableRequest()
+            .protocol(protocol)
+            .properties(
+                Map.of(featureKey(TableFeature.CATALOG_MANAGED.specName()), "client-override"));
+    Map<String, String> merged = DeltaPropertyMapper.buildStoredProperties(req);
     // Server-derived projection of the structured protocol block wins over a stray client entry
     // under the same key, so the structured block remains the single source of truth.
     assertThat(merged)
@@ -137,25 +147,47 @@ public class DeltaPropertyMapperTest {
 
   @Test
   public void mergeTolerantOfAllNulls() {
-    assertThat(DeltaPropertyMapper.buildStoredProperties(null, null, null)).isEmpty();
+    // Empty request: no protocol, no domain-metadata, no properties, no timestamp. The only
+    // entry produced is the unconditional delta.lastUpdateVersion=0 from buildStoredProperties.
+    assertThat(DeltaPropertyMapper.buildStoredProperties(new CreateTableRequest()))
+        .containsOnly(entry(TableProperties.LAST_UPDATE_VERSION, "0"));
   }
 
   @Test
   public void mergeCombinesProtocolDomainMetadataAndClient() {
-    DeltaProtocol protocol =
-        new DeltaProtocol()
-            .minReaderVersion(3)
-            .minWriterVersion(7)
-            .writerFeatures(List.of(TableFeature.ROW_TRACKING.specName()));
-    DomainMetadataUpdates dm =
-        new DomainMetadataUpdates()
-            .deltaRowTracking(new RowTrackingDomainMetadata().rowIdHighWaterMark(100L));
-    Map<String, String> client = Map.of("custom.key", "custom.value");
-    Map<String, String> merged = DeltaPropertyMapper.buildStoredProperties(protocol, dm, client);
+    CreateTableRequest req =
+        new CreateTableRequest()
+            .protocol(
+                new DeltaProtocol()
+                    .minReaderVersion(3)
+                    .minWriterVersion(7)
+                    .writerFeatures(List.of(TableFeature.ROW_TRACKING.specName())))
+            .domainMetadata(
+                new DomainMetadataUpdates()
+                    .deltaRowTracking(new RowTrackingDomainMetadata().rowIdHighWaterMark(100L)))
+            .properties(Map.of("custom.key", "custom.value"))
+            .lastCommitTimestampMs(1700000000000L);
+    Map<String, String> merged = DeltaPropertyMapper.buildStoredProperties(req);
     assertThat(merged)
         .containsEntry(featureKey(TableFeature.ROW_TRACKING.specName()), "supported")
         .containsEntry(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK, "100")
-        .containsEntry("custom.key", "custom.value");
+        .containsEntry("custom.key", "custom.value")
+        .containsEntry(TableProperties.LAST_COMMIT_TIMESTAMP, "1700000000000")
+        .containsEntry(TableProperties.LAST_UPDATE_VERSION, "0");
+  }
+
+  @Test
+  public void mergeServerDerivedLastCommitTimestamp() {
+    // The top-level last-commit-timestamp-ms field is the source of truth for the metastore-state
+    // delta.lastCommitTimestamp property. A client-supplied delta.lastCommitTimestamp entry in
+    // `properties` (today's OSS Delta + Kernel-UC pattern) gets overwritten by the server-derived
+    // value so engines can't desynchronize the property bag from the catalog's view of v0.
+    CreateTableRequest req =
+        new CreateTableRequest()
+            .properties(Map.of(TableProperties.LAST_COMMIT_TIMESTAMP, "999"))
+            .lastCommitTimestampMs(1700000000000L);
+    assertThat(DeltaPropertyMapper.buildStoredProperties(req))
+        .containsEntry(TableProperties.LAST_COMMIT_TIMESTAMP, "1700000000000");
   }
 
   private static String featureKey(String feature) {
