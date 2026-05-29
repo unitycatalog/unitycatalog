@@ -10,9 +10,9 @@ import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.CreateTableRequest;
 import io.unitycatalog.client.delta.model.CredentialOperation;
 import io.unitycatalog.client.delta.model.CredentialsResponse;
-import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.LoadTableResponse;
 import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.Protocol;
 import io.unitycatalog.client.delta.model.StructField;
 import io.unitycatalog.client.delta.model.StructType;
 import io.unitycatalog.client.model.CreateSchema;
@@ -253,7 +253,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
                                     .nullable(false)
                                     .metadata(Map.of()))))
                 .protocol(
-                    new DeltaProtocol()
+                    new Protocol()
                         .minReaderVersion(3)
                         .minWriterVersion(7)
                         .readerFeatures(List.of("deletionVectors"))

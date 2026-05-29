@@ -1,7 +1,7 @@
 package io.unitycatalog.server.service.delta;
 
-import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.Protocol;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
@@ -115,9 +115,7 @@ public final class UcManagedDeltaContract {
    * and anywhere else that needs to assert "this state is a valid UC-managed Delta table state."
    */
   public static void validate(
-      DeltaProtocol protocol,
-      DomainMetadataUpdates domainMetadata,
-      Map<String, String> properties) {
+      Protocol protocol, DomainMetadataUpdates domainMetadata, Map<String, String> properties) {
     ValidationUtils.checkNotNull(protocol, "protocol is required.");
     validateReaderFeatureSubset(protocol);
     validateRequiredVersions(protocol);
@@ -133,7 +131,7 @@ public final class UcManagedDeltaContract {
    * feature in {@code reader-features} but not {@code writer-features} would yield a stored
    * protocol no Delta writer can honor.
    */
-  private static void validateReaderFeatureSubset(DeltaProtocol protocol) {
+  private static void validateReaderFeatureSubset(Protocol protocol) {
     List<String> readerFeatures = protocol.getReaderFeatures();
     if (readerFeatures == null || readerFeatures.isEmpty()) return;
     Set<String> writerFeatures =
@@ -172,7 +170,7 @@ public final class UcManagedDeltaContract {
         actual);
   }
 
-  private static void validateRequiredVersions(DeltaProtocol protocol) {
+  private static void validateRequiredVersions(Protocol protocol) {
     Integer minReader = protocol.getMinReaderVersion();
     if (minReader == null || minReader < REQUIRED_MIN_READER_VERSION) {
       throw new BaseException(
@@ -195,7 +193,7 @@ public final class UcManagedDeltaContract {
     }
   }
 
-  private static void validateRequiredFeatures(DeltaProtocol protocol) {
+  private static void validateRequiredFeatures(Protocol protocol) {
     Set<String> readerFeatures =
         Set.copyOf(protocol.getReaderFeatures() != null ? protocol.getReaderFeatures() : List.of());
     Set<String> writerFeatures =
@@ -217,7 +215,7 @@ public final class UcManagedDeltaContract {
   }
 
   private static void validateDomainMetadataAgainstProtocol(
-      DeltaProtocol protocol, DomainMetadataUpdates domainMetadata) {
+      Protocol protocol, DomainMetadataUpdates domainMetadata) {
     Set<String> writerFeatures =
         protocol.getWriterFeatures() != null ? Set.copyOf(protocol.getWriterFeatures()) : Set.of();
     validateDomainMetadataAgainstWriterFeatures(writerFeatures, domainMetadata);

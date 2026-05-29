@@ -5,10 +5,10 @@ import io.unitycatalog.client.delta.api.TablesApi;
 import io.unitycatalog.client.delta.model.CreateStagingTableRequest;
 import io.unitycatalog.client.delta.model.CreateTableRequest;
 import io.unitycatalog.client.delta.model.DataSourceFormat;
-import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.LoadTableResponse;
 import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.Protocol;
 import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.StagingTableResponse;
 import io.unitycatalog.client.delta.model.StructField;
@@ -131,7 +131,7 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
                 .dataSourceFormat(DataSourceFormat.DELTA)
                 .columns(simpleSchema())
                 .protocol(
-                    new DeltaProtocol()
+                    new Protocol()
                         .minReaderVersion(3)
                         .minWriterVersion(7)
                         .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
@@ -164,10 +164,10 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
    * rowTracking} so callers may seed a {@code deltaRowTracking} domain at create time (Delta
    * requires the matching writer feature to back the domain metadata).
    */
-  protected static DeltaProtocol managedProtocol() {
+  protected static Protocol managedProtocol() {
     List<String> writerFeatures = new ArrayList<>(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES);
     writerFeatures.add(TableFeature.ROW_TRACKING.specName());
-    return new DeltaProtocol()
+    return new Protocol()
         .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
         .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
         .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
@@ -186,7 +186,7 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
   }
 
   /** Expected {@code delta.feature.*} projection from a protocol's reader + writer features. */
-  protected static Map<String, String> featurePropertiesOf(DeltaProtocol protocol) {
+  protected static Map<String, String> featurePropertiesOf(Protocol protocol) {
     Set<String> names = new HashSet<>(protocol.getReaderFeatures());
     names.addAll(protocol.getWriterFeatures());
     return names.stream()

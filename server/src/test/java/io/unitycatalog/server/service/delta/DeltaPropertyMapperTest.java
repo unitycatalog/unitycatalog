@@ -7,8 +7,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
 import io.unitycatalog.server.delta.model.CreateTableRequest;
-import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.Protocol;
 import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -33,8 +33,8 @@ public class DeltaPropertyMapperTest {
     // Per the Delta spec, every reader-feature must also be a writer-feature, so the writer
     // list is the superset. The mapper iterates writer-features only and that's sufficient to
     // emit a delta.feature.<name> entry for every spec-defined feature.
-    DeltaProtocol protocol =
-        new DeltaProtocol()
+    Protocol protocol =
+        new Protocol()
             .minReaderVersion(3)
             .minWriterVersion(7)
             .readerFeatures(
@@ -67,7 +67,7 @@ public class DeltaPropertyMapperTest {
 
   @Test
   public void deriveFromProtocolEmptyFeatureListsStillEmitsVersionProps() {
-    DeltaProtocol protocol = new DeltaProtocol().minReaderVersion(3).minWriterVersion(7);
+    Protocol protocol = new Protocol().minReaderVersion(3).minWriterVersion(7);
     Map<String, String> props = new HashMap<>();
     DeltaPropertyMapper.deriveFromProtocol(props, protocol);
     assertThat(props)
@@ -128,8 +128,8 @@ public class DeltaPropertyMapperTest {
 
   @Test
   public void mergeDerivedPropertiesWinOnConflict() {
-    DeltaProtocol protocol =
-        new DeltaProtocol()
+    Protocol protocol =
+        new Protocol()
             .minReaderVersion(3)
             .minWriterVersion(7)
             .writerFeatures(List.of(TableFeature.CATALOG_MANAGED.specName()));
@@ -158,7 +158,7 @@ public class DeltaPropertyMapperTest {
     CreateTableRequest req =
         new CreateTableRequest()
             .protocol(
-                new DeltaProtocol()
+                new Protocol()
                     .minReaderVersion(3)
                     .minWriterVersion(7)
                     .writerFeatures(List.of(TableFeature.ROW_TRACKING.specName())))

@@ -3,9 +3,9 @@ package io.unitycatalog.server.service.delta;
 import io.unitycatalog.server.delta.model.AddCommitUpdate;
 import io.unitycatalog.server.delta.model.AssertEtag;
 import io.unitycatalog.server.delta.model.AssertTableUUID;
-import io.unitycatalog.server.delta.model.DeltaCommit;
-import io.unitycatalog.server.delta.model.DeltaProtocol;
+import io.unitycatalog.server.delta.model.Commit;
 import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.Protocol;
 import io.unitycatalog.server.delta.model.RemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.RemovePropertiesUpdate;
 import io.unitycatalog.server.delta.model.SetDomainMetadataUpdate;
@@ -372,7 +372,7 @@ public final class DeltaUpdateTableMapper {
   }
 
   /** Full replacement of the protocol block; other stored properties are left alone. */
-  private static void applySetProtocol(MutablePropertyMap properties, DeltaProtocol protocol) {
+  private static void applySetProtocol(MutablePropertyMap properties, Protocol protocol) {
     ValidationUtils.checkNotNull(protocol, "set-protocol requires a protocol.");
     properties.removeMatchingPrefix(TableProperties.FEATURE_PREFIX);
     Map<String, String> derived = new HashMap<>();
@@ -534,10 +534,10 @@ public final class DeltaUpdateTableMapper {
       boolean hasManagedTableMetadataChange) {
     requireManaged(dao);
     Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields = Optional.empty();
-    Optional<DeltaCommit> commitOpt = Optional.empty();
+    Optional<Commit> commitOpt = Optional.empty();
     if (addCommitOpt.isPresent()) {
       AddCommitUpdate addCommit = addCommitOpt.get();
-      DeltaCommit commit =
+      Commit commit =
           ValidationUtils.checkNotNull(
               addCommit.getCommit(), "add-commit requires a commit block.");
       commitOpt = Optional.of(commit);
@@ -570,10 +570,10 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * Convert a Delta {@link DeltaCommit} into the UC {@link DeltaCommitInfo} shape so the Delta
+   * Convert a Delta {@link Commit} into the UC {@link DeltaCommitInfo} shape so the Delta
    * update path can flow through the shared commit-log helpers, which speak the UC wire shape.
    */
-  private static DeltaCommitInfo toUcCommitInfo(DeltaCommit commit) {
+  private static DeltaCommitInfo toUcCommitInfo(Commit commit) {
     return new DeltaCommitInfo()
         .version(commit.getVersion())
         .timestamp(commit.getTimestamp())

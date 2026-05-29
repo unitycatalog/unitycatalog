@@ -1,5 +1,5 @@
 """
-Unit tests for delta_type_module.py string-or-object serde patches.
+Unit tests for data_type_module.py string-or-object serde patches.
 
 Tests use JSON strings (via from_json/to_json) to exercise the full
 deserialization chain: JSON string -> json.loads -> from_dict -> model,
@@ -20,9 +20,9 @@ from unitycatalog.delta.models.map_type import MapType
 from unitycatalog.delta.models.struct_type import StructType
 from unitycatalog.delta.models.struct_field import StructField
 
-# Importing delta_type_module applies the monkey-patches
-import unitycatalog.delta.serde.delta_type_module  # noqa: F401
-from unitycatalog.delta.serde.delta_type_module import (
+# Importing data_type_module applies the monkey-patches
+import unitycatalog.delta.serde.data_type_module  # noqa: F401
+from unitycatalog.delta.serde.data_type_module import (
     _parse_type,
     _type_to_dict,
 )

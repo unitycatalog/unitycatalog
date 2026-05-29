@@ -3,8 +3,8 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
-| **key-type** | [**DeltaType**](DeltaType.md) |  | [default to null] |
-| **value-type** | [**DeltaType**](DeltaType.md) |  | [default to null] |
+| **key-type** | [**DataType**](DataType.md) |  | [default to null] |
+| **value-type** | [**DataType**](DataType.md) |  | [default to null] |
 | **value-contains-null** | **Boolean** | Whether map values can be null | [default to true] |
 | **type** | **String** | Type identifier | [default to null] |
 

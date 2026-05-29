@@ -6,12 +6,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.delta.model.ArrayType;
+import io.unitycatalog.server.delta.model.DataType;
 import io.unitycatalog.server.delta.model.DecimalType;
-import io.unitycatalog.server.delta.model.DeltaType;
 import io.unitycatalog.server.delta.model.MapType;
 import io.unitycatalog.server.delta.model.StructField;
 import io.unitycatalog.server.delta.model.StructType;
-import io.unitycatalog.server.delta.serde.DeltaTypeModule;
+import io.unitycatalog.server.delta.serde.DataTypeModule;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -91,7 +91,7 @@ public class ColumnUtils {
 
   private static ObjectMapper createTypeMapper() {
     ObjectMapper mapper = new ObjectMapper();
-    mapper.registerModule(new DeltaTypeModule());
+    mapper.registerModule(new DataTypeModule());
     mapper.addMixIn(ArrayType.class, CamelCaseArrayMixin.class);
     mapper.addMixIn(MapType.class, CamelCaseMapMixin.class);
     return mapper;
@@ -99,10 +99,10 @@ public class ColumnUtils {
 
   abstract static class CamelCaseArrayMixin {
     @JsonProperty("elementType")
-    abstract DeltaType getElementType();
+    abstract DataType getElementType();
 
     @JsonSetter("elementType")
-    abstract void setElementType(DeltaType v);
+    abstract void setElementType(DataType v);
 
     @JsonProperty("containsNull")
     abstract Boolean getContainsNull();
@@ -113,16 +113,16 @@ public class ColumnUtils {
 
   abstract static class CamelCaseMapMixin {
     @JsonProperty("keyType")
-    abstract DeltaType getKeyType();
+    abstract DataType getKeyType();
 
     @JsonSetter("keyType")
-    abstract void setKeyType(DeltaType v);
+    abstract void setKeyType(DataType v);
 
     @JsonProperty("valueType")
-    abstract DeltaType getValueType();
+    abstract DataType getValueType();
 
     @JsonSetter("valueType")
-    abstract void setValueType(DeltaType v);
+    abstract void setValueType(DataType v);
 
     @JsonProperty("valueContainsNull")
     abstract Boolean getValueContainsNull();
@@ -253,7 +253,7 @@ public class ColumnUtils {
    * ({@code partitionIndex} is stamped separately by {@link #applyPartitionColumns}).
    */
   public static ColumnInfo toColumnInfo(StructField field, int position) {
-    DeltaType type = field.getType();
+    DataType type = field.getType();
     ColumnInfo column =
         new ColumnInfo()
             .name(field.getName())
@@ -283,7 +283,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Render a {@link DeltaType} as a Spark-style catalog string -- the same format produced by
+   * Render a {@link DataType} as a Spark-style catalog string -- the same format produced by
    * {@code org.apache.spark.sql.types.DataType#catalogString}. Primitives go through the shared
    * {@link #typeNameVsTypeText} override map (so {@code long}→{@code bigint}, {@code
    * integer}→{@code int}, etc.); decimals include precision/scale; array/map/struct recurse.
@@ -292,7 +292,7 @@ public class ColumnUtils {
    *     key / value / field type) is an unsupported Delta primitive -- this method delegates the
    *     primitive lookup to {@link #resolveColumnTypeName}, which throws on unknown names.
    */
-  public static String toCatalogString(DeltaType type) {
+  public static String toCatalogString(DataType type) {
     if (type instanceof DecimalType d) {
       return "decimal" + getPrecisionAndScale(d.getPrecision(), d.getScale());
     }
@@ -323,7 +323,7 @@ public class ColumnUtils {
     return comment instanceof String s ? s : null;
   }
 
-  private static ColumnTypeName resolveColumnTypeName(DeltaType type) {
+  private static ColumnTypeName resolveColumnTypeName(DataType type) {
     if (type instanceof ArrayType) return ColumnTypeName.ARRAY;
     if (type instanceof DecimalType) return ColumnTypeName.DECIMAL;
     if (type instanceof MapType) return ColumnTypeName.MAP;

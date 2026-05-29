@@ -3,7 +3,7 @@ package io.unitycatalog.server.service.delta;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import io.unitycatalog.server.delta.serde.DeltaTypeModule;
+import io.unitycatalog.server.delta.serde.DataTypeModule;
 
 /**
  * Shared Jackson configuration for UC Delta API endpoints.
@@ -15,7 +15,7 @@ import io.unitycatalog.server.delta.serde.DeltaTypeModule;
  * can't silently drift from production behavior.
  *
  * <p>The returned {@link ObjectMapper} is fully configured: {@link JsonInclude.Include#NON_NULL} so
- * absent cloud-specific keys are omitted from the wire, plus {@link DeltaTypeModule} for the custom
+ * absent cloud-specific keys are omitted from the wire, plus {@link DataTypeModule} for the custom
  * (de)serializers of polymorphic Delta types. Callers must treat the instance as effectively
  * immutable -- do not register additional modules or change inclusion policies on it.
  */
@@ -29,7 +29,7 @@ public final class DeltaApiMappers {
   private static ObjectMapper buildMapper() {
     ObjectMapper mapper =
         JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
-    mapper.registerModule(new DeltaTypeModule());
+    mapper.registerModule(new DataTypeModule());
     return mapper;
   }
 }

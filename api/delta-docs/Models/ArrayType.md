@@ -3,7 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
-| **element-type** | [**DeltaType**](DeltaType.md) |  | [default to null] |
+| **element-type** | [**DataType**](DataType.md) |  | [default to null] |
 | **contains-null** | **Boolean** | Whether array elements can be null | [default to true] |
 | **type** | **String** | Type identifier | [default to null] |
 

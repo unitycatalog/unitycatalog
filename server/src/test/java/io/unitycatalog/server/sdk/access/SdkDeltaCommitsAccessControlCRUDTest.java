@@ -230,7 +230,7 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
                 List.of(
                     new io.unitycatalog.client.delta.model.AddCommitUpdate()
                         .commit(
-                            new io.unitycatalog.client.delta.model.DeltaCommit()
+                            new io.unitycatalog.client.delta.model.Commit()
                                 .version(3L)
                                 .timestamp(1700000003L)
                                 .fileName("00000003.json")

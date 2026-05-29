@@ -8,15 +8,15 @@ import com.fasterxml.jackson.databind.SerializationConfig;
 import com.fasterxml.jackson.databind.deser.BeanDeserializerModifier;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.BeanSerializerModifier;
+import io.unitycatalog.server.delta.model.DataType;
 import io.unitycatalog.server.delta.model.DecimalType;
-import io.unitycatalog.server.delta.model.DeltaType;
 import io.unitycatalog.server.delta.model.PrimitiveType;
 
-/** Jackson module for DeltaType ser/deser. */
-public class DeltaTypeModule extends SimpleModule {
+/** Jackson module for DataType ser/deser. */
+public class DataTypeModule extends SimpleModule {
   @SuppressWarnings("unchecked")
-  public DeltaTypeModule() {
-    super("DeltaTypeModule");
+  public DataTypeModule() {
+    super("DataTypeModule");
     setDeserializerModifier(
         new BeanDeserializerModifier() {
           @Override
@@ -24,8 +24,8 @@ public class DeltaTypeModule extends SimpleModule {
               DeserializationConfig config,
               BeanDescription desc,
               JsonDeserializer<?> deserializer) {
-            if (desc.getBeanClass() == DeltaType.class) {
-              return new DeltaTypeDeserializer(deserializer);
+            if (desc.getBeanClass() == DataType.class) {
+              return new DataTypeDeserializer(deserializer);
             }
             return deserializer;
           }
@@ -36,8 +36,8 @@ public class DeltaTypeModule extends SimpleModule {
           public JsonSerializer<?> modifySerializer(
               SerializationConfig config, BeanDescription desc, JsonSerializer<?> serializer) {
             Class<?> cls = desc.getBeanClass();
-            if (cls == DeltaType.class || cls == PrimitiveType.class || cls == DecimalType.class) {
-              return new DeltaTypeSerializer((JsonSerializer<Object>) serializer);
+            if (cls == DataType.class || cls == PrimitiveType.class || cls == DecimalType.class) {
+              return new DataTypeSerializer((JsonSerializer<Object>) serializer);
             }
             return serializer;
           }

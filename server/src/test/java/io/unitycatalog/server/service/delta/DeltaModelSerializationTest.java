@@ -9,12 +9,12 @@ import io.unitycatalog.server.delta.model.ArrayType;
 import io.unitycatalog.server.delta.model.AssertEtag;
 import io.unitycatalog.server.delta.model.AssertTableUUID;
 import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.Commit;
 import io.unitycatalog.server.delta.model.DecimalType;
-import io.unitycatalog.server.delta.model.DeltaCommit;
-import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.MapType;
 import io.unitycatalog.server.delta.model.PrimitiveType;
+import io.unitycatalog.server.delta.model.Protocol;
 import io.unitycatalog.server.delta.model.RemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.RemovePropertiesUpdate;
 import io.unitycatalog.server.delta.model.SetDomainMetadataUpdate;
@@ -41,7 +41,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Tests JSON deserialization and serialization of Delta REST API model types. The deserialization
- * test loads a JSON fixture and verifies all fields including typed DeltaType subtypes. The
+ * test loads a JSON fixture and verifies all fields including typed DataType subtypes. The
  * serialization test constructs objects from scratch and compares against the same fixture.
  */
 public class DeltaModelSerializationTest {
@@ -88,7 +88,7 @@ public class DeltaModelSerializationTest {
     assertThat(((RemovePropertiesUpdate) updates.get(1)).getRemovals())
         .containsExactly("delta.logRetentionDuration");
 
-    // set-columns: StructType with 4 fields, typed via DeltaTypeModule
+    // set-columns: StructType with 4 fields, typed via DataTypeModule
     StructType schema = ((SetSchemaUpdate) updates.get(2)).getColumns();
     List<StructField> fields = schema.getFields();
     assertThat(fields).hasSize(4);
@@ -129,7 +129,7 @@ public class DeltaModelSerializationTest {
     assertThat(((SetTableCommentUpdate) updates.get(3)).getComment()).isEqualTo("updated table");
 
     // add-commit with uniform
-    DeltaCommit commit = ((AddCommitUpdate) updates.get(4)).getCommit();
+    Commit commit = ((AddCommitUpdate) updates.get(4)).getCommit();
     assertThat(commit.getVersion()).isEqualTo(5);
     assertThat(commit.getTimestamp()).isEqualTo(1700000000000L);
     assertThat(commit.getFileName()).isEqualTo("00000005.json");
@@ -145,7 +145,7 @@ public class DeltaModelSerializationTest {
         .isEqualTo(4);
 
     // set-protocol
-    DeltaProtocol protocol = ((SetProtocolUpdate) updates.get(6)).getProtocol();
+    Protocol protocol = ((SetProtocolUpdate) updates.get(6)).getProtocol();
     assertThat(protocol.getMinReaderVersion()).isEqualTo(3);
     assertThat(protocol.getMinWriterVersion()).isEqualTo(7);
     assertThat(protocol.getWriterFeatures())
@@ -438,7 +438,7 @@ public class DeltaModelSerializationTest {
         new AddCommitUpdate()
             .action("add-commit")
             .commit(
-                new DeltaCommit()
+                new Commit()
                     .version(5L)
                     .timestamp(1700000000000L)
                     .fileName("00000005.json")
@@ -461,7 +461,7 @@ public class DeltaModelSerializationTest {
         new SetProtocolUpdate()
             .action("set-protocol")
             .protocol(
-                new DeltaProtocol()
+                new Protocol()
                     .minReaderVersion(3)
                     .minWriterVersion(7)
                     .readerFeatures(List.of("deletionVectors", "vacuumProtocolCheck"))
@@ -527,7 +527,7 @@ public class DeltaModelSerializationTest {
     io.unitycatalog.server.delta.model.CreateTableRequest req =
         MAPPER.readValue(json, io.unitycatalog.server.delta.model.CreateTableRequest.class);
 
-    // Verify DeltaType serde works on nested StructType fields
+    // Verify DataType serde works on nested StructType fields
     StructField idField = req.getColumns().getFields().get(0);
     assertThat(idField.getType()).isInstanceOf(PrimitiveType.class);
     assertThat(idField.getType().getType()).isEqualTo("long");
@@ -557,7 +557,7 @@ public class DeltaModelSerializationTest {
     io.unitycatalog.server.delta.model.LoadTableResponse resp =
         MAPPER.readValue(json, io.unitycatalog.server.delta.model.LoadTableResponse.class);
 
-    // Verify DeltaType serde works in TableMetadata.columns
+    // Verify DataType serde works in TableMetadata.columns
     StructField priceField = resp.getMetadata().getColumns().getFields().get(1);
     assertThat(priceField.getType()).isInstanceOf(DecimalType.class);
     assertThat(((DecimalType) priceField.getType()).getPrecision()).isEqualTo(10);

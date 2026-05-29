@@ -1,6 +1,6 @@
 # Delta Type Custom Serde
 
-Patches `DeltaType.from_dict`/`to_dict` and `StructField.from_dict`/`to_dict` to handle the string-or-object polymorphism in `StructField.type`.
+Patches `DataType.from_dict`/`to_dict` and `StructField.from_dict`/`to_dict` to handle the string-or-object polymorphism in `StructField.type`.
 
 ## The Problem
 
@@ -8,7 +8,7 @@ Delta's wire format uses bare JSON strings for primitive types (`"long"`, `"deci
 
 ## How It Works
 
-`delta_type_module.py` monkey-patches `from_dict` and `to_dict` on `DeltaType`, `StructField`, and all subtype classes:
+`data_type_module.py` monkey-patches `from_dict` and `to_dict` on `DataType`, `StructField`, and all subtype classes:
 
 - **`_parse_type(obj)`**: If `str`, creates `PrimitiveType` or `DecimalType` (via regex). If `dict`, dispatches on `obj["type"]` to `ArrayType`/`MapType`/`StructType`.
 - **`_type_to_dict(dt)`**: `PrimitiveType` returns bare string. `DecimalType` derives `"decimal(p,s)"`. Complex types return dict with `"type"` discriminator.

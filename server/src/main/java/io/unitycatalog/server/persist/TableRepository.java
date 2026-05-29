@@ -2,7 +2,7 @@ package io.unitycatalog.server.persist;
 
 import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
-import io.unitycatalog.server.delta.model.DeltaCommit;
+import io.unitycatalog.server.delta.model.Commit;
 import io.unitycatalog.server.delta.model.LoadTableResponse;
 import io.unitycatalog.server.delta.model.StructType;
 import io.unitycatalog.server.delta.model.TableMetadata;
@@ -491,11 +491,11 @@ public class TableRepository {
         commitRepo.getUnbackfilledCommits(session, tableId);
     response.setLatestTableVersion(result.latestTableVersion());
 
-    List<DeltaCommit> commits =
+    List<Commit> commits =
         result.commits().stream()
             .map(
                 c ->
-                    new DeltaCommit()
+                    new Commit()
                         .version(c.getCommitVersion())
                         .timestamp(c.getCommitTimestamp().getTime())
                         .fileName(c.getCommitFilename())

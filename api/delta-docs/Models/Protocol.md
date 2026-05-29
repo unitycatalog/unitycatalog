@@ -1,4 +1,4 @@
-# DeltaProtocol
+# Protocol
 ## Properties
 
 | Name | Type | Description | Notes |

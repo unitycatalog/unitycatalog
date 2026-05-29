@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.delta.model.CreateTableRequest;
 import io.unitycatalog.server.delta.model.DataSourceFormat;
-import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.PrimitiveType;
+import io.unitycatalog.server.delta.model.Protocol;
 import io.unitycatalog.server.delta.model.StructField;
 import io.unitycatalog.server.delta.model.StructType;
 import io.unitycatalog.server.delta.model.TableType;
@@ -56,7 +56,7 @@ public class DeltaCreateTableMapperTest {
     CreateTableRequest req =
         baseExternalRequest()
             .protocol(
-                new DeltaProtocol()
+                new Protocol()
                     .minReaderVersion(3)
                     .minWriterVersion(7)
                     .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
@@ -100,7 +100,7 @@ public class DeltaCreateTableMapperTest {
         .dataSourceFormat(DataSourceFormat.DELTA)
         .columns(simpleColumns())
         .protocol(
-            new DeltaProtocol()
+            new Protocol()
                 .minReaderVersion(3)
                 .minWriterVersion(7)
                 .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
@@ -121,8 +121,8 @@ public class DeltaCreateTableMapperTest {
                     .metadata(Map.of())));
   }
 
-  private static DeltaProtocol managedProtocol() {
-    return new DeltaProtocol()
+  private static Protocol managedProtocol() {
+    return new Protocol()
         .minReaderVersion(3)
         .minWriterVersion(7)
         .readerFeatures(

@@ -10,7 +10,7 @@
 | **comment** | **String** | Table comment | [optional] [default to null] |
 | **columns** | [**StructType**](StructType.md) |  | [default to null] |
 | **partition-columns** | **List** | Partition column names | [optional] [default to null] |
-| **protocol** | [**DeltaProtocol**](DeltaProtocol.md) | Delta protocol version and feature requirements | [default to null] |
+| **protocol** | [**Protocol**](Protocol.md) | Delta protocol version and feature requirements | [default to null] |
 | **properties** | **Map** | Delta table properties | [default to null] |
 | **domain-metadata** | [**DomainMetadataUpdates**](DomainMetadataUpdates.md) |  | [optional] [default to null] |
 | **last-commit-timestamp-ms** | **Long** | Timestamp of version 0 (the commit the client wrote  before calling this endpoint), in epoch milliseconds.  | [default to null] |

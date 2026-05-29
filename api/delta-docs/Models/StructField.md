@@ -4,7 +4,7 @@
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
 | **name** | **String** | Column name | [default to null] |
-| **type** | [**DeltaType**](DeltaType.md) |  | [default to null] |
+| **type** | [**DataType**](DataType.md) |  | [default to null] |
 | **nullable** | **Boolean** | Whether this column can be null | [default to null] |
 | **metadata** | [**Map**](AnyType.md) | Additional column metadata (arbitrary key-value pairs, e.g., comment, delta.columnMapping.id) | [default to null] |
 

@@ -1,4 +1,4 @@
-# DeltaType
+# DataType
 ## Properties
 
 | Name | Type | Description | Notes |

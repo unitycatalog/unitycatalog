@@ -7,12 +7,12 @@ import io.unitycatalog.client.delta.model.AddCommitUpdate;
 import io.unitycatalog.client.delta.model.AssertEtag;
 import io.unitycatalog.client.delta.model.AssertTableUUID;
 import io.unitycatalog.client.delta.model.ClusteringDomainMetadata;
-import io.unitycatalog.client.delta.model.DeltaCommit;
-import io.unitycatalog.client.delta.model.DeltaProtocol;
+import io.unitycatalog.client.delta.model.Commit;
 import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.client.delta.model.LoadTableResponse;
 import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.Protocol;
 import io.unitycatalog.client.delta.model.RemoveDomainMetadataUpdate;
 import io.unitycatalog.client.delta.model.RemovePropertiesUpdate;
 import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
@@ -91,8 +91,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           new ArrayList<>(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES);
       newWriterFeatures.add(TableFeature.ROW_TRACKING.specName());
       newWriterFeatures.add(TableFeature.CLUSTERING.specName());
-      DeltaProtocol newProtocol =
-          new DeltaProtocol()
+      Protocol newProtocol =
+          new Protocol()
               .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
               .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
               .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
@@ -147,7 +147,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h,
               new SetProtocolUpdate()
                   .protocol(
-                      new DeltaProtocol()
+                      new Protocol()
                           .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
                           .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
                           .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
@@ -469,7 +469,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   h,
                   new SetProtocolUpdate()
                       .protocol(
-                          new DeltaProtocol()
+                          new Protocol()
                               .minReaderVersion(3)
                               .minWriterVersion(7)
                               .readerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName()))
@@ -487,7 +487,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   h,
                   new SetProtocolUpdate()
                       .protocol(
-                          new DeltaProtocol()
+                          new Protocol()
                               .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
                               .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
                               .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
@@ -506,7 +506,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               external,
               new SetProtocolUpdate()
                   .protocol(
-                      new DeltaProtocol()
+                      new Protocol()
                           .minReaderVersion(3)
                           .minWriterVersion(7)
                           .readerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName()))
@@ -545,7 +545,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h,
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(1L)
                           .timestamp(1700000001L)
                           .fileName("00000001.json")
@@ -564,7 +564,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   h1,
                   new AddCommitUpdate()
                       .commit(
-                          new DeltaCommit()
+                          new Commit()
                               .version(1L)
                               .timestamp(1700000002L)
                               .fileName("00000001b.json")
@@ -580,7 +580,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   h1,
                   new AddCommitUpdate()
                       .commit(
-                          new DeltaCommit()
+                          new Commit()
                               .version(3L)
                               .timestamp(1700000003L)
                               .fileName("00000003.json")
@@ -600,7 +600,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h,
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(1L)
                           .timestamp(1700000001L)
                           .fileName("00000001.json")
@@ -614,7 +614,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h.withEtag(r1.getMetadata().getEtag()),
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(2L)
                           .timestamp(1700000002L)
                           .fileName("00000002.json")
@@ -641,7 +641,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h,
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(1L)
                           .timestamp(1700000001L)
                           .fileName("00000001.json")
@@ -657,7 +657,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h.withEtag(r1.getMetadata().getEtag()),
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(2L)
                           .timestamp(1700000002L)
                           .fileName("00000002.json")
@@ -694,7 +694,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   h,
                   new AddCommitUpdate()
                       .commit(
-                          new DeltaCommit()
+                          new Commit()
                               .version(1L)
                               .timestamp(1700000001L)
                               .fileName("00000001.json")
@@ -713,7 +713,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   h,
                   new AddCommitUpdate()
                       .commit(
-                          new DeltaCommit()
+                          new Commit()
                               .version(1L)
                               .timestamp(1700000001L)
                               .fileName("00000001.json")
@@ -743,7 +743,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h,
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(1L)
                           .timestamp(1700000001L)
                           .fileName("00000001.json")
@@ -775,7 +775,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h,
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(1L)
                           .timestamp(1700000001L)
                           .fileName("00000001.json")
@@ -802,7 +802,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                       .updates(Map.of("delta.universalFormat.enabledFormats", "iceberg")),
                   new AddCommitUpdate()
                       .commit(
-                          new DeltaCommit()
+                          new Commit()
                               .version(1L)
                               .timestamp(1700000001L)
                               .fileName("00000001.json")
@@ -828,7 +828,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   h,
                   new AddCommitUpdate()
                       .commit(
-                          new DeltaCommit()
+                          new Commit()
                               .version(1L)
                               .timestamp(1700000001L)
                               .fileName("00000001.json")
@@ -856,7 +856,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                       .updates(Map.of("delta.universalFormat.enabledFormats", "iceberg")),
                   new AddCommitUpdate()
                       .commit(
-                          new DeltaCommit()
+                          new Commit()
                               .version(1L)
                               .timestamp(1700000001L)
                               .fileName("00000001.json")
@@ -883,7 +883,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   .updates(Map.of("delta.universalFormat.enabledFormats", "iceberg")),
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(1L)
                           .timestamp(1700000001L)
                           .fileName("00000001.json")
@@ -910,7 +910,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h,
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(1L)
                           .timestamp(1700000001L)
                           .fileName("00000001.json")
@@ -943,7 +943,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   h,
                   new AddCommitUpdate()
                       .commit(
-                          new DeltaCommit()
+                          new Commit()
                               .version(1L)
                               .timestamp(1700000001L)
                               .fileName("00000001.json")
@@ -968,7 +968,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h,
               new AddCommitUpdate()
                   .commit(
-                      new DeltaCommit()
+                      new Commit()
                           .version(1L)
                           .timestamp(1700000001L)
                           .fileName("00000001.json")
@@ -976,7 +976,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileModificationTimestamp(1700000001L)),
               new SetProtocolUpdate()
                   .protocol(
-                      new DeltaProtocol()
+                      new Protocol()
                           .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
                           .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
                           .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)

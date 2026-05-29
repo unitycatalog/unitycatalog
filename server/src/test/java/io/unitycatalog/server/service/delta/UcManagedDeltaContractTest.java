@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
-import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.Protocol;
 import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.server.delta.model.StagingTableResponse;
 import io.unitycatalog.server.exception.BaseException;
@@ -37,8 +37,8 @@ public class UcManagedDeltaContractTest {
   public void validateAcceptsTheAdvertisedContractRoundTrip() {
     StagingTableResponse staging =
         DeltaStagingTableMapper.toStagingTableResponse(sampleStagingInfo(), emptyCredentials());
-    DeltaProtocol protocol =
-        new DeltaProtocol()
+    Protocol protocol =
+        new Protocol()
             .minReaderVersion(staging.getRequiredProtocol().getMinReaderVersion())
             .minWriterVersion(staging.getRequiredProtocol().getMinWriterVersion())
             .readerFeatures(staging.getRequiredProtocol().getReaderFeatures())
@@ -55,8 +55,8 @@ public class UcManagedDeltaContractTest {
 
   @Test
   public void validateRejectsReaderFeatureNotInWriterFeatures() {
-    DeltaProtocol protocol =
-        new DeltaProtocol()
+    Protocol protocol =
+        new Protocol()
             .minReaderVersion(3)
             .minWriterVersion(7)
             .readerFeatures(
@@ -82,8 +82,8 @@ public class UcManagedDeltaContractTest {
 
   @Test
   public void validateRejectsBelowMinReaderVersion() {
-    DeltaProtocol protocol =
-        new DeltaProtocol()
+    Protocol protocol =
+        new Protocol()
             .minReaderVersion(2)
             .minWriterVersion(7)
             .readerFeatures(fullProtocol().getReaderFeatures())
@@ -95,8 +95,8 @@ public class UcManagedDeltaContractTest {
 
   @Test
   public void validateRejectsBelowMinWriterVersion() {
-    DeltaProtocol protocol =
-        new DeltaProtocol()
+    Protocol protocol =
+        new Protocol()
             .minReaderVersion(3)
             .minWriterVersion(6)
             .readerFeatures(fullProtocol().getReaderFeatures())
@@ -110,8 +110,8 @@ public class UcManagedDeltaContractTest {
 
   @Test
   public void validateRejectsMissingRequiredWriterFeature() {
-    DeltaProtocol protocol =
-        new DeltaProtocol()
+    Protocol protocol =
+        new Protocol()
             .minReaderVersion(3)
             .minWriterVersion(7)
             .readerFeatures(
@@ -137,8 +137,8 @@ public class UcManagedDeltaContractTest {
 
   @Test
   public void validateRejectsMissingRequiredReaderFeature() {
-    DeltaProtocol protocol =
-        new DeltaProtocol()
+    Protocol protocol =
+        new Protocol()
             .minReaderVersion(3)
             .minWriterVersion(7)
             // CATALOG_MANAGED intentionally missing from reader-features (it's a reader-writer
@@ -186,7 +186,7 @@ public class UcManagedDeltaContractTest {
 
   @Test
   public void validateAcceptsDomainMetadataWithMatchingFeatures() {
-    DeltaProtocol protocol =
+    Protocol protocol =
         fullProtocolWithExtraWriterFeatures(
             TableFeature.CLUSTERING.specName(), TableFeature.ROW_TRACKING.specName());
     DomainMetadataUpdates dm =
@@ -288,8 +288,8 @@ public class UcManagedDeltaContractTest {
     return new TemporaryCredentials();
   }
 
-  private static DeltaProtocol fullProtocol() {
-    return new DeltaProtocol()
+  private static Protocol fullProtocol() {
+    return new Protocol()
         .minReaderVersion(3)
         .minWriterVersion(7)
         .readerFeatures(
@@ -308,8 +308,8 @@ public class UcManagedDeltaContractTest {
   }
 
   /** Full UC-managed protocol plus extra writer-only features (e.g. clustering, rowTracking). */
-  private static DeltaProtocol fullProtocolWithExtraWriterFeatures(String... extraWriterFeatures) {
-    DeltaProtocol p = fullProtocol();
+  private static Protocol fullProtocolWithExtraWriterFeatures(String... extraWriterFeatures) {
+    Protocol p = fullProtocol();
     java.util.ArrayList<String> writers = new java.util.ArrayList<>(p.getWriterFeatures());
     for (String f : extraWriterFeatures) writers.add(f);
     return p.writerFeatures(writers);

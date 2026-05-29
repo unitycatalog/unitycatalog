@@ -5,8 +5,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
 import io.unitycatalog.server.delta.model.CreateTableRequest;
-import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.Protocol;
 import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -85,7 +85,7 @@ public final class DeltaPropertyMapper {
    * violation that {@link UcManagedDeltaContract#validate} catches), this method still emits an
    * entry for it.
    */
-  public static void deriveFromProtocol(Map<String, String> props, DeltaProtocol protocol) {
+  public static void deriveFromProtocol(Map<String, String> props, Protocol protocol) {
     if (protocol == null) return;
     props.put(TableProperties.MIN_READER_VERSION, protocol.getMinReaderVersion().toString());
     props.put(TableProperties.MIN_WRITER_VERSION, protocol.getMinWriterVersion().toString());

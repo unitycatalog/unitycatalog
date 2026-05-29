@@ -5,25 +5,25 @@ import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.jsontype.TypeSerializer;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
+import io.unitycatalog.server.delta.model.DataType;
 import io.unitycatalog.server.delta.model.DecimalType;
-import io.unitycatalog.server.delta.model.DeltaType;
 import io.unitycatalog.server.delta.model.PrimitiveType;
 import java.io.IOException;
 
 /**
- * Custom serializer for DeltaType that writes primitives and decimals as bare strings, and
+ * Custom serializer for DataType that writes primitives and decimals as bare strings, and
  * delegates complex types to the default Jackson serializer.
  */
-public class DeltaTypeSerializer extends StdSerializer<DeltaType> {
+public class DataTypeSerializer extends StdSerializer<DataType> {
 
   private final JsonSerializer<Object> defaultSerializer;
 
-  public DeltaTypeSerializer(JsonSerializer<Object> defaultSerializer) {
-    super(DeltaType.class);
+  public DataTypeSerializer(JsonSerializer<Object> defaultSerializer) {
+    super(DataType.class);
     this.defaultSerializer = defaultSerializer;
   }
 
-  private static String toTypeString(DeltaType value) {
+  private static String toTypeString(DataType value) {
     if (value instanceof DecimalType dt) {
       return "decimal(" + dt.getPrecision() + "," + dt.getScale() + ")";
     }
@@ -34,7 +34,7 @@ public class DeltaTypeSerializer extends StdSerializer<DeltaType> {
   }
 
   @Override
-  public void serialize(DeltaType value, JsonGenerator gen, SerializerProvider provider)
+  public void serialize(DataType value, JsonGenerator gen, SerializerProvider provider)
       throws IOException {
     String s = toTypeString(value);
     if (s != null) {
@@ -46,7 +46,7 @@ public class DeltaTypeSerializer extends StdSerializer<DeltaType> {
 
   @Override
   public void serializeWithType(
-      DeltaType value, JsonGenerator gen, SerializerProvider provider, TypeSerializer typeSer)
+      DataType value, JsonGenerator gen, SerializerProvider provider, TypeSerializer typeSer)
       throws IOException {
     String s = toTypeString(value);
     if (s != null) {

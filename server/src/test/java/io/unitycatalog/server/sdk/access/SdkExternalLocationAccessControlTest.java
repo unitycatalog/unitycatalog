@@ -514,7 +514,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
         .tableType(io.unitycatalog.client.delta.model.TableType.EXTERNAL)
         .dataSourceFormat(io.unitycatalog.client.delta.model.DataSourceFormat.DELTA)
         .protocol(
-            new io.unitycatalog.client.delta.model.DeltaProtocol()
+            new io.unitycatalog.client.delta.model.Protocol()
                 .minReaderVersion(3)
                 .minWriterVersion(7)
                 .readerFeatures(List.of("deletionVectors"))

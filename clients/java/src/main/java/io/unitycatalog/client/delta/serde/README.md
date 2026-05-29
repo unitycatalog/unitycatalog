@@ -1,6 +1,6 @@
 # Delta Type Custom Serde
 
-Custom Jackson serializer/deserializer for `DeltaType` that handles the string-or-object polymorphism in `StructField.type`.
+Custom Jackson serializer/deserializer for `DataType` that handles the string-or-object polymorphism in `StructField.type`.
 
 ## The Problem
 
@@ -12,4 +12,4 @@ Same design as the server-side serde (see `server/delta/serde/README.md`). The o
 
 ## Registration
 
-`ApiClientBuilder.build()` automatically registers `DeltaTypeModule` on the client's `ObjectMapper`. No manual setup needed when using `ApiClientBuilder`.
+`ApiClientBuilder.build()` automatically registers `DataTypeModule` on the client's `ObjectMapper`. No manual setup needed when using `ApiClientBuilder`.

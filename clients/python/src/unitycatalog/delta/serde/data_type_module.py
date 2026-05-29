@@ -1,5 +1,5 @@
 """
-Patches DeltaType to handle the string-or-object polymorphism
+Patches DataType to handle the string-or-object polymorphism
 in StructField.type.
 
 This module is auto-imported by the generated models/__init__.py
@@ -8,7 +8,7 @@ via post-build injection. Users do not need to import it manually.
 
 import re
 
-from unitycatalog.delta.models.delta_type import DeltaType
+from unitycatalog.delta.models.data_type import DataType
 from unitycatalog.delta.models.primitive_type import PrimitiveType
 from unitycatalog.delta.models.decimal_type import DecimalType
 from unitycatalog.delta.models.array_type import ArrayType
@@ -20,7 +20,7 @@ _DECIMAL_PATTERN = re.compile(r"decimal\((\d+),\s*(\d+)\)")
 
 
 def _parse_type(obj):
-    """Parse a type value (string or dict) into a typed DeltaType."""
+    """Parse a type value (string or dict) into a typed DataType."""
     if isinstance(obj, str):
         m = _DECIMAL_PATTERN.match(obj)
         if m:
@@ -63,7 +63,7 @@ def _parse_field(obj):
 
 
 def _type_to_dict(dt):
-    """Serialize a DeltaType to a string or dict."""
+    """Serialize a DataType to a string or dict."""
     if isinstance(dt, DecimalType):
         return "decimal({},{})".format(dt.precision, dt.scale)
     if isinstance(dt, PrimitiveType):
@@ -102,11 +102,11 @@ def _patched_sf_from_dict(cls, obj):
     return _parse_field(obj)
 
 
-DeltaType.from_dict = _patched_dt_from_dict
+DataType.from_dict = _patched_dt_from_dict
 StructField.from_dict = _patched_sf_from_dict
 
 # Patch instance methods
-DeltaType.to_dict = _type_to_dict
+DataType.to_dict = _type_to_dict
 PrimitiveType.to_dict = _type_to_dict
 DecimalType.to_dict = _type_to_dict
 ArrayType.to_dict = _type_to_dict

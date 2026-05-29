@@ -8,11 +8,11 @@ import io.unitycatalog.client.delta.model.ClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.CreateStagingTableRequest;
 import io.unitycatalog.client.delta.model.CreateTableRequest;
 import io.unitycatalog.client.delta.model.DataSourceFormat;
-import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.ErrorType;
 import io.unitycatalog.client.delta.model.LoadTableResponse;
 import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.Protocol;
 import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.StagingTableResponse;
 import io.unitycatalog.client.delta.model.StructField;
@@ -155,7 +155,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                 TestUtils.SCHEMA_NAME2,
                 managedTableRequest("tbl_no_cm", stagingNoCm)
                     .protocol(
-                        new DeltaProtocol()
+                        new Protocol()
                             .minReaderVersion(3)
                             .minWriterVersion(7)
                             .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
@@ -429,8 +429,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
    * writerFeatures so the canonical request can carry a {@code deltaClustering} domain-metadata
    * block (see {@link #managedTableRequest(String, StagingTableResponse)}).
    */
-  private static DeltaProtocol managedProtocol() {
-    return new DeltaProtocol()
+  private static Protocol managedProtocol() {
+    return new Protocol()
         .minReaderVersion(3)
         .minWriterVersion(7)
         .readerFeatures(
@@ -517,7 +517,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         .columns(simpleSchema())
         // EXTERNAL tables don't require catalogManaged; use a minimal modern Delta protocol.
         .protocol(
-            new DeltaProtocol()
+            new Protocol()
                 .minReaderVersion(3)
                 .minWriterVersion(7)
                 .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))

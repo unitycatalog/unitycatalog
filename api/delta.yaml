@@ -699,7 +699,7 @@ components:
             $ref: '#/components/schemas/StorageCredential'
         required-protocol:
           allOf:
-            - $ref: '#/components/schemas/DeltaProtocol'
+            - $ref: '#/components/schemas/Protocol'
             - description: Required protocol - client must write an initial commit with at least this protocol.
         suggested-protocol:
           type: object
@@ -758,7 +758,7 @@ components:
           items:
             type: string
         protocol:
-          $ref: '#/components/schemas/DeltaProtocol'
+          $ref: '#/components/schemas/Protocol'
           description: Delta protocol version and feature requirements
         properties:
           type: object
@@ -831,7 +831,7 @@ components:
           type: array
           description: All unbackfilled CCv2 commits
           items:
-            $ref: '#/components/schemas/DeltaCommit'
+            $ref: '#/components/schemas/Commit'
         uniform:
           $ref: '#/components/schemas/UniformMetadata'
         latest-table-version:
@@ -1094,7 +1094,7 @@ components:
           type: string
           const: "add-commit"
         commit:
-          $ref: '#/components/schemas/DeltaCommit'
+          $ref: '#/components/schemas/Commit'
           description: Commit metadata including version, timestamp, and file information
         uniform:
           $ref: '#/components/schemas/UniformMetadata'
@@ -1127,7 +1127,7 @@ components:
           type: string
           const: "set-protocol"
         protocol:
-          $ref: '#/components/schemas/DeltaProtocol'
+          $ref: '#/components/schemas/Protocol'
       required:
         - action
         - protocol
@@ -1245,7 +1245,7 @@ components:
 
     # Delta Data Types
 
-    DeltaProtocol:
+    Protocol:
       type: object
       description: Delta table protocol specification
       properties:
@@ -1297,7 +1297,7 @@ components:
       required:
         - iceberg
 
-    DeltaCommit:
+    Commit:
       type: object
       description: Delta commit information for CCv2
       properties:
@@ -1337,7 +1337,7 @@ components:
           type: string
           description: Column name
         type:
-          $ref: '#/components/schemas/DeltaType'
+          $ref: '#/components/schemas/DataType'
         nullable:
           type: boolean
           description: Whether this column can be null
@@ -1352,7 +1352,7 @@ components:
         - nullable
         - metadata
 
-    DeltaType:
+    DataType:
       description: |
         Column data type. For primitive types, a bare JSON string (e.g., "long", "string",
         "decimal(10,2)"). For complex types, a JSON object with a "type" discriminator
@@ -1378,7 +1378,7 @@ components:
         primitive types are bare JSON strings. The custom DeltaTypeDeserializer
         converts them into PrimitiveType instances.
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DataType'
 
     DecimalType:
       description: |
@@ -1386,7 +1386,7 @@ components:
         "decimal(precision,scale)" (e.g., "decimal(10,2)"). The custom
         DeltaTypeDeserializer parses the string into a DecimalType instance.
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DataType'
       properties:
         precision:
           type: integer
@@ -1401,10 +1401,10 @@ components:
     ArrayType:
       description: Array type containing elements of a specific type
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DataType'
       properties:
         element-type:
-          $ref: '#/components/schemas/DeltaType'
+          $ref: '#/components/schemas/DataType'
         contains-null:
           type: boolean
           description: Whether array elements can be null
@@ -1416,12 +1416,12 @@ components:
     MapType:
       description: Map type with key-value pairs
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DataType'
       properties:
         key-type:
-          $ref: '#/components/schemas/DeltaType'
+          $ref: '#/components/schemas/DataType'
         value-type:
-          $ref: '#/components/schemas/DeltaType'
+          $ref: '#/components/schemas/DataType'
         value-contains-null:
           type: boolean
           description: Whether map values can be null
@@ -1434,7 +1434,7 @@ components:
     StructType:
       description: Struct type containing named fields
       allOf:
-        - $ref: '#/components/schemas/DeltaType'
+        - $ref: '#/components/schemas/DataType'
       properties:
         fields:
           type: array
