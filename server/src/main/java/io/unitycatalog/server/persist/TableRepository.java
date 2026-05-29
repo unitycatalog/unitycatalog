@@ -76,32 +76,45 @@ public class TableRepository {
   }
 
   /**
-   * Retrieves the storage location for a table or staging table by its ID. First attempts to find a
-   * regular table with the given ID, then falls back to searching for a staging table if no regular
-   * table is found. NOTE: This function is specially needed by generateTemporaryTableCredential
-   * during the short window when a staging table is just created and the initial data is being
-   * written but before the actual table is already created. Reading of a staging table is not a
-   * common supplemental of an actual table but only a special case.
+   * Returned by {@link #getStorageLocationForTableOrStagingTable} so callers (today the temp-creds
+   * service) can vend and gate from a single DB read. Staging rows project as MANAGED because they
+   * always finalize to MANAGED Delta.
+   */
+  public record TableStorageLocationInfo(NormalizedURL url, TableType tableType) {}
+
+  /**
+   * Retrieves the storage location for a table or staging table by its ID, plus the table type.
+   * Staging tables are counted as Managed tables too. First attempts to find a regular table with
+   * the given ID, then falls back to searching for a staging table if no regular table is found.
+   * NOTE: This function is specially needed by generateTemporaryTableCredential during the short
+   * window when a staging table is just created and the initial data is being written but before
+   * the actual table is already created. Reading of a staging table is not a common supplemental of
+   * an actual table but only a special case.
    *
    * @param tableId the ID of the table or staging table
-   * @return the normalized URL of the storage location
+   * @return the normalized URL of the storage location, plus table type. Both in
+   *     TableStorageLocationInfo
    * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if neither a table nor staging table is
    *     found with the given ID
    */
-  public NormalizedURL getStorageLocationForTableOrStagingTable(UUID tableId) {
+  public TableStorageLocationInfo getStorageLocationForTableOrStagingTable(UUID tableId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           LOGGER.debug("Getting storage location of table by id: {}", tableId);
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
           if (tableInfoDAO != null) {
-            return NormalizedURL.from(tableInfoDAO.getUrl());
+            return new TableStorageLocationInfo(
+                NormalizedURL.from(tableInfoDAO.getUrl()),
+                TableType.fromValue(tableInfoDAO.getType()));
           }
 
           LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
           StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
           if (stagingTableDAO != null) {
-            return NormalizedURL.from(stagingTableDAO.getStagingLocation());
+            // Staging rows always become MANAGED Delta on finalize, so project them as MANAGED.
+            return new TableStorageLocationInfo(
+                NormalizedURL.from(stagingTableDAO.getStagingLocation()), TableType.MANAGED);
           }
           throw new BaseException(
               ErrorCode.TABLE_NOT_FOUND,

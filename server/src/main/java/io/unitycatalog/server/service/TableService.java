@@ -87,6 +87,9 @@ public class TableService extends AuthorizedService {
       @AuthorizeKey(key = "table_type")
       CreateTable createTable) {
     assert createTable != null;
+    serverProperties.checkDeltaApiOnlyForManagedTable(
+        createTable.getTableType(),
+        "POST /delta/v1/catalogs/{catalog}/schemas/{schema}/tables");
     TableInfo tableInfo = tableRepository.createTable(createTable);
 
     SchemaInfo schemaInfo =
