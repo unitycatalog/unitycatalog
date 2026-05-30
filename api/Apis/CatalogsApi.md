@@ -21,9 +21,9 @@ Create a catalog
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **CreateCatalog** | [**CreateCatalog**](../Models/CreateCatalog.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **CreateCatalog** | [**CreateCatalog**](../Models/CreateCatalog.md) | optional |  |  |
 
 ### Return type
 
@@ -48,10 +48,10 @@ Delete a catalog
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| The name of the catalog. | [default to null] |
-| **force** | **Boolean**| Force deletion even if the catalog is not empty. | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | The name of the catalog. | |
+| **force** | **Boolean** | optional | Force deletion even if the catalog is not empty. | |
 
 ### Return type
 
@@ -76,9 +76,9 @@ Get a catalog
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| The name of the catalog. | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | The name of the catalog. | |
 
 ### Return type
 
@@ -103,10 +103,10 @@ List catalogs
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **page\_token** | **String**| Opaque pagination token to go to next page based on previous query.  | [optional] [default to null] |
-| **max\_results** | **Integer**| Maximum number of catalogs to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **page\_token** | **String** | optional | Opaque pagination token to go to next page based on previous query.  | |
+| **max\_results** | **Integer** | optional | Maximum number of catalogs to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | |
 
 ### Return type
 
@@ -131,10 +131,10 @@ Update a catalog
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| The name of the catalog. | [default to null] |
-| **UpdateCatalog** | [**UpdateCatalog**](../Models/UpdateCatalog.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | The name of the catalog. | |
+| **UpdateCatalog** | [**UpdateCatalog**](../Models/UpdateCatalog.md) | optional |  |  |
 
 ### Return type
 

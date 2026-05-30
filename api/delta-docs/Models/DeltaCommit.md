@@ -1,13 +1,13 @@
 # DeltaCommit
 ## Properties
 
-| Name | Type | Description | Notes |
-|------------ | ------------- | ------------- | -------------|
-| **version** | **Long** | Commit version | [default to null] |
-| **timestamp** | **Long** | In-commit timestamp, in epoch milliseconds | [default to null] |
-| **file-name** | **String** | UUID-based commit file name | [default to null] |
-| **file-size** | **Long** | Commit file size in bytes | [default to null] |
-| **file-modification-timestamp** | **Long** | File modification timestamp, in epoch milliseconds | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------ | ------------- | ------------- | ------------- | -------------|
+| **version** | **Long** | required | Commit version | |
+| **timestamp** | **Long** | required | In-commit timestamp, in epoch milliseconds | |
+| **file-name** | **String** | required | UUID-based commit file name | |
+| **file-size** | **Long** | required | Commit file size in bytes | |
+| **file-modification-timestamp** | **Long** | required | File modification timestamp, in epoch milliseconds | |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

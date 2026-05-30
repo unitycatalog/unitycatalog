@@ -21,9 +21,9 @@ Create a credential
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **CreateCredentialRequest** | [**CreateCredentialRequest**](../Models/CreateCredentialRequest.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **CreateCredentialRequest** | [**CreateCredentialRequest**](../Models/CreateCredentialRequest.md) | optional |  |  |
 
 ### Return type
 
@@ -48,10 +48,10 @@ Delete a credential
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| Name of the credential. | [default to null] |
-| **force** | **Boolean**| Force deletion even if there are dependent external locations. | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | Name of the credential. | |
+| **force** | **Boolean** | optional | Force deletion even if there are dependent external locations. | |
 
 ### Return type
 
@@ -76,9 +76,9 @@ Get a credential
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| Name of the credential. | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | Name of the credential. | |
 
 ### Return type
 
@@ -103,11 +103,11 @@ List credentials
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **max\_results** | **Integer**| Maximum number of credentials to return.   - If not set, the default max page size is used.   - When set to a value greater than 0, the page length is the minimum of     this value and a server-configured value.   - When set to 0, the page length is set to a server-configured value     (recommended).   - When set to a value less than 0, an invalid parameter error is     returned.  | [optional] [default to null] |
-| **page\_token** | **String**| Opaque pagination token to go to next page based on previous query. | [optional] [default to null] |
-| **purpose** | [**CredentialPurpose**](../Models/.md)| Return only credentials for the specified purpose. | [optional] [default to null] [enum: STORAGE] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **max\_results** | **Integer** | optional | Maximum number of credentials to return.   - If not set, the default max page size is used.   - When set to a value greater than 0, the page length is the minimum of     this value and a server-configured value.   - When set to 0, the page length is set to a server-configured value     (recommended).   - When set to a value less than 0, an invalid parameter error is     returned.  | |
+| **page\_token** | **String** | optional | Opaque pagination token to go to next page based on previous query. | |
+| **purpose** | [**CredentialPurpose**](../Models/.md) | optional | Return only credentials for the specified purpose. | [enum: STORAGE] |
 
 ### Return type
 
@@ -132,10 +132,10 @@ Update a credential
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| Name of the credential. | [default to null] |
-| **UpdateCredentialRequest** | [**UpdateCredentialRequest**](../Models/UpdateCredentialRequest.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | Name of the credential. | |
+| **UpdateCredentialRequest** | [**UpdateCredentialRequest**](../Models/UpdateCredentialRequest.md) | optional |  |  |
 
 ### Return type
 

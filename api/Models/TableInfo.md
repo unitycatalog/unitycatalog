@@ -1,25 +1,25 @@
 # TableInfo
 ## Properties
 
-| Name | Type | Description | Notes |
-|------------ | ------------- | ------------- | -------------|
-| **name** | **String** | Name of table, relative to parent schema. | [optional] [default to null] |
-| **catalog\_name** | **String** | Name of parent catalog. | [optional] [default to null] |
-| **schema\_name** | **String** | Name of parent schema relative to its parent catalog. | [optional] [default to null] |
-| **table\_type** | [**TableType**](TableType.md) |  | [optional] [default to null] |
-| **data\_source\_format** | [**DataSourceFormat**](DataSourceFormat.md) |  | [optional] [default to null] |
-| **columns** | [**List**](ColumnInfo.md) | The array of __ColumnInfo__ definitions of the table&#39;s columns. | [optional] [default to null] |
-| **storage\_location** | **String** | Storage root URL for table (for **MANAGED**, **EXTERNAL** tables) | [optional] [default to null] |
-| **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
-| **properties** | **Map** | A map of key-value properties attached to the securable. | [optional] [default to null] |
-| **owner** | **String** | Username of current owner of table. | [optional] [default to null] |
-| **created\_at** | **Long** | Time at which this table was created, in epoch milliseconds. | [optional] [default to null] |
-| **created\_by** | **String** | Username of table creator. | [optional] [default to null] |
-| **updated\_at** | **Long** | Time at which this table was last modified, in epoch milliseconds. | [optional] [default to null] |
-| **updated\_by** | **String** | Username of user who last modified the table. | [optional] [default to null] |
-| **table\_id** | **String** | Unique identifier for the table. | [optional] [default to null] |
-| **view\_definition** | **String** | Definition text for view-like table types such as VIEW, MATERIALIZED_VIEW, STREAMING_TABLE, and METRIC_VIEW. The format depends on the table type (SQL for views, YAML for metric views). | [optional] [default to null] |
-| **view\_dependencies** | [**DependencyList**](DependencyList.md) |  | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------ | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | optional | Name of table, relative to parent schema. | |
+| **catalog\_name** | **String** | optional | Name of parent catalog. | |
+| **schema\_name** | **String** | optional | Name of parent schema relative to its parent catalog. | |
+| **table\_type** | [**TableType**](TableType.md) | optional |  | |
+| **data\_source\_format** | [**DataSourceFormat**](DataSourceFormat.md) | optional |  | |
+| **columns** | [**List**](ColumnInfo.md) | optional | The array of __ColumnInfo__ definitions of the table&#39;s columns. | |
+| **storage\_location** | **String** | optional | Storage root URL for table (for **MANAGED**, **EXTERNAL** tables) | |
+| **comment** | **String** | optional | User-provided free-form text description. | |
+| **properties** | **Map** | optional | A map of key-value properties attached to the securable. | |
+| **owner** | **String** | optional | Username of current owner of table. | |
+| **created\_at** | **Long** | optional | Time at which this table was created, in epoch milliseconds. | |
+| **created\_by** | **String** | optional | Username of table creator. | |
+| **updated\_at** | **Long** | optional | Time at which this table was last modified, in epoch milliseconds. | |
+| **updated\_by** | **String** | optional | Username of user who last modified the table. | |
+| **table\_id** | **String** | optional | Unique identifier for the table. | |
+| **view\_definition** | **String** | optional | Definition text for view-like table types such as VIEW, MATERIALIZED_VIEW, STREAMING_TABLE, and METRIC_VIEW. The format depends on the table type (SQL for views, YAML for metric views). | |
+| **view\_dependencies** | [**DependencyList**](DependencyList.md) | optional |  | |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

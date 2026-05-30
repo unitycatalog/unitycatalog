@@ -1,9 +1,9 @@
 # ErrorResponse
 ## Properties
 
-| Name | Type | Description | Notes |
-|------------ | ------------- | ------------- | -------------|
-| **error** | [**ErrorModel**](ErrorModel.md) |  | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------ | ------------- | ------------- | ------------- | -------------|
+| **error** | [**ErrorModel**](ErrorModel.md) | required |  | |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

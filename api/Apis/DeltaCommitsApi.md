@@ -16,9 +16,9 @@ Commit changes to a specified Delta table. The server has a limit defined in con
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **DeltaCommit** | [**DeltaCommit**](../Models/DeltaCommit.md)|  | |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **DeltaCommit** | [**DeltaCommit**](../Models/DeltaCommit.md) | required |  |  |
 
 ### Return type
 
@@ -43,9 +43,9 @@ List unbackfilled Delta table commits. WARNING: This API is experimental and may
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **DeltaGetCommits** | [**DeltaGetCommits**](../Models/DeltaGetCommits.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **DeltaGetCommits** | [**DeltaGetCommits**](../Models/DeltaGetCommits.md) | optional |  |  |
 
 ### Return type
 

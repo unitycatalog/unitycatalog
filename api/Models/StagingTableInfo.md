@@ -1,13 +1,13 @@
 # StagingTableInfo
 ## Properties
 
-| Name | Type | Description | Notes |
-|------------ | ------------- | ------------- | -------------|
-| **name** | **String** | Name of table, relative to parent schema. | [optional] [default to null] |
-| **catalog\_name** | **String** | Name of parent catalog. | [optional] [default to null] |
-| **schema\_name** | **String** | Name of parent schema relative to its parent catalog. | [optional] [default to null] |
-| **id** | **String** | Unique identifier for the table. | [optional] [default to null] |
-| **staging\_location** | **String** | URI generated for the staging table | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------ | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | optional | Name of table, relative to parent schema. | |
+| **catalog\_name** | **String** | optional | Name of parent catalog. | |
+| **schema\_name** | **String** | optional | Name of parent schema relative to its parent catalog. | |
+| **id** | **String** | optional | Unique identifier for the table. | |
+| **staging\_location** | **String** | optional | URI generated for the staging table | |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

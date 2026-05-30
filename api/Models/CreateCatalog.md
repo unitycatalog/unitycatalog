@@ -1,12 +1,12 @@
 # CreateCatalog
 ## Properties
 
-| Name | Type | Description | Notes |
-|------------ | ------------- | ------------- | -------------|
-| **name** | **String** | Name of catalog. | [default to null] |
-| **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
-| **properties** | **Map** | A map of key-value properties attached to the securable. | [optional] [default to null] |
-| **storage\_root** | **String** | Storage root URL for managed storage location of catalog. Example: s3://bucket/ucroot  | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------ | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | Name of catalog. | |
+| **comment** | **String** | optional | User-provided free-form text description. | |
+| **properties** | **Map** | optional | A map of key-value properties attached to the securable. | |
+| **storage\_root** | **String** | optional | Storage root URL for managed storage location of catalog. Example: s3://bucket/ucroot  | |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

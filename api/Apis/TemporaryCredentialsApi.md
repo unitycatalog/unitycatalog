@@ -18,9 +18,9 @@ Generate temporary model version credentials. These credentials are used by clie
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **GenerateTemporaryModelVersionCredential** | [**GenerateTemporaryModelVersionCredential**](../Models/GenerateTemporaryModelVersionCredential.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **GenerateTemporaryModelVersionCredential** | [**GenerateTemporaryModelVersionCredential**](../Models/GenerateTemporaryModelVersionCredential.md) | optional |  |  |
 
 ### Return type
 
@@ -43,9 +43,9 @@ Generate temporary path credentials.
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **GenerateTemporaryPathCredential** | [**GenerateTemporaryPathCredential**](../Models/GenerateTemporaryPathCredential.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **GenerateTemporaryPathCredential** | [**GenerateTemporaryPathCredential**](../Models/GenerateTemporaryPathCredential.md) | optional |  |  |
 
 ### Return type
 
@@ -68,9 +68,9 @@ Generate temporary table credentials.
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **GenerateTemporaryTableCredential** | [**GenerateTemporaryTableCredential**](../Models/GenerateTemporaryTableCredential.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **GenerateTemporaryTableCredential** | [**GenerateTemporaryTableCredential**](../Models/GenerateTemporaryTableCredential.md) | optional |  |  |
 
 ### Return type
 
@@ -93,9 +93,9 @@ Generate temporary volume credentials.
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **GenerateTemporaryVolumeCredential** | [**GenerateTemporaryVolumeCredential**](../Models/GenerateTemporaryVolumeCredential.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **GenerateTemporaryVolumeCredential** | [**GenerateTemporaryVolumeCredential**](../Models/GenerateTemporaryVolumeCredential.md) | optional |  |  |
 
 ### Return type
 

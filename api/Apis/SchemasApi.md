@@ -21,9 +21,9 @@ Create a schema
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **CreateSchema** | [**CreateSchema**](../Models/CreateSchema.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **CreateSchema** | [**CreateSchema**](../Models/CreateSchema.md) | optional |  |  |
 
 ### Return type
 
@@ -48,10 +48,10 @@ Delete a schema
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the schema. | [default to null] |
-| **force** | **Boolean**| Force deletion even if the catalog is not empty. | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the schema. | |
+| **force** | **Boolean** | optional | Force deletion even if the catalog is not empty. | |
 
 ### Return type
 
@@ -76,9 +76,9 @@ Get a schema
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the schema. | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the schema. | |
 
 ### Return type
 
@@ -103,11 +103,11 @@ List schemas
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog\_name** | **String**| Parent catalog for schemas of interest. | [default to null] |
-| **max\_results** | **Integer**| Maximum number of schemas to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
-| **page\_token** | **String**| Opaque pagination token to go to next page based on previous query.  | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog\_name** | **String** | required | Parent catalog for schemas of interest. | |
+| **max\_results** | **Integer** | optional | Maximum number of schemas to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | |
+| **page\_token** | **String** | optional | Opaque pagination token to go to next page based on previous query.  | |
 
 ### Return type
 
@@ -132,10 +132,10 @@ Update a schema
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the schema. | [default to null] |
-| **UpdateSchema** | [**UpdateSchema**](../Models/UpdateSchema.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the schema. | |
+| **UpdateSchema** | [**UpdateSchema**](../Models/UpdateSchema.md) | optional |  |  |
 
 ### Return type
 

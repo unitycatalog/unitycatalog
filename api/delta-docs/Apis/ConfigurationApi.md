@@ -17,10 +17,10 @@ Get catalog configuration
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **protocol-versions** | **String**| Comma-separated list of highest protocol versions the client supports per major version (e.g., 1.1,2.3 means the client supports 1.0-1.1 and 2.0-2.3). The server selects the highest mutually supported protocol version and returns endpoints for that version.  | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **protocol-versions** | **String** | required | Comma-separated list of highest protocol versions the client supports per major version (e.g., 1.1,2.3 means the client supports 1.0-1.1 and 2.0-2.3). The server selects the highest mutually supported protocol version and returns endpoints for that version.  | |
 
 ### Return type
 

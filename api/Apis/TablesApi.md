@@ -21,9 +21,9 @@ Create a staging table
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **CreateStagingTable** | [**CreateStagingTable**](../Models/CreateStagingTable.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **CreateStagingTable** | [**CreateStagingTable**](../Models/CreateStagingTable.md) | optional |  |  |
 
 ### Return type
 
@@ -48,9 +48,9 @@ Create a table. Only external table creation is supported. WARNING: This API is 
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **CreateTable** | [**CreateTable**](../Models/CreateTable.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **CreateTable** | [**CreateTable**](../Models/CreateTable.md) | optional |  |  |
 
 ### Return type
 
@@ -75,9 +75,9 @@ Delete a table
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the table. | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the table. | |
 
 ### Return type
 
@@ -102,11 +102,11 @@ Get a table
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the table. | [default to null] |
-| **read\_streaming\_table\_as\_managed** | **Boolean**| Whether to read Streaming Tables as Managed tables.  | [optional] [default to true] |
-| **read\_materialized\_view\_as\_managed** | **Boolean**| Whether to read Materialized Views as Managed tables.  | [optional] [default to true] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the table. | |
+| **read\_streaming\_table\_as\_managed** | **Boolean** | optional | Whether to read Streaming Tables as Managed tables.  | [default to true] |
+| **read\_materialized\_view\_as\_managed** | **Boolean** | optional | Whether to read Materialized Views as Managed tables.  | [default to true] |
 
 ### Return type
 
@@ -131,12 +131,12 @@ List tables
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog\_name** | **String**| Name of parent catalog for tables of interest. | [default to null] |
-| **schema\_name** | **String**| Parent schema of tables. | [default to null] |
-| **max\_results** | **Integer**| Maximum number of tables to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
-| **page\_token** | **String**| Opaque token to send for the next page of results (pagination). | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog\_name** | **String** | required | Name of parent catalog for tables of interest. | |
+| **schema\_name** | **String** | required | Parent schema of tables. | |
+| **max\_results** | **Integer** | optional | Maximum number of tables to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | |
+| **page\_token** | **String** | optional | Opaque token to send for the next page of results (pagination). | |
 
 ### Return type
 

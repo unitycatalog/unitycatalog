@@ -1,20 +1,20 @@
 # TableMetadata
 ## Properties
 
-| Name | Type | Description | Notes |
-|------------ | ------------- | ------------- | -------------|
-| **etag** | **String** | Entity tag for optimistic concurrency control | [default to null] |
-| **data-source-format** | [**DataSourceFormat**](DataSourceFormat.md) | Data source format (DELTA or ICEBERG) | [default to null] |
-| **table-type** | [**TableType**](TableType.md) |  | [default to null] |
-| **table-uuid** | **UUID** | Unique identifier for the table | [default to null] |
-| **location** | **String** | Storage location of the table | [default to null] |
-| **created-time** | **Long** | Creation time in epoch milliseconds | [default to null] |
-| **updated-time** | **Long** | Last update time in epoch milliseconds | [default to null] |
-| **columns** | [**StructType**](StructType.md) |  | [default to null] |
-| **partition-columns** | **List** | Partition column names | [optional] [default to null] |
-| **properties** | **Map** | Table properties | [default to null] |
-| **last-commit-version** | **Long** | The version of the last commit that changed table metadata (delta.lastUpdateVersion). Data-only commits do not update this value. | [optional] [default to null] |
-| **last-commit-timestamp-ms** | **Long** | Timestamp of the last commit that changed table metadata, in epoch milliseconds (delta.lastCommitTimestamp). | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------ | ------------- | ------------- | ------------- | -------------|
+| **etag** | **String** | required | Entity tag for optimistic concurrency control | |
+| **data-source-format** | [**DataSourceFormat**](DataSourceFormat.md) | required | Data source format (DELTA or ICEBERG) | |
+| **table-type** | [**TableType**](TableType.md) | required |  | |
+| **table-uuid** | **UUID** | required | Unique identifier for the table | |
+| **location** | **String** | required | Storage location of the table | |
+| **created-time** | **Long** | required | Creation time in epoch milliseconds | |
+| **updated-time** | **Long** | required | Last update time in epoch milliseconds | |
+| **columns** | [**StructType**](StructType.md) | required |  | |
+| **partition-columns** | **List** | optional | Partition column names | |
+| **properties** | **Map** | required | Table properties | |
+| **last-commit-version** | **Long** | optional | The version of the last commit that changed table metadata (delta.lastUpdateVersion). Data-only commits do not update this value. | |
+| **last-commit-timestamp-ms** | **Long** | optional | Timestamp of the last commit that changed table metadata, in epoch milliseconds (delta.lastCommitTimestamp). | |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 
