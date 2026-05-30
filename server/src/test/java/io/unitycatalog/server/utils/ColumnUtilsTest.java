@@ -320,10 +320,9 @@ public class ColumnUtilsTest {
   public void testToColumnInfoLiftsCommentFromMetadata() {
     // Delta spec stores column comments at metadata.comment; UCSingleCatalog lifts them into
     // ColumnInfo.comment via field.getComment(), and this mapper does the same so DESCRIBE
-    // renders the comment regardless of which client wrote the table. We construct the metadata
-    // via map-put rather than the typed StructFieldMetadata.comment(...) setter to mirror the
-    // wire-deserialization path: server-side StructFieldMetadata extends HashMap, so Jackson
-    // populates the map view (not the typed field) for incoming JSON.
+    // renders the comment regardless of which client wrote the table. StructFieldMetadata is
+    // schemed as a bare additionalProperties wrapper (no typed `comment` property), so callers
+    // use map-put and the reader uses map-get -- one source of truth, no dual-write hazard.
     StructFieldMetadata metadata = new StructFieldMetadata();
     metadata.put("comment", "primary key");
     StructField field =
@@ -447,5 +446,115 @@ public class ColumnUtilsTest {
     assertThatThrownBy(() -> ColumnUtils.applyPartitionColumns(columns, List.of("a", "a")))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("partition-columns contains duplicate entry: a");
+  }
+
+  // ---------- validateStructType ----------
+  // RawCreateTableTest covers the common malformed-shape cases via raw HTTP; these tests pin the
+  // edge cases that don't have an obvious HTTP form (null inputs, decimal precision/scale bounds).
+
+  @Test
+  public void testValidateStructTypeRejectsNullStruct() {
+    assertThatThrownBy(() -> ColumnUtils.validateStructType(null, "columns"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("columns is required.");
+  }
+
+  @Test
+  public void testValidateStructTypeRejectsEmptyFieldsList() {
+    // The generator initialises StructType.fields to an empty ArrayList, so reaching the
+    // `fields == null` branch from Java requires setFields(null) which the setter would
+    // happily accept. We pin the more reachable "empty fields" case here; the null-fields
+    // branch is covered indirectly by the JSON-wire path (RawCreateTableTest).
+    StructType st = new StructType();
+    assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("columns.fields must contain at least one field.");
+  }
+
+  @Test
+  public void testValidateStructTypeRejectsNullFieldElement() {
+    List<StructField> fields = new ArrayList<>();
+    fields.add(null);
+    StructType st = new StructType().fields(fields);
+    assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("columns.fields[0] is required.");
+  }
+
+  @Test
+  public void testValidateStructTypeAcceptsWellFormed() {
+    StructType st =
+        new StructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new StructField()
+                        .name("id")
+                        .type(new PrimitiveType().type("long"))
+                        .nullable(false)
+                        .metadata(new StructFieldMetadata())));
+    ColumnUtils.validateStructType(st, "columns"); // does not throw
+  }
+
+  @Test
+  public void testValidateStructTypeRejectsDecimalPrecisionOutOfRange() {
+    // precision must be in [0, 38]; 39 and -1 both fail. The bounds match Kernel's DecimalType.
+    for (int bad : new int[] {-1, 39, 100}) {
+      StructType st = decimalColumn(bad, 0);
+      assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+          .as("precision=%d", bad)
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("precision must be in [0, 38]");
+    }
+  }
+
+  @Test
+  public void testValidateStructTypeRejectsDecimalScaleOutOfRange() {
+    // scale must be in [0, precision]; scale=5 with precision=3 and scale=-1 both fail.
+    for (int[] ps : new int[][] {{3, 5}, {10, -1}, {10, 11}}) {
+      StructType st = decimalColumn(ps[0], ps[1]);
+      assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+          .as("precision=%d scale=%d", ps[0], ps[1])
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("scale must be in [0, precision");
+    }
+  }
+
+  @Test
+  public void testValidateStructTypeAcceptsDecimalBoundary() {
+    // precision=0, precision=38, scale=precision are all valid per Kernel's DecimalType.
+    for (int[] ps : new int[][] {{0, 0}, {38, 0}, {38, 38}, {10, 10}}) {
+      StructType st = decimalColumn(ps[0], ps[1]);
+      ColumnUtils.validateStructType(st, "columns"); // does not throw
+    }
+  }
+
+  @Test
+  public void testValidatePrimitiveTypeWrapsUnsupportedWithPath() {
+    StructType st =
+        new StructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new StructField()
+                        .name("x")
+                        .type(new PrimitiveType().type("void"))
+                        .nullable(true)
+                        .metadata(new StructFieldMetadata())));
+    assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("columns.fields[0].type: Unsupported Delta primitive type: void");
+  }
+
+  private static StructType decimalColumn(int precision, int scale) {
+    return new StructType()
+        .type("struct")
+        .fields(
+            List.of(
+                new StructField()
+                    .name("amount")
+                    .type(new DecimalType().type("decimal").precision(precision).scale(scale))
+                    .nullable(true)
+                    .metadata(new StructFieldMetadata())));
   }
 }

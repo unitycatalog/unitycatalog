@@ -119,12 +119,23 @@ public class RawCreateTableTest extends BaseCRUDTest {
     // Pins that primitive type names go through validatePrimitiveType -> resolveColumnTypeName
     // at the API boundary. "void" is Spark's NullType wire form, which Delta rejects on read;
     // PR #1524 hardened the closely-related Spark-connector type_json path, so we mirror that
-    // rejection on the DRC create-table path with a raw-HTTP test.
+    // rejection on the DRC create-table path with a raw-HTTP test. The validator prefixes the
+    // resolver's error with the field path so the message follows the same shape as every other
+    // validation error in this file.
     assertRejected(
         staging,
         """
         {"name": "x", "type": "void", "nullable": false, "metadata": {}}""",
-        "Unsupported Delta primitive type: void");
+        "columns.fields[0].type: Unsupported Delta primitive type: void");
+
+    // -------- StructField with a blank name --------
+    // Per Delta PROTOCOL.md column names must be non-empty. The validator rejects null AND
+    // blank (whitespace-only) names with the same message; both flow into the DB otherwise.
+    assertRejected(
+        staging,
+        """
+        {"name": "   ", "type": "long", "nullable": false, "metadata": {}}""",
+        "columns.fields[0].name is required.");
 
     // -------- StructField missing 'nullable' --------
     // Per Delta PROTOCOL.md every StructField must carry nullable.
@@ -170,6 +181,74 @@ public class RawCreateTableTest extends BaseCRUDTest {
         }""",
         "columns.fields[0].type.value-contains-null is required.");
 
+    // -------- MapType missing 'key-type' --------
+    assertRejected(
+        staging,
+        """
+        {
+          "name": "props",
+          "type": {"type": "map", "value-type": "string", "value-contains-null": false},
+          "nullable": true,
+          "metadata": {}
+        }""",
+        "columns.fields[0].type.key-type is required.");
+
+    // -------- MapType missing 'value-type' --------
+    assertRejected(
+        staging,
+        """
+        {
+          "name": "props",
+          "type": {"type": "map", "key-type": "string", "value-contains-null": false},
+          "nullable": true,
+          "metadata": {}
+        }""",
+        "columns.fields[0].type.value-type is required.");
+
+    // -------- DecimalType: precision > 38 (string wire form) --------
+    // String form "decimal(P,S)" is what Spark emits; the deserializer parses it into
+    // DecimalType so the validator's bound check fires.
+    assertRejected(
+        staging,
+        """
+        {"name": "price", "type": "decimal(50,2)", "nullable": true, "metadata": {}}""",
+        "columns.fields[0].type.precision must be in [0, 38], got 50.");
+
+    // -------- DecimalType: precision < 0 (object wire form) --------
+    // The "decimal(P,S)" string form's regex doesn't accept a negative precision, so the only
+    // way to land in validateDecimalType with a negative value is the typed object form a
+    // non-Spark client could emit.
+    assertRejected(
+        staging,
+        """
+        {
+          "name": "price",
+          "type": {"type": "decimal", "precision": -1, "scale": 0},
+          "nullable": true,
+          "metadata": {}
+        }""",
+        "columns.fields[0].type.precision must be in [0, 38], got -1.");
+
+    // -------- DecimalType: scale > precision (string wire form) --------
+    assertRejected(
+        staging,
+        """
+        {"name": "price", "type": "decimal(5,10)", "nullable": true, "metadata": {}}""",
+        "columns.fields[0].type.scale must be in [0, precision=5], got 10.");
+
+    // -------- DecimalType: missing precision (object wire form) --------
+    // String form can't express a missing precision; this exercises the requireNonNull branch.
+    assertRejected(
+        staging,
+        """
+        {
+          "name": "price",
+          "type": {"type": "decimal", "scale": 0},
+          "nullable": true,
+          "metadata": {}
+        }""",
+        "columns.fields[0].type.precision is required.");
+
     // -------- nested StructField inside an array of structs --------
     // Pins that recursion descends into array elementType -> struct fields. The malformed inner
     // field has no name; the path captures the full descent.
@@ -192,15 +271,48 @@ public class RawCreateTableTest extends BaseCRUDTest {
         "columns.fields[0].type.element-type.fields[0].name is required.");
 
     // -------- columns.fields is an empty list --------
-    assertRejected(staging, "", "Table columns are required.");
+    // Validator centralizes both null and empty-array rejection so callers can pass `columns`
+    // straight through (DeltaCreateTableMapper no longer needs its own pre-check).
+    assertRejected(staging, "", "columns.fields must contain at least one field.");
+
+    // -------- no `columns` key in the request at all --------
+    // Distinct code path from the empty-fields case above: `req.getColumns()` is null, not a
+    // StructType with empty fields. The validator's top-level requireNonNull catches this.
+    assertRejectedRaw(staging, /* includeColumns= */ false, "columns is required.");
 
     // -------- duplicate field names at the top level --------
+    // Error message includes the index of the second occurrence so wide schemas surface the
+    // offending position alongside the name.
     assertRejected(
         staging,
         """
         {"name": "id", "type": "long", "nullable": false, "metadata": {}},
         {"name": "id", "type": "string", "nullable": true, "metadata": {}}""",
-        "Duplicate field name in columns.fields: id");
+        "Duplicate field name in columns.fields[1]: id");
+
+    // -------- duplicate field name inside a nested struct --------
+    // Proves uniqueness is enforced per StructType level (not only at the top level) -- the
+    // recursion in validateStructType applies the same check inside an array of structs.
+    assertRejected(
+        staging,
+        """
+        {
+          "name": "items",
+          "type": {
+            "type": "array",
+            "element-type": {
+              "type": "struct",
+              "fields": [
+                {"name": "x", "type": "long", "nullable": false, "metadata": {}},
+                {"name": "x", "type": "string", "nullable": true, "metadata": {}}
+              ]
+            },
+            "contains-null": true
+          },
+          "nullable": true,
+          "metadata": {}
+        }""",
+        "Duplicate field name in columns.fields[0].type.element-type.fields[1]: x");
   }
 
   // ---------- helpers ----------
@@ -230,6 +342,65 @@ public class RawCreateTableTest extends BaseCRUDTest {
       StagingTableResponse staging, String columnJson, String messageSubstring) {
     JsonNode error = postAndAssertRejected(staging, columnJson);
     assertThat(error.get("message").asText()).contains(messageSubstring);
+  }
+
+  /**
+   * Variant of {@link #assertRejected} that posts a body with no {@code columns} key at all when
+   * {@code includeColumns} is false. This exercises the {@code req.getColumns() == null} branch,
+   * distinct from the empty-fields-array case the other helper covers.
+   */
+  @SneakyThrows
+  private void assertRejectedRaw(
+      StagingTableResponse staging, boolean includeColumns, String expectedMessage) {
+    String columnsBlock =
+        includeColumns ? "\"columns\": {\"type\": \"struct\", \"fields\": []}," : "";
+    String body =
+        String.format(
+            """
+            {
+              "name": "tbl_raw",
+              "location": "%s",
+              "table-type": "MANAGED",
+              "data-source-format": "DELTA",
+              %s
+              "protocol": {
+                "min-reader-version": 3,
+                "min-writer-version": 7,
+                "reader-features": [
+                  "catalogManaged", "deletionVectors", "v2Checkpoint", "vacuumProtocolCheck"
+                ],
+                "writer-features": [
+                  "catalogManaged", "deletionVectors", "inCommitTimestamp",
+                  "v2Checkpoint", "vacuumProtocolCheck"
+                ]
+              },
+              "properties": {
+                "delta.checkpointPolicy": "v2",
+                "delta.enableDeletionVectors": "true",
+                "delta.enableInCommitTimestamps": "true",
+                "io.unitycatalog.tableId": "%s",
+                "delta.inCommitTimestampEnablementVersion": "0",
+                "delta.inCommitTimestampEnablementTimestamp": "1700000000000"
+              },
+              "last-commit-timestamp-ms": 1700000000000
+            }
+            """,
+            staging.getLocation(), columnsBlock, staging.getTableId());
+
+    RequestHeaders headers =
+        RequestHeaders.builder()
+            .method(HttpMethod.POST)
+            .path(CREATE_TABLE_PATH)
+            .contentType(MediaType.JSON)
+            .build();
+    AggregatedHttpResponse resp =
+        client.execute(headers, HttpData.ofUtf8(body)).aggregate().join();
+
+    String content = resp.contentUtf8();
+    assertThat(resp.status().code()).as("body: %s", content).isEqualTo(400);
+    JsonNode error = MAPPER.readTree(content).get("error");
+    assertThat(error).as("body: %s", content).isNotNull();
+    assertThat(error.get("message").asText()).isEqualTo(expectedMessage);
   }
 
   /**

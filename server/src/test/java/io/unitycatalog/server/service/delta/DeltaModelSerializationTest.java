@@ -581,10 +581,9 @@ public class DeltaModelSerializationTest {
   /**
    * Build a {@link StructFieldMetadata} with the optional {@code comment} plus a bag of
    * additional properties for the spec's dotted Delta keys (e.g. {@code delta.columnMapping.id}).
-   * The server-side {@code StructFieldMetadata} extends {@code HashMap<String, Object>}; Jackson
-   * treats it as a Map for serialization (and skips the named {@code comment} getter), so we
-   * write the comment into the map view via {@code put} rather than the typed setter so the wire
-   * shape matches the fixture.
+   * The schema models {@code StructFieldMetadata} as a bare additionalProperties wrapper, so the
+   * generated class extends {@code HashMap<String, Object>}; all keys (including {@code comment})
+   * go through the map view.
    */
   private static StructFieldMetadata meta(String comment, Map<String, Object> additional) {
     StructFieldMetadata m = new StructFieldMetadata();

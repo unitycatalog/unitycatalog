@@ -17,14 +17,15 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
+import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -153,9 +154,13 @@ public class ColumnUtils {
   }
 
   /**
-   * Validate that a UC column stores {@code typeJson} as Spark {@link StructField} JSON.
+   * Validate that a UC column stores {@code typeJson} as Spark {@link StructField} JSON. Shape
+   * (deserializability) and name/nullable cross-match run for all formats. The
+   * Delta-protocol primitive-type closed-set check runs only for {@link DataSourceFormat#DELTA} --
+   * non-Delta tables (Parquet, CSV, ...) may legitimately carry Spark types that the closed set
+   * rejects (e.g. {@code char(N)} / {@code varchar(N)}).
    */
-  public static void validateTypeJson(ColumnInfo column) {
+  public static void validateTypeJson(ColumnInfo column, DataSourceFormat format) {
     if (column == null) {
       throw invalidTypeJson(null, "column cannot be null");
     }
@@ -165,10 +170,12 @@ public class ColumnUtils {
     } catch (IllegalStateException e) {
       throw invalidTypeJson(column, e.getMessage(), e);
     }
-    try {
-      validateStructField(field, "type_json");
-    } catch (BaseException e) {
-      throw invalidTypeJson(column, e.getErrorMessage(), e);
+    if (format == DataSourceFormat.DELTA) {
+      try {
+        validateStructField(field, "type_json");
+      } catch (BaseException e) {
+        throw invalidTypeJson(column, e.getErrorMessage(), e);
+      }
     }
     if (!field.getName().equals(column.getName())) {
       throw invalidTypeJson(
@@ -209,10 +216,17 @@ public class ColumnUtils {
 
   /**
    * Validate that a {@link StructType} is well-formed against the Delta spec's wire shape.
+   * Centralizes structural validation so callers can pass {@code columns} directly without
+   * pre-checking nullness/emptiness.
    */
   public static void validateStructType(StructType structType, String path) {
+    requireNonNull(structType, path);
     requireNonNull(structType.getFields(), path + ".fields");
     List<StructField> fields = structType.getFields();
+    if (fields.isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, path + ".fields must contain at least one field.");
+    }
     Set<String> seen = new HashSet<>();
     for (int i = 0; i < fields.size(); i++) {
       String fieldPath = path + ".fields[" + i + "]";
@@ -221,14 +235,16 @@ public class ColumnUtils {
       String name = fields.get(i).getName();
       if (!seen.add(name)) {
         throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT,
-            "Duplicate field name in " + path + ".fields: " + name);
+          ErrorCode.INVALID_ARGUMENT, "Duplicate field name in " + fieldPath + ": " + name);
       }
     }
   }
 
   private static void validateStructField(StructField field, String path) {
-    requireNonNull(field.getName(), path + ".name");
+    String name = field.getName();
+    if (name == null || name.isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, path + ".name is required.");
+    }
     requireNonNull(field.getType(), path + ".type");
     requireNonNull(field.getNullable(), path + ".nullable");
     requireNonNull(field.getMetadata(), path + ".metadata");
@@ -268,6 +284,8 @@ public class ColumnUtils {
     requireNonNull(decimal.getScale(), path + ".scale");
     int precision = decimal.getPrecision();
     int scale = decimal.getScale();
+    // Matches io.delta.kernel.types.DecimalType bounds (precision=0 is allowed there, even
+    // though it's degenerate).
     if (precision < 0 || precision > 38) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
@@ -281,7 +299,17 @@ public class ColumnUtils {
   }
 
   private static void validatePrimitiveType(PrimitiveType primitive, String path) {
-    requireNonNull(primitive.getType(), path + ".type");
+    // The PrimitiveType discriminator (the "type" string) IS the primitive name; the caller's
+    // path already ends in `.type`, so no further suffix here. Resolve to confirm the name is in
+    // the closed set we support; rethrow with the field path attached so the error mirrors the
+    // shape of every other validation message in this file (downstream toColumnInfos would
+    // otherwise throw without path context).
+    requireNonNull(primitive.getType(), path);
+    try {
+      resolveColumnTypeName(primitive);
+    } catch (BaseException e) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, path + ": " + e.getMessage(), e);
+    }
   }
 
   private static void requireNonNull(Object value, String path) {
@@ -294,6 +322,12 @@ public class ColumnUtils {
    * Convert a UC Delta API {@link StructField} into a UC {@link ColumnInfo}, mirroring
    * {@code UCSingleCatalog.createTable}'s per-column projection so Delta-created tables render
    * identically to Spark-created ones.
+   *
+   * <p>Caller contract: {@code field} must have already been validated by
+   * {@link #validateStructType}. This method does not re-check shape -- malformed input will
+   * surface as a downstream {@link IllegalStateException} from {@link #toTypeJson} or a
+   * {@link BaseException} from {@link #resolveColumnTypeName}, without the path-context that
+   * {@code validateStructType} provides.
    *
    * <p>Fields populated (matching UCSingleCatalog exactly):
    * <ul>
@@ -377,12 +411,10 @@ public class ColumnUtils {
   private static String extractComment(StructField field) {
     StructFieldMetadata metadata = field.getMetadata();
     if (metadata == null) return null;
-    if (metadata.getComment() != null) {
-      return metadata.getComment();
-    }
+    // StructFieldMetadata extends HashMap via additionalProperties; the schema deliberately does
+    // not promote "comment" to a typed property (see api/delta.yaml). Read via Map access.
     Object fromMap = metadata.get("comment");
-    if (fromMap instanceof String s) return s;
-    return null;
+    return fromMap instanceof String s ? s : null;
   }
 
   private static ColumnTypeName resolveColumnTypeName(DeltaType type) {
