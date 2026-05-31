@@ -118,7 +118,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [runtime]
+        target: [runtime, distroless]
         platform:
           - arch: amd64
             os: linux/amd64
@@ -207,6 +207,8 @@ jobs:
         include:
           - target: runtime
             suffix: ""
+          - target: distroless
+            suffix: "-distroless"
 
     steps:
       - name: Download digests

@@ -65,3 +65,36 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1
 
 ENTRYPOINT ["./bin/start-uc-server"]
+
+# ---------------------------------------------------------------------------
+# Distroless stage (production): distroless, glibc, no shell, non-root by default.
+# Build with `--target distroless`. Because there is no shell, the bash launchers
+# cannot run -- the distroless java entrypoint invokes `java` directly and we
+# pass the (relocatable) classpath wildcard via CMD. Ships ONLY the server jars
+# (no CLI -- it cannot be invoked here without a shell, and dropping it keeps the
+# production image lean).
+# ---------------------------------------------------------------------------
+FROM gcr.io/distroless/java17-debian13:nonroot@sha256:81d09cac6ec47f6a13c61a941557f95079213320f3ddbf9d353de9317669aab5 AS distroless
+
+ARG HOME=/home/nonroot
+
+LABEL org.opencontainers.image.title="Unity Catalog Server (distroless)" \
+      org.opencontainers.image.description="Unity Catalog server, distroless production build" \
+      org.opencontainers.image.source="https://github.com/unitycatalog/unitycatalog" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR $HOME
+
+# Only the server jars + config -- no bin/ (no shell), no CLI, no JDK.
+COPY --from=build --chown=nonroot:nonroot /workspace/target/dist/jars/server ./jars/server
+COPY --from=build --chown=nonroot:nonroot /workspace/target/dist/etc         ./etc
+
+USER nonroot
+
+EXPOSE 8080
+
+# The distroless java image's ENTRYPOINT is ["java"]; supply JVM flags + the
+# main class via CMD. -Djava.io.tmpdir=/tmp keeps it working under a read-only
+# root filesystem (mount a writable /tmp). No HEALTHCHECK: distroless has no
+# shell -- rely on orchestrator liveness/readiness probes.
+CMD ["-XX:MaxRAMPercentage=75.0", "-Djava.io.tmpdir=/tmp", "-cp", "jars/server/*", "io.unitycatalog.server.UnityCatalogServer"]
