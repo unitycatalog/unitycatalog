@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
@@ -47,6 +48,7 @@ import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
 import io.unitycatalog.server.service.TemporaryPathCredentialsService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
+import io.unitycatalog.server.service.TrustedHeaderAuthDecorator;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
@@ -58,6 +60,7 @@ import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.AuthenticationMode;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
@@ -332,7 +335,8 @@ public class UnityCatalogServer {
           .exclude(CONTROL_PATH + "auth/tokens")
           .build(accessDecorator);
 
-      AuthDecorator authDecorator = new AuthDecorator(securityContext, repositories);
+      DecoratingHttpServiceFunction authDecorator =
+          buildAuthDecorator(serverProperties, repositories);
       armeriaServerBuilder.routeDecorator().pathPrefix(BASE_PATH).build(authDecorator);
       armeriaServerBuilder
           .routeDecorator()
@@ -343,6 +347,23 @@ public class UnityCatalogServer {
       ExceptionHandlingDecorator exceptionDecorator =
           new ExceptionHandlingDecorator(new GlobalExceptionHandler());
       armeriaServerBuilder.decorator(exceptionDecorator);
+    }
+  }
+
+  /**
+   * Selects the authentication decorator based on the configured {@link AuthenticationMode}. New
+   * authentication mechanisms should be added here as additional cases.
+   */
+  private DecoratingHttpServiceFunction buildAuthDecorator(
+      ServerProperties serverProperties, Repositories repositories) {
+    AuthenticationMode mode = serverProperties.getAuthenticationMode();
+    LOGGER.info("Using authentication mode: {}", mode.getValue());
+    switch (mode) {
+      case TRUSTED_HEADER:
+        return new TrustedHeaderAuthDecorator(serverProperties, repositories);
+      case JWT:
+      default:
+        return new AuthDecorator(securityContext, repositories);
     }
   }
 
