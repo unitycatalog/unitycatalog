@@ -104,16 +104,17 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
         .containsEntry(TableProperties.CHECKPOINT_POLICY, "v2")
         .containsEntry(TableProperties.ENABLE_DELETION_VECTORS, "true")
         .containsEntry(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true")
-        .containsEntry(TableProperties.PARQUET_COMPRESSION_CODEC, "zstd")
-        .containsEntry(TableProperties.CHECKPOINT_WRITE_STATS_AS_STRUCT, "true")
-        .containsEntry(TableProperties.CHECKPOINT_WRITE_STATS_AS_JSON, "true")
         // The rule-based property binds the Delta table to the UC-allocated tableId.
         .containsEntry(TableProperties.UC_TABLE_ID, resp.getTableId().toString())
         // ICT enablement version/timestamp are not advertised: catalog-managed tables enable
         // inCommitTimestamp at version 0, and per the Delta protocol the enablement
         // properties only apply when ICT was enabled mid-table.
         .doesNotContainKey(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION)
-        .doesNotContainKey(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP);
+        .doesNotContainKey(TableProperties.IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP)
+        // Suggested-bucket properties must not leak into required.
+        .doesNotContainKey(TableProperties.PARQUET_COMPRESSION_CODEC)
+        .doesNotContainKey(TableProperties.CHECKPOINT_WRITE_STATS_AS_STRUCT)
+        .doesNotContainKey(TableProperties.CHECKPOINT_WRITE_STATS_AS_JSON);
     assertThat(resp.getSuggestedProperties())
         .containsEntry(TableProperties.ENABLE_ROW_TRACKING, "true")
         // Null value = client generates a UUID-suffixed column name when enabling row tracking.
@@ -121,7 +122,11 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
         .containsEntry(
             TableProperties.ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME, null)
         // QOL for high write concurrency.
-        .containsEntry(TableProperties.RANDOMIZE_FILE_PREFIXES, "true");
+        .containsEntry(TableProperties.RANDOMIZE_FILE_PREFIXES, "true")
+        // Suggested rather than required: not yet supported uniformly across Delta engines.
+        .containsEntry(TableProperties.PARQUET_COMPRESSION_CODEC, "zstd")
+        .containsEntry(TableProperties.CHECKPOINT_WRITE_STATS_AS_STRUCT, "true")
+        .containsEntry(TableProperties.CHECKPOINT_WRITE_STATS_AS_JSON, "true");
 
     // -------- name missing --------
     TestUtils.assertDeltaApiException(

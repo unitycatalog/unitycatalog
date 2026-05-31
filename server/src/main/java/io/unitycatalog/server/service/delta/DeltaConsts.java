@@ -92,8 +92,8 @@ public final class DeltaConsts {
         "delta.rowTracking.materializedRowIdColumnName";
     public static final String ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME =
         "delta.rowTracking.materializedRowCommitVersionColumnName";
-    public static final String COLUMN_MAPPING_MODE = "columnMapping.mode";
-    public static final String COLUMN_MAPPING_MAX_COLUMN_ID = "columnMapping.maxColumnId";
+    public static final String COLUMN_MAPPING_MODE = "delta.columnMapping.mode";
+    public static final String COLUMN_MAPPING_MAX_COLUMN_ID = "delta.columnMapping.maxColumnId";
     public static final String PARQUET_COMPRESSION_CODEC = "delta.parquet.compression.codec";
     public static final String CHECKPOINT_WRITE_STATS_AS_STRUCT =
         "delta.checkpoint.writeStatsAsStruct";
