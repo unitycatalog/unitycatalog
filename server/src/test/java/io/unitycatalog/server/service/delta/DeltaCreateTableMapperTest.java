@@ -141,10 +141,7 @@ public class DeltaCreateTableMapperTest {
   }
 
   private static Map<String, String> fullManagedProperties(String tableId) {
-    Map<String, String> props = new HashMap<>();
-    props.put(TableProperties.CHECKPOINT_POLICY, "v2");
-    props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
-    props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.put(TableProperties.UC_TABLE_ID, tableId);
     return props;
   }
