@@ -65,7 +65,9 @@ public final class UcManagedDeltaContract {
       Map.of(
           TableProperties.ENABLE_DELETION_VECTORS, "true",
           TableProperties.CHECKPOINT_POLICY, "v2",
-          TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
+          TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true",
+          TableProperties.CHECKPOINT_WRITE_STATS_AS_STRUCT, "true",
+          TableProperties.CHECKPOINT_WRITE_STATS_AS_JSON, "true");
 
   /**
    * Required properties whose value the engine must compute at commit time. The staging response
@@ -90,8 +92,6 @@ public final class UcManagedDeltaContract {
     props.put(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME, null);
     props.put(TableProperties.RANDOMIZE_FILE_PREFIXES, "true");
     props.put(TableProperties.PARQUET_COMPRESSION_CODEC, "zstd");
-    props.put(TableProperties.CHECKPOINT_WRITE_STATS_AS_STRUCT, "true");
-    props.put(TableProperties.CHECKPOINT_WRITE_STATS_AS_JSON, "true");
     return Collections.unmodifiableMap(props);
   }
 
