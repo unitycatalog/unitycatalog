@@ -3,9 +3,9 @@ package io.unitycatalog.server.sdk.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.delta.api.ConfigurationApi;
-import io.unitycatalog.client.delta.model.CatalogConfig;
-import io.unitycatalog.client.delta.model.ErrorType;
+import io.unitycatalog.client.delta.api.DeltaConfigurationApi;
+import io.unitycatalog.client.delta.model.DeltaCatalogConfig;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -18,13 +18,13 @@ import org.junit.jupiter.api.Test;
 public class SdkDeltaConfigTest extends BaseServerTest {
 
   protected CatalogOperations catalogOperations;
-  private ConfigurationApi configApi;
+  private DeltaConfigurationApi configApi;
 
   @BeforeEach
   public void setUp() {
     super.setUp();
     catalogOperations = new SdkCatalogOperations(TestUtils.createApiClient(serverConfig));
-    configApi = new ConfigurationApi(TestUtils.createApiClient(serverConfig));
+    configApi = new DeltaConfigurationApi(TestUtils.createApiClient(serverConfig));
     cleanUp();
     createCatalog();
   }
@@ -49,20 +49,20 @@ public class SdkDeltaConfigTest extends BaseServerTest {
   @Test
   public void testGetConfig() throws Exception {
     // Success: valid catalog returns endpoints and protocol version
-    CatalogConfig config = configApi.getConfig(TestUtils.CATALOG_NAME, "1.0");
+    DeltaCatalogConfig config = configApi.getConfig(TestUtils.CATALOG_NAME, "1.0");
     assertThat(config.getEndpoints()).isNotEmpty();
     assertThat(config.getProtocolVersion()).isEqualTo("1.0");
 
     // Error: missing catalog returns 400 with InvalidParameterValueException
     TestUtils.assertDeltaApiException(
         () -> configApi.getConfig("", "1.0"),
-        ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
         "catalog");
 
     // Error: nonexistent catalog returns 404 with NoSuchCatalogException
     TestUtils.assertDeltaApiException(
         () -> configApi.getConfig("nonexistent", "1.0"),
-        ErrorType.NO_SUCH_CATALOG_EXCEPTION,
+        DeltaErrorType.NO_SUCH_CATALOG_EXCEPTION,
         "nonexistent");
   }
 }

@@ -5,12 +5,12 @@ import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.unitycatalog.server.delta.model.ArrayType;
-import io.unitycatalog.server.delta.model.DecimalType;
-import io.unitycatalog.server.delta.model.DeltaType;
-import io.unitycatalog.server.delta.model.MapType;
-import io.unitycatalog.server.delta.model.StructField;
-import io.unitycatalog.server.delta.model.StructType;
+import io.unitycatalog.server.delta.model.DeltaArrayType;
+import io.unitycatalog.server.delta.model.DeltaDecimalType;
+import io.unitycatalog.server.delta.model.DeltaDataType;
+import io.unitycatalog.server.delta.model.DeltaMapType;
+import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.serde.DeltaTypeModule;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -92,17 +92,17 @@ public class ColumnUtils {
   private static ObjectMapper createTypeMapper() {
     ObjectMapper mapper = new ObjectMapper();
     mapper.registerModule(new DeltaTypeModule());
-    mapper.addMixIn(ArrayType.class, CamelCaseArrayMixin.class);
-    mapper.addMixIn(MapType.class, CamelCaseMapMixin.class);
+    mapper.addMixIn(DeltaArrayType.class, CamelCaseArrayMixin.class);
+    mapper.addMixIn(DeltaMapType.class, CamelCaseMapMixin.class);
     return mapper;
   }
 
   abstract static class CamelCaseArrayMixin {
     @JsonProperty("elementType")
-    abstract DeltaType getElementType();
+    abstract DeltaDataType getElementType();
 
     @JsonSetter("elementType")
-    abstract void setElementType(DeltaType v);
+    abstract void setElementType(DeltaDataType v);
 
     @JsonProperty("containsNull")
     abstract Boolean getContainsNull();
@@ -113,16 +113,16 @@ public class ColumnUtils {
 
   abstract static class CamelCaseMapMixin {
     @JsonProperty("keyType")
-    abstract DeltaType getKeyType();
+    abstract DeltaDataType getKeyType();
 
     @JsonSetter("keyType")
-    abstract void setKeyType(DeltaType v);
+    abstract void setKeyType(DeltaDataType v);
 
     @JsonProperty("valueType")
-    abstract DeltaType getValueType();
+    abstract DeltaDataType getValueType();
 
     @JsonSetter("valueType")
-    abstract void setValueType(DeltaType v);
+    abstract void setValueType(DeltaDataType v);
 
     @JsonProperty("valueContainsNull")
     abstract Boolean getValueContainsNull();
@@ -132,17 +132,18 @@ public class ColumnUtils {
   }
 
   /**
-   * Convert a UC ColumnInfo to a Delta REST API StructField by parsing typeJson directly. The
-   * typeJson is in Spark's StructField format and contains the complete field definition (name,
+   * Convert a UC ColumnInfo to a Delta REST API DeltaStructField by parsing typeJson directly. The
+   * typeJson is in Spark's DeltaStructField format and contains the complete field definition
+   * (name,
    * type, nullable, metadata). Only partitionIndex comes from ColumnInfo, not typeJson.
    */
-  public static StructField toStructField(ColumnInfo column) {
+  public static DeltaStructField toStructField(ColumnInfo column) {
     String typeJson = column.getTypeJson();
     if (typeJson == null || typeJson.isEmpty()) {
       throw new IllegalStateException("Column " + column.getName() + " has null/empty typeJson");
     }
     try {
-      return TYPE_MAPPER.readValue(typeJson, StructField.class);
+      return TYPE_MAPPER.readValue(typeJson, DeltaStructField.class);
     } catch (JsonProcessingException e) {
       throw new IllegalStateException(
           "Failed to parse typeJson for column " + column.getName() + ": " + typeJson, e);
@@ -150,7 +151,8 @@ public class ColumnUtils {
   }
 
   /**
-   * Validate that a UC column stores typeJson as Spark StructField JSON. The Spark connector and
+   * Validate that a UC column stores typeJson as Spark DeltaStructField JSON. The Spark connector
+   * and
    * Delta REST APIs depend on name, type, nullable, and metadata being present in this payload.
    */
   public static void validateTypeJson(ColumnInfo column) {
@@ -158,15 +160,16 @@ public class ColumnUtils {
       throw invalidTypeJson(null, "column cannot be null");
     }
     JsonNode typeJson = parseTypeJson(column);
-    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_NAME);
-    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_TYPE);
-    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_NULLABLE);
-    JsonNode metadata = requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_METADATA);
+    requireTypeJsonField(column, typeJson, DeltaStructField.JSON_PROPERTY_NAME);
+    requireTypeJsonField(column, typeJson, DeltaStructField.JSON_PROPERTY_TYPE);
+    requireTypeJsonField(column, typeJson, DeltaStructField.JSON_PROPERTY_NULLABLE);
+    JsonNode metadata = requireTypeJsonField(column, typeJson,
+        DeltaStructField.JSON_PROPERTY_METADATA);
     if (!metadata.isObject()) {
       throw invalidTypeJson(column, "type_json.metadata must be a JSON object");
     }
 
-    StructField field;
+    DeltaStructField field;
     try {
       field = toStructField(column);
     } catch (IllegalStateException e) {
@@ -222,8 +225,11 @@ public class ColumnUtils {
         cause);
   }
 
-  /** Serialize a Delta StructField to Spark's camelCase typeJson format for UC database storage. */
-  public static String toTypeJson(StructField field) {
+  /**
+   * Serialize a Delta DeltaStructField to Spark's camelCase typeJson format for UC database
+   * storage.
+   */
+  public static String toTypeJson(DeltaStructField field) {
     try {
       return TYPE_MAPPER.writeValueAsString(field);
     } catch (JsonProcessingException e) {
@@ -233,7 +239,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Convert a UC Delta API {@link StructField} into a UC {@link ColumnInfo}, mirroring
+   * Convert a UC Delta API {@link DeltaStructField} into a UC {@link ColumnInfo}, mirroring
    * {@code UCSingleCatalog.createTable}'s per-column projection so Delta-created tables render
    * identically to Spark-created ones.
    *
@@ -252,8 +258,8 @@ public class ColumnUtils {
    * {@code typePrecision}, {@code typeScale}, {@code typeIntervalType}, {@code partitionIndex}
    * ({@code partitionIndex} is stamped separately by {@link #applyPartitionColumns}).
    */
-  public static ColumnInfo toColumnInfo(StructField field, int position) {
-    DeltaType type = field.getType();
+  public static ColumnInfo toColumnInfo(DeltaStructField field, int position) {
+    DeltaDataType type = field.getType();
     ColumnInfo column =
         new ColumnInfo()
             .name(field.getName())
@@ -270,11 +276,11 @@ public class ColumnUtils {
   }
 
   /**
-   * Project a list of Delta {@link StructField}s into UC {@link ColumnInfo}s, stamping each
+   * Project a list of Delta {@link DeltaStructField}s into UC {@link ColumnInfo}s, stamping each
    * column's {@code position} from its index in the list. Used by both the create and update paths
    * of the UC Delta API so the wire-order-to-position mapping stays in one place.
    */
-  public static List<ColumnInfo> toColumnInfos(List<StructField> fields) {
+  public static List<ColumnInfo> toColumnInfos(List<DeltaStructField> fields) {
     List<ColumnInfo> columns = new ArrayList<>(fields.size());
     for (int i = 0; i < fields.size(); i++) {
       columns.add(toColumnInfo(fields.get(i), i));
@@ -283,7 +289,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Render a {@link DeltaType} as a Spark-style catalog string -- the same format produced by
+   * Render a {@link DeltaDataType} as a Spark-style catalog string -- the same format produced by
    * {@code org.apache.spark.sql.types.DataType#catalogString}. Primitives go through the shared
    * {@link #typeNameVsTypeText} override map (so {@code long}→{@code bigint}, {@code
    * integer}→{@code int}, etc.); decimals include precision/scale; array/map/struct recurse.
@@ -292,23 +298,23 @@ public class ColumnUtils {
    *     key / value / field type) is an unsupported Delta primitive -- this method delegates the
    *     primitive lookup to {@link #resolveColumnTypeName}, which throws on unknown names.
    */
-  public static String toCatalogString(DeltaType type) {
-    if (type instanceof DecimalType d) {
+  public static String toCatalogString(DeltaDataType type) {
+    if (type instanceof DeltaDecimalType d) {
       return "decimal" + getPrecisionAndScale(d.getPrecision(), d.getScale());
     }
-    if (type instanceof ArrayType a) {
+    if (type instanceof DeltaArrayType a) {
       return "array<" + toCatalogString(a.getElementType()) + ">";
     }
-    if (type instanceof MapType m) {
+    if (type instanceof DeltaMapType m) {
       return "map<" + toCatalogString(m.getKeyType()) + "," + toCatalogString(m.getValueType())
           + ">";
     }
-    if (type instanceof StructType s) {
-      List<StructField> fields = s.getFields() != null ? s.getFields() : List.of();
+    if (type instanceof DeltaStructType s) {
+      List<DeltaStructField> fields = s.getFields() != null ? s.getFields() : List.of();
       StringBuilder sb = new StringBuilder("struct<");
       for (int i = 0; i < fields.size(); i++) {
         if (i > 0) sb.append(",");
-        StructField f = fields.get(i);
+        DeltaStructField f = fields.get(i);
         sb.append(f.getName()).append(":").append(toCatalogString(f.getType()));
       }
       return sb.append(">").toString();
@@ -316,18 +322,18 @@ public class ColumnUtils {
     return getTypeText(resolveColumnTypeName(type));
   }
 
-  private static String extractComment(StructField field) {
+  private static String extractComment(DeltaStructField field) {
     Map<String, Object> metadata = field.getMetadata();
     if (metadata == null) return null;
     Object comment = metadata.get("comment");
     return comment instanceof String s ? s : null;
   }
 
-  private static ColumnTypeName resolveColumnTypeName(DeltaType type) {
-    if (type instanceof ArrayType) return ColumnTypeName.ARRAY;
-    if (type instanceof DecimalType) return ColumnTypeName.DECIMAL;
-    if (type instanceof MapType) return ColumnTypeName.MAP;
-    if (type instanceof StructType) return ColumnTypeName.STRUCT;
+  private static ColumnTypeName resolveColumnTypeName(DeltaDataType type) {
+    if (type instanceof DeltaArrayType) return ColumnTypeName.ARRAY;
+    if (type instanceof DeltaDecimalType) return ColumnTypeName.DECIMAL;
+    if (type instanceof DeltaMapType) return ColumnTypeName.MAP;
+    if (type instanceof DeltaStructType) return ColumnTypeName.STRUCT;
     // PrimitiveType: the discriminator string IS the primitive name. The accepted set is the
     // closed list of Delta-protocol primitives -- Kernel's BasePrimitiveType registry. Reject
     // with INVALID_ARGUMENT for anything else; the server-side ColumnTypeName enum has no

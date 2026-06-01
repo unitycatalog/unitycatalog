@@ -1,16 +1,13 @@
 package io.unitycatalog.server.service.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.unitycatalog.server.delta.model.CreateTableRequest;
-import io.unitycatalog.server.delta.model.DataSourceFormat;
+import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
-import io.unitycatalog.server.delta.model.PrimitiveType;
-import io.unitycatalog.server.delta.model.StructField;
-import io.unitycatalog.server.delta.model.StructType;
-import io.unitycatalog.server.delta.model.TableType;
-import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructType;
+import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -53,7 +50,7 @@ public class DeltaCreateTableMapperTest {
   public void externalTableSkipsUcManagedContract() {
     // Pins the MANAGED-only gate: an EXTERNAL request that would fail UcManagedDeltaContract
     // (missing catalogManaged, empty properties) succeeds because the gate routes around it.
-    CreateTableRequest req =
+    DeltaCreateTableRequest req =
         baseExternalRequest()
             .protocol(
                 new DeltaProtocol()
@@ -67,24 +64,14 @@ public class DeltaCreateTableMapperTest {
     assertThat(created.getTableType()).isEqualTo(io.unitycatalog.server.model.TableType.EXTERNAL);
   }
 
-  @Test
-  public void unsupportedDataSourceFormatRejected() {
-    // Use EXTERNAL so the contract gate doesn't fire first; the format gate is what's under test.
-    CreateTableRequest req = baseExternalRequest().dataSourceFormat(DataSourceFormat.ICEBERG);
-    assertThatThrownBy(() -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req))
-        .isInstanceOf(BaseException.class)
-        .hasMessageContaining("Unsupported data-source-format");
-  }
-
   // --- fixtures ---
 
   /** A canonical fully-compliant MANAGED createTable request. */
-  private static CreateTableRequest baseManagedRequest() {
-    return new CreateTableRequest()
+  private static DeltaCreateTableRequest baseManagedRequest() {
+    return new DeltaCreateTableRequest()
         .name("tbl")
         .location("s3://b/p")
-        .tableType(TableType.MANAGED)
-        .dataSourceFormat(DataSourceFormat.DELTA)
+        .tableType(DeltaTableType.MANAGED)
         .columns(simpleColumns())
         .protocol(managedProtocol())
         .properties(fullManagedProperties("uuid-x"))
@@ -92,12 +79,11 @@ public class DeltaCreateTableMapperTest {
   }
 
   /** A minimal EXTERNAL createTable request (UC mirrors whatever the client sends). */
-  private static CreateTableRequest baseExternalRequest() {
-    return new CreateTableRequest()
+  private static DeltaCreateTableRequest baseExternalRequest() {
+    return new DeltaCreateTableRequest()
         .name("tbl")
         .location("s3://b/p")
-        .tableType(TableType.EXTERNAL)
-        .dataSourceFormat(DataSourceFormat.DELTA)
+        .tableType(DeltaTableType.EXTERNAL)
         .columns(simpleColumns())
         .protocol(
             new DeltaProtocol()
@@ -109,14 +95,14 @@ public class DeltaCreateTableMapperTest {
         .lastCommitTimestampMs(1700000000000L);
   }
 
-  private static StructType simpleColumns() {
-    return new StructType()
+  private static DeltaStructType simpleColumns() {
+    return new DeltaStructType()
         .type("struct")
         .fields(
             List.of(
-                new StructField()
+                new DeltaStructField()
                     .name("id")
-                    .type(new PrimitiveType().type("long"))
+                    .type(new DeltaPrimitiveType().type("long"))
                     .nullable(false)
                     .metadata(Map.of())));
   }

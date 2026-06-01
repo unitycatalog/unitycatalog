@@ -2,13 +2,13 @@ package io.unitycatalog.server.exception;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import io.unitycatalog.server.delta.model.ErrorModel;
-import io.unitycatalog.server.delta.model.ErrorResponse;
+import io.unitycatalog.server.delta.model.DeltaErrorModel;
+import io.unitycatalog.server.delta.model.DeltaErrorResponse;
 import java.util.Arrays;
 
 /**
  * Exception handler for the UC Delta API. Converts exceptions to JSON error responses using the
- * generated ErrorResponse/ErrorModel/ErrorType from delta.yaml.
+ * generated DeltaErrorResponse/DeltaErrorModel/ErrorType from delta.yaml.
  */
 public class DeltaApiExceptionHandler extends BaseExceptionHandler {
 
@@ -16,8 +16,8 @@ public class DeltaApiExceptionHandler extends BaseExceptionHandler {
   protected HttpResponse createErrorResponse(BaseException exception) {
     ErrorCode errorCode = exception.getErrorCode();
     HttpStatus status = errorCode.getDeltaHttpStatus();
-    ErrorModel error =
-        new ErrorModel()
+    DeltaErrorModel error =
+        new DeltaErrorModel()
             .code(status.code())
             .type(errorCode.getDeltaErrorType())
             .message(exception.getErrorMessage())
@@ -27,6 +27,6 @@ public class DeltaApiExceptionHandler extends BaseExceptionHandler {
                         .map(StackTraceElement::toString)
                         .toList()
                     : null);
-    return HttpResponse.ofJson(status, new ErrorResponse().error(error));
+    return HttpResponse.ofJson(status, new DeltaErrorResponse().error(error));
   }
 }

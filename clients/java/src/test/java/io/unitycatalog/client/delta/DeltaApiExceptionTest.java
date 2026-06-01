@@ -3,7 +3,7 @@ package io.unitycatalog.client.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.delta.model.ErrorType;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +23,7 @@ public class DeltaApiExceptionTest {
     ApiException source = new ApiException(404, "msg", null, VALID_BODY);
     DeltaApiException delta = DeltaApiException.from(source).orElseThrow();
     assertThat(delta.getErrorCode()).isEqualTo(404);
-    assertThat(delta.getErrorType()).isEqualTo(ErrorType.NO_SUCH_TABLE_EXCEPTION);
+    assertThat(delta.getErrorType()).isEqualTo(DeltaErrorType.NO_SUCH_TABLE_EXCEPTION);
     assertThat(delta.getErrorMessage()).isEqualTo("Table not found: c.s.t");
     // ApiException fields pass through unchanged.
     assertThat(delta.getCode()).isEqualTo(404);
@@ -107,7 +107,7 @@ public class DeltaApiExceptionTest {
     DeltaApiException delta =
         DeltaApiException.from(new ApiException(404, "msg", null, body)).orElseThrow();
     assertThat(delta.getErrorCode()).isEqualTo(404);
-    assertThat(delta.getErrorType()).isEqualTo(ErrorType.NO_SUCH_TABLE_EXCEPTION);
+    assertThat(delta.getErrorType()).isEqualTo(DeltaErrorType.NO_SUCH_TABLE_EXCEPTION);
     assertThat(delta.getErrorMessage()).isEqualTo("Table not found");
   }
 }

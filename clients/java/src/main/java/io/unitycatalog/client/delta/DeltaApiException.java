@@ -4,9 +4,9 @@ import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.delta.model.ErrorModel;
-import io.unitycatalog.client.delta.model.ErrorResponse;
-import io.unitycatalog.client.delta.model.ErrorType;
+import io.unitycatalog.client.delta.model.DeltaErrorModel;
+import io.unitycatalog.client.delta.model.DeltaErrorResponse;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
 import java.util.Optional;
 
 /**
@@ -25,7 +25,7 @@ import java.util.Optional;
  *   deltaTablesApi.updateTable(...);
  * } catch (ApiException ex) {
  *   DeltaApiException.from(ex).ifPresent(d -> {
- *     ErrorType type = d.getErrorType();      // spec-defined enum
+ *     DeltaErrorType type = d.getErrorType();      // spec-defined enum
  *     String message = d.getErrorMessage();   // spec-defined message
  *     // ...
  *   });
@@ -45,7 +45,7 @@ public class DeltaApiException extends ApiException {
   }
 
   /** {@code null} if the response body wasn't parseable as a Delta error envelope. */
-  private final ErrorModel error;
+  private final DeltaErrorModel error;
 
   /**
    * Wrap an existing {@link ApiException}, copying its HTTP code, headers, body, cause, and message
@@ -75,7 +75,7 @@ public class DeltaApiException extends ApiException {
   }
 
   /** The full parsed error envelope. {@code null} if the body wasn't a Delta error response. */
-  public ErrorModel getError() {
+  public DeltaErrorModel getError() {
     return error;
   }
 
@@ -85,7 +85,7 @@ public class DeltaApiException extends ApiException {
   }
 
   /** {@code error.type}: spec-defined error-type enum, e.g. {@code NO_SUCH_TABLE_EXCEPTION}. */
-  public ErrorType getErrorType() {
+  public DeltaErrorType getErrorType() {
     return error == null ? null : error.getType();
   }
 
@@ -94,12 +94,12 @@ public class DeltaApiException extends ApiException {
     return error == null ? null : error.getMessage();
   }
 
-  private static ErrorModel parse(String body) {
+  private static DeltaErrorModel parse(String body) {
     if (body == null || body.isEmpty()) {
       return null;
     }
     try {
-      ErrorResponse response = MAPPER.readValue(body, ErrorResponse.class);
+      DeltaErrorResponse response = MAPPER.readValue(body, DeltaErrorResponse.class);
       return response == null ? null : response.getError();
     } catch (JacksonException e) {
       return null;

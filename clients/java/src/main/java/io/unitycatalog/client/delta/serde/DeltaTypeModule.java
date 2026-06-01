@@ -8,11 +8,11 @@ import com.fasterxml.jackson.databind.SerializationConfig;
 import com.fasterxml.jackson.databind.deser.BeanDeserializerModifier;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.BeanSerializerModifier;
-import io.unitycatalog.client.delta.model.DecimalType;
-import io.unitycatalog.client.delta.model.DeltaType;
-import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.DeltaDataType;
+import io.unitycatalog.client.delta.model.DeltaDecimalType;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 
-/** Jackson module for DeltaType ser/deser. */
+/** Jackson module for DeltaDataType ser/deser. */
 public class DeltaTypeModule extends SimpleModule {
   @SuppressWarnings("unchecked")
   public DeltaTypeModule() {
@@ -24,7 +24,7 @@ public class DeltaTypeModule extends SimpleModule {
               DeserializationConfig config,
               BeanDescription desc,
               JsonDeserializer<?> deserializer) {
-            if (desc.getBeanClass() == DeltaType.class) {
+            if (desc.getBeanClass() == DeltaDataType.class) {
               return new DeltaTypeDeserializer(deserializer);
             }
             return deserializer;
@@ -36,7 +36,9 @@ public class DeltaTypeModule extends SimpleModule {
           public JsonSerializer<?> modifySerializer(
               SerializationConfig config, BeanDescription desc, JsonSerializer<?> serializer) {
             Class<?> cls = desc.getBeanClass();
-            if (cls == DeltaType.class || cls == PrimitiveType.class || cls == DecimalType.class) {
+            if (cls == DeltaDataType.class
+                || cls == DeltaPrimitiveType.class
+                || cls == DeltaDecimalType.class) {
               return new DeltaTypeSerializer((JsonSerializer<Object>) serializer);
             }
             return serializer;

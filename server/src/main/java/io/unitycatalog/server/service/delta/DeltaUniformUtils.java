@@ -1,7 +1,7 @@
 package io.unitycatalog.server.service.delta;
 
-import io.unitycatalog.server.delta.model.UniformMetadata;
-import io.unitycatalog.server.delta.model.UniformMetadataIceberg;
+import io.unitycatalog.server.delta.model.DeltaUniformMetadata;
+import io.unitycatalog.server.delta.model.DeltaUniformMetadataIceberg;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DeltaCommit;
@@ -25,7 +25,7 @@ import java.util.Optional;
  * <ul>
  *   <li>{@link #isIcebergEnabled} -- "is UniForm-Iceberg on?" predicate over a properties map.
  *   <li>{@link #validateConsistency} -- property/block presence consistency.
- *   <li>{@link #getUniformFields(UniformMetadata)} -- create-time wire-shape extract.
+ *   <li>{@link #getUniformFields(DeltaUniformMetadata)} -- create-time wire-shape extract.
  *   <li>{@link #getUniformFields(DeltaCommit)} -- commit-time extract + shape + atomicity.
  *   <li>{@link #validateCreate} -- create-time atomicity + sequential + subpath check.
  *   <li>{@link #requireBasicShape} -- presence + size, shared by both extractors.
@@ -97,8 +97,9 @@ public final class DeltaUniformUtils {
    * would reject.
    *
    * <p>{@code uniformPresent} is supplied as a boolean rather than the uniform object itself so
-   * that the create path (delta.yaml's {@code UniformMetadata}) and the commit path (all.yaml's
-   * {@code DeltaUniform}) can share this validator without coupling it to either wire type.
+   * that the create path (delta.yaml's {@code DeltaUniformMetadata}) and the commit path
+   * (all.yaml's {@code DeltaUniform}) can share this validator without coupling it to either wire
+   * type.
    */
   public static void validateConsistency(Map<String, String> properties, boolean uniformPresent) {
     boolean enabledViaProperty = isIcebergEnabled(properties);
@@ -137,11 +138,11 @@ public final class DeltaUniformUtils {
    * was supplied; otherwise returns a record whose metadata-location has been normalized exactly
    * once and is reused downstream by {@link #applyToDao}.
    */
-  public static Optional<UniformIcebergFields> getUniformFields(UniformMetadata uniform) {
+  public static Optional<UniformIcebergFields> getUniformFields(DeltaUniformMetadata uniform) {
     if (uniform == null) {
       return Optional.empty();
     }
-    UniformMetadataIceberg iceberg =
+    DeltaUniformMetadataIceberg iceberg =
         ValidationUtils.checkNotNull(
             uniform.getIceberg(), "uniform.iceberg is required when uniform is set.");
     UniformIcebergFields fields =
@@ -209,7 +210,7 @@ public final class DeltaUniformUtils {
   }
 
   /**
-   * Run the create-time validations that {@link #getUniformFields(UniformMetadata)} cannot:
+   * Run the create-time validations that {@link #getUniformFields(DeltaUniformMetadata)} cannot:
    *
    * <ul>
    *   <li>create-time atomicity: {@code converted-delta-version} is {@code 0} or {@code 1} (V2 or
@@ -223,7 +224,7 @@ public final class DeltaUniformUtils {
    *
    * <p>No-op when {@code uniformFields} is empty. Property/block consistency is the caller's
    * responsibility (see {@link #validateConsistency}); wire-shape is {@link
-   * #getUniformFields(UniformMetadata)}'s.
+   * #getUniformFields(DeltaUniformMetadata)}'s.
    */
   public static void validateCreate(
       Optional<UniformIcebergFields> uniformFields, NormalizedURL tableLocation) {
@@ -249,8 +250,8 @@ public final class DeltaUniformUtils {
    * timestamp to epoch ms -- and pass the assembled record here. After this method returns, every
    * field is non-null and the location is within the size bound, so downstream code (subpath check,
    * DAO write) can read the record without re-checking. Shared between {@link
-   * #getUniformFields(UniformMetadata)} (create-time) and {@link #getUniformFields(DeltaCommit)}
-   * (commit-time).
+   * #getUniformFields(DeltaUniformMetadata)} (create-time) and {@link
+   * #getUniformFields(DeltaCommit)} (commit-time).
    */
   public static void requireBasicShape(UniformIcebergFields fields) {
     ValidationUtils.checkNotNull(

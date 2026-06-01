@@ -1,6 +1,6 @@
 package io.unitycatalog.server.service.delta;
 
-import io.unitycatalog.server.delta.model.CreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -13,23 +13,24 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Converts a Delta {@link CreateTableRequest} (with typed Delta columns and kebab-case field names)
- * into the UC {@link CreateTable} (with UC {@link ColumnInfo}s and partition-index-per-column). The
- * server holds path params for catalog and schema; the rest comes from the request body.
+ * Converts a Delta {@link DeltaCreateTableRequest} (with typed Delta columns and kebab-case field
+ * names) into the UC {@link CreateTable} (with UC {@link ColumnInfo}s and
+ * partition-index-per-column). The server holds path params for catalog and schema; the rest
+ * comes from the request body.
  *
- * <p>Required-field checks (name, location, columns, protocol, table-type, data-source-format) and
- * the DELTA-only format rule apply to all tables. The full UC catalog-managed contract ({@link
- * UcManagedDeltaContract}) applies only to MANAGED tables; EXTERNAL tables skip contract validation
- * but still go through the same {@link DeltaPropertyMapper} projection, so derived
- * {@code delta.feature.*} and {@code clusteringColumns} entries override any client-supplied
- * values under those keys.
+ * <p>Required-field checks (name, location, columns, protocol, table-type) apply to all tables.
+ * The full UC catalog-managed contract ({@link UcManagedDeltaContract}) applies only to MANAGED
+ * tables; EXTERNAL tables skip contract validation but still go through the same {@link
+ * DeltaPropertyMapper} projection, so derived {@code delta.feature.*} and {@code clusteringColumns}
+ * entries override any client-supplied values under those keys.
  */
 public final class DeltaCreateTableMapper {
 
   private DeltaCreateTableMapper() {}
 
   /**
-   * Result of mapping a {@link CreateTableRequest}: the assembled UC {@link CreateTable} together
+   * Result of mapping a {@link DeltaCreateTableRequest}: the assembled UC {@link CreateTable}
+   * together
    * with the validated, normalized UniForm Iceberg fields ({@code Optional.empty()} when no
    * UniForm metadata was supplied). Callers thread the uniform fields straight to {@code
    * TableRepository.createTableForDelta} so the metadata-location is normalized exactly once at
@@ -39,7 +40,7 @@ public final class DeltaCreateTableMapper {
       CreateTable createTable,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformIcebergFields) {}
 
-  public static Result toCreateTable(String catalog, String schema, CreateTableRequest req) {
+  public static Result toCreateTable(String catalog, String schema, DeltaCreateTableRequest req) {
     if (req == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Request body is required.");
     }
@@ -88,7 +89,7 @@ public final class DeltaCreateTableMapper {
             .catalogName(catalog)
             .schemaName(schema)
             .tableType(tableType)
-            .dataSourceFormat(toUCDataSourceFormat(req.getDataSourceFormat()))
+            .dataSourceFormat(DataSourceFormat.DELTA)
             .columns(columns)
             .comment(req.getComment())
             .storageLocation(req.getLocation())
@@ -96,7 +97,7 @@ public final class DeltaCreateTableMapper {
     return new Result(createTable, uniformFields);
   }
 
-  private static TableType toUCTableType(io.unitycatalog.server.delta.model.TableType type) {
+  private static TableType toUCTableType(io.unitycatalog.server.delta.model.DeltaTableType type) {
     if (type == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "table-type is required.");
     }
@@ -104,19 +105,5 @@ public final class DeltaCreateTableMapper {
       case MANAGED -> TableType.MANAGED;
       case EXTERNAL -> TableType.EXTERNAL;
     };
-  }
-
-  private static DataSourceFormat toUCDataSourceFormat(
-      io.unitycatalog.server.delta.model.DataSourceFormat format) {
-    if (format == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "data-source-format is required.");
-    }
-    // Only DELTA is accepted.
-    if (format == io.unitycatalog.server.delta.model.DataSourceFormat.DELTA) {
-      return DataSourceFormat.DELTA;
-    }
-    throw new BaseException(
-        ErrorCode.UNSUPPORTED_TABLE_FORMAT,
-        "Unsupported data-source-format: " + format.getValue());
   }
 }

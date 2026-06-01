@@ -3,23 +3,22 @@ package io.unitycatalog.server.sdk.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.delta.api.TablesApi;
-import io.unitycatalog.client.delta.model.ClusteringDomainMetadata;
-import io.unitycatalog.client.delta.model.CreateStagingTableRequest;
-import io.unitycatalog.client.delta.model.CreateTableRequest;
-import io.unitycatalog.client.delta.model.DataSourceFormat;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
+import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
+import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
+import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
-import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.client.delta.model.ErrorType;
-import io.unitycatalog.client.delta.model.LoadTableResponse;
-import io.unitycatalog.client.delta.model.PrimitiveType;
-import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
-import io.unitycatalog.client.delta.model.StagingTableResponse;
-import io.unitycatalog.client.delta.model.StructField;
-import io.unitycatalog.client.delta.model.StructType;
-import io.unitycatalog.client.delta.model.TableType;
-import io.unitycatalog.client.delta.model.UniformMetadata;
-import io.unitycatalog.client.delta.model.UniformMetadataIceberg;
+import io.unitycatalog.client.delta.model.DeltaRowTrackingDomainMetadata;
+import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
+import io.unitycatalog.client.delta.model.DeltaStructField;
+import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableType;
+import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
+import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
@@ -47,7 +46,7 @@ import org.junit.jupiter.api.function.Executable;
  */
 public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
 
-  private TablesApi deltaTablesApi;
+  private DeltaTablesApi deltaTablesApi;
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
@@ -63,29 +62,29 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
   @Override
   public void setUp() {
     super.setUp();
-    deltaTablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));
+    deltaTablesApi = new DeltaTablesApi(TestUtils.createApiClient(serverConfig));
     createS3Catalog();
   }
 
   @Test
   public void testCreateTableEndpoint() throws ApiException {
-    // -------- MANAGED happy path: staging -> createTable -> LoadTableResponse --------
+    // -------- MANAGED happy path: staging -> createTable -> DeltaLoadTableResponse --------
     String tableName = "tbl_happy";
-    StagingTableResponse staging = createStaging(tableName);
+    DeltaStagingTableResponse staging = createStaging(tableName);
 
-    LoadTableResponse resp =
+    DeltaLoadTableResponse resp =
         deltaTablesApi.createTable(
             TestUtils.CATALOG_NAME2,
             TestUtils.SCHEMA_NAME2,
             managedTableRequest(tableName, staging));
 
     assertThat(resp.getMetadata()).isNotNull();
-    assertThat(resp.getMetadata().getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(resp.getMetadata().getTableType()).isEqualTo(DeltaTableType.MANAGED);
     // Finalized table inherits the staging location and the UUID allocated at staging time.
     assertThat(resp.getMetadata().getLocation()).isEqualTo(staging.getLocation());
     assertThat(resp.getMetadata().getTableUuid()).isEqualTo(staging.getTableId());
     assertThat(resp.getMetadata().getColumns().getFields())
-        .extracting(StructField::getName)
+        .extracting(DeltaStructField::getName)
         .containsExactly("id", "amount");
     // Every feature in the request's protocol is mirrored as delta.feature.* = supported in the
     // stored table properties (both reader- and writer-side features collapse to one key per
@@ -109,24 +108,13 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     // -------- EXTERNAL happy path at a fresh (unregistered) storage path --------
     String externalName = "tbl_external";
     String externalLocation = "s3://test-bucket0/external-path/tbl_external";
-    LoadTableResponse extResp =
+    DeltaLoadTableResponse extResp =
         deltaTablesApi.createTable(
             TestUtils.CATALOG_NAME2,
             TestUtils.SCHEMA_NAME2,
             externalTableRequest(externalName, externalLocation));
-    assertThat(extResp.getMetadata().getTableType()).isEqualTo(TableType.EXTERNAL);
+    assertThat(extResp.getMetadata().getTableType()).isEqualTo(DeltaTableType.EXTERNAL);
     assertThat(extResp.getMetadata().getLocation()).isEqualTo(externalLocation);
-
-    // -------- ICEBERG rejected --------
-    TestUtils.assertDeltaApiException(
-        () ->
-            deltaTablesApi.createTable(
-                TestUtils.CATALOG_NAME2,
-                TestUtils.SCHEMA_NAME2,
-                managedTableRequest("tbl_iceberg", "s3://test-bucket0/unused")
-                    .dataSourceFormat(DataSourceFormat.ICEBERG)),
-        ErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
-        "Unsupported data-source-format");
 
     // -------- name missing --------
     assertDeltaInvalidParam(
@@ -147,7 +135,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         "protocol is required");
 
     // -------- MANAGED without catalogManaged writer feature rejected --------
-    StagingTableResponse stagingNoCm = createStaging("tbl_no_cm");
+    DeltaStagingTableResponse stagingNoCm = createStaging("tbl_no_cm");
     assertDeltaInvalidParam(
         () ->
             deltaTablesApi.createTable(
@@ -164,7 +152,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         TableFeature.CATALOG_MANAGED.specName());
 
     // -------- domain-metadata without matching feature rejected --------
-    StagingTableResponse stagingDm = createStaging("tbl_bad_domain");
+    DeltaStagingTableResponse stagingDm = createStaging("tbl_bad_domain");
     assertDeltaInvalidParam(
         () ->
             deltaTablesApi.createTable(
@@ -172,13 +160,13 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                 TestUtils.SCHEMA_NAME2,
                 managedTableRequest("tbl_bad_domain", stagingDm)
                     .domainMetadata(
-                        new DomainMetadataUpdates()
+                        new DeltaDomainMetadataUpdates()
                             .deltaRowTracking(
-                                new RowTrackingDomainMetadata().rowIdHighWaterMark(100L)))),
+                                new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(100L)))),
         "'rowTracking' writer feature");
 
     // -------- partition-columns referencing unknown column --------
-    StagingTableResponse stagingForBadPart = createStaging("tbl_bad_part");
+    DeltaStagingTableResponse stagingForBadPart = createStaging("tbl_bad_part");
     assertDeltaInvalidParam(
         () ->
             deltaTablesApi.createTable(
@@ -193,7 +181,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     // truth, and a request claiming a different UUID gets rejected. Without this, a buggy or
     // malicious client could persist an internally-inconsistent UC table (UUID-A persisted, but
     // properties[UC_TABLE_ID]=UUID-B) which downstream commits would only catch much later.
-    StagingTableResponse stagingForWrongId = createStaging("tbl_wrong_id");
+    DeltaStagingTableResponse stagingForWrongId = createStaging("tbl_wrong_id");
     java.util.Map<String, String> wrongIdProps =
         new java.util.HashMap<>(
             fullManagedProperties("00000000-0000-0000-0000-000000000000")); // not the staging UUID
@@ -206,8 +194,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         TableProperties.UC_TABLE_ID);
 
     // -------- partition-columns happy case --------
-    StagingTableResponse stagingPart = createStaging("tbl_part");
-    LoadTableResponse partResp =
+    DeltaStagingTableResponse stagingPart = createStaging("tbl_part");
+    DeltaLoadTableResponse partResp =
         deltaTablesApi.createTable(
             TestUtils.CATALOG_NAME2,
             TestUtils.SCHEMA_NAME2,
@@ -221,11 +209,11 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     // match the presence of the uniform block (mirrors the addCommit-time check). The response
     // must round-trip the same uniform block so an Iceberg-REST reader can resolve the table
     // without a follow-up commit.
-    LoadTableResponse uniformResp =
+    DeltaLoadTableResponse uniformResp =
         createTableWithUniform(
             "tbl_uniform",
             s ->
-                new UniformMetadataIceberg()
+                new DeltaUniformMetadataIceberg()
                     .metadataLocation(s.getLocation() + "/_uniform/iceberg/v1.json")
                     .convertedDeltaVersion(0L)
                     .convertedDeltaTimestamp(1700000000000L));
@@ -239,11 +227,11 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     // -------- uniform with converted-delta-version=1 (V3 catalog-managed) accepted --------
     // The spec accepts both 0 (V2) and 1 (V3) at create time without committing to which version
     // the table actually is. Pin both so a future regression that hard-codes one is caught.
-    LoadTableResponse v3Resp =
+    DeltaLoadTableResponse v3Resp =
         createTableWithUniform(
             "tbl_uniform_v3",
             s ->
-                new UniformMetadataIceberg()
+                new DeltaUniformMetadataIceberg()
                     .metadataLocation(s.getLocation() + "/_uniform/v1.json")
                     .convertedDeltaVersion(1L)
                     .convertedDeltaTimestamp(1700000000000L));
@@ -252,7 +240,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     // -------- uniform-enabled property without uniform block rejected --------
     // The property is the master switch. Setting it without supplying the uniform block leaves
     // the table in a state the next addCommit would reject -- catch it at create time.
-    StagingTableResponse stagingPropOnly = createStaging("tbl_uniform_prop_only");
+    DeltaStagingTableResponse stagingPropOnly = createStaging("tbl_uniform_prop_only");
     assertDeltaInvalidParam(
         () ->
             deltaTablesApi.createTable(
@@ -266,7 +254,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
     // The inverse: supplying a uniform block without flipping the master switch is also
     // inconsistent. Without this check a table would accept a uniform write at create time
     // while declaring itself NOT UniForm, contradicting the addCommit-time invariant.
-    StagingTableResponse stagingBlockOnly = createStaging("tbl_uniform_block_only");
+    DeltaStagingTableResponse stagingBlockOnly = createStaging("tbl_uniform_block_only");
     assertDeltaInvalidParam(
         () ->
             deltaTablesApi.createTable(
@@ -274,14 +262,14 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                 TestUtils.SCHEMA_NAME2,
                 managedTableRequest("tbl_uniform_block_only", stagingBlockOnly)
                     .uniform(
-                        new UniformMetadata()
+                        new DeltaUniformMetadata()
                             .iceberg(
-                                new UniformMetadataIceberg()
+                                new DeltaUniformMetadataIceberg()
                                     .metadataLocation("s3://test-bucket0/iceberg/blk.json")))),
         TableProperties.UNIVERSAL_FORMAT_ENABLED_FORMATS);
 
     // -------- uniform without iceberg sub-block rejected --------
-    StagingTableResponse stagingNoIce = createStaging("tbl_uniform_no_ice");
+    DeltaStagingTableResponse stagingNoIce = createStaging("tbl_uniform_no_ice");
     assertDeltaInvalidParam(
         () ->
             deltaTablesApi.createTable(
@@ -289,12 +277,12 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                 TestUtils.SCHEMA_NAME2,
                 managedTableRequest("tbl_uniform_no_ice", stagingNoIce)
                     .properties(uniformEnabledProperties(stagingNoIce.getTableId().toString()))
-                    .uniform(new UniformMetadata())),
+                    .uniform(new DeltaUniformMetadata())),
         "uniform.iceberg");
 
     // -------- uniform.iceberg.metadata-location missing rejected --------
     assertDeltaInvalidParam(
-        () -> createTableWithUniform("tbl_uniform_no_loc", s -> new UniformMetadataIceberg()),
+        () -> createTableWithUniform("tbl_uniform_no_loc", s -> new DeltaUniformMetadataIceberg()),
         "metadata-location");
 
     // -------- uniform.iceberg.converted-delta-version missing rejected --------
@@ -303,7 +291,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             createTableWithUniform(
                 "tbl_uniform_no_ver",
                 s ->
-                    new UniformMetadataIceberg()
+                    new DeltaUniformMetadataIceberg()
                         .metadataLocation(s.getLocation() + "/_uniform/v1.json")
                         .convertedDeltaTimestamp(1700000000000L)),
         "converted-delta-version is required");
@@ -314,7 +302,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             createTableWithUniform(
                 "tbl_uniform_no_ts",
                 s ->
-                    new UniformMetadataIceberg()
+                    new DeltaUniformMetadataIceberg()
                         .metadataLocation(s.getLocation() + "/_uniform/v1.json")
                         .convertedDeltaVersion(0L)),
         "converted-delta-timestamp is required");
@@ -328,7 +316,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             createTableWithUniform(
                 "tbl_uniform_bad_path",
                 s ->
-                    new UniformMetadataIceberg()
+                    new DeltaUniformMetadataIceberg()
                         // Sibling location, not a subpath of the staging location.
                         .metadataLocation("s3://test-bucket0/elsewhere/iceberg/v1.json")
                         .convertedDeltaVersion(0L)
@@ -344,7 +332,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             createTableWithUniform(
                 "tbl_uniform_bad_ver",
                 s ->
-                    new UniformMetadataIceberg()
+                    new DeltaUniformMetadataIceberg()
                         .metadataLocation(s.getLocation() + "/_uniform/v1.json")
                         .convertedDeltaVersion(5L)
                         .convertedDeltaTimestamp(1700000000000L)),
@@ -361,7 +349,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             createTableWithUniform(
                 "tbl_uniform_big_loc",
                 s ->
-                    new UniformMetadataIceberg()
+                    new DeltaUniformMetadataIceberg()
                         .metadataLocation(s.getLocation() + "/_uniform/v1.json" + oversizedSuffix)
                         .convertedDeltaVersion(0L)
                         .convertedDeltaTimestamp(1700000000000L)),
@@ -376,7 +364,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             createTableWithUniform(
                 "tbl_uniform_with_base",
                 s ->
-                    new UniformMetadataIceberg()
+                    new DeltaUniformMetadataIceberg()
                         .metadataLocation(s.getLocation() + "/_uniform/v1.json")
                         .convertedDeltaVersion(0L)
                         .convertedDeltaTimestamp(1700000000000L)
@@ -407,19 +395,19 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
   }
 
   /** Canonical (id long, amount double) columns shared across requests. */
-  private static StructType simpleSchema() {
-    return new StructType()
+  private static DeltaStructType simpleSchema() {
+    return new DeltaStructType()
         .type("struct")
         .fields(
             List.of(
-                new StructField()
+                new DeltaStructField()
                     .name("id")
-                    .type(new PrimitiveType().type("long"))
+                    .type(new DeltaPrimitiveType().type("long"))
                     .nullable(false)
                     .metadata(Map.of()),
-                new StructField()
+                new DeltaStructField()
                     .name("amount")
-                    .type(new PrimitiveType().type("double"))
+                    .type(new DeltaPrimitiveType().type("double"))
                     .nullable(true)
                     .metadata(Map.of())));
   }
@@ -427,7 +415,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
   /**
    * Full UC catalog-managed protocol: every required feature in the right list, plus CLUSTERING in
    * writerFeatures so the canonical request can carry a {@code deltaClustering} domain-metadata
-   * block (see {@link #managedTableRequest(String, StagingTableResponse)}).
+   * block (see {@link #managedTableRequest(String, DeltaStagingTableResponse)}).
    */
   private static DeltaProtocol managedProtocol() {
     return new DeltaProtocol()
@@ -475,18 +463,18 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
   }
 
   /** Build a canonical MANAGED Delta table request bound to a freshly-allocated staging table. */
-  private static CreateTableRequest managedTableRequest(String name, StagingTableResponse staging) {
-    return new CreateTableRequest()
+  private static DeltaCreateTableRequest managedTableRequest(
+      String name, DeltaStagingTableResponse staging) {
+    return new DeltaCreateTableRequest()
         .name(name)
         .location(staging.getLocation())
-        .tableType(TableType.MANAGED)
-        .dataSourceFormat(DataSourceFormat.DELTA)
+        .tableType(DeltaTableType.MANAGED)
         .columns(simpleSchema())
         .protocol(managedProtocol())
         .domainMetadata(
-            new DomainMetadataUpdates()
+            new DeltaDomainMetadataUpdates()
                 .deltaClustering(
-                    new ClusteringDomainMetadata().clusteringColumns(List.of(List.of("id")))))
+                    new DeltaClusteringDomainMetadata().clusteringColumns(List.of(List.of("id")))))
         .properties(fullManagedProperties(staging.getTableId().toString()))
         .lastCommitTimestampMs(1700000000000L);
   }
@@ -495,12 +483,11 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
    * Build a MANAGED request not tied to a staging response -- for tests that exercise pre-contract
    * failure paths (missing required field, wrong format) where the staging UUID never gets read.
    */
-  private static CreateTableRequest managedTableRequest(String name, String location) {
-    return new CreateTableRequest()
+  private static DeltaCreateTableRequest managedTableRequest(String name, String location) {
+    return new DeltaCreateTableRequest()
         .name(name)
         .location(location)
-        .tableType(TableType.MANAGED)
-        .dataSourceFormat(DataSourceFormat.DELTA)
+        .tableType(DeltaTableType.MANAGED)
         .columns(simpleSchema())
         .protocol(managedProtocol())
         .properties(fullManagedProperties("00000000-0000-0000-0000-000000000000"))
@@ -508,12 +495,11 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
   }
 
   /** Build an EXTERNAL Delta table request at an arbitrary storage path. */
-  private static CreateTableRequest externalTableRequest(String name, String location) {
-    return new CreateTableRequest()
+  private static DeltaCreateTableRequest externalTableRequest(String name, String location) {
+    return new DeltaCreateTableRequest()
         .name(name)
         .location(location)
-        .tableType(TableType.EXTERNAL)
-        .dataSourceFormat(DataSourceFormat.DELTA)
+        .tableType(DeltaTableType.EXTERNAL)
         .columns(simpleSchema())
         // EXTERNAL tables don't require catalogManaged; use a minimal modern Delta protocol.
         .protocol(
@@ -532,21 +518,21 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
   }
 
   /**
-   * Shorthand for the {@link ErrorType#INVALID_PARAMETER_VALUE_EXCEPTION} pattern, which is the
-   * only error type the negative cases in this suite assert against.
+   * Shorthand for the {@link DeltaErrorType#INVALID_PARAMETER_VALUE_EXCEPTION} pattern, which is
+   * the only error type the negative cases in this suite assert against.
    */
   private static void assertDeltaInvalidParam(
       Executable executable, String expectedMessageSubstring) {
     TestUtils.assertDeltaApiException(
-        executable, ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION, expectedMessageSubstring);
+        executable, DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION, expectedMessageSubstring);
   }
 
   /** Allocate a fresh managed staging table under {@code CATALOG_NAME2.SCHEMA_NAME2}. */
-  private StagingTableResponse createStaging(String name) throws ApiException {
+  private DeltaStagingTableResponse createStaging(String name) throws ApiException {
     return deltaTablesApi.createStagingTable(
         TestUtils.CATALOG_NAME2,
         TestUtils.SCHEMA_NAME2,
-        new CreateStagingTableRequest().name(name));
+        new DeltaCreateStagingTableRequest().name(name));
   }
 
   /**
@@ -556,15 +542,15 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
    * builder that produces an invalid block; the call site wraps this in {@code
    * assertDeltaInvalidParam}.
    */
-  private LoadTableResponse createTableWithUniform(
-      String name, Function<StagingTableResponse, UniformMetadataIceberg> icebergBuilder)
+  private DeltaLoadTableResponse createTableWithUniform(
+      String name, Function<DeltaStagingTableResponse, DeltaUniformMetadataIceberg> icebergBuilder)
       throws ApiException {
-    StagingTableResponse staging = createStaging(name);
+    DeltaStagingTableResponse staging = createStaging(name);
     return deltaTablesApi.createTable(
         TestUtils.CATALOG_NAME2,
         TestUtils.SCHEMA_NAME2,
         managedTableRequest(name, staging)
             .properties(uniformEnabledProperties(staging.getTableId().toString()))
-            .uniform(new UniformMetadata().iceberg(icebergBuilder.apply(staging))));
+            .uniform(new DeltaUniformMetadata().iceberg(icebergBuilder.apply(staging))));
   }
 }

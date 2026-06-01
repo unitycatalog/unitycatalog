@@ -5,36 +5,36 @@ import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.jsontype.TypeSerializer;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
-import io.unitycatalog.server.delta.model.DecimalType;
-import io.unitycatalog.server.delta.model.DeltaType;
-import io.unitycatalog.server.delta.model.PrimitiveType;
+import io.unitycatalog.server.delta.model.DeltaDecimalType;
+import io.unitycatalog.server.delta.model.DeltaDataType;
+import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import java.io.IOException;
 
 /**
- * Custom serializer for DeltaType that writes primitives and decimals as bare strings, and
+ * Custom serializer for DeltaDataType that writes primitives and decimals as bare strings, and
  * delegates complex types to the default Jackson serializer.
  */
-public class DeltaTypeSerializer extends StdSerializer<DeltaType> {
+public class DeltaTypeSerializer extends StdSerializer<DeltaDataType> {
 
   private final JsonSerializer<Object> defaultSerializer;
 
   public DeltaTypeSerializer(JsonSerializer<Object> defaultSerializer) {
-    super(DeltaType.class);
+    super(DeltaDataType.class);
     this.defaultSerializer = defaultSerializer;
   }
 
-  private static String toTypeString(DeltaType value) {
-    if (value instanceof DecimalType dt) {
+  private static String toTypeString(DeltaDataType value) {
+    if (value instanceof DeltaDecimalType dt) {
       return "decimal(" + dt.getPrecision() + "," + dt.getScale() + ")";
     }
-    if (value instanceof PrimitiveType) {
+    if (value instanceof DeltaPrimitiveType) {
       return value.getType();
     }
     return null;
   }
 
   @Override
-  public void serialize(DeltaType value, JsonGenerator gen, SerializerProvider provider)
+  public void serialize(DeltaDataType value, JsonGenerator gen, SerializerProvider provider)
       throws IOException {
     String s = toTypeString(value);
     if (s != null) {
@@ -46,7 +46,7 @@ public class DeltaTypeSerializer extends StdSerializer<DeltaType> {
 
   @Override
   public void serializeWithType(
-      DeltaType value, JsonGenerator gen, SerializerProvider provider, TypeSerializer typeSer)
+      DeltaDataType value, JsonGenerator gen, SerializerProvider provider, TypeSerializer typeSer)
       throws IOException {
     String s = toTypeString(value);
     if (s != null) {

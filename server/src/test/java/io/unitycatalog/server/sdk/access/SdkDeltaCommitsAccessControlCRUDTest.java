@@ -218,17 +218,18 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
     // Delta updateTable's add-commit shares the same UPDATE_TABLE expression as DeltaCommitsApi
     // postCommit, so SELECT-only users must be denied here too. Pins that the new action inherits
     // the existing authz contract.
-    io.unitycatalog.client.delta.api.TablesApi readUserDeltaApi =
-        new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(readUserConfig));
-    io.unitycatalog.client.delta.model.UpdateTableRequest addCommitRequest =
-        new io.unitycatalog.client.delta.model.UpdateTableRequest()
+    io.unitycatalog.client.delta.api.DeltaTablesApi readUserDeltaApi =
+        new io.unitycatalog.client.delta.api.DeltaTablesApi(
+            TestUtils.createApiClient(readUserConfig));
+    io.unitycatalog.client.delta.model.DeltaUpdateTableRequest addCommitRequest =
+        new io.unitycatalog.client.delta.model.DeltaUpdateTableRequest()
             .requirements(
                 List.of(
-                    new io.unitycatalog.client.delta.model.AssertTableUUID()
+                    new io.unitycatalog.client.delta.model.DeltaAssertTableUUID()
                         .uuid(java.util.UUID.fromString(tableInfo.getTableId()))))
             .updates(
                 List.of(
-                    new io.unitycatalog.client.delta.model.AddCommitUpdate()
+                    new io.unitycatalog.client.delta.model.DeltaAddCommitUpdate()
                         .commit(
                             new io.unitycatalog.client.delta.model.DeltaCommit()
                                 .version(3L)

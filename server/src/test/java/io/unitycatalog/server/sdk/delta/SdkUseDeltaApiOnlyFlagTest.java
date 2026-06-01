@@ -5,7 +5,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.DeltaCommitsApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.delta.model.StagingTableResponse;
+import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -95,7 +95,7 @@ public class SdkUseDeltaApiOnlyFlagTest extends DeltaBaseTableCRUDTestEnv {
                     .schemaName(TestUtils.SCHEMA_NAME)));
 
     // 2. Delta createStagingTable -- the only path that works under this flag.
-    StagingTableResponse staging = createDeltaStaging(tableName);
+    DeltaStagingTableResponse staging = createDeltaStaging(tableName);
 
     // 2b. UC generateTemporaryTableCredentials against the unfinalized staging row -- blocked.
     // Exercises the staging-row branch of getStorageLocationForTableOrStagingTable, which

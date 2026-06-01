@@ -8,7 +8,7 @@ import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.delta.DeltaApiException;
-import io.unitycatalog.client.delta.model.ErrorType;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -85,7 +85,7 @@ public class TestUtils {
   }
 
   public static void assertDeltaApiException(
-      Executable executable, ErrorType expectedType, String expectedMessageSubstring) {
+      Executable executable, DeltaErrorType expectedType, String expectedMessageSubstring) {
     int expectedCode = ErrorCode.getDeltaHttpStatus(expectedType.getValue()).code();
     ApiException ex = assertThrows(ApiException.class, executable);
     // Check message first for better diagnostics on failure (includes the full response body)
