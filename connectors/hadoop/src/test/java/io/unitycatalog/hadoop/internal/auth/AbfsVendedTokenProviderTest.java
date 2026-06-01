@@ -26,7 +26,7 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
 
     TestAbfsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
       initialize(conf);
-      this.credentialFetcher = GenericCredentialFetcher.forUc(conf, mockApi);
+      this.credentialFetcher = BaseTokenProviderTest.ucFetcher(conf, mockApi);
     }
 
     @Override

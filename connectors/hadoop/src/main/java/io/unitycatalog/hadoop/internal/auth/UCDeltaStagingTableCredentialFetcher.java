@@ -5,9 +5,8 @@ import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.CredentialsResponse;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.DeltaStorageCredentialUtil;
-import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import java.util.UUID;
-import org.apache.hadoop.conf.Configuration;
 
 /** Adapts the UC Delta staging table credentials SDK API for Hadoop token providers. */
 final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFetcher {
@@ -16,13 +15,12 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
   private final UUID stagingTableId;
   private final String stagingTableLocation;
 
-  UCDeltaStagingTableCredentialFetcher(Configuration conf, TemporaryCredentialsApi api) {
-    Preconditions.checkNotNull(api, "Temporary credentials API is required");
-    this.api = api;
-    this.stagingTableId =
-        UUID.fromString(require(conf, UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY));
-    this.stagingTableLocation =
-        require(conf, UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY);
+  UCDeltaStagingTableCredentialFetcher(
+      DeltaStagingTableCredId credId, TemporaryCredentialsApi api) {
+    this.api = Preconditions.checkNotNull(api, "Temporary credentials API is required");
+    Preconditions.checkNotNull(credId, "credId is required");
+    this.stagingTableId = UUID.fromString(credId.stagingTableId());
+    this.stagingTableLocation = credId.location();
   }
 
   @Override
@@ -37,14 +35,5 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
         DeltaStorageCredentialUtil.toTemporaryCredentials(
             DeltaStorageCredentialUtil.selectForLocation(
                 stagingTableLocation, response.getStorageCredentials())));
-  }
-
-  private static String require(Configuration conf, String key) {
-    String value = conf.get(key);
-    Preconditions.checkArgument(
-        value != null && !value.isEmpty(),
-        "The required '%s' is not set in hadoop configuration",
-        key);
-    return value;
   }
 }
