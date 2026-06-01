@@ -176,6 +176,12 @@ public class ColumnUtils {
       } catch (BaseException e) {
         throw invalidTypeJson(column, e.getErrorMessage(), e);
       }
+    } else {
+      // A shallow check for non-Delta
+      requireNonNull(field.getName(), "type_json.name");
+      requireNonNull(field.getType(), "type_json.type");
+      requireNonNull(field.getNullable(), "type_json.nullable");
+      requireNonNull(field.getMetadata(), "type_json.metadata");
     }
     if (!field.getName().equals(column.getName())) {
       throw invalidTypeJson(
