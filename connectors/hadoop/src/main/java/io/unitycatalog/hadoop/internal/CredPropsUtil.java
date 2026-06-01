@@ -19,7 +19,6 @@ import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -243,7 +242,6 @@ public class CredPropsUtil {
             .set(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER, AWS_VENDED_TOKEN_PROVIDER_CLASS)
             .uri(uri)
             .tokenProvider(tokenProvider)
-            .set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString())
             .set(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
             .set(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
             .set(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
@@ -282,7 +280,6 @@ public class CredPropsUtil {
             .set("fs.gs.auth.access.token.provider", GCS_VENDED_TOKEN_PROVIDER_CLASS)
             .uri(uri)
             .tokenProvider(tokenProvider)
-            .set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString())
             .set(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
 
     // For the static credential case, nullable expiration time is possible.
@@ -317,7 +314,6 @@ public class CredPropsUtil {
                 ABFS_VENDED_TOKEN_PROVIDER_CLASS)
             .uri(uri)
             .tokenProvider(tokenProvider)
-            .set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString())
             .set(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
 
     // For the static credential case, nullable expiration time is possible.

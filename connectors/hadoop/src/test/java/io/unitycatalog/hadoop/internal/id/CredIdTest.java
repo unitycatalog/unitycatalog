@@ -125,15 +125,6 @@ class CredIdTest {
   }
 
   @Test
-  void deltaTableKeyIgnoresCredentialUid() {
-    Configuration left = deltaTableConf("s3://b/t", "uid-1");
-    Configuration right = deltaTableConf("s3://b/t", "uid-2");
-
-    assertThat(CredId.create(URI.create("s3://b"), left))
-        .isEqualTo(CredId.create(URI.create("s3://b"), right));
-  }
-
-  @Test
   void createReturnsDeltaTableKeyWhenDeltaApiEnabled() {
     Configuration conf = new Configuration();
     conf.set(
@@ -145,7 +136,6 @@ class CredIdTest {
     conf.set(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, "tbl");
     conf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, "s3://b/tbl");
     conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ_WRITE");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, "uid-1");
 
     UCDeltaTableIdentifier id = UCDeltaTableIdentifier.of("cat", "sch", "tbl");
     assertThat(CredId.create(URI.create("s3://b"), conf))
@@ -329,20 +319,5 @@ class CredIdTest {
     Configuration conf = new Configuration(false);
     key.props().forEach(conf::set);
     assertThat(CredId.create(URI.create("s3://b"), conf)).isEqualTo(key);
-  }
-
-  private static Configuration deltaTableConf(String location, String uid) {
-    Configuration conf = new Configuration();
-    conf.set(
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
-    conf.set(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY, "cat");
-    conf.set(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY, "sch");
-    conf.set(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, "tbl");
-    conf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
-    conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, uid);
-    return conf;
   }
 }
