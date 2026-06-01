@@ -13,36 +13,38 @@ import io.unitycatalog.hadoop.internal.id.TableCredId;
 
 /** Adapts the standard Unity Catalog temporary credentials SDK API for Hadoop token providers. */
 final class UCGenericCredentialFetcher implements GenericCredentialFetcher {
-  private final TemporaryCredentialsApi api;
-  private final GenerateTemporaryPathCredential pathRequest;
-  private final GenerateTemporaryTableCredential tableRequest;
+  private final CredentialCaller credentialCaller;
 
   UCGenericCredentialFetcher(TableCredId credId, TemporaryCredentialsApi api) {
-    this.api = Preconditions.checkNotNull(api, "api is required");
     Preconditions.checkNotNull(credId, "credId is required");
-    this.pathRequest = null;
-    this.tableRequest =
+    Preconditions.checkNotNull(api, "api is required");
+
+    GenerateTemporaryTableCredential tableRequest =
         new GenerateTemporaryTableCredential()
             .tableId(credId.tableId())
             .operation(TableOperation.fromValue(credId.tableOperation()));
+    this.credentialCaller = () -> api.generateTemporaryTableCredentials(tableRequest);
   }
 
   UCGenericCredentialFetcher(PathCredId credId, TemporaryCredentialsApi api) {
-    this.api = Preconditions.checkNotNull(api, "api is required");
     Preconditions.checkNotNull(credId, "credId is required");
-    this.pathRequest =
+    Preconditions.checkNotNull(api, "api is required");
+
+    GenerateTemporaryPathCredential pathRequest =
         new GenerateTemporaryPathCredential()
             .url(credId.path())
             .operation(PathOperation.fromValue(credId.pathOperation()));
-    this.tableRequest = null;
+    this.credentialCaller = () -> api.generateTemporaryPathCredentials(pathRequest);
   }
 
   @Override
   public GenericCredential createCredential() throws ApiException {
-    TemporaryCredentials tempCred =
-        pathRequest != null
-            ? api.generateTemporaryPathCredentials(pathRequest)
-            : api.generateTemporaryTableCredentials(tableRequest);
-    return new GenericCredential(tempCred);
+    return new GenericCredential(credentialCaller.get());
+  }
+
+  /** Supplies temporary credentials from a pre-built request, bound at construction time. */
+  @FunctionalInterface
+  private interface CredentialCaller {
+    TemporaryCredentials get() throws ApiException;
   }
 }

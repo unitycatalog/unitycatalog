@@ -17,8 +17,9 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
 
   UCDeltaStagingTableCredentialFetcher(
       DeltaStagingTableCredId credId, TemporaryCredentialsApi api) {
-    this.api = Preconditions.checkNotNull(api, "Temporary credentials API is required");
     Preconditions.checkNotNull(credId, "credId is required");
+
+    this.api = Preconditions.checkNotNull(api, "Temporary credentials API is required");
     this.stagingTableId = UUID.fromString(credId.stagingTableId());
     this.stagingTableLocation = credId.location();
   }
@@ -26,8 +27,8 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
   @Override
   public GenericCredential createCredential() throws ApiException {
     CredentialsResponse response = api.getStagingTableCredentials(stagingTableId);
-    Preconditions.checkArgument(
-        response != null,
+    Preconditions.checkNotNull(
+        response,
         "UC Delta API returned no credentials response for staging table '%s'.",
         stagingTableId);
 

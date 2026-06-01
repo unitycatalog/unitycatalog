@@ -50,7 +50,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
 
     assertThatThrownBy(
             () -> GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredential())
-        .isInstanceOf(IllegalArgumentException.class)
+        .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("returned no credentials response");
   }
 
