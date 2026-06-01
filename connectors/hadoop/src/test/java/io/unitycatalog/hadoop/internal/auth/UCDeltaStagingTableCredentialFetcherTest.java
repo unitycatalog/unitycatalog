@@ -6,15 +6,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
+import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
-import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
-import io.unitycatalog.client.delta.model.DeltaStorageCredential;
-import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
+import io.unitycatalog.client.delta.model.CredentialsResponse;
+import io.unitycatalog.client.delta.model.StorageCredential;
+import io.unitycatalog.client.delta.model.StorageCredentialConfig;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import java.util.UUID;
-import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
 
 class UCDeltaStagingTableCredentialFetcherTest {
@@ -24,14 +23,14 @@ class UCDeltaStagingTableCredentialFetcherTest {
 
   @Test
   void createCredentialCallsDeltaStagingApiAndReturnsCredential() throws Exception {
-    Configuration conf = stagingConf();
-    DeltaCredentialsResponse response = s3StagingResponse();
+    DeltaStagingTableCredId credId = new DeltaStagingTableCredId(STAGING_ID.toString(), LOCATION);
+    CredentialsResponse response = s3StagingResponse();
 
-    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
+    TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(response);
 
     GenericCredential cred =
-        GenericCredentialFetcher.forUcDeltaStagingTable(conf, api).createCredential();
+        GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredential();
 
     assertThat(cred).isNotNull();
     TemporaryCredentials out = cred.temporaryCredentials();
@@ -43,75 +42,29 @@ class UCDeltaStagingTableCredentialFetcherTest {
   }
 
   @Test
-  void createCredentialUsesFieldsParsedAtConstruction() throws Exception {
-    Configuration conf = stagingConf();
-    DeltaCredentialsResponse response = s3StagingResponse();
-
-    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
-    when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(response);
-    GenericCredentialFetcher fetcher = GenericCredentialFetcher.forUcDeltaStagingTable(conf, api);
-
-    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, UUID.randomUUID().toString());
-    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://bucket/mutated");
-
-    fetcher.createCredential();
-
-    verify(api).getStagingTableCredentials(STAGING_ID);
-  }
-
-  @Test
   void createCredentialRejectsNullResponse() throws Exception {
-    Configuration conf = stagingConf();
+    DeltaStagingTableCredId credId = new DeltaStagingTableCredId(STAGING_ID.toString(), LOCATION);
 
-    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
+    TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(null);
 
     assertThatThrownBy(
-            () -> GenericCredentialFetcher.forUcDeltaStagingTable(conf, api).createCredential())
+            () -> GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredential())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("returned no credentials response");
   }
 
-  @Test
-  void factoryThrowsWhenConfMissingStagingTableId() {
-    Configuration conf = new Configuration(false);
-    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, LOCATION);
-
-    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
-    assertThatThrownBy(() -> GenericCredentialFetcher.forUcDeltaStagingTable(conf, api))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
-  }
-
-  @Test
-  void factoryThrowsWhenConfMissingLocation() {
-    Configuration conf = new Configuration(false);
-    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, STAGING_ID.toString());
-
-    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
-    assertThatThrownBy(() -> GenericCredentialFetcher.forUcDeltaStagingTable(conf, api))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY);
-  }
-
-  private static Configuration stagingConf() {
-    Configuration conf = new Configuration(false);
-    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, STAGING_ID.toString());
-    conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, LOCATION);
-    return conf;
-  }
-
-  private static DeltaCredentialsResponse s3StagingResponse() {
-    DeltaStorageCredential sc =
-        new DeltaStorageCredential()
+  private static CredentialsResponse s3StagingResponse() {
+    StorageCredential sc =
+        new StorageCredential()
             .prefix(LOCATION)
             .operation(DeltaCredentialOperation.READ_WRITE)
             .expirationTimeMs(1234L)
             .config(
-                new DeltaStorageCredentialConfig()
+                new StorageCredentialConfig()
                     .s3AccessKeyId("ak")
                     .s3SecretAccessKey("sk")
                     .s3SessionToken("st"));
-    return new DeltaCredentialsResponse().addStorageCredentialsItem(sc);
+    return new CredentialsResponse().addStorageCredentialsItem(sc);
   }
 }

@@ -30,7 +30,7 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
 
     TestGcsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
       setConf(conf);
-      this.credentialFetcher = GenericCredentialFetcher.forUc(conf, mockApi);
+      this.credentialFetcher = BaseTokenProviderTest.ucFetcher(conf, mockApi);
     }
 
     @Override

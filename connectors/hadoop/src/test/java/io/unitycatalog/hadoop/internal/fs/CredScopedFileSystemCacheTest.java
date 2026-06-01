@@ -5,6 +5,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -68,7 +70,7 @@ class CredScopedFileSystemCacheTest {
   void evictedEntryClosesCachedDelegate() throws Exception {
     // Pre-seed the cache with a mock delegate so we can verify close() is called.
     FileSystem mockFs = mock(FileSystem.class);
-    CredScopedKey key = new CredScopedKey.TableCredScopedKey("tid-evict", "READ");
+    CredId key = new TableCredId("tid-evict", "READ");
     CredScopedFileSystem.CACHE.put(key, mockFs);
 
     // Invalidate (simulates LRU eviction) and flush the removal listener.
