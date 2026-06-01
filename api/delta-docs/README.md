@@ -7,78 +7,74 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *ConfigurationApi* | [**getConfig**](Apis/ConfigurationApi.md#getconfig) | **GET** /delta/v1/config | Get catalog configuration |
-| *TablesApi* | [**createStagingTable**](Apis/TablesApi.md#createstagingtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables | Create a staging table |
-*TablesApi* | [**createTable**](Apis/TablesApi.md#createtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables | Create a table |
-*TablesApi* | [**deleteTable**](Apis/TablesApi.md#deletetable) | **DELETE** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Delete a table |
-*TablesApi* | [**listTables**](Apis/TablesApi.md#listtables) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables | List tables |
-*TablesApi* | [**loadTable**](Apis/TablesApi.md#loadtable) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Load table metadata |
-*TablesApi* | [**renameTable**](Apis/TablesApi.md#renametable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename | Rename a table |
-*TablesApi* | [**reportMetrics**](Apis/TablesApi.md#reportmetrics) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics | Report commit metrics |
-*TablesApi* | [**tableExists**](Apis/TablesApi.md#tableexists) | **HEAD** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Check if table exists |
-*TablesApi* | [**updateTable**](Apis/TablesApi.md#updatetable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Update table |
-| *TemporaryCredentialsApi* | [**getStagingTableCredentials**](Apis/TemporaryCredentialsApi.md#getstagingtablecredentials) | **GET** /delta/v1/staging-tables/{table_id}/credentials | Get staging table credentials by UUID |
-*TemporaryCredentialsApi* | [**getTableCredentials**](Apis/TemporaryCredentialsApi.md#gettablecredentials) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials | Get table credentials |
-*TemporaryCredentialsApi* | [**getTemporaryPathCredentials**](Apis/TemporaryCredentialsApi.md#gettemporarypathcredentials) | **GET** /delta/v1/temporary-path-credentials | Get temporary path credentials |
+| *DeltaConfigurationApi* | [**getConfig**](Apis/DeltaConfigurationApi.md#getconfig) | **GET** /delta/v1/config | Get catalog configuration |
+| *DeltaTablesApi* | [**createStagingTable**](Apis/DeltaTablesApi.md#createstagingtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables | Create a staging table |
+*DeltaTablesApi* | [**createTable**](Apis/DeltaTablesApi.md#createtable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables | Create a table |
+*DeltaTablesApi* | [**deleteTable**](Apis/DeltaTablesApi.md#deletetable) | **DELETE** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Delete a table |
+*DeltaTablesApi* | [**loadTable**](Apis/DeltaTablesApi.md#loadtable) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Load table metadata |
+*DeltaTablesApi* | [**renameTable**](Apis/DeltaTablesApi.md#renametable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename | Rename a table |
+*DeltaTablesApi* | [**reportMetrics**](Apis/DeltaTablesApi.md#reportmetrics) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics | Report commit metrics |
+*DeltaTablesApi* | [**tableExists**](Apis/DeltaTablesApi.md#tableexists) | **HEAD** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Check if table exists |
+*DeltaTablesApi* | [**updateTable**](Apis/DeltaTablesApi.md#updatetable) | **POST** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} | Update table |
+| *DeltaTemporaryCredentialsApi* | [**getStagingTableCredentials**](Apis/DeltaTemporaryCredentialsApi.md#getstagingtablecredentials) | **GET** /delta/v1/staging-tables/{table_id}/credentials | Get staging table credentials by UUID |
+*DeltaTemporaryCredentialsApi* | [**getTableCredentials**](Apis/DeltaTemporaryCredentialsApi.md#gettablecredentials) | **GET** /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials | Get table credentials |
+*DeltaTemporaryCredentialsApi* | [**getTemporaryPathCredentials**](Apis/DeltaTemporaryCredentialsApi.md#gettemporarypathcredentials) | **GET** /delta/v1/temporary-path-credentials | Get temporary path credentials |
 
 
 <a name="documentation-for-models"></a>
 ## Documentation for Models
 
- - [AddCommitUpdate](./Models/AddCommitUpdate.md)
- - [ArrayType](./Models/ArrayType.md)
- - [AssertEtag](./Models/AssertEtag.md)
- - [AssertTableUUID](./Models/AssertTableUUID.md)
- - [CatalogConfig](./Models/CatalogConfig.md)
- - [ClusteringDomainMetadata](./Models/ClusteringDomainMetadata.md)
- - [CreateStagingTableRequest](./Models/CreateStagingTableRequest.md)
- - [CreateTableRequest](./Models/CreateTableRequest.md)
- - [CredentialOperation](./Models/CredentialOperation.md)
- - [CredentialsResponse](./Models/CredentialsResponse.md)
- - [DataSourceFormat](./Models/DataSourceFormat.md)
- - [DecimalType](./Models/DecimalType.md)
+ - [DeltaAddCommitUpdate](./Models/DeltaAddCommitUpdate.md)
+ - [DeltaArrayType](./Models/DeltaArrayType.md)
+ - [DeltaAssertEtag](./Models/DeltaAssertEtag.md)
+ - [DeltaAssertTableUUID](./Models/DeltaAssertTableUUID.md)
+ - [DeltaCatalogConfig](./Models/DeltaCatalogConfig.md)
+ - [DeltaClusteringDomainMetadata](./Models/DeltaClusteringDomainMetadata.md)
  - [DeltaCommit](./Models/DeltaCommit.md)
+ - [DeltaCreateStagingTableRequest](./Models/DeltaCreateStagingTableRequest.md)
+ - [DeltaCreateTableRequest](./Models/DeltaCreateTableRequest.md)
+ - [DeltaCredentialOperation](./Models/DeltaCredentialOperation.md)
+ - [DeltaCredentialsResponse](./Models/DeltaCredentialsResponse.md)
+ - [DeltaDataType](./Models/DeltaDataType.md)
+ - [DeltaDecimalType](./Models/DeltaDecimalType.md)
+ - [DeltaDomainMetadataUpdates](./Models/DeltaDomainMetadataUpdates.md)
+ - [DeltaErrorModel](./Models/DeltaErrorModel.md)
+ - [DeltaErrorResponse](./Models/DeltaErrorResponse.md)
+ - [DeltaErrorType](./Models/DeltaErrorType.md)
+ - [DeltaLoadTableResponse](./Models/DeltaLoadTableResponse.md)
+ - [DeltaMapType](./Models/DeltaMapType.md)
+ - [DeltaPrimitiveType](./Models/DeltaPrimitiveType.md)
  - [DeltaProtocol](./Models/DeltaProtocol.md)
- - [DeltaType](./Models/DeltaType.md)
- - [DomainMetadataUpdates](./Models/DomainMetadataUpdates.md)
- - [ErrorModel](./Models/ErrorModel.md)
- - [ErrorResponse](./Models/ErrorResponse.md)
- - [ErrorType](./Models/ErrorType.md)
- - [ListTablesResponse](./Models/ListTablesResponse.md)
- - [LoadTableResponse](./Models/LoadTableResponse.md)
- - [MapType](./Models/MapType.md)
- - [PrimitiveType](./Models/PrimitiveType.md)
- - [RemoveDomainMetadataUpdate](./Models/RemoveDomainMetadataUpdate.md)
- - [RemovePropertiesUpdate](./Models/RemovePropertiesUpdate.md)
- - [RenameTableRequest](./Models/RenameTableRequest.md)
- - [ReportMetricsRequest](./Models/ReportMetricsRequest.md)
- - [ReportMetricsRequest_report](./Models/ReportMetricsRequest_report.md)
- - [ReportMetricsRequest_report_commit_report](./Models/ReportMetricsRequest_report_commit_report.md)
- - [ReportMetricsRequest_report_commit_report_file_size_histogram](./Models/ReportMetricsRequest_report_commit_report_file_size_histogram.md)
- - [RowTrackingDomainMetadata](./Models/RowTrackingDomainMetadata.md)
- - [SetDomainMetadataUpdate](./Models/SetDomainMetadataUpdate.md)
- - [SetLatestBackfilledVersionUpdate](./Models/SetLatestBackfilledVersionUpdate.md)
- - [SetPartitionColumnsUpdate](./Models/SetPartitionColumnsUpdate.md)
- - [SetPropertiesUpdate](./Models/SetPropertiesUpdate.md)
- - [SetProtocolUpdate](./Models/SetProtocolUpdate.md)
- - [SetSchemaUpdate](./Models/SetSchemaUpdate.md)
- - [SetTableCommentUpdate](./Models/SetTableCommentUpdate.md)
- - [StagingTableResponse](./Models/StagingTableResponse.md)
- - [StagingTableResponse_required_protocol](./Models/StagingTableResponse_required_protocol.md)
- - [StagingTableResponse_suggested_protocol](./Models/StagingTableResponse_suggested_protocol.md)
- - [StorageCredential](./Models/StorageCredential.md)
- - [StorageCredential_config](./Models/StorageCredential_config.md)
- - [StructField](./Models/StructField.md)
- - [StructType](./Models/StructType.md)
- - [TableIdentifierWithDataSourceFormat](./Models/TableIdentifierWithDataSourceFormat.md)
- - [TableMetadata](./Models/TableMetadata.md)
- - [TableRequirement](./Models/TableRequirement.md)
- - [TableType](./Models/TableType.md)
- - [TableUpdate](./Models/TableUpdate.md)
- - [UniformMetadata](./Models/UniformMetadata.md)
- - [UniformMetadata_iceberg](./Models/UniformMetadata_iceberg.md)
- - [UpdateSnapshotVersionUpdate](./Models/UpdateSnapshotVersionUpdate.md)
- - [UpdateTableRequest](./Models/UpdateTableRequest.md)
+ - [DeltaRemoveDomainMetadataUpdate](./Models/DeltaRemoveDomainMetadataUpdate.md)
+ - [DeltaRemovePropertiesUpdate](./Models/DeltaRemovePropertiesUpdate.md)
+ - [DeltaRenameTableRequest](./Models/DeltaRenameTableRequest.md)
+ - [DeltaReportMetricsRequest](./Models/DeltaReportMetricsRequest.md)
+ - [DeltaReportMetricsRequest_report](./Models/DeltaReportMetricsRequest_report.md)
+ - [DeltaReportMetricsRequest_report_commit_report](./Models/DeltaReportMetricsRequest_report_commit_report.md)
+ - [DeltaReportMetricsRequest_report_commit_report_file_size_histogram](./Models/DeltaReportMetricsRequest_report_commit_report_file_size_histogram.md)
+ - [DeltaRowTrackingDomainMetadata](./Models/DeltaRowTrackingDomainMetadata.md)
+ - [DeltaSetDomainMetadataUpdate](./Models/DeltaSetDomainMetadataUpdate.md)
+ - [DeltaSetLatestBackfilledVersionUpdate](./Models/DeltaSetLatestBackfilledVersionUpdate.md)
+ - [DeltaSetPartitionColumnsUpdate](./Models/DeltaSetPartitionColumnsUpdate.md)
+ - [DeltaSetPropertiesUpdate](./Models/DeltaSetPropertiesUpdate.md)
+ - [DeltaSetProtocolUpdate](./Models/DeltaSetProtocolUpdate.md)
+ - [DeltaSetSchemaUpdate](./Models/DeltaSetSchemaUpdate.md)
+ - [DeltaSetTableCommentUpdate](./Models/DeltaSetTableCommentUpdate.md)
+ - [DeltaStagingTableResponse](./Models/DeltaStagingTableResponse.md)
+ - [DeltaStagingTableResponse_required_protocol](./Models/DeltaStagingTableResponse_required_protocol.md)
+ - [DeltaStagingTableResponse_suggested_protocol](./Models/DeltaStagingTableResponse_suggested_protocol.md)
+ - [DeltaStorageCredential](./Models/DeltaStorageCredential.md)
+ - [DeltaStorageCredential_config](./Models/DeltaStorageCredential_config.md)
+ - [DeltaStructField](./Models/DeltaStructField.md)
+ - [DeltaStructType](./Models/DeltaStructType.md)
+ - [DeltaTableMetadata](./Models/DeltaTableMetadata.md)
+ - [DeltaTableRequirement](./Models/DeltaTableRequirement.md)
+ - [DeltaTableType](./Models/DeltaTableType.md)
+ - [DeltaTableUpdate](./Models/DeltaTableUpdate.md)
+ - [DeltaUniformMetadata](./Models/DeltaUniformMetadata.md)
+ - [DeltaUniformMetadata_iceberg](./Models/DeltaUniformMetadata_iceberg.md)
+ - [DeltaUpdateSnapshotVersionUpdate](./Models/DeltaUpdateSnapshotVersionUpdate.md)
+ - [DeltaUpdateTableRequest](./Models/DeltaUpdateTableRequest.md)
 
 
 <a name="documentation-for-authorization"></a>
