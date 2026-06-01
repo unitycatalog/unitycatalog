@@ -69,7 +69,7 @@ public class SparkCredentialRenewalTest {
 
   // Define the CREDENTIAL_RENEWAL_TEST_CRED_SCOPED_FS_ENABLED environment variable.
   private static final boolean CRED_SCOPED_FS_ENABLED =
-      envAsBoolean(PREFIX + "CRED_SCOPED_FS_ENABLED", false);
+      envAsBoolean(PREFIX + "CRED_SCOPED_FS_ENABLED", true);
 
   // Define the CREDENTIAL_RENEWAL_TEST_DURATION_SECONDS environment variable, which control how
   // long will the test run. 90 minutes by default.

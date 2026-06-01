@@ -11,7 +11,7 @@ public class OptionsUtil {
   public static final boolean DEFAULT_RENEW_CREDENTIAL_ENABLED = true;
 
   public static final String CRED_SCOPED_FS_ENABLED = "credScopedFs.enabled";
-  public static final boolean DEFAULT_CRED_SCOPED_FS_ENABLED = false;
+  public static final boolean DEFAULT_CRED_SCOPED_FS_ENABLED = true;
   public static final String SERVER_SIDE_PLANNING_ENABLED = "serverSidePlanning.enabled";
   public static final boolean DEFAULT_SERVER_SIDE_PLANNING_ENABLED = false;
   public static final String DELTA_API_ENABLED = "deltaRestApi.enabled";
