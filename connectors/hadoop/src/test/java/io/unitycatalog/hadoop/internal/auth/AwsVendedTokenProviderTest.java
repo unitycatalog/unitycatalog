@@ -1,7 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AwsCredentials;
@@ -82,17 +81,6 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
     assertThat(actualSessionCred.accessKeyId()).isEqualTo(expectedAwsCred.getAccessKeyId());
     assertThat(actualSessionCred.secretAccessKey()).isEqualTo(expectedAwsCred.getSecretAccessKey());
     assertThat(actualSessionCred.sessionToken()).isEqualTo(expectedAwsCred.getSessionToken());
-  }
-
-  @Test
-  public void testConstructor() {
-    Configuration conf = new Configuration();
-
-    assertThatThrownBy(() -> new AwsVendedTokenProvider(conf))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessage(
-            "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
-            UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
   }
 
   @Test

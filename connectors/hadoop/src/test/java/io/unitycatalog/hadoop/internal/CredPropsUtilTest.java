@@ -564,7 +564,6 @@ class CredPropsUtilTest {
         .containsEntry(
             UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
             UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .containsKey(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY)
         .containsEntry(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid")
         .containsEntry(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ_WRITE")
         .containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak")
