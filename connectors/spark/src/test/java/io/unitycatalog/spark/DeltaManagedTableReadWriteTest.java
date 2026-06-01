@@ -70,24 +70,24 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
   @Test
   public void testCreateManagedTableErrors() {
-    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    // Include SPARK_CATALOG so the explicit-`supported` success path below can finish creating the
+    // table via Delta -- DeltaLog.checkRequiredConfigurations requires spark_catalog to be set to a
+    // UC/Delta catalog. The other assertions in this method short-circuit in UCSingleCatalog before
+    // Delta is reached, so they don't care, but the success path actually invokes Delta.
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     ensureSparkCatalogSchemaExists();
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    assertThatThrownBy(
-            () ->
-                sql(
-                    "CREATE TABLE %s(name STRING) USING parquet %s",
-                    fullTableName, TBLPROPERTIES_CATALOG_OWNED_CLAUSE))
+    assertThatThrownBy(() -> sql("CREATE TABLE %s(name STRING) USING parquet", fullTableName))
         .hasMessageContaining("not support non-Delta managed table");
     assertThatThrownBy(
             () ->
                 sql(
                     "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = 'disabled')",
-                    fullTableName, UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW))
+                    fullTableName, UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
         .hasMessageContaining(
             String.format(
                 "Invalid property value 'disabled' for '%s'",
-                UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW));
+                UCTableProperties.DELTA_CATALOG_MANAGED_KEY));
     assertThatThrownBy(
             () ->
                 sql(
@@ -100,12 +100,15 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
                     "CREATE TABLE %s(name STRING) USING delta " + "TBLPROPERTIES ('%s' = 'false')",
                     fullTableName, TableCatalog.PROP_IS_MANAGED_LOCATION))
         .hasMessageContaining("is_managed_location");
-    assertThatThrownBy(() -> sql("CREATE TABLE %s(name STRING) USING delta", fullTableName))
-        .hasMessageContaining(
-            String.format(
-                "Managed table creation requires table property '%s'='%s' to be set",
-                UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
-                UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
+
+    // Explicit catalog-managed=supported is accepted (the no-property path is implicitly
+    // covered by every other managed-Delta test via `createManagedTableSql()`).
+    sql(
+        "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES ('%s' = '%s')",
+        fullTableName,
+        UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+        UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
+    sql("DROP TABLE IF EXISTS %s", fullTableName);
   }
 
   @ParameterizedTest
@@ -169,7 +172,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
               .contains(
                   String.format(
                       "%s=%s",
-                      UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                      UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
                       UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
           // Check schema of table
           validateTableSchema(
@@ -189,7 +192,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
           assertThat(tablePropertiesFromServer)
               .containsEntry(UCTableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId())
               .containsEntry(
-                  UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                  UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
                   UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
         }
       }
@@ -282,7 +285,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     assertThat(tablePropertiesFromServer).containsKey(UCTableProperties.UC_TABLE_ID_KEY);
     assertThat(tablePropertiesFromServer)
         .containsEntry(
-            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
   }
 

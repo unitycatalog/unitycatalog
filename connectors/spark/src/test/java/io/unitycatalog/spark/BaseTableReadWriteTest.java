@@ -70,11 +70,6 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   protected static final String ANOTHER_TEST_TABLE = "test_table_another";
-  protected static final String TBLPROPERTIES_CATALOG_OWNED_CLAUSE =
-      String.format(
-          "TBLPROPERTIES ('%s'='%s')",
-          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
-          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
 
   /**
    * This class is used for control various options for table creation during test. The tableFormat
@@ -164,7 +159,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
     public String createManagedTableSql() {
       return String.format(
-          "%s TABLE %s.%s.%s %s USING %s %s %s %s %s",
+          "%s TABLE %s.%s.%s %s USING %s %s %s %s",
           ddlCommand(),
           catalogName,
           schemaName,
@@ -172,7 +167,6 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
           columnsClause(),
           tableFormat(),
           partitionClause(),
-          TBLPROPERTIES_CATALOG_OWNED_CLAUSE,
           commentClause(),
           asSelectClause());
     }
