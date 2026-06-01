@@ -1,6 +1,7 @@
 package io.unitycatalog.hadoop.internal.fs;
 
 import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.DefaultCredId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
@@ -83,7 +84,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    CredId key = CredId.create(uri, conf);
+    CredId key = CredId.create(conf, () -> new DefaultCredId(uri, conf));
     this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
   }
 

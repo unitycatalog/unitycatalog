@@ -14,7 +14,6 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
-import java.net.URI;
 import java.time.Duration;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
@@ -31,7 +30,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
    * {@link CredId} subtype expected by {@link GenericCredentialFetcher#forUc}.
    */
   static GenericCredentialFetcher ucFetcher(Configuration conf, TemporaryCredentialsApi api) {
-    CredId credId = CredId.create(URI.create(conf.get(UCHadoopConfConstants.UC_URI_KEY)), conf);
+    CredId credId = CredId.create(conf);
     if (credId instanceof PathCredId) {
       return GenericCredentialFetcher.forUc((PathCredId) credId, api);
     }
