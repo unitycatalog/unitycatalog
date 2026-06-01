@@ -5,7 +5,6 @@ import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
-import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -51,7 +50,7 @@ public abstract class GenericCredentialProvider {
 
     // Identify the credential scope; used as the global cache key so that requests targeting the
     // same scope can share a vended credential.
-    this.cacheKey = CredId.create(URI.create(conf.get(UCHadoopConfConstants.UC_URI_KEY, "")), conf);
+    this.cacheKey = CredId.create(conf);
 
     this.credCacheEnabled =
         conf.getBoolean(
