@@ -1,7 +1,6 @@
 package io.unitycatalog.server.service.delta;
 
 import io.unitycatalog.server.delta.model.CreateTableRequest;
-import io.unitycatalog.server.delta.model.StructField;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -10,7 +9,6 @@ import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,7 +21,7 @@ import java.util.Optional;
  * the DELTA-only format rule apply to all tables. The full UC catalog-managed contract ({@link
  * UcManagedDeltaContract}) applies only to MANAGED tables; EXTERNAL tables skip contract validation
  * but still go through the same {@link DeltaPropertyMapper} projection, so derived
- * {@code delta.feature.*} and {@code delta.clusteringColumns} entries override any client-supplied
+ * {@code delta.feature.*} and {@code clusteringColumns} entries override any client-supplied
  * values under those keys.
  */
 public final class DeltaCreateTableMapper {
@@ -81,11 +79,7 @@ public final class DeltaCreateTableMapper {
         DeltaUniformUtils.getUniformFields(req.getUniform());
     DeltaUniformUtils.validateCreate(uniformFields, NormalizedURL.from(req.getLocation()));
 
-    List<ColumnInfo> columns = new ArrayList<>();
-    List<StructField> fields = req.getColumns().getFields();
-    for (int i = 0; i < fields.size(); i++) {
-      columns.add(ColumnUtils.toColumnInfo(fields.get(i), i));
-    }
+    List<ColumnInfo> columns = ColumnUtils.toColumnInfos(req.getColumns().getFields());
     ColumnUtils.applyPartitionColumns(columns, req.getPartitionColumns());
 
     CreateTable createTable =

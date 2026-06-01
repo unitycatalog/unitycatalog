@@ -8,6 +8,7 @@ import io.unitycatalog.server.delta.model.StructType;
 import io.unitycatalog.server.delta.model.TableMetadata;
 import io.unitycatalog.server.delta.model.UniformMetadata;
 import io.unitycatalog.server.delta.model.UniformMetadataIceberg;
+import io.unitycatalog.server.delta.model.UpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -30,6 +31,7 @@ import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
+import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.Constants;
@@ -37,8 +39,10 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import jakarta.persistence.PessimisticLockException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -47,6 +51,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -71,32 +76,45 @@ public class TableRepository {
   }
 
   /**
-   * Retrieves the storage location for a table or staging table by its ID. First attempts to find a
-   * regular table with the given ID, then falls back to searching for a staging table if no regular
-   * table is found. NOTE: This function is specially needed by generateTemporaryTableCredential
-   * during the short window when a staging table is just created and the initial data is being
-   * written but before the actual table is already created. Reading of a staging table is not a
-   * common supplemental of an actual table but only a special case.
+   * Returned by {@link #getStorageLocationForTableOrStagingTable} so callers (today the temp-creds
+   * service) can vend and gate from a single DB read. Staging rows project as MANAGED because they
+   * always finalize to MANAGED Delta.
+   */
+  public record TableStorageLocationInfo(NormalizedURL url, TableType tableType) {}
+
+  /**
+   * Retrieves the storage location for a table or staging table by its ID, plus the table type.
+   * Staging tables are counted as Managed tables too. First attempts to find a regular table with
+   * the given ID, then falls back to searching for a staging table if no regular table is found.
+   * NOTE: This function is specially needed by generateTemporaryTableCredential during the short
+   * window when a staging table is just created and the initial data is being written but before
+   * the actual table is already created. Reading of a staging table is not a common supplemental of
+   * an actual table but only a special case.
    *
    * @param tableId the ID of the table or staging table
-   * @return the normalized URL of the storage location
+   * @return the normalized URL of the storage location, plus table type. Both in
+   *     TableStorageLocationInfo
    * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if neither a table nor staging table is
    *     found with the given ID
    */
-  public NormalizedURL getStorageLocationForTableOrStagingTable(UUID tableId) {
+  public TableStorageLocationInfo getStorageLocationForTableOrStagingTable(UUID tableId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           LOGGER.debug("Getting storage location of table by id: {}", tableId);
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
           if (tableInfoDAO != null) {
-            return NormalizedURL.from(tableInfoDAO.getUrl());
+            return new TableStorageLocationInfo(
+                NormalizedURL.from(tableInfoDAO.getUrl()),
+                TableType.fromValue(tableInfoDAO.getType()));
           }
 
           LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
           StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
           if (stagingTableDAO != null) {
-            return NormalizedURL.from(stagingTableDAO.getStagingLocation());
+            // Staging rows always become MANAGED Delta on finalize, so project them as MANAGED.
+            return new TableStorageLocationInfo(
+                NormalizedURL.from(stagingTableDAO.getStagingLocation()), TableType.MANAGED);
           }
           throw new BaseException(
               ErrorCode.TABLE_NOT_FOUND,
@@ -220,7 +238,7 @@ public class TableRepository {
   }
 
   /**
-   * Load a table for the Delta REST Catalog API in a single REPEATABLE_READ transaction.
+   * Load a table for the UC Delta API in a single REPEATABLE_READ transaction.
    *
    * <p>Returns a {@link LoadTableResponse} containing:
    *
@@ -238,20 +256,8 @@ public class TableRepository {
         sessionFactory,
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
-          // Guard non-Delta entries (metric views, parquet/csv/etc. tables) before they reach
-          // `buildTableMetadata`. The downstream code calls `NormalizedURL.normalize(dao.getUrl())`
-          // (throws "Path cannot be null or empty" when the row has no storage location, e.g.
-          // metric views) and `DataSourceFormat.fromValue(dao.getDataSourceFormat())` (throws
-          // IllegalArgumentException on null), both of which surface as misleading errors to a
-          // Delta REST client that simply asked for a name that happens to live in the same
-          // schema. Sibling guard to `DeltaCommitRepository.validateTable`.
-          if (dao.getDataSourceFormat() == null
-              || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
-            throw new BaseException(
-                ErrorCode.UNSUPPORTED_TABLE_FORMAT,
-                "Table is not a Delta table: " + catalog + "." + schema + "." + table);
-          }
-          return buildLoadTableResponse(session, dao, catalog, schema, table);
+          requireDeltaTable(dao, catalog, schema, table);
+          return buildLoadTableResponse(session, dao, Optional.empty(), catalog, schema, table);
         },
         "Failed to load table",
         /* readOnly = */ true,
@@ -259,13 +265,118 @@ public class TableRepository {
   }
 
   /**
-   * Build a {@link LoadTableResponse} from an already-loaded {@link TableInfoDAO}. Used by both
-   * {@link #loadTableForDelta} and {@link #createTableForDelta} so the post-load DAO → response
-   * assembly stays in one place.
+   * Apply a Delta {@link UpdateTableRequest} in a single write transaction and return the refreshed
+   * {@link LoadTableResponse}. Covers both pure metadata edits (set/remove-properties,
+   * set-protocol, set-columns, set-partition-columns, set-table-comment,
+   * set/remove-domain-metadata, update-metadata-snapshot-version) and CCv2 commit-log writes
+   * (add-commit + optional uniform metadata, set-latest-backfilled-version) -- the latter route
+   * through {@link DeltaCommitRepository#applyCommitAndBackfillInSession} so the commit-log
+   * progression matches the UC REST commit path.
+   *
+   * <p>The transaction makes exactly one {@code uc_properties} read (via {@link
+   * MutablePropertyMap#load}): all property-touching actions mutate the in-memory map, and a single
+   * diff-flush at the end applies only the keys that actually changed. Request classification runs
+   * before opening the transaction (see {@link DeltaUpdateTableMapper#collectRequest}); inside,
+   * requirement checks run first so a stale-snapshot conflict short-circuits before any write is
+   * persisted. The DAO's {@code updatedAt}/{@code updatedBy} advance once at the end; the resulting
+   * etag naturally rolls.
+   */
+  public LoadTableResponse updateTableForDelta(
+      String catalog, String schema, String table, UpdateTableRequest request) {
+    DeltaUpdateTableMapper.CollectedRequest collected =
+        DeltaUpdateTableMapper.collectRequest(request);
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
+          requireDeltaTable(dao, catalog, schema, table);
+          lockTableForDeltaUpdate(session, dao, catalog, schema, table);
+          DeltaUpdateTableMapper.checkRequirements(dao, collected);
+          MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected)
+              .ifPresent(
+                  d ->
+                      repositories
+                          .getDeltaCommitRepository()
+                          .applyCommitAndBackfillInSession(
+                              session,
+                              dao,
+                              d.commit(),
+                              d.uniformFields(),
+                              d.latestBackfilledVersion()));
+          properties.flush(session, dao.getId());
+          dao.setUpdatedAt(new Date());
+          dao.setUpdatedBy(callerId);
+          session.merge(dao);
+          session.flush();
+          return buildLoadTableResponse(
+              session, dao, Optional.of(properties.asMap()), catalog, schema, table);
+        },
+        "Failed to update table " + catalog + "." + schema + "." + table,
+        /* readOnly = */ false);
+  }
+
+  /**
+   * Reject non-Delta entries (metric views, parquet, etc.) at the Delta REST surface so downstream
+   * Delta-shaped reads don't throw misleading errors, and so update-path mutations can't commit
+   * against a row whose response would then fail on the way out. Sibling guard to {@code
+   * DeltaCommitRepository.validateTable}.
+   */
+  private static void requireDeltaTable(
+      TableInfoDAO dao, String catalog, String schema, String table) {
+    if (dao.getDataSourceFormat() == null
+        || !DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
+      throw new BaseException(
+          ErrorCode.UNSUPPORTED_TABLE_FORMAT,
+          "Table is not a Delta table: " + catalog + "." + schema + "." + table);
+    }
+  }
+
+  /**
+   * Acquire {@code SELECT ... FOR UPDATE} on the table row and refresh in-memory state, so two
+   * concurrent {@link #updateTableForDelta} calls serialize. Lock-wait timeouts and deadlock
+   * victims surface as {@code UPDATE_REQUIREMENT_CONFLICT} (409) instead of a generic 500.
+   */
+  private static void lockTableForDeltaUpdate(
+      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
+    try {
+      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
+    } catch (PessimisticLockException e) {
+      throw new BaseException(
+          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
+          "Concurrent update in progress on "
+              + catalog
+              + "."
+              + schema
+              + "."
+              + table
+              + "; retry the request.");
+    }
+  }
+
+  /**
+   * Build a {@link LoadTableResponse} from an already-loaded {@link TableInfoDAO}. Shared by {@link
+   * #loadTableForDelta}, {@link #createTableForDelta}, and {@link #updateTableForDelta} so the
+   * post-mutation DAO → response assembly stays in one place.
+   *
+   * @param properties when present, the caller-provided property map is reused for the response;
+   *     when empty, we re-read from the DB. The update path already loaded and mutated properties
+   *     via {@link MutablePropertyMap} and passes the post-flush view in, saving a query.
    */
   private LoadTableResponse buildLoadTableResponse(
-      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
-    TableMetadata metadata = buildTableMetadata(session, dao, catalog, schema, table);
+      Session session,
+      TableInfoDAO dao,
+      Optional<Map<String, String>> properties,
+      String catalog,
+      String schema,
+      String table) {
+    Map<String, String> props =
+        properties.orElseGet(
+            () ->
+                PropertyDAO.toMap(
+                    PropertyRepository.findProperties(session, dao.getId(), Constants.TABLE)));
+    TableMetadata metadata = buildTableMetadata(dao, props, catalog, schema, table);
 
     LoadTableResponse response = new LoadTableResponse();
     response.setMetadata(metadata);
@@ -283,21 +394,19 @@ public class TableRepository {
   }
 
   private TableMetadata buildTableMetadata(
-      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
+      TableInfoDAO dao,
+      Map<String, String> properties,
+      String catalog,
+      String schema,
+      String table) {
     TableMetadata metadata = new TableMetadata();
-    Long updatedAt = dao.getUpdatedAt() != null ? dao.getUpdatedAt().getTime() : null;
-    // Normal case: etag keyed on the table's last update time. If updatedAt is missing
-    // (shouldn't happen for a persisted table, but defensively handled), fall back to the
-    // table UUID so the etag stays unique per table rather than collapsing to "etag-null"
-    // across rows.
-    metadata.setEtag(updatedAt != null ? "etag-" + updatedAt : "etag-" + dao.getId());
+    metadata.setEtag(DeltaUpdateTableMapper.computeEtag(dao));
     metadata.setDataSourceFormat(toDeltaFormat(dao.getDataSourceFormat()));
     metadata.setTableType(toDeltaTableType(dao.getType()));
     metadata.setTableUuid(dao.getId());
     metadata.setLocation(NormalizedURL.normalize(dao.getUrl()));
     metadata.setCreatedTime(dao.getCreatedAt() != null ? dao.getCreatedAt().getTime() : null);
-    metadata.setUpdatedTime(updatedAt);
-    metadata.setSecurableType(io.unitycatalog.server.delta.model.SecurableType.TABLE);
+    metadata.setUpdatedTime(dao.getUpdatedAt() != null ? dao.getUpdatedAt().getTime() : null);
 
     // Columns -- best-effort; corrupt data should not fail the entire response
     StructType emptySchema = new StructType().fields(List.of());
@@ -322,18 +431,15 @@ public class TableRepository {
 
     populatePartitionColumns(metadata, cols, catalog, schema, table);
 
-    List<PropertyDAO> propDAOs =
-        PropertyRepository.findProperties(session, dao.getId(), Constants.TABLE);
-    Map<String, String> props = PropertyDAO.toMap(propDAOs);
-    metadata.setProperties(props);
+    metadata.setProperties(properties);
 
     // last-commit-version and last-commit-timestamp track only metadata-changing commits
     // (delta.lastUpdateVersion / delta.lastCommitTimestamp) and are written by the commit path.
     // They are distinct from CommitQueryResult.latestTableVersion, which advances on every
     // commit including data-only ones. Reading from table properties preserves that distinction.
-    parseLongProperty(props, TableProperties.LAST_UPDATE_VERSION)
+    parseLongProperty(properties, TableProperties.LAST_UPDATE_VERSION)
         .ifPresent(metadata::setLastCommitVersion);
-    parseLongProperty(props, TableProperties.LAST_COMMIT_TIMESTAMP)
+    parseLongProperty(properties, TableProperties.LAST_COMMIT_TIMESTAMP)
         .ifPresent(metadata::setLastCommitTimestampMs);
 
     return metadata;
@@ -449,9 +555,9 @@ public class TableRepository {
   }
 
   /**
-   * Create a table and return the Delta REST Catalog {@link LoadTableResponse} in a single
-   * transaction. The DAO persisted during create is the same one used to build the response, so
-   * there's no second lookup or risk of a reader observing an intermediate state.
+   * Create a table and return the UC Delta API {@link LoadTableResponse} in a single transaction.
+   * The DAO persisted during create is the same one used to build the response, so there's no
+   * second lookup or risk of a reader observing an intermediate state.
    *
    * <p>If {@code uniformFields} is non-empty the table is registered as UniForm-enabled: the
    * already-validated, already-normalized Iceberg fields (computed once in {@code
@@ -468,6 +574,7 @@ public class TableRepository {
             buildLoadTableResponse(
                 session,
                 dao,
+                Optional.empty(),
                 createTable.getCatalogName(),
                 createTable.getSchemaName(),
                 createTable.getName()));

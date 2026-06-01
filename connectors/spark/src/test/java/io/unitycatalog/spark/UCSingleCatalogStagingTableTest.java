@@ -28,7 +28,9 @@ import java.util.Map;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.StagedTable;
 import org.apache.spark.sql.connector.catalog.StagingTableCatalog;
+import org.apache.spark.sql.connector.catalog.Table;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.connector.catalog.TableChange;
 import org.apache.spark.sql.connector.expressions.Transform;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
@@ -98,6 +100,18 @@ public class UCSingleCatalogStagingTableTest {
 
     verify(mockDelegate).stageCreate(eq(IDENT), eq(SCHEMA), any(), any());
     assertThat(result).isSameAs(staged);
+  }
+
+  @Test
+  public void testAlterTableDelegatesToUnderlyingCatalog() throws Exception {
+    Table table = mock(Table.class);
+    TableChange change = TableChange.setProperty("custom.key", "custom.value");
+    when(mockDelegate.alterTable(IDENT, change)).thenReturn(table);
+
+    Table result = catalog.alterTable(IDENT, new TableChange[] {change});
+
+    verify(mockDelegate).alterTable(IDENT, change);
+    assertThat(result).isSameAs(table);
   }
 
   @Test

@@ -42,9 +42,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * End-to-end tests for the Delta REST Catalog loadTable endpoint. Consolidated into a single test
- * with sections so the BaseServerTest setUp/tearDown (server start + DB reset per test) runs once
- * for all scenarios. Each section creates its own uniquely-named table so they don't collide.
+ * End-to-end tests for the UC Delta API loadTable endpoint. Consolidated into a single test with
+ * sections so the BaseServerTest setUp/tearDown (server start + DB reset per test) runs once for
+ * all scenarios. Each section creates its own uniquely-named table so they don't collide.
  */
 public class SdkLoadTableTest extends BaseServerTest {
 

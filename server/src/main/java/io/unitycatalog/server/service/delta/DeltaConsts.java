@@ -1,8 +1,8 @@
 package io.unitycatalog.server.service.delta;
 
 /**
- * Spec-defined Delta protocol identifiers referenced by the Delta REST Catalog surface. Centralized
- * here so that feature-specific server decisions (e.g. "MANAGED tables must declare {@code
+ * Spec-defined Delta protocol identifiers referenced by the UC Delta API surface. Centralized here
+ * so that feature-specific server decisions (e.g. "MANAGED tables must declare {@code
  * catalogManaged}") and required-property declarations cannot silently mismatch the strings the
  * client actually writes into the Delta log.
  */
@@ -61,7 +61,7 @@ public final class DeltaConsts {
   }
 
   /**
-   * Table-property keys referenced by the Delta REST Catalog surface. The {@code delta.*} keys are
+   * Table-property keys referenced by the UC Delta API surface. The {@code delta.*} keys are
    * defined by the Delta protocol; {@link #UC_TABLE_ID} is the UC-namespace rule-based property
    * that binds a Delta table to its UC-allocated UUID.
    *
@@ -98,7 +98,7 @@ public final class DeltaConsts {
      * of segment names, so nested columns stay as arrays rather than collapsing to dotted strings).
      * Mirrors the {@code delta.clustering} domain-metadata entry.
      */
-    public static final String CLUSTERING_COLUMNS = "delta.clusteringColumns";
+    public static final String CLUSTERING_COLUMNS = "clusteringColumns";
 
     /**
      * Row-tracking high water mark, mirroring the {@code delta.rowTracking.rowIdHighWaterMark} from
@@ -113,6 +113,12 @@ public final class DeltaConsts {
      * name as it appears in {@code protocol.reader-features} / {@code protocol.writer-features}.
      */
     public static final String FEATURE_PREFIX = "delta.feature.";
+
+    /** Derived property from {@code protocol.min-reader-version}. */
+    public static final String MIN_READER_VERSION = "delta.minReaderVersion";
+
+    /** Derived property from {@code protocol.min-writer-version}. */
+    public static final String MIN_WRITER_VERSION = "delta.minWriterVersion";
 
     /**
      * UniForm enabled-formats property: a comma-separated list naming the additional formats to
@@ -130,4 +136,22 @@ public final class DeltaConsts {
    * now {@code "iceberg"} is the only supported value.
    */
   public static final String UNIVERSAL_FORMAT_ICEBERG = "iceberg";
+
+  /**
+   * Domain-metadata names as they appear in the Delta log and in {@code DomainMetadataUpdates} /
+   * {@code RemoveDomainMetadataUpdate.domains}. Each domain is projected onto a derived {@link
+   * TableProperties} key by the property mapper.
+   */
+  public static final class DomainMetadataNames {
+    private DomainMetadataNames() {}
+
+    /** Carries clustering-column paths; projects to {@link TableProperties#CLUSTERING_COLUMNS}. */
+    public static final String CLUSTERING = "delta.clustering";
+
+    /**
+     * Carries the row-tracking high water mark; projects to {@link
+     * TableProperties#ROW_TRACKING_ROW_ID_HIGH_WATER_MARK}.
+     */
+    public static final String ROW_TRACKING = "delta.rowTracking";
+  }
 }

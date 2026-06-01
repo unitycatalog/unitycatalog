@@ -1,0 +1,256 @@
+package io.unitycatalog.server.service.delta;
+
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import io.unitycatalog.server.delta.model.AssertEtag;
+import io.unitycatalog.server.delta.model.AssertTableUUID;
+import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.RemoveDomainMetadataUpdate;
+import io.unitycatalog.server.delta.model.RemovePropertiesUpdate;
+import io.unitycatalog.server.delta.model.SetDomainMetadataUpdate;
+import io.unitycatalog.server.delta.model.SetPropertiesUpdate;
+import io.unitycatalog.server.delta.model.TableRequirement;
+import io.unitycatalog.server.delta.model.UpdateTableRequest;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper.CollectedRequest;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Unit tests for {@link DeltaUpdateTableMapper}'s session-independent paths -- request
+ * classification ({@link DeltaUpdateTableMapper#collectRequest}) and {@code assert-*} requirement
+ * checking against a DAO that lives only in memory.
+ */
+public class DeltaUpdateTableMapperTest {
+
+  @Test
+  public void collectRequestRejectsNullBody() {
+    assertThatThrownBy(() -> DeltaUpdateTableMapper.collectRequest(null))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Request body is required");
+  }
+
+  @Test
+  public void collectRequestRejectsEmptyUpdates() {
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.collectRequest(
+                    new UpdateTableRequest()
+                        .requirements(
+                            List.of(
+                                new AssertTableUUID()
+                                    .uuid(UUID.randomUUID())
+                                    .type("assert-table-uuid")))
+                        .updates(List.of())))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("At least one update is required");
+  }
+
+  @Test
+  public void collectRequestRejectsMissingAssertTableUuid() {
+    // Null requirements list
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.collectRequest(
+                    new UpdateTableRequest()
+                        .updates(
+                            List.of(
+                                new SetPropertiesUpdate()
+                                    .updates(Map.of("k", "v"))
+                                    .action("set-properties")))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("assert-table-uuid requirement is required");
+
+    // Empty requirements list
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.collectRequest(
+                    new UpdateTableRequest()
+                        .requirements(List.of())
+                        .updates(
+                            List.of(
+                                new SetPropertiesUpdate()
+                                    .updates(Map.of("k", "v"))
+                                    .action("set-properties")))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("assert-table-uuid requirement is required");
+
+    // Requirements list that has an etag but no UUID assertion
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.collectRequest(
+                    new UpdateTableRequest()
+                        .requirements(List.of(new AssertEtag().etag("etag-x").type("assert-etag")))
+                        .updates(
+                            List.of(
+                                new SetPropertiesUpdate()
+                                    .updates(Map.of("k", "v"))
+                                    .action("set-properties")))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("assert-table-uuid requirement is required");
+  }
+
+  @Test
+  public void collectRequestRejectsDuplicateAssertTableUuid() {
+    UUID id = UUID.randomUUID();
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.collectRequest(
+                    new UpdateTableRequest()
+                        .requirements(
+                            List.of(
+                                new AssertTableUUID().uuid(id).type("assert-table-uuid"),
+                                new AssertTableUUID().uuid(id).type("assert-table-uuid")))
+                        .updates(
+                            List.of(
+                                new SetPropertiesUpdate()
+                                    .updates(Map.of("k", "v"))
+                                    .action("set-properties")))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("At most one assert-table-uuid is allowed per request");
+  }
+
+  @Test
+  public void collectRequestRejectsSetRemovePropertiesOverlap() {
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.collectRequest(
+                    new UpdateTableRequest()
+                        .requirements(
+                            List.of(
+                                new AssertTableUUID()
+                                    .uuid(UUID.randomUUID())
+                                    .type("assert-table-uuid")))
+                        .updates(
+                            List.of(
+                                new SetPropertiesUpdate()
+                                    .updates(Map.of("k", "v"))
+                                    .action("set-properties"),
+                                new RemovePropertiesUpdate()
+                                    .removals(List.of("k"))
+                                    .action("remove-properties")))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("set-properties and remove-properties overlap");
+  }
+
+  @Test
+  public void collectRequestRejectsSetRemoveDomainMetadataOverlap() {
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.collectRequest(
+                    new UpdateTableRequest()
+                        .requirements(
+                            List.of(
+                                new AssertTableUUID()
+                                    .uuid(UUID.randomUUID())
+                                    .type("assert-table-uuid")))
+                        .updates(
+                            List.of(
+                                new SetDomainMetadataUpdate()
+                                    .updates(
+                                        new DomainMetadataUpdates()
+                                            .deltaClustering(
+                                                new ClusteringDomainMetadata()
+                                                    .clusteringColumns(List.of(List.of("c")))))
+                                    .action("set-domain-metadata"),
+                                new RemoveDomainMetadataUpdate()
+                                    .domains(List.of("delta.clustering"))
+                                    .action("remove-domain-metadata")))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("set-domain-metadata and remove-domain-metadata overlap");
+  }
+
+  @Test
+  public void collectRequestAcceptsNonEmptyUpdatesWithUuidRequirement() {
+    UpdateTableRequest req =
+        new UpdateTableRequest()
+            .requirements(
+                List.of(new AssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
+            .updates(
+                List.of(
+                    new SetPropertiesUpdate().updates(Map.of("k", "v")).action("set-properties")));
+    assertThatCode(() -> DeltaUpdateTableMapper.collectRequest(req)).doesNotThrowAnyException();
+  }
+
+  @Test
+  public void assertTableUuidHappyPath() {
+    UUID id = UUID.randomUUID();
+    TableInfoDAO dao = new TableInfoDAO();
+    dao.setId(id);
+    dao.setUpdatedAt(new Date());
+
+    assertThatCode(
+            () ->
+                DeltaUpdateTableMapper.checkRequirements(
+                    dao,
+                    collectRequestFor(new AssertTableUUID().uuid(id).type("assert-table-uuid"))))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void assertTableUuidMismatchSurfacesUpdateRequirementConflict() {
+    TableInfoDAO dao = new TableInfoDAO();
+    dao.setId(UUID.randomUUID());
+    dao.setUpdatedAt(new Date());
+
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.checkRequirements(
+                    dao,
+                    collectRequestFor(
+                        new AssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid"))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("assert-table-uuid failed");
+  }
+
+  @Test
+  public void assertEtagHappyPath() {
+    TableInfoDAO dao = new TableInfoDAO();
+    dao.setId(UUID.randomUUID());
+    Date updatedAt = new Date();
+    dao.setUpdatedAt(updatedAt);
+
+    String expectedEtag = "etag-" + updatedAt.getTime();
+    assertThatCode(
+            () ->
+                DeltaUpdateTableMapper.checkRequirements(
+                    dao,
+                    collectRequestFor(
+                        new AssertTableUUID().uuid(dao.getId()).type("assert-table-uuid"),
+                        new AssertEtag().etag(expectedEtag).type("assert-etag"))))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void assertEtagMismatchSurfacesUpdateRequirementConflict() {
+    TableInfoDAO dao = new TableInfoDAO();
+    dao.setId(UUID.randomUUID());
+    dao.setUpdatedAt(new Date());
+
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.checkRequirements(
+                    dao,
+                    collectRequestFor(
+                        new AssertTableUUID().uuid(dao.getId()).type("assert-table-uuid"),
+                        new AssertEtag().etag("etag-stale").type("assert-etag"))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("assert-etag failed");
+  }
+
+  /** Build a {@link CollectedRequest} with the supplied requirements and a no-op update. */
+  private static CollectedRequest collectRequestFor(TableRequirement... requirements) {
+    return DeltaUpdateTableMapper.collectRequest(
+        new UpdateTableRequest()
+            .requirements(List.of(requirements))
+            .updates(
+                List.of(
+                    new SetPropertiesUpdate().updates(Map.of("k", "v")).action("set-properties"))));
+  }
+}

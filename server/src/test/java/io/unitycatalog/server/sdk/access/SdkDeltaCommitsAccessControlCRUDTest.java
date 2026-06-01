@@ -214,5 +214,34 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
         () -> unauthCommitsApi.commit(commit2), ErrorCode.UNAUTHENTICATED, "authorization");
     assertApiException(
         () -> getCommits(unauthCommitsApi), ErrorCode.UNAUTHENTICATED, "authorization");
+
+    // Delta updateTable's add-commit shares the same UPDATE_TABLE expression as DeltaCommitsApi
+    // postCommit, so SELECT-only users must be denied here too. Pins that the new action inherits
+    // the existing authz contract.
+    io.unitycatalog.client.delta.api.TablesApi readUserDeltaApi =
+        new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(readUserConfig));
+    io.unitycatalog.client.delta.model.UpdateTableRequest addCommitRequest =
+        new io.unitycatalog.client.delta.model.UpdateTableRequest()
+            .requirements(
+                List.of(
+                    new io.unitycatalog.client.delta.model.AssertTableUUID()
+                        .uuid(java.util.UUID.fromString(tableInfo.getTableId()))))
+            .updates(
+                List.of(
+                    new io.unitycatalog.client.delta.model.AddCommitUpdate()
+                        .commit(
+                            new io.unitycatalog.client.delta.model.DeltaCommit()
+                                .version(3L)
+                                .timestamp(1700000003L)
+                                .fileName("00000003.json")
+                                .fileSize(1024L)
+                                .fileModificationTimestamp(1700000003L))));
+    assertPermissionDenied(
+        () ->
+            readUserDeltaApi.updateTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                tableInfo.getName(),
+                addCommitRequest));
   }
 }
