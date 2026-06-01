@@ -1,7 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
@@ -63,18 +62,6 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
     AzureUserDelegationSAS expectedSAS = expected.getAzureUserDelegationSas();
 
     assertThat(expectedSAS.getSasToken()).isEqualTo(sasToken);
-  }
-
-  @Test
-  public void testConstructor() {
-    Configuration conf = new Configuration();
-    AbfsVendedTokenProvider provider = new AbfsVendedTokenProvider();
-
-    assertThatThrownBy(() -> provider.initialize(conf))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessage(
-            "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
-            UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
   }
 
   @Test

@@ -334,7 +334,6 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For table-based temporary requests.
     conf.set(
@@ -355,7 +354,6 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For path-based temporary requests.
     conf.set(
