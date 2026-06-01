@@ -88,6 +88,6 @@ public interface GenericCredentialFetcher {
             TokenProvider.create(conf.getPropsWithPrefix(UCHadoopConfConstants.UC_AUTH_PREFIX)),
             UCHadoopConfConstants.createRequestRetryPolicy(conf),
             conf.getPropsWithPrefix(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX));
-    return create(apiClient, CredId.create(ucUri, conf));
+    return create(apiClient, CredId.create(conf));
   }
 }

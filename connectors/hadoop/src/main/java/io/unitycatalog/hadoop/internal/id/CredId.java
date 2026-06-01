@@ -17,8 +17,8 @@ import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_ID_
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_OPERATION_KEY;
 
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
-import java.net.URI;
 import java.util.Map;
+import java.util.function.Supplier;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -44,7 +44,17 @@ import org.apache.hadoop.conf.Configuration;
  */
 public interface CredId {
 
-  static CredId create(URI uri, Configuration conf) {
+  Supplier<CredId> NO_FALLBACK =
+      () -> {
+        throw new IllegalArgumentException(
+            "Cannot recognize the correct hadoop config to initialize the CredId.");
+      };
+
+  static CredId create(Configuration conf) {
+    return create(conf, NO_FALLBACK);
+  }
+
+  static CredId create(Configuration conf, Supplier<CredId> defaultCredId) {
     String type = conf.get(UC_CREDENTIALS_TYPE_KEY);
     boolean isDeltaApi =
         conf.getBoolean(
@@ -80,19 +90,14 @@ public interface CredId {
       return new TableCredId(tableId, tableOp);
 
     } else {
-      // Case 5: Fallback — keyed by URI scheme + authority.
-      return new DefaultCredId(uri, conf);
+      // Case 5: No recognized credential type — delegate to the caller-provided fallback.
+      return defaultCredId.get();
     }
   }
 
   /**
    * Generate the CredId's corresponding hadoop config properties. The properties returned here can
-   * be used to reconstruct the CredId via {@link #create(URI, Configuration)}.
-   *
-   * <p>This is the inverse of {@code create}: the keys match the credential-request properties read
-   * by {@code create} and written by {@code CredPropsUtil} (credential type, table/path identity,
-   * operation, and — for the UC Delta API — the catalog/schema/table/location or staging-table
-   * identity).
+   * be used to reconstruct the CredId via {@link #create(Configuration)}.
    *
    * @return an unmodifiable map to represent the config key and values; empty when the scope
    *     carries no Unity Catalog credential-request properties (e.g. {@link DefaultCredId}).

@@ -67,7 +67,7 @@ class CredIdTest {
     conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid");
     conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ");
 
-    assertThat(CredId.create(URI.create("s3://b"), conf))
+    assertThat(CredId.create(conf))
         .isInstanceOf(TableCredId.class)
         .isEqualTo(new TableCredId("tid", "READ"));
   }
@@ -81,15 +81,22 @@ class CredIdTest {
     conf.set(UCHadoopConfConstants.UC_PATH_KEY, "s3://b/p");
     conf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, "WRITE");
 
-    assertThat(CredId.create(URI.create("s3://b"), conf))
+    assertThat(CredId.create(conf))
         .isInstanceOf(PathCredId.class)
         .isEqualTo(new PathCredId("s3://b/p", "WRITE"));
   }
 
   @Test
   void createReturnsDefaultKeyWhenNoType() {
-    assertThat(CredId.create(URI.create("s3://b"), new Configuration()))
+    Configuration conf = new Configuration();
+    assertThat(CredId.create(conf, () -> new DefaultCredId(URI.create("s3://b"), conf)))
         .isInstanceOf(DefaultCredId.class);
+  }
+
+  @Test
+  void createThrowsWhenNoTypeAndNoFallback() {
+    assertThatThrownBy(() -> CredId.create(new Configuration()))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
@@ -138,7 +145,7 @@ class CredIdTest {
     conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ_WRITE");
 
     UCDeltaTableIdentifier id = UCDeltaTableIdentifier.of("cat", "sch", "tbl");
-    assertThat(CredId.create(URI.create("s3://b"), conf))
+    assertThat(CredId.create(conf))
         .isInstanceOf(DeltaTableCredId.class)
         .isEqualTo(new DeltaTableCredId(id, "READ_WRITE", "s3://b/tbl"));
   }
@@ -152,7 +159,7 @@ class CredIdTest {
     conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid");
     conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ");
 
-    assertThat(CredId.create(URI.create("s3://b"), conf))
+    assertThat(CredId.create(conf))
         .isInstanceOf(TableCredId.class)
         .isEqualTo(new TableCredId("tid", "READ"));
   }
@@ -182,7 +189,7 @@ class CredIdTest {
     conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "stid-1");
     conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://b/staging");
 
-    assertThat(CredId.create(URI.create("s3://b"), conf))
+    assertThat(CredId.create(conf))
         .isInstanceOf(DeltaStagingTableCredId.class)
         .isEqualTo(new DeltaStagingTableCredId("stid-1", "s3://b/staging"));
   }
@@ -198,8 +205,7 @@ class CredIdTest {
     conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "stid-1");
     conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://b/staging");
 
-    assertThat(CredId.create(URI.create("s3://b"), conf))
-        .isInstanceOf(DeltaStagingTableCredId.class);
+    assertThat(CredId.create(conf)).isInstanceOf(DeltaStagingTableCredId.class);
   }
 
   @Test
@@ -318,6 +324,6 @@ class CredIdTest {
   private static void assertPropsRoundTrip(CredId key) {
     Configuration conf = new Configuration(false);
     key.props().forEach(conf::set);
-    assertThat(CredId.create(URI.create("s3://b"), conf)).isEqualTo(key);
+    assertThat(CredId.create(conf)).isEqualTo(key);
   }
 }
