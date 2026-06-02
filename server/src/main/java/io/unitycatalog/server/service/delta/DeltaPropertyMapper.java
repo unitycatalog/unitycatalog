@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Assembles the stored UC table-property map from a Delta {@link DeltaCreateTableRequest} and the
+ * Assembles the stored UC table-property map from a {@link DeltaCreateTableRequest} and the
  * per-block helpers ({@link #deriveFromProtocol} / {@link #deriveFromDomainMetadata}). Designed to
  * be shared by create, update, and commit endpoints: the mapping rules are specified by the Delta
  * spec and don't vary by endpoint (only create is wired up today; update and commit are on

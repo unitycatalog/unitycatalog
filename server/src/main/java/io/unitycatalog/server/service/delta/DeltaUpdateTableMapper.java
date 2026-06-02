@@ -48,7 +48,7 @@ import java.util.stream.Collectors;
 import org.hibernate.Session;
 
 /**
- * Translates a Delta {@link DeltaUpdateTableRequest} into in-memory mutations on a {@link
+ * Translates a {@link DeltaUpdateTableRequest} into in-memory mutations on a {@link
  * TableInfoDAO}
  * and {@link MutablePropertyMap}. Three phases, each separately callable:
  *
@@ -572,7 +572,7 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * Convert a Delta {@link DeltaCommit} into the UC {@link DeltaCommitInfo} shape so the Delta
+   * Convert a {@link DeltaCommit} into the UC {@link DeltaCommitInfo} shape so the Delta
    * update path can flow through the shared commit-log helpers, which speak the UC wire shape.
    */
   private static DeltaCommitInfo toUcCommitInfo(DeltaCommit commit) {

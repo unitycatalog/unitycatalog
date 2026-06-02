@@ -46,7 +46,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Tests JSON deserialization and serialization of Delta REST API model types. The deserialization
- * test loads a JSON fixture and verifies all fields including typed DeltaType subtypes. The
+ * test loads a JSON fixture and verifies all fields including typed DeltaDataType subtypes. The
  * serialization test constructs objects from scratch and compares against the same fixture.
  */
 public class DeltaModelSerializationTest {
@@ -539,14 +539,14 @@ public class DeltaModelSerializationTest {
         .isEqualTo(expected);
   }
 
-  // ==================== CreateTableRequest round-trip ====================
+  // ==================== DeltaCreateTableRequest round-trip ====================
 
   @Test
   public void testCreateTableRequestRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/create-table-request.json");
     DeltaCreateTableRequest req = MAPPER.readValue(json, DeltaCreateTableRequest.class);
 
-    // Verify DeltaType serde works on nested DeltaStructType fields
+    // Verify DeltaDataType serde works on nested DeltaStructType fields
     DeltaStructField idField = req.getColumns().getFields().get(0);
     assertThat(idField.getType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(idField.getType().getType()).isEqualTo("long");
@@ -568,14 +568,14 @@ public class DeltaModelSerializationTest {
         .isEqualTo("array");
   }
 
-  // ==================== LoadTableResponse round-trip ====================
+  // ==================== DeltaLoadTableResponse round-trip ====================
 
   @Test
   public void testLoadTableResponseRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/load-table-response.json");
     DeltaLoadTableResponse resp = MAPPER.readValue(json, DeltaLoadTableResponse.class);
 
-    // Verify DeltaType serde works in TableMetadata.columns
+    // Verify DeltaDataType serde works in DeltaTableMetadata.columns
     DeltaStructField priceField = resp.getMetadata().getColumns().getFields().get(1);
     assertThat(priceField.getType()).isInstanceOf(DeltaDecimalType.class);
     assertThat(((DeltaDecimalType) priceField.getType()).getPrecision()).isEqualTo(10);

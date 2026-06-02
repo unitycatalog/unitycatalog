@@ -266,9 +266,9 @@ public class TableRepository {
   }
 
   /**
-   * Apply a Delta {@link DeltaUpdateTableRequest} in a single write transaction and return the
-   * refreshed {@link DeltaLoadTableResponse}. Covers both pure metadata edits
-   * (set/remove-properties, set-protocol, set-columns, set-partition-columns, set-table-comment,
+   * Apply a {@link DeltaUpdateTableRequest} in a single write transaction and return the refreshed
+   * {@link DeltaLoadTableResponse}. Covers both pure metadata edits (set/remove-properties,
+   * set-protocol, set-columns, set-partition-columns, set-table-comment,
    * set/remove-domain-metadata, update-metadata-snapshot-version) and CCv2 commit-log writes
    * (add-commit + optional uniform metadata, set-latest-backfilled-version) -- the latter route
    * through {@link DeltaCommitRepository#applyCommitAndBackfillInSession} so the commit-log

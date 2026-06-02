@@ -8,7 +8,7 @@ import java.util.Arrays;
 
 /**
  * Exception handler for the UC Delta API. Converts exceptions to JSON error responses using the
- * generated DeltaErrorResponse/DeltaErrorModel/ErrorType from delta.yaml.
+ * generated DeltaErrorResponse/DeltaErrorModel/DeltaErrorType from delta.yaml.
  */
 public class DeltaApiExceptionHandler extends BaseExceptionHandler {
 

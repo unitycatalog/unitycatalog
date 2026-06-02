@@ -21,7 +21,7 @@ public final class DeltaCredentialsMapper {
   private DeltaCredentialsMapper() {}
 
   /**
-   * Build a Delta {@link DeltaCredentialsResponse} from UC {@link TemporaryCredentials} for a given
+   * Build a {@link DeltaCredentialsResponse} from UC {@link TemporaryCredentials} for a given
    * storage prefix and operation.
    */
   public static DeltaCredentialsResponse toCredentialsResponse(

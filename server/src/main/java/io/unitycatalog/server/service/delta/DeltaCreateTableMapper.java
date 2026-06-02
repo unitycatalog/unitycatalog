@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Converts a Delta {@link DeltaCreateTableRequest} (with typed Delta columns and kebab-case field
+ * Converts a {@link DeltaCreateTableRequest} (with typed Delta columns and kebab-case field
  * names) into the UC {@link CreateTable} (with UC {@link ColumnInfo}s and
  * partition-index-per-column). The server holds path params for catalog and schema; the rest
  * comes from the request body.

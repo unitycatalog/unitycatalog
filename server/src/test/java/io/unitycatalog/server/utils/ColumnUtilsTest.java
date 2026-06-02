@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Tests for ColumnUtils.toStructField parsing typeJson into typed Delta DeltaStructField. */
+/** Tests for ColumnUtils.toStructField parsing typeJson into typed DeltaStructField. */
 public class ColumnUtilsTest {
 
   private static ColumnInfo col(String name, String typeJson) {
@@ -199,7 +199,7 @@ public class ColumnUtilsTest {
         .hasMessageContaining("Failed to parse");
   }
 
-  // ---------- toColumnInfo (Delta DeltaStructField -> UC ColumnInfo) ----------
+  // ---------- toColumnInfo (DeltaStructField -> UC ColumnInfo) ----------
 
   @Test
   public void testToColumnInfoPrimitive() {

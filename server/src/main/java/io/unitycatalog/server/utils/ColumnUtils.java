@@ -133,8 +133,7 @@ public class ColumnUtils {
 
   /**
    * Convert a UC ColumnInfo to a Delta REST API DeltaStructField by parsing typeJson directly. The
-   * typeJson is in Spark's DeltaStructField format and contains the complete field definition
-   * (name,
+   * typeJson is in Spark's StructField format and contains the complete field definition (name,
    * type, nullable, metadata). Only partitionIndex comes from ColumnInfo, not typeJson.
    */
   public static DeltaStructField toStructField(ColumnInfo column) {
@@ -151,8 +150,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Validate that a UC column stores typeJson as Spark DeltaStructField JSON. The Spark connector
-   * and
+   * Validate that a UC column stores typeJson as Spark StructField JSON. The Spark connector and
    * Delta REST APIs depend on name, type, nullable, and metadata being present in this payload.
    */
   public static void validateTypeJson(ColumnInfo column) {
@@ -226,8 +224,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Serialize a Delta DeltaStructField to Spark's camelCase typeJson format for UC database
-   * storage.
+   * Serialize a DeltaStructField to Spark's camelCase typeJson format for UC database storage.
    */
   public static String toTypeJson(DeltaStructField field) {
     try {
@@ -276,7 +273,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Project a list of Delta {@link DeltaStructField}s into UC {@link ColumnInfo}s, stamping each
+   * Project a list of {@link DeltaStructField}s into UC {@link ColumnInfo}s, stamping each
    * column's {@code position} from its index in the list. Used by both the create and update paths
    * of the UC Delta API so the wire-order-to-position mapping stays in one place.
    */
@@ -334,7 +331,7 @@ public class ColumnUtils {
     if (type instanceof DeltaDecimalType) return ColumnTypeName.DECIMAL;
     if (type instanceof DeltaMapType) return ColumnTypeName.MAP;
     if (type instanceof DeltaStructType) return ColumnTypeName.STRUCT;
-    // PrimitiveType: the discriminator string IS the primitive name. The accepted set is the
+    // DeltaPrimitiveType: the discriminator string IS the primitive name. The accepted set is the
     // closed list of Delta-protocol primitives -- Kernel's BasePrimitiveType registry. Reject
     // with INVALID_ARGUMENT for anything else; the server-side ColumnTypeName enum has no
     // UNKNOWN_DEFAULT_OPEN_API sentinel (OpenAPI generator adds it only for clients).

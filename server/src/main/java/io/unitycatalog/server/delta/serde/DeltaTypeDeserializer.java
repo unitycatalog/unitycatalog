@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 
 /**
  * Custom deserializer for DeltaDataType that handles the string-or-object polymorphism in
- * StructField.type.
+ * DeltaStructField.type.
  */
 public class DeltaTypeDeserializer extends StdDeserializer<DeltaDataType> {
 

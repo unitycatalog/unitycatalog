@@ -57,8 +57,7 @@ public enum ErrorCode {
   STORAGE_CREDENTIAL_ALREADY_EXISTS(20, 400, DeltaErrorType.ALREADY_EXISTS_EXCEPTION, 409),
   EXTERNAL_LOCATION_ALREADY_EXISTS(21, 400, DeltaErrorType.ALREADY_EXISTS_EXCEPTION, 409);
 
-  // Canonical mapping from Delta DeltaErrorType to HTTP status. Built at class-load time and
-  // validated
+  // Canonical mapping from DeltaErrorType to HTTP status. Built at class-load time and validated
   // to ensure every ErrorCode that shares the same deltaErrorType also agrees on deltaHttpStatus.
   private static final Map<DeltaErrorType, HttpStatus> DELTA_ERROR_TYPE_TO_STATUS;
 

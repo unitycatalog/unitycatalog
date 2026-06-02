@@ -512,7 +512,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
     }
   }
 
-  /** Minimum valid Delta CreateTableRequest for an EXTERNAL Delta table. */
+  /** Minimum valid DeltaCreateTableRequest for an EXTERNAL Delta table. */
   private static DeltaCreateTableRequest
       deltaExternalTableRequest(String name, String location) {
     return new DeltaCreateTableRequest()
