@@ -17,6 +17,7 @@ import scala.util.parsing.json.JSON
  *   - sparkSourceDirSettings: wires per-version shim source dirs
  *   - source-build metadata: optional CI/cache overlay for testing a Spark source ref
  *     with an existing compatibility line; it is not a separate release target
+ *   - sparkCommit: optional exact Spark commit built locally for source-built profiles
  */
 
 case class SparkVersionSpec(
@@ -80,13 +81,62 @@ object CrossSparkVersions extends AutoPlugin {
   /** Resolves the active SparkVersionSpec from `-DsparkVersion` (full or short form). */
   def getSparkVersionSpec(): SparkVersionSpec = {
     val input = sys.props.getOrElse("sparkVersion", SparkVersionSpec.DEFAULT.fullVersion)
-    SparkVersionSpec.ALL_SPECS.find { spec =>
-      spec.fullVersion == input || spec.shortVersion == input
-    }.getOrElse {
+    val candidates =
+      if (input == "master") SparkVersionSpec.ALL_SPECS.filter(_.requiresSparkCommit)
+      else SparkVersionSpec.ALL_SPECS.filter { spec =>
+        spec.fullVersion == input || spec.shortVersion == input
+      }
+
+    val spec = if (getSparkCommit().isDefined || getSparkArtifactVersionOverride().isDefined) {
+      candidates.find(_.requiresSparkCommit).orElse(candidates.headOption)
+    } else {
+      candidates.find(!_.requiresSparkCommit).orElse(candidates.headOption)
+    }
+
+    spec.getOrElse {
       val valid = SparkVersionSpec.ALL_SPECS.flatMap(s => Seq(s.fullVersion, s.shortVersion))
       throw new IllegalArgumentException(
-        s"Invalid sparkVersion: $input. Valid values: ${valid.mkString(", ")}"
+        s"Invalid sparkVersion: $input. Valid values: ${(valid :+ "master").mkString(", ")}"
       )
+    }
+  }
+
+  private def propertyOrEnv(propertyName: String, envName: String): Option[String] = {
+    sys.props.get(propertyName).orElse(sys.env.get(envName)).filter(_.nonEmpty)
+  }
+
+  private def getSparkCommit(): Option[String] =
+    propertyOrEnv("sparkCommit", "SPARK_COMMIT")
+
+  private def getSparkArtifactVersionOverride(): Option[String] =
+    propertyOrEnv("sparkArtifactVersion", "SPARK_ARTIFACT_VERSION")
+
+  private def shortCommit(commit: String): String = {
+    val trimmed = commit.trim.toLowerCase
+    if (!trimmed.matches("[0-9a-f]{7,40}")) {
+      throw new IllegalArgumentException(
+        s"Invalid sparkCommit '$commit'. Expected a 7 to 40 character git SHA."
+      )
+    }
+    trimmed.take(12)
+  }
+
+  def sparkArtifactVersionForCommit(spec: SparkVersionSpec, commit: String): String = {
+    s"${spec.artifactBaseVersion}-${shortCommit(commit)}-SNAPSHOT"
+  }
+
+  def getSparkArtifactVersion(): String = {
+    val spec = getSparkVersionSpec()
+    getSparkArtifactVersionOverride().getOrElse {
+      getSparkCommit() match {
+        case Some(commit) => sparkArtifactVersionForCommit(spec, commit)
+        case None if spec.requiresSparkCommit =>
+          throw new IllegalArgumentException(
+            s"Spark ${spec.fullVersion} requires -DsparkCommit=<sha> " +
+              "or -DsparkArtifactVersion=<local-maven-version>."
+          )
+        case None => spec.fullVersion
+      }
     }
   }
 
