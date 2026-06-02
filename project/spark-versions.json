@@ -4,6 +4,6 @@
     {"version": "4.0.0", "sourceDir": "scala-shims/spark-4.0"},
     {"version": "4.1.0", "sourceDir": "scala-shims/spark-4.1"},
     {"version": "4.2.0-preview5", "sourceDir": "scala-shims/spark-4.2"},
-    {"version": "4.2.0", "sourceDir": "scala-shims/spark-4.2", "requiresSparkCommit": true}
+    {"version": "4.2.0-SNAPSHOT", "sourceDir": "scala-shims/spark-4.2", "requiresSparkCommit": true}
   ]
 }

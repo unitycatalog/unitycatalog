@@ -11,7 +11,7 @@ on:
       spark-version:
         description: "Spark compatibility line used for UC and Delta shims"
         required: true
-        default: "4.2.0-preview5"
+        default: "4.2.0-SNAPSHOT"
         type: string
 
 permissions:

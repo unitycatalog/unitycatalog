@@ -49,7 +49,7 @@ jobs:
             # Cross-version testing with Delta master is informational; failures
             # indicate upcoming incompatibilities but should not block PRs.
             non-blocking: true
-          - spark-version: "4.2.0-preview5"
+          - spark-version: "4.2.0-SNAPSHOT"
             delta-version: "master-SNAPSHOT"
             validation-mode: "spark-tests"
             non-blocking: true
@@ -64,7 +64,7 @@ jobs:
         cache: 'sbt'
 
     - name: Resolve Spark source ref
-      if: matrix.spark-version == '4.2.0-preview5' && matrix.delta-version == 'master-SNAPSHOT'
+      if: matrix.spark-version == '4.2.0-SNAPSHOT' && matrix.delta-version == 'master-SNAPSHOT'
       id: spark-source
       run: |
         git init /tmp/spark
@@ -98,7 +98,7 @@ jobs:
         echo "Resolved Spark source ref $SPARK_SOURCE_REF to $SPARK_SHA"
 
     - name: Restore Spark Maven cache
-      if: matrix.spark-version == '4.2.0-preview5' && matrix.delta-version == 'master-SNAPSHOT'
+      if: matrix.spark-version == '4.2.0-SNAPSHOT' && matrix.delta-version == 'master-SNAPSHOT'
       id: spark-source-cache
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
@@ -106,13 +106,13 @@ jobs:
         key: spark-m2-ubuntu-latest-scala-2.13-${{ matrix.spark-version }}-${{ steps.spark-source.outputs.spark_sha }}-${{ hashFiles('project/scripts/build_spark_from_source.sh') }}
 
     - name: Fail on Spark source cache miss
-      if: matrix.spark-version == '4.2.0-preview5' && matrix.delta-version == 'master-SNAPSHOT' && steps.spark-source-cache.outputs.cache-hit != 'true'
+      if: matrix.spark-version == '4.2.0-SNAPSHOT' && matrix.delta-version == 'master-SNAPSHOT' && steps.spark-source-cache.outputs.cache-hit != 'true'
       run: |
         echo "::error::Spark Maven artifacts were not found in the GitHub Actions cache. Run the Spark Source Artifact Cache workflow for $SPARK_SOURCE_REF first."
         exit 1
 
     - name: Verify restored Spark Maven artifacts
-      if: matrix.spark-version == '4.2.0-preview5' && matrix.delta-version == 'master-SNAPSHOT'
+      if: matrix.spark-version == '4.2.0-SNAPSHOT' && matrix.delta-version == 'master-SNAPSHOT'
       env:
         SPARK_ARTIFACT_VERSION: ${{ steps.spark-source.outputs.spark_artifact_version }}
       run: |
