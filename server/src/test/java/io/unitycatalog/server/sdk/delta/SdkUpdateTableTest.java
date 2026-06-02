@@ -31,6 +31,9 @@ import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
 import io.unitycatalog.client.delta.model.DeltaUpdateSnapshotVersionUpdate;
 import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.delta.DeltaBaseTableCRUDTestEnv;
@@ -529,12 +532,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
 
     // -------- non-Delta table is rejected before any mutation commits --------
     {
-      io.unitycatalog.client.model.TableInfo external =
+      TableInfo external =
           createTestingTable(
               "tbl_external_parquet",
-              io.unitycatalog.client.model.TableType.EXTERNAL,
+              TableType.EXTERNAL,
               Optional.of(testDirectoryRoot.toString()),
-              io.unitycatalog.client.model.DataSourceFormat.PARQUET,
+              DataSourceFormat.PARQUET,
               tableOperations);
       TestUtils.assertDeltaApiException(
           () ->

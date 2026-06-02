@@ -38,6 +38,8 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
 
 /**
  * Tests JSON deserialization and serialization of Delta REST API model types. The deserialization
@@ -529,8 +531,8 @@ public class DeltaModelSerializationTest {
   @Test
   public void testCreateTableRequestRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/create-table-request.json");
-    io.unitycatalog.server.delta.model.DeltaCreateTableRequest req =
-        MAPPER.readValue(json, io.unitycatalog.server.delta.model.DeltaCreateTableRequest.class);
+    DeltaCreateTableRequest req =
+        MAPPER.readValue(json, DeltaCreateTableRequest.class);
 
     // Verify DeltaType serde works on nested DeltaStructType fields
     DeltaStructField idField = req.getColumns().getFields().get(0);
@@ -559,8 +561,8 @@ public class DeltaModelSerializationTest {
   @Test
   public void testLoadTableResponseRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/load-table-response.json");
-    io.unitycatalog.server.delta.model.DeltaLoadTableResponse resp =
-        MAPPER.readValue(json, io.unitycatalog.server.delta.model.DeltaLoadTableResponse.class);
+    DeltaLoadTableResponse resp =
+        MAPPER.readValue(json, DeltaLoadTableResponse.class);
 
     // Verify DeltaType serde works in TableMetadata.columns
     DeltaStructField priceField = resp.getMetadata().getColumns().getFields().get(1);

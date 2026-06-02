@@ -3,7 +3,7 @@ package io.unitycatalog.hadoop.internal;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.delta.model.CredentialOperation;
+import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.model.AwsCredentials;
@@ -138,10 +138,10 @@ public class CredPropsUtil {
       return self();
     }
 
-    public T credentialOperation(CredentialOperation credentialOp) {
+    public T credentialOperation(DeltaCredentialOperation credentialOp) {
       Preconditions.checkArgument(
-          credentialOp == CredentialOperation.READ
-              || credentialOp == CredentialOperation.READ_WRITE,
+          credentialOp == DeltaCredentialOperation.READ
+              || credentialOp == DeltaCredentialOperation.READ_WRITE,
           "UC Delta supports READ and READ_WRITE credential operations, got: %s",
           credentialOp);
       builder.put(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, credentialOp.getValue());
@@ -523,7 +523,7 @@ public class CredPropsUtil {
       TokenProvider tokenProvider,
       UCDeltaTableIdentifier identifier,
       String location,
-      CredentialOperation credentialOp,
+      DeltaCredentialOperation credentialOp,
       TemporaryCredentials tempCreds,
       Map<String, String> appVersions) {
     switch (scheme) {
@@ -842,7 +842,7 @@ public class CredPropsUtil {
         tokenProvider,
         identifier,
         location,
-        CredentialOperation.fromValue(tableOp.value()),
+        DeltaCredentialOperation.fromValue(tableOp.value()),
         creds,
         appVersions);
   }

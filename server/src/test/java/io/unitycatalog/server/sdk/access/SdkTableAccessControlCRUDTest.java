@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
@@ -15,6 +16,7 @@ import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -63,14 +65,9 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     SchemasApi regular2SchemasApi = new SchemasApi(TestUtils.createApiClient(regular2Config));
 
     // Delta REST API clients for loadTable tests
-    io.unitycatalog.client.delta.api.DeltaTablesApi adminDeltaApi =
-        new io.unitycatalog.client.delta.api.DeltaTablesApi(adminApiClient);
-    io.unitycatalog.client.delta.api.DeltaTablesApi regular1DeltaApi =
-        new io.unitycatalog.client.delta.api.DeltaTablesApi(
-            TestUtils.createApiClient(regular1Config));
-    io.unitycatalog.client.delta.api.DeltaTablesApi regular2DeltaApi =
-        new io.unitycatalog.client.delta.api.DeltaTablesApi(
-            TestUtils.createApiClient(regular2Config));
+    DeltaTablesApi adminDeltaApi = new DeltaTablesApi(adminApiClient);
+    DeltaTablesApi regular1DeltaApi = new DeltaTablesApi(TestUtils.createApiClient(regular1Config));
+    DeltaTablesApi regular2DeltaApi = new DeltaTablesApi(TestUtils.createApiClient(regular2Config));
 
     // Delta REST credential clients for getTableCredentials tests
     DeltaTemporaryCredentialsApi principal1DeltaCredsApi =
@@ -242,7 +239,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
             new DeltaCreateTableRequest()
                 .name(deltaExternalName)
                 .location(deltaExternalLocation)
-                .tableType(io.unitycatalog.client.delta.model.DeltaTableType.EXTERNAL)
+                .tableType(DeltaTableType.EXTERNAL)
                 .columns(
                     new DeltaStructType()
                         .type("struct")

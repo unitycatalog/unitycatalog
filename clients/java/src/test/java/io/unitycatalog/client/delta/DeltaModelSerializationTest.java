@@ -12,8 +12,10 @@ import io.unitycatalog.client.delta.model.DeltaAssertEtag;
 import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCommit;
+import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.client.delta.model.DeltaDecimalType;
 import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaMapType;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
@@ -542,8 +544,7 @@ public class DeltaModelSerializationTest {
   @Test
   public void testCreateTableRequestRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/create-table-request.json");
-    io.unitycatalog.client.delta.model.DeltaCreateTableRequest req =
-        MAPPER.readValue(json, io.unitycatalog.client.delta.model.DeltaCreateTableRequest.class);
+    DeltaCreateTableRequest req = MAPPER.readValue(json, DeltaCreateTableRequest.class);
 
     // Verify DeltaType serde works on nested DeltaStructType fields
     DeltaStructField idField = req.getColumns().getFields().get(0);
@@ -572,8 +573,7 @@ public class DeltaModelSerializationTest {
   @Test
   public void testLoadTableResponseRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/load-table-response.json");
-    io.unitycatalog.client.delta.model.DeltaLoadTableResponse resp =
-        MAPPER.readValue(json, io.unitycatalog.client.delta.model.DeltaLoadTableResponse.class);
+    DeltaLoadTableResponse resp = MAPPER.readValue(json, DeltaLoadTableResponse.class);
 
     // Verify DeltaType serde works in TableMetadata.columns
     DeltaStructField priceField = resp.getMetadata().getColumns().getFields().get(1);

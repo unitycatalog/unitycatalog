@@ -15,6 +15,7 @@ import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
@@ -340,7 +341,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   public void testCreateExternalTableVolumePermissionsViaDelta() throws Exception {
     runExternalTableVolumePermissionsTest(
         (apiClient, name, location) ->
-            new io.unitycatalog.client.delta.api.DeltaTablesApi(apiClient)
+            new DeltaTablesApi(apiClient)
                 .createTable(
                     TestUtils.CATALOG_NAME,
                     TestUtils.SCHEMA_NAME,
@@ -512,27 +513,27 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   /** Minimum valid Delta CreateTableRequest for an EXTERNAL Delta table. */
-  private static io.unitycatalog.client.delta.model.DeltaCreateTableRequest
+  private static DeltaCreateTableRequest
       deltaExternalTableRequest(String name, String location) {
-    return new io.unitycatalog.client.delta.model.DeltaCreateTableRequest()
+    return new DeltaCreateTableRequest()
         .name(name)
         .location(location)
-        .tableType(io.unitycatalog.client.delta.model.DeltaTableType.EXTERNAL)
+        .tableType(DeltaTableType.EXTERNAL)
         .protocol(
-            new io.unitycatalog.client.delta.model.DeltaProtocol()
+            new DeltaProtocol()
                 .minReaderVersion(3)
                 .minWriterVersion(7)
                 .readerFeatures(List.of("deletionVectors"))
                 .writerFeatures(List.of("deletionVectors")))
         .columns(
-            new io.unitycatalog.client.delta.model.DeltaStructType()
+            new DeltaStructType()
                 .type("struct")
                 .fields(
                     List.of(
-                        new io.unitycatalog.client.delta.model.DeltaStructField()
+                        new DeltaStructField()
                             .name("id")
                             .type(
-                                new io.unitycatalog.client.delta.model.DeltaPrimitiveType()
+                                new DeltaPrimitiveType()
                                     .type("long"))
                             .nullable(true)
                             .metadata(java.util.Map.of()))))

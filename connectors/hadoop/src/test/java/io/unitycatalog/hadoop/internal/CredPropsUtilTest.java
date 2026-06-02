@@ -6,10 +6,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.delta.model.CredentialOperation;
+import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
+import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
@@ -195,7 +196,7 @@ class CredPropsUtilTest {
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
-            CredentialOperation.READ_WRITE,
+            DeltaCredentialOperation.READ_WRITE,
             s3Creds(),
             Map.of());
 
@@ -228,7 +229,7 @@ class CredPropsUtilTest {
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "gs://bucket/tbl",
-            CredentialOperation.READ,
+            DeltaCredentialOperation.READ,
             gcsCreds(),
             Map.of());
 
@@ -257,7 +258,7 @@ class CredPropsUtilTest {
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "abfss://container@account.dfs.core.windows.net/tbl",
-            CredentialOperation.READ_WRITE,
+            DeltaCredentialOperation.READ_WRITE,
             abfsCreds(),
             Map.of());
 
@@ -286,7 +287,7 @@ class CredPropsUtilTest {
             null,
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
-            CredentialOperation.READ_WRITE,
+            DeltaCredentialOperation.READ_WRITE,
             s3Creds(),
             Map.of());
 
@@ -310,7 +311,7 @@ class CredPropsUtilTest {
                 null,
                 UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
                 "hdfs://namenode/tbl",
-                CredentialOperation.READ_WRITE,
+                DeltaCredentialOperation.READ_WRITE,
                 s3Creds(),
                 Map.of()))
         .isEmpty();
@@ -332,7 +333,7 @@ class CredPropsUtilTest {
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
-            CredentialOperation.READ_WRITE,
+            DeltaCredentialOperation.READ_WRITE,
             s3Creds(),
             Map.of());
 
@@ -352,7 +353,7 @@ class CredPropsUtilTest {
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
-            CredentialOperation.READ_WRITE,
+            DeltaCredentialOperation.READ_WRITE,
             s3Creds(),
             Map.of());
 
@@ -687,7 +688,7 @@ class CredPropsUtilTest {
             "http://uc",
             tokenProvider(),
             "s3://bucket/key",
-            io.unitycatalog.client.model.PathOperation.PATH_READ,
+            PathOperation.PATH_READ,
             s3Creds(),
             Map.of());
 
@@ -746,7 +747,7 @@ class CredPropsUtilTest {
                 "http://uc",
                 null,
                 "hdfs://nn/key",
-                io.unitycatalog.client.model.PathOperation.PATH_READ,
+                PathOperation.PATH_READ,
                 s3Creds(),
                 Map.of()))
         .isEmpty();
@@ -984,7 +985,7 @@ class CredPropsUtilTest {
             "http://uc",
             null,
             "gs://bucket/key",
-            io.unitycatalog.client.model.PathOperation.PATH_READ,
+            PathOperation.PATH_READ,
             gcsCreds(),
             Map.of());
 
@@ -1000,7 +1001,7 @@ class CredPropsUtilTest {
             null,
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "gs://bucket/tbl",
-            CredentialOperation.READ_WRITE,
+            DeltaCredentialOperation.READ_WRITE,
             gcsCreds(),
             Map.of());
 

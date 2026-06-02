@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.delta;
 
 import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -93,11 +94,11 @@ public final class DeltaCreateTableMapper {
             .columns(columns)
             .comment(req.getComment())
             .storageLocation(req.getLocation())
-        .properties(DeltaPropertyMapper.buildStoredProperties(req));
+            .properties(DeltaPropertyMapper.buildStoredProperties(req));
     return new Result(createTable, uniformFields);
   }
 
-  private static TableType toUCTableType(io.unitycatalog.server.delta.model.DeltaTableType type) {
+  private static TableType toUCTableType(DeltaTableType type) {
     if (type == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "table-type is required.");
     }

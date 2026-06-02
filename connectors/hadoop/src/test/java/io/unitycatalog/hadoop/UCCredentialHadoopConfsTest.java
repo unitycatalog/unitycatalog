@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs.PathOperation;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs.TableOperation;
 import java.util.Map;
@@ -174,8 +175,7 @@ class UCCredentialHadoopConfsTest {
           io.unitycatalog.client.model.TableOperation.fromValue(hadoopOp.value());
       assertThat(restOp.getValue()).isEqualTo(hadoopOp.value());
 
-      io.unitycatalog.client.delta.model.CredentialOperation deltaOp =
-          io.unitycatalog.client.delta.model.CredentialOperation.fromValue(hadoopOp.value());
+      DeltaCredentialOperation deltaOp = DeltaCredentialOperation.fromValue(hadoopOp.value());
       assertThat(deltaOp.getValue()).isEqualTo(hadoopOp.value());
     }
   }

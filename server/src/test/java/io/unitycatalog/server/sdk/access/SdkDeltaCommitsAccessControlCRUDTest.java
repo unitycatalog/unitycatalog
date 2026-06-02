@@ -6,6 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.api.DeltaCommitsApi;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
+import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateStagingTable;
@@ -218,18 +222,16 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
     // Delta updateTable's add-commit shares the same UPDATE_TABLE expression as DeltaCommitsApi
     // postCommit, so SELECT-only users must be denied here too. Pins that the new action inherits
     // the existing authz contract.
-    io.unitycatalog.client.delta.api.DeltaTablesApi readUserDeltaApi =
-        new io.unitycatalog.client.delta.api.DeltaTablesApi(
-            TestUtils.createApiClient(readUserConfig));
-    io.unitycatalog.client.delta.model.DeltaUpdateTableRequest addCommitRequest =
-        new io.unitycatalog.client.delta.model.DeltaUpdateTableRequest()
+    DeltaTablesApi readUserDeltaApi = new DeltaTablesApi(TestUtils.createApiClient(readUserConfig));
+    DeltaUpdateTableRequest addCommitRequest =
+        new DeltaUpdateTableRequest()
             .requirements(
                 List.of(
-                    new io.unitycatalog.client.delta.model.DeltaAssertTableUUID()
+                    new DeltaAssertTableUUID()
                         .uuid(java.util.UUID.fromString(tableInfo.getTableId()))))
             .updates(
                 List.of(
-                    new io.unitycatalog.client.delta.model.DeltaAddCommitUpdate()
+                    new DeltaAddCommitUpdate()
                         .commit(
                             new io.unitycatalog.client.delta.model.DeltaCommit()
                                 .version(3L)
