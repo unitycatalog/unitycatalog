@@ -1,11 +1,12 @@
-name: "UC Spark Commit"
+name: "UC Spark Source Ref"
 
 on:
   workflow_dispatch:
     inputs:
-      spark-commit:
-        description: "Apache Spark commit SHA to build locally"
+      spark-source-ref:
+        description: "Apache Spark source ref to build locally"
         required: true
+        default: "b6bd005ac7549411ec4e7dc944d7a0e19fd56561"
         type: string
       spark-version:
         description: "Spark compatibility line used for UC and Delta shims"
@@ -28,7 +29,7 @@ permissions:
 
 jobs:
   test:
-    name: "UC against Spark ${{ inputs.spark-commit }}"
+    name: "UC against Spark ${{ inputs['spark-source-ref'] }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -40,38 +41,38 @@ jobs:
           distribution: "zulu"
           cache: "sbt"
 
-      - name: Build Spark commit locally
+      - name: Build Spark source ref locally
         id: spark-build
         env:
-          SPARK_COMMIT: ${{ inputs.spark-commit }}
-          SPARK_VERSION: ${{ inputs.spark-version }}
+          SPARK_SOURCE_REF: ${{ inputs['spark-source-ref'] }}
+          SPARK_VERSION: ${{ inputs['spark-version'] }}
         run: bash project/scripts/build_spark_from_source.sh
 
       - name: Build, package, and publish UC locally
         run: |
           build/sbt \
-            -DsparkVersion=${{ inputs.spark-version }} \
-            -DsparkCommit=${{ inputs.spark-commit }} \
+            -DsparkVersion=${{ inputs['spark-version'] }} \
+            -DsparkCommit=${{ steps.spark-build.outputs.SPARK_SHA }} \
             -DsparkArtifactVersion=${{ steps.spark-build.outputs.SPARK_ARTIFACT_VERSION }} \
             -DskipDeltaSpark=true \
             -J-Xmx2G \
             package publishLocal publishM2
 
-      - name: Build Delta from source against Spark commit
+      - name: Build Delta from source against Spark source ref
         id: delta-build
         env:
-          DELTA_REPO: ${{ inputs.delta-repo }}
-          DELTA_REF: ${{ inputs.delta-ref }}
-          SPARK_VERSION: ${{ inputs.spark-version }}
-          SPARK_COMMIT: ${{ inputs.spark-commit }}
+          DELTA_REPO: ${{ inputs['delta-repo'] }}
+          DELTA_REF: ${{ inputs['delta-ref'] }}
+          SPARK_VERSION: ${{ inputs['spark-version'] }}
+          SPARK_COMMIT: ${{ steps.spark-build.outputs.SPARK_SHA }}
           SPARK_ARTIFACT_VERSION: ${{ steps.spark-build.outputs.SPARK_ARTIFACT_VERSION }}
         run: bash project/scripts/build_delta_from_source.sh
 
       - name: Run UC Spark tests
         run: |
           build/sbt \
-            -DsparkVersion=${{ inputs.spark-version }} \
-            -DsparkCommit=${{ inputs.spark-commit }} \
+            -DsparkVersion=${{ inputs['spark-version'] }} \
+            -DsparkCommit=${{ steps.spark-build.outputs.SPARK_SHA }} \
             -DsparkArtifactVersion=${{ steps.spark-build.outputs.SPARK_ARTIFACT_VERSION }} \
             -DdeltaVersion=${{ steps.delta-build.outputs.DELTA_VERSION }} \
             -J-Xmx2G \

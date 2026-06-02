@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 #
-# Build a specific Apache Spark commit and publish it to local Maven for UC tests.
+# Build a specific Apache Spark source ref and publish it to local Maven for UC tests.
 #
 # Required:
-#   SPARK_COMMIT=<git-sha>
+#   SPARK_SOURCE_REF=<git-ref-or-sha>
 #
 # Optional:
+#   SPARK_COMMIT=<git-sha> compatibility alias for SPARK_SOURCE_REF
 #   SPARK_VERSION=<compatibility line, default: 4.2>
-#   SPARK_BASE_VERSION=<artifact base version, default: ${SPARK_VERSION}.0>
+#   SPARK_BASE_VERSION=<artifact base version; default read from Spark version.sbt>
 #   SPARK_ARTIFACT_VERSION=<exact local Maven version to publish>
 #   SPARK_REPO=<git URL, default: https://github.com/apache/spark.git>
 #   SPARK_DIR=<checkout dir, default: /tmp/spark>
@@ -17,52 +18,79 @@
 #
 set -euo pipefail
 
-SPARK_COMMIT="${SPARK_COMMIT:?SPARK_COMMIT is required}"
+SPARK_SOURCE_REF="${SPARK_SOURCE_REF:-${SPARK_COMMIT:-}}"
+SPARK_SOURCE_REF="${SPARK_SOURCE_REF:?SPARK_SOURCE_REF is required}"
 SPARK_REPO="${SPARK_REPO:-https://github.com/apache/spark.git}"
 SPARK_DIR="${SPARK_DIR:-/tmp/spark}"
 SPARK_VERSION="${SPARK_VERSION:-4.2}"
+SPARK_MVN_PROFILES="${SPARK_MVN_PROFILES:--Pscala-2.13 -Phive -Phive-thriftserver -Pconnect}"
+SPARK_MVN_GOALS="${SPARK_MVN_GOALS:-install}"
+SPARK_MVN_EXTRA_ARGS="${SPARK_MVN_EXTRA_ARGS:-}"
+
+if [[ -d "$SPARK_DIR/.git" ]]; then
+  echo "Using existing Spark checkout at $SPARK_DIR"
+else
+  echo "Initializing Spark checkout at $SPARK_DIR"
+  mkdir -p "$SPARK_DIR"
+  git -C "$SPARK_DIR" init
+fi
+
+if ! git -C "$SPARK_DIR" remote get-url origin > /dev/null 2>&1; then
+  git -C "$SPARK_DIR" remote add origin "$SPARK_REPO"
+else
+  git -C "$SPARK_DIR" remote set-url origin "$SPARK_REPO"
+fi
+
+git -C "$SPARK_DIR" fetch --depth 1 origin "$SPARK_SOURCE_REF"
+git -C "$SPARK_DIR" checkout --detach FETCH_HEAD
+ACTUAL_SHA="$(git -C "$SPARK_DIR" rev-parse HEAD)"
+SPARK_SHORT_SHA="$(echo "$ACTUAL_SHA" | cut -c1-12)"
+
+cd "$SPARK_DIR"
+
+read_spark_base_version() {
+  python3 - <<'PY'
+import re
+from pathlib import Path
+
+version_file = Path("version.sbt")
+if not version_file.exists():
+    raise SystemExit(1)
+
+match = re.search(r'\bversion\s*:?=\s*"([^"]+)"', version_file.read_text())
+if not match:
+    raise SystemExit(1)
+
+print(match.group(1).removesuffix("-SNAPSHOT"))
+PY
+}
+
 if [[ -z "${SPARK_BASE_VERSION:-}" ]]; then
-  if [[ "$SPARK_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  if SPARK_BASE_VERSION="$(read_spark_base_version)"; then
+    :
+  elif [[ "$SPARK_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
     SPARK_BASE_VERSION="${SPARK_VERSION}.0"
   else
     SPARK_BASE_VERSION="${SPARK_VERSION%-SNAPSHOT}"
   fi
 fi
-SPARK_SHORT_SHA="$(echo "$SPARK_COMMIT" | tr '[:upper:]' '[:lower:]' | cut -c1-12)"
+
 SPARK_ARTIFACT_VERSION="${SPARK_ARTIFACT_VERSION:-${SPARK_BASE_VERSION}-${SPARK_SHORT_SHA}-SNAPSHOT}"
-SPARK_MVN_PROFILES="${SPARK_MVN_PROFILES:--Pscala-2.13 -Phive -Phive-thriftserver -Pconnect}"
-SPARK_MVN_GOALS="${SPARK_MVN_GOALS:-install}"
-SPARK_MVN_EXTRA_ARGS="${SPARK_MVN_EXTRA_ARGS:-}"
 
-if [[ ! "$SPARK_COMMIT" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
-  echo "SPARK_COMMIT must be a 7 to 40 character git SHA: $SPARK_COMMIT" >&2
-  exit 1
-fi
+echo "Building Spark ref $SPARK_SOURCE_REF ($ACTUAL_SHA) as Maven version $SPARK_ARTIFACT_VERSION"
 
-if [[ -d "$SPARK_DIR/.git" ]]; then
-  echo "Using existing Spark checkout at $SPARK_DIR"
-  git -C "$SPARK_DIR" fetch "$SPARK_REPO" "$SPARK_COMMIT"
-else
-  echo "Cloning Spark from $SPARK_REPO into $SPARK_DIR"
-  git clone "$SPARK_REPO" "$SPARK_DIR"
-  git -C "$SPARK_DIR" fetch "$SPARK_REPO" "$SPARK_COMMIT"
-fi
+# Spark's Maven build does not use the `revision` property for its own module
+# versions, so update the checked-out POMs before publishing the local artifacts.
+# shellcheck disable=SC2086
+./build/mvn \
+  $SPARK_MVN_EXTRA_ARGS \
+  versions:set \
+  -DnewVersion="$SPARK_ARTIFACT_VERSION" \
+  -DgenerateBackupPoms=false
 
-git -C "$SPARK_DIR" checkout --detach "$SPARK_COMMIT"
-ACTUAL_SHA="$(git -C "$SPARK_DIR" rev-parse HEAD)"
-if [[ "$ACTUAL_SHA" != "$(git -C "$SPARK_DIR" rev-parse "$SPARK_COMMIT^{commit}")" ]]; then
-  echo "Checked out $ACTUAL_SHA, expected $SPARK_COMMIT" >&2
-  exit 1
-fi
-
-echo "Building Spark commit $ACTUAL_SHA as Maven version $SPARK_ARTIFACT_VERSION"
-cd "$SPARK_DIR"
-
-# Spark's Maven build uses the revision property for artifact versions.
 # shellcheck disable=SC2086
 ./build/mvn \
   -DskipTests \
-  -Drevision="$SPARK_ARTIFACT_VERSION" \
   -Dscala.version=2.13.17 \
   $SPARK_MVN_PROFILES \
   $SPARK_MVN_EXTRA_ARGS \
@@ -76,6 +104,8 @@ emit_output() {
   echo "$key=$value"
 }
 
+emit_output "SPARK_SOURCE_REF" "$SPARK_SOURCE_REF"
 emit_output "SPARK_SHA" "$ACTUAL_SHA"
 emit_output "SPARK_VERSION" "$SPARK_VERSION"
+emit_output "SPARK_BASE_VERSION" "$SPARK_BASE_VERSION"
 emit_output "SPARK_ARTIFACT_VERSION" "$SPARK_ARTIFACT_VERSION"
