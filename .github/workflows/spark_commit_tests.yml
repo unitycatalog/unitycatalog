@@ -1,4 +1,4 @@
-name: "UC Spark Source Ref"
+name: "Spark Source Artifact Cache"
 
 on:
   workflow_dispatch:
@@ -11,25 +11,15 @@ on:
       spark-version:
         description: "Spark compatibility line used for UC and Delta shims"
         required: true
-        default: "4.2"
-        type: string
-      delta-repo:
-        description: "Delta repository to build for the UC test"
-        required: true
-        default: "https://github.com/delta-io/delta.git"
-        type: string
-      delta-ref:
-        description: "Delta ref to build for the UC test"
-        required: true
-        default: "master"
+        default: "4.2.0-preview5"
         type: string
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: "UC against Spark ${{ inputs['spark-source-ref'] }}"
+  build-cache:
+    name: "Cache Spark ${{ inputs['spark-source-ref'] }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -41,39 +31,36 @@ jobs:
           distribution: "zulu"
           cache: "sbt"
 
+      - name: Resolve Spark source ref
+        id: spark-ref
+        env:
+          SPARK_SOURCE_REF: ${{ inputs['spark-source-ref'] }}
+        run: |
+          git init /tmp/spark
+          git -C /tmp/spark remote add origin https://github.com/apache/spark.git
+          git -C /tmp/spark fetch --depth 1 origin "$SPARK_SOURCE_REF"
+          SPARK_SHA="$(git -C /tmp/spark rev-parse FETCH_HEAD)"
+          echo "spark_sha=$SPARK_SHA" >> "$GITHUB_OUTPUT"
+          echo "Resolved Spark source ref $SPARK_SOURCE_REF to $SPARK_SHA"
+
+      - name: Restore Spark Maven cache
+        id: spark-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/repository/org/apache/spark
+          key: spark-m2-ubuntu-latest-scala-2.13-${{ inputs['spark-version'] }}-${{ steps.spark-ref.outputs.spark_sha }}-${{ hashFiles('project/scripts/build_spark_from_source.sh') }}
+
       - name: Build Spark source ref locally
+        if: steps.spark-cache.outputs.cache-hit != 'true'
         id: spark-build
         env:
           SPARK_SOURCE_REF: ${{ inputs['spark-source-ref'] }}
           SPARK_VERSION: ${{ inputs['spark-version'] }}
         run: bash project/scripts/build_spark_from_source.sh
 
-      - name: Build, package, and publish UC locally
-        run: |
-          build/sbt \
-            -DsparkVersion=${{ inputs['spark-version'] }} \
-            -DsparkCommit=${{ steps.spark-build.outputs.SPARK_SHA }} \
-            -DsparkArtifactVersion=${{ steps.spark-build.outputs.SPARK_ARTIFACT_VERSION }} \
-            -DskipDeltaSpark=true \
-            -J-Xmx2G \
-            package publishLocal publishM2
-
-      - name: Build Delta from source against Spark source ref
-        id: delta-build
-        env:
-          DELTA_REPO: ${{ inputs['delta-repo'] }}
-          DELTA_REF: ${{ inputs['delta-ref'] }}
-          SPARK_VERSION: ${{ inputs['spark-version'] }}
-          SPARK_COMMIT: ${{ steps.spark-build.outputs.SPARK_SHA }}
-          SPARK_ARTIFACT_VERSION: ${{ steps.spark-build.outputs.SPARK_ARTIFACT_VERSION }}
-        run: bash project/scripts/build_delta_from_source.sh
-
-      - name: Run UC Spark tests
-        run: |
-          build/sbt \
-            -DsparkVersion=${{ inputs['spark-version'] }} \
-            -DsparkCommit=${{ steps.spark-build.outputs.SPARK_SHA }} \
-            -DsparkArtifactVersion=${{ steps.spark-build.outputs.SPARK_ARTIFACT_VERSION }} \
-            -DdeltaVersion=${{ steps.delta-build.outputs.DELTA_VERSION }} \
-            -J-Xmx2G \
-            spark/jacoco
+      - name: Save Spark Maven cache
+        if: steps.spark-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/repository/org/apache/spark
+          key: spark-m2-ubuntu-latest-scala-2.13-${{ inputs['spark-version'] }}-${{ steps.spark-ref.outputs.spark_sha }}-${{ hashFiles('project/scripts/build_spark_from_source.sh') }}
