@@ -224,6 +224,10 @@ public class ColumnUtils {
    * Validate that a {@link StructType} is well-formed against the Delta spec's wire shape.
    * Centralizes structural validation so callers can pass {@code columns} directly without
    * pre-checking nullness/emptiness.
+   *
+   * <p>Field-name uniqueness is enforced case-insensitively (per Delta's schema rule "All column
+   * names must be unique regardless of casing"). Names are stored case-preserving on
+   * {@link StructField#getName()}; only the duplicate check ignores case.
    */
   public static void validateStructType(StructType structType, String path) {
     requireNonNull(structType, path);
@@ -233,15 +237,16 @@ public class ColumnUtils {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, path + ".fields must contain at least one field.");
     }
-    Set<String> seen = new HashSet<>();
+    Set<String> seenLower = new HashSet<>();
     for (int i = 0; i < fields.size(); i++) {
       String fieldPath = path + ".fields[" + i + "]";
       requireNonNull(fields.get(i), fieldPath);
       validateStructField(fields.get(i), fieldPath);
       String name = fields.get(i).getName();
-      if (!seen.add(name)) {
+      if (!seenLower.add(name.toLowerCase(Locale.ROOT))) {
         throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Duplicate field name in " + fieldPath + ": " + name);
+          ErrorCode.INVALID_ARGUMENT,
+          "Duplicate field name (case-insensitive) in " + fieldPath + ": " + name);
       }
     }
   }
@@ -484,19 +489,22 @@ public class ColumnUtils {
     if (partitionColumns == null || partitionColumns.isEmpty()) {
       return;
     }
-    Set<String> seen = new HashSet<>();
-    for (String partName : partitionColumns) {
-      if (!seen.add(partName)) {
-        throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT,
-            "partition-columns contains duplicate entry: " + partName);
-      }
-    }
-    Map<String, ColumnInfo> columnsByName =
-        columns.stream().collect(Collectors.toMap(ColumnInfo::getName, Function.identity()));
+    Map<String, ColumnInfo> columnsByLowerName =
+        columns.stream()
+            .collect(
+                Collectors.toMap(c -> c.getName().toLowerCase(Locale.ROOT), Function.identity()));
+    Set<String> seenLower = new HashSet<>();
     for (int i = 0; i < partitionColumns.size(); i++) {
       String partName = partitionColumns.get(i);
-      ColumnInfo match = columnsByName.get(partName);
+      String lowerPartName = partName.toLowerCase(Locale.ROOT);
+      // Duplicate detection within partition-columns, comparing case-insensitively.
+      if (!seenLower.add(lowerPartName)) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition-columns contains duplicate entry (case-insensitive): " + partName);
+      }
+      // Column-name lookup against the schema, comparing case-insensitively.
+      ColumnInfo match = columnsByLowerName.get(lowerPartName);
       if (match == null) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,

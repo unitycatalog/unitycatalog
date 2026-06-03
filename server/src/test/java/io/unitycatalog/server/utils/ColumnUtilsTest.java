@@ -414,11 +414,13 @@ public class ColumnUtilsTest {
                 new ColumnInfo().name("id").position(0),
                 new ColumnInfo().name("region").position(1),
                 new ColumnInfo().name("date").position(2)));
-    // Order of the partition list is the partition-index order; not the column position.
-    ColumnUtils.applyPartitionColumns(columns, List.of("date", "region"));
+    // "DATE" intentionally differs in case from the schema column "date" to also pin the
+    // case-insensitive lookup (Delta: column names match regardless of casing). Order of the
+    // partition list is the partition-index order; not the column position.
+    ColumnUtils.applyPartitionColumns(columns, List.of("DATE", "region"));
     assertThat(columns.get(0).getPartitionIndex()).isNull();
     assertThat(columns.get(1).getPartitionIndex()).isEqualTo(1); // region -> index 1
-    assertThat(columns.get(2).getPartitionIndex()).isEqualTo(0); // date   -> index 0
+    assertThat(columns.get(2).getPartitionIndex()).isEqualTo(0); // DATE -> matches "date" -> 0
   }
 
   @Test
@@ -439,13 +441,16 @@ public class ColumnUtilsTest {
 
   @Test
   public void testApplyPartitionColumnsDuplicateRejected() {
+    // Uses ["a", "A"] to also pin the case-insensitive duplicate rule (Delta: column names must
+    // be unique regardless of casing). Same assertion catches both ["a", "a"] and ["a", "A"]
+    // since the helper reports the (case-insensitive) duplicate the same way.
     List<ColumnInfo> columns =
         new ArrayList<>(
             List.of(
                 new ColumnInfo().name("a").position(0), new ColumnInfo().name("b").position(1)));
-    assertThatThrownBy(() -> ColumnUtils.applyPartitionColumns(columns, List.of("a", "a")))
+    assertThatThrownBy(() -> ColumnUtils.applyPartitionColumns(columns, List.of("a", "A")))
         .isInstanceOf(BaseException.class)
-        .hasMessageContaining("partition-columns contains duplicate entry: a");
+        .hasMessageContaining("partition-columns contains duplicate entry");
   }
 
   // ---------- validateStructType ----------

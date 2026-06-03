@@ -283,12 +283,13 @@ public class RawCreateTableTest extends BaseCRUDTest {
     // -------- duplicate field names at the top level --------
     // Error message includes the index of the second occurrence so wide schemas surface the
     // offending position alongside the name.
+    // Uses "id" / "ID" to pin Delta's "unique regardless of casing" rule via validateStructType.
     assertRejected(
         staging,
         """
         {"name": "id", "type": "long", "nullable": false, "metadata": {}},
-        {"name": "id", "type": "string", "nullable": true, "metadata": {}}""",
-        "Duplicate field name in columns.fields[1]: id");
+        {"name": "ID", "type": "string", "nullable": true, "metadata": {}}""",
+        "Duplicate field name (case-insensitive) in columns.fields[1]: ID");
 
     // -------- duplicate field name inside a nested struct --------
     // Proves uniqueness is enforced per StructType level (not only at the top level) -- the
@@ -312,7 +313,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
           "nullable": true,
           "metadata": {}
         }""",
-        "Duplicate field name in columns.fields[0].type.element-type.fields[1]: x");
+        "Duplicate field name (case-insensitive) in columns.fields[0].type.element-type"
+          + ".fields[1]: x");
   }
 
   // ---------- helpers ----------

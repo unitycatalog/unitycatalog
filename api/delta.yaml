@@ -1330,12 +1330,16 @@ components:
     StructField:
       type: object
       description: |
-        A field in a StructType. Contains the field name, type, nullability,
-        and metadata matching the Delta schema field format.
+        A field in a StructType. Contains the field name, type, nullability, and metadata
+        matching the Delta schema field format.
+        Field names are case-preserving but case-insensitive: within a StructType no two fields
+        may have names equal under ASCII lowercase comparison. Every API reference to a column
+        name (partition-columns, delta.clustering.clusteringColumns, etc.) matches
+        case-insensitively. Per Delta [PROTOCOL.md](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#schema-serialization-format).
       properties:
         name:
           type: string
-          description: Column name
+          description: Column name. Case-preserving; unique case-insensitively within the parent StructType.
         type:
           $ref: '#/components/schemas/DeltaType'
         nullable:
