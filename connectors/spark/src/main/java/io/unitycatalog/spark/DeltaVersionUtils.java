@@ -53,10 +53,10 @@ public class DeltaVersionUtils {
 
   /**
    * Returns true when all the following are true: 1. Delta is loaded as the catalog delegate
-   * (otherwise nothing on the other side would stage the managed-Delta create); 2. the catalog
-   * opted in via the `deltaRestApi.enabled` option; 3. the Delta library on the classpath is at
-   * least [[MIN_DELTA_VERSION_FOR_REST_API]] (older versions silently skip staging if we hand the
-   * request to them).
+   * (otherwise nothing on the other side would stage the managed-Delta create); 2. the catalog is
+   * not opted out via the `deltaRestApi.enabled=false` option; 3. the Delta library on the
+   * classpath is at least [[MIN_DELTA_VERSION_FOR_REST_API]] (older versions silently skip staging
+   * if we hand the request to them).
    */
   public static boolean isDeltaRestApiReady(
       boolean deltaCatalogLoaded, boolean deltaRestApiEnabled) {
