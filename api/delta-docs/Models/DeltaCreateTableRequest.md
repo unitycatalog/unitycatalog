@@ -6,7 +6,6 @@
 | **name** | **String** | The table name | [default to null] |
 | **location** | **String** | Storage location | [default to null] |
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) |  | [default to null] |
-| **data-source-format** | [**DeltaDataSourceFormat**](DeltaDataSourceFormat.md) |  | [default to null] |
 | **comment** | **String** | Table comment | [optional] [default to null] |
 | **columns** | [**DeltaStructType**](DeltaStructType.md) |  | [default to null] |
 | **partition-columns** | **List** | Partition column names | [optional] [default to null] |

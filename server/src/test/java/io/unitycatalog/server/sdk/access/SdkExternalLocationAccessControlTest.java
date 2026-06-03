@@ -11,7 +11,6 @@ import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
-import io.unitycatalog.client.delta.model.DeltaDataSourceFormat;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DeltaStructField;
@@ -520,7 +519,6 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
         .name(name)
         .location(location)
         .tableType(DeltaTableType.EXTERNAL)
-        .dataSourceFormat(DeltaDataSourceFormat.DELTA)
         .protocol(
             new DeltaProtocol()
                 .minReaderVersion(3)

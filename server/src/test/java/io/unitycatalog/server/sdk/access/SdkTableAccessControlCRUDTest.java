@@ -11,7 +11,6 @@ import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
-import io.unitycatalog.client.delta.model.DeltaDataSourceFormat;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
@@ -241,7 +240,6 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
                 .name(deltaExternalName)
                 .location(deltaExternalLocation)
                 .tableType(DeltaTableType.EXTERNAL)
-                .dataSourceFormat(DeltaDataSourceFormat.DELTA)
                 .columns(
                     new DeltaStructType()
                         .type("struct")

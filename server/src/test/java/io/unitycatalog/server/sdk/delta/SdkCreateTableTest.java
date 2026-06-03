@@ -7,7 +7,6 @@ import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
-import io.unitycatalog.client.delta.model.DeltaDataSourceFormat;
 import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
@@ -470,7 +469,6 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         .name(name)
         .location(staging.getLocation())
         .tableType(DeltaTableType.MANAGED)
-        .dataSourceFormat(DeltaDataSourceFormat.DELTA)
         .columns(simpleSchema())
         .protocol(managedProtocol())
         .domainMetadata(
@@ -490,7 +488,6 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         .name(name)
         .location(location)
         .tableType(DeltaTableType.MANAGED)
-        .dataSourceFormat(DeltaDataSourceFormat.DELTA)
         .columns(simpleSchema())
         .protocol(managedProtocol())
         .properties(fullManagedProperties("00000000-0000-0000-0000-000000000000"))
@@ -503,7 +500,6 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         .name(name)
         .location(location)
         .tableType(DeltaTableType.EXTERNAL)
-        .dataSourceFormat(DeltaDataSourceFormat.DELTA)
         .columns(simpleSchema())
         // EXTERNAL tables don't require catalogManaged; use a minimal modern Delta protocol.
         .protocol(

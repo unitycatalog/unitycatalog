@@ -523,16 +523,6 @@ components:
 
     # Enums
 
-    DeltaDataSourceFormat:
-      type: string
-      description: |
-        Data source format. The Delta API serves Delta tables only, so DELTA is the
-        sole accepted value. The field is kept on the wire because downstream UC table
-        services require it to be set; pinning it as a single-element enum makes the
-        constraint explicit at the schema layer.
-      enum:
-        - DELTA
-
     DeltaTableType:
       type: string
       description: The type of a table.
@@ -705,8 +695,6 @@ components:
           description: Storage location
         table-type:
           $ref: '#/components/schemas/DeltaTableType'
-        data-source-format:
-          $ref: '#/components/schemas/DeltaDataSourceFormat'
         comment:
           type: string
           description: Table comment
@@ -744,7 +732,6 @@ components:
         - name
         - location
         - table-type
-        - data-source-format
         - columns
         - protocol
         - properties
@@ -753,7 +740,6 @@ components:
         name: "sales"
         location: "s3://bucket/warehouse/catalog/schema/sales"
         table-type: "MANAGED"
-        data-source-format: "DELTA"
         columns:
           type: "struct"
           fields:
@@ -807,8 +793,6 @@ components:
         etag:
           type: string
           description: Entity tag for optimistic concurrency control
-        data-source-format:
-          $ref: '#/components/schemas/DeltaDataSourceFormat'
         table-type:
           $ref: '#/components/schemas/DeltaTableType'
         table-uuid:
@@ -848,7 +832,6 @@ components:
           description: Timestamp of the last commit that changed table metadata, in epoch milliseconds (delta.lastCommitTimestamp).
       required:
         - etag
-        - data-source-format
         - table-type
         - table-uuid
         - location
