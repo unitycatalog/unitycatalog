@@ -19,7 +19,8 @@ import java.util.Optional;
  * partition-index-per-column). The server holds path params for catalog and schema; the rest
  * comes from the request body.
  *
- * <p>Required-field checks (name, location, columns, protocol, table-type) apply to all tables.
+ * <p>Required-field checks (name, location, columns, protocol, table-type, data-source-format)
+ * apply to all tables.
  * The full UC catalog-managed contract ({@link UcManagedDeltaContract}) applies only to MANAGED
  * tables; EXTERNAL tables skip contract validation but still go through the same {@link
  * DeltaPropertyMapper} projection, so derived {@code delta.feature.*} and {@code clusteringColumns}
@@ -58,6 +59,9 @@ public final class DeltaCreateTableMapper {
     }
 
     TableType tableType = toUCTableType(req.getTableType());
+    if (req.getDataSourceFormat() == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "data-source-format is required.");
+    }
     if (req.getProtocol() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "protocol is required.");
     }

@@ -4,6 +4,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaDataSourceFormat;
 import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
@@ -105,6 +106,7 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
                 .name(tableName)
                 .location(staging.getLocation())
                 .tableType(DeltaTableType.MANAGED)
+                .dataSourceFormat(DeltaDataSourceFormat.DELTA)
                 .columns(simpleSchema())
                 .protocol(managedProtocol())
                 .domainMetadata(
@@ -128,6 +130,7 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
                 .name(tableName)
                 .location(location)
                 .tableType(DeltaTableType.EXTERNAL)
+                .dataSourceFormat(DeltaDataSourceFormat.DELTA)
                 .columns(simpleSchema())
                 .protocol(
                     new DeltaProtocol()

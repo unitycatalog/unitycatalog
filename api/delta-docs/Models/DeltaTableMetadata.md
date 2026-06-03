@@ -4,6 +4,7 @@
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
 | **etag** | **String** | Entity tag for optimistic concurrency control | [default to null] |
+| **data-source-format** | [**DeltaDataSourceFormat**](DeltaDataSourceFormat.md) |  | [default to null] |
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) |  | [default to null] |
 | **table-uuid** | **UUID** | Unique identifier for the table | [default to null] |
 | **location** | **String** | Storage location of the table | [default to null] |

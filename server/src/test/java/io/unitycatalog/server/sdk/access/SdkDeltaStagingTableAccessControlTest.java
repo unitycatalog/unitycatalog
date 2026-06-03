@@ -4,6 +4,7 @@ import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaDataSourceFormat;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
@@ -91,6 +92,7 @@ public class SdkDeltaStagingTableAccessControlTest extends SdkStagingTableAccess
         .name(name)
         .location(staging.location())
         .tableType(DeltaTableType.MANAGED)
+        .dataSourceFormat(DeltaDataSourceFormat.DELTA)
         .protocol(
             new DeltaProtocol()
                 .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)

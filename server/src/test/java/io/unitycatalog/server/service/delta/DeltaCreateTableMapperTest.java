@@ -3,6 +3,7 @@ package io.unitycatalog.server.service.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaDataSourceFormat;
 import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaStructField;
@@ -72,6 +73,7 @@ public class DeltaCreateTableMapperTest {
         .name("tbl")
         .location("s3://b/p")
         .tableType(DeltaTableType.MANAGED)
+        .dataSourceFormat(DeltaDataSourceFormat.DELTA)
         .columns(simpleColumns())
         .protocol(managedProtocol())
         .properties(fullManagedProperties("uuid-x"))
@@ -84,6 +86,7 @@ public class DeltaCreateTableMapperTest {
         .name("tbl")
         .location("s3://b/p")
         .tableType(DeltaTableType.EXTERNAL)
+        .dataSourceFormat(DeltaDataSourceFormat.DELTA)
         .columns(simpleColumns())
         .protocol(
             new DeltaProtocol()

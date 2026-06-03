@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.delta.model.DeltaCommit;
+import io.unitycatalog.server.delta.model.DeltaDataSourceFormat;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableMetadata;
@@ -403,6 +404,7 @@ public class TableRepository {
     DeltaTableMetadata metadata = new DeltaTableMetadata();
     metadata.setEtag(DeltaUpdateTableMapper.computeEtag(dao));
     metadata.setTableType(toDeltaTableType(dao.getType()));
+    metadata.setDataSourceFormat(DeltaDataSourceFormat.DELTA);
     metadata.setTableUuid(dao.getId());
     metadata.setLocation(NormalizedURL.normalize(dao.getUrl()));
     metadata.setCreatedTime(dao.getCreatedAt() != null ? dao.getCreatedAt().getTime() : null);
