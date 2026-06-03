@@ -52,13 +52,13 @@ public class UCSingleCatalogStagingTableTest {
       Map.of(
           TableCatalog.PROP_PROVIDER,
           "delta",
-          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
           UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
   private static final Map<String, String> MANAGED_DELTA_REPLACE_OVERRIDE_PROPS =
       Map.of(
           TableCatalog.PROP_PROVIDER,
           "delta",
-          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
           "disabled");
   private static final Map<String, String> REPLACE_DELTA_PROPS =
       Map.of(TableCatalog.PROP_PROVIDER, "delta");
@@ -187,7 +187,42 @@ public class UCSingleCatalogStagingTableTest {
   }
 
   @Test
-  public void testStageCreateOrReplaceMissingManagedTableRequiresCatalogManagedFeature()
+  public void testStageCreateOrReplaceMissingManagedTableAutoDefaultsCatalogManagedFeature()
+      throws Exception {
+    GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
+    when(mockCredApi.createCredential())
+        .thenReturn(
+            new GenericCredential(
+                new TemporaryCredentials()
+                    .gcpOauthToken(new GcpOauthToken().oauthToken("token"))
+                    .expirationTime(Long.MAX_VALUE)));
+    CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
+
+    ManagedReplaceMocks mocks = new ManagedReplaceMocks();
+    mockMissingTableLookup(mocks.tablesApi);
+    when(mockDelegate.stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any()))
+        .thenReturn(mocks.staged);
+    when(mocks.tablesApi.createStagingTable(any(CreateStagingTable.class)))
+        .thenReturn(
+            new StagingTableInfo().id("staging-id").stagingLocation("gs://uc-staging/table"));
+
+    StagedTable result =
+        catalog.stageCreateOrReplace(
+            IDENT, SCHEMA, PARTITIONS, Map.of(TableCatalog.PROP_PROVIDER, "delta"));
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
+    verify(mockDelegate).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
+    // catalog-managed is auto-defaulted when the caller omits it (new behavior).
+    assertThat(propsCaptor.getValue())
+        .containsEntry(
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+            UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
+    assertThat(result).isSameAs(mocks.staged);
+  }
+
+  @Test
+  public void testStageCreateOrReplaceMissingManagedTableRejectsInvalidCatalogManagedValue()
       throws Exception {
     TablesApi mockTablesApi = mock(TablesApi.class);
     mockMissingTableLookup(mockTablesApi);
@@ -195,12 +230,77 @@ public class UCSingleCatalogStagingTableTest {
     assertThatThrownBy(
             () ->
                 catalog.stageCreateOrReplace(
-                    IDENT, SCHEMA, PARTITIONS, Map.of(TableCatalog.PROP_PROVIDER, "delta")))
+                    IDENT,
+                    SCHEMA,
+                    PARTITIONS,
+                    Map.of(
+                        TableCatalog.PROP_PROVIDER, "delta",
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY, "bogus")))
         .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Managed table creation requires table property");
+        .hasMessageContaining("Invalid property value 'bogus'");
 
     verify(mockTablesApi, never()).createStagingTable(any(CreateStagingTable.class));
     verify(mockDelegate, never()).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), any());
+  }
+
+  /**
+   * The {@code stageCreate} path (used by SQL {@code CREATE TABLE ... USING delta} and CTAS) must
+   * apply the same auto-default behavior as {@code createTable} / {@code stageCreateOrReplace}.
+   * Pinned with a unit test so a regression here is caught fast, not only by the slow end-to-end
+   * {@code DeltaManagedTableReadWriteTest} suites.
+   */
+  @Test
+  public void testStageCreateMissingManagedTableAutoDefaultsCatalogManagedFeature()
+      throws Exception {
+    GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
+    when(mockCredApi.createCredential())
+        .thenReturn(
+            new GenericCredential(
+                new TemporaryCredentials()
+                    .gcpOauthToken(new GcpOauthToken().oauthToken("token"))
+                    .expirationTime(Long.MAX_VALUE)));
+    CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
+
+    ManagedReplaceMocks mocks = new ManagedReplaceMocks();
+    // Inject the mocked TablesApi onto the catalog so stageManagedDeltaTableAndGetProps can call
+    // createStagingTable. The getTable mock that mockMissingTableLookup also installs is harmless
+    // here (stageCreate doesn't probe existence).
+    mockMissingTableLookup(mocks.tablesApi);
+    when(mockDelegate.stageCreate(eq(IDENT), eq(SCHEMA), any(), any())).thenReturn(mocks.staged);
+    when(mocks.tablesApi.createStagingTable(any(CreateStagingTable.class)))
+        .thenReturn(
+            new StagingTableInfo().id("staging-id").stagingLocation("gs://uc-staging/table"));
+
+    StagedTable result =
+        catalog.stageCreate(IDENT, SCHEMA, PARTITIONS, Map.of(TableCatalog.PROP_PROVIDER, "delta"));
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
+    verify(mockDelegate).stageCreate(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
+    // catalog-managed is auto-defaulted when the caller omits it (new behavior).
+    assertThat(propsCaptor.getValue())
+        .containsEntry(
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+            UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
+    assertThat(result).isSameAs(mocks.staged);
+  }
+
+  @Test
+  public void testStageCreateMissingManagedTableRejectsInvalidCatalogManagedValue()
+      throws Exception {
+    assertThatThrownBy(
+            () ->
+                catalog.stageCreate(
+                    IDENT,
+                    SCHEMA,
+                    PARTITIONS,
+                    Map.of(
+                        TableCatalog.PROP_PROVIDER, "delta",
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY, "bogus")))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Invalid property value 'bogus'");
+
+    verify(mockDelegate, never()).stageCreate(eq(IDENT), eq(SCHEMA), any(), any());
   }
 
   @Test
@@ -264,7 +364,7 @@ public class UCSingleCatalogStagingTableTest {
         SCHEMA,
         PARTITIONS,
         Map.of(
-            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
 
     @SuppressWarnings("unchecked")
@@ -274,7 +374,7 @@ public class UCSingleCatalogStagingTableTest {
     assertThat(propsCaptor.getValue())
         .containsEntry(TableCatalog.PROP_PROVIDER, "delta")
         .containsEntry(
-            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
   }
 
@@ -291,7 +391,7 @@ public class UCSingleCatalogStagingTableTest {
                     Map.of(
                         TableCatalog.PROP_PROVIDER,
                         "parquet",
-                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
                         UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)))
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("requires USING DELTA")
@@ -310,7 +410,7 @@ public class UCSingleCatalogStagingTableTest {
         SCHEMA,
         PARTITIONS,
         Map.of(
-            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
 
     @SuppressWarnings("unchecked")
@@ -320,7 +420,7 @@ public class UCSingleCatalogStagingTableTest {
     assertThat(propsCaptor.getValue())
         .containsEntry(TableCatalog.PROP_PROVIDER, "delta")
         .containsEntry(
-            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
   }
 
@@ -337,7 +437,7 @@ public class UCSingleCatalogStagingTableTest {
                     Map.of(
                         TableCatalog.PROP_PROVIDER,
                         "parquet",
-                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                        UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
                         UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)))
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("requires USING DELTA")
@@ -371,7 +471,7 @@ public class UCSingleCatalogStagingTableTest {
         .containsEntry(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
         .doesNotContainKey(UCTableProperties.UC_TABLE_ID_KEY)
         .containsEntry(
-            UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+            UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
     assertThat(result).isSameAs(mocks.staged);
   }
@@ -396,7 +496,7 @@ public class UCSingleCatalogStagingTableTest {
         .tableId("table-id")
         .properties(
             Map.of(
-                UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
+                UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
                 UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
   }
 
@@ -410,8 +510,7 @@ public class UCSingleCatalogStagingTableTest {
                 catalog.stageReplace(
                     IDENT, SCHEMA, PARTITIONS, MANAGED_DELTA_REPLACE_OVERRIDE_PROPS))
         .isInstanceOf(ApiException.class)
-        .hasMessageContaining(
-            "Cannot override property '" + UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW + "'");
+        .hasMessageContaining("Invalid property value 'disabled'");
 
     verify(mockDelegate, never()).stageReplace(eq(IDENT), eq(SCHEMA), any(), any());
   }
