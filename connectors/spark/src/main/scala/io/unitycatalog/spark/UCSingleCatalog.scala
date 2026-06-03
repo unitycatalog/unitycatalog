@@ -145,14 +145,9 @@ class UCSingleCatalog
     delegate.tableExists(ident)
   }
 
-  override def capabilities(): util.Set[TableCatalogCapability] = {
-    val capabilities = new util.HashSet[TableCatalogCapability]()
-    if (delegate != null) {
-      capabilities.addAll(delegate.capabilities())
-    }
-    capabilities.add(TableCatalogCapability.SUPPORT_COLUMN_DEFAULT_VALUE)
-    capabilities
-  }
+  // The Delta catalog delegate advertises SUPPORT_COLUMN_DEFAULT_VALUE, so simply pass through
+  // whatever capabilities it reports.
+  override def capabilities(): util.Set[TableCatalogCapability] = delegate.capabilities()
 
   override def createTable(
       ident: Identifier,
