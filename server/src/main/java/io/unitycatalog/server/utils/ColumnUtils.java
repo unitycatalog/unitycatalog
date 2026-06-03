@@ -489,24 +489,22 @@ public class ColumnUtils {
     if (partitionColumns == null || partitionColumns.isEmpty()) {
       return;
     }
-    // Duplicate detection within partition-columns and the column-name lookup against the schema
-    // both compare case-insensitively, matching the Delta protocol rule that column names are
-    // unique regardless of casing.
-    Set<String> seenLower = new HashSet<>();
-    for (String partName : partitionColumns) {
-      if (!seenLower.add(partName.toLowerCase(Locale.ROOT))) {
-        throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT,
-            "partition-columns contains duplicate entry (case-insensitive): " + partName);
-      }
-    }
     Map<String, ColumnInfo> columnsByLowerName =
         columns.stream()
             .collect(
                 Collectors.toMap(c -> c.getName().toLowerCase(Locale.ROOT), Function.identity()));
+    Set<String> seenLower = new HashSet<>();
     for (int i = 0; i < partitionColumns.size(); i++) {
       String partName = partitionColumns.get(i);
-      ColumnInfo match = columnsByLowerName.get(partName.toLowerCase(Locale.ROOT));
+      String lowerPartName = partName.toLowerCase(Locale.ROOT);
+      // Duplicate detection within partition-columns, comparing case-insensitively.
+      if (!seenLower.add(lowerPartName)) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition-columns contains duplicate entry (case-insensitive): " + partName);
+      }
+      // Column-name lookup against the schema, comparing case-insensitively.
+      ColumnInfo match = columnsByLowerName.get(lowerPartName);
       if (match == null) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
