@@ -20,9 +20,9 @@ Create a function. WARNING: This API is experimental and will change in future v
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **CreateFunctionRequest** | [**CreateFunctionRequest**](../Models/CreateFunctionRequest.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **CreateFunctionRequest** | [**CreateFunctionRequest**](../Models/CreateFunctionRequest.md) | optional |  |  |
 
 ### Return type
 
@@ -47,9 +47,9 @@ Delete a function
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__). | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__). | |
 
 ### Return type
 
@@ -74,9 +74,9 @@ Get a function
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__). | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__). | |
 
 ### Return type
 
@@ -101,12 +101,12 @@ List functions
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog\_name** | **String**| Name of parent catalog for functions of interest. | [default to null] |
-| **schema\_name** | **String**| Parent schema of functions. | [default to null] |
-| **max\_results** | **Integer**| Maximum number of functions to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
-| **page\_token** | **String**| Opaque pagination token to go to next page based on previous query. | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog\_name** | **String** | required | Name of parent catalog for functions of interest. | |
+| **schema\_name** | **String** | required | Parent schema of functions. | |
+| **max\_results** | **Integer** | optional | Maximum number of functions to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | |
+| **page\_token** | **String** | optional | Opaque pagination token to go to next page based on previous query. | |
 
 ### Return type
 

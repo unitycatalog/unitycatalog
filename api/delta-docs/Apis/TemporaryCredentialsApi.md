@@ -19,9 +19,9 @@ Get staging table credentials by UUID
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **table\_id** | **UUID**| Staging table UUID | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **table\_id** | **UUID** | required | Staging table UUID | |
 
 ### Return type
 
@@ -46,12 +46,12 @@ Get table credentials
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **operation** | [**CredentialOperation**](../Models/.md)| The operation the credential is scoped to. | [default to null] [enum: READ, READ_WRITE] |
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **table** | **String**| Table name | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **operation** | [**CredentialOperation**](../Models/.md) | required | The operation the credential is scoped to. | [enum: READ, READ_WRITE] |
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **table** | **String** | required | Table name | |
 
 ### Return type
 
@@ -76,10 +76,10 @@ Get temporary path credentials
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **location** | **String**| Storage path for the external table | [default to null] |
-| **operation** | [**CredentialOperation**](../Models/.md)| Operation type for the path credential. | [default to null] [enum: READ, READ_WRITE] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **location** | **String** | required | Storage path for the external table | |
+| **operation** | [**CredentialOperation**](../Models/.md) | required | Operation type for the path credential. | [enum: READ, READ_WRITE] |
 
 ### Return type
 

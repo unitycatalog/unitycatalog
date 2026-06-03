@@ -18,11 +18,11 @@ Get permissions
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **securable\_type** | [**SecurableType**](../Models/.md)| Type of securable. | [default to null] [enum: metastore, catalog, schema, table, function, volume, registered_model, external_location, credential] |
-| **full\_name** | **String**| Full name of securable. | [default to null] |
-| **principal** | **String**| If provided, only the permissions for the specified principal (user or group) are returned.  | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **securable\_type** | [**SecurableType**](../Models/.md) | required | Type of securable. | [enum: metastore, catalog, schema, table, function, volume, registered_model, external_location, credential] |
+| **full\_name** | **String** | required | Full name of securable. | |
+| **principal** | **String** | optional | If provided, only the permissions for the specified principal (user or group) are returned.  | |
 
 ### Return type
 
@@ -47,11 +47,11 @@ Update a permission
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **securable\_type** | [**SecurableType**](../Models/.md)| Type of securable. | [default to null] [enum: metastore, catalog, schema, table, function, volume, registered_model, external_location, credential] |
-| **full\_name** | **String**| Full name of securable. | [default to null] |
-| **UpdatePermissions** | [**UpdatePermissions**](../Models/UpdatePermissions.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **securable\_type** | [**SecurableType**](../Models/.md) | required | Type of securable. | [enum: metastore, catalog, schema, table, function, volume, registered_model, external_location, credential] |
+| **full\_name** | **String** | required | Full name of securable. | |
+| **UpdatePermissions** | [**UpdatePermissions**](../Models/UpdatePermissions.md) | optional |  |  |
 
 ### Return type
 

@@ -21,9 +21,9 @@ Create a model. WARNING: This API is experimental and will change in future vers
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **CreateRegisteredModel** | [**CreateRegisteredModel**](../Models/CreateRegisteredModel.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **CreateRegisteredModel** | [**CreateRegisteredModel**](../Models/CreateRegisteredModel.md) | optional |  |  |
 
 ### Return type
 
@@ -48,10 +48,10 @@ Delete a specified registered model.
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the model. | [default to null] |
-| **force** | **Boolean**| Force deletion even if the registered model still has model versions. | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the model. | |
+| **force** | **Boolean** | optional | Force deletion even if the registered model still has model versions. | |
 
 ### Return type
 
@@ -76,9 +76,9 @@ Get a specified registered model
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the model. | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the model. | |
 
 ### Return type
 
@@ -103,12 +103,12 @@ List models
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog\_name** | **String**| Name of parent catalog for models of interest. | [optional] [default to null] |
-| **schema\_name** | **String**| Name of parent schema for models of interest. | [optional] [default to null] |
-| **max\_results** | **Integer**| Maximum number of models to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
-| **page\_token** | **String**| Opaque token to send for the next page of results (pagination). | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog\_name** | **String** | optional | Name of parent catalog for models of interest. | |
+| **schema\_name** | **String** | optional | Name of parent schema for models of interest. | |
+| **max\_results** | **Integer** | optional | Maximum number of models to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | |
+| **page\_token** | **String** | optional | Opaque token to send for the next page of results (pagination). | |
 
 ### Return type
 
@@ -133,10 +133,10 @@ Update a registered model
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the model. | [default to null] |
-| **UpdateRegisteredModel** | [**UpdateRegisteredModel**](../Models/UpdateRegisteredModel.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the model. | |
+| **UpdateRegisteredModel** | [**UpdateRegisteredModel**](../Models/UpdateRegisteredModel.md) | optional |  |  |
 
 ### Return type
 

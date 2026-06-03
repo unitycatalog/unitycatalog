@@ -22,9 +22,9 @@ Create a model version.
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **CreateModelVersion** | [**CreateModelVersion**](../Models/CreateModelVersion.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **CreateModelVersion** | [**CreateModelVersion**](../Models/CreateModelVersion.md) | optional |  |  |
 
 ### Return type
 
@@ -49,10 +49,10 @@ Delete a model version
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the model. | [default to null] |
-| **version** | **Long**| Version number of the model version. | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the model. | |
+| **version** | **Long** | required | Version number of the model version. | |
 
 ### Return type
 
@@ -77,11 +77,11 @@ Finalize a model version
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the model. | [default to null] |
-| **version** | **Long**| Version number of the model version. | [default to null] |
-| **FinalizeModelVersion** | [**FinalizeModelVersion**](../Models/FinalizeModelVersion.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the model. | |
+| **version** | **Long** | required | Version number of the model version. | |
+| **FinalizeModelVersion** | [**FinalizeModelVersion**](../Models/FinalizeModelVersion.md) | optional |  |  |
 
 ### Return type
 
@@ -106,10 +106,10 @@ Get a model version
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the model. | [default to null] |
-| **version** | **Long**| Version number of the model version. | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the model. | |
+| **version** | **Long** | required | Version number of the model version. | |
 
 ### Return type
 
@@ -134,11 +134,11 @@ List model versions of the specified registered model.
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the registered model. | [default to null] |
-| **max\_results** | **Integer**| Maximum number of model versions to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
-| **page\_token** | **String**| Opaque token to send for the next page of results (pagination). | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the registered model. | |
+| **max\_results** | **Integer** | optional | Maximum number of model versions to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | |
+| **page\_token** | **String** | optional | Opaque token to send for the next page of results (pagination). | |
 
 ### Return type
 
@@ -163,11 +163,11 @@ Update a model version
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **full\_name** | **String**| Full name of the model. | [default to null] |
-| **version** | **Long**| Version number of the model version. | [default to null] |
-| **UpdateModelVersion** | [**UpdateModelVersion**](../Models/UpdateModelVersion.md)|  | [optional] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String** | required | Full name of the model. | |
+| **version** | **Long** | required | Version number of the model version. | |
+| **UpdateModelVersion** | [**UpdateModelVersion**](../Models/UpdateModelVersion.md) | optional |  |  |
 
 ### Return type
 

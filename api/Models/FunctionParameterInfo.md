@@ -1,20 +1,20 @@
 # FunctionParameterInfo
 ## Properties
 
-| Name | Type | Description | Notes |
-|------------ | ------------- | ------------- | -------------|
-| **name** | **String** | Name of parameter. | [default to null] |
-| **type\_text** | **String** | Full data type spec, SQL/catalogString text. | [default to null] |
-| **type\_json** | **String** | Full data type spec, JSON-serialized. | [default to null] |
-| **type\_name** | [**ColumnTypeName**](ColumnTypeName.md) |  | [default to null] |
-| **type\_precision** | **Integer** | Digits of precision; required on Create for DecimalTypes. | [optional] [default to null] |
-| **type\_scale** | **Integer** | Digits to right of decimal; Required on Create for DecimalTypes. | [optional] [default to null] |
-| **type\_interval\_type** | **String** | Format of IntervalType. | [optional] [default to null] |
-| **position** | **Integer** | Ordinal position of column (starting at position 0). | [default to null] |
-| **parameter\_mode** | [**FunctionParameterMode**](FunctionParameterMode.md) |  | [optional] [default to null] |
-| **parameter\_type** | [**FunctionParameterType**](FunctionParameterType.md) |  | [optional] [default to null] |
-| **parameter\_default** | **String** | Default value of the parameter. | [optional] [default to null] |
-| **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------ | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | Name of parameter. | |
+| **type\_text** | **String** | required | Full data type spec, SQL/catalogString text. | |
+| **type\_json** | **String** | required | Full data type spec, JSON-serialized. | |
+| **type\_name** | [**ColumnTypeName**](ColumnTypeName.md) | required |  | |
+| **type\_precision** | **Integer** | optional | Digits of precision; required on Create for DecimalTypes. | |
+| **type\_scale** | **Integer** | optional | Digits to right of decimal; Required on Create for DecimalTypes. | |
+| **type\_interval\_type** | **String** | optional | Format of IntervalType. | |
+| **position** | **Integer** | required | Ordinal position of column (starting at position 0). | |
+| **parameter\_mode** | [**FunctionParameterMode**](FunctionParameterMode.md) | optional |  | |
+| **parameter\_type** | [**FunctionParameterType**](FunctionParameterType.md) | optional |  | |
+| **parameter\_default** | **String** | optional | Default value of the parameter. | |
+| **comment** | **String** | optional | User-provided free-form text description. | |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

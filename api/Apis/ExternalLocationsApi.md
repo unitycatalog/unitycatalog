@@ -21,9 +21,9 @@ Create an external location
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **CreateExternalLocation** | [**CreateExternalLocation**](../Models/CreateExternalLocation.md)|  | |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **CreateExternalLocation** | [**CreateExternalLocation**](../Models/CreateExternalLocation.md) | required |  |  |
 
 ### Return type
 
@@ -48,10 +48,10 @@ Delete an external location
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| Name of the external location. | [default to null] |
-| **force** | **Boolean**| Force deletion even if there are dependent external tables or mounts. | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | Name of the external location. | |
+| **force** | **Boolean** | optional | Force deletion even if there are dependent external tables or mounts. | |
 
 ### Return type
 
@@ -76,9 +76,9 @@ Get an external location
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| Name of the external location. | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | Name of the external location. | |
 
 ### Return type
 
@@ -103,10 +103,10 @@ List external locations
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **max\_results** | **Integer**| Maximum number of external locations to return. If not set, all external locations are returned.  | [optional] [default to null] |
-| **page\_token** | **String**| Opaque pagination token to go to the next page. | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **max\_results** | **Integer** | optional | Maximum number of external locations to return. If not set, all external locations are returned.  | |
+| **page\_token** | **String** | optional | Opaque pagination token to go to the next page. | |
 
 ### Return type
 
@@ -131,10 +131,10 @@ Update an external location
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **name** | **String**| Name of the external location. | [default to null] |
-| **UpdateExternalLocation** | [**UpdateExternalLocation**](../Models/UpdateExternalLocation.md)|  | |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | required | Name of the external location. | |
+| **UpdateExternalLocation** | [**UpdateExternalLocation**](../Models/UpdateExternalLocation.md) | required |  |  |
 
 ### Return type
 

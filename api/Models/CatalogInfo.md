@@ -1,19 +1,19 @@
 # CatalogInfo
 ## Properties
 
-| Name | Type | Description | Notes |
-|------------ | ------------- | ------------- | -------------|
-| **name** | **String** | Name of catalog. | [optional] [default to null] |
-| **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
-| **properties** | **Map** | A map of key-value properties attached to the securable. | [optional] [default to null] |
-| **owner** | **String** | Username of current owner of catalog. | [optional] [default to null] |
-| **created\_at** | **Long** | Time at which this catalog was created, in epoch milliseconds. | [optional] [default to null] |
-| **created\_by** | **String** | Username of catalog creator. | [optional] [default to null] |
-| **updated\_at** | **Long** | Time at which this catalog was last modified, in epoch milliseconds. | [optional] [default to null] |
-| **updated\_by** | **String** | Username of user who last modified catalog. | [optional] [default to null] |
-| **id** | **String** | Unique identifier for the catalog. | [optional] [default to null] |
-| **storage\_root** | **String** | Storage root URL for managed storage location of catalog. This can be set when creating a catalog. Example: s3://bucket/ucroot  | [optional] [default to null] |
-| **storage\_location** | **String** | Storage Location URL (full path) for managed storage location of catalog. This is an automatically generated unique path under storage_root. Example: s3://bucket/ucroot/__unitystorage/catalogs/{catalog_id}  | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------ | ------------- | ------------- | ------------- | -------------|
+| **name** | **String** | optional | Name of catalog. | |
+| **comment** | **String** | optional | User-provided free-form text description. | |
+| **properties** | **Map** | optional | A map of key-value properties attached to the securable. | |
+| **owner** | **String** | optional | Username of current owner of catalog. | |
+| **created\_at** | **Long** | optional | Time at which this catalog was created, in epoch milliseconds. | |
+| **created\_by** | **String** | optional | Username of catalog creator. | |
+| **updated\_at** | **Long** | optional | Time at which this catalog was last modified, in epoch milliseconds. | |
+| **updated\_by** | **String** | optional | Username of user who last modified catalog. | |
+| **id** | **String** | optional | Unique identifier for the catalog. | |
+| **storage\_root** | **String** | optional | Storage root URL for managed storage location of catalog. This can be set when creating a catalog. Example: s3://bucket/ucroot  | |
+| **storage\_location** | **String** | optional | Storage Location URL (full path) for managed storage location of catalog. This is an automatically generated unique path under storage_root. Example: s3://bucket/ucroot/__unitystorage/catalogs/{catalog_id}  | |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

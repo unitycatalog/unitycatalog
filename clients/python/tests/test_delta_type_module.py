@@ -19,6 +19,7 @@ from unitycatalog.delta.models.array_type import ArrayType
 from unitycatalog.delta.models.map_type import MapType
 from unitycatalog.delta.models.struct_type import StructType
 from unitycatalog.delta.models.struct_field import StructField
+from unitycatalog.delta.models.struct_field_metadata import StructFieldMetadata
 
 # Importing delta_type_module applies the monkey-patches
 import unitycatalog.delta.serde.delta_type_module  # noqa: F401
@@ -40,6 +41,9 @@ class TestDeserFromJson:
             col = StructField.from_json(json_str)
             assert isinstance(col.type, PrimitiveType)
             assert col.type.type == t
+            # Pydantic must coerce the dict `metadata` into a typed StructFieldMetadata
+            # instance -- _field_to_dict relies on this to call `.to_dict()` on serialization.
+            assert isinstance(col.metadata, StructFieldMetadata)
 
     def test_decimal_type(self):
         json_str = json.dumps({
@@ -203,6 +207,11 @@ class TestJsonRoundTrip:
             "metadata": {},
         }
         col = StructField.from_json(json.dumps(original))
+        # Metadata at every level (root, each leaf) must be StructFieldMetadata so the
+        # `.to_dict()` call in _field_to_dict succeeds during the round-trip below.
+        assert isinstance(col.metadata, StructFieldMetadata)
+        for inner in col.type.fields:
+            assert isinstance(inner.metadata, StructFieldMetadata)
         reserialized = json.loads(col.to_json())
         assert reserialized == original
 

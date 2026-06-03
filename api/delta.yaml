@@ -1342,15 +1342,27 @@ components:
           type: boolean
           description: Whether this column can be null
         metadata:
-          type: object
-          description: Additional column metadata (arbitrary key-value pairs, e.g., comment, delta.columnMapping.id)
-          additionalProperties:
-            description: Metadata values can be strings, numbers, booleans, or nested objects
+          $ref: '#/components/schemas/StructFieldMetadata'
       required:
         - name
         - type
         - nullable
         - metadata
+
+    StructFieldMetadata:
+      type: object
+      description: Additional column metadata (arbitrary key-value pairs, e.g., comment, delta.columnMapping.id)
+      additionalProperties:
+        description: Metadata values can be strings, numbers, booleans, or nested objects
+      properties:
+        _placeholder:
+          type: object
+          description: |
+            Schema-only marker; never sent on the wire. Declared so the OpenAPI generator emits a
+            wrapper class for this schema instead of inlining `metadata` on the parent StructField
+            `new HashMap<>()` -- that would erase the "metadata absent" signal. Use the Map
+            accessors (e.g., `metadata.put("comment", ...)` and `metadata.get("comment")`) for 
+            actual metadata keys.
 
     DeltaType:
       description: |
@@ -1408,7 +1420,6 @@ components:
         contains-null:
           type: boolean
           description: Whether array elements can be null
-          default: true
       required:
         - element-type
         - contains-null
@@ -1425,7 +1436,6 @@ components:
         value-contains-null:
           type: boolean
           description: Whether map values can be null
-          default: true
       required:
         - key-type
         - value-type

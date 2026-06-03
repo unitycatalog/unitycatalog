@@ -1,3 +1,6 @@
+import java.nio.file.{Files, Paths}
+import scala.jdk.CollectionConverters._
+
 import org.openapitools.codegen.{CodegenConstants, DefaultGenerator}
 import org.openapitools.codegen.config.CodegenConfigurator
 
@@ -42,13 +45,15 @@ object OpenApiHelper {
   def generate(
     outputDir: String,
     specs: Seq[OpenApiSpec],
-    generatorName: String = "java"
+    generatorName: String = "java",
+    templateDir: String = null
   ): Unit = {
     specs.foreach { spec =>
       val config = new CodegenConfigurator()
       config.setInputSpec(spec.inputSpec)
       config.setOutputDir(outputDir)
       config.setGeneratorName(generatorName)
+      if (templateDir != null) config.setTemplateDir(templateDir)
       if (spec.invokerPackage != null) config.setInvokerPackage(spec.invokerPackage)
       if (spec.apiPackage != null) config.setApiPackage(spec.apiPackage)
       if (spec.modelPackage != null) config.setModelPackage(spec.modelPackage)
@@ -61,6 +66,34 @@ object OpenApiHelper {
       gen.setGeneratorPropertyDefault(CodegenConstants.MODEL_TESTS, "false")
       gen.setGenerateMetadata(false)
       gen.opts(config.toClientOptInput()).generate()
+    }
+    if (generatorName == "markdown") {
+      stripDefaultToNull(outputDir)
+    }
+  }
+
+  /**
+   * The bundled markdown generator inherits `DefaultCodegen.toDefaultValue`, which returns the
+   * literal string "null" when a property has no `default:` in the spec. The model template then
+   * renders `[default to null]` for every field, which is meaningless and noisy. Strip it from
+   * generated `.md` files after generation; meaningful defaults like `[default to 50]` are left
+   * intact.
+   */
+  private def stripDefaultToNull(outputDir: String): Unit = {
+    val root = Paths.get(outputDir)
+    if (!Files.isDirectory(root)) return
+    val stream = Files.walk(root)
+    try {
+      stream.iterator().asScala
+        .filter(p => p.toString.endsWith(".md"))
+        .foreach { p =>
+          val content = new String(Files.readAllBytes(p))
+          val cleaned =
+            content.replace(" [default to null]", "").replace("[default to null]", "")
+          if (cleaned != content) Files.write(p, cleaned.getBytes)
+        }
+    } finally {
+      stream.close()
     }
   }
 }

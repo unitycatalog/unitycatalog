@@ -25,11 +25,11 @@ Create a staging table
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **CreateStagingTableRequest** | [**CreateStagingTableRequest**](../Models/CreateStagingTableRequest.md)|  | |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **CreateStagingTableRequest** | [**CreateStagingTableRequest**](../Models/CreateStagingTableRequest.md) | required |  |  |
 
 ### Return type
 
@@ -54,11 +54,11 @@ Create a table
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **CreateTableRequest** | [**CreateTableRequest**](../Models/CreateTableRequest.md)|  | |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **CreateTableRequest** | [**CreateTableRequest**](../Models/CreateTableRequest.md) | required |  |  |
 
 ### Return type
 
@@ -83,11 +83,11 @@ Delete a table
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **table** | **String**| Table name | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **table** | **String** | required | Table name | |
 
 ### Return type
 
@@ -112,12 +112,12 @@ List tables
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **maxResults** | **Integer**| Maximum number of tables to return | [optional] [default to 50] |
-| **pageToken** | **String**| Pagination token | [optional] [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **maxResults** | **Integer** | optional | Maximum number of tables to return | [default to 50] |
+| **pageToken** | **String** | optional | Pagination token | |
 
 ### Return type
 
@@ -142,11 +142,11 @@ Load table metadata
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **table** | **String**| Table name | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **table** | **String** | required | Table name | |
 
 ### Return type
 
@@ -171,12 +171,12 @@ Rename a table
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **table** | **String**| Table name | [default to null] |
-| **RenameTableRequest** | [**RenameTableRequest**](../Models/RenameTableRequest.md)|  | |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **table** | **String** | required | Table name | |
+| **RenameTableRequest** | [**RenameTableRequest**](../Models/RenameTableRequest.md) | required |  |  |
 
 ### Return type
 
@@ -201,12 +201,12 @@ Report commit metrics
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **table** | **String**| Table name | [default to null] |
-| **ReportMetricsRequest** | [**ReportMetricsRequest**](../Models/ReportMetricsRequest.md)|  | |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **table** | **String** | required | Table name | |
+| **ReportMetricsRequest** | [**ReportMetricsRequest**](../Models/ReportMetricsRequest.md) | required |  |  |
 
 ### Return type
 
@@ -231,11 +231,11 @@ Check if table exists
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **table** | **String**| Table name | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **table** | **String** | required | Table name | |
 
 ### Return type
 
@@ -260,12 +260,12 @@ Update table
 
 ### Parameters
 
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **catalog** | **String**| Catalog name | [default to null] |
-| **schema** | **String**| Schema name | [default to null] |
-| **table** | **String**| Table name | [default to null] |
-| **UpdateTableRequest** | [**UpdateTableRequest**](../Models/UpdateTableRequest.md)|  | |
+| Name | Type | Required | Description | Notes |
+|------------- | ------------- | ------------- | ------------- | -------------|
+| **catalog** | **String** | required | Catalog name | |
+| **schema** | **String** | required | Schema name | |
+| **table** | **String** | required | Table name | |
+| **UpdateTableRequest** | [**UpdateTableRequest**](../Models/UpdateTableRequest.md) | required |  |  |
 
 ### Return type
 

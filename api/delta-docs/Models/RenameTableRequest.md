@@ -1,9 +1,9 @@
 # RenameTableRequest
 ## Properties
 
-| Name | Type | Description | Notes |
-|------------ | ------------- | ------------- | -------------|
-| **new-name** | **String** | New table name | [default to null] |
+| Name | Type | Required | Description | Notes |
+|------------ | ------------- | ------------- | ------------- | -------------|
+| **new-name** | **String** | required | New table name | |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

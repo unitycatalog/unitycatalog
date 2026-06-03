@@ -316,9 +316,11 @@ lazy val apiDocs = (project in file("api"))
     name := s"$artifactNamePrefix-docs",
     skipReleaseSettings,
     generate := {
+      val templateDir = (file("api") / "templates" / "markdown-docs").toString
       OpenApiHelper.generate(
         outputDir = (file("api")).toString,
         generatorName = "markdown",
+        templateDir = templateDir,
         specs = Seq(
           OpenApiSpec(
             inputSpec = (file("api") / "all.yaml").toString
@@ -328,6 +330,7 @@ lazy val apiDocs = (project in file("api"))
       OpenApiHelper.generate(
         outputDir = (file("api") / "delta-docs").toString,
         generatorName = "markdown",
+        templateDir = templateDir,
         specs = Seq(
           OpenApiSpec(
             inputSpec = (file("api") / "delta.yaml").toString
