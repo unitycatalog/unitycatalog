@@ -237,7 +237,8 @@ class UCSingleCatalog
         properties
       case Some(v) =>
         throw new ApiException(
-          s"Invalid property value '$v' for '${UCTableProperties.DELTA_CATALOG_MANAGED_KEY}'.")
+          s"Invalid property value '$v' for '${UCTableProperties.DELTA_CATALOG_MANAGED_KEY}'. " +
+            s"Must be '${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'.")
     }
   }
 

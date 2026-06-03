@@ -86,8 +86,9 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
                     fullTableName, UCTableProperties.DELTA_CATALOG_MANAGED_KEY))
         .hasMessageContaining(
             String.format(
-                "Invalid property value 'disabled' for '%s'",
-                UCTableProperties.DELTA_CATALOG_MANAGED_KEY));
+                "Invalid property value 'disabled' for '%s'. Must be '%s'.",
+                UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+                UCTableProperties.DELTA_CATALOG_MANAGED_VALUE));
     assertThatThrownBy(
             () ->
                 sql(
