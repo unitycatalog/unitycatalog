@@ -6,7 +6,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.delta.model.CredentialOperation;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
@@ -15,6 +14,7 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
+import io.unitycatalog.hadoop.internal.id.CredId;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
@@ -35,7 +35,9 @@ class CredPropsUtilTest {
   private static final String CUSTOM_ABFSS_IMPL = "com.example.CustomAbfssFileSystem";
 
   @Test
-  void s3OriginalImplPreservedFromExistingProps() {
+  void s3OriginalImplPreservedFromExistingProps() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Configuration conf = new Configuration(false);
     conf.set("fs.s3.impl", CUSTOM_S3_IMPL);
     conf.set("fs.s3a.impl", CUSTOM_S3_IMPL);
@@ -46,11 +48,11 @@ class CredPropsUtilTest {
             true,
             conf,
             "s3",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props.get("fs.s3.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
@@ -58,18 +60,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void s3DefaultOriginalImplWhenNotInExistingProps() {
+  void s3DefaultOriginalImplWhenNotInExistingProps() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             true,
             new Configuration(false),
             "s3",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props.get("fs.s3.impl.original"))
@@ -79,7 +83,9 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void gsOriginalImplPreservedFromExistingProps() {
+  void gsOriginalImplPreservedFromExistingProps() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Configuration conf = new Configuration(false);
     conf.set("fs.gs.impl", CUSTOM_GS_IMPL);
 
@@ -89,18 +95,20 @@ class CredPropsUtilTest {
             true,
             conf,
             "gs",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            gcsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props.get("fs.gs.impl.original")).isEqualTo(CUSTOM_GS_IMPL);
   }
 
   @Test
-  void abfsOriginalImplPreservedFromExistingProps() {
+  void abfsOriginalImplPreservedFromExistingProps() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(abfsCreds());
     Configuration conf = new Configuration(false);
     conf.set("fs.abfs.impl", CUSTOM_ABFS_IMPL);
     conf.set("fs.abfss.impl", CUSTOM_ABFSS_IMPL);
@@ -111,11 +119,11 @@ class CredPropsUtilTest {
             true,
             conf,
             "abfs",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            abfsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props.get("fs.abfs.impl.original")).isEqualTo(CUSTOM_ABFS_IMPL);
@@ -123,18 +131,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void gsDefaultOriginalImplWhenNotInExistingProps() {
+  void gsDefaultOriginalImplWhenNotInExistingProps() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             true,
             new Configuration(false),
             "gs",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            gcsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props.get("fs.gs.impl.original"))
@@ -142,18 +152,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void abfsDefaultOriginalImplWhenNotInExistingProps() {
+  void abfsDefaultOriginalImplWhenNotInExistingProps() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(abfsCreds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             true,
             new Configuration(false),
             "abfs",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            abfsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props.get("fs.abfs.impl.original"))
@@ -163,18 +175,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void originalImplNotSetWhenCredScopedFsDisabled() {
+  void originalImplNotSetWhenCredScopedFsDisabled() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             false,
             new Configuration(false),
             "s3",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props).doesNotContainKey("fs.s3.impl.original");
@@ -184,19 +198,21 @@ class CredPropsUtilTest {
   // For unitycatalog delta table API.
 
   @Test
-  void s3DeltaTableCredsHaveExpectedKeys() {
+  void s3DeltaTableCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createDeltaTableCredProps(
             true,
             false,
             new Configuration(false),
             "s3",
+            null,
             "http://uc",
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
-            CredentialOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props)
@@ -217,19 +233,21 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void gcsDeltaTableCredsHaveExpectedKeys() {
+  void gcsDeltaTableCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Map<String, String> props =
         CredPropsUtil.createDeltaTableCredProps(
             true,
             false,
             new Configuration(false),
             "gs",
+            null,
             "http://uc",
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "gs://bucket/tbl",
-            CredentialOperation.READ,
-            gcsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ,
             Map.of());
 
     assertThat(props)
@@ -246,19 +264,21 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void abfsDeltaTableCredsHaveExpectedKeys() {
+  void abfsDeltaTableCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(abfsCreds());
     Map<String, String> props =
         CredPropsUtil.createDeltaTableCredProps(
             true,
             false,
             new Configuration(false),
             "abfss",
+            null,
             "http://uc",
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "abfss://container@account.dfs.core.windows.net/tbl",
-            CredentialOperation.READ_WRITE,
-            abfsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props)
@@ -275,19 +295,21 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void deltaTableStaticCredsEmbedCloudKeysAndOmitDeltaKeys() {
+  void deltaTableStaticCredsEmbedCloudKeysAndOmitDeltaKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createDeltaTableCredProps(
             false,
             false,
             new Configuration(false),
             "s3",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
-            CredentialOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props)
@@ -299,25 +321,29 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void deltaTableUnknownSchemeReturnsEmptyMap() {
+  void deltaTableUnknownSchemeReturnsEmptyMap() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     assertThat(
             CredPropsUtil.createDeltaTableCredProps(
                 false,
                 false,
                 new Configuration(false),
                 "hdfs",
-                "http://uc",
                 null,
+                "http://uc",
+                tokenProvider(),
                 UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
                 "hdfs://namenode/tbl",
-                CredentialOperation.READ_WRITE,
-                s3Creds(),
+                UCCredentialHadoopConfs.TableOperation.READ_WRITE,
                 Map.of()))
         .isEmpty();
   }
 
   @Test
-  void s3DeltaTableOriginalImplPreservedWithCredScopedFs() {
+  void s3DeltaTableOriginalImplPreservedWithCredScopedFs() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Configuration conf = new Configuration(false);
     conf.set("fs.s3.impl", CUSTOM_S3_IMPL);
     conf.set("fs.s3a.impl", CUSTOM_S3_IMPL);
@@ -328,12 +354,12 @@ class CredPropsUtilTest {
             true,
             conf,
             "s3",
+            null,
             "http://uc",
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
-            CredentialOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props.get("fs.s3.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
@@ -341,19 +367,21 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void deltaTableOriginalImplNotSetWhenCredScopedFsDisabled() {
+  void deltaTableOriginalImplNotSetWhenCredScopedFsDisabled() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createDeltaTableCredProps(
             true,
             false,
             new Configuration(false),
             "s3",
+            null,
             "http://uc",
             tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "s3://bucket/tbl",
-            CredentialOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props)
@@ -364,18 +392,20 @@ class CredPropsUtilTest {
   // For Delta staging table API.
 
   @Test
-  void s3DeltaStagingTableCredsHaveExpectedKeys() {
+  void s3DeltaStagingTableCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createDeltaStagingTableCredProps(
             true,
             false,
             new Configuration(false),
             "s3",
+            null,
             "http://uc",
             tokenProvider(),
             "staging-uuid",
             "s3://bucket/staging",
-            s3Creds(),
             Map.of());
 
     assertThat(props)
@@ -391,18 +421,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void gcsDeltaStagingTableCredsHaveExpectedKeys() {
+  void gcsDeltaStagingTableCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Map<String, String> props =
         CredPropsUtil.createDeltaStagingTableCredProps(
             true,
             false,
             new Configuration(false),
             "gs",
+            null,
             "http://uc",
             tokenProvider(),
             "staging-uuid",
             "gs://bucket/staging",
-            gcsCreds(),
             Map.of());
 
     assertThat(props)
@@ -414,18 +446,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void abfsDeltaStagingTableCredsHaveExpectedKeys() {
+  void abfsDeltaStagingTableCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(abfsCreds());
     Map<String, String> props =
         CredPropsUtil.createDeltaStagingTableCredProps(
             true,
             false,
             new Configuration(false),
             "abfss",
+            null,
             "http://uc",
             tokenProvider(),
             "staging-uuid",
             "abfss://container@account.dfs.core.windows.net/staging",
-            abfsCreds(),
             Map.of());
 
     assertThat(props)
@@ -438,18 +472,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void deltaStagingTableStaticCredsEmbedCloudKeysAndOmitStagingKeys() {
+  void deltaStagingTableStaticCredsEmbedCloudKeysAndOmitStagingKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createDeltaStagingTableCredProps(
             false,
             false,
             new Configuration(false),
             "s3",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "staging-uuid",
             "s3://bucket/staging",
-            s3Creds(),
             Map.of());
 
     assertThat(props)
@@ -460,24 +496,28 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void deltaStagingTableUnknownSchemeReturnsEmptyMap() {
+  void deltaStagingTableUnknownSchemeReturnsEmptyMap() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     assertThat(
             CredPropsUtil.createDeltaStagingTableCredProps(
                 false,
                 false,
                 new Configuration(false),
                 "hdfs",
-                "http://uc",
                 null,
+                "http://uc",
+                tokenProvider(),
                 "staging-uuid",
                 "hdfs://namenode/staging",
-                s3Creds(),
                 Map.of()))
         .isEmpty();
   }
 
   @Test
-  void s3DeltaStagingTableOriginalImplPreservedWithCredScopedFs() {
+  void s3DeltaStagingTableOriginalImplPreservedWithCredScopedFs() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Configuration conf = new Configuration(false);
     conf.set("fs.s3.impl", CUSTOM_S3_IMPL);
     conf.set("fs.s3a.impl", CUSTOM_S3_IMPL);
@@ -488,106 +528,34 @@ class CredPropsUtilTest {
             true,
             conf,
             "s3",
+            null,
             "http://uc",
             tokenProvider(),
             "staging-uuid",
             "s3://bucket/staging",
-            s3Creds(),
             Map.of());
 
     assertThat(props.get("fs.s3.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
     assertThat(props.get("fs.s3a.impl.original")).isEqualTo(CUSTOM_S3_IMPL);
   }
 
-  @Test
-  void propsBuilderRejectsTableIdAfterDeltaTableIdentifier() {
-    CredPropsUtil.S3PropsBuilder builder =
-        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
-    builder.ucDeltaTableIdentifier(
-        UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "s3://bucket/tbl");
-
-    assertThatThrownBy(() -> builder.tableId("table-id"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("tableId cannot be set");
-  }
-
-  @Test
-  void propsBuilderRejectsDeltaTableIdentifierAfterTableId() {
-    CredPropsUtil.S3PropsBuilder builder =
-        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
-    builder.tableId("table-id");
-
-    assertThatThrownBy(
-            () ->
-                builder.ucDeltaTableIdentifier(
-                    UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "s3://bucket/tbl"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("UC Delta table identifier cannot be set");
-  }
-
-  @Test
-  void propsBuilderRejectsTableIdAfterStagingTableId() {
-    CredPropsUtil.S3PropsBuilder builder =
-        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
-    builder.ucDeltaStagingTableId("staging-id", "s3://bucket/staging");
-
-    assertThatThrownBy(() -> builder.tableId("table-id"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("tableId cannot be set");
-  }
-
-  @Test
-  void propsBuilderRejectsDeltaTableIdentifierAfterStagingTableId() {
-    CredPropsUtil.S3PropsBuilder builder =
-        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
-    builder.ucDeltaStagingTableId("staging-id", "s3://bucket/staging");
-
-    assertThatThrownBy(
-            () ->
-                builder.ucDeltaTableIdentifier(
-                    UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "s3://bucket/tbl"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("UC Delta table identifier cannot be set");
-  }
-
-  @Test
-  void propsBuilderRejectsStagingTableIdAfterTableId() {
-    CredPropsUtil.S3PropsBuilder builder =
-        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
-    builder.tableId("table-id");
-
-    assertThatThrownBy(() -> builder.ucDeltaStagingTableId("staging-id", "s3://bucket/staging"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("deltaStagingTableId cannot be set");
-  }
-
-  @Test
-  void propsBuilderRejectsStagingTableIdAfterDeltaTableIdentifier() {
-    CredPropsUtil.S3PropsBuilder builder =
-        new CredPropsUtil.S3PropsBuilder(false, new Configuration(false));
-    builder.ucDeltaTableIdentifier(
-        UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "s3://bucket/tbl");
-
-    assertThatThrownBy(() -> builder.ucDeltaStagingTableId("staging-id", "s3://bucket/staging"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("deltaStagingTableId cannot be set");
-  }
-
   // UC REST table and path credential props.
 
   @Test
-  void s3TableRenewalCredsHaveExpectedKeys() {
+  void s3TableRenewalCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             true,
             false,
             new Configuration(false),
             "s3",
+            null,
             "http://uc",
             tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props)
@@ -596,7 +564,6 @@ class CredPropsUtilTest {
         .containsEntry(
             UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
             UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .containsKey(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY)
         .containsEntry(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid")
         .containsEntry(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ_WRITE")
         .containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak")
@@ -606,18 +573,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void s3TableStaticCredsHaveExpectedKeys() {
+  void s3TableStaticCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             false,
             new Configuration(false),
             "s3",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props)
@@ -628,18 +597,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void gcsTableRenewalCredsHaveExpectedKeys() {
+  void gcsTableRenewalCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             true,
             false,
             new Configuration(false),
             "gs",
+            null,
             "http://uc",
             tokenProvider(),
             "tid",
-            TableOperation.READ,
-            gcsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ,
             Map.of());
 
     assertThat(props)
@@ -654,18 +625,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void abfsTableRenewalCredsHaveExpectedKeys() {
+  void abfsTableRenewalCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(abfsCreds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             true,
             false,
             new Configuration(false),
             "abfs",
+            null,
             "http://uc",
             tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            abfsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props)
@@ -677,18 +650,20 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void s3PathRenewalCredsHaveExpectedKeys() {
+  void s3PathRenewalCredsHaveExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createPathCredProps(
             true,
             false,
             new Configuration(false),
             "s3",
+            null,
             "http://uc",
             tokenProvider(),
             "s3://bucket/key",
-            io.unitycatalog.client.model.PathOperation.PATH_READ,
-            s3Creds(),
+            UCCredentialHadoopConfs.PathOperation.PATH_READ,
             Map.of());
 
     assertThat(props)
@@ -701,53 +676,59 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void returnedTableCredMapIsUnmodifiable() {
+  void returnedTableCredMapIsUnmodifiable() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             false,
             new Configuration(false),
             "s3",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            s3Creds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThatThrownBy(() -> props.put("k", "v")).isInstanceOf(UnsupportedOperationException.class);
   }
 
   @Test
-  void unknownSchemeReturnsEmptyTableCredMap() {
+  void unknownSchemeReturnsEmptyTableCredMap() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     assertThat(
             CredPropsUtil.createTableCredProps(
                 false,
                 false,
                 new Configuration(false),
                 "hdfs",
-                "http://uc",
                 null,
+                "http://uc",
+                tokenProvider(),
                 "tid",
-                TableOperation.READ,
-                s3Creds(),
+                UCCredentialHadoopConfs.TableOperation.READ,
                 Map.of()))
         .isEmpty();
   }
 
   @Test
-  void unknownSchemeReturnsEmptyPathCredMap() {
+  void unknownSchemeReturnsEmptyPathCredMap() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     assertThat(
             CredPropsUtil.createPathCredProps(
                 false,
                 false,
                 new Configuration(false),
                 "hdfs",
-                "http://uc",
                 null,
+                "http://uc",
+                tokenProvider(),
                 "hdfs://nn/key",
-                io.unitycatalog.client.model.PathOperation.PATH_READ,
-                s3Creds(),
+                UCCredentialHadoopConfs.PathOperation.PATH_READ,
                 Map.of()))
         .isEmpty();
   }
@@ -761,16 +742,16 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void fetchTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
-    AtomicReference<Configuration> captured = new AtomicReference<>();
+  void createTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
+    AtomicReference<CredId> captured = new AtomicReference<>();
     CredPropsUtil.genericCredFetcherFactory =
-        (apiClient, conf) -> {
-          captured.set(conf);
+        (apiClient, credId) -> {
+          captured.set(credId);
           return mockGenericCredentialFetcher(s3Creds());
         };
 
     Map<String, String> props =
-        CredPropsUtil.fetchTableCredProps(
+        CredPropsUtil.createTableCredProps(
             true,
             false,
             new Configuration(false),
@@ -782,25 +763,25 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
+    assertThat(captured.get().props().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
         .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_TABLE_ID_KEY)).isEqualTo("tid");
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY))
+    assertThat(captured.get().props().get(UCHadoopConfConstants.UC_TABLE_ID_KEY)).isEqualTo("tid");
+    assertThat(captured.get().props().get(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY))
         .isEqualTo("READ_WRITE");
     assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
   }
 
   @Test
-  void fetchDeltaTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
-    AtomicReference<Configuration> captured = new AtomicReference<>();
+  void createDeltaTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
+    AtomicReference<CredId> captured = new AtomicReference<>();
     CredPropsUtil.genericCredFetcherFactory =
-        (apiClient, conf) -> {
-          captured.set(conf);
+        (apiClient, credId) -> {
+          captured.set(credId);
           return mockGenericCredentialFetcher(s3Creds());
         };
 
     Map<String, String> props =
-        CredPropsUtil.fetchDeltaTableCredProps(
+        CredPropsUtil.createDeltaTableCredProps(
             true,
             false,
             new Configuration(false),
@@ -813,31 +794,29 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.TableOperation.READ,
             Map.of());
 
-    assertThat(
-            captured
-                .get()
-                .getBoolean(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, false))
-        .isTrue();
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY)).isEqualTo("READ");
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY)).isEqualTo("cat");
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY)).isEqualTo("sch");
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY)).isEqualTo("tab");
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY))
+    Map<String, String> reqProps = captured.get().props();
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY))
+        .isEqualTo("true");
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY)).isEqualTo("READ");
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY)).isEqualTo("cat");
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY)).isEqualTo("sch");
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY)).isEqualTo("tab");
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY))
         .isEqualTo("s3://bucket/key");
     assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
   }
 
   @Test
-  void fetchPathCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
-    AtomicReference<Configuration> captured = new AtomicReference<>();
+  void createPathCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
+    AtomicReference<CredId> captured = new AtomicReference<>();
     CredPropsUtil.genericCredFetcherFactory =
-        (apiClient, conf) -> {
-          captured.set(conf);
+        (apiClient, credId) -> {
+          captured.set(credId);
           return mockGenericCredentialFetcher(s3Creds());
         };
 
     Map<String, String> props =
-        CredPropsUtil.fetchPathCredProps(
+        CredPropsUtil.createPathCredProps(
             true,
             false,
             new Configuration(false),
@@ -849,25 +828,26 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.PathOperation.PATH_CREATE_TABLE,
             Map.of());
 
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
+    Map<String, String> reqProps = captured.get().props();
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
         .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_PATH_KEY)).isEqualTo("s3://bucket/key");
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_PATH_OPERATION_KEY))
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_PATH_KEY)).isEqualTo("s3://bucket/key");
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_PATH_OPERATION_KEY))
         .isEqualTo("PATH_CREATE_TABLE");
     assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
   }
 
   @Test
-  void fetchDeltaStagingTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
-    AtomicReference<Configuration> captured = new AtomicReference<>();
+  void createDeltaStagingTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
+    AtomicReference<CredId> captured = new AtomicReference<>();
     CredPropsUtil.genericCredFetcherFactory =
-        (apiClient, conf) -> {
-          captured.set(conf);
+        (apiClient, credId) -> {
+          captured.set(credId);
           return mockGenericCredentialFetcher(s3Creds());
         };
 
     Map<String, String> props =
-        CredPropsUtil.fetchDeltaStagingTableCredProps(
+        CredPropsUtil.createDeltaStagingTableCredProps(
             true,
             false,
             new Configuration(false),
@@ -879,23 +859,24 @@ class CredPropsUtilTest {
             "s3://bucket/staging",
             Map.of());
 
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY))
+    Map<String, String> reqProps = captured.get().props();
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY))
         .isEqualTo("true");
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY))
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY))
         .isEqualTo("staging-uuid");
-    assertThat(captured.get().get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY))
+    assertThat(reqProps.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY))
         .isEqualTo("s3://bucket/staging");
     assertThat(props).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
   }
 
   @Test
-  void fetchTableCredPropsIncludesAppVersionProps() throws Exception {
+  void createTableCredPropsIncludesAppVersionProps() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
-        (apiClient, conf) -> mockGenericCredentialFetcher(s3Creds());
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> appVersions = Map.of("Spark", "4.0.0", "Delta", "3.3.0");
 
     Map<String, String> props =
-        CredPropsUtil.fetchTableCredProps(
+        CredPropsUtil.createTableCredProps(
             true,
             false,
             new Configuration(false),
@@ -917,25 +898,29 @@ class CredPropsUtilTest {
   // GCS conflict-check setting propagation.
 
   @Test
-  void gcsConflictCheckDefaultsFalse() {
+  void gcsConflictCheckDefaultsFalse() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             false,
             false,
             new Configuration(false),
             "gs",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            gcsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
   }
 
   @Test
-  void gcsConflictCheckRespectsUserOverrideToTrue() {
+  void gcsConflictCheckRespectsUserOverrideToTrue() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Configuration conf = new Configuration(false);
     conf.set("fs.gs.create.items.conflict.check.enable", "true");
 
@@ -945,47 +930,51 @@ class CredPropsUtilTest {
             false,
             conf,
             "gs",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            gcsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props).containsEntry("fs.gs.create.items.conflict.check.enable", "true");
   }
 
   @Test
-  void gcsConflictCheckDefaultWithRenewalEnabled() {
+  void gcsConflictCheckDefaultWithRenewalEnabled() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             true,
             false,
             new Configuration(false),
             "gs",
+            null,
             "http://uc",
             tokenProvider(),
             "tid",
-            TableOperation.READ_WRITE,
-            gcsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(props).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
   }
 
   @Test
-  void gcsConflictCheckDefaultPathAndDeltaCredProps() {
+  void gcsConflictCheckDefaultPathAndDeltaCredProps() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Map<String, String> pathProps =
         CredPropsUtil.createPathCredProps(
             false,
             false,
             new Configuration(false),
             "gs",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             "gs://bucket/key",
-            io.unitycatalog.client.model.PathOperation.PATH_READ,
-            gcsCreds(),
+            UCCredentialHadoopConfs.PathOperation.PATH_READ,
             Map.of());
 
     assertThat(pathProps).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
@@ -996,12 +985,12 @@ class CredPropsUtilTest {
             false,
             new Configuration(false),
             "gs",
-            "http://uc",
             null,
+            "http://uc",
+            tokenProvider(),
             UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
             "gs://bucket/tbl",
-            CredentialOperation.READ_WRITE,
-            gcsCreds(),
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
     assertThat(deltaProps).containsEntry("fs.gs.create.items.conflict.check.enable", "false");

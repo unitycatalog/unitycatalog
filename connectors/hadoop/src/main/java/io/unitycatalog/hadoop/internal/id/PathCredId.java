@@ -1,0 +1,58 @@
+package io.unitycatalog.hadoop.internal.id;
+
+import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY;
+import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE;
+import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_PATH_KEY;
+import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_PATH_OPERATION_KEY;
+
+import io.unitycatalog.client.internal.Preconditions;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/** {@link CredId} keyed by path and operation; used for path-level temporary credentials. */
+public class PathCredId implements CredId {
+  private final String path;
+  private final String pathOperation;
+
+  public PathCredId(String path, String pathOperation) {
+    this.path = Preconditions.checkNotNull(path, "path is required");
+    this.pathOperation = Preconditions.checkNotNull(pathOperation, "pathOperation is required");
+  }
+
+  public String path() {
+    return path;
+  }
+
+  public String pathOperation() {
+    return pathOperation;
+  }
+
+  @Override
+  public Map<String, String> props() {
+    Map<String, String> props = new HashMap<>();
+    props.put(UC_CREDENTIALS_TYPE_KEY, UC_CREDENTIALS_TYPE_PATH_VALUE);
+    props.put(UC_PATH_KEY, path);
+    props.put(UC_PATH_OPERATION_KEY, pathOperation);
+    return Collections.unmodifiableMap(props);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (!(o instanceof PathCredId)) return false;
+    PathCredId that = (PathCredId) o;
+    return Objects.equals(path, that.path) && Objects.equals(pathOperation, that.pathOperation);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(path, pathOperation);
+  }
+
+  @Override
+  public String toString() {
+    return "PathCredId{path=" + path + ", op=" + pathOperation + "}";
+  }
+}
