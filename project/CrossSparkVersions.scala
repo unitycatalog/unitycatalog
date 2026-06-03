@@ -11,7 +11,7 @@ import scala.util.parsing.json.JSON
  * Mirrors the pattern from Delta Lake's CrossSparkVersions.scala, trimmed to UC's needs.
  *
  * Key concepts:
- *   - SparkVersionSpec: version metadata (full version, shim source dir)
+ *   - SparkVersionSpec: version metadata (full version, shim source dir, source-build defaults)
  *   - DEFAULT: latest stable Spark version (used when -DsparkVersion is not set)
  *   - sparkVersionedModuleName: appends _X.Y suffix to artifact names
  *   - sparkSourceDirSettings: wires per-version shim source dirs
@@ -19,10 +19,15 @@ import scala.util.parsing.json.JSON
 
 case class SparkVersionSpec(
   fullVersion: String,
-  additionalSourceDir: String
+  additionalSourceDir: String,
+  requiresSparkCommit: Boolean = false,
+  sourceBuildArtifactBaseVersion: Option[String] = None,
+  sourceBuildDefaultRef: Option[String] = None
 ) {
   def shortVersion: String = fullVersion.split("\\.").take(2).mkString(".")
   def isSnapshot: Boolean = fullVersion.contains("SNAPSHOT")
+  def artifactBaseVersion: String =
+    sourceBuildArtifactBaseVersion.getOrElse(fullVersion.stripSuffix("-SNAPSHOT"))
 }
 
 object SparkVersionSpec {
@@ -37,7 +42,10 @@ object SparkVersionSpec {
           val versions = map("versions").asInstanceOf[List[Map[String, Any]]].map { v =>
             SparkVersionSpec(
               v("version").asInstanceOf[String],
-              v("sourceDir").asInstanceOf[String]
+              v("sourceDir").asInstanceOf[String],
+              v.get("requiresSparkCommit").exists(_.asInstanceOf[Boolean]),
+              v.get("sourceBuildArtifactBaseVersion").map(_.asInstanceOf[String]),
+              v.get("sourceBuildDefaultRef").map(_.asInstanceOf[String])
             )
           }
           (default, versions)
