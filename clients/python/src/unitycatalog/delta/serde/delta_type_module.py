@@ -87,7 +87,7 @@ def _field_to_dict(sf):
         "name": sf.name,
         "type": _type_to_dict(sf.type),
         "nullable": sf.nullable,
-        "metadata": sf.metadata,
+        "metadata": sf.metadata.to_dict() if sf.metadata is not None else {},
     }
 
 

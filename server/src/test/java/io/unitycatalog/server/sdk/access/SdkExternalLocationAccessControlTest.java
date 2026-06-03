@@ -9,6 +9,7 @@ import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.VolumesApi;
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
@@ -529,7 +530,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
                             .type(
                                 new io.unitycatalog.client.delta.model.PrimitiveType().type("long"))
                             .nullable(true)
-                            .metadata(java.util.Map.of()))))
+                            .metadata(new StructFieldMetadata()))))
         .properties(java.util.Map.of("delta.enableDeletionVectors", "true"))
         .lastCommitTimestampMs(1700000000000L);
   }
