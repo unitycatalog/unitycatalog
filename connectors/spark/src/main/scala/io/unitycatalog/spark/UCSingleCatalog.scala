@@ -147,6 +147,8 @@ class UCSingleCatalog
     delegate.tableExists(ident)
   }
 
+  override def capabilities(): util.Set[TableCatalogCapability] = delegate.capabilities()
+
   override def createTable(
       ident: Identifier,
       columns: Array[Column],
