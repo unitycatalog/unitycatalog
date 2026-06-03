@@ -634,7 +634,8 @@ public class ExternalLocationUtils {
               () ->
                   new BaseException(
                       ErrorCode.FAILED_PRECONDITION,
-                      "Neither catalog nor schema has managed location configured."));
+                      "None of catalog, schema or storage-root.tables server property has managed "
+                        + "location configured."));
     }
   }
 
