@@ -41,20 +41,15 @@ public final class UcManagedDeltaContract {
           TableFeature.CATALOG_MANAGED,
           TableFeature.V2_CHECKPOINT,
           TableFeature.VACUUM_PROTOCOL_CHECK,
+          TableFeature.DELETION_VECTORS,
           TableFeature.IN_COMMIT_TIMESTAMP);
 
   /**
    * Suggested features. {@code domainMetadata} is conditionally required with {@code rowTracking}
-   * but is advertised as suggested so clients that enable row tracking enable it too. {@code
-   * deletionVectors} is suggested rather than required because Iceberg V2 export is not compatible
-   * with it; clients that enable Iceberg uniform must opt out.
+   * but is advertised as suggested so clients that enable row tracking enable it too.
    */
   public static final List<TableFeature> SUGGESTED_FEATURES =
-      List.of(
-          TableFeature.COLUMN_MAPPING,
-          TableFeature.DELETION_VECTORS,
-          TableFeature.DOMAIN_METADATA,
-          TableFeature.ROW_TRACKING);
+      List.of(TableFeature.COLUMN_MAPPING, TableFeature.DOMAIN_METADATA, TableFeature.ROW_TRACKING);
 
   // Wire-format spec-name lists, computed once from the typed feature lists above.
   public static final List<String> REQUIRED_READER_FEATURES = readerFeaturesOf(REQUIRED_FEATURES);
@@ -68,8 +63,11 @@ public final class UcManagedDeltaContract {
    */
   public static final Map<String, String> REQUIRED_FIXED_PROPERTIES =
       Map.of(
+          TableProperties.ENABLE_DELETION_VECTORS, "true",
           TableProperties.CHECKPOINT_POLICY, "v2",
-          TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
+          TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true",
+          TableProperties.CHECKPOINT_WRITE_STATS_AS_STRUCT, "true",
+          TableProperties.CHECKPOINT_WRITE_STATS_AS_JSON, "true");
 
   /**
    * Required properties whose value the engine must compute at commit time. The staging response
@@ -87,10 +85,13 @@ public final class UcManagedDeltaContract {
 
   private static Map<String, String> buildSuggestedProperties() {
     Map<String, String> props = new HashMap<>();
-    props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
+    props.put(TableProperties.COLUMN_MAPPING_MODE, "name");
+    props.put(TableProperties.COLUMN_MAPPING_MAX_COLUMN_ID, null);
     props.put(TableProperties.ENABLE_ROW_TRACKING, "true");
     props.put(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_ID_COLUMN_NAME, null);
     props.put(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME, null);
+    props.put(TableProperties.RANDOMIZE_FILE_PREFIXES, "true");
+    props.put(TableProperties.PARQUET_COMPRESSION_CODEC, "zstd");
     return Collections.unmodifiableMap(props);
   }
 

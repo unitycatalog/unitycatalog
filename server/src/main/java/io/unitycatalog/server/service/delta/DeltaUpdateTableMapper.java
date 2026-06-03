@@ -414,6 +414,7 @@ public final class DeltaUpdateTableMapper {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
       }
+      ColumnUtils.validateStructType(columns, "columns");
       newColumns = ColumnUtils.toColumnInfos(fields);
     } else {
       newColumns = ColumnInfoDAO.toList(dao.getColumns());

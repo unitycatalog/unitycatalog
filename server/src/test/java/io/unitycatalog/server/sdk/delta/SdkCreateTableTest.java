@@ -16,6 +16,7 @@ import io.unitycatalog.client.delta.model.PrimitiveType;
 import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.StagingTableResponse;
 import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
 import io.unitycatalog.client.delta.model.StructType;
 import io.unitycatalog.client.delta.model.TableType;
 import io.unitycatalog.client.delta.model.UniformMetadata;
@@ -31,6 +32,7 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
@@ -416,12 +418,12 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                     .name("id")
                     .type(new PrimitiveType().type("long"))
                     .nullable(false)
-                    .metadata(Map.of()),
+                    .metadata(new StructFieldMetadata()),
                 new StructField()
                     .name("amount")
                     .type(new PrimitiveType().type("double"))
                     .nullable(true)
-                    .metadata(Map.of())));
+                    .metadata(new StructFieldMetadata())));
   }
 
   /**
@@ -454,10 +456,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
    * engine-generated values can be any non-null placeholder; UC just checks presence.
    */
   private static Map<String, String> fullManagedProperties(String tableId) {
-    Map<String, String> props = new java.util.HashMap<>();
-    props.put(TableProperties.CHECKPOINT_POLICY, "v2");
-    props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
-    props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
+    Map<String, String> props =
+        new java.util.HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.put(TableProperties.UC_TABLE_ID, tableId);
     // User-specified properties under server-derived keys are overridden by the structured
     // protocol/domain-metadata blocks. End-to-end override is pinned by the assertions on

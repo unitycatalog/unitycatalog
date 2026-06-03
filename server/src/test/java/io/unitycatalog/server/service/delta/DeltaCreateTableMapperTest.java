@@ -8,6 +8,7 @@ import io.unitycatalog.server.delta.model.DataSourceFormat;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.PrimitiveType;
 import io.unitycatalog.server.delta.model.StructField;
+import io.unitycatalog.server.delta.model.StructFieldMetadata;
 import io.unitycatalog.server.delta.model.StructType;
 import io.unitycatalog.server.delta.model.TableType;
 import io.unitycatalog.server.exception.BaseException;
@@ -118,7 +119,7 @@ public class DeltaCreateTableMapperTest {
                     .name("id")
                     .type(new PrimitiveType().type("long"))
                     .nullable(false)
-                    .metadata(Map.of())));
+                    .metadata(new StructFieldMetadata())));
   }
 
   private static DeltaProtocol managedProtocol() {
@@ -141,10 +142,7 @@ public class DeltaCreateTableMapperTest {
   }
 
   private static Map<String, String> fullManagedProperties(String tableId) {
-    Map<String, String> props = new HashMap<>();
-    props.put(TableProperties.CHECKPOINT_POLICY, "v2");
-    props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
-    props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.put(TableProperties.UC_TABLE_ID, tableId);
     return props;
   }
