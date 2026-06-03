@@ -316,10 +316,7 @@ public class UcManagedDeltaContractTest {
   }
 
   private static Map<String, String> fullProperties() {
-    Map<String, String> props = new HashMap<>();
-    props.put(TableProperties.CHECKPOINT_POLICY, "v2");
-    props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
-    props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
     return props;
   }
