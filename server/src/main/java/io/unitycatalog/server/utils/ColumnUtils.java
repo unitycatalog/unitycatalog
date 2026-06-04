@@ -4,23 +4,14 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-<<<<<<< HEAD
 import io.unitycatalog.server.delta.model.DeltaArrayType;
-import io.unitycatalog.server.delta.model.DeltaDecimalType;
 import io.unitycatalog.server.delta.model.DeltaDataType;
+import io.unitycatalog.server.delta.model.DeltaDecimalType;
 import io.unitycatalog.server.delta.model.DeltaMapType;
+import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
-=======
-import io.unitycatalog.server.delta.model.ArrayType;
-import io.unitycatalog.server.delta.model.DecimalType;
-import io.unitycatalog.server.delta.model.DeltaType;
-import io.unitycatalog.server.delta.model.MapType;
-import io.unitycatalog.server.delta.model.PrimitiveType;
-import io.unitycatalog.server.delta.model.StructField;
-import io.unitycatalog.server.delta.model.StructFieldMetadata;
-import io.unitycatalog.server.delta.model.StructType;
->>>>>>> main
 import io.unitycatalog.server.delta.serde.DeltaTypeModule;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -163,7 +154,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Validate that a UC column stores {@code typeJson} as Spark {@link StructField} JSON. Shape
+   * Validate that a UC column stores {@code typeJson} as Spark {@code StructField} JSON. Shape
    * (deserializability) and name/nullable cross-match run for all formats. The
    * Delta-protocol primitive-type closed-set check runs only for {@link DataSourceFormat#DELTA} --
    * non-Delta tables (Parquet, CSV, ...) may legitimately carry Spark types that the closed set
@@ -173,21 +164,7 @@ public class ColumnUtils {
     if (column == null) {
       throw invalidTypeJson(null, "column cannot be null");
     }
-<<<<<<< HEAD
-    JsonNode typeJson = parseTypeJson(column);
-    requireTypeJsonField(column, typeJson, DeltaStructField.JSON_PROPERTY_NAME);
-    requireTypeJsonField(column, typeJson, DeltaStructField.JSON_PROPERTY_TYPE);
-    requireTypeJsonField(column, typeJson, DeltaStructField.JSON_PROPERTY_NULLABLE);
-    JsonNode metadata = requireTypeJsonField(column, typeJson,
-        DeltaStructField.JSON_PROPERTY_METADATA);
-    if (!metadata.isObject()) {
-      throw invalidTypeJson(column, "type_json.metadata must be a JSON object");
-    }
-
     DeltaStructField field;
-=======
-    StructField field;
->>>>>>> main
     try {
       field = toStructField(column);
     } catch (IllegalStateException e) {
@@ -246,21 +223,18 @@ public class ColumnUtils {
   }
 
   /**
-<<<<<<< HEAD
-   * Convert a UC Delta API {@link DeltaStructField} into a UC {@link ColumnInfo}, mirroring
-=======
-   * Validate that a {@link StructType} is well-formed against the Delta spec's wire shape.
+   * Validate that a {@link DeltaStructType} is well-formed against the Delta spec's wire shape.
    * Centralizes structural validation so callers can pass {@code columns} directly without
    * pre-checking nullness/emptiness.
    *
    * <p>Field-name uniqueness is enforced case-insensitively (per Delta's schema rule "All column
    * names must be unique regardless of casing"). Names are stored case-preserving on
-   * {@link StructField#getName()}; only the duplicate check ignores case.
+   * {@link DeltaStructField#getName()}; only the duplicate check ignores case.
    */
-  public static void validateStructType(StructType structType, String path) {
+  public static void validateStructType(DeltaStructType structType, String path) {
     requireNonNull(structType, path);
     requireNonNull(structType.getFields(), path + ".fields");
-    List<StructField> fields = structType.getFields();
+    List<DeltaStructField> fields = structType.getFields();
     if (fields.isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, path + ".fields must contain at least one field.");
@@ -279,7 +253,7 @@ public class ColumnUtils {
     }
   }
 
-  private static void validateStructField(StructField field, String path) {
+  private static void validateStructField(DeltaStructField field, String path) {
     String name = field.getName();
     if (name == null || name.isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, path + ".name is required.");
@@ -290,27 +264,27 @@ public class ColumnUtils {
     validateType(field.getType(), path + ".type");
   }
 
-  private static void validateType(DeltaType type, String path) {
-    if (type instanceof StructType s) {
+  private static void validateType(DeltaDataType type, String path) {
+    if (type instanceof DeltaStructType s) {
       validateStructType(s, path);
-    } else if (type instanceof ArrayType a) {
+    } else if (type instanceof DeltaArrayType a) {
       validateArrayType(a, path);
-    } else if (type instanceof MapType m) {
+    } else if (type instanceof DeltaMapType m) {
       validateMapType(m, path);
-    } else if (type instanceof DecimalType d) {
+    } else if (type instanceof DeltaDecimalType d) {
       validateDecimalType(d, path);
-    } else if (type instanceof PrimitiveType p) {
+    } else if (type instanceof DeltaPrimitiveType p) {
       validatePrimitiveType(p, path);
     }
   }
 
-  private static void validateArrayType(ArrayType array, String path) {
+  private static void validateArrayType(DeltaArrayType array, String path) {
     requireNonNull(array.getElementType(), path + ".element-type");
     requireNonNull(array.getContainsNull(), path + ".contains-null");
     validateType(array.getElementType(), path + ".element-type");
   }
 
-  private static void validateMapType(MapType map, String path) {
+  private static void validateMapType(DeltaMapType map, String path) {
     requireNonNull(map.getKeyType(), path + ".key-type");
     requireNonNull(map.getValueType(), path + ".value-type");
     requireNonNull(map.getValueContainsNull(), path + ".value-contains-null");
@@ -318,7 +292,7 @@ public class ColumnUtils {
     validateType(map.getValueType(), path + ".value-type");
   }
 
-  private static void validateDecimalType(DecimalType decimal, String path) {
+  private static void validateDecimalType(DeltaDecimalType decimal, String path) {
     requireNonNull(decimal.getPrecision(), path + ".precision");
     requireNonNull(decimal.getScale(), path + ".scale");
     int precision = decimal.getPrecision();
@@ -337,12 +311,12 @@ public class ColumnUtils {
     }
   }
 
-  private static void validatePrimitiveType(PrimitiveType primitive, String path) {
-    // The PrimitiveType discriminator (the "type" string) IS the primitive name; the caller's
-    // path already ends in `.type`, so no further suffix here. Resolve to confirm the name is in
-    // the closed set we support; rethrow with the field path attached so the error mirrors the
-    // shape of every other validation message in this file (downstream toColumnInfos would
-    // otherwise throw without path context).
+  private static void validatePrimitiveType(DeltaPrimitiveType primitive, String path) {
+    // The DeltaPrimitiveType discriminator (the "type" string) IS the primitive name; the
+    // caller's path already ends in `.type`, so no further suffix here. Resolve to confirm the
+    // name is in the closed set we support; rethrow with the field path attached so the error
+    // mirrors the shape of every other validation message in this file (downstream toColumnInfos
+    // would otherwise throw without path context).
     requireNonNull(primitive.getType(), path);
     try {
       resolveColumnTypeName(primitive);
@@ -358,8 +332,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Convert a UC Delta API {@link StructField} into a UC {@link ColumnInfo}, mirroring
->>>>>>> main
+   * Convert a UC Delta API {@link DeltaStructField} into a UC {@link ColumnInfo}, mirroring
    * {@code UCSingleCatalog.createTable}'s per-column projection so Delta-created tables render
    * identically to Spark-created ones.
    *
@@ -448,13 +421,8 @@ public class ColumnUtils {
     return getTypeText(resolveColumnTypeName(type));
   }
 
-<<<<<<< HEAD
   private static String extractComment(DeltaStructField field) {
-    Map<String, Object> metadata = field.getMetadata();
-=======
-  private static String extractComment(StructField field) {
-    StructFieldMetadata metadata = field.getMetadata();
->>>>>>> main
+    DeltaStructFieldMetadata metadata = field.getMetadata();
     if (metadata == null) return null;
     // StructFieldMetadata extends HashMap via additionalProperties; the schema deliberately does
     // not promote "comment" to a typed property (see api/delta.yaml). Read via Map access.

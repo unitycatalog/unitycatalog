@@ -12,7 +12,6 @@ import io.unitycatalog.server.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.server.delta.model.DeltaDecimalType;
 import io.unitycatalog.server.delta.model.DeltaCommit;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
-<<<<<<< HEAD
 import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.DeltaMapType;
 import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
@@ -26,34 +25,13 @@ import io.unitycatalog.server.delta.model.DeltaSetProtocolUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetSchemaUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetTableCommentUpdate;
 import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableUpdate;
 import io.unitycatalog.server.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.server.delta.model.DeltaUniformMetadataIceberg;
 import io.unitycatalog.server.delta.model.DeltaUpdateSnapshotVersionUpdate;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
-=======
-import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.server.delta.model.MapType;
-import io.unitycatalog.server.delta.model.PrimitiveType;
-import io.unitycatalog.server.delta.model.RemoveDomainMetadataUpdate;
-import io.unitycatalog.server.delta.model.RemovePropertiesUpdate;
-import io.unitycatalog.server.delta.model.SetDomainMetadataUpdate;
-import io.unitycatalog.server.delta.model.SetLatestBackfilledVersionUpdate;
-import io.unitycatalog.server.delta.model.SetPartitionColumnsUpdate;
-import io.unitycatalog.server.delta.model.SetPropertiesUpdate;
-import io.unitycatalog.server.delta.model.SetProtocolUpdate;
-import io.unitycatalog.server.delta.model.SetSchemaUpdate;
-import io.unitycatalog.server.delta.model.SetTableCommentUpdate;
-import io.unitycatalog.server.delta.model.StructField;
-import io.unitycatalog.server.delta.model.StructFieldMetadata;
-import io.unitycatalog.server.delta.model.StructType;
-import io.unitycatalog.server.delta.model.TableUpdate;
-import io.unitycatalog.server.delta.model.UniformMetadata;
-import io.unitycatalog.server.delta.model.UniformMetadataIceberg;
-import io.unitycatalog.server.delta.model.UpdateSnapshotVersionUpdate;
-import io.unitycatalog.server.delta.model.UpdateTableRequest;
->>>>>>> main
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -345,20 +323,8 @@ public class DeltaModelSerializationTest {
           "metadata": {}
         }
         """;
-<<<<<<< HEAD
     DeltaStructField arrCol = MAPPER.readValue(arrayJson, DeltaStructField.class);
-    DeltaArrayType at = (DeltaArrayType) arrCol.getType();
-    // Default: containsNull = true
-    assertThat(at.getContainsNull()).isTrue();
-
-    // Round-trip preserves the default
-    String serialized = MAPPER.writeValueAsString(arrCol);
-    DeltaStructField roundTrip = MAPPER.readValue(serialized, DeltaStructField.class);
-    assertThat(((DeltaArrayType) roundTrip.getType()).getContainsNull()).isTrue();
-=======
-    StructField arrCol = MAPPER.readValue(arrayJson, StructField.class);
-    assertThat(((ArrayType) arrCol.getType()).getContainsNull()).isNull();
->>>>>>> main
+    assertThat(((DeltaArrayType) arrCol.getType()).getContainsNull()).isNull();
 
     String mapJson =
         """
@@ -373,20 +339,8 @@ public class DeltaModelSerializationTest {
           "metadata": {}
         }
         """;
-<<<<<<< HEAD
     DeltaStructField mapCol = MAPPER.readValue(mapJson, DeltaStructField.class);
-    DeltaMapType mt = (DeltaMapType) mapCol.getType();
-    // Default: valueContainsNull = true
-    assertThat(mt.getValueContainsNull()).isTrue();
-
-    // Round-trip preserves the default
-    String mapSerialized = MAPPER.writeValueAsString(mapCol);
-    DeltaStructField mapRoundTrip = MAPPER.readValue(mapSerialized, DeltaStructField.class);
-    assertThat(((DeltaMapType) mapRoundTrip.getType()).getValueContainsNull()).isTrue();
-=======
-    StructField mapCol = MAPPER.readValue(mapJson, StructField.class);
-    assertThat(((MapType) mapCol.getType()).getValueContainsNull()).isNull();
->>>>>>> main
+    assertThat(((DeltaMapType) mapCol.getType()).getValueContainsNull()).isNull();
   }
 
   // ==================== Serialization ====================
@@ -426,46 +380,28 @@ public class DeltaModelSerializationTest {
             .type(new DeltaPrimitiveType().type("long"))
             .nullable(false)
             .metadata(
-<<<<<<< HEAD
-                Map.of("delta.columnMapping.id", 1, "delta.columnMapping.physicalName", "col-1"));
-    DeltaStructField colPrice =
-        new DeltaStructField()
-=======
                 meta(
                     null,
                     Map.of(
                         "delta.columnMapping.id", 1,
                         "delta.columnMapping.physicalName", "col-1")));
-    StructField colPrice =
-        new StructField()
->>>>>>> main
+    DeltaStructField colPrice =
+        new DeltaStructField()
             .name("price")
             .type(new DeltaDecimalType().precision(10).scale(2))
             .nullable(true)
-<<<<<<< HEAD
-            .metadata(Map.of());
+            .metadata(new DeltaStructFieldMetadata());
     DeltaStructField colTags =
         new DeltaStructField()
-=======
-            .metadata(new StructFieldMetadata());
-    StructField colTags =
-        new StructField()
->>>>>>> main
             .name("tags")
             .type(
                 new DeltaArrayType()
                     .elementType(new DeltaPrimitiveType().type("string"))
                     .containsNull(true))
             .nullable(true)
-<<<<<<< HEAD
-            .metadata(Map.of());
+            .metadata(new DeltaStructFieldMetadata());
     DeltaStructField colScores =
         new DeltaStructField()
-=======
-            .metadata(new StructFieldMetadata());
-    StructField colScores =
-        new StructField()
->>>>>>> main
             .name("scores")
             .type(
                 new DeltaMapType()
@@ -479,20 +415,12 @@ public class DeltaModelSerializationTest {
                                         .type(new DeltaPrimitiveType().type("double"))
                                         .nullable(false)
                                         .metadata(
-<<<<<<< HEAD
-                                            Map.of(
-                                                "delta.columnMapping.id", 10,
-                                                "delta.columnMapping.physicalName", "col-10",
-                                                "comment", "score value")),
-                                    new DeltaStructField()
-=======
                                             meta(
                                                 "score value",
                                                 Map.of(
                                                     "delta.columnMapping.id", 10,
                                                     "delta.columnMapping.physicalName", "col-10"))),
-                                    new StructField()
->>>>>>> main
+                                    new DeltaStructField()
                                         .name("timestamp")
                                         .type(new DeltaPrimitiveType().type("long"))
                                         .nullable(true)
@@ -500,15 +428,9 @@ public class DeltaModelSerializationTest {
                                             meta(null, Map.of("delta.columnMapping.id", 11))))))
                     .valueContainsNull(true))
             .nullable(true)
-<<<<<<< HEAD
-            .metadata(Map.of());
+            .metadata(new DeltaStructFieldMetadata());
     DeltaSetSchemaUpdate setSchema =
         new DeltaSetSchemaUpdate()
-=======
-            .metadata(new StructFieldMetadata());
-    SetSchemaUpdate setSchema =
-        new SetSchemaUpdate()
->>>>>>> main
             .action("set-columns")
             .columns(new DeltaStructType().fields(List.of(colId, colPrice, colTags, colScores)));
 
@@ -664,14 +586,14 @@ public class DeltaModelSerializationTest {
   }
 
   /**
-   * Build a {@link StructFieldMetadata} with the optional {@code comment} plus a bag of
+   * Build a {@link DeltaStructFieldMetadata} with the optional {@code comment} plus a bag of
    * additional properties for the spec's dotted Delta keys (e.g. {@code delta.columnMapping.id}).
-   * The schema models {@code StructFieldMetadata} as a bare additionalProperties wrapper, so the
-   * generated class extends {@code HashMap<String, Object>}; all keys (including {@code comment})
-   * go through the map view.
+   * The schema models {@code DeltaStructFieldMetadata} as a bare additionalProperties wrapper, so
+   * the generated class extends {@code HashMap<String, Object>}; all keys (including
+   * {@code comment}) go through the map view.
    */
-  private static StructFieldMetadata meta(String comment, Map<String, Object> additional) {
-    StructFieldMetadata m = new StructFieldMetadata();
+  private static DeltaStructFieldMetadata meta(String comment, Map<String, Object> additional) {
+    DeltaStructFieldMetadata m = new DeltaStructFieldMetadata();
     if (comment != null) {
       m.put("comment", comment);
     }

@@ -1255,7 +1255,7 @@ components:
       properties:
         name:
           type: string
-          description: Column name. Case-preserving; unique case-insensitively within the parent StructType.
+          description: Column name. Case-preserving; unique case-insensitively within the parent DeltaStructType.
         type:
           $ref: '#/components/schemas/DeltaDataType'
         nullable:
@@ -1279,7 +1279,7 @@ components:
           type: object
           description: |
             Schema-only marker; never sent on the wire. Declared so the OpenAPI generator emits a
-            wrapper class for this schema instead of inlining `metadata` on the parent StructField
+            wrapper class for this schema instead of inlining `metadata` on the parent DeltaStructField
             `new HashMap<>()` -- that would erase the "metadata absent" signal. Use the Map
             accessors (e.g., `metadata.put("comment", ...)` and `metadata.get("comment")`) for 
             actual metadata keys.

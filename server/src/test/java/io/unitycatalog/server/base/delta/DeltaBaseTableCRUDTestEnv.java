@@ -8,23 +8,12 @@ import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
-<<<<<<< HEAD
 import io.unitycatalog.client.delta.model.DeltaRowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.delta.model.DeltaStructField;
+import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableType;
-=======
-import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.client.delta.model.LoadTableResponse;
-import io.unitycatalog.client.delta.model.PrimitiveType;
-import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
-import io.unitycatalog.client.delta.model.StagingTableResponse;
-import io.unitycatalog.client.delta.model.StructField;
-import io.unitycatalog.client.delta.model.StructFieldMetadata;
-import io.unitycatalog.client.delta.model.StructType;
-import io.unitycatalog.client.delta.model.TableType;
->>>>>>> main
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
@@ -162,17 +151,12 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
                     .name("id")
                     .type(new DeltaPrimitiveType().type("long"))
                     .nullable(false)
-<<<<<<< HEAD
-                    .metadata(Map.of()),
+                    .metadata(new DeltaStructFieldMetadata()),
                 new DeltaStructField()
-=======
-                    .metadata(new StructFieldMetadata()),
-                new StructField()
->>>>>>> main
                     .name("amount")
                     .type(new DeltaPrimitiveType().type("double"))
                     .nullable(true)
-                    .metadata(new StructFieldMetadata())));
+                    .metadata(new DeltaStructFieldMetadata())));
   }
 
   /**

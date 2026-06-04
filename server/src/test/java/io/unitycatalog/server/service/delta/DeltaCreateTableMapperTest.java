@@ -5,18 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
-<<<<<<< HEAD
 import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableType;
-=======
-import io.unitycatalog.server.delta.model.PrimitiveType;
-import io.unitycatalog.server.delta.model.StructField;
-import io.unitycatalog.server.delta.model.StructFieldMetadata;
-import io.unitycatalog.server.delta.model.StructType;
-import io.unitycatalog.server.delta.model.TableType;
-import io.unitycatalog.server.exception.BaseException;
->>>>>>> main
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -113,7 +105,7 @@ public class DeltaCreateTableMapperTest {
                     .name("id")
                     .type(new DeltaPrimitiveType().type("long"))
                     .nullable(false)
-                    .metadata(new StructFieldMetadata())));
+                    .metadata(new DeltaStructFieldMetadata())));
   }
 
   private static DeltaProtocol managedProtocol() {

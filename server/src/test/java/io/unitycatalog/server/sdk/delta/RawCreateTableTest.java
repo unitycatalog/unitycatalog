@@ -11,10 +11,10 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.auth.AuthToken;
-import io.unitycatalog.client.delta.api.TablesApi;
-import io.unitycatalog.client.delta.model.CreateStagingTableRequest;
-import io.unitycatalog.client.delta.model.ErrorType;
-import io.unitycatalog.client.delta.model.StagingTableResponse;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
+import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTest;
@@ -47,7 +47,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
           + TestUtils.SCHEMA_NAME
           + "/tables";
 
-  private TablesApi deltaTablesApi;
+  private DeltaTablesApi deltaTablesApi;
   private WebClient client;
 
   @Override
@@ -60,7 +60,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
   @SneakyThrows
   public void setUp() {
     super.setUp();
-    deltaTablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));
+    deltaTablesApi = new DeltaTablesApi(TestUtils.createApiClient(serverConfig));
     SdkSchemaOperations schemaOperations =
         new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
     catalogOperations.createCatalog(new CreateCatalog().name(TestUtils.CATALOG_NAME));
@@ -74,11 +74,11 @@ public class RawCreateTableTest extends BaseCRUDTest {
 
   @Test
   public void rawHttpRejectsMalformedColumnRequests() throws Exception {
-    StagingTableResponse staging =
+    DeltaStagingTableResponse staging =
         deltaTablesApi.createStagingTable(
             TestUtils.CATALOG_NAME,
             TestUtils.SCHEMA_NAME,
-            new CreateStagingTableRequest().name("tbl_raw"));
+            new DeltaCreateStagingTableRequest().name("tbl_raw"));
 
     // -------- StructField missing 'name' --------
     // Caught by ColumnUtils.validateStructType, called from DeltaCreateTableMapper before the
@@ -110,7 +110,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
         staging,
         "\"long\"",
         "Cannot construct instance of"
-            + " `io.unitycatalog.server.delta.model.StructField`"
+            + " `io.unitycatalog.server.delta.model.DeltaStructField`"
             + " (although at least one Creator exists):"
             + " no String-argument constructor/factory method"
             + " to deserialize from String value ('long')");
@@ -146,8 +146,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
         "columns.fields[0].nullable is required.");
 
     // -------- StructField missing 'metadata' --------
-    // Enforceable now that delta.yaml types StructField.metadata as a typed wrapper class
-    // (StructFieldMetadata) instead of a raw Map -- the generator no longer auto-fills the
+    // Enforceable now that delta.yaml types DeltaStructField.metadata as a typed wrapper class
+    // (DeltaStructFieldMetadata) instead of a raw Map -- the generator no longer auto-fills the
     // field with new HashMap<>(), so a JSON omitting "metadata" leaves the field at null.
     assertRejected(
         staging,
@@ -323,13 +323,13 @@ public class RawCreateTableTest extends BaseCRUDTest {
    * Post a createTable request whose {@code columns.fields} contains the supplied {@code
    * columnJson} (or no fields at all when {@code columnJson} is empty), and assert the server
    * rejects it with HTTP 400 and the exact {@code expectedMessage} in {@code error.message}. The
-   * surrounding request body is a full UC-managed shape (location/table-type/data-source-format/
-   * protocol/properties) bound to the given staging response, so cases that pass the column
+   * surrounding request body is a full UC-managed shape (location/table-type/protocol/properties)
+   * bound to the given staging response, so cases that pass the column
    * gates land on a request the rest of the server would normally accept.
    */
   @SneakyThrows
   private void assertRejected(
-      StagingTableResponse staging, String columnJson, String expectedMessage) {
+      DeltaStagingTableResponse staging, String columnJson, String expectedMessage) {
     JsonNode error = postAndAssertRejected(staging, columnJson);
     assertThat(error.get("message").asText()).isEqualTo(expectedMessage);
   }
@@ -341,7 +341,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
    */
   @SneakyThrows
   private void assertRejectedMessageContains(
-      StagingTableResponse staging, String columnJson, String messageSubstring) {
+      DeltaStagingTableResponse staging, String columnJson, String messageSubstring) {
     JsonNode error = postAndAssertRejected(staging, columnJson);
     assertThat(error.get("message").asText()).contains(messageSubstring);
   }
@@ -353,7 +353,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
    */
   @SneakyThrows
   private void assertRejectedRaw(
-      StagingTableResponse staging, boolean includeColumns, String expectedMessage) {
+      DeltaStagingTableResponse staging, boolean includeColumns, String expectedMessage) {
     String columnsBlock =
         includeColumns ? "\"columns\": {\"type\": \"struct\", \"fields\": []}," : "";
     String body =
@@ -363,7 +363,6 @@ public class RawCreateTableTest extends BaseCRUDTest {
               "name": "tbl_raw",
               "location": "%s",
               "table-type": "MANAGED",
-              "data-source-format": "DELTA",
               %s
               "protocol": {
                 "min-reader-version": 3,
@@ -412,7 +411,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
    * assert on {@code message}.
    */
   @SneakyThrows
-  private JsonNode postAndAssertRejected(StagingTableResponse staging, String columnJson) {
+  private JsonNode postAndAssertRejected(DeltaStagingTableResponse staging, String columnJson) {
     String body =
         String.format(
             """
@@ -420,7 +419,6 @@ public class RawCreateTableTest extends BaseCRUDTest {
               "name": "tbl_raw",
               "location": "%s",
               "table-type": "MANAGED",
-              "data-source-format": "DELTA",
               "columns": {
                 "type": "struct",
                 "fields": [%s]
@@ -464,7 +462,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
     assertThat(error).as("body: %s", content).isNotNull();
     assertThat(error.get("code").asInt()).isEqualTo(400);
     assertThat(error.get("type").asText())
-        .isEqualTo(ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION.getValue());
+        .isEqualTo(DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION.getValue());
     return error;
   }
 }
