@@ -7,10 +7,20 @@ import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
+<<<<<<< HEAD
 import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableType;
+=======
+import io.unitycatalog.client.delta.model.LoadTableResponse;
+import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.StagingTableResponse;
+import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
+import io.unitycatalog.client.delta.model.StructType;
+import io.unitycatalog.client.delta.model.TableType;
+>>>>>>> main
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
@@ -43,7 +53,7 @@ public class SdkDeltaStagingTableAccessControlTest extends SdkStagingTableAccess
                       .name("test_column")
                       .type(new DeltaPrimitiveType().type("integer"))
                       .nullable(true)
-                      .metadata(Map.of())));
+                      .metadata(new StructFieldMetadata())));
 
   @Override
   protected StagingHandle createStaging(

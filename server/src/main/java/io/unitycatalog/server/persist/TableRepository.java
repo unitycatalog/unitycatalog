@@ -596,11 +596,12 @@ public class TableRepository {
       CreateResultMapper<T> mapper) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
+    DataSourceFormat format = createTable.getDataSourceFormat();
     List<ColumnInfo> columnInfos =
         createTable.getColumns().stream()
             .map(
                 c -> {
-                  ColumnUtils.validateTypeJson(c);
+                  ColumnUtils.validateTypeJson(c, format);
                   return c.typeText(c.getTypeText().toLowerCase(Locale.ROOT));
                 })
             .toList();

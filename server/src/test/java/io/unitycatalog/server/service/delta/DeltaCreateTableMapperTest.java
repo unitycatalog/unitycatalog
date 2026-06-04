@@ -5,9 +5,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
+<<<<<<< HEAD
 import io.unitycatalog.server.delta.model.DeltaStructField;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableType;
+=======
+import io.unitycatalog.server.delta.model.PrimitiveType;
+import io.unitycatalog.server.delta.model.StructField;
+import io.unitycatalog.server.delta.model.StructFieldMetadata;
+import io.unitycatalog.server.delta.model.StructType;
+import io.unitycatalog.server.delta.model.TableType;
+import io.unitycatalog.server.exception.BaseException;
+>>>>>>> main
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -104,7 +113,7 @@ public class DeltaCreateTableMapperTest {
                     .name("id")
                     .type(new DeltaPrimitiveType().type("long"))
                     .nullable(false)
-                    .metadata(Map.of())));
+                    .metadata(new StructFieldMetadata())));
   }
 
   private static DeltaProtocol managedProtocol() {
@@ -127,10 +136,7 @@ public class DeltaCreateTableMapperTest {
   }
 
   private static Map<String, String> fullManagedProperties(String tableId) {
-    Map<String, String> props = new HashMap<>();
-    props.put(TableProperties.CHECKPOINT_POLICY, "v2");
-    props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
-    props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.put(TableProperties.UC_TABLE_ID, tableId);
     return props;
   }

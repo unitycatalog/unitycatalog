@@ -12,6 +12,7 @@ import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
+<<<<<<< HEAD
 import io.unitycatalog.client.delta.model.DeltaRowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.delta.model.DeltaStructField;
@@ -19,6 +20,20 @@ import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
+=======
+import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
+import io.unitycatalog.client.delta.model.ErrorType;
+import io.unitycatalog.client.delta.model.LoadTableResponse;
+import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
+import io.unitycatalog.client.delta.model.StagingTableResponse;
+import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
+import io.unitycatalog.client.delta.model.StructType;
+import io.unitycatalog.client.delta.model.TableType;
+import io.unitycatalog.client.delta.model.UniformMetadata;
+import io.unitycatalog.client.delta.model.UniformMetadataIceberg;
+>>>>>>> main
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
@@ -30,6 +45,7 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
@@ -404,12 +420,17 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                     .name("id")
                     .type(new DeltaPrimitiveType().type("long"))
                     .nullable(false)
+<<<<<<< HEAD
                     .metadata(Map.of()),
                 new DeltaStructField()
+=======
+                    .metadata(new StructFieldMetadata()),
+                new StructField()
+>>>>>>> main
                     .name("amount")
                     .type(new DeltaPrimitiveType().type("double"))
                     .nullable(true)
-                    .metadata(Map.of())));
+                    .metadata(new StructFieldMetadata())));
   }
 
   /**
@@ -442,10 +463,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
    * engine-generated values can be any non-null placeholder; UC just checks presence.
    */
   private static Map<String, String> fullManagedProperties(String tableId) {
-    Map<String, String> props = new java.util.HashMap<>();
-    props.put(TableProperties.CHECKPOINT_POLICY, "v2");
-    props.put(TableProperties.ENABLE_DELETION_VECTORS, "true");
-    props.put(TableProperties.ENABLE_IN_COMMIT_TIMESTAMPS, "true");
+    Map<String, String> props =
+        new java.util.HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.put(TableProperties.UC_TABLE_ID, tableId);
     // User-specified properties under server-derived keys are overridden by the structured
     // protocol/domain-metadata blocks. End-to-end override is pinned by the assertions on

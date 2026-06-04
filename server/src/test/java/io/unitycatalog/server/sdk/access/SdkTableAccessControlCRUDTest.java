@@ -14,9 +14,17 @@ import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
+<<<<<<< HEAD
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableType;
+=======
+import io.unitycatalog.client.delta.model.LoadTableResponse;
+import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
+import io.unitycatalog.client.delta.model.StructType;
+>>>>>>> main
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -249,7 +257,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
                                     .name("id")
                                     .type(new DeltaPrimitiveType().type("long"))
                                     .nullable(false)
-                                    .metadata(Map.of()))))
+                                    .metadata(new StructFieldMetadata()))))
                 .protocol(
                     new DeltaProtocol()
                         .minReaderVersion(3)

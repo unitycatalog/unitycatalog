@@ -51,11 +51,7 @@ public final class DeltaCreateTableMapper {
     if (req.getLocation() == null || req.getLocation().isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Table location is required.");
     }
-    if (req.getColumns() == null
-        || req.getColumns().getFields() == null
-        || req.getColumns().getFields().isEmpty()) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Table columns are required.");
-    }
+    ColumnUtils.validateStructType(req.getColumns(), "columns");
 
     TableType tableType = toUCTableType(req.getTableType());
     if (req.getProtocol() == null) {

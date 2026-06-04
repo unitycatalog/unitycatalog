@@ -9,6 +9,7 @@ import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.VolumesApi;
+<<<<<<< HEAD
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
@@ -16,6 +17,9 @@ import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableType;
+=======
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
+>>>>>>> main
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
@@ -536,7 +540,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
                                 new DeltaPrimitiveType()
                                     .type("long"))
                             .nullable(true)
-                            .metadata(java.util.Map.of()))))
+                            .metadata(new StructFieldMetadata()))))
         .properties(java.util.Map.of("delta.enableDeletionVectors", "true"))
         .lastCommitTimestampMs(1700000000000L);
   }

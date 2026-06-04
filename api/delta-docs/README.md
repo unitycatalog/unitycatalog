@@ -66,6 +66,7 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
  - [DeltaStorageCredential](./Models/DeltaStorageCredential.md)
  - [DeltaStorageCredential_config](./Models/DeltaStorageCredential_config.md)
  - [DeltaStructField](./Models/DeltaStructField.md)
+ - [DeltaStructFieldMetadata](./Models/DeltaStructFieldMetadata.md)
  - [DeltaStructType](./Models/DeltaStructType.md)
  - [DeltaTableMetadata](./Models/DeltaTableMetadata.md)
  - [DeltaTableRequirement](./Models/DeltaTableRequirement.md)

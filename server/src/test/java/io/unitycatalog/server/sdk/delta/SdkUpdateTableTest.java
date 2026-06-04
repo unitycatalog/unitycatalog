@@ -13,6 +13,7 @@ import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
+<<<<<<< HEAD
 import io.unitycatalog.client.delta.model.DeltaRemoveDomainMetadataUpdate;
 import io.unitycatalog.client.delta.model.DeltaRemovePropertiesUpdate;
 import io.unitycatalog.client.delta.model.DeltaRowTrackingDomainMetadata;
@@ -34,6 +35,31 @@ import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+=======
+import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
+import io.unitycatalog.client.delta.model.ErrorType;
+import io.unitycatalog.client.delta.model.LoadTableResponse;
+import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.RemoveDomainMetadataUpdate;
+import io.unitycatalog.client.delta.model.RemovePropertiesUpdate;
+import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
+import io.unitycatalog.client.delta.model.SetDomainMetadataUpdate;
+import io.unitycatalog.client.delta.model.SetLatestBackfilledVersionUpdate;
+import io.unitycatalog.client.delta.model.SetPartitionColumnsUpdate;
+import io.unitycatalog.client.delta.model.SetPropertiesUpdate;
+import io.unitycatalog.client.delta.model.SetProtocolUpdate;
+import io.unitycatalog.client.delta.model.SetSchemaUpdate;
+import io.unitycatalog.client.delta.model.SetTableCommentUpdate;
+import io.unitycatalog.client.delta.model.StructField;
+import io.unitycatalog.client.delta.model.StructFieldMetadata;
+import io.unitycatalog.client.delta.model.StructType;
+import io.unitycatalog.client.delta.model.TableRequirement;
+import io.unitycatalog.client.delta.model.TableUpdate;
+import io.unitycatalog.client.delta.model.UniformMetadata;
+import io.unitycatalog.client.delta.model.UniformMetadataIceberg;
+import io.unitycatalog.client.delta.model.UpdateSnapshotVersionUpdate;
+import io.unitycatalog.client.delta.model.UpdateTableRequest;
+>>>>>>> main
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.delta.DeltaBaseTableCRUDTestEnv;
@@ -231,13 +257,23 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .name("new_id")
                                       .type(new DeltaPrimitiveType().type("long"))
                                       .nullable(false)
+<<<<<<< HEAD
                                       .metadata(Map.of()),
                                   new DeltaStructField()
+=======
+                                      .metadata(new StructFieldMetadata()),
+                                  new StructField()
+>>>>>>> main
                                       .name("flag")
                                       .type(new DeltaPrimitiveType().type("boolean"))
                                       .nullable(true)
+<<<<<<< HEAD
                                       .metadata(Map.of())))),
               new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("flag")));
+=======
+                                      .metadata(new StructFieldMetadata())))),
+              new SetPartitionColumnsUpdate().partitionColumns(List.of("flag")));
+>>>>>>> main
       assertThat(r.getMetadata().getColumns().getFields())
           .extracting(DeltaStructField::getName)
           .containsExactly("new_id", "flag");
@@ -323,12 +359,17 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .name("id")
                                       .type(new DeltaPrimitiveType().type("long"))
                                       .nullable(false)
+<<<<<<< HEAD
                                       .metadata(Map.of()),
                                   new DeltaStructField()
+=======
+                                      .metadata(new StructFieldMetadata()),
+                                  new StructField()
+>>>>>>> main
                                       .name("flag")
                                       .type(new DeltaPrimitiveType().type("boolean"))
                                       .nullable(true)
-                                      .metadata(Map.of())))));
+                                      .metadata(new StructFieldMetadata())))));
       assertThat(r.getMetadata().getColumns().getFields())
           .extracting(DeltaStructField::getName)
           .containsExactly("id", "flag");
@@ -359,8 +400,13 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                           .name("id2")
                                           .type(new DeltaPrimitiveType().type("long"))
                                           .nullable(false)
+<<<<<<< HEAD
                                           .metadata(Map.of()))))),
           DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+=======
+                                          .metadata(new StructFieldMetadata()))))),
+          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+>>>>>>> main
           "partition-columns references unknown column: id");
     }
 
@@ -943,7 +989,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                                       .name("c1")
                                       .type(new DeltaPrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(Map.of())))));
+                                      .metadata(new StructFieldMetadata())))));
       assertThat(r.getMetadata().getLastCommitVersion()).isEqualTo(1L);
       assertThat(r.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
     }

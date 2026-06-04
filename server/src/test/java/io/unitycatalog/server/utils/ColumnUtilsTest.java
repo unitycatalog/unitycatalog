@@ -3,18 +3,29 @@ package io.unitycatalog.server.utils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+<<<<<<< HEAD
 import io.unitycatalog.server.delta.model.DeltaArrayType;
 import io.unitycatalog.server.delta.model.DeltaDecimalType;
 import io.unitycatalog.server.delta.model.DeltaMapType;
 import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.server.delta.model.DeltaStructField;
 import io.unitycatalog.server.delta.model.DeltaStructType;
+=======
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.server.delta.model.ArrayType;
+import io.unitycatalog.server.delta.model.DecimalType;
+import io.unitycatalog.server.delta.model.MapType;
+import io.unitycatalog.server.delta.model.PrimitiveType;
+import io.unitycatalog.server.delta.model.StructField;
+import io.unitycatalog.server.delta.model.StructFieldMetadata;
+import io.unitycatalog.server.delta.model.StructType;
+import io.unitycatalog.server.delta.serde.DeltaTypeModule;
+>>>>>>> main
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Tests for ColumnUtils.toStructField parsing typeJson into typed DeltaStructField. */
@@ -208,7 +219,7 @@ public class ColumnUtilsTest {
             .name("id")
             .type(new DeltaPrimitiveType().type("long"))
             .nullable(false)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     ColumnInfo info = ColumnUtils.toColumnInfo(field, 0);
     assertThat(info.getName()).isEqualTo("id");
     assertThat(info.getNullable()).isFalse();
@@ -226,7 +237,7 @@ public class ColumnUtilsTest {
             .name("amount")
             .type(new DeltaDecimalType().precision(10).scale(2))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     ColumnInfo info = ColumnUtils.toColumnInfo(field, 1);
     assertThat(info.getTypeName()).isEqualTo(ColumnTypeName.DECIMAL);
     // Precision/scale must reach typeText so DESCRIBE TABLE renders the right SQL type.
@@ -243,7 +254,7 @@ public class ColumnUtilsTest {
                     .type("array")
                     .elementType(new DeltaPrimitiveType().type("string")))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     ColumnInfo arrInfo = ColumnUtils.toColumnInfo(arr, 0);
     assertThat(arrInfo.getTypeName()).isEqualTo(ColumnTypeName.ARRAY);
     // typeText is the Spark catalogString-equivalent, recursively parameterized.
@@ -258,7 +269,7 @@ public class ColumnUtilsTest {
                     .keyType(new DeltaPrimitiveType().type("string"))
                     .valueType(new DeltaPrimitiveType().type("double")))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     ColumnInfo mapInfo = ColumnUtils.toColumnInfo(map, 0);
     assertThat(mapInfo.getTypeName()).isEqualTo(ColumnTypeName.MAP);
     assertThat(mapInfo.getTypeText()).isEqualTo("map<string,double>");
@@ -275,14 +286,19 @@ public class ColumnUtilsTest {
                                 .name("zip")
                                 .type(new DeltaPrimitiveType().type("integer"))
                                 .nullable(false)
+<<<<<<< HEAD
                                 .metadata(Map.of()),
                             new DeltaStructField()
+=======
+                                .metadata(new StructFieldMetadata()),
+                            new StructField()
+>>>>>>> main
                                 .name("city")
                                 .type(new DeltaPrimitiveType().type("string"))
                                 .nullable(true)
-                                .metadata(Map.of()))))
+                                .metadata(new StructFieldMetadata()))))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     ColumnInfo structInfo = ColumnUtils.toColumnInfo(struct, 0);
     assertThat(structInfo.getTypeName()).isEqualTo(ColumnTypeName.STRUCT);
     assertThat(structInfo.getTypeText()).isEqualTo("struct<zip:int,city:string>");
@@ -310,36 +326,90 @@ public class ColumnUtilsTest {
                                                 .name("v")
                                                 .type(new DeltaPrimitiveType().type("double"))
                                                 .nullable(false)
-                                                .metadata(Map.of()))))))
+                                                .metadata(new StructFieldMetadata()))))))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     assertThat(ColumnUtils.toColumnInfo(field, 0).getTypeText())
         .isEqualTo("map<string,array<struct<v:double>>>");
   }
 
   @Test
   public void testToColumnInfoLiftsCommentFromMetadata() {
-    // Delta spec stores column comments in metadata.comment; UCSingleCatalog lifts them into
+    // Delta spec stores column comments at metadata.comment; UCSingleCatalog lifts them into
     // ColumnInfo.comment via field.getComment(), and this mapper does the same so DESCRIBE
+<<<<<<< HEAD
     // renders the comment regardless of which client wrote the table.
     DeltaStructField field =
         new DeltaStructField()
+=======
+    // renders the comment regardless of which client wrote the table. StructFieldMetadata is
+    // schemed as a bare additionalProperties wrapper (no typed `comment` property), so callers
+    // use map-put and the reader uses map-get -- one source of truth, no dual-write hazard.
+    StructFieldMetadata metadata = new StructFieldMetadata();
+    metadata.put("comment", "primary key");
+    StructField field =
+        new StructField()
+>>>>>>> main
             .name("id")
             .type(new DeltaPrimitiveType().type("long"))
             .nullable(false)
-            .metadata(Map.of("comment", "primary key"));
+            .metadata(metadata);
     assertThat(ColumnUtils.toColumnInfo(field, 0).getComment()).isEqualTo("primary key");
   }
 
   @Test
+<<<<<<< HEAD
   public void testToColumnInfoNoCommentWhenMetadataAbsentOrNonString() {
     DeltaStructField noMeta =
         new DeltaStructField()
+=======
+  public void testCommentLiftedFromJsonWire() throws Exception {
+    // Production flow: client sends JSON, server deserializes, ColumnUtils.toColumnInfo lifts
+    // metadata.comment into ColumnInfo.comment. This pins that the typed-comment route still
+    // resolves through extractComment when the StructField arrives over the wire (i.e. that
+    // Jackson's HashMap-subclass handling correctly populates metadata.comment from the JSON
+    // key "comment", not just the additional-properties map).
+    String wire =
+        "{\"name\":\"id\",\"type\":\"long\",\"nullable\":false,"
+            + "\"metadata\":{\"comment\":\"primary key\"}}";
+    ObjectMapper mapper = new ObjectMapper();
+    mapper.registerModule(new DeltaTypeModule());
+    StructField field = mapper.readValue(wire, StructField.class);
+
+    assertThat(ColumnUtils.toColumnInfo(field, 0).getComment()).isEqualTo("primary key");
+  }
+
+  @Test
+  public void testTypeJsonRoundTripPreservesComment() throws Exception {
+    // Pin what the server-side StructFieldMetadata (a HashMap subclass) does with the typed
+    // `comment` field across deser -> ser. A wire request with `{"comment": "foo"}` must
+    // round-trip through toTypeJson so the value lands in ColumnInfo.typeJson stored in UC.
+    String wire =
+        "{\"name\":\"id\",\"type\":\"long\",\"nullable\":false,"
+            + "\"metadata\":{\"comment\":\"primary key\",\"delta.columnMapping.id\":1}}";
+    ObjectMapper mapper = new ObjectMapper();
+    mapper.registerModule(new DeltaTypeModule());
+    StructField field = mapper.readValue(wire, StructField.class);
+
+    String roundTrip = ColumnUtils.toTypeJson(field);
+    assertThat(roundTrip).contains("\"comment\":\"primary key\"");
+    assertThat(roundTrip).contains("\"delta.columnMapping.id\":1");
+  }
+
+  @Test
+  public void testToColumnInfoNoCommentWhenMetadataEmpty() {
+    // The wire-side comment getter is now typed (String); a non-string comment fails at
+    // Jackson deserialization, so the only "no comment" path that survives to the mapper is an
+    // explicitly-empty StructFieldMetadata.
+    StructField noMeta =
+        new StructField()
+>>>>>>> main
             .name("x")
             .type(new DeltaPrimitiveType().type("long"))
             .nullable(true)
-            .metadata(Map.of());
+            .metadata(new StructFieldMetadata());
     assertThat(ColumnUtils.toColumnInfo(noMeta, 0).getComment()).isNull();
+<<<<<<< HEAD
 
     DeltaStructField nonStringComment =
         new DeltaStructField()
@@ -349,6 +419,8 @@ public class ColumnUtilsTest {
             .metadata(Map.of("comment", 42));
     // Non-string comment values (spec-invalid but tolerated) are ignored, not coerced.
     assertThat(ColumnUtils.toColumnInfo(nonStringComment, 0).getComment()).isNull();
+=======
+>>>>>>> main
   }
 
   /**
@@ -365,7 +437,7 @@ public class ColumnUtilsTest {
               .name("x")
               .type(new DeltaPrimitiveType().type(unsupported))
               .nullable(true)
-              .metadata(Map.of());
+              .metadata(new StructFieldMetadata());
       assertThatThrownBy(() -> ColumnUtils.toColumnInfo(field, 0))
           .as("unsupported primitive: %s", unsupported)
           .isInstanceOf(BaseException.class)
@@ -383,11 +455,13 @@ public class ColumnUtilsTest {
                 new ColumnInfo().name("id").position(0),
                 new ColumnInfo().name("region").position(1),
                 new ColumnInfo().name("date").position(2)));
-    // Order of the partition list is the partition-index order; not the column position.
-    ColumnUtils.applyPartitionColumns(columns, List.of("date", "region"));
+    // "DATE" intentionally differs in case from the schema column "date" to also pin the
+    // case-insensitive lookup (Delta: column names match regardless of casing). Order of the
+    // partition list is the partition-index order; not the column position.
+    ColumnUtils.applyPartitionColumns(columns, List.of("DATE", "region"));
     assertThat(columns.get(0).getPartitionIndex()).isNull();
     assertThat(columns.get(1).getPartitionIndex()).isEqualTo(1); // region -> index 1
-    assertThat(columns.get(2).getPartitionIndex()).isEqualTo(0); // date   -> index 0
+    assertThat(columns.get(2).getPartitionIndex()).isEqualTo(0); // DATE -> matches "date" -> 0
   }
 
   @Test
@@ -404,5 +478,129 @@ public class ColumnUtilsTest {
     assertThatThrownBy(() -> ColumnUtils.applyPartitionColumns(columns, List.of("nope")))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("partition-columns references unknown column: nope");
+  }
+
+  @Test
+  public void testApplyPartitionColumnsDuplicateRejected() {
+    // Uses ["a", "A"] to also pin the case-insensitive duplicate rule (Delta: column names must
+    // be unique regardless of casing). Same assertion catches both ["a", "a"] and ["a", "A"]
+    // since the helper reports the (case-insensitive) duplicate the same way.
+    List<ColumnInfo> columns =
+        new ArrayList<>(
+            List.of(
+                new ColumnInfo().name("a").position(0), new ColumnInfo().name("b").position(1)));
+    assertThatThrownBy(() -> ColumnUtils.applyPartitionColumns(columns, List.of("a", "A")))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("partition-columns contains duplicate entry");
+  }
+
+  // ---------- validateStructType ----------
+  // RawCreateTableTest covers the common malformed-shape cases via raw HTTP; these tests pin the
+  // edge cases that don't have an obvious HTTP form (null inputs, decimal precision/scale bounds).
+
+  @Test
+  public void testValidateStructTypeRejectsNullStruct() {
+    assertThatThrownBy(() -> ColumnUtils.validateStructType(null, "columns"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("columns is required.");
+  }
+
+  @Test
+  public void testValidateStructTypeRejectsEmptyFieldsList() {
+    // The generator initialises StructType.fields to an empty ArrayList, so reaching the
+    // `fields == null` branch from Java requires setFields(null) which the setter would
+    // happily accept. We pin the more reachable "empty fields" case here; the null-fields
+    // branch is covered indirectly by the JSON-wire path (RawCreateTableTest).
+    StructType st = new StructType();
+    assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("columns.fields must contain at least one field.");
+  }
+
+  @Test
+  public void testValidateStructTypeRejectsNullFieldElement() {
+    List<StructField> fields = new ArrayList<>();
+    fields.add(null);
+    StructType st = new StructType().fields(fields);
+    assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("columns.fields[0] is required.");
+  }
+
+  @Test
+  public void testValidateStructTypeAcceptsWellFormed() {
+    StructType st =
+        new StructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new StructField()
+                        .name("id")
+                        .type(new PrimitiveType().type("long"))
+                        .nullable(false)
+                        .metadata(new StructFieldMetadata())));
+    ColumnUtils.validateStructType(st, "columns"); // does not throw
+  }
+
+  @Test
+  public void testValidateStructTypeRejectsDecimalPrecisionOutOfRange() {
+    // precision must be in [0, 38]; 39 and -1 both fail. The bounds match Kernel's DecimalType.
+    for (int bad : new int[] {-1, 39, 100}) {
+      StructType st = decimalColumn(bad, 0);
+      assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+          .as("precision=%d", bad)
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("precision must be in [0, 38]");
+    }
+  }
+
+  @Test
+  public void testValidateStructTypeRejectsDecimalScaleOutOfRange() {
+    // scale must be in [0, precision]; scale=5 with precision=3 and scale=-1 both fail.
+    for (int[] ps : new int[][] {{3, 5}, {10, -1}, {10, 11}}) {
+      StructType st = decimalColumn(ps[0], ps[1]);
+      assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+          .as("precision=%d scale=%d", ps[0], ps[1])
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("scale must be in [0, precision");
+    }
+  }
+
+  @Test
+  public void testValidateStructTypeAcceptsDecimalBoundary() {
+    // precision=0, precision=38, scale=precision are all valid per Kernel's DecimalType.
+    for (int[] ps : new int[][] {{0, 0}, {38, 0}, {38, 38}, {10, 10}}) {
+      StructType st = decimalColumn(ps[0], ps[1]);
+      ColumnUtils.validateStructType(st, "columns"); // does not throw
+    }
+  }
+
+  @Test
+  public void testValidatePrimitiveTypeWrapsUnsupportedWithPath() {
+    StructType st =
+        new StructType()
+            .type("struct")
+            .fields(
+                List.of(
+                    new StructField()
+                        .name("x")
+                        .type(new PrimitiveType().type("void"))
+                        .nullable(true)
+                        .metadata(new StructFieldMetadata())));
+    assertThatThrownBy(() -> ColumnUtils.validateStructType(st, "columns"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("columns.fields[0].type: Unsupported Delta primitive type: void");
+  }
+
+  private static StructType decimalColumn(int precision, int scale) {
+    return new StructType()
+        .type("struct")
+        .fields(
+            List.of(
+                new StructField()
+                    .name("amount")
+                    .type(new DecimalType().type("decimal").precision(precision).scale(scale))
+                    .nullable(true)
+                    .metadata(new StructFieldMetadata())));
   }
 }
