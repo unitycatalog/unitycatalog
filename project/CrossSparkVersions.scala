@@ -15,6 +15,8 @@ import scala.util.parsing.json.JSON
  *   - DEFAULT: latest stable Spark version (used when -DsparkVersion is not set)
  *   - sparkVersionedModuleName: appends _X.Y suffix to artifact names
  *   - sparkSourceDirSettings: wires per-version shim source dirs
+ *   - source-build metadata: optional CI/cache overlay for testing a Spark source ref
+ *     with an existing compatibility line; it is not a separate release target
  */
 
 case class SparkVersionSpec(
@@ -26,6 +28,7 @@ case class SparkVersionSpec(
 ) {
   def shortVersion: String = fullVersion.split("\\.").take(2).mkString(".")
   def isSnapshot: Boolean = fullVersion.contains("SNAPSHOT")
+  /** Base version used when deriving a local, commit-qualified artifact version for source-built Spark. */
   def artifactBaseVersion: String =
     sourceBuildArtifactBaseVersion.getOrElse(fullVersion.stripSuffix("-SNAPSHOT"))
 }

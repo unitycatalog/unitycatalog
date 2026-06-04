@@ -14,7 +14,7 @@ The script will:
 1. Load Spark versions from project/spark-versions.json (shared source of truth)
 2. Test default publishM2 publishes Spark module WITH suffix
 3. Test skipSparkSuffix=true publishes WITHOUT suffix (backward compatibility)
-4. Test per-version publish for each non-snapshot Spark version
+4. Test per-version publish for each release-like Spark version
 5. Exit with status 0 on success, 1 on failure
 """
 
@@ -44,8 +44,17 @@ NON_SPARK_RELATED_JAR_TEMPLATES = [
 class SparkVersionSpec(object):
     """Configuration for a specific Spark version."""
 
-    def __init__(self, suffix):
+    def __init__(
+        self,
+        suffix,
+        requires_spark_commit=False,
+        source_build_artifact_base_version=None,
+        source_build_default_ref=None,
+    ):
         self.suffix = suffix
+        self.requires_spark_commit = requires_spark_commit
+        self.source_build_artifact_base_version = source_build_artifact_base_version
+        self.source_build_default_ref = source_build_default_ref
         self.spark_related_jars = [
             jar.format(suffix=self.suffix, version="{version}")
             for jar in SPARK_RELATED_JAR_TEMPLATES
@@ -66,7 +75,12 @@ def _load_spark_versions():
     for entry in data["versions"]:
         ver = entry["version"]
         short = "_" + ".".join(ver.split(".")[:2])
-        versions[ver] = SparkVersionSpec(suffix=short)
+        versions[ver] = SparkVersionSpec(
+            suffix=short,
+            requires_spark_commit=entry.get("requiresSparkCommit", False),
+            source_build_artifact_base_version=entry.get("sourceBuildArtifactBaseVersion"),
+            source_build_default_ref=entry.get("sourceBuildDefaultRef"),
+        )
     return data["default"], versions
 
 
@@ -170,6 +184,42 @@ class CrossSparkPublishTest:
 
         return False
 
+    def test_source_build_metadata(self) -> bool:
+        """Source-built Spark specs should be configured but excluded from publish loops."""
+        source_build_versions = [
+            version for version, spec in SPARK_VERSIONS.items()
+            if spec.requires_spark_commit
+        ]
+        if not source_build_versions:
+            print("FAIL: Expected at least one source-built Spark spec")
+            return False
+
+        all_passed = True
+        for version in source_build_versions:
+            spec = SPARK_VERSIONS[version]
+            if not spec.source_build_default_ref:
+                print(f"FAIL: {version} is missing sourceBuildDefaultRef")
+                all_passed = False
+            if not spec.source_build_artifact_base_version:
+                print(f"FAIL: {version} is missing sourceBuildArtifactBaseVersion")
+                all_passed = False
+            if version == "4.2.0-SNAPSHOT" and spec.source_build_artifact_base_version != "4.2.0":
+                print("FAIL: 4.2.0-SNAPSHOT should publish Spark artifacts under base 4.2.0")
+                all_passed = False
+
+        release_like_versions = [
+            version for version, spec in SPARK_VERSIONS.items()
+            if "SNAPSHOT" not in version and not spec.requires_spark_commit
+        ]
+        overlap = set(source_build_versions).intersection(release_like_versions)
+        if overlap:
+            print(f"FAIL: Source-built versions should not be release-like publish targets: {overlap}")
+            all_passed = False
+
+        if all_passed:
+            print(f"PASS: Source-build metadata configured for {source_build_versions}")
+        return all_passed
+
     def test_default_publish(self) -> bool:
         """Default publishM2 should publish spark module WITH Spark suffix."""
         spark_spec = SPARK_VERSIONS[DEFAULT_SPARK]
@@ -215,15 +265,15 @@ class CrossSparkPublishTest:
         )
 
     def test_per_version_publish(self) -> bool:
-        """Each non-snapshot Spark version should produce correctly-suffixed JARs."""
+        """Each release-like Spark version should produce correctly-suffixed JARs."""
         print("\n" + "=" * 70)
-        print("TEST: Per-version publish (each non-snapshot Spark version)")
+        print("TEST: Per-version publish (each release-like Spark version)")
         print("=" * 70)
 
         all_passed = True
         for spark_version, spark_spec in SPARK_VERSIONS.items():
-            if "SNAPSHOT" in spark_version:
-                print(f"\n  Skipping snapshot version: {spark_version}")
+            if "SNAPSHOT" in spark_version or spark_spec.requires_spark_commit:
+                print(f"\n  Skipping source-built or snapshot version: {spark_version}")
                 continue
 
             self.clean_maven_cache()
@@ -250,7 +300,7 @@ class CrossSparkPublishTest:
         return all_passed
 
     def test_cross_spark_workflow(self) -> bool:
-        """Full cross-Spark workflow: backward-compat + all non-snapshot with suffix."""
+        """Full cross-Spark workflow: backward-compat + all release-like versions with suffix."""
         print("\n" + "=" * 70)
         print("TEST: Cross-Spark Workflow (backward-compat + all with suffix)")
         print("=" * 70)
@@ -264,9 +314,9 @@ class CrossSparkPublishTest:
         ):
             return False
 
-        # Step 2: Publish WITH suffix for each non-snapshot version
+        # Step 2: Publish WITH suffix for each release-like version
         for spark_version, spark_spec in SPARK_VERSIONS.items():
-            if "SNAPSHOT" in spark_version:
+            if "SNAPSHOT" in spark_version or spark_spec.requires_spark_commit:
                 continue
             if not self.run_sbt_command(
                 f"Step 2: build/sbt -DsparkVersion={spark_version} spark/publishM2",
@@ -287,9 +337,9 @@ class CrossSparkPublishTest:
             substitute_version(no_suffix_spec.spark_related_jars, self.uc_version)
         )
 
-        # Step 2: With suffix for each non-snapshot
+        # Step 2: With suffix for each release-like version
         for spark_version, spark_spec in SPARK_VERSIONS.items():
-            if "SNAPSHOT" in spark_version:
+            if "SNAPSHOT" in spark_version or spark_spec.requires_spark_commit:
                 continue
             expected.update(
                 substitute_version(spark_spec.spark_related_jars, self.uc_version)
@@ -312,6 +362,7 @@ def main():
 
         test = CrossSparkPublishTest(uc_root)
 
+        t0 = test.test_source_build_metadata()
         t1 = test.test_default_publish()
         t2 = test.test_backward_compat_publish()
         t3 = test.test_per_version_publish()
@@ -320,6 +371,9 @@ def main():
         print("\n" + "=" * 70)
         print("TEST SUMMARY")
         print("=" * 70)
+        print(
+            f"  Source-build metadata:                  {'PASS' if t0 else 'FAIL'}"
+        )
         print(
             f"  Default publishM2 (with suffix):        {'PASS' if t1 else 'FAIL'}"
         )
@@ -334,7 +388,7 @@ def main():
         )
         print("=" * 70)
 
-        if t1 and t2 and t3 and t4:
+        if t0 and t1 and t2 and t3 and t4:
             print("\nALL TESTS PASSED")
             sys.exit(0)
         else:
