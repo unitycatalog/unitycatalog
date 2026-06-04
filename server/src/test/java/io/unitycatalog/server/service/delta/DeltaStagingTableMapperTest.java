@@ -2,8 +2,8 @@ package io.unitycatalog.server.service.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.server.delta.model.StagingTableResponse;
-import io.unitycatalog.server.delta.model.TableType;
+import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
+import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
@@ -34,10 +34,10 @@ public class DeltaStagingTableMapperTest {
                     .sessionToken("tok"))
             .expirationTime(1700000000000L);
 
-    StagingTableResponse resp = DeltaStagingTableMapper.toStagingTableResponse(info, creds);
+    DeltaStagingTableResponse resp = DeltaStagingTableMapper.toStagingTableResponse(info, creds);
 
     assertThat(resp.getTableId()).isEqualTo(UUID.fromString(info.getId()));
-    assertThat(resp.getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(resp.getTableType()).isEqualTo(DeltaTableType.MANAGED);
     assertThat(resp.getLocation()).isEqualTo(info.getStagingLocation());
     assertThat(resp.getStorageCredentials()).hasSize(1);
     assertThat(resp.getRequiredProperties())
@@ -55,15 +55,15 @@ public class DeltaStagingTableMapperTest {
    *
    * <ol>
    *   <li>The Delta REST response converter is configured with {@code NON_NULL}, which would
-   *       normally omit null map values. The generated {@code StagingTableResponse} overrides this
-   *       at the property level with {@code @JsonInclude(content = ALWAYS)}.
+   *       normally omit null map values. The generated {@code DeltaStagingTableResponse} overrides
+   *       this at the property level with {@code @JsonInclude(content = ALWAYS)}.
    *   <li>Jackson's default {@code Map} deserializer must preserve null values (it does, but
    *       regen'd code with {@code ACCEPT_EMPTY_STRING_AS_NULL_OBJECT} tweaks could change that).
    * </ol>
    */
   @Test
   public void testNullPropertyValuesSurviveRoundTrip() throws Exception {
-    StagingTableResponse resp =
+    DeltaStagingTableResponse resp =
         DeltaStagingTableMapper.toStagingTableResponse(
             sampleStagingInfo(), new TemporaryCredentials());
 
@@ -78,8 +78,8 @@ public class DeltaStagingTableMapperTest {
                 + "\":null");
 
     // 2. Deserialization: reading it back must give maps that still have the keys with null.
-    StagingTableResponse roundTripped =
-        DeltaApiMappers.MAPPER.readValue(json, StagingTableResponse.class);
+    DeltaStagingTableResponse roundTripped =
+        DeltaApiMappers.MAPPER.readValue(json, DeltaStagingTableResponse.class);
     assertThat(roundTripped.getSuggestedProperties())
         .containsEntry(TableProperties.ROW_TRACKING_MATERIALIZED_ROW_ID_COLUMN_NAME, null)
         .containsEntry(

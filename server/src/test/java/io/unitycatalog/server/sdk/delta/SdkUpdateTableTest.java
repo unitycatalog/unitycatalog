@@ -3,35 +3,38 @@ package io.unitycatalog.server.sdk.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.delta.model.AddCommitUpdate;
-import io.unitycatalog.client.delta.model.AssertEtag;
-import io.unitycatalog.client.delta.model.AssertTableUUID;
-import io.unitycatalog.client.delta.model.ClusteringDomainMetadata;
+import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.client.delta.model.DeltaAssertEtag;
+import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
+import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCommit;
+import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
+import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
-import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.client.delta.model.ErrorType;
-import io.unitycatalog.client.delta.model.LoadTableResponse;
-import io.unitycatalog.client.delta.model.PrimitiveType;
-import io.unitycatalog.client.delta.model.RemoveDomainMetadataUpdate;
-import io.unitycatalog.client.delta.model.RemovePropertiesUpdate;
-import io.unitycatalog.client.delta.model.RowTrackingDomainMetadata;
-import io.unitycatalog.client.delta.model.SetDomainMetadataUpdate;
-import io.unitycatalog.client.delta.model.SetLatestBackfilledVersionUpdate;
-import io.unitycatalog.client.delta.model.SetPartitionColumnsUpdate;
-import io.unitycatalog.client.delta.model.SetPropertiesUpdate;
-import io.unitycatalog.client.delta.model.SetProtocolUpdate;
-import io.unitycatalog.client.delta.model.SetSchemaUpdate;
-import io.unitycatalog.client.delta.model.SetTableCommentUpdate;
-import io.unitycatalog.client.delta.model.StructField;
-import io.unitycatalog.client.delta.model.StructFieldMetadata;
-import io.unitycatalog.client.delta.model.StructType;
-import io.unitycatalog.client.delta.model.TableRequirement;
-import io.unitycatalog.client.delta.model.TableUpdate;
-import io.unitycatalog.client.delta.model.UniformMetadata;
-import io.unitycatalog.client.delta.model.UniformMetadataIceberg;
-import io.unitycatalog.client.delta.model.UpdateSnapshotVersionUpdate;
-import io.unitycatalog.client.delta.model.UpdateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaRemoveDomainMetadataUpdate;
+import io.unitycatalog.client.delta.model.DeltaRemovePropertiesUpdate;
+import io.unitycatalog.client.delta.model.DeltaRowTrackingDomainMetadata;
+import io.unitycatalog.client.delta.model.DeltaSetDomainMetadataUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetLatestBackfilledVersionUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetPartitionColumnsUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetPropertiesUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetProtocolUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetSchemaUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetTableCommentUpdate;
+import io.unitycatalog.client.delta.model.DeltaStructField;
+import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
+import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableRequirement;
+import io.unitycatalog.client.delta.model.DeltaTableUpdate;
+import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
+import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
+import io.unitycatalog.client.delta.model.DeltaUpdateSnapshotVersionUpdate;
+import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.delta.DeltaBaseTableCRUDTestEnv;
@@ -98,22 +101,22 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
               .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
               .writerFeatures(newWriterFeatures);
-      DomainMetadataUpdates newDM =
-          new DomainMetadataUpdates()
+      DeltaDomainMetadataUpdates newDM =
+          new DeltaDomainMetadataUpdates()
               .deltaClustering(
-                  new ClusteringDomainMetadata().clusteringColumns(List.of(List.of("id"))));
+                  new DeltaClusteringDomainMetadata().clusteringColumns(List.of(List.of("id"))));
 
       // Phase 1: every action except remove-domain-metadata. Splitting remove-DM into its own RPC
       // pins that the rowTracking entry only disappears as a result of remove-DM, not as a side
       // effect of phase 1's set-DM (which is intent-based per spec, not a full replacement).
-      LoadTableResponse r1 =
+      DeltaLoadTableResponse r1 =
           updateTable(
               h,
-              new SetPropertiesUpdate().updates(Map.of("update_me", "v_new", "added", "v4")),
-              new RemovePropertiesUpdate().removals(List.of("drop_me", "missing")),
-              new SetProtocolUpdate().protocol(newProtocol),
-              new SetDomainMetadataUpdate().updates(newDM),
-              new SetTableCommentUpdate().comment("umbrella comment"));
+              new DeltaSetPropertiesUpdate().updates(Map.of("update_me", "v_new", "added", "v4")),
+              new DeltaRemovePropertiesUpdate().removals(List.of("drop_me", "missing")),
+              new DeltaSetProtocolUpdate().protocol(newProtocol),
+              new DeltaSetDomainMetadataUpdate().updates(newDM),
+              new DeltaSetTableCommentUpdate().comment("umbrella comment"));
 
       Map<String, String> props1 = r1.getMetadata().getProperties();
       assertThat(props1)
@@ -130,10 +133,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r1.getMetadata().getEtag()).isNotEqualTo(h.etag());
 
       // Phase 2: remove-domain-metadata alone -- now the rowTracking entry must disappear.
-      LoadTableResponse r2 =
+      DeltaLoadTableResponse r2 =
           updateTable(
               h.withEtag(r1.getMetadata().getEtag()),
-              new RemoveDomainMetadataUpdate().domains(List.of("delta.rowTracking")));
+              new DeltaRemoveDomainMetadataUpdate().domains(List.of("delta.rowTracking")));
       assertThat(r2.getMetadata().getProperties())
           .doesNotContainKey(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK)
           .containsKey(TableProperties.CLUSTERING_COLUMNS);
@@ -143,17 +146,17 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // validation). Follow-up set-DM that re-introduces the dropped domain then fails.
     {
       Handle h = createDeltaManaged("tbl_setproto_drops_dm", Map.of());
-      LoadTableResponse r =
+      DeltaLoadTableResponse r =
           updateTable(
               h,
-              new SetProtocolUpdate()
+              new DeltaSetProtocolUpdate()
                   .protocol(
                       new DeltaProtocol()
                           .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
                           .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
                           .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
                           .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES)),
-              new RemoveDomainMetadataUpdate().domains(List.of("delta.rowTracking")));
+              new DeltaRemoveDomainMetadataUpdate().domains(List.of("delta.rowTracking")));
       assertThat(r.getMetadata().getProperties())
           .doesNotContainKey(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK)
           .doesNotContainKey(TableProperties.FEATURE_PREFIX + "rowTracking");
@@ -163,12 +166,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h2,
-                  new SetDomainMetadataUpdate()
+                  new DeltaSetDomainMetadataUpdate()
                       .updates(
-                          new DomainMetadataUpdates()
+                          new DeltaDomainMetadataUpdates()
                               .deltaRowTracking(
-                                  new RowTrackingDomainMetadata().rowIdHighWaterMark(1L)))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+                                  new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(1L)))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "rowTracking");
     }
 
@@ -180,19 +183,21 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       // still current (rejections don't mutate state, the happy path does). One case per missing
       // field so the per-field error message is exercised separately.
       TestUtils.assertDeltaApiException(
-          () -> updateTable(external, new UpdateSnapshotVersionUpdate().lastCommitTimestampMs(1L)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () ->
+              updateTable(
+                  external, new DeltaUpdateSnapshotVersionUpdate().lastCommitTimestampMs(1L)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "requires last-commit-version");
       TestUtils.assertDeltaApiException(
-          () -> updateTable(external, new UpdateSnapshotVersionUpdate().lastCommitVersion(1L)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () -> updateTable(external, new DeltaUpdateSnapshotVersionUpdate().lastCommitVersion(1L)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "requires last-commit-timestamp-ms");
 
       // Happy path on EXTERNAL.
-      LoadTableResponse r =
+      DeltaLoadTableResponse r =
           updateTable(
               external,
-              new UpdateSnapshotVersionUpdate()
+              new DeltaUpdateSnapshotVersionUpdate()
                   .lastCommitVersion(42L)
                   .lastCommitTimestampMs(1700000000001L));
       assertThat(r.getMetadata().getLastCommitVersion()).isEqualTo(42L);
@@ -204,38 +209,38 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   managed,
-                  new UpdateSnapshotVersionUpdate()
+                  new DeltaUpdateSnapshotVersionUpdate()
                       .lastCommitVersion(1L)
                       .lastCommitTimestampMs(1700000000000L)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "EXTERNAL");
     }
 
     // -------- set-columns + set-partition-columns --------
     {
       Handle h = createDeltaExternal("tbl_setcols");
-      LoadTableResponse r =
+      DeltaLoadTableResponse r =
           updateTable(
               h,
-              new SetSchemaUpdate()
+              new DeltaSetSchemaUpdate()
                   .columns(
-                      new StructType()
+                      new DeltaStructType()
                           .type("struct")
                           .fields(
                               List.of(
-                                  new StructField()
+                                  new DeltaStructField()
                                       .name("new_id")
-                                      .type(new PrimitiveType().type("long"))
+                                      .type(new DeltaPrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(new StructFieldMetadata()),
-                                  new StructField()
+                                      .metadata(new DeltaStructFieldMetadata()),
+                                  new DeltaStructField()
                                       .name("flag")
-                                      .type(new PrimitiveType().type("boolean"))
+                                      .type(new DeltaPrimitiveType().type("boolean"))
                                       .nullable(true)
-                                      .metadata(new StructFieldMetadata())))),
-              new SetPartitionColumnsUpdate().partitionColumns(List.of("flag")));
+                                      .metadata(new DeltaStructFieldMetadata())))),
+              new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("flag")));
       assertThat(r.getMetadata().getColumns().getFields())
-          .extracting(StructField::getName)
+          .extracting(DeltaStructField::getName)
           .containsExactly("new_id", "flag");
       assertThat(r.getMetadata().getPartitionColumns()).containsExactly("flag");
     }
@@ -244,8 +249,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     {
       Handle h = createDeltaExternal("tbl_setpart_bad");
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(List.of("nope"))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () ->
+              updateTable(
+                  h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("nope"))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "partition-columns references unknown column: nope");
     }
 
@@ -253,8 +260,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     {
       Handle h = createDeltaExternal("tbl_setcols_no_block");
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetSchemaUpdate()),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () -> updateTable(h, new DeltaSetSchemaUpdate()),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-columns requires a columns block");
     }
 
@@ -262,8 +269,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     {
       Handle h = createDeltaExternal("tbl_setcols_empty_fields");
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetSchemaUpdate().columns(new StructType().fields(List.of()))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () ->
+              updateTable(
+                  h, new DeltaSetSchemaUpdate().columns(new DeltaStructType().fields(List.of()))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-columns requires at least one column");
     }
 
@@ -273,8 +282,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     {
       Handle h = createDeltaExternal("tbl_setpart_null_field");
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(null)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () -> updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(null)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-partition-columns requires a partition-columns list");
     }
 
@@ -284,10 +293,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // list. Verify the partition is set and the column list itself is unchanged.
     {
       Handle h = createDeltaExternal("tbl_setpart_only");
-      LoadTableResponse r =
-          updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(List.of("amount")));
+      DeltaLoadTableResponse r =
+          updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("amount")));
       assertThat(r.getMetadata().getColumns().getFields())
-          .extracting(StructField::getName)
+          .extracting(DeltaStructField::getName)
           .containsExactly("id", "amount");
       assertThat(r.getMetadata().getPartitionColumns()).containsExactly("amount");
     }
@@ -299,30 +308,30 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // (createDeltaExternal seeds (id long, amount double); only `id` exists in both old and new.)
     {
       Handle h = createDeltaExternal("tbl_setcols_preserve_part");
-      LoadTableResponse partitionSetup =
-          updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(List.of("id")));
+      DeltaLoadTableResponse partitionSetup =
+          updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("id")));
       Handle h1 = h.withEtag(partitionSetup.getMetadata().getEtag());
-      LoadTableResponse r =
+      DeltaLoadTableResponse r =
           updateTable(
               h1,
-              new SetSchemaUpdate()
+              new DeltaSetSchemaUpdate()
                   .columns(
-                      new StructType()
+                      new DeltaStructType()
                           .type("struct")
                           .fields(
                               List.of(
-                                  new StructField()
+                                  new DeltaStructField()
                                       .name("id")
-                                      .type(new PrimitiveType().type("long"))
+                                      .type(new DeltaPrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(new StructFieldMetadata()),
-                                  new StructField()
+                                      .metadata(new DeltaStructFieldMetadata()),
+                                  new DeltaStructField()
                                       .name("flag")
-                                      .type(new PrimitiveType().type("boolean"))
+                                      .type(new DeltaPrimitiveType().type("boolean"))
                                       .nullable(true)
-                                      .metadata(new StructFieldMetadata())))));
+                                      .metadata(new DeltaStructFieldMetadata())))));
       assertThat(r.getMetadata().getColumns().getFields())
-          .extracting(StructField::getName)
+          .extracting(DeltaStructField::getName)
           .containsExactly("id", "flag");
       assertThat(r.getMetadata().getPartitionColumns()).containsExactly("id");
     }
@@ -334,25 +343,25 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       Handle h = createDeltaExternal("tbl_setcols_drop_part");
       Handle h1 =
           h.withEtag(
-              updateTable(h, new SetPartitionColumnsUpdate().partitionColumns(List.of("id")))
+              updateTable(h, new DeltaSetPartitionColumnsUpdate().partitionColumns(List.of("id")))
                   .getMetadata()
                   .getEtag());
       TestUtils.assertDeltaApiException(
           () ->
               updateTable(
                   h1,
-                  new SetSchemaUpdate()
+                  new DeltaSetSchemaUpdate()
                       .columns(
-                          new StructType()
+                          new DeltaStructType()
                               .type("struct")
                               .fields(
                                   List.of(
-                                      new StructField()
+                                      new DeltaStructField()
                                           .name("id2")
-                                          .type(new PrimitiveType().type("long"))
+                                          .type(new DeltaPrimitiveType().type("long"))
                                           .nullable(false)
-                                          .metadata(new StructFieldMetadata()))))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+                                          .metadata(new DeltaStructFieldMetadata()))))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "partition-columns references unknown column: id");
     }
 
@@ -360,7 +369,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // value pinned explicitly so the conflict path actually fires.
     {
       Handle h = createDeltaManaged("tbl_etag_conflict", Map.of());
-      updateTable(h, new SetPropertiesUpdate().updates(Map.of("k", "v")));
+      updateTable(h, new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")));
       TestUtils.assertDeltaApiException(
           () ->
               updateTable(
@@ -368,29 +377,29 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   requestWith(
                       h.tableId(),
                       Optional.of(h.etag()),
-                      new SetPropertiesUpdate().updates(Map.of("x", "y")))),
-          ErrorType.UPDATE_REQUIREMENT_CONFLICT_EXCEPTION,
+                      new DeltaSetPropertiesUpdate().updates(Map.of("x", "y")))),
+          DeltaErrorType.UPDATE_REQUIREMENT_CONFLICT_EXCEPTION,
           "assert-etag failed");
     }
 
     // -------- request-shape rejections (share one table; none mutate state) --------
     {
       Handle h = createDeltaManaged("tbl_rejects", Map.of());
-      SetPropertiesUpdate setKv = new SetPropertiesUpdate().updates(Map.of("k", "v"));
+      DeltaSetPropertiesUpdate setKv = new DeltaSetPropertiesUpdate().updates(Map.of("k", "v"));
 
       // Missing assert-table-uuid: rejected during collectRequest.
       TestUtils.assertDeltaApiException(
           () ->
               updateTable(
                   h.name(),
-                  new UpdateTableRequest().requirements(List.of()).updates(List.of(setKv))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+                  new DeltaUpdateTableRequest().requirements(List.of()).updates(List.of(setKv))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "assert-table-uuid requirement is required");
 
       // assert-table-uuid mismatch: rejected during checkRequirements.
       TestUtils.assertDeltaApiException(
           () -> updateTable(h.name(), requestWith(UUID.randomUUID(), setKv)),
-          ErrorType.UPDATE_REQUIREMENT_CONFLICT_EXCEPTION,
+          DeltaErrorType.UPDATE_REQUIREMENT_CONFLICT_EXCEPTION,
           "assert-table-uuid failed");
 
       // Two same-typed actions in one request.
@@ -398,15 +407,15 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new SetPropertiesUpdate().updates(Map.of("a", "1")),
-                  new SetPropertiesUpdate().updates(Map.of("b", "2"))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+                  new DeltaSetPropertiesUpdate().updates(Map.of("a", "1")),
+                  new DeltaSetPropertiesUpdate().updates(Map.of("b", "2"))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "At most one set-properties is allowed per request");
 
       // set-properties and remove-properties touching the same key.
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, setKv, new RemovePropertiesUpdate().removals(List.of("k"))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () -> updateTable(h, setKv, new DeltaRemovePropertiesUpdate().removals(List.of("k"))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-properties and remove-properties overlap");
 
       // set-domain-metadata and remove-domain-metadata touching the same domain.
@@ -414,53 +423,57 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new SetDomainMetadataUpdate()
+                  new DeltaSetDomainMetadataUpdate()
                       .updates(
-                          new DomainMetadataUpdates()
+                          new DeltaDomainMetadataUpdates()
                               .deltaRowTracking(
-                                  new RowTrackingDomainMetadata().rowIdHighWaterMark(1L))),
-                  new RemoveDomainMetadataUpdate().domains(List.of("delta.rowTracking"))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+                                  new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(1L))),
+                  new DeltaRemoveDomainMetadataUpdate().domains(List.of("delta.rowTracking"))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-domain-metadata and remove-domain-metadata overlap");
 
       // Empty updates list.
       TestUtils.assertDeltaApiException(
           () -> updateTable(h.name(), requestWith(h.tableId())),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "At least one update is required");
 
       // Path resolution fails before the UUID is checked, so the synthesized random UUID is fine.
       TestUtils.assertDeltaApiException(
           () -> updateTable("no_such_table", requestWith(UUID.randomUUID(), setKv)),
-          ErrorType.NO_SUCH_TABLE_EXCEPTION,
+          DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
           "Table not found");
 
       // set-protocol with null protocol -- rejected in applyUpdates.
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetProtocolUpdate().protocol(null)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () -> updateTable(h, new DeltaSetProtocolUpdate().protocol(null)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-protocol requires a protocol");
 
       // set-domain-metadata with null updates block -- rejected in applyUpdates.
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetDomainMetadataUpdate().updates(null)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () -> updateTable(h, new DeltaSetDomainMetadataUpdate().updates(null)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-domain-metadata requires an updates block");
 
       // set-domain-metadata with a non-null but empty block -- silent no-op, reject loudly.
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetDomainMetadataUpdate().updates(new DomainMetadataUpdates())),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () ->
+              updateTable(
+                  h, new DeltaSetDomainMetadataUpdate().updates(new DeltaDomainMetadataUpdates())),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-domain-metadata requires at least one domain entry");
 
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetTableCommentUpdate().comment(null)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () -> updateTable(h, new DeltaSetTableCommentUpdate().comment(null)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-table-comment requires a comment");
 
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new RemoveDomainMetadataUpdate().domains(List.of("delta.unknown"))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () ->
+              updateTable(
+                  h, new DeltaRemoveDomainMetadataUpdate().domains(List.of("delta.unknown"))),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "Unknown domain in remove-domain-metadata");
 
       // set-protocol on MANAGED must keep every catalog-managed required feature.
@@ -468,14 +481,14 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new SetProtocolUpdate()
+                  new DeltaSetProtocolUpdate()
                       .protocol(
                           new DeltaProtocol()
                               .minReaderVersion(3)
                               .minWriterVersion(7)
                               .readerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName()))
                               .writerFeatures(List.of(TableFeature.V2_CHECKPOINT.specName())))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "catalogManaged");
 
       // set-protocol that satisfies all required features but drops rowTracking, while the table
@@ -486,14 +499,14 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new SetProtocolUpdate()
+                  new DeltaSetProtocolUpdate()
                       .protocol(
                           new DeltaProtocol()
                               .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
                               .minWriterVersion(UcManagedDeltaContract.REQUIRED_MIN_WRITER_VERSION)
                               .readerFeatures(UcManagedDeltaContract.REQUIRED_READER_FEATURES)
                               .writerFeatures(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "rowTracking");
     }
 
@@ -502,10 +515,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // re-validation guard doesn't over-block.
     {
       Handle external = createDeltaExternal("tbl_setproto_external");
-      LoadTableResponse r =
+      DeltaLoadTableResponse r =
           updateTable(
               external,
-              new SetProtocolUpdate()
+              new DeltaSetProtocolUpdate()
                   .protocol(
                       new DeltaProtocol()
                           .minReaderVersion(3)
@@ -520,12 +533,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
 
     // -------- non-Delta table is rejected before any mutation commits --------
     {
-      io.unitycatalog.client.model.TableInfo external =
+      TableInfo external =
           createTestingTable(
               "tbl_external_parquet",
-              io.unitycatalog.client.model.TableType.EXTERNAL,
+              TableType.EXTERNAL,
               Optional.of(testDirectoryRoot.toString()),
-              io.unitycatalog.client.model.DataSourceFormat.PARQUET,
+              DataSourceFormat.PARQUET,
               tableOperations);
       TestUtils.assertDeltaApiException(
           () ->
@@ -533,18 +546,18 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                   external.getName(),
                   requestWith(
                       UUID.fromString(external.getTableId()),
-                      new SetPropertiesUpdate().updates(Map.of("k", "v")))),
-          ErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
+                      new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")))),
+          DeltaErrorType.UNSUPPORTED_TABLE_FORMAT_EXCEPTION,
           "Table is not a Delta table");
     }
 
     // -------- add-commit on managed Delta (+ version conflict) --------
     {
       Handle h = createDeltaManaged("tbl_commit", Map.of());
-      LoadTableResponse r1 =
+      DeltaLoadTableResponse r1 =
           updateTable(
               h,
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(1L)
@@ -563,7 +576,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h1,
-                  new AddCommitUpdate()
+                  new DeltaAddCommitUpdate()
                       .commit(
                           new DeltaCommit()
                               .version(1L)
@@ -571,7 +584,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .fileName("00000001b.json")
                               .fileSize(1024L)
                               .fileModificationTimestamp(1700000002L))),
-          ErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
+          DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
           "already accepted");
 
       // Rejecting a v3 while the table is on v1 -- must be v1+1.
@@ -579,7 +592,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h1,
-                  new AddCommitUpdate()
+                  new DeltaAddCommitUpdate()
                       .commit(
                           new DeltaCommit()
                               .version(3L)
@@ -587,7 +600,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .fileName("00000003.json")
                               .fileSize(1024L)
                               .fileModificationTimestamp(1700000003L))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "next version");
     }
 
@@ -596,10 +609,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // both actions, matching the UC REST postCommit behavior on a combined request.
     {
       Handle h = createDeltaManaged("tbl_commit_backfill", Map.of());
-      LoadTableResponse r1 =
+      DeltaLoadTableResponse r1 =
           updateTable(
               h,
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(1L)
@@ -610,10 +623,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
 
       // Now send v2 commit + backfill of v1 in a single request.
-      LoadTableResponse r2 =
+      DeltaLoadTableResponse r2 =
           updateTable(
               h.withEtag(r1.getMetadata().getEtag()),
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(2L)
@@ -621,7 +634,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileName("00000002.json")
                           .fileSize(2048L)
                           .fileModificationTimestamp(1700000002L)),
-              new SetLatestBackfilledVersionUpdate().latestPublishedVersion(1L));
+              new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(1L));
       // v1 was removed by the backfill; only v2 remains in the unbackfilled set.
       assertThat(r2.getLatestTableVersion()).isEqualTo(2L);
       assertThat(r2.getCommits()).hasSize(1);
@@ -637,10 +650,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       Handle h = createDeltaManaged("tbl_commit_meta_stamp", Map.of());
 
       // v1: add-commit + set-properties (metadata-changing) -> stamps both props.
-      LoadTableResponse r1 =
+      DeltaLoadTableResponse r1 =
           updateTable(
               h,
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(1L)
@@ -648,15 +661,15 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileName("00000001.json")
                           .fileSize(1024L)
                           .fileModificationTimestamp(1700000001L)),
-              new SetPropertiesUpdate().updates(Map.of("k", "v")));
+              new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")));
       assertThat(r1.getMetadata().getLastCommitVersion()).isEqualTo(1L);
       assertThat(r1.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
 
       // v2: add-commit with no metadata change -> previous values preserved.
-      LoadTableResponse r2 =
+      DeltaLoadTableResponse r2 =
           updateTable(
               h.withEtag(r1.getMetadata().getEtag()),
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(2L)
@@ -672,8 +685,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     {
       Handle h = createDeltaManaged("tbl_commit_no_block", Map.of());
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new AddCommitUpdate()),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () -> updateTable(h, new DeltaAddCommitUpdate()),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "add-commit requires a commit block");
     }
 
@@ -681,8 +694,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     {
       Handle h = createDeltaManaged("tbl_backfill_no_version", Map.of());
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetLatestBackfilledVersionUpdate()),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () -> updateTable(h, new DeltaSetLatestBackfilledVersionUpdate()),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "set-latest-backfilled-version requires latest-published-version");
     }
 
@@ -693,7 +706,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new AddCommitUpdate()
+                  new DeltaAddCommitUpdate()
                       .commit(
                           new DeltaCommit()
                               .version(1L)
@@ -701,7 +714,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .fileName("00000001.json")
                               .fileSize(1024L)
                               .fileModificationTimestamp(1700000001L))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "MANAGED");
     }
 
@@ -712,7 +725,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new AddCommitUpdate()
+                  new DeltaAddCommitUpdate()
                       .commit(
                           new DeltaCommit()
                               .version(1L)
@@ -721,13 +734,13 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .fileSize(1024L)
                               .fileModificationTimestamp(1700000001L))
                       .uniform(
-                          new UniformMetadata()
+                          new DeltaUniformMetadata()
                               .iceberg(
-                                  new UniformMetadataIceberg()
+                                  new DeltaUniformMetadataIceberg()
                                       .metadataLocation("file:///tmp/ice/v2.json")
                                       .convertedDeltaVersion(2L)
                                       .convertedDeltaTimestamp(1700000001L)))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "converted-delta-version");
     }
 
@@ -739,10 +752,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // build the response.
     {
       Handle h = createDeltaManaged("tbl_backfill_only", Map.of());
-      LoadTableResponse r1 =
+      DeltaLoadTableResponse r1 =
           updateTable(
               h,
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(1L)
@@ -751,10 +764,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileSize(1024L)
                           .fileModificationTimestamp(1700000001L)));
       assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
-      LoadTableResponse r2 =
+      DeltaLoadTableResponse r2 =
           updateTable(
               h.withEtag(r1.getMetadata().getEtag()),
-              new SetLatestBackfilledVersionUpdate().latestPublishedVersion(1L));
+              new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(1L));
       assertThat(r2.getLatestTableVersion()).isEqualTo(1L);
       assertThat(r2.getMetadata().getEtag()).isNotEqualTo(r1.getMetadata().getEtag());
     }
@@ -763,18 +776,20 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     {
       Handle h = createDeltaManaged("tbl_backfill_empty", Map.of());
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h, new SetLatestBackfilledVersionUpdate().latestPublishedVersion(1L)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () ->
+              updateTable(
+                  h, new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(1L)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "Backfill request requires a prior commit");
     }
 
     // -------- set-latest-backfilled-version past the last commit rejected --------
     {
       Handle h = createDeltaManaged("tbl_backfill_past_last", Map.of());
-      LoadTableResponse r1 =
+      DeltaLoadTableResponse r1 =
           updateTable(
               h,
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(1L)
@@ -784,8 +799,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileModificationTimestamp(1700000001L)));
       Handle h1 = h.withEtag(r1.getMetadata().getEtag());
       TestUtils.assertDeltaApiException(
-          () -> updateTable(h1, new SetLatestBackfilledVersionUpdate().latestPublishedVersion(5L)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          () ->
+              updateTable(
+                  h1, new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(5L)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "Should not backfill version 5");
     }
 
@@ -799,9 +816,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new SetPropertiesUpdate()
+                  new DeltaSetPropertiesUpdate()
                       .updates(Map.of("delta.universalFormat.enabledFormats", "iceberg")),
-                  new AddCommitUpdate()
+                  new DeltaAddCommitUpdate()
                       .commit(
                           new DeltaCommit()
                               .version(1L)
@@ -810,13 +827,13 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .fileSize(1024L)
                               .fileModificationTimestamp(1700000001L))
                       .uniform(
-                          new UniformMetadata()
+                          new DeltaUniformMetadata()
                               .iceberg(
-                                  new UniformMetadataIceberg()
+                                  new DeltaUniformMetadataIceberg()
                                       .metadataLocation("s3://test-bucket0/elsewhere/v1.json")
                                       .convertedDeltaVersion(1L)
                                       .convertedDeltaTimestamp(1700000001L)))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "must be a subpath");
     }
 
@@ -827,7 +844,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new AddCommitUpdate()
+                  new DeltaAddCommitUpdate()
                       .commit(
                           new DeltaCommit()
                               .version(1L)
@@ -836,13 +853,13 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .fileSize(1024L)
                               .fileModificationTimestamp(1700000001L))
                       .uniform(
-                          new UniformMetadata()
+                          new DeltaUniformMetadata()
                               .iceberg(
-                                  new UniformMetadataIceberg()
+                                  new DeltaUniformMetadataIceberg()
                                       .metadataLocation("s3://test-bucket0/path/v1.json")
                                       .convertedDeltaVersion(1L)
                                       .convertedDeltaTimestamp(1700000001L)))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "Uniform metadata must not be set unless");
     }
 
@@ -853,9 +870,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new SetPropertiesUpdate()
+                  new DeltaSetPropertiesUpdate()
                       .updates(Map.of("delta.universalFormat.enabledFormats", "iceberg")),
-                  new AddCommitUpdate()
+                  new DeltaAddCommitUpdate()
                       .commit(
                           new DeltaCommit()
                               .version(1L)
@@ -863,7 +880,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .fileName("00000001.json")
                               .fileSize(1024L)
                               .fileModificationTimestamp(1700000001L))),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "Uniform metadata must be set when");
     }
 
@@ -877,12 +894,12 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name())
               .getMetadata()
               .getLocation();
-      LoadTableResponse r =
+      DeltaLoadTableResponse r =
           updateTable(
               h,
-              new SetPropertiesUpdate()
+              new DeltaSetPropertiesUpdate()
                   .updates(Map.of("delta.universalFormat.enabledFormats", "iceberg")),
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(1L)
@@ -891,9 +908,9 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileSize(1024L)
                           .fileModificationTimestamp(1700000001L))
                   .uniform(
-                      new UniformMetadata()
+                      new DeltaUniformMetadata()
                           .iceberg(
-                              new UniformMetadataIceberg()
+                              new DeltaUniformMetadataIceberg()
                                   .metadataLocation(tableLocation + "/_uniform/v1.json")
                                   .convertedDeltaVersion(1L)
                                   .convertedDeltaTimestamp(1700000001L))));
@@ -906,10 +923,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // commit's version/timestamp should land on the stamping properties.
     {
       Handle h = createDeltaManaged("tbl_commit_meta_stamp_schema", Map.of());
-      LoadTableResponse r =
+      DeltaLoadTableResponse r =
           updateTable(
               h,
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(1L)
@@ -917,17 +934,17 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileName("00000001.json")
                           .fileSize(1024L)
                           .fileModificationTimestamp(1700000001L)),
-              new SetSchemaUpdate()
+              new DeltaSetSchemaUpdate()
                   .columns(
-                      new StructType()
+                      new DeltaStructType()
                           .type("struct")
                           .fields(
                               List.of(
-                                  new StructField()
+                                  new DeltaStructField()
                                       .name("c1")
-                                      .type(new PrimitiveType().type("long"))
+                                      .type(new DeltaPrimitiveType().type("long"))
                                       .nullable(false)
-                                      .metadata(new StructFieldMetadata())))));
+                                      .metadata(new DeltaStructFieldMetadata())))));
       assertThat(r.getMetadata().getLastCommitVersion()).isEqualTo(1L);
       assertThat(r.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
     }
@@ -942,7 +959,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () ->
               updateTable(
                   h,
-                  new AddCommitUpdate()
+                  new DeltaAddCommitUpdate()
                       .commit(
                           new DeltaCommit()
                               .version(1L)
@@ -950,10 +967,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .fileName("00000001.json")
                               .fileSize(1024L)
                               .fileModificationTimestamp(1700000001L)),
-                  new UpdateSnapshotVersionUpdate()
+                  new DeltaUpdateSnapshotVersionUpdate()
                       .lastCommitVersion(1L)
                       .lastCommitTimestampMs(1700000001L)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "only supported for EXTERNAL");
     }
 
@@ -964,10 +981,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       List<String> writerFeatures =
           new ArrayList<>(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES);
       writerFeatures.add(TableFeature.ROW_TRACKING.specName());
-      LoadTableResponse r =
+      DeltaLoadTableResponse r =
           updateTable(
               h,
-              new AddCommitUpdate()
+              new DeltaAddCommitUpdate()
                   .commit(
                       new DeltaCommit()
                           .version(1L)
@@ -975,7 +992,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileName("00000001.json")
                           .fileSize(1024L)
                           .fileModificationTimestamp(1700000001L)),
-              new SetProtocolUpdate()
+              new DeltaSetProtocolUpdate()
                   .protocol(
                       new DeltaProtocol()
                           .minReaderVersion(UcManagedDeltaContract.REQUIRED_MIN_READER_VERSION)
@@ -990,32 +1007,33 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
   // ---------------------------------------------------------------- helpers
 
   /** Pins the update to the table's UUID and the Handle's etag. */
-  private LoadTableResponse updateTable(Handle h, TableUpdate... updates) throws ApiException {
+  private DeltaLoadTableResponse updateTable(Handle h, DeltaTableUpdate... updates)
+      throws ApiException {
     return updateTable(h.name(), requestWith(h.tableId(), Optional.of(h.etag()), updates));
   }
 
   /** Escape hatch for tests that hand-build the request (custom requirements / empty updates). */
-  private LoadTableResponse updateTable(String tableName, UpdateTableRequest request)
+  private DeltaLoadTableResponse updateTable(String tableName, DeltaUpdateTableRequest request)
       throws ApiException {
     return deltaTablesApi.updateTable(
         TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName, request);
   }
 
   /**
-   * Build an {@link UpdateTableRequest} with the canonical {@code assert-table-uuid} requirement
-   * and an optional {@code assert-etag} requirement. Empty {@code updates} is allowed for the
-   * empty-list rejection case.
+   * Build an {@link DeltaUpdateTableRequest} with the canonical {@code assert-table-uuid}
+   * requirement and an optional {@code assert-etag} requirement. Empty {@code updates} is allowed
+   * for the empty-list rejection case.
    */
-  private static UpdateTableRequest requestWith(
-      UUID assertUuid, Optional<String> assertEtag, TableUpdate... updates) {
-    List<TableRequirement> requirements = new ArrayList<>();
-    requirements.add(new AssertTableUUID().uuid(assertUuid));
-    assertEtag.ifPresent(etag -> requirements.add(new AssertEtag().etag(etag)));
-    return new UpdateTableRequest().requirements(requirements).updates(List.of(updates));
+  private static DeltaUpdateTableRequest requestWith(
+      UUID assertUuid, Optional<String> assertEtag, DeltaTableUpdate... updates) {
+    List<DeltaTableRequirement> requirements = new ArrayList<>();
+    requirements.add(new DeltaAssertTableUUID().uuid(assertUuid));
+    assertEtag.ifPresent(etag -> requirements.add(new DeltaAssertEtag().etag(etag)));
+    return new DeltaUpdateTableRequest().requirements(requirements).updates(List.of(updates));
   }
 
   /** Convenience: assert-table-uuid only, no assert-etag. */
-  private static UpdateTableRequest requestWith(UUID assertUuid, TableUpdate... updates) {
+  private static DeltaUpdateTableRequest requestWith(UUID assertUuid, DeltaTableUpdate... updates) {
     return requestWith(assertUuid, Optional.empty(), updates);
   }
 }

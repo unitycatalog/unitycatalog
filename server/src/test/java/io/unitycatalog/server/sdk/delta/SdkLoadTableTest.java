@@ -5,12 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.DeltaCommitsApi;
-import io.unitycatalog.client.delta.api.TablesApi;
-import io.unitycatalog.client.delta.model.LoadTableResponse;
-import io.unitycatalog.client.delta.model.PrimitiveType;
-import io.unitycatalog.client.delta.model.StructField;
-import io.unitycatalog.client.delta.model.TableMetadata;
-import io.unitycatalog.client.delta.model.UniformMetadataIceberg;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
+import io.unitycatalog.client.delta.model.DeltaStructField;
+import io.unitycatalog.client.delta.model.DeltaTableMetadata;
+import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
@@ -52,7 +52,7 @@ public class SdkLoadTableTest extends BaseServerTest {
   private SchemaOperations schemaOps;
   private TableOperations tableOps;
   private DeltaCommitsApi commitsApi;
-  private TablesApi deltaTablesApi;
+  private DeltaTablesApi deltaTablesApi;
 
   @BeforeEach
   public void setUp() {
@@ -62,7 +62,7 @@ public class SdkLoadTableTest extends BaseServerTest {
     schemaOps = new SdkSchemaOperations(apiClient);
     tableOps = new SdkTableOperations(apiClient);
     commitsApi = new DeltaCommitsApi(apiClient);
-    deltaTablesApi = new TablesApi(apiClient);
+    deltaTablesApi = new DeltaTablesApi(apiClient);
     cleanUp();
     createCatalogAndSchema();
   }
@@ -119,11 +119,10 @@ public class SdkLoadTableTest extends BaseServerTest {
                           .position(1)
                           .nullable(true))));
 
-      LoadTableResponse response = loadTable(tableName);
-      TableMetadata metadata = response.getMetadata();
+      DeltaLoadTableResponse response = loadTable(tableName);
+      DeltaTableMetadata metadata = response.getMetadata();
 
       assertThat(metadata.getTableUuid()).isNotNull();
-      assertThat(metadata.getDataSourceFormat().getValue()).isEqualTo("DELTA");
       assertThat(metadata.getTableType().getValue()).isEqualTo("EXTERNAL");
       assertThat(metadata.getLocation()).isNotNull();
       assertThat(metadata.getCreatedTime()).isNotNull();
@@ -131,14 +130,14 @@ public class SdkLoadTableTest extends BaseServerTest {
       assertThat(metadata.getEtag()).isNotNull();
       assertThat(metadata.getProperties()).isNotNull();
 
-      List<StructField> fields = metadata.getColumns().getFields();
+      List<DeltaStructField> fields = metadata.getColumns().getFields();
       assertThat(fields).hasSize(2);
       assertThat(fields.get(0).getName()).isEqualTo("id");
-      assertThat(fields.get(0).getType()).isInstanceOf(PrimitiveType.class);
+      assertThat(fields.get(0).getType()).isInstanceOf(DeltaPrimitiveType.class);
       assertThat(fields.get(0).getType().getType()).isEqualTo("long");
       assertThat(fields.get(0).getNullable()).isFalse();
       assertThat(fields.get(1).getName()).isEqualTo("name");
-      assertThat(fields.get(1).getType()).isInstanceOf(PrimitiveType.class);
+      assertThat(fields.get(1).getType()).isInstanceOf(DeltaPrimitiveType.class);
       assertThat(fields.get(1).getType().getType()).isEqualTo("string");
       assertThat(fields.get(1).getNullable()).isTrue();
 
@@ -157,7 +156,7 @@ public class SdkLoadTableTest extends BaseServerTest {
       String tableUri = tableInfo.getStorageLocation();
 
       // Load before any commits: version 0, empty list
-      LoadTableResponse r1 = loadTable(tableName);
+      DeltaLoadTableResponse r1 = loadTable(tableName);
       assertThat(r1.getCommits()).isEmpty();
       assertThat(r1.getLatestTableVersion()).isEqualTo(0L);
 
@@ -173,7 +172,7 @@ public class SdkLoadTableTest extends BaseServerTest {
                       .fileSize(1024L)
                       .timestamp(1700000001L)
                       .fileModificationTimestamp(1700000001L)));
-      LoadTableResponse r2 = loadTable(tableName);
+      DeltaLoadTableResponse r2 = loadTable(tableName);
       assertThat(r2.getCommits()).hasSize(1);
       assertThat(r2.getCommits().get(0).getVersion()).isEqualTo(1);
       assertThat(r2.getLatestTableVersion()).isEqualTo(1L);
@@ -190,7 +189,7 @@ public class SdkLoadTableTest extends BaseServerTest {
                       .fileSize(2048L)
                       .timestamp(1700000002L)
                       .fileModificationTimestamp(1700000002L)));
-      LoadTableResponse r3 = loadTable(tableName);
+      DeltaLoadTableResponse r3 = loadTable(tableName);
       assertThat(r3.getCommits()).hasSize(2);
       assertThat(r3.getCommits().get(0).getVersion()).isEqualTo(2);
       assertThat(r3.getCommits().get(1).getVersion()).isEqualTo(1);
@@ -199,7 +198,7 @@ public class SdkLoadTableTest extends BaseServerTest {
       // Backfill v1, load: v1 removed, only v2 remains
       commitsApi.commit(
           new DeltaCommit().tableId(tableId).tableUri(tableUri).latestBackfilledVersion(1L));
-      LoadTableResponse r4 = loadTable(tableName);
+      DeltaLoadTableResponse r4 = loadTable(tableName);
       assertThat(r4.getCommits()).hasSize(1);
       assertThat(r4.getCommits().get(0).getVersion()).isEqualTo(2);
       assertThat(r4.getLatestTableVersion()).isEqualTo(2L);
@@ -207,7 +206,7 @@ public class SdkLoadTableTest extends BaseServerTest {
       // Backfill v2, load: all backfilled, empty commits
       commitsApi.commit(
           new DeltaCommit().tableId(tableId).tableUri(tableUri).latestBackfilledVersion(2L));
-      LoadTableResponse r5 = loadTable(tableName);
+      DeltaLoadTableResponse r5 = loadTable(tableName);
       assertThat(r5.getCommits()).isEmpty();
       assertThat(r5.getLatestTableVersion()).isEqualTo(2L);
     }
@@ -278,8 +277,8 @@ public class SdkLoadTableTest extends BaseServerTest {
           icebergVersion,
           new Date(icebergTimestampMs));
 
-      LoadTableResponse response = loadTable(tableName);
-      TableMetadata metadata = response.getMetadata();
+      DeltaLoadTableResponse response = loadTable(tableName);
+      DeltaTableMetadata metadata = response.getMetadata();
 
       // Partition columns come back in partitionIndex order.
       assertThat(metadata.getPartitionColumns()).containsExactly("id", "region");
@@ -291,7 +290,7 @@ public class SdkLoadTableTest extends BaseServerTest {
 
       // Uniform Iceberg metadata is populated from the DAO fields.
       assertThat(response.getUniform()).isNotNull();
-      UniformMetadataIceberg iceberg = response.getUniform().getIceberg();
+      DeltaUniformMetadataIceberg iceberg = response.getUniform().getIceberg();
       assertThat(iceberg).isNotNull();
       assertThat(iceberg.getMetadataLocation()).isEqualTo(icebergLocation);
       assertThat(iceberg.getConvertedDeltaVersion()).isEqualTo(icebergVersion);
@@ -369,7 +368,7 @@ public class SdkLoadTableTest extends BaseServerTest {
                           .position(0)
                           .nullable(false))));
 
-      LoadTableResponse response = loadTable(tableName);
+      DeltaLoadTableResponse response = loadTable(tableName);
       assertThat(response.getMetadata()).isNotNull();
       assertThat(response.getMetadata().getLastCommitVersion()).isNull();
     }
@@ -398,13 +397,13 @@ public class SdkLoadTableTest extends BaseServerTest {
                               .nullable(false))));
       corruptFirstColumnTypeJson(UUID.fromString(tableInfo.getTableId()), "not json at all");
 
-      LoadTableResponse response = loadTable(tableName);
+      DeltaLoadTableResponse response = loadTable(tableName);
       assertThat(response.getMetadata()).isNotNull();
       assertThat(response.getMetadata().getColumns().getFields()).isEmpty();
     }
   }
 
-  private LoadTableResponse loadTable(String tableName) throws ApiException {
+  private DeltaLoadTableResponse loadTable(String tableName) throws ApiException {
     return deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
   }
 

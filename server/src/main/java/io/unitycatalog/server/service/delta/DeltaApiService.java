@@ -16,15 +16,15 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
-import io.unitycatalog.server.delta.model.CatalogConfig;
-import io.unitycatalog.server.delta.model.CreateStagingTableRequest;
-import io.unitycatalog.server.delta.model.CreateTableRequest;
-import io.unitycatalog.server.delta.model.CredentialOperation;
-import io.unitycatalog.server.delta.model.CredentialsResponse;
-import io.unitycatalog.server.delta.model.LoadTableResponse;
-import io.unitycatalog.server.delta.model.StagingTableResponse;
-import io.unitycatalog.server.delta.model.TableType;
-import io.unitycatalog.server.delta.model.UpdateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaCatalogConfig;
+import io.unitycatalog.server.delta.model.DeltaCreateStagingTableRequest;
+import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
+import io.unitycatalog.server.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
+import io.unitycatalog.server.delta.model.DeltaTableType;
+import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.DeltaApiExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -98,7 +98,7 @@ public class DeltaApiService extends AuthorizedService {
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
       """)
   @AuthorizeResourceKey(METASTORE)
-  public CatalogConfig getConfig(
+  public DeltaCatalogConfig getConfig(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("protocol-versions") String protocolVersions) {
     if (catalog == null || catalog.isEmpty()) {
@@ -110,7 +110,7 @@ public class DeltaApiService extends AuthorizedService {
     catalogRepository.getCatalog(catalog);
 
     // For now, we only have 1.0 as the first protocol version. Input protocolVersions is ignored.
-    return new CatalogConfig().endpoints(ENDPOINTS).protocolVersion("1.0");
+    return new DeltaCatalogConfig().endpoints(ENDPOINTS).protocolVersion("1.0");
   }
 
   // ==================== Load Table API ====================
@@ -119,7 +119,7 @@ public class DeltaApiService extends AuthorizedService {
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
-  public LoadTableResponse loadTable(
+  public DeltaLoadTableResponse loadTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
@@ -140,10 +140,10 @@ public class DeltaApiService extends AuthorizedService {
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.CREATE_STAGING_TABLE)
-  public StagingTableResponse createStagingTable(
+  public DeltaStagingTableResponse createStagingTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
-      CreateStagingTableRequest request) {
+      DeltaCreateStagingTableRequest request) {
     if (request == null || request.getName() == null || request.getName().isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Staging table name is required.");
     }
@@ -185,20 +185,20 @@ public class DeltaApiService extends AuthorizedService {
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
-  public LoadTableResponse createTable(
+  public DeltaLoadTableResponse createTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "location")
           @AuthorizeKey(key = "table-type")
-          CreateTableRequest request) {
+          DeltaCreateTableRequest request) {
     DeltaCreateTableMapper.Result mapped =
         DeltaCreateTableMapper.toCreateTable(catalog, schema, request);
-    LoadTableResponse response = tableRepository.createTableForDelta(
+    DeltaLoadTableResponse response = tableRepository.createTableForDelta(
         mapped.createTable(), mapped.uniformIcebergFields());
     // Wire the new table into the auth hierarchy under its schema (mirrors
     // TableService.createTable). MANAGED tables reuse the staging-table UUID, whose auth row
     // was already created in createStagingTable, so re-init is unnecessary there.
-    if (request.getTableType() == TableType.EXTERNAL) {
+    if (request.getTableType() == DeltaTableType.EXTERNAL) {
       initializeHierarchicalAuthorization(
           response.getMetadata().getTableUuid().toString(),
           schemaRepository.getSchemaIdOrThrow(catalog, schema).toString());
@@ -221,11 +221,11 @@ public class DeltaApiService extends AuthorizedService {
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
-  public LoadTableResponse updateTable(
+  public DeltaLoadTableResponse updateTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table,
-      UpdateTableRequest request) {
+      DeltaUpdateTableRequest request) {
     return tableRepository.updateTableForDelta(catalog, schema, table, request);
   }
 
@@ -240,11 +240,11 @@ public class DeltaApiService extends AuthorizedService {
   @Get("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials")
   @ProducesJson
   @AuthorizeExpression(AuthorizeExpressions.VEND_TABLE_CREDENTIAL)
-  public CredentialsResponse getTableCredentials(
+  public DeltaCredentialsResponse getTableCredentials(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table,
-      @Param("operation") @AuthorizeKey CredentialOperation operation) {
+      @Param("operation") @AuthorizeKey DeltaCredentialOperation operation) {
     NormalizedURL storageLocation = tableRepository.getTableStorageLocation(catalog, schema, table);
     TemporaryCredentials credentials =
         storageCredentialVendor.vendCredential(storageLocation, toPrivileges(operation));
@@ -260,7 +260,7 @@ public class DeltaApiService extends AuthorizedService {
   @Get("/delta/v1/staging-tables/{table_id}/credentials")
   @ProducesJson
   @AuthorizeExpression("#authorize(#principal, #table, OWNER)")
-  public CredentialsResponse getStagingTableCredentials(
+  public DeltaCredentialsResponse getStagingTableCredentials(
       @Param("table_id") @AuthorizeResourceKey(TABLE) String tableId) {
     NormalizedURL storageLocation =
         tableRepository.getStagingTableStorageLocation(UUID.fromString(tableId));
@@ -269,10 +269,10 @@ public class DeltaApiService extends AuthorizedService {
             storageLocation,
             Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
     return DeltaCredentialsMapper.toCredentialsResponse(
-        storageLocation.toString(), credentials, CredentialOperation.READ_WRITE);
+        storageLocation.toString(), credentials, DeltaCredentialOperation.READ_WRITE);
   }
 
-  private static Set<CredentialContext.Privilege> toPrivileges(CredentialOperation operation) {
+  private static Set<CredentialContext.Privilege> toPrivileges(DeltaCredentialOperation operation) {
     return switch (operation) {
       case READ -> Set.of(CredentialContext.Privilege.SELECT);
       case READ_WRITE ->

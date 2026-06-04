@@ -1,7 +1,7 @@
 package io.unitycatalog.server.service.delta;
 
+import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
-import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
@@ -117,7 +117,7 @@ public final class UcManagedDeltaContract {
    */
   public static void validate(
       DeltaProtocol protocol,
-      DomainMetadataUpdates domainMetadata,
+      DeltaDomainMetadataUpdates domainMetadata,
       Map<String, String> properties) {
     ValidationUtils.checkNotNull(protocol, "protocol is required.");
     validateReaderFeatureSubset(protocol);
@@ -218,7 +218,7 @@ public final class UcManagedDeltaContract {
   }
 
   private static void validateDomainMetadataAgainstProtocol(
-      DeltaProtocol protocol, DomainMetadataUpdates domainMetadata) {
+      DeltaProtocol protocol, DeltaDomainMetadataUpdates domainMetadata) {
     Set<String> writerFeatures =
         protocol.getWriterFeatures() != null ? Set.copyOf(protocol.getWriterFeatures()) : Set.of();
     validateDomainMetadataAgainstWriterFeatures(writerFeatures, domainMetadata);
@@ -230,7 +230,7 @@ public final class UcManagedDeltaContract {
    * {@code set-protocol} is in the request.
    */
   public static void validateDomainMetadataAgainstWriterFeatures(
-      Set<String> writerFeatures, DomainMetadataUpdates domainMetadata) {
+      Set<String> writerFeatures, DeltaDomainMetadataUpdates domainMetadata) {
     if (domainMetadata == null) return;
     if (domainMetadata.getDeltaClustering() != null
         && !writerFeatures.contains(TableFeature.CLUSTERING.specName())) {

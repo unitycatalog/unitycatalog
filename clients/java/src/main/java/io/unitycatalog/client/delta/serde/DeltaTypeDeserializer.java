@@ -6,53 +6,53 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.jsontype.TypeDeserializer;
-import io.unitycatalog.client.delta.model.DecimalType;
-import io.unitycatalog.client.delta.model.DeltaType;
-import io.unitycatalog.client.delta.model.PrimitiveType;
+import io.unitycatalog.client.delta.model.DeltaDataType;
+import io.unitycatalog.client.delta.model.DeltaDecimalType;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Custom deserializer for DeltaType that handles the string-or-object polymorphism in
- * StructField.type.
+ * Custom deserializer for DeltaDataType that handles the string-or-object polymorphism in
+ * DeltaStructField.type.
  */
-public class DeltaTypeDeserializer extends StdDeserializer<DeltaType> {
+public class DeltaTypeDeserializer extends StdDeserializer<DeltaDataType> {
 
   private static final Pattern DECIMAL_PATTERN = Pattern.compile("decimal\\((\\d+),\\s*(\\d+)\\)");
 
   private final JsonDeserializer<?> defaultDeserializer;
 
   public DeltaTypeDeserializer(JsonDeserializer<?> defaultDeserializer) {
-    super(DeltaType.class);
+    super(DeltaDataType.class);
     this.defaultDeserializer = defaultDeserializer;
   }
 
   @Override
-  public DeltaType deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+  public DeltaDataType deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
     if (p.currentToken() == JsonToken.VALUE_STRING) {
       return parseString(p.getText());
     }
-    return (DeltaType) defaultDeserializer.deserialize(p, ctxt);
+    return (DeltaDataType) defaultDeserializer.deserialize(p, ctxt);
   }
 
   @Override
-  public DeltaType deserializeWithType(
+  public DeltaDataType deserializeWithType(
       JsonParser p, DeserializationContext ctxt, TypeDeserializer typeDeserializer)
       throws IOException {
     if (p.currentToken() == JsonToken.VALUE_STRING) {
       return parseString(p.getText());
     }
-    return (DeltaType) typeDeserializer.deserializeTypedFromObject(p, ctxt);
+    return (DeltaDataType) typeDeserializer.deserializeTypedFromObject(p, ctxt);
   }
 
-  private static DeltaType parseString(String s) {
+  private static DeltaDataType parseString(String s) {
     Matcher m = DECIMAL_PATTERN.matcher(s);
     if (m.matches()) {
-      return new DecimalType()
+      return new DeltaDecimalType()
           .precision(Integer.parseInt(m.group(1)))
           .scale(Integer.parseInt(m.group(2)));
     }
-    return new PrimitiveType().type(s);
+    return new DeltaPrimitiveType().type(s);
   }
 }

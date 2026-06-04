@@ -13,13 +13,13 @@ import json
 
 import pytest
 
-from unitycatalog.delta.models.primitive_type import PrimitiveType
-from unitycatalog.delta.models.decimal_type import DecimalType
-from unitycatalog.delta.models.array_type import ArrayType
-from unitycatalog.delta.models.map_type import MapType
-from unitycatalog.delta.models.struct_type import StructType
-from unitycatalog.delta.models.struct_field import StructField
-from unitycatalog.delta.models.struct_field_metadata import StructFieldMetadata
+from unitycatalog.delta.models.delta_array_type import DeltaArrayType
+from unitycatalog.delta.models.delta_decimal_type import DeltaDecimalType
+from unitycatalog.delta.models.delta_map_type import DeltaMapType
+from unitycatalog.delta.models.delta_primitive_type import DeltaPrimitiveType
+from unitycatalog.delta.models.delta_struct_field import DeltaStructField
+from unitycatalog.delta.models.delta_struct_field_metadata import DeltaStructFieldMetadata
+from unitycatalog.delta.models.delta_struct_type import DeltaStructType
 
 # Importing delta_type_module applies the monkey-patches
 import unitycatalog.delta.serde.delta_type_module  # noqa: F401
@@ -38,19 +38,19 @@ class TestDeserFromJson:
             json_str = json.dumps({
                 "name": "col", "type": t, "nullable": True, "metadata": {}
             })
-            col = StructField.from_json(json_str)
-            assert isinstance(col.type, PrimitiveType)
+            col = DeltaStructField.from_json(json_str)
+            assert isinstance(col.type, DeltaPrimitiveType)
             assert col.type.type == t
-            # Pydantic must coerce the dict `metadata` into a typed StructFieldMetadata
+            # Pydantic must coerce the dict `metadata` into a typed DeltaStructFieldMetadata
             # instance -- _field_to_dict relies on this to call `.to_dict()` on serialization.
-            assert isinstance(col.metadata, StructFieldMetadata)
+            assert isinstance(col.metadata, DeltaStructFieldMetadata)
 
     def test_decimal_type(self):
         json_str = json.dumps({
             "name": "price", "type": "decimal(10,2)", "nullable": True, "metadata": {}
         })
-        col = StructField.from_json(json_str)
-        assert isinstance(col.type, DecimalType)
+        col = DeltaStructField.from_json(json_str)
+        assert isinstance(col.type, DeltaDecimalType)
         assert col.type.precision == 10
         assert col.type.scale == 2
 
@@ -58,8 +58,8 @@ class TestDeserFromJson:
         json_str = json.dumps({
             "name": "col", "type": "decimal", "nullable": True, "metadata": {}
         })
-        col = StructField.from_json(json_str)
-        assert isinstance(col.type, PrimitiveType)
+        col = DeltaStructField.from_json(json_str)
+        assert isinstance(col.type, DeltaPrimitiveType)
         assert col.type.type == "decimal"
 
     def test_array_type(self):
@@ -69,9 +69,9 @@ class TestDeserFromJson:
             "nullable": True,
             "metadata": {},
         })
-        col = StructField.from_json(json_str)
-        assert isinstance(col.type, ArrayType)
-        assert isinstance(col.type.element_type, PrimitiveType)
+        col = DeltaStructField.from_json(json_str)
+        assert isinstance(col.type, DeltaArrayType)
+        assert isinstance(col.type.element_type, DeltaPrimitiveType)
         assert col.type.element_type.type == "string"
         assert col.type.contains_null is True
 
@@ -87,10 +87,10 @@ class TestDeserFromJson:
             "nullable": True,
             "metadata": {},
         })
-        col = StructField.from_json(json_str)
-        assert isinstance(col.type, MapType)
-        assert isinstance(col.type.key_type, PrimitiveType)
-        assert isinstance(col.type.value_type, PrimitiveType)
+        col = DeltaStructField.from_json(json_str)
+        assert isinstance(col.type, DeltaMapType)
+        assert isinstance(col.type.key_type, DeltaPrimitiveType)
+        assert isinstance(col.type.value_type, DeltaPrimitiveType)
         assert col.type.value_contains_null is False
 
     def test_struct_type(self):
@@ -105,11 +105,11 @@ class TestDeserFromJson:
             "nullable": True,
             "metadata": {},
         })
-        col = StructField.from_json(json_str)
-        assert isinstance(col.type, StructType)
+        col = DeltaStructField.from_json(json_str)
+        assert isinstance(col.type, DeltaStructType)
         assert len(col.type.fields) == 1
         assert col.type.fields[0].name == "x"
-        assert isinstance(col.type.fields[0].type, PrimitiveType)
+        assert isinstance(col.type.fields[0].type, DeltaPrimitiveType)
 
     def test_nested_map_array_struct(self):
         json_str = json.dumps({
@@ -132,12 +132,12 @@ class TestDeserFromJson:
             "nullable": True,
             "metadata": {},
         })
-        col = StructField.from_json(json_str)
-        assert isinstance(col.type, MapType)
+        col = DeltaStructField.from_json(json_str)
+        assert isinstance(col.type, DeltaMapType)
         arr = col.type.value_type
-        assert isinstance(arr, ArrayType)
+        assert isinstance(arr, DeltaArrayType)
         st = arr.element_type
-        assert isinstance(st, StructType)
+        assert isinstance(st, DeltaStructType)
         assert st.fields[0].type.type == "double"
 
 
@@ -146,15 +146,15 @@ class TestSerToJson:
 
     def test_primitive_round_trip(self):
         for t in ["long", "string", "boolean"]:
-            col = StructField(
-                name="col", type=PrimitiveType(type=t), nullable=True, metadata={})
+            col = DeltaStructField(
+                name="col", type=DeltaPrimitiveType(type=t), nullable=True, metadata={})
             wire = json.loads(col.to_json())
             assert wire["type"] == t  # bare string, not {"type": "long"}
 
     def test_decimal_round_trip(self):
-        col = StructField(
+        col = DeltaStructField(
             name="col",
-            type=DecimalType(type="decimal", precision=10, scale=2),
+            type=DeltaDecimalType(type="decimal", precision=10, scale=2),
             nullable=True,
             metadata={},
         )
@@ -162,11 +162,11 @@ class TestSerToJson:
         assert wire["type"] == "decimal(10,2)"
 
     def test_array_round_trip(self):
-        col = StructField(
+        col = DeltaStructField(
             name="col",
-            type=ArrayType(
+            type=DeltaArrayType(
                 type="array",
-                element_type=PrimitiveType(type="string"),
+                element_type=DeltaPrimitiveType(type="string"),
                 contains_null=True,
             ),
             nullable=True,
@@ -206,12 +206,12 @@ class TestJsonRoundTrip:
             "nullable": True,
             "metadata": {},
         }
-        col = StructField.from_json(json.dumps(original))
-        # Metadata at every level (root, each leaf) must be StructFieldMetadata so the
+        col = DeltaStructField.from_json(json.dumps(original))
+        # Metadata at every level (root, each leaf) must be DeltaStructFieldMetadata so the
         # `.to_dict()` call in _field_to_dict succeeds during the round-trip below.
-        assert isinstance(col.metadata, StructFieldMetadata)
+        assert isinstance(col.metadata, DeltaStructFieldMetadata)
         for inner in col.type.fields:
-            assert isinstance(inner.metadata, StructFieldMetadata)
+            assert isinstance(inner.metadata, DeltaStructFieldMetadata)
         reserialized = json.loads(col.to_json())
         assert reserialized == original
 
@@ -233,19 +233,19 @@ class TestParseTypeDirect:
 
     def test_primitive(self):
         dt = _parse_type("long")
-        assert isinstance(dt, PrimitiveType)
+        assert isinstance(dt, DeltaPrimitiveType)
         assert dt.type == "long"
 
     def test_decimal_from_string(self):
         dt = _parse_type("decimal(10,2)")
-        assert isinstance(dt, DecimalType)
+        assert isinstance(dt, DeltaDecimalType)
         assert dt.precision == 10
         assert dt.scale == 2
 
     def test_array_from_dict(self):
         dt = _parse_type({"type": "array", "element-type": "string", "contains-null": True})
-        assert isinstance(dt, ArrayType)
-        assert isinstance(dt.element_type, PrimitiveType)
+        assert isinstance(dt, DeltaArrayType)
+        assert isinstance(dt.element_type, DeltaPrimitiveType)
         assert dt.element_type.type == "string"
         assert dt.contains_null is True
 
@@ -256,7 +256,7 @@ class TestParseTypeDirect:
             "value-type": "double",
             "value-contains-null": False,
         })
-        assert isinstance(dt, MapType)
+        assert isinstance(dt, DeltaMapType)
         assert dt.key_type.type == "string"
         assert dt.value_type.type == "double"
         assert dt.value_contains_null is False
@@ -266,7 +266,7 @@ class TestParseTypeDirect:
             "type": "struct",
             "fields": [{"name": "zip", "type": "integer", "nullable": False, "metadata": {}}],
         })
-        assert isinstance(dt, StructType)
+        assert isinstance(dt, DeltaStructType)
         assert len(dt.fields) == 1
         assert dt.fields[0].name == "zip"
 
@@ -275,14 +275,14 @@ class TestTypeToDictDirect:
     """Direct unit tests for _type_to_dict -- serialization logic without going through the wire."""
 
     def test_primitive(self):
-        assert _type_to_dict(PrimitiveType(type="long")) == "long"
+        assert _type_to_dict(DeltaPrimitiveType(type="long")) == "long"
 
     def test_decimal(self):
-        assert _type_to_dict(DecimalType(type="decimal", precision=10, scale=2)) == "decimal(10,2)"
+        assert _type_to_dict(DeltaDecimalType(type="decimal", precision=10, scale=2)) == "decimal(10,2)"
 
     def test_array(self):
         d = _type_to_dict(
-            ArrayType(type="array", element_type=PrimitiveType(type="string"), contains_null=True)
+            DeltaArrayType(type="array", element_type=DeltaPrimitiveType(type="string"), contains_null=True)
         )
         assert d == {"type": "array", "element-type": "string", "contains-null": True}
 

@@ -3,11 +3,11 @@ package io.unitycatalog.server.service.delta;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.DeltaClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
-import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
-import io.unitycatalog.server.delta.model.StagingTableResponse;
+import io.unitycatalog.server.delta.model.DeltaRowTrackingDomainMetadata;
+import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
@@ -35,7 +35,7 @@ public class UcManagedDeltaContractTest {
    */
   @Test
   public void validateAcceptsTheAdvertisedContractRoundTrip() {
-    StagingTableResponse staging =
+    DeltaStagingTableResponse staging =
         DeltaStagingTableMapper.toStagingTableResponse(sampleStagingInfo(), emptyCredentials());
     DeltaProtocol protocol =
         new DeltaProtocol()
@@ -165,10 +165,10 @@ public class UcManagedDeltaContractTest {
 
   @Test
   public void validateRejectsClusteringDomainMetadataWithoutClusteringFeature() {
-    DomainMetadataUpdates dm =
-        new DomainMetadataUpdates()
+    DeltaDomainMetadataUpdates dm =
+        new DeltaDomainMetadataUpdates()
             .deltaClustering(
-                new ClusteringDomainMetadata().clusteringColumns(List.of(List.of("id"))));
+                new DeltaClusteringDomainMetadata().clusteringColumns(List.of(List.of("id"))));
     assertThatThrownBy(() -> UcManagedDeltaContract.validate(fullProtocol(), dm, fullProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("'" + TableFeature.CLUSTERING.specName() + "' writer feature");
@@ -176,9 +176,9 @@ public class UcManagedDeltaContractTest {
 
   @Test
   public void validateRejectsRowTrackingDomainMetadataWithoutRowTrackingFeature() {
-    DomainMetadataUpdates dm =
-        new DomainMetadataUpdates()
-            .deltaRowTracking(new RowTrackingDomainMetadata().rowIdHighWaterMark(0L));
+    DeltaDomainMetadataUpdates dm =
+        new DeltaDomainMetadataUpdates()
+            .deltaRowTracking(new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(0L));
     assertThatThrownBy(() -> UcManagedDeltaContract.validate(fullProtocol(), dm, fullProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("'" + TableFeature.ROW_TRACKING.specName() + "' writer feature");
@@ -189,11 +189,11 @@ public class UcManagedDeltaContractTest {
     DeltaProtocol protocol =
         fullProtocolWithExtraWriterFeatures(
             TableFeature.CLUSTERING.specName(), TableFeature.ROW_TRACKING.specName());
-    DomainMetadataUpdates dm =
-        new DomainMetadataUpdates()
+    DeltaDomainMetadataUpdates dm =
+        new DeltaDomainMetadataUpdates()
             .deltaClustering(
-                new ClusteringDomainMetadata().clusteringColumns(List.of(List.of("id"))))
-            .deltaRowTracking(new RowTrackingDomainMetadata().rowIdHighWaterMark(7L));
+                new DeltaClusteringDomainMetadata().clusteringColumns(List.of(List.of("id"))))
+            .deltaRowTracking(new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(7L));
     assertThatCode(() -> UcManagedDeltaContract.validate(protocol, dm, fullProperties()))
         .doesNotThrowAnyException();
   }

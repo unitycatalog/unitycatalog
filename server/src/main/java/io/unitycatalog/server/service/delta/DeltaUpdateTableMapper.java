@@ -1,26 +1,26 @@
 package io.unitycatalog.server.service.delta;
 
-import io.unitycatalog.server.delta.model.AddCommitUpdate;
-import io.unitycatalog.server.delta.model.AssertEtag;
-import io.unitycatalog.server.delta.model.AssertTableUUID;
+import io.unitycatalog.server.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.server.delta.model.DeltaAssertEtag;
+import io.unitycatalog.server.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.server.delta.model.DeltaCommit;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
-import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.server.delta.model.RemoveDomainMetadataUpdate;
-import io.unitycatalog.server.delta.model.RemovePropertiesUpdate;
-import io.unitycatalog.server.delta.model.SetDomainMetadataUpdate;
-import io.unitycatalog.server.delta.model.SetLatestBackfilledVersionUpdate;
-import io.unitycatalog.server.delta.model.SetPartitionColumnsUpdate;
-import io.unitycatalog.server.delta.model.SetPropertiesUpdate;
-import io.unitycatalog.server.delta.model.SetProtocolUpdate;
-import io.unitycatalog.server.delta.model.SetSchemaUpdate;
-import io.unitycatalog.server.delta.model.SetTableCommentUpdate;
-import io.unitycatalog.server.delta.model.StructField;
-import io.unitycatalog.server.delta.model.StructType;
-import io.unitycatalog.server.delta.model.TableRequirement;
-import io.unitycatalog.server.delta.model.TableUpdate;
-import io.unitycatalog.server.delta.model.UpdateSnapshotVersionUpdate;
-import io.unitycatalog.server.delta.model.UpdateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.DeltaRemoveDomainMetadataUpdate;
+import io.unitycatalog.server.delta.model.DeltaRemovePropertiesUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetDomainMetadataUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetLatestBackfilledVersionUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetPartitionColumnsUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetPropertiesUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetProtocolUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetSchemaUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetTableCommentUpdate;
+import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructType;
+import io.unitycatalog.server.delta.model.DeltaTableRequirement;
+import io.unitycatalog.server.delta.model.DeltaTableUpdate;
+import io.unitycatalog.server.delta.model.DeltaUpdateSnapshotVersionUpdate;
+import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -48,7 +48,8 @@ import java.util.stream.Collectors;
 import org.hibernate.Session;
 
 /**
- * Translates a Delta {@link UpdateTableRequest} into in-memory mutations on a {@link TableInfoDAO}
+ * Translates a {@link DeltaUpdateTableRequest} into in-memory mutations on a {@link
+ * TableInfoDAO}
  * and {@link MutablePropertyMap}. Three phases, each separately callable:
  *
  * <ol>
@@ -73,11 +74,11 @@ public final class DeltaUpdateTableMapper {
    * Classify and shape-check the request. {@code assert-table-uuid} is mandatory: without it a
    * client with a cached three-part name could silently commit to a freshly-recreated table.
    */
-  public static CollectedRequest collectRequest(UpdateTableRequest request) {
+  public static CollectedRequest collectRequest(DeltaUpdateTableRequest request) {
     if (request == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Request body is required.");
     }
-    List<TableUpdate> updates = request.getUpdates();
+    List<DeltaTableUpdate> updates = request.getUpdates();
     if (updates == null || updates.isEmpty()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "At least one update is required.");
     }
@@ -121,7 +122,7 @@ public final class DeltaUpdateTableMapper {
   }
 
   /** Domain names with a non-null entry in {@code updates}. */
-  private static Set<String> domainsSetIn(DomainMetadataUpdates updates) {
+  private static Set<String> domainsSetIn(DeltaDomainMetadataUpdates updates) {
     if (updates == null) {
       return Set.of();
     }
@@ -147,14 +148,14 @@ public final class DeltaUpdateTableMapper {
 
   /** One slot per requirement subtype; enforces at-most-one per request. */
   public static final class CollectedRequirements {
-    private Optional<AssertTableUUID> assertTableUuid = Optional.empty();
-    private Optional<AssertEtag> assertEtag = Optional.empty();
+    private Optional<DeltaAssertTableUUID> assertTableUuid = Optional.empty();
+    private Optional<DeltaAssertEtag> assertEtag = Optional.empty();
 
-    void putOnce(TableRequirement req) {
-      if (req instanceof AssertTableUUID u) {
-        assertTableUuid = fillOnce(assertTableUuid, u, TableRequirement::getType);
-      } else if (req instanceof AssertEtag e) {
-        assertEtag = fillOnce(assertEtag, e, TableRequirement::getType);
+    void putOnce(DeltaTableRequirement req) {
+      if (req instanceof DeltaAssertTableUUID u) {
+        assertTableUuid = fillOnce(assertTableUuid, u, DeltaTableRequirement::getType);
+      } else if (req instanceof DeltaAssertEtag e) {
+        assertEtag = fillOnce(assertEtag, e, DeltaTableRequirement::getType);
       } else {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
@@ -165,17 +166,17 @@ public final class DeltaUpdateTableMapper {
 
   /** One slot per update subtype; enforces at-most-one per request. */
   public static final class CollectedUpdates {
-    private Optional<SetPropertiesUpdate> setProperties = Optional.empty();
-    private Optional<RemovePropertiesUpdate> removeProperties = Optional.empty();
-    private Optional<SetProtocolUpdate> setProtocol = Optional.empty();
-    private Optional<SetSchemaUpdate> setSchema = Optional.empty();
-    private Optional<SetPartitionColumnsUpdate> setPartitionColumns = Optional.empty();
-    private Optional<SetTableCommentUpdate> setTableComment = Optional.empty();
-    private Optional<SetDomainMetadataUpdate> setDomainMetadata = Optional.empty();
-    private Optional<RemoveDomainMetadataUpdate> removeDomainMetadata = Optional.empty();
-    private Optional<UpdateSnapshotVersionUpdate> updateSnapshotVersion = Optional.empty();
-    private Optional<AddCommitUpdate> addCommit = Optional.empty();
-    private Optional<SetLatestBackfilledVersionUpdate> setLatestBackfilledVersion =
+    private Optional<DeltaSetPropertiesUpdate> setProperties = Optional.empty();
+    private Optional<DeltaRemovePropertiesUpdate> removeProperties = Optional.empty();
+    private Optional<DeltaSetProtocolUpdate> setProtocol = Optional.empty();
+    private Optional<DeltaSetSchemaUpdate> setSchema = Optional.empty();
+    private Optional<DeltaSetPartitionColumnsUpdate> setPartitionColumns = Optional.empty();
+    private Optional<DeltaSetTableCommentUpdate> setTableComment = Optional.empty();
+    private Optional<DeltaSetDomainMetadataUpdate> setDomainMetadata = Optional.empty();
+    private Optional<DeltaRemoveDomainMetadataUpdate> removeDomainMetadata = Optional.empty();
+    private Optional<DeltaUpdateSnapshotVersionUpdate> updateSnapshotVersion = Optional.empty();
+    private Optional<DeltaAddCommitUpdate> addCommit = Optional.empty();
+    private Optional<DeltaSetLatestBackfilledVersionUpdate> setLatestBackfilledVersion =
         Optional.empty();
 
     /**
@@ -196,30 +197,30 @@ public final class DeltaUpdateTableMapper {
           || removeDomainMetadata.isPresent();
     }
 
-    void putOnce(TableUpdate update) {
-      if (update instanceof SetPropertiesUpdate u) {
-        setProperties = fillOnce(setProperties, u, TableUpdate::getAction);
-      } else if (update instanceof RemovePropertiesUpdate u) {
-        removeProperties = fillOnce(removeProperties, u, TableUpdate::getAction);
-      } else if (update instanceof SetProtocolUpdate u) {
-        setProtocol = fillOnce(setProtocol, u, TableUpdate::getAction);
-      } else if (update instanceof SetSchemaUpdate u) {
-        setSchema = fillOnce(setSchema, u, TableUpdate::getAction);
-      } else if (update instanceof SetPartitionColumnsUpdate u) {
-        setPartitionColumns = fillOnce(setPartitionColumns, u, TableUpdate::getAction);
-      } else if (update instanceof SetTableCommentUpdate u) {
-        setTableComment = fillOnce(setTableComment, u, TableUpdate::getAction);
-      } else if (update instanceof SetDomainMetadataUpdate u) {
-        setDomainMetadata = fillOnce(setDomainMetadata, u, TableUpdate::getAction);
-      } else if (update instanceof RemoveDomainMetadataUpdate u) {
-        removeDomainMetadata = fillOnce(removeDomainMetadata, u, TableUpdate::getAction);
-      } else if (update instanceof UpdateSnapshotVersionUpdate u) {
-        updateSnapshotVersion = fillOnce(updateSnapshotVersion, u, TableUpdate::getAction);
-      } else if (update instanceof AddCommitUpdate u) {
-        addCommit = fillOnce(addCommit, u, TableUpdate::getAction);
-      } else if (update instanceof SetLatestBackfilledVersionUpdate u) {
+    void putOnce(DeltaTableUpdate update) {
+      if (update instanceof DeltaSetPropertiesUpdate u) {
+        setProperties = fillOnce(setProperties, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaRemovePropertiesUpdate u) {
+        removeProperties = fillOnce(removeProperties, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaSetProtocolUpdate u) {
+        setProtocol = fillOnce(setProtocol, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaSetSchemaUpdate u) {
+        setSchema = fillOnce(setSchema, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaSetPartitionColumnsUpdate u) {
+        setPartitionColumns = fillOnce(setPartitionColumns, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaSetTableCommentUpdate u) {
+        setTableComment = fillOnce(setTableComment, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaSetDomainMetadataUpdate u) {
+        setDomainMetadata = fillOnce(setDomainMetadata, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaRemoveDomainMetadataUpdate u) {
+        removeDomainMetadata = fillOnce(removeDomainMetadata, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaUpdateSnapshotVersionUpdate u) {
+        updateSnapshotVersion = fillOnce(updateSnapshotVersion, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaAddCommitUpdate u) {
+        addCommit = fillOnce(addCommit, u, DeltaTableUpdate::getAction);
+      } else if (update instanceof DeltaSetLatestBackfilledVersionUpdate u) {
         setLatestBackfilledVersion =
-            fillOnce(setLatestBackfilledVersion, u, TableUpdate::getAction);
+            fillOnce(setLatestBackfilledVersion, u, DeltaTableUpdate::getAction);
       } else {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
@@ -228,7 +229,8 @@ public final class DeltaUpdateTableMapper {
     }
   }
 
-  private static CollectedRequirements collectRequirements(List<TableRequirement> requirements) {
+  private static CollectedRequirements collectRequirements(
+      List<DeltaTableRequirement> requirements) {
     CollectedRequirements c = new CollectedRequirements();
     if (requirements != null) {
       requirements.forEach(c::putOnce);
@@ -236,7 +238,7 @@ public final class DeltaUpdateTableMapper {
     return c;
   }
 
-  private static CollectedUpdates collectUpdates(List<TableUpdate> updates) {
+  private static CollectedUpdates collectUpdates(List<DeltaTableUpdate> updates) {
     CollectedUpdates c = new CollectedUpdates();
     updates.forEach(c::putOnce);
     return c;
@@ -261,7 +263,7 @@ public final class DeltaUpdateTableMapper {
     r.assertEtag.ifPresent(e -> checkAssertEtag(dao, e));
   }
 
-  private static void checkAssertTableUuid(TableInfoDAO dao, AssertTableUUID u) {
+  private static void checkAssertTableUuid(TableInfoDAO dao, DeltaAssertTableUUID u) {
     if (!Objects.equals(u.getUuid(), dao.getId())) {
       throw new BaseException(
           ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
@@ -269,7 +271,7 @@ public final class DeltaUpdateTableMapper {
     }
   }
 
-  private static void checkAssertEtag(TableInfoDAO dao, AssertEtag e) {
+  private static void checkAssertEtag(TableInfoDAO dao, DeltaAssertEtag e) {
     String currentEtag = computeEtag(dao);
     if (!Objects.equals(currentEtag, e.getEtag())) {
       throw new BaseException(
@@ -335,7 +337,7 @@ public final class DeltaUpdateTableMapper {
     // Re-validate the MANAGED contract against the final post-apply state. set-protocol runs
     // full validation; set-domain-metadata alone only needs the DM-vs-writer-features check.
     if (TableType.MANAGED.toString().equals(dao.getType())) {
-      DomainMetadataUpdates effectiveDm =
+      DeltaDomainMetadataUpdates effectiveDm =
           DeltaPropertyMapper.synthesizeDomainMetadataFromProperties(properties.asMap());
       if (c.setProtocol.isPresent()) {
         UcManagedDeltaContract.validate(
@@ -395,8 +397,8 @@ public final class DeltaUpdateTableMapper {
   private static void applySchemaAndPartitionColumns(
       Session session,
       TableInfoDAO dao,
-      Optional<SetSchemaUpdate> setSchema,
-      Optional<SetPartitionColumnsUpdate> setPartition) {
+      Optional<DeltaSetSchemaUpdate> setSchema,
+      Optional<DeltaSetPartitionColumnsUpdate> setPartition) {
     if (setSchema.isEmpty() && setPartition.isEmpty()) {
       return;
     }
@@ -404,10 +406,10 @@ public final class DeltaUpdateTableMapper {
     // DAO with partition indices cleared so applyPartitionColumns can re-stamp them below.
     List<ColumnInfo> newColumns;
     if (setSchema.isPresent()) {
-      StructType columns =
+      DeltaStructType columns =
           ValidationUtils.checkNotNull(
               setSchema.get().getColumns(), "set-columns requires a columns block.");
-      List<StructField> fields =
+      List<DeltaStructField> fields =
           ValidationUtils.checkNotNull(
               columns.getFields(), "set-columns requires columns.fields.");
       if (fields.isEmpty()) {
@@ -453,7 +455,7 @@ public final class DeltaUpdateTableMapper {
   }
 
   private static void applySetDomainMetadata(
-      MutablePropertyMap properties, DomainMetadataUpdates updates) {
+      MutablePropertyMap properties, DeltaDomainMetadataUpdates updates) {
     ValidationUtils.checkNotNull(updates, "set-domain-metadata requires an updates block.");
     Map<String, String> derived = new HashMap<>();
     DeltaPropertyMapper.deriveFromDomainMetadata(derived, updates);
@@ -482,13 +484,13 @@ public final class DeltaUpdateTableMapper {
     }
   }
 
-  private static void applySetTableComment(TableInfoDAO dao, SetTableCommentUpdate update) {
+  private static void applySetTableComment(TableInfoDAO dao, DeltaSetTableCommentUpdate update) {
     ValidationUtils.checkNotNull(update.getComment(), "set-table-comment requires a comment.");
     dao.setComment(update.getComment());
   }
 
   private static void applyUpdateSnapshotVersion(
-      TableInfoDAO dao, MutablePropertyMap properties, UpdateSnapshotVersionUpdate update) {
+      TableInfoDAO dao, MutablePropertyMap properties, DeltaUpdateSnapshotVersionUpdate update) {
     if (!TableType.EXTERNAL.toString().equals(dao.getType())) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
@@ -530,14 +532,14 @@ public final class DeltaUpdateTableMapper {
   private static CommitDispatch prepareCommitAndBackfill(
       TableInfoDAO dao,
       MutablePropertyMap properties,
-      Optional<AddCommitUpdate> addCommitOpt,
-      Optional<SetLatestBackfilledVersionUpdate> backfillOpt,
+      Optional<DeltaAddCommitUpdate> addCommitOpt,
+      Optional<DeltaSetLatestBackfilledVersionUpdate> backfillOpt,
       boolean hasManagedTableMetadataChange) {
     requireManaged(dao);
     Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields = Optional.empty();
     Optional<DeltaCommit> commitOpt = Optional.empty();
     if (addCommitOpt.isPresent()) {
-      AddCommitUpdate addCommit = addCommitOpt.get();
+      DeltaAddCommitUpdate addCommit = addCommitOpt.get();
       DeltaCommit commit =
           ValidationUtils.checkNotNull(
               addCommit.getCommit(), "add-commit requires a commit block.");
@@ -571,7 +573,7 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * Convert a Delta {@link DeltaCommit} into the UC {@link DeltaCommitInfo} shape so the Delta
+   * Convert a {@link DeltaCommit} into the UC {@link DeltaCommitInfo} shape so the Delta
    * update path can flow through the shared commit-log helpers, which speak the UC wire shape.
    */
   private static DeltaCommitInfo toUcCommitInfo(DeltaCommit commit) {

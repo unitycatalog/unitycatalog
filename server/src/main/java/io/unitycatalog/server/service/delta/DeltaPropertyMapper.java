@@ -3,11 +3,11 @@ package io.unitycatalog.server.service.delta;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
-import io.unitycatalog.server.delta.model.CreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
-import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
+import io.unitycatalog.server.delta.model.DeltaRowTrackingDomainMetadata;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.delta.DeltaConsts.DomainMetadataNames;
@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Assembles the stored UC table-property map from a Delta {@link CreateTableRequest} and the
+ * Assembles the stored UC table-property map from a {@link DeltaCreateTableRequest} and the
  * per-block helpers ({@link #deriveFromProtocol} / {@link #deriveFromDomainMetadata}). Designed to
  * be shared by create, update, and commit endpoints: the mapping rules are specified by the Delta
  * spec and don't vary by endpoint (only create is wired up today; update and commit are on
@@ -61,7 +61,7 @@ public final class DeltaPropertyMapper {
    * silently override the projection. Client-only properties (e.g. {@code
    * delta.rowTracking.materializedRowIdColumnName}) flow through untouched.
    */
-  public static Map<String, String> buildStoredProperties(CreateTableRequest req) {
+  public static Map<String, String> buildStoredProperties(DeltaCreateTableRequest req) {
     Map<String, String> merged = new HashMap<>();
     if (req.getProperties() != null) {
       merged.putAll(req.getProperties());
@@ -104,9 +104,9 @@ public final class DeltaPropertyMapper {
 
   /** Adds the table properties implied by a domain-metadata block into {@code props} in-place. */
   public static void deriveFromDomainMetadata(
-      Map<String, String> props, DomainMetadataUpdates domainMetadata) {
+      Map<String, String> props, DeltaDomainMetadataUpdates domainMetadata) {
     if (domainMetadata == null) return;
-    ClusteringDomainMetadata clustering = domainMetadata.getDeltaClustering();
+    DeltaClusteringDomainMetadata clustering = domainMetadata.getDeltaClustering();
     if (clustering != null && clustering.getClusteringColumns() != null) {
       // Use a proper JSON encoder rather than string-joining so nested column paths don't
       // collapse into dotted strings.
@@ -114,7 +114,7 @@ public final class DeltaPropertyMapper {
           DOMAIN_TO_PROPERTY_KEY.get(DomainMetadataNames.CLUSTERING),
           toJson(clustering.getClusteringColumns()));
     }
-    RowTrackingDomainMetadata rowTracking = domainMetadata.getDeltaRowTracking();
+    DeltaRowTrackingDomainMetadata rowTracking = domainMetadata.getDeltaRowTracking();
     if (rowTracking != null && rowTracking.getRowIdHighWaterMark() != null) {
       props.put(
           DOMAIN_TO_PROPERTY_KEY.get(DomainMetadataNames.ROW_TRACKING),
@@ -124,18 +124,18 @@ public final class DeltaPropertyMapper {
 
   /**
    * Inverse of {@link #deriveFromDomainMetadata}: reconstruct the effective {@link
-   * DomainMetadataUpdates} from currently-stored UC properties, so the update path can validate
-   * against entries still projected from those properties.
+   * DeltaDomainMetadataUpdates} from currently-stored UC properties, so the update path can
+   * validate against entries still projected from those properties.
    */
-  public static DomainMetadataUpdates synthesizeDomainMetadataFromProperties(
+  public static DeltaDomainMetadataUpdates synthesizeDomainMetadataFromProperties(
       Map<String, String> props) {
-    DomainMetadataUpdates dm = new DomainMetadataUpdates();
+    DeltaDomainMetadataUpdates dm = new DeltaDomainMetadataUpdates();
     String clusteringJson = props.get(TableProperties.CLUSTERING_COLUMNS);
     if (clusteringJson != null) {
       try {
         List<List<String>> cols =
             JSON.readValue(clusteringJson, new TypeReference<List<List<String>>>() {});
-        dm.deltaClustering(new ClusteringDomainMetadata().clusteringColumns(cols));
+        dm.deltaClustering(new DeltaClusteringDomainMetadata().clusteringColumns(cols));
       } catch (JsonProcessingException e) {
         throw new BaseException(
             ErrorCode.INTERNAL,
@@ -148,7 +148,7 @@ public final class DeltaPropertyMapper {
     if (highWaterMark != null) {
       try {
         dm.deltaRowTracking(
-            new RowTrackingDomainMetadata().rowIdHighWaterMark(Long.parseLong(highWaterMark)));
+            new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(Long.parseLong(highWaterMark)));
       } catch (NumberFormatException e) {
         throw new BaseException(
             ErrorCode.INTERNAL,

@@ -3,13 +3,13 @@ package io.unitycatalog.server.sdk.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.delta.api.TablesApi;
-import io.unitycatalog.client.delta.model.CreateStagingTableRequest;
-import io.unitycatalog.client.delta.model.CredentialOperation;
-import io.unitycatalog.client.delta.model.ErrorType;
-import io.unitycatalog.client.delta.model.StagingTableResponse;
-import io.unitycatalog.client.delta.model.StorageCredential;
-import io.unitycatalog.client.delta.model.TableType;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
+import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
+import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
+import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
  */
 public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
 
-  private TablesApi deltaTablesApi;
+  private DeltaTablesApi deltaTablesApi;
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
@@ -49,29 +49,29 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
   @Override
   public void setUp() {
     super.setUp();
-    deltaTablesApi = new TablesApi(TestUtils.createApiClient(serverConfig));
+    deltaTablesApi = new DeltaTablesApi(TestUtils.createApiClient(serverConfig));
     createS3Catalog();
   }
 
   @Test
   public void testCreateStagingTableEndpoint() throws ApiException {
     // -------- happy path: S3-rooted catalog --------
-    StagingTableResponse resp =
+    DeltaStagingTableResponse resp =
         deltaTablesApi.createStagingTable(
             TestUtils.CATALOG_NAME2,
             TestUtils.SCHEMA_NAME2,
-            new CreateStagingTableRequest().name("tbl_s3_happy"));
+            new DeltaCreateStagingTableRequest().name("tbl_s3_happy"));
 
     assertThat(resp.getTableId()).isNotNull();
-    assertThat(resp.getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(resp.getTableType()).isEqualTo(DeltaTableType.MANAGED);
     assertThat(resp.getLocation()).startsWith("s3://test-bucket0/");
     // The staging path is a UUID under the catalog root; the table name does NOT appear in the
     // path (the client hasn't committed it yet).
     assertThat(resp.getLocation()).contains(resp.getTableId().toString());
 
     assertThat(resp.getStorageCredentials()).hasSize(1);
-    StorageCredential sc = resp.getStorageCredentials().get(0);
-    assertThat(sc.getOperation()).isEqualTo(CredentialOperation.READ_WRITE);
+    DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
+    assertThat(sc.getOperation()).isEqualTo(DeltaCredentialOperation.READ_WRITE);
     assertThat(sc.getPrefix()).isEqualTo(resp.getLocation());
     assertThat(sc.getConfig().getS3AccessKeyId()).isEqualTo("accessKey0");
     assertThat(sc.getConfig().getS3SecretAccessKey()).isNotBlank();
@@ -133,8 +133,10 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
     TestUtils.assertDeltaApiException(
         () ->
             deltaTablesApi.createStagingTable(
-                TestUtils.CATALOG_NAME2, TestUtils.SCHEMA_NAME2, new CreateStagingTableRequest()),
-        ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                new DeltaCreateStagingTableRequest()),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
         "Staging table name is required");
 
     // -------- name blank (empty + whitespace) --------
@@ -146,8 +148,8 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
               deltaTablesApi.createStagingTable(
                   TestUtils.CATALOG_NAME2,
                   TestUtils.SCHEMA_NAME2,
-                  new CreateStagingTableRequest().name(blank)),
-          ErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+                  new DeltaCreateStagingTableRequest().name(blank)),
+          DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "Staging table name is required");
     }
 
@@ -157,8 +159,8 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
             deltaTablesApi.createStagingTable(
                 "no_such_catalog",
                 TestUtils.SCHEMA_NAME2,
-                new CreateStagingTableRequest().name("x")),
-        ErrorType.NO_SUCH_CATALOG_EXCEPTION,
+                new DeltaCreateStagingTableRequest().name("x")),
+        DeltaErrorType.NO_SUCH_CATALOG_EXCEPTION,
         "not found");
 
     // -------- schema not found --------
@@ -167,16 +169,16 @@ public class SdkCreateStagingTableTest extends BaseCRUDTestWithMockCredentials {
             deltaTablesApi.createStagingTable(
                 TestUtils.CATALOG_NAME2,
                 "no_such_schema",
-                new CreateStagingTableRequest().name("x")),
-        ErrorType.NO_SUCH_SCHEMA_EXCEPTION,
+                new DeltaCreateStagingTableRequest().name("x")),
+        DeltaErrorType.NO_SUCH_SCHEMA_EXCEPTION,
         "not found");
 
     // -------- duplicate name: distinct UUIDs, distinct locations --------
-    StagingTableResponse dup =
+    DeltaStagingTableResponse dup =
         deltaTablesApi.createStagingTable(
             TestUtils.CATALOG_NAME2,
             TestUtils.SCHEMA_NAME2,
-            new CreateStagingTableRequest().name("tbl_s3_happy"));
+            new DeltaCreateStagingTableRequest().name("tbl_s3_happy"));
     assertThat(dup.getTableId()).isNotEqualTo(resp.getTableId());
     assertThat(dup.getLocation()).isNotEqualTo(resp.getLocation());
   }

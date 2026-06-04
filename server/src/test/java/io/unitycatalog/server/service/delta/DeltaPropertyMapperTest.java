@@ -5,11 +5,11 @@ import static org.assertj.core.api.Assertions.entry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
-import io.unitycatalog.server.delta.model.CreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
-import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.server.delta.model.RowTrackingDomainMetadata;
+import io.unitycatalog.server.delta.model.DeltaRowTrackingDomainMetadata;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import java.util.HashMap;
@@ -80,10 +80,10 @@ public class DeltaPropertyMapperTest {
 
   @Test
   public void deriveFromDomainMetadataClusteringEncodesAsJsonArrayOfPaths() throws Exception {
-    DomainMetadataUpdates dm =
-        new DomainMetadataUpdates()
+    DeltaDomainMetadataUpdates dm =
+        new DeltaDomainMetadataUpdates()
             .deltaClustering(
-                new ClusteringDomainMetadata()
+                new DeltaClusteringDomainMetadata()
                     .clusteringColumns(List.of(List.of("id"), List.of("address", "city"))));
     Map<String, String> props = new HashMap<>();
     DeltaPropertyMapper.deriveFromDomainMetadata(props, dm);
@@ -99,9 +99,9 @@ public class DeltaPropertyMapperTest {
 
   @Test
   public void deriveFromDomainMetadataRowTrackingEncodesHighWaterMark() {
-    DomainMetadataUpdates dm =
-        new DomainMetadataUpdates()
-            .deltaRowTracking(new RowTrackingDomainMetadata().rowIdHighWaterMark(42L));
+    DeltaDomainMetadataUpdates dm =
+        new DeltaDomainMetadataUpdates()
+            .deltaRowTracking(new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(42L));
     Map<String, String> props = new HashMap<>();
     DeltaPropertyMapper.deriveFromDomainMetadata(props, dm);
     assertThat(props).containsEntry(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK, "42");
@@ -116,11 +116,11 @@ public class DeltaPropertyMapperTest {
 
   @Test
   public void deriveFromDomainMetadataOmitsUnsetEntries() {
-    // A DomainMetadataUpdates with neither clustering nor row-tracking fields set yields no
+    // A DeltaDomainMetadataUpdates with neither clustering nor row-tracking fields set yields no
     // properties. Pins the "only write properties for entries the client actually provided"
     // contract for the shared derive API.
     Map<String, String> props = new HashMap<>();
-    DeltaPropertyMapper.deriveFromDomainMetadata(props, new DomainMetadataUpdates());
+    DeltaPropertyMapper.deriveFromDomainMetadata(props, new DeltaDomainMetadataUpdates());
     assertThat(props).isEmpty();
   }
 
@@ -133,8 +133,8 @@ public class DeltaPropertyMapperTest {
             .minReaderVersion(3)
             .minWriterVersion(7)
             .writerFeatures(List.of(TableFeature.CATALOG_MANAGED.specName()));
-    CreateTableRequest req =
-        new CreateTableRequest()
+    DeltaCreateTableRequest req =
+        new DeltaCreateTableRequest()
             .protocol(protocol)
             .properties(
                 Map.of(featureKey(TableFeature.CATALOG_MANAGED.specName()), "client-override"));
@@ -149,22 +149,23 @@ public class DeltaPropertyMapperTest {
   public void mergeTolerantOfAllNulls() {
     // Empty request: no protocol, no domain-metadata, no properties, no timestamp. The only
     // entry produced is the unconditional delta.lastUpdateVersion=0 from buildStoredProperties.
-    assertThat(DeltaPropertyMapper.buildStoredProperties(new CreateTableRequest()))
+    assertThat(DeltaPropertyMapper.buildStoredProperties(new DeltaCreateTableRequest()))
         .containsOnly(entry(TableProperties.LAST_UPDATE_VERSION, "0"));
   }
 
   @Test
   public void mergeCombinesProtocolDomainMetadataAndClient() {
-    CreateTableRequest req =
-        new CreateTableRequest()
+    DeltaCreateTableRequest req =
+        new DeltaCreateTableRequest()
             .protocol(
                 new DeltaProtocol()
                     .minReaderVersion(3)
                     .minWriterVersion(7)
                     .writerFeatures(List.of(TableFeature.ROW_TRACKING.specName())))
             .domainMetadata(
-                new DomainMetadataUpdates()
-                    .deltaRowTracking(new RowTrackingDomainMetadata().rowIdHighWaterMark(100L)))
+                new DeltaDomainMetadataUpdates()
+                    .deltaRowTracking(
+                        new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(100L)))
             .properties(Map.of("custom.key", "custom.value"))
             .lastCommitTimestampMs(1700000000000L);
     Map<String, String> merged = DeltaPropertyMapper.buildStoredProperties(req);
@@ -182,8 +183,8 @@ public class DeltaPropertyMapperTest {
     // delta.lastCommitTimestamp property. A client-supplied delta.lastCommitTimestamp entry in
     // `properties` (today's OSS Delta + Kernel-UC pattern) gets overwritten by the server-derived
     // value so engines can't desynchronize the property bag from the catalog's view of v0.
-    CreateTableRequest req =
-        new CreateTableRequest()
+    DeltaCreateTableRequest req =
+        new DeltaCreateTableRequest()
             .properties(Map.of(TableProperties.LAST_COMMIT_TIMESTAMP, "999"))
             .lastCommitTimestampMs(1700000000000L);
     assertThat(DeltaPropertyMapper.buildStoredProperties(req))

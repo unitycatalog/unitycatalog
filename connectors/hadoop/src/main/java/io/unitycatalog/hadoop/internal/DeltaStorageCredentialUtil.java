@@ -1,7 +1,7 @@
 package io.unitycatalog.hadoop.internal;
 
-import io.unitycatalog.client.delta.model.StorageCredential;
-import io.unitycatalog.client.delta.model.StorageCredentialConfig;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
+import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
@@ -14,8 +14,8 @@ public final class DeltaStorageCredentialUtil {
   private DeltaStorageCredentialUtil() {}
 
   /** Converts one UC Delta storage credential into standard UC temporary credentials. */
-  public static TemporaryCredentials toTemporaryCredentials(StorageCredential cred) {
-    StorageCredentialConfig config = requireSingleCloudConfig(cred);
+  public static TemporaryCredentials toTemporaryCredentials(DeltaStorageCredential cred) {
+    DeltaStorageCredentialConfig config = requireSingleCloudConfig(cred);
     long expiry = cred.getExpirationTimeMs() == null ? Long.MAX_VALUE : cred.getExpirationTimeMs();
     TemporaryCredentials out = new TemporaryCredentials().expirationTime(expiry);
     if (isS3Config(config)) {
@@ -37,8 +37,8 @@ public final class DeltaStorageCredentialUtil {
   }
 
   /** Selects the credential whose prefix covers the requested location. */
-  public static StorageCredential selectForLocation(
-      String location, List<StorageCredential> creds) {
+  public static DeltaStorageCredential selectForLocation(
+      String location, List<DeltaStorageCredential> creds) {
     Preconditions.checkArgument(
         creds != null && !creds.isEmpty(),
         "UC Delta API response for '%s' has no storage credentials.",
@@ -47,9 +47,9 @@ public final class DeltaStorageCredentialUtil {
       Preconditions.checkNotNull(
           creds.get(0), "UC Delta API response for '%s' contains null.", location);
     }
-    StorageCredential best = null;
+    DeltaStorageCredential best = null;
     int bestLen = -1;
-    for (StorageCredential c : creds) {
+    for (DeltaStorageCredential c : creds) {
       if (c == null || c.getPrefix() == null || !prefixCovers(location, c.getPrefix())) {
         continue;
       }
@@ -80,9 +80,10 @@ public final class DeltaStorageCredentialUtil {
     return value.substring(0, end);
   }
 
-  private static StorageCredentialConfig requireSingleCloudConfig(StorageCredential cred) {
+  private static DeltaStorageCredentialConfig requireSingleCloudConfig(
+      DeltaStorageCredential cred) {
     Preconditions.checkNotNull(cred, "storageCredential cannot be null");
-    StorageCredentialConfig c = cred.getConfig();
+    DeltaStorageCredentialConfig c = cred.getConfig();
     Preconditions.checkArgument(
         c != null, "UC Delta credential for '%s' is missing config.", cred.getPrefix());
     int clouds =
@@ -96,17 +97,17 @@ public final class DeltaStorageCredentialUtil {
     return c;
   }
 
-  private static boolean isS3Config(StorageCredentialConfig c) {
+  private static boolean isS3Config(DeltaStorageCredentialConfig c) {
     return c.getS3AccessKeyId() != null
         || c.getS3SecretAccessKey() != null
         || c.getS3SessionToken() != null;
   }
 
-  private static boolean isAzureConfig(StorageCredentialConfig c) {
+  private static boolean isAzureConfig(DeltaStorageCredentialConfig c) {
     return c.getAzureSasToken() != null;
   }
 
-  private static String field(String value, StorageCredential cred, String label) {
+  private static String field(String value, DeltaStorageCredential cred, String label) {
     Preconditions.checkArgument(
         value != null && !value.isEmpty(),
         "UC Delta credential for '%s' is missing %s.",

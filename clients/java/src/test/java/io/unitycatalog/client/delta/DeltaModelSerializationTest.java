@@ -6,34 +6,36 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import io.unitycatalog.client.delta.model.AddCommitUpdate;
-import io.unitycatalog.client.delta.model.ArrayType;
-import io.unitycatalog.client.delta.model.AssertEtag;
-import io.unitycatalog.client.delta.model.AssertTableUUID;
-import io.unitycatalog.client.delta.model.ClusteringDomainMetadata;
-import io.unitycatalog.client.delta.model.DecimalType;
+import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.client.delta.model.DeltaArrayType;
+import io.unitycatalog.client.delta.model.DeltaAssertEtag;
+import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
+import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCommit;
+import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaDecimalType;
+import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.client.delta.model.DeltaMapType;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
-import io.unitycatalog.client.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.client.delta.model.MapType;
-import io.unitycatalog.client.delta.model.PrimitiveType;
-import io.unitycatalog.client.delta.model.RemoveDomainMetadataUpdate;
-import io.unitycatalog.client.delta.model.RemovePropertiesUpdate;
-import io.unitycatalog.client.delta.model.SetDomainMetadataUpdate;
-import io.unitycatalog.client.delta.model.SetLatestBackfilledVersionUpdate;
-import io.unitycatalog.client.delta.model.SetPartitionColumnsUpdate;
-import io.unitycatalog.client.delta.model.SetPropertiesUpdate;
-import io.unitycatalog.client.delta.model.SetProtocolUpdate;
-import io.unitycatalog.client.delta.model.SetSchemaUpdate;
-import io.unitycatalog.client.delta.model.SetTableCommentUpdate;
-import io.unitycatalog.client.delta.model.StructField;
-import io.unitycatalog.client.delta.model.StructFieldMetadata;
-import io.unitycatalog.client.delta.model.StructType;
-import io.unitycatalog.client.delta.model.TableUpdate;
-import io.unitycatalog.client.delta.model.UniformMetadata;
-import io.unitycatalog.client.delta.model.UniformMetadataIceberg;
-import io.unitycatalog.client.delta.model.UpdateSnapshotVersionUpdate;
-import io.unitycatalog.client.delta.model.UpdateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaRemoveDomainMetadataUpdate;
+import io.unitycatalog.client.delta.model.DeltaRemovePropertiesUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetDomainMetadataUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetLatestBackfilledVersionUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetPartitionColumnsUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetPropertiesUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetProtocolUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetSchemaUpdate;
+import io.unitycatalog.client.delta.model.DeltaSetTableCommentUpdate;
+import io.unitycatalog.client.delta.model.DeltaStructField;
+import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
+import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableUpdate;
+import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
+import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
+import io.unitycatalog.client.delta.model.DeltaUpdateSnapshotVersionUpdate;
+import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.client.delta.serde.DeltaTypeModule;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -45,7 +47,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Tests JSON deserialization and serialization of Delta REST API model types. The deserialization
- * test loads a JSON fixture and verifies all fields including typed DeltaType subtypes. The
+ * test loads a JSON fixture and verifies all fields including typed DeltaDataType subtypes. The
  * serialization test constructs objects from scratch and compares against the same fixture.
  */
 public class DeltaModelSerializationTest {
@@ -72,109 +74,112 @@ public class DeltaModelSerializationTest {
 
   @Test
   public void testDeserialization() throws Exception {
-    UpdateTableRequest request = MAPPER.readValue(fixtureJson, UpdateTableRequest.class);
+    DeltaUpdateTableRequest request = MAPPER.readValue(fixtureJson, DeltaUpdateTableRequest.class);
 
     // Requirements
     assertThat(request.getRequirements()).hasSize(2);
-    AssertTableUUID uuidReq = (AssertTableUUID) request.getRequirements().get(0);
+    DeltaAssertTableUUID uuidReq = (DeltaAssertTableUUID) request.getRequirements().get(0);
     assertThat(uuidReq.getType()).isEqualTo("assert-table-uuid");
     assertThat(uuidReq.getUuid()).hasToString("550e8400-e29b-41d4-a716-446655440000");
-    AssertEtag etagReq = (AssertEtag) request.getRequirements().get(1);
+    DeltaAssertEtag etagReq = (DeltaAssertEtag) request.getRequirements().get(1);
     assertThat(etagReq.getType()).isEqualTo("assert-etag");
     assertThat(etagReq.getEtag()).isEqualTo("etagabcdef");
 
     // Updates (11 total)
-    List<TableUpdate> updates = request.getUpdates();
+    List<DeltaTableUpdate> updates = request.getUpdates();
     assertThat(updates).hasSize(11);
 
     // set-properties
-    SetPropertiesUpdate setProps = (SetPropertiesUpdate) updates.get(0);
+    DeltaSetPropertiesUpdate setProps = (DeltaSetPropertiesUpdate) updates.get(0);
     assertThat(setProps.getUpdates())
         .containsEntry("delta.columnMapping.mode", "name")
         .containsEntry("delta.enableDeletionVectors", "true");
 
     // remove-properties
-    assertThat(((RemovePropertiesUpdate) updates.get(1)).getRemovals())
+    assertThat(((DeltaRemovePropertiesUpdate) updates.get(1)).getRemovals())
         .containsExactly("delta.logRetentionDuration");
 
-    // set-columns: StructType with 4 fields, typed via DeltaTypeModule
-    StructType schema = ((SetSchemaUpdate) updates.get(2)).getColumns();
-    List<StructField> fields = schema.getFields();
+    // set-columns: DeltaStructType with 4 fields, typed via DeltaTypeModule
+    DeltaStructType schema = ((DeltaSetSchemaUpdate) updates.get(2)).getColumns();
+    List<DeltaStructField> fields = schema.getFields();
     assertThat(fields).hasSize(4);
 
-    // id: PrimitiveType("long")
-    assertThat(fields.get(0).getType()).isInstanceOf(PrimitiveType.class);
+    // id: DeltaPrimitiveType("long")
+    assertThat(fields.get(0).getType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(fields.get(0).getType().getType()).isEqualTo("long");
     assertThat(fields.get(0).getNullable()).isFalse();
 
-    // price: DecimalType(10, 2)
-    assertThat(fields.get(1).getType()).isInstanceOf(DecimalType.class);
-    DecimalType dt = (DecimalType) fields.get(1).getType();
+    // price: DeltaDecimalType(10, 2)
+    assertThat(fields.get(1).getType()).isInstanceOf(DeltaDecimalType.class);
+    DeltaDecimalType dt = (DeltaDecimalType) fields.get(1).getType();
     assertThat(dt.getPrecision()).isEqualTo(10);
     assertThat(dt.getScale()).isEqualTo(2);
 
-    // tags: ArrayType(elementType=PrimitiveType("string"))
-    assertThat(fields.get(2).getType()).isInstanceOf(ArrayType.class);
-    ArrayType arrType = (ArrayType) fields.get(2).getType();
-    assertThat(arrType.getElementType()).isInstanceOf(PrimitiveType.class);
+    // tags: DeltaArrayType(elementType=DeltaPrimitiveType("string"))
+    assertThat(fields.get(2).getType()).isInstanceOf(DeltaArrayType.class);
+    DeltaArrayType arrType = (DeltaArrayType) fields.get(2).getType();
+    assertThat(arrType.getElementType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(arrType.getElementType().getType()).isEqualTo("string");
     assertThat(arrType.getContainsNull()).isTrue();
 
-    // scores: MapType(key=string, value=StructType([value:double, timestamp:long]))
-    assertThat(fields.get(3).getType()).isInstanceOf(MapType.class);
-    MapType mapType = (MapType) fields.get(3).getType();
-    assertThat(mapType.getKeyType()).isInstanceOf(PrimitiveType.class);
+    // scores: DeltaMapType(key=string, value=DeltaStructType([value:double, timestamp:long]))
+    assertThat(fields.get(3).getType()).isInstanceOf(DeltaMapType.class);
+    DeltaMapType mapType = (DeltaMapType) fields.get(3).getType();
+    assertThat(mapType.getKeyType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(mapType.getKeyType().getType()).isEqualTo("string");
-    assertThat(mapType.getValueType()).isInstanceOf(StructType.class);
-    StructType innerStruct = (StructType) mapType.getValueType();
+    assertThat(mapType.getValueType()).isInstanceOf(DeltaStructType.class);
+    DeltaStructType innerStruct = (DeltaStructType) mapType.getValueType();
     assertThat(innerStruct.getFields()).hasSize(2);
     assertThat(innerStruct.getFields().get(0).getName()).isEqualTo("value");
-    assertThat(innerStruct.getFields().get(0).getType()).isInstanceOf(PrimitiveType.class);
+    assertThat(innerStruct.getFields().get(0).getType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(innerStruct.getFields().get(0).getType().getType()).isEqualTo("double");
     assertThat(innerStruct.getFields().get(1).getName()).isEqualTo("timestamp");
-    assertThat(innerStruct.getFields().get(1).getType()).isInstanceOf(PrimitiveType.class);
+    assertThat(innerStruct.getFields().get(1).getType()).isInstanceOf(DeltaPrimitiveType.class);
 
     // set-table-comment
-    assertThat(((SetTableCommentUpdate) updates.get(3)).getComment()).isEqualTo("updated table");
+    assertThat(((DeltaSetTableCommentUpdate) updates.get(3)).getComment())
+        .isEqualTo("updated table");
 
     // add-commit with uniform
-    DeltaCommit commit = ((AddCommitUpdate) updates.get(4)).getCommit();
+    DeltaCommit commit = ((DeltaAddCommitUpdate) updates.get(4)).getCommit();
     assertThat(commit.getVersion()).isEqualTo(5);
     assertThat(commit.getTimestamp()).isEqualTo(1700000000000L);
     assertThat(commit.getFileName()).isEqualTo("00000005.json");
     assertThat(commit.getFileSize()).isEqualTo(2048);
-    UniformMetadataIceberg iceberg = ((AddCommitUpdate) updates.get(4)).getUniform().getIceberg();
+    DeltaUniformMetadataIceberg iceberg =
+        ((DeltaAddCommitUpdate) updates.get(4)).getUniform().getIceberg();
     assertThat(iceberg.getMetadataLocation())
         .isEqualTo("s3://bucket/table/metadata/v5.metadata.json");
     assertThat(iceberg.getConvertedDeltaVersion()).isEqualTo(5);
     assertThat(iceberg.getConvertedDeltaTimestamp()).isEqualTo(1700000000000L);
 
     // set-latest-backfilled-version
-    assertThat(((SetLatestBackfilledVersionUpdate) updates.get(5)).getLatestPublishedVersion())
+    assertThat(((DeltaSetLatestBackfilledVersionUpdate) updates.get(5)).getLatestPublishedVersion())
         .isEqualTo(4);
 
     // set-protocol
-    DeltaProtocol protocol = ((SetProtocolUpdate) updates.get(6)).getProtocol();
+    DeltaProtocol protocol = ((DeltaSetProtocolUpdate) updates.get(6)).getProtocol();
     assertThat(protocol.getMinReaderVersion()).isEqualTo(3);
     assertThat(protocol.getMinWriterVersion()).isEqualTo(7);
     assertThat(protocol.getWriterFeatures())
         .containsExactly("catalogManaged", "deletionVectors", "inCommitTimestamp");
 
     // set-domain-metadata
-    SetDomainMetadataUpdate setDomain = (SetDomainMetadataUpdate) updates.get(7);
+    DeltaSetDomainMetadataUpdate setDomain = (DeltaSetDomainMetadataUpdate) updates.get(7);
     assertThat(setDomain.getUpdates().getDeltaClustering().getClusteringColumns())
         .isEqualTo(List.of(List.of("region"), List.of("event_time")));
 
     // remove-domain-metadata
-    assertThat(((RemoveDomainMetadataUpdate) updates.get(8)).getDomains())
+    assertThat(((DeltaRemoveDomainMetadataUpdate) updates.get(8)).getDomains())
         .containsExactly("delta.rowTracking");
 
     // set-partition-columns
-    assertThat(((SetPartitionColumnsUpdate) updates.get(9)).getPartitionColumns())
+    assertThat(((DeltaSetPartitionColumnsUpdate) updates.get(9)).getPartitionColumns())
         .containsExactly("region", "date");
 
     // update-metadata-snapshot-version
-    UpdateSnapshotVersionUpdate snapUpdate = (UpdateSnapshotVersionUpdate) updates.get(10);
+    DeltaUpdateSnapshotVersionUpdate snapUpdate =
+        (DeltaUpdateSnapshotVersionUpdate) updates.get(10);
     assertThat(snapUpdate.getLastCommitVersion()).isEqualTo(42);
     assertThat(snapUpdate.getLastCommitTimestampMs()).isEqualTo(1700000000000L);
   }
@@ -206,14 +211,14 @@ public class DeltaModelSerializationTest {
             + " \"nullable\": true,"
             + " \"metadata\": {}"
             + "}";
-    StructField col = MAPPER.readValue(json, StructField.class);
-    assertThat(col.getType()).isInstanceOf(MapType.class);
-    MapType mt = (MapType) col.getType();
-    assertThat(mt.getValueType()).isInstanceOf(ArrayType.class);
-    ArrayType at = (ArrayType) mt.getValueType();
-    assertThat(at.getElementType()).isInstanceOf(StructType.class);
-    StructType st = (StructType) at.getElementType();
-    assertThat(st.getFields().get(0).getType()).isInstanceOf(PrimitiveType.class);
+    DeltaStructField col = MAPPER.readValue(json, DeltaStructField.class);
+    assertThat(col.getType()).isInstanceOf(DeltaMapType.class);
+    DeltaMapType mt = (DeltaMapType) col.getType();
+    assertThat(mt.getValueType()).isInstanceOf(DeltaArrayType.class);
+    DeltaArrayType at = (DeltaArrayType) mt.getValueType();
+    assertThat(at.getElementType()).isInstanceOf(DeltaStructType.class);
+    DeltaStructType st = (DeltaStructType) at.getElementType();
+    assertThat(st.getFields().get(0).getType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(st.getFields().get(0).getType().getType()).isEqualTo("double");
   }
 
@@ -221,7 +226,7 @@ public class DeltaModelSerializationTest {
 
   @Test
   public void testDeserPrimitiveAndDecimalEdgeCases() throws Exception {
-    // All primitive types deserialize as PrimitiveType
+    // All primitive types deserialize as DeltaPrimitiveType
     for (String type :
         List.of(
             "long",
@@ -237,8 +242,8 @@ public class DeltaModelSerializationTest {
             "double")) {
       String json =
           "{\"name\":\"col\",\"type\":\"" + type + "\",\"nullable\":true,\"metadata\":{}}";
-      StructField col = MAPPER.readValue(json, StructField.class);
-      assertThat(col.getType()).isInstanceOf(PrimitiveType.class);
+      DeltaStructField col = MAPPER.readValue(json, DeltaStructField.class);
+      assertThat(col.getType()).isInstanceOf(DeltaPrimitiveType.class);
       assertThat(col.getType().getType()).isEqualTo(type);
 
       // Round-trip: serializes back to bare string
@@ -252,8 +257,8 @@ public class DeltaModelSerializationTest {
     for (String decStr : List.of("decimal(10,2)", "decimal(38,0)", "decimal(1,1)")) {
       String json =
           "{\"name\":\"col\",\"type\":\"" + decStr + "\",\"nullable\":true,\"metadata\":{}}";
-      StructField col = MAPPER.readValue(json, StructField.class);
-      assertThat(col.getType()).isInstanceOf(DecimalType.class);
+      DeltaStructField col = MAPPER.readValue(json, DeltaStructField.class);
+      assertThat(col.getType()).isInstanceOf(DeltaDecimalType.class);
 
       // Round-trip
       String serialized = MAPPER.writeValueAsString(col);
@@ -261,16 +266,16 @@ public class DeltaModelSerializationTest {
       assertThat(node.get("type").asText()).isEqualTo(decStr);
     }
 
-    // Bare "decimal" (no parens) is treated as a primitive, not DecimalType
+    // Bare "decimal" (no parens) is treated as a primitive, not DeltaDecimalType
     String json = "{\"name\":\"col\",\"type\":\"decimal\",\"nullable\":true,\"metadata\":{}}";
-    StructField col = MAPPER.readValue(json, StructField.class);
-    assertThat(col.getType()).isInstanceOf(PrimitiveType.class);
+    DeltaStructField col = MAPPER.readValue(json, DeltaStructField.class);
+    assertThat(col.getType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(col.getType().getType()).isEqualTo("decimal");
   }
 
   @Test
   public void testDeserDecimalAsJsonObject() throws Exception {
-    // DecimalType can also appear as a JSON object (not just bare string)
+    // DeltaDecimalType can also appear as a JSON object (not just bare string)
     String json =
         "{"
             + " \"name\": \"price\","
@@ -278,9 +283,9 @@ public class DeltaModelSerializationTest {
             + " \"nullable\": true,"
             + " \"metadata\": {}"
             + "}";
-    StructField col = MAPPER.readValue(json, StructField.class);
-    assertThat(col.getType()).isInstanceOf(DecimalType.class);
-    DecimalType dt = (DecimalType) col.getType();
+    DeltaStructField col = MAPPER.readValue(json, DeltaStructField.class);
+    assertThat(col.getType()).isInstanceOf(DeltaDecimalType.class);
+    DeltaDecimalType dt = (DeltaDecimalType) col.getType();
     assertThat(dt.getPrecision()).isEqualTo(10);
     assertThat(dt.getScale()).isEqualTo(2);
 
@@ -294,16 +299,16 @@ public class DeltaModelSerializationTest {
   @Test
   public void testDeserMalformedDecimalString() throws Exception {
     // Malformed decimal string doesn't match decimal(N,N) regex,
-    // so it falls through to PrimitiveType (same as any unrecognized type string)
+    // so it falls through to DeltaPrimitiveType (same as any unrecognized type string)
     String json = "{\"name\":\"col\",\"type\":\"decimal(abc)\",\"nullable\":true,\"metadata\":{}}";
-    StructField col = MAPPER.readValue(json, StructField.class);
-    assertThat(col.getType()).isInstanceOf(PrimitiveType.class);
+    DeltaStructField col = MAPPER.readValue(json, DeltaStructField.class);
+    assertThat(col.getType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(col.getType().getType()).isEqualTo("decimal(abc)");
 
-    // Missing scale: "decimal(10)" -- also not matched, becomes PrimitiveType
+    // Missing scale: "decimal(10)" -- also not matched, becomes DeltaPrimitiveType
     json = "{\"name\":\"col\",\"type\":\"decimal(10)\",\"nullable\":true,\"metadata\":{}}";
-    col = MAPPER.readValue(json, StructField.class);
-    assertThat(col.getType()).isInstanceOf(PrimitiveType.class);
+    col = MAPPER.readValue(json, DeltaStructField.class);
+    assertThat(col.getType()).isInstanceOf(DeltaPrimitiveType.class);
   }
 
   @Test
@@ -315,8 +320,8 @@ public class DeltaModelSerializationTest {
             + " \"nullable\": true,"
             + " \"metadata\": {}"
             + "}";
-    StructField arrCol = MAPPER.readValue(arrayJson, StructField.class);
-    assertThat(((ArrayType) arrCol.getType()).getContainsNull()).isNull();
+    DeltaStructField arrCol = MAPPER.readValue(arrayJson, DeltaStructField.class);
+    assertThat(((DeltaArrayType) arrCol.getType()).getContainsNull()).isNull();
 
     String mapJson =
         "{"
@@ -329,23 +334,23 @@ public class DeltaModelSerializationTest {
             + " \"nullable\": true,"
             + " \"metadata\": {}"
             + "}";
-    StructField mapCol = MAPPER.readValue(mapJson, StructField.class);
-    assertThat(((MapType) mapCol.getType()).getValueContainsNull()).isNull();
+    DeltaStructField mapCol = MAPPER.readValue(mapJson, DeltaStructField.class);
+    assertThat(((DeltaMapType) mapCol.getType()).getValueContainsNull()).isNull();
   }
 
   // ==================== Serialization ====================
 
   /**
-   * Constructs a full UpdateTableRequest and serializes it to JSON, then compares against the
+   * Constructs a full DeltaUpdateTableRequest and serializes it to JSON, then compares against the
    * fixture. Tested types and actions:
    *
    * <ul>
    *   <li>Requirements: assert-table-uuid, assert-etag
    *   <li>set-properties, remove-properties
-   *   <li>set-columns: PrimitiveType("long"), DecimalType(10,2), ArrayType(string), MapType(string,
-   *       StructType([double, long]) with column metadata)
+   *   <li>set-columns: DeltaPrimitiveType("long"), DeltaDecimalType(10,2), DeltaArrayType(string),
+   *       DeltaMapType(string, DeltaStructType([double, long]) with column metadata)
    *   <li>set-table-comment
-   *   <li>add-commit with UniformMetadata (Iceberg)
+   *   <li>add-commit with DeltaUniformMetadata (Iceberg)
    *   <li>set-latest-backfilled-version
    *   <li>set-protocol (reader/writer features)
    *   <li>set-domain-metadata (clustering)
@@ -356,64 +361,66 @@ public class DeltaModelSerializationTest {
    */
   @Test
   public void testSerialization() throws Exception {
-    UpdateTableRequest request =
-        new UpdateTableRequest()
+    DeltaUpdateTableRequest request =
+        new DeltaUpdateTableRequest()
             .requirements(
                 List.of(
-                    new AssertTableUUID()
+                    new DeltaAssertTableUUID()
                         .type("assert-table-uuid")
                         .uuid(UUID.fromString("550e8400-e29b-41d4-a716-446655440000")),
-                    new AssertEtag().type("assert-etag").etag("etagabcdef")));
+                    new DeltaAssertEtag().type("assert-etag").etag("etagabcdef")));
 
-    SetPropertiesUpdate setProps =
-        new SetPropertiesUpdate()
+    DeltaSetPropertiesUpdate setProps =
+        new DeltaSetPropertiesUpdate()
             .action("set-properties")
             .updates(
                 Map.of(
                     "delta.columnMapping.mode", "name",
                     "delta.enableDeletionVectors", "true"));
 
-    RemovePropertiesUpdate removeProps =
-        new RemovePropertiesUpdate()
+    DeltaRemovePropertiesUpdate removeProps =
+        new DeltaRemovePropertiesUpdate()
             .action("remove-properties")
             .removals(List.of("delta.logRetentionDuration"));
 
-    StructField colId =
-        new StructField()
+    DeltaStructField colId =
+        new DeltaStructField()
             .name("id")
-            .type(new PrimitiveType().type("long"))
+            .type(new DeltaPrimitiveType().type("long"))
             .nullable(false)
             .metadata(
                 meta(
                     null,
                     Map.of(
                         "delta.columnMapping.id", 1, "delta.columnMapping.physicalName", "col-1")));
-    StructField colPrice =
-        new StructField()
+    DeltaStructField colPrice =
+        new DeltaStructField()
             .name("price")
-            .type(new DecimalType().precision(10).scale(2))
+            .type(new DeltaDecimalType().precision(10).scale(2))
             .nullable(true)
-            .metadata(new StructFieldMetadata());
-    StructField colTags =
-        new StructField()
+            .metadata(new DeltaStructFieldMetadata());
+    DeltaStructField colTags =
+        new DeltaStructField()
             .name("tags")
             .type(
-                new ArrayType().elementType(new PrimitiveType().type("string")).containsNull(true))
+                new DeltaArrayType()
+                    .elementType(new DeltaPrimitiveType().type("string"))
+                    .containsNull(true))
             .nullable(true)
-            .metadata(new StructFieldMetadata());
-    StructField colScores =
-        new StructField()
+            .metadata(new DeltaStructFieldMetadata());
+    DeltaStructField colScores =
+        new DeltaStructField()
             .name("scores")
             .type(
-                new MapType()
-                    .keyType(new PrimitiveType().type("string"))
+                new DeltaMapType()
+                    .keyType(new DeltaPrimitiveType().type("string"))
                     .valueType(
-                        new StructType()
+                        new DeltaStructType()
                             .fields(
                                 List.of(
-                                    new StructField()
+                                    new DeltaStructField()
                                         .name("value")
-                                        .type(new PrimitiveType().type("double"))
+                                        .type(new DeltaPrimitiveType().type("double"))
                                         .nullable(false)
                                         .metadata(
                                             meta(
@@ -423,25 +430,25 @@ public class DeltaModelSerializationTest {
                                                     10,
                                                     "delta.columnMapping.physicalName",
                                                     "col-10"))),
-                                    new StructField()
+                                    new DeltaStructField()
                                         .name("timestamp")
-                                        .type(new PrimitiveType().type("long"))
+                                        .type(new DeltaPrimitiveType().type("long"))
                                         .nullable(true)
                                         .metadata(
                                             meta(null, Map.of("delta.columnMapping.id", 11))))))
                     .valueContainsNull(true))
             .nullable(true)
-            .metadata(new StructFieldMetadata());
-    SetSchemaUpdate setSchema =
-        new SetSchemaUpdate()
+            .metadata(new DeltaStructFieldMetadata());
+    DeltaSetSchemaUpdate setSchema =
+        new DeltaSetSchemaUpdate()
             .action("set-columns")
-            .columns(new StructType().fields(List.of(colId, colPrice, colTags, colScores)));
+            .columns(new DeltaStructType().fields(List.of(colId, colPrice, colTags, colScores)));
 
-    SetTableCommentUpdate setComment =
-        new SetTableCommentUpdate().action("set-table-comment").comment("updated table");
+    DeltaSetTableCommentUpdate setComment =
+        new DeltaSetTableCommentUpdate().action("set-table-comment").comment("updated table");
 
-    AddCommitUpdate addCommit =
-        new AddCommitUpdate()
+    DeltaAddCommitUpdate addCommit =
+        new DeltaAddCommitUpdate()
             .action("add-commit")
             .commit(
                 new DeltaCommit()
@@ -451,20 +458,20 @@ public class DeltaModelSerializationTest {
                     .fileSize(2048L)
                     .fileModificationTimestamp(1700000001000L))
             .uniform(
-                new UniformMetadata()
+                new DeltaUniformMetadata()
                     .iceberg(
-                        new UniformMetadataIceberg()
+                        new DeltaUniformMetadataIceberg()
                             .metadataLocation("s3://bucket/table/metadata/v5.metadata.json")
                             .convertedDeltaVersion(5L)
                             .convertedDeltaTimestamp(1700000000000L)));
 
-    SetLatestBackfilledVersionUpdate setBackfill =
-        new SetLatestBackfilledVersionUpdate()
+    DeltaSetLatestBackfilledVersionUpdate setBackfill =
+        new DeltaSetLatestBackfilledVersionUpdate()
             .action("set-latest-backfilled-version")
             .latestPublishedVersion(4L);
 
-    SetProtocolUpdate setProtocol =
-        new SetProtocolUpdate()
+    DeltaSetProtocolUpdate setProtocol =
+        new DeltaSetProtocolUpdate()
             .action("set-protocol")
             .protocol(
                 new DeltaProtocol()
@@ -474,27 +481,27 @@ public class DeltaModelSerializationTest {
                     .writerFeatures(
                         List.of("catalogManaged", "deletionVectors", "inCommitTimestamp")));
 
-    SetDomainMetadataUpdate setDomain =
-        new SetDomainMetadataUpdate()
+    DeltaSetDomainMetadataUpdate setDomain =
+        new DeltaSetDomainMetadataUpdate()
             .action("set-domain-metadata")
             .updates(
-                new DomainMetadataUpdates()
+                new DeltaDomainMetadataUpdates()
                     .deltaClustering(
-                        new ClusteringDomainMetadata()
+                        new DeltaClusteringDomainMetadata()
                             .clusteringColumns(List.of(List.of("region"), List.of("event_time")))));
 
-    RemoveDomainMetadataUpdate removeDomain =
-        new RemoveDomainMetadataUpdate()
+    DeltaRemoveDomainMetadataUpdate removeDomain =
+        new DeltaRemoveDomainMetadataUpdate()
             .action("remove-domain-metadata")
             .domains(List.of("delta.rowTracking"));
 
-    SetPartitionColumnsUpdate setPartition =
-        new SetPartitionColumnsUpdate()
+    DeltaSetPartitionColumnsUpdate setPartition =
+        new DeltaSetPartitionColumnsUpdate()
             .action("set-partition-columns")
             .partitionColumns(List.of("region", "date"));
 
-    UpdateSnapshotVersionUpdate snapUpdate =
-        new UpdateSnapshotVersionUpdate()
+    DeltaUpdateSnapshotVersionUpdate snapUpdate =
+        new DeltaUpdateSnapshotVersionUpdate()
             .action("update-metadata-snapshot-version")
             .lastCommitVersion(42L)
             .lastCommitTimestampMs(1700000000000L);
@@ -525,25 +532,24 @@ public class DeltaModelSerializationTest {
         .isEqualTo(expected);
   }
 
-  // ==================== CreateTableRequest round-trip ====================
+  // ==================== DeltaCreateTableRequest round-trip ====================
 
   @Test
   public void testCreateTableRequestRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/create-table-request.json");
-    io.unitycatalog.client.delta.model.CreateTableRequest req =
-        MAPPER.readValue(json, io.unitycatalog.client.delta.model.CreateTableRequest.class);
+    DeltaCreateTableRequest req = MAPPER.readValue(json, DeltaCreateTableRequest.class);
 
-    // Verify DeltaType serde works on nested StructType fields
-    StructField idField = req.getColumns().getFields().get(0);
-    assertThat(idField.getType()).isInstanceOf(PrimitiveType.class);
+    // Verify DeltaDataType serde works on nested DeltaStructType fields
+    DeltaStructField idField = req.getColumns().getFields().get(0);
+    assertThat(idField.getType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(idField.getType().getType()).isEqualTo("long");
 
-    StructField amountField = req.getColumns().getFields().get(1);
-    assertThat(amountField.getType()).isInstanceOf(DecimalType.class);
-    assertThat(((DecimalType) amountField.getType()).getPrecision()).isEqualTo(10);
+    DeltaStructField amountField = req.getColumns().getFields().get(1);
+    assertThat(amountField.getType()).isInstanceOf(DeltaDecimalType.class);
+    assertThat(((DeltaDecimalType) amountField.getType()).getPrecision()).isEqualTo(10);
 
-    StructField tagsField = req.getColumns().getFields().get(2);
-    assertThat(tagsField.getType()).isInstanceOf(ArrayType.class);
+    DeltaStructField tagsField = req.getColumns().getFields().get(2);
+    assertThat(tagsField.getType()).isInstanceOf(DeltaArrayType.class);
 
     // Round-trip: re-serialize, decimal-as-object becomes bare "decimal(10,2)" string
     JsonNode actual = MAPPER.readTree(MAPPER.writeValueAsString(req));
@@ -555,21 +561,20 @@ public class DeltaModelSerializationTest {
         .isEqualTo("array");
   }
 
-  // ==================== LoadTableResponse round-trip ====================
+  // ==================== DeltaLoadTableResponse round-trip ====================
 
   @Test
   public void testLoadTableResponseRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/load-table-response.json");
-    io.unitycatalog.client.delta.model.LoadTableResponse resp =
-        MAPPER.readValue(json, io.unitycatalog.client.delta.model.LoadTableResponse.class);
+    DeltaLoadTableResponse resp = MAPPER.readValue(json, DeltaLoadTableResponse.class);
 
-    // Verify DeltaType serde works in TableMetadata.columns
-    StructField priceField = resp.getMetadata().getColumns().getFields().get(1);
-    assertThat(priceField.getType()).isInstanceOf(DecimalType.class);
-    assertThat(((DecimalType) priceField.getType()).getPrecision()).isEqualTo(10);
+    // Verify DeltaDataType serde works in DeltaTableMetadata.columns
+    DeltaStructField priceField = resp.getMetadata().getColumns().getFields().get(1);
+    assertThat(priceField.getType()).isInstanceOf(DeltaDecimalType.class);
+    assertThat(((DeltaDecimalType) priceField.getType()).getPrecision()).isEqualTo(10);
 
-    StructField scoresField = resp.getMetadata().getColumns().getFields().get(2);
-    assertThat(scoresField.getType()).isInstanceOf(MapType.class);
+    DeltaStructField scoresField = resp.getMetadata().getColumns().getFields().get(2);
+    assertThat(scoresField.getType()).isInstanceOf(DeltaMapType.class);
 
     // Round-trip matches fixture
     JsonNode expected = MAPPER.readTree(json);
@@ -589,15 +594,15 @@ public class DeltaModelSerializationTest {
   }
 
   /**
-   * Build a {@link StructFieldMetadata} with the optional {@code comment} plus a bag of additional
-   * properties for the spec's dotted Delta keys (e.g. {@code delta.columnMapping.id}). Both the
-   * server-side and client-side {@code StructFieldMetadata} extend {@code HashMap<String, Object>};
-   * Jackson treats them as Maps for serialization (and skips the generated {@code @JsonAnyGetter}
-   * when extending a Map), so we write everything via {@code put} into the inherited Map view
-   * rather than the typed setter or {@code putAdditionalProperty}.
+   * Build a {@link DeltaStructFieldMetadata} with the optional {@code comment} plus a bag of
+   * additional properties for the spec's dotted Delta keys (e.g. {@code delta.columnMapping.id}).
+   * Both the server-side and client-side {@code DeltaStructFieldMetadata} extend {@code
+   * HashMap<String, Object>}; Jackson treats them as Maps for serialization (and skips the
+   * generated {@code @JsonAnyGetter} when extending a Map), so we write everything via {@code put}
+   * into the inherited Map view rather than the typed setter or {@code putAdditionalProperty}.
    */
-  private static StructFieldMetadata meta(String comment, Map<String, Object> additional) {
-    StructFieldMetadata m = new StructFieldMetadata();
+  private static DeltaStructFieldMetadata meta(String comment, Map<String, Object> additional) {
+    DeltaStructFieldMetadata m = new DeltaStructFieldMetadata();
     if (comment != null) {
       m.put("comment", comment);
     }

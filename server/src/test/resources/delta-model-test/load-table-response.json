@@ -1,7 +1,6 @@
 {
   "metadata": {
     "etag": "etag-123",
-    "data-source-format": "DELTA",
     "table-type": "MANAGED",
     "table-uuid": "550e8400-e29b-41d4-a716-446655440000",
     "location": "s3://bucket/warehouse/catalog/schema/sales",
