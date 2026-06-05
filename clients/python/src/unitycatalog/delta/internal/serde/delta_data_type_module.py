@@ -1,9 +1,14 @@
 """
-Patches DeltaDataType to handle the string-or-object polymorphism
-in DeltaStructField.type.
+Python counterpart of the server/client Java ``DeltaDataTypeModule``: patches
+``DeltaDataType.from_dict``/``to_dict`` and ``DeltaStructField.from_dict``/
+``to_dict`` to handle Delta's string-or-object wire form (e.g. ``"long"`` /
+``"decimal(10,2)"`` as bare JSON strings for primitives, vs. JSON objects
+for ``array`` / ``map`` / ``struct``).
 
-This module is auto-imported by the generated models/__init__.py
-via post-build injection. Users do not need to import it manually.
+This module lives under ``internal/serde/`` because it is implementation
+detail -- it is auto-imported by the generated ``models/__init__.py`` via
+``PythonClientPostBuild.patchDeltaDataTypeModule``. Users do not need to
+import it manually.
 """
 
 import re

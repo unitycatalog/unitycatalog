@@ -1,12 +1,12 @@
-package io.unitycatalog.server.delta.serde;
+package io.unitycatalog.server.delta.serde.internal;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.jsontype.TypeSerializer;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
-import io.unitycatalog.server.delta.model.DeltaDecimalType;
 import io.unitycatalog.server.delta.model.DeltaDataType;
+import io.unitycatalog.server.delta.model.DeltaDecimalType;
 import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import java.io.IOException;
 

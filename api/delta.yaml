@@ -525,7 +525,7 @@ components:
 
     DeltaTableType:
       type: string
-      description: The type of a table.
+      description: The type of a Delta table.
       enum:
         - MANAGED
         - EXTERNAL
@@ -1307,7 +1307,7 @@ components:
     DeltaPrimitiveType:
       description: |
         Primitive data type (e.g., "long", "string", "boolean"). On the wire,
-        primitive types are bare JSON strings. The custom DeltaTypeDeserializer
+        primitive types are bare JSON strings. The custom DeltaDataTypeModule
         converts them into DeltaPrimitiveType instances.
       allOf:
         - $ref: '#/components/schemas/DeltaDataType'
@@ -1316,7 +1316,7 @@ components:
       description: |
         Decimal data type with precision and scale. On the wire, represented as
         "decimal(precision,scale)" (e.g., "decimal(10,2)"). The custom
-        DeltaTypeDeserializer parses the string into a DeltaDecimalType instance.
+        DeltaDataTypeModule parses the string into a DeltaDecimalType instance.
       allOf:
         - $ref: '#/components/schemas/DeltaDataType'
       properties:

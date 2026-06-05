@@ -28,7 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Raw-HTTP integration tests for the Delta REST Catalog {@code POST /v1/.../tables} endpoint.
+ * Raw-HTTP integration tests for the UC Delta API {@code POST /v1/.../tables} endpoint.
  *
  * <p>The auto-generated {@code unitycatalog-client} can't construct certain malformed payloads --
  * its DTOs reject them at compile time -- but a non-SDK client (Rust, Kernel) is not bound by the
@@ -80,7 +80,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
             TestUtils.SCHEMA_NAME,
             new DeltaCreateStagingTableRequest().name("tbl_raw"));
 
-    // -------- StructField missing 'name' --------
+    // -------- DeltaStructField missing 'name' --------
     // Caught by ColumnUtils.validateStructType, called from DeltaCreateTableMapper before the
     // per-column conversion runs. The path locates the offending field.
     assertRejected(
@@ -89,7 +89,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
         {"type": "long", "nullable": false, "metadata": {}}""",
         "columns.fields[0].name is required.");
 
-    // -------- StructField missing 'type', second column in a multi-column request --------
+    // -------- DeltaStructField missing 'type', second column in a multi-column request -------
     // Pins that the validator iterates every column (not just the first) and that the path index
     // reflects the offending column's position. A valid first column should pass and the
     // malformed second column should be the one that surfaces in the error.
@@ -100,10 +100,10 @@ public class RawCreateTableTest extends BaseCRUDTest {
         {"name": "amount", "nullable": true, "metadata": {}}""",
         "columns.fields[1].type is required.");
 
-    // -------- a field element that is the bare string instead of a StructField object --------
+    // -------- a field element that is the bare string instead of a DeltaStructField object --
     // Pins the bug shape from PR #1524: a client serializes the value of `type` (the bare
-    // string "long") in the field position rather than the full StructField wrapper. Jackson
-    // can't coerce the string to a StructField bean, so the request must be rejected at the
+    // string "long") in the field position rather than the full DeltaStructField wrapper. Jackson
+    // can't coerce the string to a DeltaStructField bean, so the request must be rejected at the
     // deserialization boundary before any validator runs. Substring match because the Jackson +
     // Armeria envelope adds source-location and reference-chain noise we don't want to pin.
     assertRejectedMessageContains(
@@ -119,16 +119,16 @@ public class RawCreateTableTest extends BaseCRUDTest {
     // Pins that primitive type names go through validatePrimitiveType -> resolveColumnTypeName
     // at the API boundary. "void" is Spark's NullType wire form, which Delta rejects on read;
     // PR #1524 hardened the closely-related Spark-connector type_json path, so we mirror that
-    // rejection on the DRC create-table path with a raw-HTTP test. The validator prefixes the
-    // resolver's error with the field path so the message follows the same shape as every other
-    // validation error in this file.
+    // rejection on the UC Delta API create-table path with a raw-HTTP test. The validator
+    // prefixes the resolver's error with the field path so the message follows the same shape
+    // as every other validation error in this file.
     assertRejected(
         staging,
         """
         {"name": "x", "type": "void", "nullable": false, "metadata": {}}""",
         "columns.fields[0].type: Unsupported Delta primitive type: void");
 
-    // -------- StructField with a blank name --------
+    // -------- DeltaStructField with a blank name --------
     // Per Delta PROTOCOL.md column names must be non-empty. The validator rejects null AND
     // blank (whitespace-only) names with the same message; both flow into the DB otherwise.
     assertRejected(
@@ -137,7 +137,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
         {"name": "   ", "type": "long", "nullable": false, "metadata": {}}""",
         "columns.fields[0].name is required.");
 
-    // -------- StructField missing 'nullable' --------
+    // -------- DeltaStructField missing 'nullable' --------
     // Per Delta PROTOCOL.md every StructField must carry nullable.
     assertRejected(
         staging,
@@ -145,7 +145,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
         {"name": "id", "type": "long", "metadata": {}}""",
         "columns.fields[0].nullable is required.");
 
-    // -------- StructField missing 'metadata' --------
+    // -------- DeltaStructField missing 'metadata' --------
     // Enforceable now that delta.yaml types DeltaStructField.metadata as a typed wrapper class
     // (DeltaStructFieldMetadata) instead of a raw Map -- the generator no longer auto-fills the
     // field with new HashMap<>(), so a JSON omitting "metadata" leaves the field at null.
@@ -155,9 +155,10 @@ public class RawCreateTableTest extends BaseCRUDTest {
         {"name": "id", "type": "long", "nullable": false}""",
         "columns.fields[0].metadata is required.");
 
-    // -------- ArrayType missing 'contains-null' --------
-    // Validator descends into the StructField's nested type. Path picks up ".type" as it crosses
-    // into the array. Enforceable now that delta.yaml dropped `default: true` for this field.
+    // -------- DeltaArrayType missing 'contains-null' --------
+    // Validator descends into the DeltaStructField's nested type. Path picks up ".type" as it
+    // crosses into the array. Enforceable now that delta.yaml dropped `default: true` for this
+    // field.
     assertRejected(
         staging,
         """
@@ -169,7 +170,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
         }""",
         "columns.fields[0].type.contains-null is required.");
 
-    // -------- MapType missing 'value-contains-null' --------
+    // -------- DeltaMapType missing 'value-contains-null' --------
     assertRejected(
         staging,
         """
@@ -181,7 +182,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
         }""",
         "columns.fields[0].type.value-contains-null is required.");
 
-    // -------- MapType missing 'key-type' --------
+    // -------- DeltaMapType missing 'key-type' --------
     assertRejected(
         staging,
         """
@@ -193,7 +194,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
         }""",
         "columns.fields[0].type.key-type is required.");
 
-    // -------- MapType missing 'value-type' --------
+    // -------- DeltaMapType missing 'value-type' --------
     assertRejected(
         staging,
         """
@@ -205,16 +206,16 @@ public class RawCreateTableTest extends BaseCRUDTest {
         }""",
         "columns.fields[0].type.value-type is required.");
 
-    // -------- DecimalType: precision > 38 (string wire form) --------
+    // -------- DeltaDecimalType: precision > 38 (string wire form) --------
     // String form "decimal(P,S)" is what Spark emits; the deserializer parses it into
-    // DecimalType so the validator's bound check fires.
+    // DeltaDecimalType so the validator's bound check fires.
     assertRejected(
         staging,
         """
         {"name": "price", "type": "decimal(50,2)", "nullable": true, "metadata": {}}""",
         "columns.fields[0].type.precision must be in [0, 38], got 50.");
 
-    // -------- DecimalType: precision < 0 (object wire form) --------
+    // -------- DeltaDecimalType: precision < 0 (object wire form) --------
     // The "decimal(P,S)" string form's regex doesn't accept a negative precision, so the only
     // way to land in validateDecimalType with a negative value is the typed object form a
     // non-Spark client could emit.
@@ -229,14 +230,14 @@ public class RawCreateTableTest extends BaseCRUDTest {
         }""",
         "columns.fields[0].type.precision must be in [0, 38], got -1.");
 
-    // -------- DecimalType: scale > precision (string wire form) --------
+    // -------- DeltaDecimalType: scale > precision (string wire form) --------
     assertRejected(
         staging,
         """
         {"name": "price", "type": "decimal(5,10)", "nullable": true, "metadata": {}}""",
         "columns.fields[0].type.scale must be in [0, precision=5], got 10.");
 
-    // -------- DecimalType: missing precision (object wire form) --------
+    // -------- DeltaDecimalType: missing precision (object wire form) --------
     // String form can't express a missing precision; this exercises the requireNonNull branch.
     assertRejected(
         staging,
@@ -249,7 +250,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
         }""",
         "columns.fields[0].type.precision is required.");
 
-    // -------- nested StructField inside an array of structs --------
+    // -------- nested DeltaStructField inside an array of structs --------
     // Pins that recursion descends into array elementType -> struct fields. The malformed inner
     // field has no name; the path captures the full descent.
     assertRejected(
@@ -277,7 +278,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
 
     // -------- no `columns` key in the request at all --------
     // Distinct code path from the empty-fields case above: `req.getColumns()` is null, not a
-    // StructType with empty fields. The validator's top-level requireNonNull catches this.
+    // DeltaStructType with empty fields. The validator's top-level requireNonNull catches this.
     assertRejectedRaw(staging, /* includeColumns= */ false, "columns is required.");
 
     // -------- duplicate field names at the top level --------
@@ -292,7 +293,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
         "Duplicate field name (case-insensitive) in columns.fields[1]: ID");
 
     // -------- duplicate field name inside a nested struct --------
-    // Proves uniqueness is enforced per StructType level (not only at the top level) -- the
+    // Proves uniqueness is enforced per DeltaStructType level (not only at the top level) -- the
     // recursion in validateStructType applies the same check inside an array of structs.
     assertRejected(
         staging,

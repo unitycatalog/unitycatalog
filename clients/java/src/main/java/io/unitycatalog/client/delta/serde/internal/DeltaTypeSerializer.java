@@ -1,4 +1,4 @@
-package io.unitycatalog.client.delta.serde;
+package io.unitycatalog.client.delta.serde.internal;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonSerializer;

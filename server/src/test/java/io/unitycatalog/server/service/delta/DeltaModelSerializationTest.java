@@ -9,12 +9,14 @@ import io.unitycatalog.server.delta.model.DeltaArrayType;
 import io.unitycatalog.server.delta.model.DeltaAssertEtag;
 import io.unitycatalog.server.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.server.delta.model.DeltaClusteringDomainMetadata;
-import io.unitycatalog.server.delta.model.DeltaDecimalType;
 import io.unitycatalog.server.delta.model.DeltaCommit;
-import io.unitycatalog.server.delta.model.DeltaProtocol;
+import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaDecimalType;
 import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.server.delta.model.DeltaMapType;
 import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
+import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaRemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaRemovePropertiesUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetDomainMetadataUpdate;
@@ -39,11 +41,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
-import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
 
 /**
- * Tests JSON deserialization and serialization of Delta REST API model types. The deserialization
+ * Tests JSON deserialization and serialization of UC Delta API model types. The deserialization
  * test loads a JSON fixture and verifies all fields including typed DeltaDataType subtypes. The
  * serialization test constructs objects from scratch and compares against the same fixture.
  */
@@ -91,7 +91,7 @@ public class DeltaModelSerializationTest {
     assertThat(((DeltaRemovePropertiesUpdate) updates.get(1)).getRemovals())
         .containsExactly("delta.logRetentionDuration");
 
-    // set-columns: DeltaStructType with 4 fields, typed via DeltaTypeModule
+    // set-columns: DeltaStructType with 4 fields, typed via DeltaDataTypeModule
     DeltaStructType schema = ((DeltaSetSchemaUpdate) updates.get(2)).getColumns();
     List<DeltaStructField> fields = schema.getFields();
     assertThat(fields).hasSize(4);

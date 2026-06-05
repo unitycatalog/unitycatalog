@@ -1,4 +1,4 @@
-package io.unitycatalog.client.delta.serde;
+package io.unitycatalog.server.delta.serde.internal;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
@@ -6,9 +6,9 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.jsontype.TypeDeserializer;
-import io.unitycatalog.client.delta.model.DeltaDataType;
-import io.unitycatalog.client.delta.model.DeltaDecimalType;
-import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
+import io.unitycatalog.server.delta.model.DeltaDataType;
+import io.unitycatalog.server.delta.model.DeltaDecimalType;
+import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

@@ -1,6 +1,6 @@
 # Delta Type Custom Serde
 
-Custom Jackson serializer/deserializer for `DeltaType` that handles the string-or-object polymorphism in `StructField.type`.
+Custom Jackson serializer/deserializer for `DeltaDataType` that handles the string-or-object polymorphism in `DeltaStructField.type`.
 
 ## The Problem
 
@@ -8,18 +8,20 @@ Delta's wire format uses bare JSON strings for primitive types (`"long"`, `"deci
 
 ## How It Works
 
-`DeltaTypeModule` registers both a `BeanDeserializerModifier` and a `BeanSerializerModifier`:
+`DeltaDataTypeModule` is the public entry point. It registers a `BeanDeserializerModifier` and a `BeanSerializerModifier` that swap in the custom (de)serializers from the `internal/` subpackage:
 
-- **Deserializer**: Intercepts `DeltaType` deserialization. If the JSON token is `VALUE_STRING`, parses it as `PrimitiveType` or `DecimalType` (via regex for `decimal(p,s)`). If the token is an object, delegates to the default deserializer which uses Jackson's `@JsonTypeInfo` dispatch.
+- **`internal/DeltaTypeDeserializer`**: Intercepts `DeltaDataType` deserialization. If the JSON token is `VALUE_STRING`, parses it as `DeltaPrimitiveType` or `DeltaDecimalType` (via regex for `decimal(p,s)`). If the token is an object, delegates to the default deserializer which uses Jackson's `@JsonTypeInfo` dispatch.
 
-- **Serializer**: Intercepts `DeltaType`, `PrimitiveType`, and `DecimalType` serialization. `PrimitiveType` writes the type name as a bare string. `DecimalType` derives `"decimal(p,s)"` from precision and scale fields. Complex types delegate to the default serializer which auto-generates the `"type"` discriminator field.
+- **`internal/DeltaTypeSerializer`**: Intercepts `DeltaDataType`, `DeltaPrimitiveType`, and `DeltaDecimalType` serialization. `DeltaPrimitiveType` writes the type name as a bare string. `DeltaDecimalType` derives `"decimal(p,s)"` from precision and scale fields. Complex types delegate to the default serializer which auto-generates the `"type"` discriminator field.
+
+Classes under `internal/` are implementation detail; consumers should depend on `DeltaDataTypeModule` only.
 
 ## Registration
 
-Register `DeltaTypeModule` on any `ObjectMapper` that needs to handle `DeltaType`:
+Register `DeltaDataTypeModule` on any `ObjectMapper` that needs to handle `DeltaDataType`:
 
 ```java
-mapper.registerModule(new DeltaTypeModule());
+mapper.registerModule(new DeltaDataTypeModule());
 ```
 
-On the server, this is done in `UnityCatalogServer.addDeltaApiServices()` on the delta-specific `ObjectMapper`.
+On the server, this is done in `DeltaApiMappers` on the UC Delta API `ObjectMapper`.

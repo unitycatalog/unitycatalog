@@ -11,7 +11,7 @@ import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.server.delta.model.DeltaStructField;
 import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
-import io.unitycatalog.server.delta.serde.DeltaTypeModule;
+import io.unitycatalog.server.delta.serde.DeltaDataTypeModule;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
@@ -348,7 +348,7 @@ public class ColumnUtilsTest {
         "{\"name\":\"id\",\"type\":\"long\",\"nullable\":false,"
             + "\"metadata\":{\"comment\":\"primary key\"}}";
     ObjectMapper mapper = new ObjectMapper();
-    mapper.registerModule(new DeltaTypeModule());
+    mapper.registerModule(new DeltaDataTypeModule());
     DeltaStructField field = mapper.readValue(wire, DeltaStructField.class);
 
     assertThat(ColumnUtils.toColumnInfo(field, 0).getComment()).isEqualTo("primary key");
@@ -363,7 +363,7 @@ public class ColumnUtilsTest {
         "{\"name\":\"id\",\"type\":\"long\",\"nullable\":false,"
             + "\"metadata\":{\"comment\":\"primary key\",\"delta.columnMapping.id\":1}}";
     ObjectMapper mapper = new ObjectMapper();
-    mapper.registerModule(new DeltaTypeModule());
+    mapper.registerModule(new DeltaDataTypeModule());
     DeltaStructField field = mapper.readValue(wire, DeltaStructField.class);
 
     String roundTrip = ColumnUtils.toTypeJson(field);
@@ -469,7 +469,7 @@ public class ColumnUtilsTest {
 
   @Test
   public void testValidateStructTypeRejectsEmptyFieldsList() {
-    // The generator initialises StructType.fields to an empty ArrayList, so reaching the
+    // The generator initialises DeltaStructType.fields to an empty ArrayList, so reaching the
     // `fields == null` branch from Java requires setFields(null) which the setter would
     // happily accept. We pin the more reachable "empty fields" case here; the null-fields
     // branch is covered indirectly by the JSON-wire path (RawCreateTableTest).

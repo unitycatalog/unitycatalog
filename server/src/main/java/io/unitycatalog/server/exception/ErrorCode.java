@@ -18,9 +18,9 @@ import lombok.Getter;
  * <ul>
  *   <li>{@code grpcCode} - numeric gRPC status code (e.g., 3 = INVALID_ARGUMENT)
  *   <li>{@code ucHttpStatus} - HTTP status code returned by the UC REST API
- *   <li>{@code deltaErrorType} - corresponding {@link DeltaErrorType} in the Delta REST API error
+ *   <li>{@code deltaErrorType} - corresponding {@link DeltaErrorType} in the UC Delta API error
  *       spec
- *   <li>{@code deltaHttpStatus} - HTTP status code for the Delta REST API (defaults to ucHttpStatus
+ *   <li>{@code deltaHttpStatus} - HTTP status code for the UC Delta API (defaults to ucHttpStatus
  *       when omitted; overridden when the Delta spec disagrees, e.g., 409 for AlreadyExists vs UC's
  *       legacy 400)
  * </ul>
@@ -94,11 +94,11 @@ public enum ErrorCode {
   private final int code;
   private final HttpStatus httpStatus;
   private final DeltaErrorType deltaErrorType;
-  // The Delta REST API spec defines its own HTTP status per DeltaErrorType (e.g.,
-  // AlreadyExistsException
-  // is 409). Some legacy UC error codes use a different status for backward compatibility (e.g.,
-  // CATALOG_ALREADY_EXISTS is 400). When the two disagree, deltaHttpStatus carries the spec-correct
-  // status for the Delta API; otherwise it defaults to httpStatus.
+  // The UC Delta API spec defines its own HTTP status per DeltaErrorType (e.g.,
+  // AlreadyExistsException is 409). Some legacy UC error codes use a different status for
+  // backward compatibility (e.g., CATALOG_ALREADY_EXISTS is 400). When the two disagree,
+  // deltaHttpStatus carries the spec-correct status for the UC Delta API; otherwise it defaults
+  // to httpStatus.
   private final HttpStatus deltaHttpStatus;
 
   ErrorCode(int code, int httpStatus, DeltaErrorType deltaErrorType, int deltaHttpStatus) {

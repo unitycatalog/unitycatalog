@@ -36,7 +36,7 @@ import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
 import io.unitycatalog.client.delta.model.DeltaUpdateSnapshotVersionUpdate;
 import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
-import io.unitycatalog.client.delta.serde.DeltaTypeModule;
+import io.unitycatalog.client.delta.serde.DeltaDataTypeModule;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -46,7 +46,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tests JSON deserialization and serialization of Delta REST API model types. The deserialization
+ * Tests JSON deserialization and serialization of UC Delta API model types. The deserialization
  * test loads a JSON fixture and verifies all fields including typed DeltaDataType subtypes. The
  * serialization test constructs objects from scratch and compares against the same fixture.
  */
@@ -56,7 +56,7 @@ public class DeltaModelSerializationTest {
       JsonMapper.builder().serializationInclusion(JsonInclude.Include.NON_NULL).build();
 
   static {
-    MAPPER.registerModule(new DeltaTypeModule());
+    MAPPER.registerModule(new DeltaDataTypeModule());
   }
 
   private static String fixtureJson;
@@ -99,7 +99,7 @@ public class DeltaModelSerializationTest {
     assertThat(((DeltaRemovePropertiesUpdate) updates.get(1)).getRemovals())
         .containsExactly("delta.logRetentionDuration");
 
-    // set-columns: DeltaStructType with 4 fields, typed via DeltaTypeModule
+    // set-columns: DeltaStructType with 4 fields, typed via DeltaDataTypeModule
     DeltaStructType schema = ((DeltaSetSchemaUpdate) updates.get(2)).getColumns();
     List<DeltaStructField> fields = schema.getFields();
     assertThat(fields).hasSize(4);
