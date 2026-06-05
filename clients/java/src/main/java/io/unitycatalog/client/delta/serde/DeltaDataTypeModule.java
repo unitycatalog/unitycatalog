@@ -1,4 +1,4 @@
-package io.unitycatalog.server.delta.serde;
+package io.unitycatalog.client.delta.serde;
 
 import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.DeserializationConfig;
@@ -8,15 +8,30 @@ import com.fasterxml.jackson.databind.SerializationConfig;
 import com.fasterxml.jackson.databind.deser.BeanDeserializerModifier;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.BeanSerializerModifier;
-import io.unitycatalog.server.delta.model.DeltaDataType;
-import io.unitycatalog.server.delta.model.DeltaDecimalType;
-import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
+import io.unitycatalog.client.delta.model.DeltaDataType;
+import io.unitycatalog.client.delta.model.DeltaDecimalType;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
+import io.unitycatalog.client.delta.serde.internal.DeltaTypeDeserializer;
+import io.unitycatalog.client.delta.serde.internal.DeltaTypeSerializer;
 
-/** Jackson module for DeltaDataType ser/deser. */
-public class DeltaTypeModule extends SimpleModule {
+/**
+ * Jackson module that adds Delta's string-or-object wire format for {@link DeltaDataType}.
+ *
+ * <p>{@code ApiClientBuilder.build()} registers this module automatically. Only callers that
+ * construct their own {@code ObjectMapper} need to register it explicitly:
+ *
+ * <pre>{@code
+ * mapper.registerModule(new DeltaDataTypeModule());
+ * }</pre>
+ *
+ * <p>Once registered, the mapper reads/writes bare strings (e.g. {@code "long"}, {@code
+ * "decimal(10,2)"}) for {@link DeltaPrimitiveType} / {@link DeltaDecimalType}, while still using
+ * the default object form for {@code array}, {@code map}, and {@code struct}.
+ */
+public class DeltaDataTypeModule extends SimpleModule {
   @SuppressWarnings("unchecked")
-  public DeltaTypeModule() {
-    super("DeltaTypeModule");
+  public DeltaDataTypeModule() {
+    super("DeltaDataTypeModule");
     setDeserializerModifier(
         new BeanDeserializerModifier() {
           @Override

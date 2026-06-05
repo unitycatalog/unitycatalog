@@ -12,7 +12,7 @@ import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.server.delta.model.DeltaStructField;
 import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
-import io.unitycatalog.server.delta.serde.DeltaTypeModule;
+import io.unitycatalog.server.delta.serde.DeltaDataTypeModule;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -95,7 +95,7 @@ public class ColumnUtils {
 
   private static ObjectMapper createTypeMapper() {
     ObjectMapper mapper = new ObjectMapper();
-    mapper.registerModule(new DeltaTypeModule());
+    mapper.registerModule(new DeltaDataTypeModule());
     mapper.addMixIn(DeltaArrayType.class, CamelCaseArrayMixin.class);
     mapper.addMixIn(DeltaMapType.class, CamelCaseMapMixin.class);
     return mapper;
@@ -136,7 +136,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Convert a UC ColumnInfo to a Delta REST API DeltaStructField by parsing typeJson directly. The
+   * Convert a UC ColumnInfo to a UC Delta API DeltaStructField by parsing typeJson directly. The
    * typeJson is in Spark's StructField format and contains the complete field definition (name,
    * type, nullable, metadata). Only partitionIndex comes from ColumnInfo, not typeJson.
    */
