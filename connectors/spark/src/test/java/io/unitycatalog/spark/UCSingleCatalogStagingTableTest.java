@@ -115,6 +115,16 @@ public class UCSingleCatalogStagingTableTest {
   }
 
   @Test
+  public void testAlterTableRejectsRenameColumn() throws Exception {
+    TableChange change = TableChange.renameColumn(new String[] {"old_name"}, "new_name");
+
+    assertThatThrownBy(() -> catalog.alterTable(IDENT, new TableChange[] {change}))
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("RENAME COLUMN");
+    verify(mockDelegate, never()).alterTable(eq(IDENT), any(TableChange.class));
+  }
+
+  @Test
   public void testStageCreateFailsWhenDelegateIsNotStagingCatalog() {
     UCSingleCatalog nonStagingCatalog = new UCSingleCatalog();
     setDelegate(nonStagingCatalog, mock(TableCatalog.class));

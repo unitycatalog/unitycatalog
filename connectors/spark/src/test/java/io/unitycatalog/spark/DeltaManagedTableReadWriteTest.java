@@ -222,6 +222,17 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   }
 
   @Test
+  public void testAlterTableRenameColumnIsRejectedFromSql() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName =
+        setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
+
+    assertThatThrownBy(() -> sql("ALTER TABLE %s RENAME COLUMN i TO renamed_i", fullTableName))
+        .hasMessageContaining("ALTER TABLE RENAME COLUMN");
+  }
+
+  @Test
   public void testManagedDeltaReplaceRejectsProviderChangeWithoutDroppingTable()
       throws ApiException {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
