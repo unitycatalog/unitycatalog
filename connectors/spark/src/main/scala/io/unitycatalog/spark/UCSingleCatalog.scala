@@ -366,7 +366,7 @@ class UCSingleCatalog
     // Spark represents ALTER TABLE ... RENAME COLUMN as a structured TableChange here.
     if (changes.exists(_.isInstanceOf[TableChange.RenameColumn])) {
       throw new UnsupportedOperationException(
-        "ALTER TABLE RENAME COLUMN is not supported for Unity Catalog tables")
+        "ALTER TABLE RENAME COLUMN is not supported for Unity Catalog tables yet")
     }
     delegate.alterTable(ident, changes: _*)
   }
