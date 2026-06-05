@@ -1450,6 +1450,7 @@ components:
                       type: array
                       items:
                         type: integer
+                        format: int64
                       description: Count of files in each bin
                     total-bytes:
                       type: array
