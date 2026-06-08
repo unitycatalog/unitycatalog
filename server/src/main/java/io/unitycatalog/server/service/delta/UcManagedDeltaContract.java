@@ -7,6 +7,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeatureKind;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Collections;
 import java.util.HashMap;
@@ -96,35 +97,41 @@ public final class UcManagedDeltaContract {
   }
 
   /**
-   * Validates that the supplied protocol, domain-metadata, and properties satisfy the contract:
+   * Validates that the supplied protocol, domain-metadata, and properties satisfy the UC
+   * catalog-managed Delta table contract. Apply only to MANAGED tables; EXTERNAL tables don't go
+   * through staging and don't carry this contract.
+   *
+   * <p>Checks enforced:
    *
    * <ul>
-   *   <li>the protocol's reader-features are a subset of its writer-features (Delta-spec rule);
+   *   <li>reader-features are a subset of writer-features (Delta-spec invariant);
    *   <li>protocol versions meet the required minimums;
    *   <li>every required feature is present in the appropriate wire list;
    *   <li>every declared domain-metadata entry is backed by the matching writer feature;
    *   <li>every fixed-value required property equals the expected value;
-   *   <li>the UC table-id property is set;
-   *   <li>every entry in {@link #ENGINE_GENERATED_PROPERTY_KEYS} (if any) is present with a
-   *       non-null value.
+   *   <li>the UC table-id property is set and non-blank;
+   *   <li>every engine-generated property key ({@link #ENGINE_GENERATED_PROPERTY_KEYS}) is present
+   *       with a non-null value.
    * </ul>
    *
-   * <p>Apply only when the table is UC catalog-managed (i.e. MANAGED). EXTERNAL tables don't go
-   * through staging and don't carry this contract.
-   *
-   * <p>Designed to be called from {@link DeltaCreateTableMapper}, future update / commit mappers,
-   * and anywhere else that needs to assert "this state is a valid UC-managed Delta table state."
+   * <p>When {@code serverProperties} has {@code
+   * server.managed-table.uniform-iceberg-v2.allow-missing-dv=true} AND {@code properties} contains
+   * {@code delta.enableIcebergCompatV2=true}, the {@code deletionVectors} feature and {@code
+   * delta.enableDeletionVectors} property checks are skipped. All other checks remain enforced.
    */
   public static void validate(
       DeltaProtocol protocol,
       DeltaDomainMetadataUpdates domainMetadata,
-      Map<String, String> properties) {
+      Map<String, String> properties,
+      ServerProperties serverProperties) {
+    boolean skipDv =
+        DeltaUniformUtils.shouldSkipDeletionVectorRequirement(properties, serverProperties);
     ValidationUtils.checkNotNull(protocol, "protocol is required.");
     validateReaderFeatureSubset(protocol);
     validateRequiredVersions(protocol);
-    validateRequiredFeatures(protocol);
+    validateRequiredFeatures(protocol, skipDv);
     validateDomainMetadataAgainstProtocol(protocol, domainMetadata);
-    validateRequiredProperties(properties != null ? properties : Map.of());
+    validateRequiredProperties(properties != null ? properties : Map.of(), skipDv);
   }
 
   /**
@@ -196,12 +203,17 @@ public final class UcManagedDeltaContract {
     }
   }
 
-  private static void validateRequiredFeatures(DeltaProtocol protocol) {
+  private static void validateRequiredFeatures(
+      DeltaProtocol protocol, boolean skipDeletionVectorRequirement) {
     Set<String> readerFeatures =
         Set.copyOf(protocol.getReaderFeatures() != null ? protocol.getReaderFeatures() : List.of());
     Set<String> writerFeatures =
         Set.copyOf(protocol.getWriterFeatures() != null ? protocol.getWriterFeatures() : List.of());
+    String dvSpecName = TableFeature.DELETION_VECTORS.specName();
     for (String required : REQUIRED_READER_FEATURES) {
+      if (skipDeletionVectorRequirement && required.equals(dvSpecName)) {
+        continue;
+      }
       if (!readerFeatures.contains(required)) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
@@ -209,6 +221,9 @@ public final class UcManagedDeltaContract {
       }
     }
     for (String required : REQUIRED_WRITER_FEATURES) {
+      if (skipDeletionVectorRequirement && required.equals(dvSpecName)) {
+        continue;
+      }
       if (!writerFeatures.contains(required)) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
@@ -250,8 +265,13 @@ public final class UcManagedDeltaContract {
     }
   }
 
-  private static void validateRequiredProperties(Map<String, String> properties) {
+  private static void validateRequiredProperties(
+      Map<String, String> properties, boolean skipDeletionVectorRequirement) {
     for (Map.Entry<String, String> entry : REQUIRED_FIXED_PROPERTIES.entrySet()) {
+      if (skipDeletionVectorRequirement
+          && entry.getKey().equals(TableProperties.ENABLE_DELETION_VECTORS)) {
+        continue;
+      }
       String actual = properties.get(entry.getKey());
       if (!entry.getValue().equals(actual)) {
         throw new BaseException(

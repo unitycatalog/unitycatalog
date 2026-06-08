@@ -1,6 +1,8 @@
 package io.unitycatalog.server.service.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
@@ -9,9 +11,11 @@ import io.unitycatalog.server.delta.model.DeltaStructField;
 import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableType;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +33,9 @@ public class DeltaCreateTableMapperTest {
   @Test
   public void happyPathManagedBuildsCreateTable() {
     CreateTable created =
-        DeltaCreateTableMapper.toCreateTable("cat", "sch", baseManagedRequest()).createTable();
+        DeltaCreateTableMapper.toCreateTable(
+                "cat", "sch", baseManagedRequest(), new ServerProperties())
+            .createTable();
 
     assertThat(created.getName()).isEqualTo("tbl");
     assertThat(created.getCatalogName()).isEqualTo("cat");
@@ -61,8 +67,57 @@ public class DeltaCreateTableMapperTest {
                     .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())))
             .properties(Map.of());
 
-    CreateTable created = DeltaCreateTableMapper.toCreateTable("cat", "sch", req).createTable();
+    CreateTable created =
+        DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties())
+            .createTable();
     assertThat(created.getTableType()).isEqualTo(io.unitycatalog.server.model.TableType.EXTERNAL);
+  }
+
+  // ---------- allowMissingDvForUniformV2 flag ----------
+
+  @Test
+  public void allowMissingDvFlagAcceptsUniformV2RequestWithoutDv() {
+    // A UniForm Iceberg request without DV feature/property is rejected by default but accepted
+    // when server.managed-table.uniform-iceberg-v2.allow-missing-dv=true.
+    assertThatThrownBy(
+            () ->
+                DeltaCreateTableMapper.toCreateTable(
+                    "cat", "sch", uniformV2RequestWithoutDv(), new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+
+    assertThatCode(
+            () ->
+                DeltaCreateTableMapper.toCreateTable(
+                    "cat",
+                    "sch",
+                    uniformV2RequestWithoutDv(),
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void allowMissingDvFlagDoesNotSkipDvWithoutIcebergCompatV2Property() {
+    // UniForm Iceberg enabled but delta.enableIcebergCompatV2 not set -- DV is still required.
+    DeltaCreateTableRequest req = uniformV2RequestWithoutDv();
+    req.getProperties().remove(TableProperties.ENABLE_ICEBERG_COMPAT_V2);
+    assertThatThrownBy(
+            () ->
+                DeltaCreateTableMapper.toCreateTable(
+                    "cat", "sch", req, TestUtils.serverPropertiesWithAllowMissingDv()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  @Test
+  public void allowMissingDvFlagOffRejectsMissingDvWithoutIcebergCompatV2Property() {
+    // flag=false, no delta.enableIcebergCompatV2 -- DV is required regardless.
+    DeltaCreateTableRequest req = uniformV2RequestWithoutDv();
+    req.getProperties().remove(TableProperties.ENABLE_ICEBERG_COMPAT_V2);
+    assertThatThrownBy(
+            () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
   }
 
   // --- fixtures ---
@@ -135,5 +190,42 @@ public class DeltaCreateTableMapperTest {
 
   private static String featureKey(String feature) {
     return TableProperties.FEATURE_PREFIX + feature;
+  }
+
+  /**
+   * A MANAGED createTable request with delta.enableIcebergCompatV2=true but no uniform block and no
+   * delta.universalFormat.enabledFormats. Omits DV feature and property. Used to test that the
+   * allowMissingDvForUniformV2 flag skips DV enforcement based solely on IcebergCompatV2.
+   */
+  private static DeltaCreateTableRequest uniformV2RequestWithoutDv() {
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
+    props.remove(TableProperties.ENABLE_DELETION_VECTORS);
+    props.put(TableProperties.UC_TABLE_ID, "uuid-uniform-v2");
+    props.put(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true");
+
+    DeltaProtocol protocol =
+        new DeltaProtocol()
+            .minReaderVersion(3)
+            .minWriterVersion(7)
+            .readerFeatures(
+                List.of(
+                    TableFeature.CATALOG_MANAGED.specName(),
+                    TableFeature.V2_CHECKPOINT.specName(),
+                    TableFeature.VACUUM_PROTOCOL_CHECK.specName()))
+            .writerFeatures(
+                List.of(
+                    TableFeature.CATALOG_MANAGED.specName(),
+                    TableFeature.V2_CHECKPOINT.specName(),
+                    TableFeature.VACUUM_PROTOCOL_CHECK.specName(),
+                    TableFeature.IN_COMMIT_TIMESTAMP.specName()));
+
+    return new DeltaCreateTableRequest()
+        .name("tbl")
+        .location("s3://b/p")
+        .tableType(DeltaTableType.MANAGED)
+        .columns(simpleColumns())
+        .protocol(protocol)
+        .properties(props)
+        .lastCommitTimestampMs(1700000000000L);
   }
 }

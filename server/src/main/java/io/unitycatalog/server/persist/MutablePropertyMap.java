@@ -53,7 +53,7 @@ public final class MutablePropertyMap {
   }
 
   /** Wrap an already-loaded list of properties (visible for unit tests). */
-  static MutablePropertyMap wrap(List<PropertyDAO> loaded) {
+  public static MutablePropertyMap wrap(List<PropertyDAO> loaded) {
     return new MutablePropertyMap(loaded);
   }
 

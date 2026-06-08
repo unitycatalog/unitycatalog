@@ -10,6 +10,7 @@ import io.unitycatalog.server.model.DeltaUniformIceberg;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.net.URI;
 import java.time.Instant;
@@ -64,6 +65,22 @@ public final class DeltaUniformUtils {
       Long convertedDeltaVersion,
       Long convertedDeltaTimestampMs,
       Optional<Long> baseConvertedDeltaVersion) {}
+
+  /** True when {@code properties} has {@code delta.enableIcebergCompatV2 = "true"}. */
+  public static boolean isIcebergCompatV2Enabled(Map<String, String> properties) {
+    return "true".equals(properties.get(DeltaConsts.TableProperties.ENABLE_ICEBERG_COMPAT_V2));
+  }
+
+  /**
+   * True when the server flag and the table property together allow skipping the deletion-vectors
+   * contract requirement: {@code server.managed-table.uniform-iceberg-v2.allow-missing-dv=true} AND
+   * {@code delta.enableIcebergCompatV2=true}.
+   */
+  public static boolean shouldSkipDeletionVectorRequirement(
+      Map<String, String> properties, ServerProperties serverProperties) {
+    return serverProperties.isUniformIcebergV2AllowMissingDv()
+        && isIcebergCompatV2Enabled(properties);
+  }
 
   /**
    * True when {@code properties} declares the table as UniForm-Iceberg-enabled, i.e. property

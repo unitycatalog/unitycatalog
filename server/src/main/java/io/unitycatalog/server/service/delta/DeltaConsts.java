@@ -135,6 +135,9 @@ public final class DeltaConsts {
      */
     public static final String UNIVERSAL_FORMAT_ENABLED_FORMATS =
         "delta.universalFormat.enabledFormats";
+
+    /** When {@code "true"}, the table has IcebergCompatV2 enabled. */
+    public static final String ENABLE_ICEBERG_COMPAT_V2 = "delta.enableIcebergCompatV2";
   }
 
   /**

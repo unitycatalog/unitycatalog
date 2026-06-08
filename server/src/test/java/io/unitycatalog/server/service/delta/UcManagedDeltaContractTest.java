@@ -13,6 +13,7 @@ import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,8 +48,7 @@ public class UcManagedDeltaContractTest {
     staging
         .getRequiredProperties()
         .forEach((k, v) -> properties.put(k, v != null ? v : "engine-supplied"));
-    assertThatCode(() -> UcManagedDeltaContract.validate(protocol, null, properties))
-        .doesNotThrowAnyException();
+    assertThatCode(() -> validate(protocol, null, properties)).doesNotThrowAnyException();
   }
 
   // ---------- reader-features subset of writer-features ----------
@@ -72,7 +72,7 @@ public class UcManagedDeltaContractTest {
                     TableFeature.DELETION_VECTORS.specName(),
                     TableFeature.IN_COMMIT_TIMESTAMP.specName(),
                     TableFeature.VACUUM_PROTOCOL_CHECK.specName()));
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(protocol, null, fullProperties()))
+    assertThatThrownBy(() -> validate(protocol, null, fullProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableFeature.V2_CHECKPOINT.specName())
         .hasMessageContaining("reader-features but not writer-features");
@@ -88,7 +88,7 @@ public class UcManagedDeltaContractTest {
             .minWriterVersion(7)
             .readerFeatures(fullProtocol().getReaderFeatures())
             .writerFeatures(fullProtocol().getWriterFeatures());
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(protocol, null, fullProperties()))
+    assertThatThrownBy(() -> validate(protocol, null, fullProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("minReaderVersion must be at least 3");
   }
@@ -101,7 +101,7 @@ public class UcManagedDeltaContractTest {
             .minWriterVersion(6)
             .readerFeatures(fullProtocol().getReaderFeatures())
             .writerFeatures(fullProtocol().getWriterFeatures());
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(protocol, null, fullProperties()))
+    assertThatThrownBy(() -> validate(protocol, null, fullProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("minWriterVersion must be at least 7");
   }
@@ -127,7 +127,7 @@ public class UcManagedDeltaContractTest {
                     TableFeature.DELETION_VECTORS.specName(),
                     TableFeature.V2_CHECKPOINT.specName(),
                     TableFeature.VACUUM_PROTOCOL_CHECK.specName()));
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(protocol, null, fullProperties()))
+    assertThatThrownBy(() -> validate(protocol, null, fullProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(
             "missing required writer-feature '"
@@ -155,7 +155,7 @@ public class UcManagedDeltaContractTest {
                     TableFeature.IN_COMMIT_TIMESTAMP.specName(),
                     TableFeature.V2_CHECKPOINT.specName(),
                     TableFeature.VACUUM_PROTOCOL_CHECK.specName()));
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(protocol, null, fullProperties()))
+    assertThatThrownBy(() -> validate(protocol, null, fullProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(
             "missing required reader-feature '" + TableFeature.CATALOG_MANAGED.specName() + "'");
@@ -169,7 +169,7 @@ public class UcManagedDeltaContractTest {
         new DeltaDomainMetadataUpdates()
             .deltaClustering(
                 new DeltaClusteringDomainMetadata().clusteringColumns(List.of(List.of("id"))));
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(fullProtocol(), dm, fullProperties()))
+    assertThatThrownBy(() -> validate(fullProtocol(), dm, fullProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("'" + TableFeature.CLUSTERING.specName() + "' writer feature");
   }
@@ -179,7 +179,7 @@ public class UcManagedDeltaContractTest {
     DeltaDomainMetadataUpdates dm =
         new DeltaDomainMetadataUpdates()
             .deltaRowTracking(new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(0L));
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(fullProtocol(), dm, fullProperties()))
+    assertThatThrownBy(() -> validate(fullProtocol(), dm, fullProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("'" + TableFeature.ROW_TRACKING.specName() + "' writer feature");
   }
@@ -194,13 +194,12 @@ public class UcManagedDeltaContractTest {
             .deltaClustering(
                 new DeltaClusteringDomainMetadata().clusteringColumns(List.of(List.of("id"))))
             .deltaRowTracking(new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(7L));
-    assertThatCode(() -> UcManagedDeltaContract.validate(protocol, dm, fullProperties()))
-        .doesNotThrowAnyException();
+    assertThatCode(() -> validate(protocol, dm, fullProperties())).doesNotThrowAnyException();
   }
 
   @Test
   public void validateAcceptsNullDomainMetadata() {
-    assertThatCode(() -> UcManagedDeltaContract.validate(fullProtocol(), null, fullProperties()))
+    assertThatCode(() -> validate(fullProtocol(), null, fullProperties()))
         .doesNotThrowAnyException();
   }
 
@@ -210,7 +209,7 @@ public class UcManagedDeltaContractTest {
   public void validateRejectsRequiredPropertyWithWrongValue() {
     Map<String, String> props = fullProperties();
     props.put(TableProperties.CHECKPOINT_POLICY, "v1"); // contract says v2
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(fullProtocol(), null, props))
+    assertThatThrownBy(() -> validate(fullProtocol(), null, props))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableProperties.CHECKPOINT_POLICY)
         .hasMessageContaining("'v2'")
@@ -221,7 +220,7 @@ public class UcManagedDeltaContractTest {
   public void validateRejectsMissingUcTableId() {
     Map<String, String> props = fullProperties();
     props.remove(TableProperties.UC_TABLE_ID);
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(fullProtocol(), null, props))
+    assertThatThrownBy(() -> validate(fullProtocol(), null, props))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableProperties.UC_TABLE_ID);
   }
@@ -230,7 +229,7 @@ public class UcManagedDeltaContractTest {
   public void validateRejectsBlankUcTableId() {
     Map<String, String> props = fullProperties();
     props.put(TableProperties.UC_TABLE_ID, "   ");
-    assertThatThrownBy(() -> UcManagedDeltaContract.validate(fullProtocol(), null, props))
+    assertThatThrownBy(() -> validate(fullProtocol(), null, props))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableProperties.UC_TABLE_ID);
   }
@@ -271,6 +270,75 @@ public class UcManagedDeltaContractTest {
     assertThatThrownBy(() -> UcManagedDeltaContract.validateTableIdProperty(null, expected))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableProperties.UC_TABLE_ID);
+  }
+
+  // ---------- skipDeletionVectorRequirement=true ----------
+
+  @Test
+  public void validateWithDvNotRequiredAcceptsProtocolAndPropertiesWithoutDv() {
+    assertThatCode(
+            () ->
+                UcManagedDeltaContract.validate(
+                    TestUtils.protocolWithoutDv(),
+                    null,
+                    TestUtils.propertiesWithoutDvAndWithIcebergCompatV2(),
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void validateWithDvRequiredStillRejectsMissingDvFeature() {
+    assertThatThrownBy(
+            () ->
+                UcManagedDeltaContract.validate(
+                    TestUtils.protocolWithoutDv(),
+                    null,
+                    TestUtils.propertiesWithoutDv(),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  @Test
+  public void validateWithDvNotRequiredStillEnforcesOtherRequiredFeatures() {
+    DeltaProtocol protocol =
+        new DeltaProtocol()
+            .minReaderVersion(3)
+            .minWriterVersion(7)
+            // catalogManaged intentionally removed
+            .readerFeatures(
+                List.of(
+                    TableFeature.V2_CHECKPOINT.specName(),
+                    TableFeature.VACUUM_PROTOCOL_CHECK.specName()))
+            .writerFeatures(
+                List.of(
+                    TableFeature.V2_CHECKPOINT.specName(),
+                    TableFeature.VACUUM_PROTOCOL_CHECK.specName(),
+                    TableFeature.IN_COMMIT_TIMESTAMP.specName()));
+    assertThatThrownBy(
+            () ->
+                UcManagedDeltaContract.validate(
+                    protocol,
+                    null,
+                    TestUtils.propertiesWithoutDvAndWithIcebergCompatV2(),
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.CATALOG_MANAGED.specName());
+  }
+
+  @Test
+  public void validateWithDvNotRequiredStillEnforcesOtherRequiredProperties() {
+    Map<String, String> props = TestUtils.propertiesWithoutDvAndWithIcebergCompatV2();
+    props.put(TableProperties.CHECKPOINT_POLICY, "v1"); // contract says v2
+    assertThatThrownBy(
+            () ->
+                UcManagedDeltaContract.validate(
+                    TestUtils.protocolWithoutDv(),
+                    null,
+                    props,
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableProperties.CHECKPOINT_POLICY);
   }
 
   // --- fixtures ---
@@ -319,5 +387,13 @@ public class UcManagedDeltaContractTest {
     Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
     return props;
+  }
+
+  /** Delegates to the 4-param overload with default (flag-off) ServerProperties. */
+  private static void validate(
+      DeltaProtocol protocol,
+      DeltaDomainMetadataUpdates domainMetadata,
+      Map<String, String> properties) {
+    UcManagedDeltaContract.validate(protocol, domainMetadata, properties, new ServerProperties());
   }
 }
