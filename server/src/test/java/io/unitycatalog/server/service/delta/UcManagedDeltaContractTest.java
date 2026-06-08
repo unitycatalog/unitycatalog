@@ -13,9 +13,11 @@ import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -273,6 +275,69 @@ public class UcManagedDeltaContractTest {
         .hasMessageContaining(TableProperties.UC_TABLE_ID);
   }
 
+  // ---------- skipDeletionVectorRequirement=true ----------
+
+  @Test
+  public void validateWithDvNotRequiredAcceptsProtocolAndPropertiesWithoutDv() {
+    assertThatCode(
+            () ->
+                UcManagedDeltaContract.validate(
+                    protocolWithoutDv(),
+                    null,
+                    propertiesWithoutDvAndWithIcebergCompatV2(),
+                    serverPropertiesWithAllowMissingDv()))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void validateWithDvRequiredStillRejectsMissingDvFeature() {
+    assertThatThrownBy(
+            () ->
+                UcManagedDeltaContract.validate(
+                    protocolWithoutDv(), null, propertiesWithoutDv(), new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  @Test
+  public void validateWithDvNotRequiredStillEnforcesOtherRequiredFeatures() {
+    DeltaProtocol protocol =
+        new DeltaProtocol()
+            .minReaderVersion(3)
+            .minWriterVersion(7)
+            // catalogManaged intentionally removed
+            .readerFeatures(
+                List.of(
+                    TableFeature.V2_CHECKPOINT.specName(),
+                    TableFeature.VACUUM_PROTOCOL_CHECK.specName()))
+            .writerFeatures(
+                List.of(
+                    TableFeature.V2_CHECKPOINT.specName(),
+                    TableFeature.VACUUM_PROTOCOL_CHECK.specName(),
+                    TableFeature.IN_COMMIT_TIMESTAMP.specName()));
+    assertThatThrownBy(
+            () ->
+                UcManagedDeltaContract.validate(
+                    protocol,
+                    null,
+                    propertiesWithoutDvAndWithIcebergCompatV2(),
+                    serverPropertiesWithAllowMissingDv()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.CATALOG_MANAGED.specName());
+  }
+
+  @Test
+  public void validateWithDvNotRequiredStillEnforcesOtherRequiredProperties() {
+    Map<String, String> props = propertiesWithoutDvAndWithIcebergCompatV2();
+    props.put(TableProperties.CHECKPOINT_POLICY, "v1"); // contract says v2
+    assertThatThrownBy(
+            () ->
+                UcManagedDeltaContract.validate(
+                    protocolWithoutDv(), null, props, serverPropertiesWithAllowMissingDv()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableProperties.CHECKPOINT_POLICY);
+  }
+
   // --- fixtures ---
 
   private static StagingTableInfo sampleStagingInfo() {
@@ -319,5 +384,45 @@ public class UcManagedDeltaContractTest {
     Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
     return props;
+  }
+
+  /** Protocol satisfying all required features except deletionVectors. */
+  private static DeltaProtocol protocolWithoutDv() {
+    return new DeltaProtocol()
+        .minReaderVersion(3)
+        .minWriterVersion(7)
+        .readerFeatures(
+            List.of(
+                TableFeature.CATALOG_MANAGED.specName(),
+                TableFeature.V2_CHECKPOINT.specName(),
+                TableFeature.VACUUM_PROTOCOL_CHECK.specName()))
+        .writerFeatures(
+            List.of(
+                TableFeature.CATALOG_MANAGED.specName(),
+                TableFeature.V2_CHECKPOINT.specName(),
+                TableFeature.VACUUM_PROTOCOL_CHECK.specName(),
+                TableFeature.IN_COMMIT_TIMESTAMP.specName()));
+  }
+
+  /** Properties satisfying all required entries except delta.enableDeletionVectors. */
+  private static Map<String, String> propertiesWithoutDv() {
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
+    props.remove(TableProperties.ENABLE_DELETION_VECTORS);
+    props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
+    return props;
+  }
+
+  /** Same as propertiesWithoutDv() but includes delta.enableIcebergCompatV2=true. */
+  private static Map<String, String> propertiesWithoutDvAndWithIcebergCompatV2() {
+    Map<String, String> props = propertiesWithoutDv();
+    props.put(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true");
+    return props;
+  }
+
+  private static ServerProperties serverPropertiesWithAllowMissingDv() {
+    Properties props = new Properties();
+    props.setProperty(
+        ServerProperties.Property.UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV.getKey(), "true");
+    return new ServerProperties(props);
   }
 }

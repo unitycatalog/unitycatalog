@@ -192,8 +192,8 @@ public class DeltaApiService extends AuthorizedService {
           @AuthorizeKey(key = "table-type")
           DeltaCreateTableRequest request) {
     DeltaCreateTableMapper.Result mapped =
-        DeltaCreateTableMapper.toCreateTable(catalog, schema, request);
-    DeltaLoadTableResponse response = tableRepository.createTableForDelta(
+        DeltaCreateTableMapper.toCreateTable(catalog, schema, request, serverProperties);
+      DeltaLoadTableResponse response = tableRepository.createTableForDelta(
         mapped.createTable(), mapped.uniformIcebergFields());
     // Wire the new table into the auth hierarchy under its schema (mirrors
     // TableService.createTable). MANAGED tables reuse the staging-table UUID, whose auth row

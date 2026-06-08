@@ -295,7 +295,7 @@ public class TableRepository {
           lockTableForDeltaUpdate(session, dao, catalog, schema, table);
           DeltaUpdateTableMapper.checkRequirements(dao, collected);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
-          DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected)
+          DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected, serverProperties)
               .ifPresent(
                   d ->
                       repositories

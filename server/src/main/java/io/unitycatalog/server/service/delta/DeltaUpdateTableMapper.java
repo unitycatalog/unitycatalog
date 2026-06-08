@@ -32,6 +32,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.delta.DeltaConsts.DomainMetadataNames;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.ColumnUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -324,7 +325,8 @@ public final class DeltaUpdateTableMapper {
       Session session,
       TableInfoDAO dao,
       MutablePropertyMap properties,
-      CollectedRequest collected) {
+      CollectedRequest collected,
+      ServerProperties serverProperties) {
     CollectedUpdates c = collected.updates();
     applySchemaAndPartitionColumns(session, dao, c.setSchema, c.setPartitionColumns);
     c.setProtocol.ifPresent(u -> applySetProtocol(properties, u.getProtocol()));
@@ -341,7 +343,7 @@ public final class DeltaUpdateTableMapper {
           DeltaPropertyMapper.synthesizeDomainMetadataFromProperties(properties.asMap());
       if (c.setProtocol.isPresent()) {
         UcManagedDeltaContract.validate(
-            c.setProtocol.get().getProtocol(), effectiveDm, properties.asMap());
+            c.setProtocol.get().getProtocol(), effectiveDm, properties.asMap(), serverProperties);
       } else if (c.setDomainMetadata.isPresent()) {
         UcManagedDeltaContract.validateDomainMetadataAgainstWriterFeatures(
             DeltaPropertyMapper.extractFeaturesFromProperties(properties.asMap()), effectiveDm);

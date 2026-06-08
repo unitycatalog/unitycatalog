@@ -10,6 +10,7 @@ import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ColumnUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,7 +42,8 @@ public final class DeltaCreateTableMapper {
       CreateTable createTable,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformIcebergFields) {}
 
-  public static Result toCreateTable(String catalog, String schema, DeltaCreateTableRequest req) {
+  public static Result toCreateTable(
+      String catalog, String schema, DeltaCreateTableRequest req, ServerProperties serverProperties) {
     if (req == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Request body is required.");
     }
@@ -67,7 +69,7 @@ public final class DeltaCreateTableMapper {
     // client wrote; the Delta log is the source of truth.
     if (tableType == TableType.MANAGED) {
       UcManagedDeltaContract.validate(
-          req.getProtocol(), req.getDomainMetadata(), req.getProperties());
+          req.getProtocol(), req.getDomainMetadata(), req.getProperties(), serverProperties);
     }
 
     // Uniform property/block consistency mirrors the addCommit-time check (shared via

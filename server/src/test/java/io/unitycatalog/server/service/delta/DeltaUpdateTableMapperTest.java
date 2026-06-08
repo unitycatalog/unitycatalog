@@ -14,11 +14,18 @@ import io.unitycatalog.server.delta.model.DeltaSetPropertiesUpdate;
 import io.unitycatalog.server.delta.model.DeltaTableRequirement;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.persist.MutablePropertyMap;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper.CollectedRequest;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -251,6 +258,87 @@ public class DeltaUpdateTableMapperTest {
         .hasMessageContaining("assert-etag failed");
   }
 
+  // ---------- applyUpdates: skipDeletionVectorRequirement flag ----------
+
+  @Test
+  public void applyUpdatesSetProtocolRejectsMissingDvWhenFlagOff() {
+    // Default ServerProperties has allow-missing-dv=false, so DV is required.
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propertiesWithoutDv(),
+                    collectSetProtocolRequest(protocolWithoutDv()),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  @Test
+  public void applyUpdatesSetProtocolAcceptsMissingDvWhenFlagOn() {
+    // allow-missing-dv=true + IcebergCompatV2 property already in existing table properties →
+    // property survives set-protocol (which only replaces delta.feature.* keys), DV check skipped.
+    assertThatCode(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propertiesWithoutDvAndWithIcebergCompatV2(),
+                    collectSetProtocolRequest(protocolWithoutDv()),
+                    serverPropertiesWithAllowMissingDv()))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void applyUpdatesSetProtocolAndPropertiesAcceptsMissingDvWhenPropertyAddedInSameCommit() {
+    // allow-missing-dv=true + existing table has no IcebergCompatV2 property, but the same commit
+    // adds it via set-properties → post-apply properties have it, DV check skipped.
+    assertThatCode(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propertiesWithoutDv(),
+                    collectSetProtocolAndSetPropertiesRequest(
+                        protocolWithoutDv(),
+                        Map.of(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true")),
+                    serverPropertiesWithAllowMissingDv()))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void applyUpdatesSetProtocolStillRequiresDvWhenIcebergCompatV2PropertyAbsent() {
+    // allow-missing-dv=true but delta.enableIcebergCompatV2 not in map → DV still required.
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propertiesWithoutDv(),
+                    collectSetProtocolRequest(protocolWithoutDv()),
+                    serverPropertiesWithAllowMissingDv()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  @Test
+  public void applyUpdatesSetProtocolRejectsMissingDvWhenFlagOffEvenWithIcebergCompatV2Property() {
+    // flag=false, delta.enableIcebergCompatV2 present → DV still required (flag gates the skip).
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propertiesWithoutDvAndWithIcebergCompatV2(),
+                    collectSetProtocolRequest(protocolWithoutDv()),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  // --- fixtures ---
+
   /** Build a {@link CollectedRequest} with the supplied requirements and a no-op update. */
   private static CollectedRequest collectRequestFor(DeltaTableRequirement... requirements) {
     return DeltaUpdateTableMapper.collectRequest(
@@ -261,5 +349,91 @@ public class DeltaUpdateTableMapperTest {
                     new DeltaSetPropertiesUpdate()
                         .updates(Map.of("k", "v"))
                         .action("set-properties"))));
+  }
+
+  private static CollectedRequest collectSetProtocolRequest(DeltaProtocol protocol) {
+    return DeltaUpdateTableMapper.collectRequest(
+        new UpdateTableRequest()
+            .requirements(
+                List.of(new AssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
+            .updates(List.of(new SetProtocolUpdate().protocol(protocol).action("set-protocol"))));
+  }
+
+  private static CollectedRequest collectSetProtocolAndSetPropertiesRequest(
+      DeltaProtocol protocol, Map<String, String> extraProperties) {
+    return DeltaUpdateTableMapper.collectRequest(
+        new UpdateTableRequest()
+            .requirements(
+                List.of(new AssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
+            .updates(
+                List.of(
+                    new SetProtocolUpdate().protocol(protocol).action("set-protocol"),
+                    new SetPropertiesUpdate().updates(extraProperties).action("set-properties"))));
+  }
+
+  private static TableInfoDAO managedDao() {
+    TableInfoDAO dao = new TableInfoDAO();
+    dao.setId(UUID.randomUUID());
+    dao.setType("MANAGED");
+    dao.setUpdatedAt(new Date());
+    return dao;
+  }
+
+  /** UC-managed properties without DV feature or delta.enableDeletionVectors. */
+  private static MutablePropertyMap propertiesWithoutDv() {
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
+    props.remove(TableProperties.ENABLE_DELETION_VECTORS);
+    props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
+    return propsFrom(props);
+  }
+
+  /** Same as propertiesWithoutDv() but includes delta.enableIcebergCompatV2=true. */
+  private static MutablePropertyMap propertiesWithoutDvAndWithIcebergCompatV2() {
+    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
+    props.remove(TableProperties.ENABLE_DELETION_VECTORS);
+    props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
+    props.put(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true");
+    return propsFrom(props);
+  }
+
+  /** Protocol with all required UC-managed features except deletionVectors. */
+  private static DeltaProtocol protocolWithoutDv() {
+    return new DeltaProtocol()
+        .minReaderVersion(3)
+        .minWriterVersion(7)
+        .readerFeatures(
+            List.of(
+                TableFeature.CATALOG_MANAGED.specName(),
+                TableFeature.V2_CHECKPOINT.specName(),
+                TableFeature.VACUUM_PROTOCOL_CHECK.specName()))
+        .writerFeatures(
+            List.of(
+                TableFeature.CATALOG_MANAGED.specName(),
+                TableFeature.V2_CHECKPOINT.specName(),
+                TableFeature.VACUUM_PROTOCOL_CHECK.specName(),
+                TableFeature.IN_COMMIT_TIMESTAMP.specName()));
+  }
+
+  private static ServerProperties serverPropertiesWithAllowMissingDv() {
+    Properties props = new Properties();
+    props.setProperty(
+        ServerProperties.Property.UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV.getKey(), "true");
+    return new ServerProperties(props);
+  }
+
+  private static MutablePropertyMap propsFrom(Map<String, String> map) {
+    UUID id = UUID.randomUUID();
+    List<PropertyDAO> daos =
+        map.entrySet().stream()
+            .map(
+                e ->
+                    PropertyDAO.builder()
+                        .entityId(id)
+                        .entityType("table")
+                        .key(e.getKey())
+                        .value(e.getValue())
+                        .build())
+            .toList();
+    return MutablePropertyMap.wrap(daos);
   }
 }
