@@ -390,7 +390,6 @@ public class UcManagedDeltaContractTest {
     return props;
   }
 
-  /** Protocol satisfying all required features except deletionVectors. */
   /** Delegates to the 4-param overload with default (flag-off) ServerProperties. */
   private static void validate(
       DeltaProtocol protocol,
