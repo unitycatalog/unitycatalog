@@ -8,7 +8,6 @@ import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
-import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -28,19 +27,13 @@ public final class DeltaStagingTableMapper {
    * Builds a {@link DeltaStagingTableResponse} from a freshly-created staging table + credentials.
    */
   public static DeltaStagingTableResponse toStagingTableResponse(
-      StagingTableInfo info, TemporaryCredentials credentials, ServerProperties serverProperties) {
+      StagingTableInfo info, TemporaryCredentials credentials) {
     var creds =
         DeltaCredentialsMapper.toCredentialsResponse(
             info.getStagingLocation(), credentials, DeltaCredentialOperation.READ_WRITE);
 
     Map<String, String> requiredProperties =
         new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
-    // When allow-missing-dv is enabled, omit DV from required so UniForm tables without DVs can
-    // be created. Commit-time validation in UcManagedDeltaContract.validate() still enforces DV
-    // for non-UniForm tables (skipDv=false path).
-    if (serverProperties.isUniformIcebergV2AllowMissingDv()) {
-      requiredProperties.remove(TableProperties.ENABLE_DELETION_VECTORS);
-    }
     // The rule-based property binds the Delta table to the UC-allocated UUID.
     requiredProperties.put(TableProperties.UC_TABLE_ID, info.getId());
     // Engine-generated entries: null on the wire signals "client substitutes at commit time."

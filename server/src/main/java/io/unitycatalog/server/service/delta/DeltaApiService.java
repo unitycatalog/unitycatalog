@@ -161,7 +161,7 @@ public class DeltaApiService extends AuthorizedService {
         storageCredentialVendor.vendCredential(
             stagingLocation,
             Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
-    return DeltaStagingTableMapper.toStagingTableResponse(staging, credentials, serverProperties);
+    return DeltaStagingTableMapper.toStagingTableResponse(staging, credentials);
   }
 
   // ==================== Create Table API ====================

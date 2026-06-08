@@ -37,8 +37,7 @@ public class UcManagedDeltaContractTest {
   @Test
   public void validateAcceptsTheAdvertisedContractRoundTrip() {
     DeltaStagingTableResponse staging =
-        DeltaStagingTableMapper.toStagingTableResponse(
-            sampleStagingInfo(), emptyCredentials(), new ServerProperties());
+        DeltaStagingTableMapper.toStagingTableResponse(sampleStagingInfo(), emptyCredentials());
     DeltaProtocol protocol =
         new DeltaProtocol()
             .minReaderVersion(staging.getRequiredProtocol().getMinReaderVersion())
