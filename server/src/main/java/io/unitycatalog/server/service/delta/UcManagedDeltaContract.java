@@ -97,40 +97,27 @@ public final class UcManagedDeltaContract {
   }
 
   /**
-   * Validates that the supplied protocol, domain-metadata, and properties satisfy the contract:
+   * Validates that the supplied protocol, domain-metadata, and properties satisfy the UC
+   * catalog-managed Delta table contract. Apply only to MANAGED tables; EXTERNAL tables don't go
+   * through staging and don't carry this contract.
+   *
+   * <p>Checks enforced:
    *
    * <ul>
-   *   <li>the protocol's reader-features are a subset of its writer-features (Delta-spec rule);
+   *   <li>reader-features are a subset of writer-features (Delta-spec invariant);
    *   <li>protocol versions meet the required minimums;
    *   <li>every required feature is present in the appropriate wire list;
    *   <li>every declared domain-metadata entry is backed by the matching writer feature;
    *   <li>every fixed-value required property equals the expected value;
-   *   <li>the UC table-id property is set;
-   *   <li>every entry in {@link #ENGINE_GENERATED_PROPERTY_KEYS} (if any) is present with a
-   *       non-null value.
+   *   <li>the UC table-id property is set and non-blank;
+   *   <li>every engine-generated property key ({@link #ENGINE_GENERATED_PROPERTY_KEYS}) is present
+   *       with a non-null value.
    * </ul>
    *
-   * <p>Apply only when the table is UC catalog-managed (i.e. MANAGED). EXTERNAL tables don't go
-   * through staging and don't carry this contract.
-   *
-   * <p>Designed to be called from {@link DeltaCreateTableMapper}, future update / commit mappers,
-   * and anywhere else that needs to assert "this state is a valid UC-managed Delta table state."
-   */
-  public static void validate(
-      DeltaProtocol protocol,
-      DeltaDomainMetadataUpdates domainMetadata,
-      Map<String, String> properties) {
-    validate(protocol, domainMetadata, properties, new ServerProperties());
-  }
-
-  /**
-   * Validates the UC catalog-managed contract, with optional deletion-vector enforcement.
-   *
    * <p>When {@code serverProperties} has {@code
-   * server.managed-table.uniform-iceberg-v2.allow-missing-dv=true} AND the table properties contain
+   * server.managed-table.uniform-iceberg-v2.allow-missing-dv=true} AND {@code properties} contains
    * {@code delta.enableIcebergCompatV2=true}, the {@code deletionVectors} feature and {@code
-   * delta.enableDeletionVectors} property checks are skipped. All other contract requirements
-   * (protocol versions, required features, required properties) remain enforced.
+   * delta.enableDeletionVectors} property checks are skipped. All other checks remain enforced.
    */
   public static void validate(
       DeltaProtocol protocol,

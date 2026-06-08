@@ -27,7 +27,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -271,7 +270,7 @@ public class DeltaUpdateTableMapperTest {
                     null,
                     managedDao(),
                     propertiesWithoutDv(),
-                    collectSetProtocolRequest(protocolWithoutDv()),
+                    collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
                     new ServerProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
@@ -287,8 +286,8 @@ public class DeltaUpdateTableMapperTest {
                     null,
                     managedDao(),
                     propertiesWithoutDvAndWithIcebergCompatV2(),
-                    collectSetProtocolRequest(protocolWithoutDv()),
-                    serverPropertiesWithAllowMissingDv()))
+                    collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
         .doesNotThrowAnyException();
   }
 
@@ -303,9 +302,9 @@ public class DeltaUpdateTableMapperTest {
                     managedDao(),
                     propertiesWithoutDv(),
                     collectSetProtocolAndSetPropertiesRequest(
-                        protocolWithoutDv(),
+                        TestUtils.protocolWithoutDv(),
                         Map.of(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true")),
-                    serverPropertiesWithAllowMissingDv()))
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
         .doesNotThrowAnyException();
   }
 
@@ -318,8 +317,8 @@ public class DeltaUpdateTableMapperTest {
                     null,
                     managedDao(),
                     propertiesWithoutDv(),
-                    collectSetProtocolRequest(protocolWithoutDv()),
-                    serverPropertiesWithAllowMissingDv()))
+                    collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
   }
@@ -333,7 +332,7 @@ public class DeltaUpdateTableMapperTest {
                     null,
                     managedDao(),
                     propertiesWithoutDvAndWithIcebergCompatV2(),
-                    collectSetProtocolRequest(protocolWithoutDv()),
+                    collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
                     new ServerProperties()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
@@ -401,31 +400,6 @@ public class DeltaUpdateTableMapperTest {
     props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
     props.put(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true");
     return propsFrom(props);
-  }
-
-  /** Protocol with all required UC-managed features except deletionVectors. */
-  private static DeltaProtocol protocolWithoutDv() {
-    return new DeltaProtocol()
-        .minReaderVersion(3)
-        .minWriterVersion(7)
-        .readerFeatures(
-            List.of(
-                TableFeature.CATALOG_MANAGED.specName(),
-                TableFeature.V2_CHECKPOINT.specName(),
-                TableFeature.VACUUM_PROTOCOL_CHECK.specName()))
-        .writerFeatures(
-            List.of(
-                TableFeature.CATALOG_MANAGED.specName(),
-                TableFeature.V2_CHECKPOINT.specName(),
-                TableFeature.VACUUM_PROTOCOL_CHECK.specName(),
-                TableFeature.IN_COMMIT_TIMESTAMP.specName()));
-  }
-
-  private static ServerProperties serverPropertiesWithAllowMissingDv() {
-    Properties props = new Properties();
-    props.setProperty(
-        ServerProperties.Property.UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV.getKey(), "true");
-    return new ServerProperties(props);
   }
 
   private static MutablePropertyMap propsFrom(Map<String, String> map) {

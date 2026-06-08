@@ -7,7 +7,9 @@ import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -34,7 +36,8 @@ public class DeltaStagingTableMapperTest {
                     .sessionToken("tok"))
             .expirationTime(1700000000000L);
 
-    DeltaStagingTableResponse resp = DeltaStagingTableMapper.toStagingTableResponse(info, creds);
+    DeltaStagingTableResponse resp =
+        DeltaStagingTableMapper.toStagingTableResponse(info, creds, new ServerProperties());
 
     assertThat(resp.getTableId()).isEqualTo(UUID.fromString(info.getId()));
     assertThat(resp.getTableType()).isEqualTo(DeltaTableType.MANAGED);
@@ -65,7 +68,7 @@ public class DeltaStagingTableMapperTest {
   public void testNullPropertyValuesSurviveRoundTrip() throws Exception {
     DeltaStagingTableResponse resp =
         DeltaStagingTableMapper.toStagingTableResponse(
-            sampleStagingInfo(), new TemporaryCredentials());
+            sampleStagingInfo(), new TemporaryCredentials(), new ServerProperties());
 
     String json = DeltaApiMappers.MAPPER.writeValueAsString(resp);
 
@@ -85,5 +88,31 @@ public class DeltaStagingTableMapperTest {
         .containsEntry(
             TableProperties.ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME, null)
         .containsEntry(TableProperties.ENABLE_ROW_TRACKING, "true");
+  }
+
+  @Test
+  public void allowMissingDvFlagOffIncludesDvInRequiredProperties() {
+    DeltaStagingTableResponse resp =
+        DeltaStagingTableMapper.toStagingTableResponse(
+            sampleStagingInfo(), new TemporaryCredentials(), new ServerProperties());
+
+    assertThat(resp.getRequiredProperties())
+        .containsEntry(TableProperties.ENABLE_DELETION_VECTORS, "true");
+    assertThat(resp.getRequiredProtocol().getWriterFeatures())
+        .contains(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  @Test
+  public void allowMissingDvFlagOnOmitsDvFromRequiredProperties() {
+    ServerProperties serverProperties = TestUtils.serverPropertiesWithAllowMissingDv();
+
+    DeltaStagingTableResponse resp =
+        DeltaStagingTableMapper.toStagingTableResponse(
+            sampleStagingInfo(), new TemporaryCredentials(), serverProperties);
+
+    assertThat(resp.getRequiredProperties())
+        .doesNotContainKey(TableProperties.ENABLE_DELETION_VECTORS);
+    assertThat(resp.getRequiredProtocol().getWriterFeatures())
+        .contains(TableFeature.DELETION_VECTORS.specName());
   }
 }

@@ -19,7 +19,6 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -93,7 +92,7 @@ public class DeltaCreateTableMapperTest {
                     "cat",
                     "sch",
                     uniformV2RequestWithoutDv(),
-                    serverPropertiesWithAllowMissingDv()))
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
         .doesNotThrowAnyException();
   }
 
@@ -105,7 +104,7 @@ public class DeltaCreateTableMapperTest {
     assertThatThrownBy(
             () ->
                 DeltaCreateTableMapper.toCreateTable(
-                    "cat", "sch", req, serverPropertiesWithAllowMissingDv()))
+                    "cat", "sch", req, TestUtils.serverPropertiesWithAllowMissingDv()))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
   }
@@ -191,13 +190,6 @@ public class DeltaCreateTableMapperTest {
 
   private static String featureKey(String feature) {
     return TableProperties.FEATURE_PREFIX + feature;
-  }
-
-  private static ServerProperties serverPropertiesWithAllowMissingDv() {
-    Properties props = new Properties();
-    props.setProperty(
-        ServerProperties.Property.UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV.getKey(), "true");
-    return new ServerProperties(props);
   }
 
   /**
