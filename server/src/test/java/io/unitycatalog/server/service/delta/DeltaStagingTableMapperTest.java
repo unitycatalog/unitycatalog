@@ -34,8 +34,7 @@ public class DeltaStagingTableMapperTest {
                     .sessionToken("tok"))
             .expirationTime(1700000000000L);
 
-    DeltaStagingTableResponse resp =
-        DeltaStagingTableMapper.toStagingTableResponse(info, creds);
+    DeltaStagingTableResponse resp = DeltaStagingTableMapper.toStagingTableResponse(info, creds);
 
     assertThat(resp.getTableId()).isEqualTo(UUID.fromString(info.getId()));
     assertThat(resp.getTableType()).isEqualTo(DeltaTableType.MANAGED);
@@ -87,5 +86,4 @@ public class DeltaStagingTableMapperTest {
             TableProperties.ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME, null)
         .containsEntry(TableProperties.ENABLE_ROW_TRACKING, "true");
   }
-
 }
