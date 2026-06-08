@@ -845,6 +845,21 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     List<ColumnInfo> columns = tableInfo.getColumns();
     assertThat(columns).hasSize(cols.size());
 
+    // Explicit coverage that columnMapping IS enabled on the managed Delta 4.3+ path. The
+    // per-column equality below strips `delta.columnMapping.{id,physicalName}` before
+    // comparing, so without this check a future Delta change that stops emitting those fields
+    // would silently pass. (The `__CHAR_VARCHAR_TYPE_STRING` marker doesn't need a separate
+    // assertion: it's kept in the expected typeJson via `charVarcharMetadata` and verified by
+    // the same equality.)
+    if (isManagedTable() && testingDelta()) {
+      for (ColumnInfo col : columns) {
+        assertThat(col.getTypeJson())
+            .as("columnMapping metadata for %s", col.getName())
+            .contains("\"delta.columnMapping.id\"")
+            .contains("\"delta.columnMapping.physicalName\"");
+      }
+    }
+
     for (int i = 0; i < cols.size(); i++) {
       ColSpec spec = cols.get(i);
       if (spec.getTypeName() == ColumnTypeName.BINARY) {
