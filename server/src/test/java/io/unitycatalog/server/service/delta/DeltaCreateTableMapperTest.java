@@ -11,6 +11,7 @@ import io.unitycatalog.server.delta.model.DeltaStructField;
 import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableType;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -73,16 +74,6 @@ public class DeltaCreateTableMapperTest {
     assertThat(created.getTableType()).isEqualTo(io.unitycatalog.server.model.TableType.EXTERNAL);
   }
 
-  @Test
-  public void unsupportedDataSourceFormatRejected() {
-    // Use EXTERNAL so the contract gate doesn't fire first; the format gate is what's under test.
-    CreateTableRequest req = baseExternalRequest().dataSourceFormat(DataSourceFormat.ICEBERG);
-    assertThatThrownBy(
-            () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
-        .isInstanceOf(BaseException.class)
-        .hasMessageContaining("Unsupported data-source-format");
-  }
-
   // ---------- allowMissingDvForUniformV2 flag ----------
 
   @Test
@@ -109,7 +100,7 @@ public class DeltaCreateTableMapperTest {
   @Test
   public void allowMissingDvFlagDoesNotSkipDvWithoutIcebergCompatV2Property() {
     // UniForm Iceberg enabled but delta.enableIcebergCompatV2 not set -- DV is still required.
-    CreateTableRequest req = uniformV2RequestWithoutDv();
+    DeltaCreateTableRequest req = uniformV2RequestWithoutDv();
     req.getProperties().remove(TableProperties.ENABLE_ICEBERG_COMPAT_V2);
     assertThatThrownBy(
             () ->
@@ -122,7 +113,7 @@ public class DeltaCreateTableMapperTest {
   @Test
   public void allowMissingDvFlagOffRejectsMissingDvWithoutIcebergCompatV2Property() {
     // flag=false, no delta.enableIcebergCompatV2 -- DV is required regardless.
-    CreateTableRequest req = uniformV2RequestWithoutDv();
+    DeltaCreateTableRequest req = uniformV2RequestWithoutDv();
     req.getProperties().remove(TableProperties.ENABLE_ICEBERG_COMPAT_V2);
     assertThatThrownBy(
             () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
@@ -214,7 +205,7 @@ public class DeltaCreateTableMapperTest {
    * delta.universalFormat.enabledFormats. Omits DV feature and property. Used to test that the
    * allowMissingDvForUniformV2 flag skips DV enforcement based solely on IcebergCompatV2.
    */
-  private static CreateTableRequest uniformV2RequestWithoutDv() {
+  private static DeltaCreateTableRequest uniformV2RequestWithoutDv() {
     Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.remove(TableProperties.ENABLE_DELETION_VECTORS);
     props.put(TableProperties.UC_TABLE_ID, "uuid-uniform-v2");
@@ -236,11 +227,10 @@ public class DeltaCreateTableMapperTest {
                     TableFeature.VACUUM_PROTOCOL_CHECK.specName(),
                     TableFeature.IN_COMMIT_TIMESTAMP.specName()));
 
-    return new CreateTableRequest()
+    return new DeltaCreateTableRequest()
         .name("tbl")
         .location("s3://b/p")
-        .tableType(TableType.MANAGED)
-        .dataSourceFormat(DataSourceFormat.DELTA)
+        .tableType(DeltaTableType.MANAGED)
         .columns(simpleColumns())
         .protocol(protocol)
         .properties(props)

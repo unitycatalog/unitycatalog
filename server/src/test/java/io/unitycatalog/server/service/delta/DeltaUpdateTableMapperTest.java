@@ -7,10 +7,12 @@ import io.unitycatalog.server.delta.model.DeltaAssertEtag;
 import io.unitycatalog.server.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.server.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaRemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaRemovePropertiesUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetPropertiesUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetProtocolUpdate;
 import io.unitycatalog.server.delta.model.DeltaTableRequirement;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
@@ -353,22 +355,27 @@ public class DeltaUpdateTableMapperTest {
 
   private static CollectedRequest collectSetProtocolRequest(DeltaProtocol protocol) {
     return DeltaUpdateTableMapper.collectRequest(
-        new UpdateTableRequest()
+        new DeltaUpdateTableRequest()
             .requirements(
-                List.of(new AssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
-            .updates(List.of(new SetProtocolUpdate().protocol(protocol).action("set-protocol"))));
+                List.of(
+                    new DeltaAssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
+            .updates(
+                List.of(new DeltaSetProtocolUpdate().protocol(protocol).action("set-protocol"))));
   }
 
   private static CollectedRequest collectSetProtocolAndSetPropertiesRequest(
       DeltaProtocol protocol, Map<String, String> extraProperties) {
     return DeltaUpdateTableMapper.collectRequest(
-        new UpdateTableRequest()
+        new DeltaUpdateTableRequest()
             .requirements(
-                List.of(new AssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
+                List.of(
+                    new DeltaAssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
             .updates(
                 List.of(
-                    new SetProtocolUpdate().protocol(protocol).action("set-protocol"),
-                    new SetPropertiesUpdate().updates(extraProperties).action("set-properties"))));
+                    new DeltaSetProtocolUpdate().protocol(protocol).action("set-protocol"),
+                    new DeltaSetPropertiesUpdate()
+                        .updates(extraProperties)
+                        .action("set-properties"))));
   }
 
   private static TableInfoDAO managedDao() {

@@ -43,7 +43,10 @@ public final class DeltaCreateTableMapper {
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformIcebergFields) {}
 
   public static Result toCreateTable(
-      String catalog, String schema, DeltaCreateTableRequest req, ServerProperties serverProperties) {
+      String catalog,
+      String schema,
+      DeltaCreateTableRequest req,
+      ServerProperties serverProperties) {
     if (req == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Request body is required.");
     }

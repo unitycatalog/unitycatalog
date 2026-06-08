@@ -68,7 +68,7 @@ public final class DeltaUniformUtils {
 
   /** True when {@code properties} has {@code delta.enableIcebergCompatV2 = "true"}. */
   public static boolean isIcebergCompatV2Enabled(Map<String, String> properties) {
-      return "true".equals(properties.get(DeltaConsts.TableProperties.ENABLE_ICEBERG_COMPAT_V2));
+    return "true".equals(properties.get(DeltaConsts.TableProperties.ENABLE_ICEBERG_COMPAT_V2));
   }
 
   /**

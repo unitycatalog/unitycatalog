@@ -134,7 +134,7 @@ public final class UcManagedDeltaContract {
    */
   public static void validate(
       DeltaProtocol protocol,
-      DomainMetadataUpdates domainMetadata,
+      DeltaDomainMetadataUpdates domainMetadata,
       Map<String, String> properties,
       ServerProperties serverProperties) {
     boolean skipDv =
