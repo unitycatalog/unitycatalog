@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
 
     # Build a human-readable job name from the matrix entry, e.g.:
-    #   "All tests (Spark 4.0.0, Delta 4.1.0)"
+    #   "All tests (Spark 4.0.0, Delta 4.2.0)"
     #   "[Non Blocking] Spark tests (Spark 4.2.0-preview5, Delta master-SNAPSHOT)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
@@ -31,14 +31,14 @@ jobs:
       matrix:
         include:
           - spark-version: "4.0.0"
-            delta-version: "4.1.0"
+            delta-version: "4.2.0"
             # This is the primary combo: runs ALL tests (unit, spark, license).
             # Other combos run only spark connector tests since unit tests and
             # license checks don't depend on Spark/Delta versions.
             validation-mode: "all-tests"
             non-blocking: false
           - spark-version: "4.1.0"
-            delta-version: "4.1.0"
+            delta-version: "4.2.0"
             validation-mode: "spark-tests"
             non-blocking: false
           - spark-version: "4.1.0"

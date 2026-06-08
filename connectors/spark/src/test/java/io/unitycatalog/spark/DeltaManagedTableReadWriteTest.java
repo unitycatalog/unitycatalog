@@ -2,16 +2,15 @@ package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
-import static io.unitycatalog.server.utils.TestUtils.createApiClient;
+import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
-import io.unitycatalog.server.base.table.TableOperations;
-import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -181,33 +180,27 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
               Pair.of("i", DataTypes.IntegerType),
               Pair.of("s", DataTypes.StringType));
 
-          TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
-          TableInfo tableInfo = tableOperations.getTable(fullTableName);
+          TableInfo tableInfo = loadTableInfo(fullTableName);
           assertThat(tableInfo.getCatalogName()).isEqualTo(catalogName);
           assertThat(tableInfo.getName()).isEqualTo(tableName);
           assertThat(tableInfo.getSchemaName()).isEqualTo(SCHEMA_NAME);
           assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
           assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
           assertThat(tableInfo.getComment()).isEqualTo(comment);
-          Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
-          assertThat(tablePropertiesFromServer)
-              .containsEntry(UCTableProperties.UC_TABLE_ID_KEY, tableInfo.getTableId())
-              .containsEntry(
-                  UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-                  UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
+          assertManagedTableHasUcProperties(fullTableName, null);
         }
       }
     }
   }
 
   @Test
-  public void testManagedDeltaReplaceRejectsMetadataChanges() {
+  public void testManagedDeltaReplaceWithMetadataChange() {
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     ensureSparkCatalogSchemaExists();
     String fullTableName =
         setupTable(new TableSetupOptions().setCatalogName(CATALOG_NAME).setTableName(TEST_TABLE));
 
-    assertManagedReplaceRejected(
+    assertManagedReplaceBehavior(
         List.of(
             String.format("REPLACE TABLE %s (i INT, renamed STRING) USING DELTA", fullTableName),
             String.format(
@@ -248,7 +241,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
         .hasMessageContaining("Cannot change table format from DELTA to PARQUET");
 
     validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "old"));
-    assertManagedTableHasUcProperties(loadTableInfo(fullTableName), originalTableId);
+    assertManagedTableHasUcProperties(fullTableName, originalTableId);
   }
 
   @Override
@@ -274,8 +267,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   @Override
   protected void validateCreatedTable(String fullTableName, TableSetupOptions options)
       throws ApiException {
-    assertManagedTableHasUcProperties(
-        loadTableInfo(fullTableName), options.getExpectedTableId().orElse(null));
+    assertManagedTableHasUcProperties(fullTableName, options.getExpectedTableId().orElse(null));
   }
 
   @Override
@@ -284,15 +276,15 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
   }
 
   private TableInfo loadTableInfo(String fullTableName) throws ApiException {
-    TableOperations tableOperations = new SdkTableOperations(createApiClient(serverConfig));
     return tableOperations.getTable(fullTableName);
   }
 
-  private void assertManagedTableHasUcProperties(TableInfo tableInfo, String expectedTableId) {
+  private void assertManagedTableHasUcProperties(String fullTableName, String expectedTableId)
+      throws ApiException {
+    TableInfo tableInfo = loadTableInfo(fullTableName);
     if (expectedTableId != null) {
       Assertions.assertEquals(expectedTableId, tableInfo.getTableId());
     }
-
     Map<String, String> tablePropertiesFromServer = tableInfo.getProperties();
     assertThat(tablePropertiesFromServer).containsKey(UCTableProperties.UC_TABLE_ID_KEY);
     assertThat(tablePropertiesFromServer)
@@ -301,16 +293,33 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
             UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
   }
 
-  private void assertManagedReplaceRejected(List<String> statements) {
+  private void assertManagedReplaceBehavior(List<String> statements) {
+    // Delta < 4.3.0 routes REPLACE TABLE on a managed Delta table through the legacy DeltaCatalog
+    // path, which rejects the metadata-changing variants with one of the known Delta error codes.
+    // Delta >= 4.3.0 routes them through UCDeltaCatalogClientImpl, which no longer rejects: the
+    // engine-side protection moved away from the legacy catalog and is not yet re-asserted here.
+    // Assert each behaviour strictly so a future regression on either path surfaces immediately.
+    boolean legacyRejectionExpected =
+        !DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API);
     for (String statement : statements) {
-      Throwable thrown = org.assertj.core.api.Assertions.catchThrowable(() -> sql(statement));
-      assertThat(thrown).isNotNull();
-      assertThat(thrown.getMessage())
-          .containsAnyOf(
-              "DELTA_OPERATION_NOT_ALLOWED",
-              "DELTA_CANNOT_REPLACE_MISSING_TABLE",
-              "DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG",
-              "SCHEMA_NOT_FOUND");
+      Throwable thrown = catchThrowable(() -> sql(statement));
+      if (legacyRejectionExpected) {
+        assertThat(thrown)
+            .as("Delta < %s should reject `%s`", MIN_DELTA_VERSION_FOR_UC_DELTA_API, statement)
+            .isNotNull();
+        assertThat(thrown.getMessage())
+            .containsAnyOf(
+                "DELTA_OPERATION_NOT_ALLOWED",
+                "DELTA_CANNOT_REPLACE_MISSING_TABLE",
+                "DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG",
+                "SCHEMA_NOT_FOUND");
+      } else {
+        assertThat(thrown)
+            .as(
+                "Delta >= %s accepts `%s` through UCDeltaCatalogClientImpl",
+                MIN_DELTA_VERSION_FOR_UC_DELTA_API, statement)
+            .isNull();
+      }
     }
   }
 

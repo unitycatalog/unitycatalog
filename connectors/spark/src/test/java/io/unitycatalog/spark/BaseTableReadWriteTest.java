@@ -3,6 +3,7 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
+import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -247,8 +248,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   protected final boolean canUpdateColumnsToUC() {
     if (tableFormat().equalsIgnoreCase("DELTA")) {
       // Delta external tables don't update columns to UC yet.
-      // Delta managed tables can update columns starting from Delta 4.2.
-      return isManagedTable() && DeltaVersionUtils.isDeltaAtLeast("4.2.0");
+      // Delta managed tables can update columns starting from Delta 4.3.
+      return isManagedTable()
+          && DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API);
     }
     return true;
   }
@@ -481,9 +483,21 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       sql("DROP TABLE %s", fullTableName);
       assertThat(session.catalog().tableExists(fullTableName)).isFalse();
     }
+    // Delta < 4.3.0 forwards the 4-part identifier to UC, which rejects it server-side with
+    // ApiException("Nested namespaces are not supported"). Delta >= 4.3.0 ships
+    // UCDeltaCatalogClientImpl, which rejects the same input client-side with
+    // IllegalArgumentException("UC table identifier must be one of ...") before reaching UC.
+    boolean rejectedClientSide =
+        DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API);
+    Class<? extends Throwable> expectedType =
+        rejectedClientSide ? IllegalArgumentException.class : ApiException.class;
+    String expectedMessage =
+        rejectedClientSide
+            ? "UC table identifier must be one of"
+            : "Nested namespaces are not supported";
     assertThatThrownBy(() -> sql("DROP TABLE a.b.c.d"))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Nested namespaces are not supported");
+        .isInstanceOf(expectedType)
+        .hasMessageContaining(expectedMessage);
   }
 
   // With page size 2 and 3 tables, pagination must occur (2 API calls) for all 3 to be returned.
@@ -614,7 +628,8 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     return "{}";
   }
 
-  // Currently this test only works for non-Delta tables. Later it will work for more.
+  // Runs whenever the test's column-set roundtrips cleanly to UC: non-Delta tables always, and
+  // managed Delta tables only with Delta version >=4.3. Delta external tables are still excluded.
   @Test
   @EnabledIf("canUpdateColumnsToUC")
   public void testTableWithSupportedDataTypes() throws ApiException {
@@ -627,6 +642,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
         "{\"type\":\"struct\",\"fields\":["
             + "{\"name\":\"a\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}},"
             + "{\"name\":\"b\",\"type\":\"string\",\"nullable\":true,\"metadata\":{}}]}";
+    // Delta normalizes CHAR(n)/VARCHAR(n) to STRING and tags the column with the
+    // __CHAR_VARCHAR_TYPE_STRING marker; Parquet preserves the original types. The CHAR/VARCHAR
+    // specs below inline `testingDelta() ? ... : ...` directly to pick the right expected shape.
     List<ColSpec> cols =
         List.of(
             new ColSpec(
@@ -687,21 +705,21 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "CHAR(10)",
                 "'char_test'",
                 "char_test ",
-                ColumnTypeName.CHAR,
-                "char(10)",
+                testingDelta() ? ColumnTypeName.STRING : ColumnTypeName.CHAR,
+                testingDelta() ? "string" : "char(10)",
                 true,
                 charVarcharMetadata("char(10)"),
-                "\"char(10)\""),
+                testingDelta() ? "\"string\"" : "\"char(10)\""),
             new ColSpec(
                 "col_varchar",
                 "VARCHAR(20)",
                 "'varchar_test'",
                 "varchar_test",
                 ColumnTypeName.STRING,
-                "varchar(20)",
+                testingDelta() ? "string" : "varchar(20)",
                 true,
                 charVarcharMetadata("varchar(20)"),
-                "\"varchar(20)\""),
+                testingDelta() ? "\"string\"" : "\"varchar(20)\""),
             new ColSpec(
                 "col_binary",
                 "BINARY",
@@ -846,7 +864,11 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       assertThat(col.getNullable())
           .as("nullable for %s", spec.getName())
           .isEqualTo(spec.isNullable());
-      assertThat(col.getTypeJson())
+      // Delta >= 4.3.0 enables columnMapping by default on managed Delta tables, which injects
+      // `delta.columnMapping.id` and `delta.columnMapping.physicalName` into per-column metadata
+      // that the test fixtures do not carry. The strip is a no-op when those keys are absent
+      // (older Delta and non-Delta), so apply it unconditionally and keep the equality strict.
+      assertThat(stripColumnMappingMetadata(col.getTypeJson()))
           .as("typeJson for %s", spec.getName())
           .isEqualTo(spec.getTypeJson());
       int partitionIndex = partitionColumns.indexOf(col.getName());
@@ -856,6 +878,28 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
         assertThat(col.getPartitionIndex()).isNull();
       }
     }
+  }
+
+  /**
+   * Strips `delta.columnMapping.id` and `delta.columnMapping.physicalName` entries from the
+   * `metadata` object inside a column typeJson string. Delta managed tables on Delta 4.3+ enable
+   * columnMapping by default, which injects those auto-generated entries; the test fixtures don't
+   * carry them, so we drop them before comparing.
+   *
+   * <p>A single greedy "preceding-or-trailing comma" regex would over-strip when the columnMapping
+   * entry sits between two siblings (e.g. {@code "a":1,"delta.columnMapping.id":2,"b":3} would
+   * collapse to {@code "a":1"b":3}, losing the separator). So strip in two phases: first remove the
+   * entry together with its leading comma (handles entries that follow another key), then remove
+   * any remaining entry together with its trailing comma (handles the "first entry" fallback).
+   * Anything still left is a lone entry inside an otherwise-empty metadata object, which the final
+   * pass removes standalone.
+   */
+  private static String stripColumnMappingMetadata(String typeJson) {
+    if (typeJson == null) return null;
+    String entry = "\"delta\\.columnMapping\\.[A-Za-z]+\"\\s*:\\s*(?:\"[^\"]*\"|-?\\d+)";
+    String s = typeJson.replaceAll(",\\s*" + entry, "");
+    s = s.replaceAll(entry + "\\s*,", "");
+    return s.replaceAll(entry, "");
   }
 
   protected String quoteEntityName(String entityName) {
