@@ -481,9 +481,10 @@ public class ServerProperties {
   }
 
   /**
-   * Returns true when the server is configured to allow creation of IcebergCompatV2 tables ({@code
-   * delta.enableIcebergCompatV2 == true}) without requiring deletion vectors. Set {@code
-   * server.managed-table.uniform-iceberg-v2.allow-missing-dv=true} in server.properties to enable.
+   * Returns true when the server is configured to allow creation and writing of IcebergCompatV2
+   * tables ({@code delta.enableIcebergCompatV2=true}) without requiring deletion vectors. Set
+   * {@code server.managed-table.uniform-iceberg-v2.allow-missing-dv=true} in server.properties to
+   * enable.
    */
   public boolean isUniformIcebergV2AllowMissingDv() {
     return isTrueOrEnable(get(Property.UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV));
