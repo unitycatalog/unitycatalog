@@ -112,7 +112,9 @@ public class DeltaStagingTableMapperTest {
 
     assertThat(resp.getRequiredProperties())
         .doesNotContainKey(TableProperties.ENABLE_DELETION_VECTORS);
+    assertThat(resp.getRequiredProtocol().getReaderFeatures())
+        .doesNotContain(TableFeature.DELETION_VECTORS.specName());
     assertThat(resp.getRequiredProtocol().getWriterFeatures())
-        .contains(TableFeature.DELETION_VECTORS.specName());
+        .doesNotContain(TableFeature.DELETION_VECTORS.specName());
   }
 }

@@ -24,7 +24,6 @@ import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper.CollectedRequest;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -269,7 +268,7 @@ public class DeltaUpdateTableMapperTest {
                 DeltaUpdateTableMapper.applyUpdates(
                     null,
                     managedDao(),
-                    propertiesWithoutDv(),
+                    propsFrom(TestUtils.propertiesWithoutDv()),
                     collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
                     new ServerProperties()))
         .isInstanceOf(BaseException.class)
@@ -285,7 +284,7 @@ public class DeltaUpdateTableMapperTest {
                 DeltaUpdateTableMapper.applyUpdates(
                     null,
                     managedDao(),
-                    propertiesWithoutDvAndWithIcebergCompatV2(),
+                    propsFrom(TestUtils.propertiesWithoutDvAndWithIcebergCompatV2()),
                     collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
                     TestUtils.serverPropertiesWithAllowMissingDv()))
         .doesNotThrowAnyException();
@@ -300,7 +299,7 @@ public class DeltaUpdateTableMapperTest {
                 DeltaUpdateTableMapper.applyUpdates(
                     null,
                     managedDao(),
-                    propertiesWithoutDv(),
+                    propsFrom(TestUtils.propertiesWithoutDv()),
                     collectSetProtocolAndSetPropertiesRequest(
                         TestUtils.protocolWithoutDv(),
                         Map.of(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true")),
@@ -316,7 +315,7 @@ public class DeltaUpdateTableMapperTest {
                 DeltaUpdateTableMapper.applyUpdates(
                     null,
                     managedDao(),
-                    propertiesWithoutDv(),
+                    propsFrom(TestUtils.propertiesWithoutDv()),
                     collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
                     TestUtils.serverPropertiesWithAllowMissingDv()))
         .isInstanceOf(BaseException.class)
@@ -331,7 +330,7 @@ public class DeltaUpdateTableMapperTest {
                 DeltaUpdateTableMapper.applyUpdates(
                     null,
                     managedDao(),
-                    propertiesWithoutDvAndWithIcebergCompatV2(),
+                    propsFrom(TestUtils.propertiesWithoutDvAndWithIcebergCompatV2()),
                     collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
                     new ServerProperties()))
         .isInstanceOf(BaseException.class)
@@ -383,23 +382,6 @@ public class DeltaUpdateTableMapperTest {
     dao.setType("MANAGED");
     dao.setUpdatedAt(new Date());
     return dao;
-  }
-
-  /** UC-managed properties without DV feature or delta.enableDeletionVectors. */
-  private static MutablePropertyMap propertiesWithoutDv() {
-    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
-    props.remove(TableProperties.ENABLE_DELETION_VECTORS);
-    props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
-    return propsFrom(props);
-  }
-
-  /** Same as propertiesWithoutDv() but includes delta.enableIcebergCompatV2=true. */
-  private static MutablePropertyMap propertiesWithoutDvAndWithIcebergCompatV2() {
-    Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
-    props.remove(TableProperties.ENABLE_DELETION_VECTORS);
-    props.put(TableProperties.UC_TABLE_ID, UUID.randomUUID().toString());
-    props.put(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true");
-    return propsFrom(props);
   }
 
   private static MutablePropertyMap propsFrom(Map<String, String> map) {
