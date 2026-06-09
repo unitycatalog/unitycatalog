@@ -14,7 +14,13 @@ on:
 permissions:
   contents: read
 
+# Every PR runs three lanes:
+# 1. prepare_spark_source_cache: resolve the Spark SHA from project/spark-versions.json,
+#    restore the exact Maven cache, and build/save Spark on cache miss.
+# 2. test: normal published Spark/Delta combos (4.0/4.1) without waiting on step 1.
+# 3. source-spark-test: Spark 4.2 + Delta master-SNAPSHOT using the prepared cache.
 jobs:
+  # Warms ~/.m2/repository/org/apache/spark once per PR for the metadata-owned Spark SHA.
   prepare_spark_source_cache:
     name: Prepare Spark 4.2.0-SNAPSHOT source cache
     runs-on: ubuntu-latest
@@ -47,6 +53,7 @@ jobs:
     - name: Compute Spark Maven cache key
       id: spark-cache-key
       run: |
+        # Key is exact and has no restore-keys: a different SHA or build script must not reuse this cache.
         echo "cache_key=spark-m2-ubuntu-latest-scala-2.13-${{ steps.spark-source.outputs.spark_version }}-${{ steps.spark-source.outputs.artifact_base_version }}-${{ steps.spark-source.outputs.spark_sha }}-${{ hashFiles('project/scripts/build_spark.sh') }}" >> "$GITHUB_OUTPUT"
 
     - name: Restore Spark Maven cache
@@ -74,12 +81,13 @@ jobs:
         path: ~/.m2/repository/org/apache/spark
         key: ${{ steps.spark-cache-key.outputs.cache_key }}
 
+  # Published Spark artifacts only. This job does not depend on prepare_spark_source_cache.
   test:
     runs-on: ubuntu-latest
 
     # Build a human-readable job name from the matrix entry, e.g.:
     #   "All tests (Spark 4.0.0, Delta 4.2.0)"
-    #   "[Non Blocking] Spark tests (Spark 4.2.0-SNAPSHOT, Delta master-SNAPSHOT)"
+    #   "[Non Blocking] Spark tests (Spark 4.1.0, Delta master-SNAPSHOT)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
       ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
@@ -160,6 +168,7 @@ jobs:
       if: matrix.validation-mode == 'all-tests'
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck
 
+  # Validates the source-built Spark lane for every PR using the SHA in this branch's metadata.
   source-spark-test:
     name: "[Non Blocking] Spark tests (Spark 4.2.0-SNAPSHOT, Delta master-SNAPSHOT)"
     runs-on: ubuntu-latest
@@ -180,6 +189,7 @@ jobs:
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.m2/repository/org/apache/spark
+        # Reuse the exact cache key produced by prepare_spark_source_cache.
         key: ${{ needs.prepare_spark_source_cache.outputs.cache_key }}
 
     - name: Verify restored Spark Maven artifacts
@@ -203,6 +213,7 @@ jobs:
           echo "The Spark cache was restored, but it does not contain the expected Maven artifacts."
           exit 1
         fi
+        # build_delta.sh and sbt read these to resolve the commit-qualified Spark artifacts.
         echo "SPARK_COMMIT=${{ needs.prepare_spark_source_cache.outputs.spark_sha }}" >> "$GITHUB_ENV"
         echo "SPARK_ARTIFACT_VERSION=$SPARK_ARTIFACT_VERSION" >> "$GITHUB_ENV"
 
