@@ -197,9 +197,11 @@ public class ServerProperties {
     CLIENT_SECRET("server.client-secret"),
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
-    MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false", BOOLEAN_VALIDATOR),
+    MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     MANAGED_TABLE_USE_DELTA_API_ONLY(
         "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
+    UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV(
+        "server.managed-table.uniform-iceberg-v2.allow-missing-dv", "false", BOOLEAN_VALIDATOR),
     // `storage-root.*` are replaced by managed storage locations of catalog and schema.
     MODEL_STORAGE_ROOT("storage-root.models", STORAGE_PATH_VALIDATOR), // Deprecated
     TABLE_STORAGE_ROOT("storage-root.tables", STORAGE_PATH_VALIDATOR), // Deprecated
@@ -451,8 +453,8 @@ public class ServerProperties {
     if (!isTrueOrEnable(get(Property.MANAGED_TABLE_ENABLED))) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "MANAGED table is an experimental feature and is currently disabled. "
-              + "To enable it, set 'server.managed-table.enabled=true' in server.properties");
+          "MANAGED table is an is currently disabled. To enable it, set "
+              + "'server.managed-table.enabled=true' in server.properties");
     }
   }
 
@@ -476,6 +478,16 @@ public class ServerProperties {
               + deltaEndpoint
               + " instead.");
     }
+  }
+
+  /**
+   * Returns true when the server is configured to allow creation and writing of IcebergCompatV2
+   * tables ({@code delta.enableIcebergCompatV2=true}) without requiring deletion vectors. Set
+   * {@code server.managed-table.uniform-iceberg-v2.allow-missing-dv=true} in server.properties to
+   * enable.
+   */
+  public boolean isUniformIcebergV2AllowMissingDv() {
+    return isTrueOrEnable(get(Property.UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV));
   }
 
   /**

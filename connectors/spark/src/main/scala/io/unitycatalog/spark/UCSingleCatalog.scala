@@ -119,16 +119,18 @@ class UCSingleCatalog
 
   /**
    * Returns the properties UC should pass to the Delta catalog delegate for a managed Delta
-   * CREATE / CTAS. When the UC Delta API path is ready, we skip UC's legacy
-   * `createStagingTable` and pass the caller-supplied properties through untouched -- the
-   * Delta catalog stages and finalizes via the UC Delta API. Otherwise we fall back to the
-   * legacy staging path so older Delta builds keep working.
+   * CREATE / CTAS. Runs {@link #validateAndDefaultManagedDeltaCreateProperties} on the input
+   * first. When the UC Delta API path is ready, we skip UC's legacy `createStagingTable` and
+   * pass the validated properties through untouched -- the Delta catalog stages and finalizes
+   * via the UC Delta API. Otherwise we fall back to the legacy staging path so older Delta
+   * builds keep working.
    */
   private def managedDeltaCreatePropsForDelegate(
       ident: Identifier,
       properties: util.Map[String, String]): util.Map[String, String] = {
-    if (shouldUseDeltaAPI) properties
-    else stageManagedDeltaTableAndGetProps(ident, properties)
+    val validated = validateAndDefaultManagedDeltaCreateProperties(properties)
+    if (shouldUseDeltaAPI) validated
+    else stageManagedDeltaTableAndGetProps(ident, validated)
   }
 
   override def name(): String = delegate.name()
@@ -145,6 +147,8 @@ class UCSingleCatalog
     delegate.tableExists(ident)
   }
 
+  override def capabilities(): util.Set[TableCatalogCapability] = delegate.capabilities()
+
   override def createTable(
       ident: Identifier,
       columns: Array[Column],
@@ -160,7 +164,6 @@ class UCSingleCatalog
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
       if (UCSingleCatalog.hasDeltaProvider(properties)) {
         // Managed Delta table
-        validateManagedDeltaCreateProperties(properties)
         val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
         delegate.createTable(ident, columns, partitions, newProps)
       } else {
@@ -215,28 +218,30 @@ class UCSingleCatalog
   }
 
   /**
-   * Checks that the user-supplied table properties are valid for creating a new UC-managed Delta
-   * table.
+   * Validates and normalizes the user-supplied table properties for creating a new UC-managed
+   * Delta table, returning the properties to pass downstream.
    *
    * In this path, UC expects the caller to provide only user-controlled properties. It rejects
    * properties that UC itself assigns during staging, such as the UC table ID and the
-   * managed-location marker. It also requires the catalog-managed Delta feature flag to be present
-   * and set to the supported value, because that flag determines whether the new table is created
-   * with the coordinated-commit behavior expected for UC-managed Delta tables.
+   * managed-location marker. The catalog-managed Delta feature flag is automatically turned on.
    */
-  private def validateManagedDeltaCreateProperties(properties: util.Map[String, String]): Unit = {
+  private def validateAndDefaultManagedDeltaCreateProperties(
+      properties: util.Map[String, String]): util.Map[String, String] = {
     rejectSystemManagedProperties(properties)
-    if (!properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
-      throw new ApiException(
-        s"Managed table creation requires table property " +
-          s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'=" +
-          s"'${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'" +
-          s" to be set.")
+    Option(properties.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)) match {
+      case None =>
+        val augmented = new util.HashMap[String, String](properties)
+        augmented.put(
+          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
+        augmented
+      case Some(v) if v == UCTableProperties.DELTA_CATALOG_MANAGED_VALUE =>
+        properties
+      case Some(v) =>
+        throw new ApiException(
+          s"Invalid property value '$v' for '${UCTableProperties.DELTA_CATALOG_MANAGED_KEY}'. " +
+            s"Must be '${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'.")
     }
-    Option(properties.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW))
-      .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
-      .foreach(v => throw new ApiException(
-        s"Invalid property value '$v' for '${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'."))
   }
 
   /**
@@ -256,12 +261,11 @@ class UCSingleCatalog
       operation: String): util.Map[String, String] = {
     val fullTableName = UCSingleCatalog.fullTableNameForApi(name(), ident)
 
-    // First, ensure the caller is not trying to override system-managed properties.
+    // First, ensure the caller is not trying to override system-managed properties. Called
+    // explicitly here (and again inside validateAndDefault below) so a system-managed override on
+    // a REPLACE against a non-managed-Delta table still surfaces the precise error rather than
+    // tripping the more generic "only supported for catalog-managed UC Delta tables" gate.
     rejectSystemManagedProperties(properties)
-    Option(properties.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW))
-      .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
-      .foreach(_ => throw new ApiException(
-        s"Cannot override property '${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'."))
     if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
       throw new ApiException(
         s"$operation cannot specify property '${TableCatalog.PROP_LOCATION}' " +
@@ -292,13 +296,13 @@ class UCSingleCatalog
           s"USING DELTA. Cannot change table format from " +
           s"${existingProvider.toUpperCase(Locale.ROOT)} to " +
           s"${provider.toUpperCase(Locale.ROOT)} for $fullTableName."))
+    // Deferred to here so the existing-table gate above can short-circuit for non-managed-Delta
+    // REPLACE without paying the validate-default cost (and without auto-adding a Delta-only
+    // property to a non-Delta property map).
+    val validated = validateAndDefaultManagedDeltaCreateProperties(properties)
     val newProps = new util.HashMap[String, String]
-    newProps.putAll(properties)
+    newProps.putAll(validated)
     newProps.put(TableCatalog.PROP_PROVIDER, existingProvider)
-    // Preserve the catalog-managed marker on the properties passed to Delta for replace.
-    newProps.put(
-      UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
-      UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
     // Location intentionally omitted; Delta resolves it from the existing table snapshot.
     newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
 
@@ -328,7 +332,7 @@ class UCSingleCatalog
     tableInfo.getTableType == TableType.MANAGED &&
     tableInfo.getDataSourceFormat == DataSourceFormat.DELTA &&
     tableProperties.exists(
-      _.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW) ==
+      _.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) ==
         UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
   }
 
@@ -359,6 +363,11 @@ class UCSingleCatalog
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
+    // Spark represents ALTER TABLE ... RENAME COLUMN as a structured TableChange here.
+    if (changes.exists(_.isInstanceOf[TableChange.RenameColumn])) {
+      throw new UnsupportedOperationException(
+        "ALTER TABLE RENAME COLUMN is not supported for Unity Catalog tables yet")
+    }
     delegate.alterTable(ident, changes: _*)
   }
 
@@ -442,7 +451,6 @@ class UCSingleCatalog
     }.getOrElse {
       // Creating a new table -- route through the same gate as `createTable` so a fresh
       // CREATE OR REPLACE picks up the UC Delta API path when it's available.
-      validateManagedDeltaCreateProperties(properties)
       managedDeltaCreatePropsForDelegate(ident, properties)
     }
     UCSingleCatalog.requireProviderSpecified("CREATE OR REPLACE TABLE", newProps)

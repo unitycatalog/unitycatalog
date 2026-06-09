@@ -2,7 +2,9 @@ package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
@@ -20,20 +22,18 @@ public interface GenericCredentialFetcher {
   GenericCredential createCredential() throws ApiException;
 
   /** Creates a fetcher backed by the standard UC temporary credentials API. */
-  static GenericCredentialFetcher forUc(
-      Configuration conf, io.unitycatalog.client.api.TemporaryCredentialsApi api) {
+  static GenericCredentialFetcher forUc(Configuration conf, TemporaryCredentialsApi api) {
     return new UCGenericCredentialFetcher(conf, api);
   }
 
   /** Creates a fetcher backed by the UC Delta temporary credentials API. */
-  static GenericCredentialFetcher forUcDelta(
-      Configuration conf, io.unitycatalog.client.delta.api.TemporaryCredentialsApi api) {
+  static GenericCredentialFetcher forUcDelta(Configuration conf, DeltaTemporaryCredentialsApi api) {
     return new UCDeltaGenericCredentialFetcher(conf, api);
   }
 
   /** Creates a fetcher backed by the UC Delta staging table credentials API. */
   static GenericCredentialFetcher forUcDeltaStagingTable(
-      Configuration conf, io.unitycatalog.client.delta.api.TemporaryCredentialsApi api) {
+      Configuration conf, DeltaTemporaryCredentialsApi api) {
     return new UCDeltaStagingTableCredentialFetcher(conf, api);
   }
 
@@ -49,8 +49,7 @@ public interface GenericCredentialFetcher {
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY,
             UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE);
     if (useDeltaCredentialsApi) {
-      io.unitycatalog.client.delta.api.TemporaryCredentialsApi deltaApi =
-          new io.unitycatalog.client.delta.api.TemporaryCredentialsApi(apiClient);
+      DeltaTemporaryCredentialsApi deltaApi = new DeltaTemporaryCredentialsApi(apiClient);
       String stagingTableId = conf.get(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY);
       if (stagingTableId != null && !stagingTableId.isEmpty()) {
         return forUcDeltaStagingTable(conf, deltaApi);
@@ -58,7 +57,7 @@ public interface GenericCredentialFetcher {
         return forUcDelta(conf, deltaApi);
       }
     } else {
-      return forUc(conf, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
+      return forUc(conf, new TemporaryCredentialsApi(apiClient));
     }
   }
 

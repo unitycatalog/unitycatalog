@@ -6,15 +6,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
-import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.delta.model.CreateTableRequest;
-import io.unitycatalog.client.delta.model.CredentialOperation;
-import io.unitycatalog.client.delta.model.CredentialsResponse;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
+import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
+import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
-import io.unitycatalog.client.delta.model.LoadTableResponse;
-import io.unitycatalog.client.delta.model.PrimitiveType;
-import io.unitycatalog.client.delta.model.StructField;
-import io.unitycatalog.client.delta.model.StructType;
+import io.unitycatalog.client.delta.model.DeltaStructField;
+import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
+import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
@@ -62,21 +65,18 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     TablesApi regular2TablesApi = new TablesApi(TestUtils.createApiClient(regular2Config));
     SchemasApi regular2SchemasApi = new SchemasApi(TestUtils.createApiClient(regular2Config));
 
-    // Delta REST API clients for loadTable tests
-    io.unitycatalog.client.delta.api.TablesApi adminDeltaApi =
-        new io.unitycatalog.client.delta.api.TablesApi(adminApiClient);
-    io.unitycatalog.client.delta.api.TablesApi regular1DeltaApi =
-        new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(regular1Config));
-    io.unitycatalog.client.delta.api.TablesApi regular2DeltaApi =
-        new io.unitycatalog.client.delta.api.TablesApi(TestUtils.createApiClient(regular2Config));
+    // UC Delta API clients for loadTable tests
+    DeltaTablesApi adminDeltaApi = new DeltaTablesApi(adminApiClient);
+    DeltaTablesApi regular1DeltaApi = new DeltaTablesApi(TestUtils.createApiClient(regular1Config));
+    DeltaTablesApi regular2DeltaApi = new DeltaTablesApi(TestUtils.createApiClient(regular2Config));
 
     // Delta REST credential clients for getTableCredentials tests
-    TemporaryCredentialsApi principal1DeltaCredsApi =
-        new TemporaryCredentialsApi(TestUtils.createApiClient(principal1Config));
-    TemporaryCredentialsApi regular1DeltaCredsApi =
-        new TemporaryCredentialsApi(TestUtils.createApiClient(regular1Config));
-    TemporaryCredentialsApi regular2DeltaCredsApi =
-        new TemporaryCredentialsApi(TestUtils.createApiClient(regular2Config));
+    DeltaTemporaryCredentialsApi principal1DeltaCredsApi =
+        new DeltaTemporaryCredentialsApi(TestUtils.createApiClient(principal1Config));
+    DeltaTemporaryCredentialsApi regular1DeltaCredsApi =
+        new DeltaTemporaryCredentialsApi(TestUtils.createApiClient(regular1Config));
+    DeltaTemporaryCredentialsApi regular2DeltaCredsApi =
+        new DeltaTemporaryCredentialsApi(TestUtils.createApiClient(regular2Config));
 
     // Grant USE CATALOG and USE SCHEMA to principal-1
     grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
@@ -177,13 +177,13 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     assertPermissionDenied(
         () ->
             regular1DeltaCredsApi.getTableCredentials(
-                CredentialOperation.READ, "cat_pr1", "sch_pr1", "tbl_pr1"));
+                DeltaCredentialOperation.READ, "cat_pr1", "sch_pr1", "tbl_pr1"));
 
     // getTableCredentials READ_WRITE (regular-2) -> has SELECT but not MODIFY -> denied
     assertPermissionDenied(
         () ->
             regular2DeltaCredsApi.getTableCredentials(
-                CredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1"));
+                DeltaCredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1"));
 
     // Grant MODIFY to regular-2 so the READ_WRITE path passes authz.
     grantPermissions(
@@ -233,25 +233,24 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     // wired at createStagingTable time.)
     String deltaExternalName = "tbl_delta_authz";
     String deltaExternalLocation = "/tmp/" + deltaExternalName + "_" + UUID.randomUUID();
-    LoadTableResponse deltaCreated =
+    DeltaLoadTableResponse deltaCreated =
         regular1DeltaApi.createTable(
             "cat_pr1",
             "sch_pr1",
-            new CreateTableRequest()
+            new DeltaCreateTableRequest()
                 .name(deltaExternalName)
                 .location(deltaExternalLocation)
-                .tableType(io.unitycatalog.client.delta.model.TableType.EXTERNAL)
-                .dataSourceFormat(io.unitycatalog.client.delta.model.DataSourceFormat.DELTA)
+                .tableType(DeltaTableType.EXTERNAL)
                 .columns(
-                    new StructType()
+                    new DeltaStructType()
                         .type("struct")
                         .fields(
                             List.of(
-                                new StructField()
+                                new DeltaStructField()
                                     .name("id")
-                                    .type(new PrimitiveType().type("long"))
+                                    .type(new DeltaPrimitiveType().type("long"))
                                     .nullable(false)
-                                    .metadata(Map.of()))))
+                                    .metadata(new DeltaStructFieldMetadata()))))
                 .protocol(
                     new DeltaProtocol()
                         .minReaderVersion(3)
@@ -279,12 +278,13 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
    * .tbl_pr1}. Used to pin the "authz passes, call returns a well-formed response" behavior for
    * both the {@code SELECT && MODIFY} and {@code OWNER} branches of the READ_WRITE policy.
    */
-  private static void assertReadWriteCredentialsVended(TemporaryCredentialsApi api)
+  private static void assertReadWriteCredentialsVended(DeltaTemporaryCredentialsApi api)
       throws ApiException {
-    CredentialsResponse vended =
-        api.getTableCredentials(CredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1");
+    DeltaCredentialsResponse vended =
+        api.getTableCredentials(
+            DeltaCredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1");
     assertThat(vended.getStorageCredentials()).hasSize(1);
     assertThat(vended.getStorageCredentials().get(0).getOperation())
-        .isEqualTo(CredentialOperation.READ_WRITE);
+        .isEqualTo(DeltaCredentialOperation.READ_WRITE);
   }
 }

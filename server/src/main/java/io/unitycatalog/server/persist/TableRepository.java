@@ -3,12 +3,13 @@ package io.unitycatalog.server.persist;
 import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.delta.model.DeltaCommit;
-import io.unitycatalog.server.delta.model.LoadTableResponse;
-import io.unitycatalog.server.delta.model.StructType;
-import io.unitycatalog.server.delta.model.TableMetadata;
-import io.unitycatalog.server.delta.model.UniformMetadata;
-import io.unitycatalog.server.delta.model.UniformMetadataIceberg;
-import io.unitycatalog.server.delta.model.UpdateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.server.delta.model.DeltaStructType;
+import io.unitycatalog.server.delta.model.DeltaTableMetadata;
+import io.unitycatalog.server.delta.model.DeltaTableType;
+import io.unitycatalog.server.delta.model.DeltaUniformMetadata;
+import io.unitycatalog.server.delta.model.DeltaUniformMetadataIceberg;
+import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
@@ -240,7 +241,7 @@ public class TableRepository {
   /**
    * Load a table for the UC Delta API in a single REPEATABLE_READ transaction.
    *
-   * <p>Returns a {@link LoadTableResponse} containing:
+   * <p>Returns a {@link DeltaLoadTableResponse} containing:
    *
    * <ul>
    *   <li>Table metadata (format, type, location, columns, partition columns, properties)
@@ -251,7 +252,7 @@ public class TableRepository {
    * <p>Column parsing is best-effort: corrupt typeJson data yields an empty schema rather than
    * failing the entire response.
    */
-  public LoadTableResponse loadTableForDelta(String catalog, String schema, String table) {
+  public DeltaLoadTableResponse loadTableForDelta(String catalog, String schema, String table) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -265,8 +266,8 @@ public class TableRepository {
   }
 
   /**
-   * Apply a Delta {@link UpdateTableRequest} in a single write transaction and return the refreshed
-   * {@link LoadTableResponse}. Covers both pure metadata edits (set/remove-properties,
+   * Apply a {@link DeltaUpdateTableRequest} in a single write transaction and return the refreshed
+   * {@link DeltaLoadTableResponse}. Covers both pure metadata edits (set/remove-properties,
    * set-protocol, set-columns, set-partition-columns, set-table-comment,
    * set/remove-domain-metadata, update-metadata-snapshot-version) and CCv2 commit-log writes
    * (add-commit + optional uniform metadata, set-latest-backfilled-version) -- the latter route
@@ -281,8 +282,8 @@ public class TableRepository {
    * persisted. The DAO's {@code updatedAt}/{@code updatedBy} advance once at the end; the resulting
    * etag naturally rolls.
    */
-  public LoadTableResponse updateTableForDelta(
-      String catalog, String schema, String table, UpdateTableRequest request) {
+  public DeltaLoadTableResponse updateTableForDelta(
+      String catalog, String schema, String table, DeltaUpdateTableRequest request) {
     DeltaUpdateTableMapper.CollectedRequest collected =
         DeltaUpdateTableMapper.collectRequest(request);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -294,7 +295,7 @@ public class TableRepository {
           lockTableForDeltaUpdate(session, dao, catalog, schema, table);
           DeltaUpdateTableMapper.checkRequirements(dao, collected);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
-          DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected)
+          DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected, serverProperties)
               .ifPresent(
                   d ->
                       repositories
@@ -356,15 +357,15 @@ public class TableRepository {
   }
 
   /**
-   * Build a {@link LoadTableResponse} from an already-loaded {@link TableInfoDAO}. Shared by {@link
-   * #loadTableForDelta}, {@link #createTableForDelta}, and {@link #updateTableForDelta} so the
-   * post-mutation DAO → response assembly stays in one place.
+   * Build a {@link DeltaLoadTableResponse} from an already-loaded {@link TableInfoDAO}. Shared by
+   * {@link #loadTableForDelta}, {@link #createTableForDelta}, and {@link #updateTableForDelta} so
+   * the post-mutation DAO → response assembly stays in one place.
    *
    * @param properties when present, the caller-provided property map is reused for the response;
    *     when empty, we re-read from the DB. The update path already loaded and mutated properties
    *     via {@link MutablePropertyMap} and passes the post-flush view in, saving a query.
    */
-  private LoadTableResponse buildLoadTableResponse(
+  private DeltaLoadTableResponse buildLoadTableResponse(
       Session session,
       TableInfoDAO dao,
       Optional<Map<String, String>> properties,
@@ -376,9 +377,9 @@ public class TableRepository {
             () ->
                 PropertyDAO.toMap(
                     PropertyRepository.findProperties(session, dao.getId(), Constants.TABLE)));
-    TableMetadata metadata = buildTableMetadata(dao, props, catalog, schema, table);
+    DeltaTableMetadata metadata = buildTableMetadata(dao, props, catalog, schema, table);
 
-    LoadTableResponse response = new LoadTableResponse();
+    DeltaLoadTableResponse response = new DeltaLoadTableResponse();
     response.setMetadata(metadata);
 
     // Commits (managed Delta tables only)
@@ -393,15 +394,14 @@ public class TableRepository {
     return response;
   }
 
-  private TableMetadata buildTableMetadata(
+  private DeltaTableMetadata buildTableMetadata(
       TableInfoDAO dao,
       Map<String, String> properties,
       String catalog,
       String schema,
       String table) {
-    TableMetadata metadata = new TableMetadata();
+    DeltaTableMetadata metadata = new DeltaTableMetadata();
     metadata.setEtag(DeltaUpdateTableMapper.computeEtag(dao));
-    metadata.setDataSourceFormat(toDeltaFormat(dao.getDataSourceFormat()));
     metadata.setTableType(toDeltaTableType(dao.getType()));
     metadata.setTableUuid(dao.getId());
     metadata.setLocation(NormalizedURL.normalize(dao.getUrl()));
@@ -409,13 +409,13 @@ public class TableRepository {
     metadata.setUpdatedTime(dao.getUpdatedAt() != null ? dao.getUpdatedAt().getTime() : null);
 
     // Columns -- best-effort; corrupt data should not fail the entire response
-    StructType emptySchema = new StructType().fields(List.of());
+    DeltaStructType emptySchema = new DeltaStructType().fields(List.of());
     List<ColumnInfo> cols = List.of();
     try {
       cols = ColumnInfoDAO.toList(dao.getColumns());
       if (cols != null && !cols.isEmpty()) {
         metadata.setColumns(
-            new StructType().fields(cols.stream().map(ColumnUtils::toStructField).toList()));
+            new DeltaStructType().fields(cols.stream().map(ColumnUtils::toStructField).toList()));
       } else {
         metadata.setColumns(emptySchema);
       }
@@ -446,7 +446,11 @@ public class TableRepository {
   }
 
   private static void populatePartitionColumns(
-      TableMetadata metadata, List<ColumnInfo> cols, String catalog, String schema, String table) {
+      DeltaTableMetadata metadata,
+      List<ColumnInfo> cols,
+      String catalog,
+      String schema,
+      String table) {
     List<ColumnInfo> partitionInfos =
         cols.stream()
             .filter(c -> c.getPartitionIndex() != null)
@@ -486,7 +490,10 @@ public class TableRepository {
 
   /** Populate unbackfilled commits from DeltaCommitRepository into the response. */
   private static void populateCommitsForDelta(
-      LoadTableResponse response, DeltaCommitRepository commitRepo, Session session, UUID tableId) {
+      DeltaLoadTableResponse response,
+      DeltaCommitRepository commitRepo,
+      Session session,
+      UUID tableId) {
     DeltaCommitRepository.CommitQueryResult result =
         commitRepo.getUnbackfilledCommits(session, tableId);
     response.setLatestTableVersion(result.latestTableVersion());
@@ -506,29 +513,24 @@ public class TableRepository {
     response.setCommits(commits);
   }
 
-  private static void populateUniformMetadata(LoadTableResponse response, TableInfoDAO dao) {
+  private static void populateUniformMetadata(DeltaLoadTableResponse response, TableInfoDAO dao) {
     String uniformLocation = dao.getUniformIcebergMetadataLocation();
     if (uniformLocation == null) {
       return;
     }
-    UniformMetadataIceberg iceberg = new UniformMetadataIceberg().metadataLocation(uniformLocation);
+    DeltaUniformMetadataIceberg iceberg =
+        new DeltaUniformMetadataIceberg().metadataLocation(uniformLocation);
     if (dao.getUniformIcebergConvertedDeltaVersion() != null) {
       iceberg.convertedDeltaVersion(dao.getUniformIcebergConvertedDeltaVersion());
     }
     if (dao.getUniformIcebergConvertedDeltaTimestamp() != null) {
       iceberg.convertedDeltaTimestamp(dao.getUniformIcebergConvertedDeltaTimestamp().getTime());
     }
-    response.setUniform(new UniformMetadata().iceberg(iceberg));
+    response.setUniform(new DeltaUniformMetadata().iceberg(iceberg));
   }
 
-  // Delta model enum converters (avoid FQ names for types that
-  // conflict with io.unitycatalog.server.model.*)
-  private static io.unitycatalog.server.delta.model.DataSourceFormat toDeltaFormat(String value) {
-    return io.unitycatalog.server.delta.model.DataSourceFormat.fromValue(value);
-  }
-
-  private static io.unitycatalog.server.delta.model.TableType toDeltaTableType(String value) {
-    return io.unitycatalog.server.delta.model.TableType.fromValue(value);
+  private static DeltaTableType toDeltaTableType(String value) {
+    return DeltaTableType.fromValue(value);
   }
 
   public String getTableUniformMetadataLocation(
@@ -555,9 +557,9 @@ public class TableRepository {
   }
 
   /**
-   * Create a table and return the UC Delta API {@link LoadTableResponse} in a single transaction.
-   * The DAO persisted during create is the same one used to build the response, so there's no
-   * second lookup or risk of a reader observing an intermediate state.
+   * Create a table and return the UC Delta API {@link DeltaLoadTableResponse} in a single
+   * transaction. The DAO persisted during create is the same one used to build the response, so
+   * there's no second lookup or risk of a reader observing an intermediate state.
    *
    * <p>If {@code uniformFields} is non-empty the table is registered as UniForm-enabled: the
    * already-validated, already-normalized Iceberg fields (computed once in {@code
@@ -565,7 +567,7 @@ public class TableRepository {
    * so the create lands as a single INSERT carrying the uniform fields and the metadata-location is
    * normalized exactly once on this code path.
    */
-  public LoadTableResponse createTableForDelta(
+  public DeltaLoadTableResponse createTableForDelta(
       CreateTable createTable, Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
     return createTableImpl(
         createTable,
@@ -594,11 +596,12 @@ public class TableRepository {
       CreateResultMapper<T> mapper) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
+    DataSourceFormat format = createTable.getDataSourceFormat();
     List<ColumnInfo> columnInfos =
         createTable.getColumns().stream()
             .map(
                 c -> {
-                  ColumnUtils.validateTypeJson(c);
+                  ColumnUtils.validateTypeJson(c, format);
                   return c.typeText(c.getTypeText().toLowerCase(Locale.ROOT));
                 })
             .toList();

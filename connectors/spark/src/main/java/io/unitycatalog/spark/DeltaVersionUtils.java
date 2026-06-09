@@ -47,21 +47,23 @@ public class DeltaVersionUtils {
 
   /**
    * Minimum Delta library version (as reported by `io.delta.VERSION`) that ships the
-   * `UCDeltaCatalogClientImpl` UC Delta API path.
+   * `UCDeltaCatalogClientImpl` UC Delta API path. Test code also branches on this constant when the
+   * bundled-Delta behavior diverges between pre- and post-Delta-API Delta releases (managed REPLACE
+   * handling, CHAR/VARCHAR conversion, etc.), so it is shared rather than duplicated.
    */
-  static String MIN_DELTA_VERSION_FOR_REST_API = "4.3.0";
+  public static final String MIN_DELTA_VERSION_FOR_UC_DELTA_API = "4.3.0";
 
   /**
    * Returns true when all the following are true: 1. Delta is loaded as the catalog delegate
-   * (otherwise nothing on the other side would stage the managed-Delta create); 2. the catalog
-   * opted in via the `deltaRestApi.enabled` option; 3. the Delta library on the classpath is at
-   * least [[MIN_DELTA_VERSION_FOR_REST_API]] (older versions silently skip staging if we hand the
-   * request to them).
+   * (otherwise nothing on the other side would stage the managed-Delta create); 2. the catalog is
+   * not opted out via the `deltaRestApi.enabled=false` option; 3. the Delta library on the
+   * classpath is at least {@link #MIN_DELTA_VERSION_FOR_UC_DELTA_API} (older versions silently skip
+   * staging if we hand the request to them).
    */
   public static boolean isDeltaRestApiReady(
       boolean deltaCatalogLoaded, boolean deltaRestApiEnabled) {
     return deltaCatalogLoaded
         && deltaRestApiEnabled
-        && isDeltaAtLeast(MIN_DELTA_VERSION_FOR_REST_API);
+        && isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API);
   }
 }

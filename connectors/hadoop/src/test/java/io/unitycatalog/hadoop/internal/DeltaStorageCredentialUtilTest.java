@@ -3,9 +3,9 @@ package io.unitycatalog.hadoop.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.unitycatalog.client.delta.model.CredentialOperation;
-import io.unitycatalog.client.delta.model.StorageCredential;
-import io.unitycatalog.client.delta.model.StorageCredentialConfig;
+import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
+import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.util.Arrays;
 import java.util.Collections;
@@ -29,7 +29,7 @@ class DeltaStorageCredentialUtilTest {
 
   @Test
   void selectorRejectsSingleWithoutPrefixMatch() {
-    StorageCredential only = credAt("s3://other-bucket");
+    DeltaStorageCredential only = credAt("s3://other-bucket");
     assertThatThrownBy(
             () -> DeltaStorageCredentialUtil.selectForLocation("s3://bucket/t", List.of(only)))
         .isInstanceOf(IllegalArgumentException.class)
@@ -48,9 +48,9 @@ class DeltaStorageCredentialUtilTest {
 
   @Test
   void selectorPicksLongestMatchingPrefix() {
-    StorageCredential bucket = credAt("s3://bucket");
-    StorageCredential table = credAt("s3://bucket/t");
-    StorageCredential child = credAt("s3://bucket/t/child");
+    DeltaStorageCredential bucket = credAt("s3://bucket");
+    DeltaStorageCredential table = credAt("s3://bucket/t");
+    DeltaStorageCredential child = credAt("s3://bucket/t/child");
     assertThat(
             DeltaStorageCredentialUtil.selectForLocation(
                 "s3://bucket/t/child/file", Arrays.asList(bucket, table, child)))
@@ -76,15 +76,15 @@ class DeltaStorageCredentialUtilTest {
 
   @Test
   void selectorIgnoresNullAndPrefixlessInMultiResponse() {
-    List<StorageCredential> creds =
-        Arrays.asList(null, new StorageCredential(), credAt("s3://bucket/t"));
+    List<DeltaStorageCredential> creds =
+        Arrays.asList(null, new DeltaStorageCredential(), credAt("s3://bucket/t"));
     assertThat(DeltaStorageCredentialUtil.selectForLocation("s3://bucket/t", creds).getPrefix())
         .isEqualTo("s3://bucket/t");
   }
 
   @Test
   void selectorThrowsWhenMultiResponseHasNoMatch() {
-    List<StorageCredential> creds =
+    List<DeltaStorageCredential> creds =
         Arrays.asList(credAt("s3://other"), credAt("s3://bucket/sibling"));
     assertThatThrownBy(() -> DeltaStorageCredentialUtil.selectForLocation("s3://bucket/t", creds))
         .isInstanceOf(IllegalArgumentException.class)
@@ -93,13 +93,13 @@ class DeltaStorageCredentialUtilTest {
 
   @Test
   void toTemporaryCredentialsExtractsAwsKeysAndExpiry() {
-    StorageCredential c =
-        new StorageCredential()
+    DeltaStorageCredential c =
+        new DeltaStorageCredential()
             .prefix("s3://bucket")
-            .operation(CredentialOperation.READ_WRITE)
+            .operation(DeltaCredentialOperation.READ_WRITE)
             .expirationTimeMs(123L)
             .config(
-                new StorageCredentialConfig()
+                new DeltaStorageCredentialConfig()
                     .s3AccessKeyId("ak")
                     .s3SecretAccessKey("sk")
                     .s3SessionToken("st"));
@@ -112,11 +112,11 @@ class DeltaStorageCredentialUtilTest {
 
   @Test
   void toTemporaryCredentialsRejectsMultiCloudConfig() {
-    StorageCredential c =
-        new StorageCredential()
+    DeltaStorageCredential c =
+        new DeltaStorageCredential()
             .prefix("s3://bucket")
-            .operation(CredentialOperation.READ)
-            .config(new StorageCredentialConfig().s3AccessKeyId("ak").gcsOauthToken("gcs"));
+            .operation(DeltaCredentialOperation.READ)
+            .config(new DeltaStorageCredentialConfig().s3AccessKeyId("ak").gcsOauthToken("gcs"));
     assertThatThrownBy(() -> DeltaStorageCredentialUtil.toTemporaryCredentials(c))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("must contain exactly one cloud credential config");
@@ -124,8 +124,8 @@ class DeltaStorageCredentialUtilTest {
 
   @Test
   void toTemporaryCredentialsRejectsMissingConfig() {
-    StorageCredential c =
-        new StorageCredential().prefix("s3://bucket").operation(CredentialOperation.READ);
+    DeltaStorageCredential c =
+        new DeltaStorageCredential().prefix("s3://bucket").operation(DeltaCredentialOperation.READ);
     assertThatThrownBy(() -> DeltaStorageCredentialUtil.toTemporaryCredentials(c))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("missing config");
@@ -133,11 +133,11 @@ class DeltaStorageCredentialUtilTest {
 
   @Test
   void toTemporaryCredentialsExtractsAzureSasToken() {
-    StorageCredential c =
-        new StorageCredential()
+    DeltaStorageCredential c =
+        new DeltaStorageCredential()
             .prefix("abfss://container@account.dfs.core.windows.net/")
-            .operation(CredentialOperation.READ_WRITE)
-            .config(new StorageCredentialConfig().azureSasToken("sas-token"));
+            .operation(DeltaCredentialOperation.READ_WRITE)
+            .config(new DeltaStorageCredentialConfig().azureSasToken("sas-token"));
     TemporaryCredentials tc = DeltaStorageCredentialUtil.toTemporaryCredentials(c);
     assertThat(tc.getAzureUserDelegationSas().getSasToken()).isEqualTo("sas-token");
     assertThat(tc.getExpirationTime()).isEqualTo(Long.MAX_VALUE);
@@ -145,12 +145,12 @@ class DeltaStorageCredentialUtilTest {
 
   @Test
   void toTemporaryCredentialsExtractsGcsOauthToken() {
-    StorageCredential c =
-        new StorageCredential()
+    DeltaStorageCredential c =
+        new DeltaStorageCredential()
             .prefix("gs://bucket/")
-            .operation(CredentialOperation.READ)
+            .operation(DeltaCredentialOperation.READ)
             .expirationTimeMs(456L)
-            .config(new StorageCredentialConfig().gcsOauthToken("gcs-oauth-token"));
+            .config(new DeltaStorageCredentialConfig().gcsOauthToken("gcs-oauth-token"));
     TemporaryCredentials tc = DeltaStorageCredentialUtil.toTemporaryCredentials(c);
     assertThat(tc.getGcpOauthToken().getOauthToken()).isEqualTo("gcs-oauth-token");
     assertThat(tc.getExpirationTime()).isEqualTo(456L);
@@ -158,17 +158,17 @@ class DeltaStorageCredentialUtilTest {
 
   @Test
   void toTemporaryCredentialsRejectsPartialS3WithMissingAccessKey() {
-    StorageCredential c =
-        new StorageCredential()
+    DeltaStorageCredential c =
+        new DeltaStorageCredential()
             .prefix("s3://bucket")
-            .operation(CredentialOperation.READ)
-            .config(new StorageCredentialConfig().s3SessionToken("st"));
+            .operation(DeltaCredentialOperation.READ)
+            .config(new DeltaStorageCredentialConfig().s3SessionToken("st"));
     assertThatThrownBy(() -> DeltaStorageCredentialUtil.toTemporaryCredentials(c))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("missing S3 access key");
   }
 
-  private static StorageCredential credAt(String prefix) {
-    return new StorageCredential().prefix(prefix);
+  private static DeltaStorageCredential credAt(String prefix) {
+    return new DeltaStorageCredential().prefix(prefix);
   }
 }

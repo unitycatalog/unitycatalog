@@ -1,6 +1,6 @@
 package io.unitycatalog.spark;
 
-import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_REST_API;
+import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Assumptions;
@@ -47,11 +47,11 @@ public class DeltaVersionUtilsTest {
   @Test
   public void isDeltaRestApiReady_bothTrueButVersionTooOld_returnsFalse() {
     // Skip when the bundled Delta on the test classpath is already at/past
-    // MIN_DELTA_VERSION_FOR_REST_API (e.g. CI's Delta master-SNAPSHOT). The version conjunct's
+    // MIN_DELTA_VERSION_FOR_UC_DELTA_API (e.g. CI's Delta master-SNAPSHOT). The version conjunct's
     // false branch is what this test is for; sibling tests cover the other two conjuncts.
     Assumptions.assumeFalse(
-        DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_REST_API),
-        "bundled Delta is >= MIN_DELTA_VERSION_FOR_REST_API; version-too-old case is moot");
+        DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API),
+        "bundled Delta is >= MIN_DELTA_VERSION_FOR_UC_DELTA_API; version-too-old case is moot");
     assertThat(DeltaVersionUtils.isDeltaRestApiReady(true, true)).isFalse();
   }
 }

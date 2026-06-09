@@ -3,19 +3,26 @@ package io.unitycatalog.server.service.delta;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.unitycatalog.server.delta.model.AssertEtag;
-import io.unitycatalog.server.delta.model.AssertTableUUID;
-import io.unitycatalog.server.delta.model.ClusteringDomainMetadata;
-import io.unitycatalog.server.delta.model.DomainMetadataUpdates;
-import io.unitycatalog.server.delta.model.RemoveDomainMetadataUpdate;
-import io.unitycatalog.server.delta.model.RemovePropertiesUpdate;
-import io.unitycatalog.server.delta.model.SetDomainMetadataUpdate;
-import io.unitycatalog.server.delta.model.SetPropertiesUpdate;
-import io.unitycatalog.server.delta.model.TableRequirement;
-import io.unitycatalog.server.delta.model.UpdateTableRequest;
+import io.unitycatalog.server.delta.model.DeltaAssertEtag;
+import io.unitycatalog.server.delta.model.DeltaAssertTableUUID;
+import io.unitycatalog.server.delta.model.DeltaClusteringDomainMetadata;
+import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.DeltaProtocol;
+import io.unitycatalog.server.delta.model.DeltaRemoveDomainMetadataUpdate;
+import io.unitycatalog.server.delta.model.DeltaRemovePropertiesUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetDomainMetadataUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetPropertiesUpdate;
+import io.unitycatalog.server.delta.model.DeltaSetProtocolUpdate;
+import io.unitycatalog.server.delta.model.DeltaTableRequirement;
+import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.persist.MutablePropertyMap;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper.CollectedRequest;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -41,10 +48,10 @@ public class DeltaUpdateTableMapperTest {
     assertThatThrownBy(
             () ->
                 DeltaUpdateTableMapper.collectRequest(
-                    new UpdateTableRequest()
+                    new DeltaUpdateTableRequest()
                         .requirements(
                             List.of(
-                                new AssertTableUUID()
+                                new DeltaAssertTableUUID()
                                     .uuid(UUID.randomUUID())
                                     .type("assert-table-uuid")))
                         .updates(List.of())))
@@ -58,10 +65,10 @@ public class DeltaUpdateTableMapperTest {
     assertThatThrownBy(
             () ->
                 DeltaUpdateTableMapper.collectRequest(
-                    new UpdateTableRequest()
+                    new DeltaUpdateTableRequest()
                         .updates(
                             List.of(
-                                new SetPropertiesUpdate()
+                                new DeltaSetPropertiesUpdate()
                                     .updates(Map.of("k", "v"))
                                     .action("set-properties")))))
         .isInstanceOf(BaseException.class)
@@ -71,11 +78,11 @@ public class DeltaUpdateTableMapperTest {
     assertThatThrownBy(
             () ->
                 DeltaUpdateTableMapper.collectRequest(
-                    new UpdateTableRequest()
+                    new DeltaUpdateTableRequest()
                         .requirements(List.of())
                         .updates(
                             List.of(
-                                new SetPropertiesUpdate()
+                                new DeltaSetPropertiesUpdate()
                                     .updates(Map.of("k", "v"))
                                     .action("set-properties")))))
         .isInstanceOf(BaseException.class)
@@ -85,11 +92,12 @@ public class DeltaUpdateTableMapperTest {
     assertThatThrownBy(
             () ->
                 DeltaUpdateTableMapper.collectRequest(
-                    new UpdateTableRequest()
-                        .requirements(List.of(new AssertEtag().etag("etag-x").type("assert-etag")))
+                    new DeltaUpdateTableRequest()
+                        .requirements(
+                            List.of(new DeltaAssertEtag().etag("etag-x").type("assert-etag")))
                         .updates(
                             List.of(
-                                new SetPropertiesUpdate()
+                                new DeltaSetPropertiesUpdate()
                                     .updates(Map.of("k", "v"))
                                     .action("set-properties")))))
         .isInstanceOf(BaseException.class)
@@ -102,14 +110,14 @@ public class DeltaUpdateTableMapperTest {
     assertThatThrownBy(
             () ->
                 DeltaUpdateTableMapper.collectRequest(
-                    new UpdateTableRequest()
+                    new DeltaUpdateTableRequest()
                         .requirements(
                             List.of(
-                                new AssertTableUUID().uuid(id).type("assert-table-uuid"),
-                                new AssertTableUUID().uuid(id).type("assert-table-uuid")))
+                                new DeltaAssertTableUUID().uuid(id).type("assert-table-uuid"),
+                                new DeltaAssertTableUUID().uuid(id).type("assert-table-uuid")))
                         .updates(
                             List.of(
-                                new SetPropertiesUpdate()
+                                new DeltaSetPropertiesUpdate()
                                     .updates(Map.of("k", "v"))
                                     .action("set-properties")))))
         .isInstanceOf(BaseException.class)
@@ -121,18 +129,18 @@ public class DeltaUpdateTableMapperTest {
     assertThatThrownBy(
             () ->
                 DeltaUpdateTableMapper.collectRequest(
-                    new UpdateTableRequest()
+                    new DeltaUpdateTableRequest()
                         .requirements(
                             List.of(
-                                new AssertTableUUID()
+                                new DeltaAssertTableUUID()
                                     .uuid(UUID.randomUUID())
                                     .type("assert-table-uuid")))
                         .updates(
                             List.of(
-                                new SetPropertiesUpdate()
+                                new DeltaSetPropertiesUpdate()
                                     .updates(Map.of("k", "v"))
                                     .action("set-properties"),
-                                new RemovePropertiesUpdate()
+                                new DeltaRemovePropertiesUpdate()
                                     .removals(List.of("k"))
                                     .action("remove-properties")))))
         .isInstanceOf(BaseException.class)
@@ -144,22 +152,22 @@ public class DeltaUpdateTableMapperTest {
     assertThatThrownBy(
             () ->
                 DeltaUpdateTableMapper.collectRequest(
-                    new UpdateTableRequest()
+                    new DeltaUpdateTableRequest()
                         .requirements(
                             List.of(
-                                new AssertTableUUID()
+                                new DeltaAssertTableUUID()
                                     .uuid(UUID.randomUUID())
                                     .type("assert-table-uuid")))
                         .updates(
                             List.of(
-                                new SetDomainMetadataUpdate()
+                                new DeltaSetDomainMetadataUpdate()
                                     .updates(
-                                        new DomainMetadataUpdates()
+                                        new DeltaDomainMetadataUpdates()
                                             .deltaClustering(
-                                                new ClusteringDomainMetadata()
+                                                new DeltaClusteringDomainMetadata()
                                                     .clusteringColumns(List.of(List.of("c")))))
                                     .action("set-domain-metadata"),
-                                new RemoveDomainMetadataUpdate()
+                                new DeltaRemoveDomainMetadataUpdate()
                                     .domains(List.of("delta.clustering"))
                                     .action("remove-domain-metadata")))))
         .isInstanceOf(BaseException.class)
@@ -168,13 +176,16 @@ public class DeltaUpdateTableMapperTest {
 
   @Test
   public void collectRequestAcceptsNonEmptyUpdatesWithUuidRequirement() {
-    UpdateTableRequest req =
-        new UpdateTableRequest()
+    DeltaUpdateTableRequest req =
+        new DeltaUpdateTableRequest()
             .requirements(
-                List.of(new AssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
+                List.of(
+                    new DeltaAssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
             .updates(
                 List.of(
-                    new SetPropertiesUpdate().updates(Map.of("k", "v")).action("set-properties")));
+                    new DeltaSetPropertiesUpdate()
+                        .updates(Map.of("k", "v"))
+                        .action("set-properties")));
     assertThatCode(() -> DeltaUpdateTableMapper.collectRequest(req)).doesNotThrowAnyException();
   }
 
@@ -189,7 +200,8 @@ public class DeltaUpdateTableMapperTest {
             () ->
                 DeltaUpdateTableMapper.checkRequirements(
                     dao,
-                    collectRequestFor(new AssertTableUUID().uuid(id).type("assert-table-uuid"))))
+                    collectRequestFor(
+                        new DeltaAssertTableUUID().uuid(id).type("assert-table-uuid"))))
         .doesNotThrowAnyException();
   }
 
@@ -204,7 +216,9 @@ public class DeltaUpdateTableMapperTest {
                 DeltaUpdateTableMapper.checkRequirements(
                     dao,
                     collectRequestFor(
-                        new AssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid"))))
+                        new DeltaAssertTableUUID()
+                            .uuid(UUID.randomUUID())
+                            .type("assert-table-uuid"))))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("assert-table-uuid failed");
   }
@@ -222,8 +236,8 @@ public class DeltaUpdateTableMapperTest {
                 DeltaUpdateTableMapper.checkRequirements(
                     dao,
                     collectRequestFor(
-                        new AssertTableUUID().uuid(dao.getId()).type("assert-table-uuid"),
-                        new AssertEtag().etag(expectedEtag).type("assert-etag"))))
+                        new DeltaAssertTableUUID().uuid(dao.getId()).type("assert-table-uuid"),
+                        new DeltaAssertEtag().etag(expectedEtag).type("assert-etag"))))
         .doesNotThrowAnyException();
   }
 
@@ -238,19 +252,151 @@ public class DeltaUpdateTableMapperTest {
                 DeltaUpdateTableMapper.checkRequirements(
                     dao,
                     collectRequestFor(
-                        new AssertTableUUID().uuid(dao.getId()).type("assert-table-uuid"),
-                        new AssertEtag().etag("etag-stale").type("assert-etag"))))
+                        new DeltaAssertTableUUID().uuid(dao.getId()).type("assert-table-uuid"),
+                        new DeltaAssertEtag().etag("etag-stale").type("assert-etag"))))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("assert-etag failed");
   }
 
+  // ---------- applyUpdates: skipDeletionVectorRequirement flag ----------
+
+  @Test
+  public void applyUpdatesSetProtocolRejectsMissingDvWhenFlagOff() {
+    // Default ServerProperties has allow-missing-dv=false, so DV is required.
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propsFrom(TestUtils.propertiesWithoutDv()),
+                    collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  @Test
+  public void applyUpdatesSetProtocolAcceptsMissingDvWhenFlagOn() {
+    // allow-missing-dv=true + IcebergCompatV2 property already in existing table properties →
+    // property survives set-protocol (which only replaces delta.feature.* keys), DV check skipped.
+    assertThatCode(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propsFrom(TestUtils.propertiesWithoutDvAndWithIcebergCompatV2()),
+                    collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void applyUpdatesSetProtocolAndPropertiesAcceptsMissingDvWhenPropertyAddedInSameCommit() {
+    // allow-missing-dv=true + existing table has no IcebergCompatV2 property, but the same commit
+    // adds it via set-properties → post-apply properties have it, DV check skipped.
+    assertThatCode(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propsFrom(TestUtils.propertiesWithoutDv()),
+                    collectSetProtocolAndSetPropertiesRequest(
+                        TestUtils.protocolWithoutDv(),
+                        Map.of(TableProperties.ENABLE_ICEBERG_COMPAT_V2, "true")),
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void applyUpdatesSetProtocolStillRequiresDvWhenIcebergCompatV2PropertyAbsent() {
+    // allow-missing-dv=true but delta.enableIcebergCompatV2 not in map → DV still required.
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propsFrom(TestUtils.propertiesWithoutDv()),
+                    collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
+                    TestUtils.serverPropertiesWithAllowMissingDv()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  @Test
+  public void applyUpdatesSetProtocolRejectsMissingDvWhenFlagOffEvenWithIcebergCompatV2Property() {
+    // flag=false, delta.enableIcebergCompatV2 present → DV still required (flag gates the skip).
+    assertThatThrownBy(
+            () ->
+                DeltaUpdateTableMapper.applyUpdates(
+                    null,
+                    managedDao(),
+                    propsFrom(TestUtils.propertiesWithoutDvAndWithIcebergCompatV2()),
+                    collectSetProtocolRequest(TestUtils.protocolWithoutDv()),
+                    new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
+  }
+
+  // --- fixtures ---
+
   /** Build a {@link CollectedRequest} with the supplied requirements and a no-op update. */
-  private static CollectedRequest collectRequestFor(TableRequirement... requirements) {
+  private static CollectedRequest collectRequestFor(DeltaTableRequirement... requirements) {
     return DeltaUpdateTableMapper.collectRequest(
-        new UpdateTableRequest()
+        new DeltaUpdateTableRequest()
             .requirements(List.of(requirements))
             .updates(
                 List.of(
-                    new SetPropertiesUpdate().updates(Map.of("k", "v")).action("set-properties"))));
+                    new DeltaSetPropertiesUpdate()
+                        .updates(Map.of("k", "v"))
+                        .action("set-properties"))));
+  }
+
+  private static CollectedRequest collectSetProtocolRequest(DeltaProtocol protocol) {
+    return DeltaUpdateTableMapper.collectRequest(
+        new DeltaUpdateTableRequest()
+            .requirements(
+                List.of(
+                    new DeltaAssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
+            .updates(
+                List.of(new DeltaSetProtocolUpdate().protocol(protocol).action("set-protocol"))));
+  }
+
+  private static CollectedRequest collectSetProtocolAndSetPropertiesRequest(
+      DeltaProtocol protocol, Map<String, String> extraProperties) {
+    return DeltaUpdateTableMapper.collectRequest(
+        new DeltaUpdateTableRequest()
+            .requirements(
+                List.of(
+                    new DeltaAssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
+            .updates(
+                List.of(
+                    new DeltaSetProtocolUpdate().protocol(protocol).action("set-protocol"),
+                    new DeltaSetPropertiesUpdate()
+                        .updates(extraProperties)
+                        .action("set-properties"))));
+  }
+
+  private static TableInfoDAO managedDao() {
+    TableInfoDAO dao = new TableInfoDAO();
+    dao.setId(UUID.randomUUID());
+    dao.setType("MANAGED");
+    dao.setUpdatedAt(new Date());
+    return dao;
+  }
+
+  private static MutablePropertyMap propsFrom(Map<String, String> map) {
+    UUID id = UUID.randomUUID();
+    List<PropertyDAO> daos =
+        map.entrySet().stream()
+            .map(
+                e ->
+                    PropertyDAO.builder()
+                        .entityId(id)
+                        .entityType("table")
+                        .key(e.getKey())
+                        .value(e.getValue())
+                        .build())
+            .toList();
+    return MutablePropertyMap.wrap(daos);
   }
 }

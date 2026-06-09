@@ -3,25 +3,29 @@ package io.unitycatalog.server.utils;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.unitycatalog.server.delta.model.ArrayType;
-import io.unitycatalog.server.delta.model.DecimalType;
-import io.unitycatalog.server.delta.model.DeltaType;
-import io.unitycatalog.server.delta.model.MapType;
-import io.unitycatalog.server.delta.model.StructField;
-import io.unitycatalog.server.delta.model.StructType;
-import io.unitycatalog.server.delta.serde.DeltaTypeModule;
+import io.unitycatalog.server.delta.model.DeltaArrayType;
+import io.unitycatalog.server.delta.model.DeltaDataType;
+import io.unitycatalog.server.delta.model.DeltaDecimalType;
+import io.unitycatalog.server.delta.model.DeltaMapType;
+import io.unitycatalog.server.delta.model.DeltaPrimitiveType;
+import io.unitycatalog.server.delta.model.DeltaStructField;
+import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
+import io.unitycatalog.server.delta.model.DeltaStructType;
+import io.unitycatalog.server.delta.serde.DeltaDataTypeModule;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
+import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -91,18 +95,18 @@ public class ColumnUtils {
 
   private static ObjectMapper createTypeMapper() {
     ObjectMapper mapper = new ObjectMapper();
-    mapper.registerModule(new DeltaTypeModule());
-    mapper.addMixIn(ArrayType.class, CamelCaseArrayMixin.class);
-    mapper.addMixIn(MapType.class, CamelCaseMapMixin.class);
+    mapper.registerModule(new DeltaDataTypeModule());
+    mapper.addMixIn(DeltaArrayType.class, CamelCaseArrayMixin.class);
+    mapper.addMixIn(DeltaMapType.class, CamelCaseMapMixin.class);
     return mapper;
   }
 
   abstract static class CamelCaseArrayMixin {
     @JsonProperty("elementType")
-    abstract DeltaType getElementType();
+    abstract DeltaDataType getElementType();
 
     @JsonSetter("elementType")
-    abstract void setElementType(DeltaType v);
+    abstract void setElementType(DeltaDataType v);
 
     @JsonProperty("containsNull")
     abstract Boolean getContainsNull();
@@ -113,16 +117,16 @@ public class ColumnUtils {
 
   abstract static class CamelCaseMapMixin {
     @JsonProperty("keyType")
-    abstract DeltaType getKeyType();
+    abstract DeltaDataType getKeyType();
 
     @JsonSetter("keyType")
-    abstract void setKeyType(DeltaType v);
+    abstract void setKeyType(DeltaDataType v);
 
     @JsonProperty("valueType")
-    abstract DeltaType getValueType();
+    abstract DeltaDataType getValueType();
 
     @JsonSetter("valueType")
-    abstract void setValueType(DeltaType v);
+    abstract void setValueType(DeltaDataType v);
 
     @JsonProperty("valueContainsNull")
     abstract Boolean getValueContainsNull();
@@ -132,17 +136,17 @@ public class ColumnUtils {
   }
 
   /**
-   * Convert a UC ColumnInfo to a Delta REST API StructField by parsing typeJson directly. The
+   * Convert a UC ColumnInfo to a UC Delta API DeltaStructField by parsing typeJson directly. The
    * typeJson is in Spark's StructField format and contains the complete field definition (name,
    * type, nullable, metadata). Only partitionIndex comes from ColumnInfo, not typeJson.
    */
-  public static StructField toStructField(ColumnInfo column) {
+  public static DeltaStructField toStructField(ColumnInfo column) {
     String typeJson = column.getTypeJson();
     if (typeJson == null || typeJson.isEmpty()) {
       throw new IllegalStateException("Column " + column.getName() + " has null/empty typeJson");
     }
     try {
-      return TYPE_MAPPER.readValue(typeJson, StructField.class);
+      return TYPE_MAPPER.readValue(typeJson, DeltaStructField.class);
     } catch (JsonProcessingException e) {
       throw new IllegalStateException(
           "Failed to parse typeJson for column " + column.getName() + ": " + typeJson, e);
@@ -150,27 +154,34 @@ public class ColumnUtils {
   }
 
   /**
-   * Validate that a UC column stores typeJson as Spark StructField JSON. The Spark connector and
-   * Delta REST APIs depend on name, type, nullable, and metadata being present in this payload.
+   * Validate that a UC column stores {@code typeJson} as Spark {@code StructField} JSON. Shape
+   * (deserializability) and name/nullable cross-match run for all formats. The
+   * Delta-protocol primitive-type closed-set check runs only for {@link DataSourceFormat#DELTA} --
+   * non-Delta tables (Parquet, CSV, ...) may legitimately carry Spark types that the closed set
+   * rejects (e.g. {@code char(N)} / {@code varchar(N)}).
    */
-  public static void validateTypeJson(ColumnInfo column) {
+  public static void validateTypeJson(ColumnInfo column, DataSourceFormat format) {
     if (column == null) {
       throw invalidTypeJson(null, "column cannot be null");
     }
-    JsonNode typeJson = parseTypeJson(column);
-    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_NAME);
-    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_TYPE);
-    requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_NULLABLE);
-    JsonNode metadata = requireTypeJsonField(column, typeJson, StructField.JSON_PROPERTY_METADATA);
-    if (!metadata.isObject()) {
-      throw invalidTypeJson(column, "type_json.metadata must be a JSON object");
-    }
-
-    StructField field;
+    DeltaStructField field;
     try {
       field = toStructField(column);
     } catch (IllegalStateException e) {
       throw invalidTypeJson(column, e.getMessage(), e);
+    }
+    if (format == DataSourceFormat.DELTA) {
+      try {
+        validateStructField(field, "type_json");
+      } catch (BaseException e) {
+        throw invalidTypeJson(column, e.getErrorMessage(), e);
+      }
+    } else {
+      // A shallow check for non-Delta
+      requireNonNull(field.getName(), "type_json.name");
+      requireNonNull(field.getType(), "type_json.type");
+      requireNonNull(field.getNullable(), "type_json.nullable");
+      requireNonNull(field.getMetadata(), "type_json.metadata");
     }
     if (!field.getName().equals(column.getName())) {
       throw invalidTypeJson(
@@ -187,29 +198,6 @@ public class ColumnUtils {
     }
   }
 
-  private static JsonNode parseTypeJson(ColumnInfo column) {
-    if (column.getTypeJson() == null || column.getTypeJson().isEmpty()) {
-      throw invalidTypeJson(column, "type_json cannot be null or empty");
-    }
-    try {
-      JsonNode typeJson = TYPE_MAPPER.readTree(column.getTypeJson());
-      if (typeJson == null || !typeJson.isObject()) {
-        throw invalidTypeJson(column, "type_json must be a JSON object");
-      }
-      return typeJson;
-    } catch (JsonProcessingException e) {
-      throw invalidTypeJson(column, "Failed to parse typeJson: " + column.getTypeJson(), e);
-    }
-  }
-
-  private static JsonNode requireTypeJsonField(ColumnInfo column, JsonNode typeJson, String name) {
-    JsonNode field = typeJson.get(name);
-    if (field == null || field.isNull()) {
-      throw invalidTypeJson(column, "type_json." + name + " is required");
-    }
-    return field;
-  }
-
   private static BaseException invalidTypeJson(ColumnInfo column, String message) {
     return invalidTypeJson(column, message, null);
   }
@@ -222,8 +210,10 @@ public class ColumnUtils {
         cause);
   }
 
-  /** Serialize a Delta StructField to Spark's camelCase typeJson format for UC database storage. */
-  public static String toTypeJson(StructField field) {
+  /**
+   * Serialize a DeltaStructField to Spark's camelCase typeJson format for UC database storage.
+   */
+  public static String toTypeJson(DeltaStructField field) {
     try {
       return TYPE_MAPPER.writeValueAsString(field);
     } catch (JsonProcessingException e) {
@@ -233,9 +223,124 @@ public class ColumnUtils {
   }
 
   /**
-   * Convert a UC Delta API {@link StructField} into a UC {@link ColumnInfo}, mirroring
+   * Validate that a {@link DeltaStructType} is well-formed against the Delta spec's wire shape.
+   * Centralizes structural validation so callers can pass {@code columns} directly without
+   * pre-checking nullness/emptiness.
+   *
+   * <p>Field-name uniqueness is enforced case-insensitively (per Delta's schema rule "All column
+   * names must be unique regardless of casing"). Names are stored case-preserving on
+   * {@link DeltaStructField#getName()}; only the duplicate check ignores case.
+   */
+  public static void validateStructType(DeltaStructType structType, String path) {
+    requireNonNull(structType, path);
+    requireNonNull(structType.getFields(), path + ".fields");
+    List<DeltaStructField> fields = structType.getFields();
+    if (fields.isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, path + ".fields must contain at least one field.");
+    }
+    Set<String> seenLower = new HashSet<>();
+    for (int i = 0; i < fields.size(); i++) {
+      String fieldPath = path + ".fields[" + i + "]";
+      requireNonNull(fields.get(i), fieldPath);
+      validateStructField(fields.get(i), fieldPath);
+      String name = fields.get(i).getName();
+      if (!seenLower.add(name.toLowerCase(Locale.ROOT))) {
+        throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Duplicate field name (case-insensitive) in " + fieldPath + ": " + name);
+      }
+    }
+  }
+
+  private static void validateStructField(DeltaStructField field, String path) {
+    String name = field.getName();
+    if (name == null || name.isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, path + ".name is required.");
+    }
+    requireNonNull(field.getType(), path + ".type");
+    requireNonNull(field.getNullable(), path + ".nullable");
+    requireNonNull(field.getMetadata(), path + ".metadata");
+    validateType(field.getType(), path + ".type");
+  }
+
+  private static void validateType(DeltaDataType type, String path) {
+    if (type instanceof DeltaStructType s) {
+      validateStructType(s, path);
+    } else if (type instanceof DeltaArrayType a) {
+      validateArrayType(a, path);
+    } else if (type instanceof DeltaMapType m) {
+      validateMapType(m, path);
+    } else if (type instanceof DeltaDecimalType d) {
+      validateDecimalType(d, path);
+    } else if (type instanceof DeltaPrimitiveType p) {
+      validatePrimitiveType(p, path);
+    }
+  }
+
+  private static void validateArrayType(DeltaArrayType array, String path) {
+    requireNonNull(array.getElementType(), path + ".element-type");
+    requireNonNull(array.getContainsNull(), path + ".contains-null");
+    validateType(array.getElementType(), path + ".element-type");
+  }
+
+  private static void validateMapType(DeltaMapType map, String path) {
+    requireNonNull(map.getKeyType(), path + ".key-type");
+    requireNonNull(map.getValueType(), path + ".value-type");
+    requireNonNull(map.getValueContainsNull(), path + ".value-contains-null");
+    validateType(map.getKeyType(), path + ".key-type");
+    validateType(map.getValueType(), path + ".value-type");
+  }
+
+  private static void validateDecimalType(DeltaDecimalType decimal, String path) {
+    requireNonNull(decimal.getPrecision(), path + ".precision");
+    requireNonNull(decimal.getScale(), path + ".scale");
+    int precision = decimal.getPrecision();
+    int scale = decimal.getScale();
+    // Matches io.delta.kernel.types.DecimalType bounds (precision=0 is allowed there, even
+    // though it's degenerate).
+    if (precision < 0 || precision > 38) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format("%s.precision must be in [0, 38], got %d.", path, precision));
+    }
+    if (scale < 0 || scale > precision) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format("%s.scale must be in [0, precision=%d], got %d.", path, precision, scale));
+    }
+  }
+
+  private static void validatePrimitiveType(DeltaPrimitiveType primitive, String path) {
+    // The DeltaPrimitiveType discriminator (the "type" string) IS the primitive name; the
+    // caller's path already ends in `.type`, so no further suffix here. Resolve to confirm the
+    // name is in the closed set we support; rethrow with the field path attached so the error
+    // mirrors the shape of every other validation message in this file (downstream toColumnInfos
+    // would otherwise throw without path context).
+    requireNonNull(primitive.getType(), path);
+    try {
+      resolveColumnTypeName(primitive);
+    } catch (BaseException e) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, path + ": " + e.getMessage(), e);
+    }
+  }
+
+  private static void requireNonNull(Object value, String path) {
+    if (value == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, path + " is required.");
+    }
+  }
+
+  /**
+   * Convert a UC Delta API {@link DeltaStructField} into a UC {@link ColumnInfo}, mirroring
    * {@code UCSingleCatalog.createTable}'s per-column projection so Delta-created tables render
    * identically to Spark-created ones.
+   *
+   * <p>Caller contract: {@code field} must have already been validated by
+   * {@link #validateStructType}. This method does not re-check shape -- malformed input will
+   * surface as a downstream {@link IllegalStateException} from {@link #toTypeJson} or a
+   * {@link BaseException} from {@link #resolveColumnTypeName}, without the path-context that
+   * {@code validateStructType} provides.
    *
    * <p>Fields populated (matching UCSingleCatalog exactly):
    * <ul>
@@ -252,8 +357,8 @@ public class ColumnUtils {
    * {@code typePrecision}, {@code typeScale}, {@code typeIntervalType}, {@code partitionIndex}
    * ({@code partitionIndex} is stamped separately by {@link #applyPartitionColumns}).
    */
-  public static ColumnInfo toColumnInfo(StructField field, int position) {
-    DeltaType type = field.getType();
+  public static ColumnInfo toColumnInfo(DeltaStructField field, int position) {
+    DeltaDataType type = field.getType();
     ColumnInfo column =
         new ColumnInfo()
             .name(field.getName())
@@ -270,11 +375,11 @@ public class ColumnUtils {
   }
 
   /**
-   * Project a list of Delta {@link StructField}s into UC {@link ColumnInfo}s, stamping each
+   * Project a list of {@link DeltaStructField}s into UC {@link ColumnInfo}s, stamping each
    * column's {@code position} from its index in the list. Used by both the create and update paths
    * of the UC Delta API so the wire-order-to-position mapping stays in one place.
    */
-  public static List<ColumnInfo> toColumnInfos(List<StructField> fields) {
+  public static List<ColumnInfo> toColumnInfos(List<DeltaStructField> fields) {
     List<ColumnInfo> columns = new ArrayList<>(fields.size());
     for (int i = 0; i < fields.size(); i++) {
       columns.add(toColumnInfo(fields.get(i), i));
@@ -283,7 +388,7 @@ public class ColumnUtils {
   }
 
   /**
-   * Render a {@link DeltaType} as a Spark-style catalog string -- the same format produced by
+   * Render a {@link DeltaDataType} as a Spark-style catalog string -- the same format produced by
    * {@code org.apache.spark.sql.types.DataType#catalogString}. Primitives go through the shared
    * {@link #typeNameVsTypeText} override map (so {@code long}→{@code bigint}, {@code
    * integer}→{@code int}, etc.); decimals include precision/scale; array/map/struct recurse.
@@ -292,23 +397,23 @@ public class ColumnUtils {
    *     key / value / field type) is an unsupported Delta primitive -- this method delegates the
    *     primitive lookup to {@link #resolveColumnTypeName}, which throws on unknown names.
    */
-  public static String toCatalogString(DeltaType type) {
-    if (type instanceof DecimalType d) {
+  public static String toCatalogString(DeltaDataType type) {
+    if (type instanceof DeltaDecimalType d) {
       return "decimal" + getPrecisionAndScale(d.getPrecision(), d.getScale());
     }
-    if (type instanceof ArrayType a) {
+    if (type instanceof DeltaArrayType a) {
       return "array<" + toCatalogString(a.getElementType()) + ">";
     }
-    if (type instanceof MapType m) {
+    if (type instanceof DeltaMapType m) {
       return "map<" + toCatalogString(m.getKeyType()) + "," + toCatalogString(m.getValueType())
           + ">";
     }
-    if (type instanceof StructType s) {
-      List<StructField> fields = s.getFields() != null ? s.getFields() : List.of();
+    if (type instanceof DeltaStructType s) {
+      List<DeltaStructField> fields = s.getFields() != null ? s.getFields() : List.of();
       StringBuilder sb = new StringBuilder("struct<");
       for (int i = 0; i < fields.size(); i++) {
         if (i > 0) sb.append(",");
-        StructField f = fields.get(i);
+        DeltaStructField f = fields.get(i);
         sb.append(f.getName()).append(":").append(toCatalogString(f.getType()));
       }
       return sb.append(">").toString();
@@ -316,19 +421,21 @@ public class ColumnUtils {
     return getTypeText(resolveColumnTypeName(type));
   }
 
-  private static String extractComment(StructField field) {
-    Map<String, Object> metadata = field.getMetadata();
+  private static String extractComment(DeltaStructField field) {
+    DeltaStructFieldMetadata metadata = field.getMetadata();
     if (metadata == null) return null;
-    Object comment = metadata.get("comment");
-    return comment instanceof String s ? s : null;
+    // StructFieldMetadata extends HashMap via additionalProperties; the schema deliberately does
+    // not promote "comment" to a typed property (see api/delta.yaml). Read via Map access.
+    Object fromMap = metadata.get("comment");
+    return fromMap instanceof String s ? s : null;
   }
 
-  private static ColumnTypeName resolveColumnTypeName(DeltaType type) {
-    if (type instanceof ArrayType) return ColumnTypeName.ARRAY;
-    if (type instanceof DecimalType) return ColumnTypeName.DECIMAL;
-    if (type instanceof MapType) return ColumnTypeName.MAP;
-    if (type instanceof StructType) return ColumnTypeName.STRUCT;
-    // PrimitiveType: the discriminator string IS the primitive name. The accepted set is the
+  private static ColumnTypeName resolveColumnTypeName(DeltaDataType type) {
+    if (type instanceof DeltaArrayType) return ColumnTypeName.ARRAY;
+    if (type instanceof DeltaDecimalType) return ColumnTypeName.DECIMAL;
+    if (type instanceof DeltaMapType) return ColumnTypeName.MAP;
+    if (type instanceof DeltaStructType) return ColumnTypeName.STRUCT;
+    // DeltaPrimitiveType: the discriminator string IS the primitive name. The accepted set is the
     // closed list of Delta-protocol primitives -- Kernel's BasePrimitiveType registry. Reject
     // with INVALID_ARGUMENT for anything else; the server-side ColumnTypeName enum has no
     // UNKNOWN_DEFAULT_OPEN_API sentinel (OpenAPI generator adds it only for clients).
@@ -384,11 +491,22 @@ public class ColumnUtils {
     if (partitionColumns == null || partitionColumns.isEmpty()) {
       return;
     }
-    Map<String, ColumnInfo> columnsByName =
-        columns.stream().collect(Collectors.toMap(ColumnInfo::getName, Function.identity()));
+    Map<String, ColumnInfo> columnsByLowerName =
+        columns.stream()
+            .collect(
+                Collectors.toMap(c -> c.getName().toLowerCase(Locale.ROOT), Function.identity()));
+    Set<String> seenLower = new HashSet<>();
     for (int i = 0; i < partitionColumns.size(); i++) {
       String partName = partitionColumns.get(i);
-      ColumnInfo match = columnsByName.get(partName);
+      String lowerPartName = partName.toLowerCase(Locale.ROOT);
+      // Duplicate detection within partition-columns, comparing case-insensitively.
+      if (!seenLower.add(lowerPartName)) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "partition-columns contains duplicate entry (case-insensitive): " + partName);
+      }
+      // Column-name lookup against the schema, comparing case-insensitively.
+      ColumnInfo match = columnsByLowerName.get(lowerPartName);
       if (match == null) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,

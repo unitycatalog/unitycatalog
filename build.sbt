@@ -21,7 +21,7 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.17"
 
-lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.1.0")
+lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.2.0")
 // Intentionally shadows CrossSparkVersions.autoImport.sparkVersion (SettingKey).
 // This String val is used for libraryDependencies coordinates; the SettingKey is
 // queryable in SBT via `show spark/sparkVersion`.

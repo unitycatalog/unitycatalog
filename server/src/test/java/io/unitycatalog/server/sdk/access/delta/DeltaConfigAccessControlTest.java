@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.delta.api.ConfigurationApi;
-import io.unitycatalog.client.delta.model.CatalogConfig;
+import io.unitycatalog.client.delta.api.DeltaConfigurationApi;
+import io.unitycatalog.client.delta.model.DeltaCatalogConfig;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
@@ -28,7 +28,8 @@ public class DeltaConfigAccessControlTest extends SdkAccessControlBaseCRUDTest {
   public void testGetConfigAccessControl() {
     // Unauthenticated: no token returns 401
     ServerConfig noAuthConfig = new ServerConfig(serverConfig.getServerUrl(), null);
-    ConfigurationApi noAuthApi = new ConfigurationApi(TestUtils.createApiClient(noAuthConfig));
+    DeltaConfigurationApi noAuthApi =
+        new DeltaConfigurationApi(TestUtils.createApiClient(noAuthConfig));
     assertThatThrownBy(() -> noAuthApi.getConfig(TestUtils.CATALOG_NAME, "1.0"))
         .isInstanceOf(ApiException.class)
         .satisfies(e -> assertThat(((ApiException) e).getCode()).isEqualTo(401));
@@ -36,18 +37,19 @@ public class DeltaConfigAccessControlTest extends SdkAccessControlBaseCRUDTest {
     // Unauthorized: valid user without permissions returns 403
     createCommonTestUsers();
     ServerConfig regularConfig = createTestUserServerConfig(REGULAR_1);
-    ConfigurationApi regularApi = new ConfigurationApi(TestUtils.createApiClient(regularConfig));
+    DeltaConfigurationApi regularApi =
+        new DeltaConfigurationApi(TestUtils.createApiClient(regularConfig));
     assertThatThrownBy(() -> regularApi.getConfig(TestUtils.CATALOG_NAME, "1.0"))
         .isInstanceOf(ApiException.class)
         .satisfies(e -> assertThat(((ApiException) e).getCode()).isEqualTo(403));
 
     // Authorized: user with USE_CATALOG returns 200
     ServerConfig principalConfig = createTestUserServerConfig(PRINCIPAL_1);
-    ConfigurationApi principalApi =
-        new ConfigurationApi(TestUtils.createApiClient(principalConfig));
+    DeltaConfigurationApi principalApi =
+        new DeltaConfigurationApi(TestUtils.createApiClient(principalConfig));
     grantPermissions(
         PRINCIPAL_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
-    CatalogConfig config = principalApi.getConfig(TestUtils.CATALOG_NAME, "1.0");
+    DeltaCatalogConfig config = principalApi.getConfig(TestUtils.CATALOG_NAME, "1.0");
     assertThat(config.getEndpoints()).isNotEmpty();
     assertThat(config.getProtocolVersion()).isEqualTo("1.0");
   }

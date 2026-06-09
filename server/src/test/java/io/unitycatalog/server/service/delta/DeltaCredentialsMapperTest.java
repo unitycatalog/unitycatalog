@@ -3,10 +3,10 @@ package io.unitycatalog.server.service.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import io.unitycatalog.server.delta.model.CredentialOperation;
-import io.unitycatalog.server.delta.model.CredentialsResponse;
-import io.unitycatalog.server.delta.model.StorageCredential;
-import io.unitycatalog.server.delta.model.StorageCredentialConfig;
+import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
+import io.unitycatalog.server.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.server.delta.model.DeltaStorageCredential;
+import io.unitycatalog.server.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
@@ -26,16 +26,16 @@ public class DeltaCredentialsMapperTest {
                     .sessionToken("token"))
             .expirationTime(1700000000000L);
 
-    CredentialsResponse resp =
+    DeltaCredentialsResponse resp =
         DeltaCredentialsMapper.toCredentialsResponse(
-            "s3://bucket/path", uc, CredentialOperation.READ);
+            "s3://bucket/path", uc, DeltaCredentialOperation.READ);
 
     assertThat(resp.getStorageCredentials()).hasSize(1);
-    StorageCredential sc = resp.getStorageCredentials().get(0);
+    DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
     assertThat(sc.getPrefix()).isEqualTo("s3://bucket/path");
-    assertThat(sc.getOperation()).isEqualTo(CredentialOperation.READ);
+    assertThat(sc.getOperation()).isEqualTo(DeltaCredentialOperation.READ);
     assertThat(sc.getExpirationTimeMs()).isEqualTo(1700000000000L);
-    StorageCredentialConfig config = sc.getConfig();
+    DeltaStorageCredentialConfig config = sc.getConfig();
     assertThat(config.getS3AccessKeyId()).isEqualTo("AKIA123");
     assertThat(config.getS3SecretAccessKey()).isEqualTo("secret");
     assertThat(config.getS3SessionToken()).isEqualTo("token");
@@ -50,12 +50,14 @@ public class DeltaCredentialsMapperTest {
             .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sv=..."))
             .expirationTime(1700000000000L);
 
-    CredentialsResponse resp =
+    DeltaCredentialsResponse resp =
         DeltaCredentialsMapper.toCredentialsResponse(
-            "abfss://container@acct.dfs.core.windows.net/path", uc, CredentialOperation.READ_WRITE);
+            "abfss://container@acct.dfs.core.windows.net/path",
+            uc,
+            DeltaCredentialOperation.READ_WRITE);
 
-    StorageCredential sc = resp.getStorageCredentials().get(0);
-    assertThat(sc.getOperation()).isEqualTo(CredentialOperation.READ_WRITE);
+    DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
+    assertThat(sc.getOperation()).isEqualTo(DeltaCredentialOperation.READ_WRITE);
     assertThat(sc.getConfig().getAzureSasToken()).isEqualTo("sv=...");
     assertThat(sc.getConfig().getS3AccessKeyId()).isNull();
   }
@@ -67,11 +69,11 @@ public class DeltaCredentialsMapperTest {
             .gcpOauthToken(new GcpOauthToken().oauthToken("ya29..."))
             .expirationTime(1700000000000L);
 
-    CredentialsResponse resp =
+    DeltaCredentialsResponse resp =
         DeltaCredentialsMapper.toCredentialsResponse(
-            "gs://bucket/path", uc, CredentialOperation.READ);
+            "gs://bucket/path", uc, DeltaCredentialOperation.READ);
 
-    StorageCredential sc = resp.getStorageCredentials().get(0);
+    DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
     assertThat(sc.getConfig().getGcsOauthToken()).isEqualTo("ya29...");
     assertThat(sc.getConfig().getS3AccessKeyId()).isNull();
   }
@@ -85,9 +87,9 @@ public class DeltaCredentialsMapperTest {
                 new AwsCredentials().accessKeyId("AKIA123").secretAccessKey("secret"))
             .expirationTime(1700000000000L);
 
-    StorageCredential sc =
+    DeltaStorageCredential sc =
         DeltaCredentialsMapper.toCredentialsResponse(
-                "s3://bucket/path", uc, CredentialOperation.READ)
+                "s3://bucket/path", uc, DeltaCredentialOperation.READ)
             .getStorageCredentials()
             .get(0);
 
@@ -101,13 +103,13 @@ public class DeltaCredentialsMapperTest {
     // No provider creds at all (shouldn't happen in prod but guards against NPE)
     TemporaryCredentials uc = new TemporaryCredentials().expirationTime(1700000000000L);
 
-    StorageCredential sc =
+    DeltaStorageCredential sc =
         DeltaCredentialsMapper.toCredentialsResponse(
-                "s3://bucket/path", uc, CredentialOperation.READ)
+                "s3://bucket/path", uc, DeltaCredentialOperation.READ)
             .getStorageCredentials()
             .get(0);
 
-    StorageCredentialConfig config = sc.getConfig();
+    DeltaStorageCredentialConfig config = sc.getConfig();
     assertThat(config.getS3AccessKeyId()).isNull();
     assertThat(config.getS3SecretAccessKey()).isNull();
     assertThat(config.getS3SessionToken()).isNull();
@@ -117,8 +119,8 @@ public class DeltaCredentialsMapperTest {
   }
 
   /**
-   * Pins the sparse-JSON wire contract. StorageCredentialConfig is a typed POJO whose unset fields
-   * are null in Java. The UC Delta API ObjectMapper is configured with {@link
+   * Pins the sparse-JSON wire contract. DeltaStorageCredentialConfig is a typed POJO whose unset
+   * fields are null in Java. The UC Delta API ObjectMapper is configured with {@link
    * JsonInclude.Include#NON_NULL} in {@link DeltaApiMappers} so the response omits keys for clouds
    * that don't apply. If that mapper config is ever changed (or the generated class is regenerated
    * with a default {@code USE_DEFAULTS} policy), this test fails loudly.
@@ -133,9 +135,9 @@ public class DeltaCredentialsMapperTest {
                     .secretAccessKey("secret")
                     .sessionToken("token"))
             .expirationTime(1700000000000L);
-    StorageCredentialConfig config =
+    DeltaStorageCredentialConfig config =
         DeltaCredentialsMapper.toCredentialsResponse(
-                "s3://bucket/path", uc, CredentialOperation.READ)
+                "s3://bucket/path", uc, DeltaCredentialOperation.READ)
             .getStorageCredentials()
             .get(0)
             .getConfig();

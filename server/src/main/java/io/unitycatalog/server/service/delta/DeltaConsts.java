@@ -92,6 +92,13 @@ public final class DeltaConsts {
         "delta.rowTracking.materializedRowIdColumnName";
     public static final String ROW_TRACKING_MATERIALIZED_ROW_COMMIT_VERSION_COLUMN_NAME =
         "delta.rowTracking.materializedRowCommitVersionColumnName";
+    public static final String COLUMN_MAPPING_MODE = "delta.columnMapping.mode";
+    public static final String COLUMN_MAPPING_MAX_COLUMN_ID = "delta.columnMapping.maxColumnId";
+    public static final String PARQUET_COMPRESSION_CODEC = "delta.parquet.compression.codec";
+    public static final String CHECKPOINT_WRITE_STATS_AS_STRUCT =
+        "delta.checkpoint.writeStatsAsStruct";
+    public static final String CHECKPOINT_WRITE_STATS_AS_JSON = "delta.checkpoint.writeStatsAsJson";
+    public static final String RANDOMIZE_FILE_PREFIXES = "delta.randomizeFilePrefixes";
 
     /**
      * Clustering columns, written as a JSON-encoded list of column paths (each path itself a list
@@ -128,6 +135,9 @@ public final class DeltaConsts {
      */
     public static final String UNIVERSAL_FORMAT_ENABLED_FORMATS =
         "delta.universalFormat.enabledFormats";
+
+    /** When {@code "true"}, the table has IcebergCompatV2 enabled. */
+    public static final String ENABLE_ICEBERG_COMPAT_V2 = "delta.enableIcebergCompatV2";
   }
 
   /**

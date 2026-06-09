@@ -15,5 +15,5 @@ public class OptionsUtil {
   public static final String SERVER_SIDE_PLANNING_ENABLED = "serverSidePlanning.enabled";
   public static final boolean DEFAULT_SERVER_SIDE_PLANNING_ENABLED = false;
   public static final String DELTA_API_ENABLED = "deltaRestApi.enabled";
-  public static final boolean DEFAULT_DELTA_API_ENABLED = false;
+  public static final boolean DEFAULT_DELTA_API_ENABLED = true;
 }

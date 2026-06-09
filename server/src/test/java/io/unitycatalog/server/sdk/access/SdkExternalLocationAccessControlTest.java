@@ -9,6 +9,14 @@ import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.VolumesApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
+import io.unitycatalog.client.delta.model.DeltaProtocol;
+import io.unitycatalog.client.delta.model.DeltaStructField;
+import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
+import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
@@ -334,7 +342,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   public void testCreateExternalTableVolumePermissionsViaDelta() throws Exception {
     runExternalTableVolumePermissionsTest(
         (apiClient, name, location) ->
-            new io.unitycatalog.client.delta.api.TablesApi(apiClient)
+            new DeltaTablesApi(apiClient)
                 .createTable(
                     TestUtils.CATALOG_NAME,
                     TestUtils.SCHEMA_NAME,
@@ -505,31 +513,31 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
     }
   }
 
-  /** Minimum valid Delta CreateTableRequest for an EXTERNAL Delta table. */
-  private static io.unitycatalog.client.delta.model.CreateTableRequest deltaExternalTableRequest(
-      String name, String location) {
-    return new io.unitycatalog.client.delta.model.CreateTableRequest()
+  /** Minimum valid DeltaCreateTableRequest for an EXTERNAL Delta table. */
+  private static DeltaCreateTableRequest
+      deltaExternalTableRequest(String name, String location) {
+    return new DeltaCreateTableRequest()
         .name(name)
         .location(location)
-        .tableType(io.unitycatalog.client.delta.model.TableType.EXTERNAL)
-        .dataSourceFormat(io.unitycatalog.client.delta.model.DataSourceFormat.DELTA)
+        .tableType(DeltaTableType.EXTERNAL)
         .protocol(
-            new io.unitycatalog.client.delta.model.DeltaProtocol()
+            new DeltaProtocol()
                 .minReaderVersion(3)
                 .minWriterVersion(7)
                 .readerFeatures(List.of("deletionVectors"))
                 .writerFeatures(List.of("deletionVectors")))
         .columns(
-            new io.unitycatalog.client.delta.model.StructType()
+            new DeltaStructType()
                 .type("struct")
                 .fields(
                     List.of(
-                        new io.unitycatalog.client.delta.model.StructField()
+                        new DeltaStructField()
                             .name("id")
                             .type(
-                                new io.unitycatalog.client.delta.model.PrimitiveType().type("long"))
+                                new DeltaPrimitiveType()
+                                    .type("long"))
                             .nullable(true)
-                            .metadata(java.util.Map.of()))))
+                            .metadata(new DeltaStructFieldMetadata()))))
         .properties(java.util.Map.of("delta.enableDeletionVectors", "true"))
         .lastCommitTimestampMs(1700000000000L);
   }
