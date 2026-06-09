@@ -184,6 +184,17 @@ class CrossSparkPublishTest:
 
         return False
 
+    def run_helper(self, *args: str) -> str:
+        result = subprocess.run(
+            [sys.executable, "project/scripts/get_spark_version_info.py"] + list(args),
+            cwd=self.uc_root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+        return result.stdout.strip()
+
     def test_source_build_metadata(self) -> bool:
         """Source-build defaults should be configured but excluded from publish loops."""
         source_build_versions = [
@@ -218,6 +229,45 @@ class CrossSparkPublishTest:
 
         if all_passed:
             print(f"PASS: Source-build metadata configured for {source_build_versions}")
+        return all_passed
+
+    def test_spark_version_helper_metadata(self) -> bool:
+        """The workflow helper should expose UC's Spark metadata consistently."""
+        print("\n" + "=" * 70)
+        print("TEST: Spark version metadata helper")
+        print("=" * 70)
+
+        try:
+            source_build_versions = json.loads(
+                self.run_helper("--source-build-spark-versions")
+            )
+            artifact_base_version = json.loads(
+                self.run_helper(
+                    "--get-field",
+                    "4.2",
+                    "sourceBuildArtifactBaseVersion",
+                )
+            )
+            default_ref = json.loads(
+                self.run_helper("--get-field", "4.2", "sourceBuildDefaultRef")
+            )
+        except (subprocess.CalledProcessError, ValueError) as exc:
+            print(f"FAIL: Spark version helper failed: {exc}")
+            return False
+
+        all_passed = True
+        if "4.2.0-SNAPSHOT" not in source_build_versions:
+            print("FAIL: Expected 4.2.0-SNAPSHOT in source-build Spark versions")
+            all_passed = False
+        if artifact_base_version != "4.2.0":
+            print("FAIL: Expected 4.2 sourceBuildArtifactBaseVersion to be 4.2.0")
+            all_passed = False
+        if not default_ref:
+            print("FAIL: Expected 4.2 sourceBuildDefaultRef to be configured")
+            all_passed = False
+
+        if all_passed:
+            print("PASS: Spark version helper exposes source-build metadata")
         return all_passed
 
     def test_default_publish(self) -> bool:
@@ -363,10 +413,11 @@ def main():
         test = CrossSparkPublishTest(uc_root)
 
         t0 = test.test_source_build_metadata()
-        t1 = test.test_default_publish()
-        t2 = test.test_backward_compat_publish()
-        t3 = test.test_per_version_publish()
-        t4 = test.test_cross_spark_workflow()
+        t1 = test.test_spark_version_helper_metadata()
+        t2 = test.test_default_publish()
+        t3 = test.test_backward_compat_publish()
+        t4 = test.test_per_version_publish()
+        t5 = test.test_cross_spark_workflow()
 
         print("\n" + "=" * 70)
         print("TEST SUMMARY")
@@ -375,20 +426,23 @@ def main():
             f"  Source-build metadata:                  {'PASS' if t0 else 'FAIL'}"
         )
         print(
-            f"  Default publishM2 (with suffix):        {'PASS' if t1 else 'FAIL'}"
+            f"  Spark version helper metadata:          {'PASS' if t1 else 'FAIL'}"
         )
         print(
-            f"  skipSparkSuffix (backward compat):      {'PASS' if t2 else 'FAIL'}"
+            f"  Default publishM2 (with suffix):        {'PASS' if t2 else 'FAIL'}"
         )
         print(
-            f"  Per-version publish:                    {'PASS' if t3 else 'FAIL'}"
+            f"  skipSparkSuffix (backward compat):      {'PASS' if t3 else 'FAIL'}"
         )
         print(
-            f"  Cross-Spark Workflow (both):            {'PASS' if t4 else 'FAIL'}"
+            f"  Per-version publish:                    {'PASS' if t4 else 'FAIL'}"
+        )
+        print(
+            f"  Cross-Spark Workflow (both):            {'PASS' if t5 else 'FAIL'}"
         )
         print("=" * 70)
 
-        if t0 and t1 and t2 and t3 and t4:
+        if t0 and t1 and t2 and t3 and t4 and t5:
             print("\nALL TESTS PASSED")
             sys.exit(0)
         else:
