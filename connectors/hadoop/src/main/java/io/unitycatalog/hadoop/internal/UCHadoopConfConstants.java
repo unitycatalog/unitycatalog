@@ -90,6 +90,11 @@ public class UCHadoopConfConstants {
   public static final String UC_PATH_KEY = "fs.unitycatalog.path";
   public static final String UC_PATH_OPERATION_KEY = "fs.unitycatalog.path.operation";
 
+  public static final String UC_SHALLOW_CLONE_SOURCE_PREFIX =
+      "fs.unitycatalog.shallowClone.source.";
+  public static final String UC_SHALLOW_CLONE_CLONE_LOCATION_KEY =
+      "fs.unitycatalog.shallowClone.cloneLocation";
+
   // Key indicating the credential request type, table or path.
   public static final String UC_CREDENTIALS_TYPE_KEY = "fs.unitycatalog.credentials.type";
   public static final String UC_CREDENTIALS_TYPE_TABLE_VALUE = "table";

@@ -8,6 +8,7 @@ import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs.{PathOperation, TableOperation}
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants
 import io.unitycatalog.spark.auth.AuthConfigUtils
 import io.unitycatalog.spark.compat.SparkCatalogCompatibility
 import io.unitycatalog.spark.utils.OptionsUtil
@@ -164,8 +165,21 @@ class UCSingleCatalog
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
       if (UCSingleCatalog.hasDeltaProvider(properties)) {
         // Managed Delta table
-        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
-        delegate.createTable(ident, columns, partitions, newProps)
+        val baseTableId = Option(properties.get(UCTableProperties.SHALLOW_CLONE_BASE_TABLE_ID_KEY))
+        val createProps = baseTableId match {
+          case Some(_) =>
+            val copy = new util.HashMap[String, String](properties)
+            copy.remove(UCTableProperties.SHALLOW_CLONE_BASE_TABLE_ID_KEY)
+            copy
+          case None => properties
+        }
+        val newProps = managedDeltaCreatePropsForDelegate(ident, createProps)
+        UCSingleCatalog.SHALLOW_CLONE_BASE_TABLE_ID.set(baseTableId.orNull)
+        try {
+          delegate.createTable(ident, columns, partitions, newProps)
+        } finally {
+          UCSingleCatalog.SHALLOW_CLONE_BASE_TABLE_ID.remove()
+        }
       } else {
         // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
         // tables. Surface the same friendly error the legacy staging path used to produce.
@@ -371,7 +385,59 @@ class UCSingleCatalog
     delegate.alterTable(ident, changes: _*)
   }
 
-  override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
+  override def dropTable(ident: Identifier): Boolean = {
+    rejectDropIfReferencedByShallowClone(ident)
+    delegate.dropTable(ident)
+  }
+
+  override def purgeTable(ident: Identifier): Boolean = {
+    rejectDropIfReferencedByShallowClone(ident)
+    delegate.purgeTable(ident)
+  }
+
+  private def rejectDropIfReferencedByShallowClone(ident: Identifier): Unit = {
+    val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
+    val tableInfo = try {
+      tablesApi.getTable(fullName, true, true)
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        return
+    }
+    val tableId = Option(tableInfo.getTableId).filter(_.nonEmpty).getOrElse {
+      return
+    }
+    val shallowCloneTypes = Set(TableType.MANAGED_SHALLOW_CLONE, TableType.EXTERNAL_SHALLOW_CLONE)
+    val referencingClones = ArrayBuffer.empty[String]
+    var pageToken: String = null
+    do {
+      val response = tablesApi.listTables(this.name, ident.namespace().head, 0, pageToken)
+      referencingClones ++= response.getTables.asScala.collect {
+        case table
+            if shallowCloneTypes.contains(table.getTableType) &&
+              tableId == baseTableIdForShallowClone(table).orNull =>
+          Seq(table.getCatalogName, table.getSchemaName, table.getName).mkString(".")
+      }
+      pageToken = response.getNextPageToken
+    } while (pageToken != null && pageToken.nonEmpty)
+
+    if (referencingClones.nonEmpty) {
+      throw new ApiException(
+        s"Cannot drop table ${UCSingleCatalog.fullTableNameForApi(this.name, ident)} because it " +
+          s"is referenced by one or more shallow clone(s): ${referencingClones.mkString(", ")}. " +
+          "DROP all shallow clones before dropping the base table.")
+    }
+  }
+
+  private def baseTableIdForShallowClone(table: TableInfo): Option[String] = {
+    Option(table.getBaseTableId).filter(_.nonEmpty).orElse {
+      val fullName = Seq(table.getCatalogName, table.getSchemaName, table.getName).mkString(".")
+      try {
+        Option(tablesApi.getTable(fullName, true, true).getBaseTableId).filter(_.nonEmpty)
+      } catch {
+        case e: ApiException if e.getCode == 404 => None
+      }
+    }
+  }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
     throw new UnsupportedOperationException("Renaming a table is not supported yet")
@@ -511,6 +577,11 @@ object UCSingleCatalog {
   // DeltaCatalog loading status for testing purpose.
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
+
+  val SHALLOW_CLONE_BASE_TABLE_ID = new ThreadLocal[String]()
+
+  val SHALLOW_CLONE_TABLE_TYPES: Set[TableType] =
+    Set(TableType.MANAGED_SHALLOW_CLONE, TableType.EXTERNAL_SHALLOW_CLONE)
 
   /**
    * Returns the current session's Hadoop configuration, blended with any session-scoped
@@ -661,6 +732,7 @@ private class UCProxy(
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
 
+    val isShallowClone = UCSingleCatalog.SHALLOW_CLONE_TABLE_TYPES.contains(t.getTableType)
     val credBuilder =
       UCCredentialHadoopConfs
         .builder(uri.toString, locationUri.getScheme)
@@ -668,7 +740,7 @@ private class UCProxy(
         .tokenProvider(tokenProvider)
         .apiClient(apiClient)
         .enableCredentialRenewal(renewCredEnabled)
-        .enableCredentialScopedFs(credScopedFsEnabled)
+        .enableCredentialScopedFs(credScopedFsEnabled || isShallowClone)
         .hadoopConf(UCSingleCatalog.sessionHadoopConf())
 
     // TODO: at this time, we don't know if the table will be read or written. For now we always
@@ -700,7 +772,12 @@ private class UCProxy(
       enableServerSidePlanningConfig(identifier)
     }
 
-    val storageProperties = (t.getProperties.asScala.toMap ++ extraSerdeProps).asJava
+    val sourceScanProps = shallowCloneSourceScanProps(t, credBuilder, identifier)
+
+    val idProp = Option(tableId).filter(_.nonEmpty)
+      .map(UCTableProperties.UC_TABLE_ID_KEY -> _).toMap
+    val storageProperties =
+      (t.getProperties.asScala.toMap ++ extraSerdeProps ++ sourceScanProps ++ idProp).asJava
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -723,6 +800,33 @@ private class UCProxy(
       .getDeclaredConstructor(classOf[CatalogTable])
       .newInstance(sparkTable)
       .asInstanceOf[Table]
+  }
+
+  private def shallowCloneSourceScanProps(
+      tableInfo: TableInfo,
+      credBuilder: UCCredentialHadoopConfs.Builder,
+      identifier: TableIdentifier): Map[String, String] = {
+    if (!UCSingleCatalog.SHALLOW_CLONE_TABLE_TYPES.contains(tableInfo.getTableType)) {
+      return Map.empty
+    }
+
+    Option(tableInfo.getBaseTableId).filter(_.nonEmpty).map { baseTableId =>
+      try {
+        val sourceCreds = credBuilder.buildForTable(baseTableId, TableOperation.READ).asScala.toMap
+        val namespacedSourceCreds = sourceCreds.map {
+          case (key, value) =>
+            UCHadoopConfConstants.UC_SHALLOW_CLONE_SOURCE_PREFIX + key -> value
+        }
+        namespacedSourceCreds +
+          (UCHadoopConfConstants.UC_SHALLOW_CLONE_CLONE_LOCATION_KEY -> tableInfo.getStorageLocation)
+      } catch {
+        case e: ApiException =>
+          logWarning(
+            s"READ credential generation failed for shallow-clone base table of $identifier: " +
+              e.getMessage)
+          Map.empty[String, String]
+      }
+    }.getOrElse(Map.empty)
   }
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
@@ -748,6 +852,12 @@ private class UCProxy(
       createTable.setTableType(TableType.MANAGED)
     } else {
       createTable.setTableType(TableType.EXTERNAL)
+    }
+    Option(UCSingleCatalog.SHALLOW_CLONE_BASE_TABLE_ID.get()).filter(_.nonEmpty).foreach { baseId =>
+      createTable.setTableType(
+        if (createTable.getTableType == TableType.MANAGED) TableType.MANAGED_SHALLOW_CLONE
+        else TableType.EXTERNAL_SHALLOW_CLONE)
+      createTable.setBaseTableId(baseId)
     }
     createTable.setStorageLocation(storageLocation)
 
@@ -867,8 +977,56 @@ private class UCProxy(
   }
 
   override def dropTable(ident: Identifier): Boolean = {
-    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
+    val tableInfo = try {
+      tablesApi.getTable(fullName, true, true)
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        return false
+    }
+    rejectDropIfReferencedByShallowClone(ident, tableInfo)
+
+    val ret = tablesApi.deleteTable(fullName)
     if (ret == 200) true else false
+  }
+
+  private def rejectDropIfReferencedByShallowClone(
+      ident: Identifier,
+      tableInfo: TableInfo): Unit = {
+    val tableId = Option(tableInfo.getTableId).filter(_.nonEmpty).getOrElse {
+      return
+    }
+    val shallowCloneTypes = Set(TableType.MANAGED_SHALLOW_CLONE, TableType.EXTERNAL_SHALLOW_CLONE)
+    val referencingClones = ArrayBuffer.empty[String]
+    var pageToken: String = null
+    do {
+      val response = tablesApi.listTables(this.name, ident.namespace().head, 0, pageToken)
+      referencingClones ++= response.getTables.asScala.collect {
+        case table
+            if shallowCloneTypes.contains(table.getTableType) &&
+              tableId == baseTableIdForShallowClone(table).orNull =>
+          Seq(table.getCatalogName, table.getSchemaName, table.getName).mkString(".")
+      }
+      pageToken = response.getNextPageToken
+    } while (pageToken != null && pageToken.nonEmpty)
+
+    if (referencingClones.nonEmpty) {
+      throw new ApiException(
+        s"Cannot drop table ${UCSingleCatalog.fullTableNameForApi(this.name, ident)} because it " +
+          s"is referenced by one or more shallow clone(s): ${referencingClones.mkString(", ")}. " +
+          "DROP all shallow clones before dropping the base table.")
+    }
+  }
+
+  private def baseTableIdForShallowClone(table: TableInfo): Option[String] = {
+    Option(table.getBaseTableId).filter(_.nonEmpty).orElse {
+      val fullName = Seq(table.getCatalogName, table.getSchemaName, table.getName).mkString(".")
+      try {
+        Option(tablesApi.getTable(fullName, true, true).getBaseTableId).filter(_.nonEmpty)
+      } catch {
+        case e: ApiException if e.getCode == 404 => None
+      }
+    }
   }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {

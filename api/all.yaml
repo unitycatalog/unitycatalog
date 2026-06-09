@@ -1677,6 +1677,8 @@ components:
       enum:
         - MANAGED
         - EXTERNAL
+        - MANAGED_SHALLOW_CLONE
+        - EXTERNAL_SHALLOW_CLONE
         - STREAMING_TABLE # Not yet fully implemented
         - MATERIALIZED_VIEW # Not yet fully implemented
         - METRIC_VIEW
@@ -1714,6 +1716,11 @@ components:
             $ref: '#/components/schemas/ColumnInfo'
         storage_location:
           description: Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
+          type: string
+        base_table_id:
+          description: >-
+            The table id of the base table for shallow clone tables
+            (table_type MANAGED_SHALLOW_CLONE or EXTERNAL_SHALLOW_CLONE).
           type: string
         comment:
           description: User-provided free-form text description.
@@ -1771,6 +1778,15 @@ components:
             $ref: '#/components/schemas/ColumnInfo'
         storage_location:
           description: Storage root URL for external table
+          type: string
+        base_table_id:
+          description: >-
+            The table id of the base table when creating a shallow clone
+            (table_type MANAGED_SHALLOW_CLONE or EXTERNAL_SHALLOW_CLONE). The
+            server derives the base table location from this id; the clone's
+            AddFile actions reference the base table's data files by absolute
+            path, so the catalog records the dependency and grants readers
+            credential access to the base table's storage location.
           type: string
         comment:
           description: User-provided free-form text description.

@@ -83,8 +83,9 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    CredScopedKey key = CredScopedKey.create(uri, conf);
-    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
+    Configuration effectiveConf = ShallowCloneCredScope.selectConf(uri, conf);
+    CredScopedKey key = CredScopedKey.create(uri, effectiveConf);
+    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, effectiveConf));
   }
 
   /**

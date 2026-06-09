@@ -9,6 +9,9 @@ public class UCTableProperties {
   // This table property should be set to the table ID assigned by UC for managed tables.
   public static final String UC_TABLE_ID_KEY = "io.unitycatalog.tableId";
 
+  public static final String SHALLOW_CLONE_BASE_TABLE_ID_KEY =
+      "io.unitycatalog.shallowClone.baseTableId";
+
   // This table property should be set in order to enable Delta code to use UC as commit coordinator
   public static final String DELTA_CATALOG_MANAGED_KEY = "delta.feature.catalogManaged";
   public static final String DELTA_CATALOG_MANAGED_VALUE = "supported";
