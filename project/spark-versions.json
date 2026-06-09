@@ -9,5 +9,32 @@
       "sourceBuildArtifactBaseVersion": "4.2.0",
       "sourceBuildDefaultRef": "b6bd005ac7549411ec4e7dc944d7a0e19fd56561"
     }
-  ]
+  ],
+  "ciTestMatrix": {
+    "published": [
+      {
+        "sparkVersion": "4.0.0",
+        "deltaVersion": "4.2.0",
+        "validationMode": "all-tests",
+        "nonBlocking": false
+      },
+      {
+        "sparkVersion": "4.1.0",
+        "deltaVersion": "4.2.0",
+        "validationMode": "spark-tests",
+        "nonBlocking": false
+      },
+      {
+        "sparkVersion": "4.1.0",
+        "deltaVersion": "master-SNAPSHOT",
+        "validationMode": "spark-tests",
+        "nonBlocking": true
+      }
+    ],
+    "sourceBuild": {
+      "deltaVersion": "master-SNAPSHOT",
+      "validationMode": "spark-tests",
+      "nonBlocking": true
+    }
+  }
 }

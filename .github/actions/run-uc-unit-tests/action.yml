@@ -1,0 +1,121 @@
+name: Run UC unit tests
+description: Run UC unit tests for a Spark/Delta matrix row, optionally using a prepared Spark source cache.
+
+inputs:
+  spark-version:
+    description: Spark version for this matrix row.
+    required: true
+  delta-version:
+    description: Delta version for this matrix row.
+    required: true
+  validation-mode:
+    description: all-tests or spark-tests.
+    required: true
+  use-spark-source-cache:
+    description: Restore and verify the prepared Spark Maven cache before running tests.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+      with:
+        java-version: '17'
+        distribution: 'zulu'
+        cache: 'sbt'
+
+    - name: Resolve Spark source build
+      if: inputs.use-spark-source-cache == 'true'
+      id: spark-source
+      shell: bash
+      run: |
+        # Recomputes the same exact cache key prepared by build-spark-source.
+        python3 project/scripts/get_spark_version_info.py \
+          --resolve-source-build \
+          --spark-version "${{ inputs.spark-version }}"
+
+    - name: Restore prepared Spark Maven cache
+      if: inputs.use-spark-source-cache == 'true'
+      id: spark-source-cache
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.m2/repository/org/apache/spark
+        key: ${{ steps.spark-source.outputs.cache_key }}
+
+    - name: Verify restored Spark Maven artifacts
+      if: inputs.use-spark-source-cache == 'true'
+      shell: bash
+      env:
+        SPARK_SOURCE_REF: ${{ steps.spark-source.outputs.source_ref }}
+        SPARK_ARTIFACT_VERSION: ${{ steps.spark-source.outputs.spark_artifact_version }}
+      run: |
+        if [[ "${{ steps.spark-source-cache.outputs.cache-hit }}" != "true" ]]; then
+          echo "::error::Prepared Spark Maven cache was not found for $SPARK_SOURCE_REF."
+          exit 1
+        fi
+        missing=0
+        for module in spark-sql_2.13 spark-core_2.13 spark-catalyst_2.13 spark-hive_2.13; do
+          pom="$HOME/.m2/repository/org/apache/spark/$module/$SPARK_ARTIFACT_VERSION/$module-$SPARK_ARTIFACT_VERSION.pom"
+          if [[ ! -f "$pom" ]]; then
+            echo "::error::Missing restored Spark Maven artifact: $pom"
+            missing=1
+          fi
+        done
+        if [[ "$missing" != "0" ]]; then
+          echo "The Spark cache was restored, but it does not contain the expected Maven artifacts."
+          exit 1
+        fi
+        echo "SPARK_COMMIT=${{ steps.spark-source.outputs.spark_sha }}" >> "$GITHUB_ENV"
+        echo "SPARK_ARTIFACT_VERSION=$SPARK_ARTIFACT_VERSION" >> "$GITHUB_ENV"
+
+    # Publish UC to local caches BEFORE building Delta — Delta's build resolves
+    # UC artifacts from ~/.ivy2/local via -DunityCatalogVersion.
+    - name: Build, package, and publish UC locally
+      shell: bash
+      run: |
+        SKIP_DELTA=""
+        if [[ "${{ inputs.delta-version }}" == "master-SNAPSHOT" ]]; then
+          SKIP_DELTA="-DskipDeltaSpark=true"
+        fi
+        build/sbt -DsparkVersion=${{ inputs.spark-version }} $SKIP_DELTA -J-Xmx2G package publishLocal publishM2
+
+    - name: Build Delta SNAPSHOT from source
+      if: inputs.delta-version == 'master-SNAPSHOT'
+      id: delta-build
+      shell: bash
+      run: |
+        export SPARK_MAJOR_MINOR=$(echo "${{ inputs.spark-version }}" | cut -d. -f1,2)
+        bash project/scripts/build_delta.sh
+
+    - name: Set effective Delta version
+      shell: bash
+      run: |
+        if [[ "${{ inputs.delta-version }}" == "master-SNAPSHOT" ]]; then
+          echo "DELTA_VERSION=${{ steps.delta-build.outputs.DELTA_VERSION }}" >> $GITHUB_ENV
+        else
+          echo "DELTA_VERSION=${{ inputs.delta-version }}" >> $GITHUB_ENV
+        fi
+
+    - name: Compile integration tests to verify compilation and checkstyle issues.
+      shell: bash
+      run: build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G integrationTests/test:compile
+
+    - name: Run tests with coverage
+      shell: bash
+      run: |
+        if [[ "${{ inputs.validation-mode }}" == "spark-tests" ]]; then
+          echo "Running spark connector tests"
+          build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G spark/jacoco
+        else
+          echo "Running all tests"
+          build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G +jacoco
+        fi
+
+    - name: Run license check
+      if: inputs.validation-mode == 'all-tests'
+      shell: bash
+      run: build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck

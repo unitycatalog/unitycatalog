@@ -8,6 +8,7 @@ used by the Spark artifact producer and consumer jobs.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -42,6 +43,10 @@ def load_spark_versions(repo_root):
         return json.load(handle)
 
 
+def version_specs_by_full_version(data):
+    return {spec["version"]: spec for spec in data["versions"]}
+
+
 def find_spark_spec(data, spark_version):
     versions = data["versions"]
 
@@ -68,6 +73,95 @@ def find_spark_spec(data, spark_version):
             spark_version
         )
     )
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def compute_spark_m2_cache_key(
+    runner_label,
+    spark_version,
+    artifact_base_version,
+    spark_sha,
+    build_script_path,
+):
+    script_hash = sha256_file(build_script_path)
+    return (
+        "spark-m2-{}-scala-2.13-"
+        "{}-{}-{}-{}".format(
+            runner_label,
+            spark_version,
+            artifact_base_version,
+            spark_sha,
+            script_hash,
+        )
+    )
+
+
+def matrix_row_from_published(row):
+    return {
+        "spark-version": row["sparkVersion"],
+        "delta-version": row["deltaVersion"],
+        "validation-mode": row["validationMode"],
+        "non-blocking": row["nonBlocking"],
+    }
+
+
+def matrix_row_from_source_build(spark_version, template):
+    return {
+        "spark-version": spark_version,
+        "delta-version": template["deltaVersion"],
+        "validation-mode": template["validationMode"],
+        "non-blocking": template["nonBlocking"],
+        "source-build": True,
+    }
+
+
+def generate_ci_test_matrix(data):
+    ci_test_matrix = data.get("ciTestMatrix")
+    if not ci_test_matrix:
+        raise SystemExit(
+            "ciTestMatrix is missing from project/spark-versions.json"
+        )
+
+    versions_by_name = version_specs_by_full_version(data)
+    published_rows = []
+    for row in ci_test_matrix.get("published", []):
+        spark_version = row["sparkVersion"]
+        if spark_version not in versions_by_name:
+            raise SystemExit(
+                "ciTestMatrix.published references unknown Spark version {}".format(
+                    spark_version
+                )
+            )
+        published_rows.append(matrix_row_from_published(row))
+
+    source_build_versions = [
+        spec["version"] for spec in data["versions"]
+        if spec.get("sourceBuildDefaultRef")
+    ]
+    source_build_template = ci_test_matrix.get("sourceBuild")
+    source_build_rows = []
+    if source_build_versions:
+        if not source_build_template:
+            raise SystemExit(
+                "ciTestMatrix.sourceBuild is required when source-build Spark versions "
+                "are configured in project/spark-versions.json"
+            )
+        for spark_version in source_build_versions:
+            source_build_rows.append(
+                matrix_row_from_source_build(spark_version, source_build_template)
+            )
+
+    return {
+        "published": published_rows,
+        "sourceBuild": source_build_rows,
+    }
 
 
 def resolve_spark_sha(spark_repo, spark_ref, spark_dir):
@@ -116,6 +210,14 @@ def resolve_source_build(args, data, repo_root):
     )
     spark_sha = resolve_spark_sha(args.spark_repo, source_ref, Path(args.spark_dir))
     spark_artifact_version = "{}-{}-SNAPSHOT".format(artifact_base_version, spark_sha[:12])
+    build_script_path = repo_root / "project" / "scripts" / "build_spark.sh"
+    cache_key = compute_spark_m2_cache_key(
+        args.runner_label,
+        spec["version"],
+        artifact_base_version,
+        spark_sha,
+        build_script_path,
+    )
 
     print(
         "Resolved Spark {} source ref {} to {} and Maven version {}".format(
@@ -129,6 +231,7 @@ def resolve_source_build(args, data, repo_root):
             "spark_sha": spark_sha,
             "artifact_base_version": artifact_base_version,
             "spark_artifact_version": spark_artifact_version,
+            "cache_key": cache_key,
         }
     )
 
@@ -149,6 +252,16 @@ def main():
         "--source-build-spark-versions",
         action="store_true",
         help="Output Spark versions with configured source-build default refs",
+    )
+    parser.add_argument(
+        "--non-source-build-spark-versions",
+        action="store_true",
+        help="Output Spark versions without configured source-build default refs",
+    )
+    parser.add_argument(
+        "--ci-test-matrix",
+        action="store_true",
+        help="Output CI test matrix rows for published and source-build lanes",
     )
     parser.add_argument(
         "--get-field",
@@ -177,6 +290,11 @@ def main():
         default="/tmp/spark",
         help="Temporary Spark checkout used for source-ref resolution",
     )
+    parser.add_argument(
+        "--runner-label",
+        default="ubuntu-latest",
+        help="GitHub Actions runner label used in Spark Maven cache keys",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -195,6 +313,13 @@ def main():
             spec["version"] for spec in data["versions"]
             if spec.get("sourceBuildDefaultRef")
         ]))
+    elif args.non_source_build_spark_versions:
+        print(json.dumps([
+            spec["version"] for spec in data["versions"]
+            if not spec.get("sourceBuildDefaultRef")
+        ]))
+    elif args.ci_test_matrix:
+        print(json.dumps(generate_ci_test_matrix(data)))
     elif args.get_field:
         spark_version, field = args.get_field
         spec = find_spark_spec(data, spark_version)
