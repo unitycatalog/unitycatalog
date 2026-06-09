@@ -185,13 +185,13 @@ class CrossSparkPublishTest:
         return False
 
     def test_source_build_metadata(self) -> bool:
-        """Source-built Spark specs should be configured but excluded from publish loops."""
+        """Source-build defaults should be configured but excluded from publish loops."""
         source_build_versions = [
             version for version, spec in SPARK_VERSIONS.items()
-            if spec.requires_spark_commit
+            if spec.source_build_default_ref
         ]
         if not source_build_versions:
-            print("FAIL: Expected at least one source-built Spark spec")
+            print("FAIL: Expected at least one Spark spec with source-build defaults")
             return False
 
         all_passed = True
@@ -209,7 +209,7 @@ class CrossSparkPublishTest:
 
         release_like_versions = [
             version for version, spec in SPARK_VERSIONS.items()
-            if "SNAPSHOT" not in version and not spec.requires_spark_commit
+            if "SNAPSHOT" not in version and not spec.source_build_default_ref
         ]
         overlap = set(source_build_versions).intersection(release_like_versions)
         if overlap:
