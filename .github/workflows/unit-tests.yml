@@ -15,6 +15,65 @@ permissions:
   contents: read
 
 jobs:
+  prepare_spark_source_cache:
+    name: Prepare Spark 4.2.0-SNAPSHOT source cache
+    runs-on: ubuntu-latest
+    outputs:
+      spark_version: ${{ steps.spark-source.outputs.spark_version }}
+      source_ref: ${{ steps.spark-source.outputs.source_ref }}
+      spark_sha: ${{ steps.spark-source.outputs.spark_sha }}
+      artifact_base_version: ${{ steps.spark-source.outputs.artifact_base_version }}
+      spark_artifact_version: ${{ steps.spark-source.outputs.spark_artifact_version }}
+      cache_key: ${{ steps.spark-cache-key.outputs.cache_key }}
+
+    steps:
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+    - name: Set up JDK 17
+      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+      with:
+        java-version: '17'
+        distribution: 'zulu'
+        cache: 'sbt'
+
+    - name: Resolve Spark source build
+      id: spark-source
+      run: |
+        # Resolves the Spark compatibility line, metadata-owned source ref,
+        # immutable Spark SHA, and commit-qualified local Maven version.
+        python3 project/scripts/get_spark_version_info.py \
+          --resolve-source-build \
+          --spark-version "4.2.0-SNAPSHOT"
+
+    - name: Compute Spark Maven cache key
+      id: spark-cache-key
+      run: |
+        echo "cache_key=spark-m2-ubuntu-latest-scala-2.13-${{ steps.spark-source.outputs.spark_version }}-${{ steps.spark-source.outputs.artifact_base_version }}-${{ steps.spark-source.outputs.spark_sha }}-${{ hashFiles('project/scripts/build_spark.sh') }}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Spark Maven cache
+      id: spark-source-cache
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.m2/repository/org/apache/spark
+        # Exact-match cache only. Spark source builds must not fall back to a
+        # different SHA or artifact base version.
+        key: ${{ steps.spark-cache-key.outputs.cache_key }}
+
+    - name: Build Spark source ref locally
+      if: steps.spark-source-cache.outputs.cache-hit != 'true'
+      env:
+        SPARK_SOURCE_REF: ${{ steps.spark-source.outputs.source_ref }}
+        SPARK_VERSION: ${{ steps.spark-source.outputs.spark_version }}
+        SPARK_BASE_VERSION: ${{ steps.spark-source.outputs.artifact_base_version }}
+        SPARK_ARTIFACT_VERSION: ${{ steps.spark-source.outputs.spark_artifact_version }}
+      run: bash project/scripts/build_spark.sh
+
+    - name: Save Spark Maven cache
+      if: steps.spark-source-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.m2/repository/org/apache/spark
+        key: ${{ steps.spark-cache-key.outputs.cache_key }}
+
   test:
     runs-on: ubuntu-latest
 
@@ -47,10 +106,6 @@ jobs:
             # Cross-version testing with Delta master is informational; failures
             # indicate upcoming incompatibilities but should not block PRs.
             non-blocking: true
-          - spark-version: "4.2.0-SNAPSHOT"
-            delta-version: "master-SNAPSHOT"
-            validation-mode: "spark-tests"
-            non-blocking: true
 
     steps:
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -60,55 +115,6 @@ jobs:
         java-version: '17'
         distribution: 'zulu'
         cache: 'sbt'
-
-    - name: Resolve Spark source build
-      if: matrix.spark-version == '4.2.0-SNAPSHOT' && matrix.delta-version == 'master-SNAPSHOT'
-      id: spark-source
-      run: |
-        # Mirrors the producer workflow's cache identity calculation so this
-        # lane restores the exact Spark Maven artifacts built by that workflow.
-        python3 project/scripts/get_spark_version_info.py \
-          --resolve-source-build \
-          --spark-version "${{ matrix.spark-version }}"
-
-    - name: Restore Spark Maven cache
-      if: matrix.spark-version == '4.2.0-SNAPSHOT' && matrix.delta-version == 'master-SNAPSHOT'
-      id: spark-source-cache
-      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-      with:
-        path: ~/.m2/repository/org/apache/spark
-        # Exact-match cache only. Spark source builds must not fall back to a
-        # different SHA or artifact base version.
-        key: spark-m2-ubuntu-latest-scala-2.13-${{ steps.spark-source.outputs.spark_version }}-${{ steps.spark-source.outputs.artifact_base_version }}-${{ steps.spark-source.outputs.spark_sha }}-${{ hashFiles('project/scripts/build_spark.sh') }}
-
-    - name: Fail on Spark source cache miss
-      if: matrix.spark-version == '4.2.0-SNAPSHOT' && matrix.delta-version == 'master-SNAPSHOT' && steps.spark-source-cache.outputs.cache-hit != 'true'
-      env:
-        SPARK_SOURCE_REF: ${{ steps.spark-source.outputs.source_ref }}
-      run: |
-        echo "::error::Spark Maven artifacts were not found in the GitHub Actions cache. Run the Spark Source Artifact Cache workflow for $SPARK_SOURCE_REF first."
-        exit 1
-
-    - name: Verify restored Spark Maven artifacts
-      if: matrix.spark-version == '4.2.0-SNAPSHOT' && matrix.delta-version == 'master-SNAPSHOT'
-      env:
-        SPARK_SOURCE_REF: ${{ steps.spark-source.outputs.source_ref }}
-        SPARK_ARTIFACT_VERSION: ${{ steps.spark-source.outputs.spark_artifact_version }}
-      run: |
-        missing=0
-        for module in spark-sql_2.13 spark-core_2.13 spark-catalyst_2.13 spark-hive_2.13; do
-          pom="$HOME/.m2/repository/org/apache/spark/$module/$SPARK_ARTIFACT_VERSION/$module-$SPARK_ARTIFACT_VERSION.pom"
-          if [[ ! -f "$pom" ]]; then
-            echo "::error::Missing restored Spark Maven artifact: $pom"
-            missing=1
-          fi
-        done
-        if [[ "$missing" != "0" ]]; then
-          echo "The Spark cache was restored, but it does not contain the expected Maven artifacts. Re-run the Spark Source Artifact Cache workflow for $SPARK_SOURCE_REF."
-          exit 1
-        fi
-        echo "SPARK_COMMIT=${{ steps.spark-source.outputs.spark_sha }}" >> "$GITHUB_ENV"
-        echo "SPARK_ARTIFACT_VERSION=$SPARK_ARTIFACT_VERSION" >> "$GITHUB_ENV"
 
     # Publish UC to local caches BEFORE building Delta — Delta's build resolves
     # UC artifacts from ~/.ivy2/local via -DunityCatalogVersion.
@@ -153,3 +159,72 @@ jobs:
     - name: Run license check
       if: matrix.validation-mode == 'all-tests'
       run: build/sbt -DsparkVersion=${{ matrix.spark-version }} -DdeltaVersion=$DELTA_VERSION licenseCheck
+
+  source-spark-test:
+    name: "[Non Blocking] Spark tests (Spark 4.2.0-SNAPSHOT, Delta master-SNAPSHOT)"
+    runs-on: ubuntu-latest
+    needs: prepare_spark_source_cache
+    continue-on-error: true
+
+    steps:
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+    - name: Set up JDK 17
+      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+      with:
+        java-version: '17'
+        distribution: 'zulu'
+        cache: 'sbt'
+
+    - name: Restore prepared Spark Maven cache
+      id: spark-source-cache
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.m2/repository/org/apache/spark
+        key: ${{ needs.prepare_spark_source_cache.outputs.cache_key }}
+
+    - name: Verify restored Spark Maven artifacts
+      env:
+        SPARK_SOURCE_REF: ${{ needs.prepare_spark_source_cache.outputs.source_ref }}
+        SPARK_ARTIFACT_VERSION: ${{ needs.prepare_spark_source_cache.outputs.spark_artifact_version }}
+      run: |
+        if [[ "${{ steps.spark-source-cache.outputs.cache-hit }}" != "true" ]]; then
+          echo "::error::Prepared Spark Maven cache was not found for $SPARK_SOURCE_REF."
+          exit 1
+        fi
+        missing=0
+        for module in spark-sql_2.13 spark-core_2.13 spark-catalyst_2.13 spark-hive_2.13; do
+          pom="$HOME/.m2/repository/org/apache/spark/$module/$SPARK_ARTIFACT_VERSION/$module-$SPARK_ARTIFACT_VERSION.pom"
+          if [[ ! -f "$pom" ]]; then
+            echo "::error::Missing restored Spark Maven artifact: $pom"
+            missing=1
+          fi
+        done
+        if [[ "$missing" != "0" ]]; then
+          echo "The Spark cache was restored, but it does not contain the expected Maven artifacts."
+          exit 1
+        fi
+        echo "SPARK_COMMIT=${{ needs.prepare_spark_source_cache.outputs.spark_sha }}" >> "$GITHUB_ENV"
+        echo "SPARK_ARTIFACT_VERSION=$SPARK_ARTIFACT_VERSION" >> "$GITHUB_ENV"
+
+    # Publish UC to local caches BEFORE building Delta — Delta's build resolves
+    # UC artifacts from ~/.ivy2/local via -DunityCatalogVersion.
+    - name: Build, package, and publish UC locally
+      run: |
+        build/sbt -DsparkVersion=4.2.0-SNAPSHOT -DskipDeltaSpark=true -J-Xmx2G package publishLocal publishM2
+
+    - name: Build Delta SNAPSHOT from source
+      id: delta-build
+      run: |
+        export SPARK_MAJOR_MINOR=4.2
+        bash project/scripts/build_delta.sh
+
+    - name: Set effective Delta version
+      run: echo "DELTA_VERSION=${{ steps.delta-build.outputs.DELTA_VERSION }}" >> $GITHUB_ENV
+
+      # 'integrationTests' is not in root project, since we avoid running it via `./build/sbt test`,
+      # Here, we explicitly compile `integrationTests` to catch compilation issues early.
+    - name: Compile integration tests to verify compilation and checkstyle issues.
+      run: build/sbt -DsparkVersion=4.2.0-SNAPSHOT -DdeltaVersion=$DELTA_VERSION -J-Xmx2G integrationTests/test:compile
+
+    - name: Run Spark connector tests with coverage
+      run: build/sbt -DsparkVersion=4.2.0-SNAPSHOT -DdeltaVersion=$DELTA_VERSION -J-Xmx2G spark/jacoco
