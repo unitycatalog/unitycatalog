@@ -31,6 +31,12 @@ permissions:
 # (no restore-keys). test-spark-source recomputes the same key and restores because jobs do
 # not share filesystems. When the Spark SHA or build_spark.sh changes, a new key is used;
 # older cache entries become orphaned and GitHub evicts them by LRU.
+#
+# Test-matrix policy (ciTestMatrix in spark-versions.json):
+# - 4.0 + Delta 4.2 runs all-tests (unit, spark connector, license) as the primary combo.
+# - Other published rows run spark-tests only; license/unit checks do not vary by Spark/Delta.
+# - Delta master-SNAPSHOT rows are non-blocking informational signal for upcoming breakage.
+# - Source-build rows inherit ciTestMatrix.sourceBuild (today: master-SNAPSHOT, non-blocking).
 jobs:
   generate-matrix:
     name: Generate CI test matrix
@@ -53,6 +59,7 @@ jobs:
           echo "Source-build test matrix: $(echo "$CI_TEST_MATRIX" | jq -c '.sourceBuild')"
           echo "Source-build Spark versions: $SOURCE_BUILD_SPARK_VERSIONS"
 
+  # Warms ~/.m2/repository/org/apache/spark once per source-build Spark version in metadata.
   build-spark-source:
     name: Build Spark ${{ matrix.spark-version }} from source
     runs-on: ubuntu-latest
@@ -73,6 +80,8 @@ jobs:
       - name: Resolve Spark source build
         id: spark-source
         run: |
+          # Resolves the Spark compatibility line, metadata-owned source ref,
+          # immutable Spark SHA, commit-qualified local Maven version, and cache_key.
           python3 project/scripts/get_spark_version_info.py \
             --resolve-source-build \
             --spark-version "${{ matrix.spark-version }}"
@@ -82,6 +91,8 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.m2/repository/org/apache/spark
+          # Exact-match cache only. Spark source builds must not fall back to a
+          # different SHA, artifact base version, or build_spark.sh hash.
           key: ${{ steps.spark-source.outputs.cache_key }}
 
       - name: Build Spark source ref locally
@@ -100,9 +111,13 @@ jobs:
           path: ~/.m2/repository/org/apache/spark
           key: ${{ steps.spark-source.outputs.cache_key }}
 
+  # Published Spark artifacts only. This job does not depend on build-spark-source.
   test:
     runs-on: ubuntu-latest
     needs: generate-matrix
+    # Build a human-readable job name from the matrix entry, e.g.:
+    #   "All tests (Spark 4.0.0, Delta 4.2.0)"
+    #   "[Non Blocking] Spark tests (Spark 4.1.0, Delta master-SNAPSHOT)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
       ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
@@ -113,6 +128,7 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.generate-matrix.outputs.published_test_matrix) }}
     steps:
+      # Local composite actions require checkout before uses: ./.github/actions/...
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Run UC unit tests
         uses: ./.github/actions/run-uc-unit-tests
@@ -122,6 +138,7 @@ jobs:
           validation-mode: ${{ matrix.validation-mode }}
           use-spark-source-cache: 'false'
 
+  # Validates every source-build Spark row from ciTestMatrix after build-spark-source.
   test-spark-source:
     runs-on: ubuntu-latest
     needs: [generate-matrix, build-spark-source]
@@ -135,6 +152,7 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.generate-matrix.outputs.source_build_test_matrix) }}
     steps:
+      # Local composite actions require checkout before uses: ./.github/actions/...
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Run UC unit tests with source-built Spark
         uses: ./.github/actions/run-uc-unit-tests

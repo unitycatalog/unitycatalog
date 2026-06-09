@@ -1,5 +1,7 @@
 name: Run UC unit tests
-description: Run UC unit tests for a Spark/Delta matrix row, optionally using a prepared Spark source cache.
+description: >-
+  Run UC unit tests for a Spark/Delta matrix row, optionally using a prepared Spark source cache.
+  The calling job must run actions/checkout before invoking this local composite action.
 
 inputs:
   spark-version:
@@ -19,8 +21,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-
     - name: Set up JDK 17
       uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
       with:
@@ -44,6 +44,7 @@ runs:
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.m2/repository/org/apache/spark
+        # Recompute the same exact key used by build-spark-source for this Spark version.
         key: ${{ steps.spark-source.outputs.cache_key }}
 
     - name: Verify restored Spark Maven artifacts
@@ -69,6 +70,7 @@ runs:
           echo "The Spark cache was restored, but it does not contain the expected Maven artifacts."
           exit 1
         fi
+        # build_delta.sh and sbt read these to resolve the commit-qualified Spark artifacts.
         echo "SPARK_COMMIT=${{ steps.spark-source.outputs.spark_sha }}" >> "$GITHUB_ENV"
         echo "SPARK_ARTIFACT_VERSION=$SPARK_ARTIFACT_VERSION" >> "$GITHUB_ENV"
 
@@ -100,6 +102,8 @@ runs:
           echo "DELTA_VERSION=${{ inputs.delta-version }}" >> $GITHUB_ENV
         fi
 
+    # integrationTests is not in the root aggregate test task; compile it explicitly
+    # to catch cross-version compilation and checkstyle issues early.
     - name: Compile integration tests to verify compilation and checkstyle issues.
       shell: bash
       run: build/sbt -DsparkVersion=${{ inputs.spark-version }} -DdeltaVersion=$DELTA_VERSION -J-Xmx2G integrationTests/test:compile
