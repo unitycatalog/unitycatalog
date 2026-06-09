@@ -65,7 +65,8 @@ jobs:
       if: matrix.spark-version == '4.2.0-SNAPSHOT' && matrix.delta-version == 'master-SNAPSHOT'
       id: spark-source
       run: |
-        # Mirrors the producer workflow's cache identity calculation.
+        # Mirrors the producer workflow's cache identity calculation so this
+        # lane restores the exact Spark Maven artifacts built by that workflow.
         python3 project/scripts/get_spark_version_info.py \
           --resolve-source-build \
           --spark-version "${{ matrix.spark-version }}"
