@@ -66,7 +66,8 @@ jobs:
       id: spark-source
       run: |
         # Mirrors the producer workflow's cache identity calculation.
-        python3 project/scripts/resolve_spark_source_build.py \
+        python3 project/scripts/get_spark_version_info.py \
+          --resolve-source-build \
           --spark-version "${{ matrix.spark-version }}"
 
     - name: Restore Spark Maven cache
@@ -123,7 +124,7 @@ jobs:
       id: delta-build
       run: |
         export SPARK_MAJOR_MINOR=$(echo "${{ matrix.spark-version }}" | cut -d. -f1,2)
-        bash project/scripts/build_delta_from_source.sh
+        bash project/scripts/build_delta.sh
 
     - name: Set effective Delta version
       run: |
