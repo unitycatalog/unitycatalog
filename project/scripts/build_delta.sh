@@ -22,7 +22,7 @@ for arg in "$@"; do
   esac
 done
 
-# ── Clone ────────────────────────────────────────────────────────────────────
+# Clone
 if [ -d "$DELTA_DIR/.git" ]; then
   echo "Delta already cloned at $DELTA_DIR -- fetching $DELTA_REF."
   git -C "$DELTA_DIR" fetch "$DELTA_REPO" "$DELTA_REF"
@@ -33,7 +33,7 @@ else
 fi
 git -C "$DELTA_DIR" checkout --detach FETCH_HEAD
 
-# ── Resolve metadata ────────────────────────────────────────────────────────
+# Resolve metadata
 DELTA_SHA=$(git -C "$DELTA_DIR" rev-parse HEAD)
 DELTA_VER=$(sed -n 's/.*version := "\([^"]*-SNAPSHOT\)".*/\1/p' "$DELTA_DIR/version.sbt")
 if [ -z "$DELTA_VER" ]; then
@@ -56,7 +56,7 @@ if $META_ONLY; then
   exit 0
 fi
 
-# ── Build & publish to local Maven ───────────────────────────────────────────
+# Build and publish to local Maven
 SPARK_VERSION="${SPARK_VERSION:-${SPARK_MAJOR_MINOR:-}}"
 SPARK_VERSION="${SPARK_VERSION:?SPARK_VERSION or SPARK_MAJOR_MINOR is required for build (e.g. 4.1)}"
 SPARK_COMMIT_ARGS=()
