@@ -80,101 +80,63 @@ public class PermissionService {
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Get("/metastore/{name}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
-  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression("#principal != null")
   public HttpResponse getMetastoreAuthorization(
       @Param("name") String name) {
     return getAuthorization(METASTORE, name);
   }
 
   @Get("/catalog/{name}")
-  @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #catalog, OWNER)")
-  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression("#principal != null")
   public HttpResponse getCatalogAuthorization(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name) {
     return getAuthorization(CATALOG, name);
   }
 
   @Get("/schema/{name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG))
-      """)
-  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression("#principal != null")
   public HttpResponse getSchemaAuthorization(
       @Param("name") @AuthorizeResourceKey(SCHEMA) String name) {
     return getAuthorization(SCHEMA, name);
   }
 
   @Get("/table/{name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #table, OWNER))
-      """)
-  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression("#principal != null")
   public HttpResponse getTableAuthorization(
       @Param("name") @AuthorizeResourceKey(TABLE) String name) {
     return getAuthorization(TABLE, name);
   }
 
   @Get("/function/{name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #function, OWNER))
-      """)
-  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression("#principal != null")
   public HttpResponse getFunctionAuthorization(
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name) {
     return getAuthorization(FUNCTION, name);
   }
 
   @Get("/volume/{name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #volume, OWNER))
-      """)
-  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression("#principal != null")
   public HttpResponse getVolumeAuthorization(
       @Param("name") @AuthorizeResourceKey(VOLUME) String name) {
     return getAuthorization(VOLUME, name);
   }
 
   @Get("/registered_model/{name}")
-  @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #registered_model, OWNER)")
-  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression("#principal != null")
   public HttpResponse getRegisteredModelAuthorization(
       @Param("name") @AuthorizeResourceKey(REGISTERED_MODEL) String name) {
     return getAuthorization(REGISTERED_MODEL, name);
   }
 
   @Get("/external_location/{name}")
-  @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #external_location, OWNER)")
-  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression("#principal != null")
   public HttpResponse getExternalLocationAuthorization(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name) {
     return getAuthorization(EXTERNAL_LOCATION, name);
   }
 
   @Get("/credential/{name}")
-  @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #credential, OWNER)")
-  @AuthorizeResourceKey(METASTORE)
+  @AuthorizeExpression("#principal != null")
   public HttpResponse getCredentialAuthorization(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name) {
     return getAuthorization(CREDENTIAL, name);

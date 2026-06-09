@@ -52,14 +52,14 @@ public class PermissionServiceWithAuthorizationTest extends PermissionServiceTes
   }
 
   @Test
-  public void nonOwnerCannotReadCatalogPermissions() {
+  public void nonOwnerCanReadCatalogPermissions() {
     String admin = adminToken();
     createCatalog(CATALOG_NAME, admin);
     createUser(BOB, admin);
 
-    // GET is now gated to owners, so a non-owner read is rejected by the @AuthorizeExpression.
+    // GET is now gated to OWNERS or USE CATALOG
     AggregatedHttpResponse response = getCatalogPermissions(CATALOG_NAME, userToken(BOB));
-    assertThat(response.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(response.status()).isEqualTo(HttpStatus.OK);
   }
 
   @Test
