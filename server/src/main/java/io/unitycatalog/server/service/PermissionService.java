@@ -89,56 +89,56 @@ public class PermissionService {
   @Get("/catalog/{name}")
   @AuthorizeExpression("#principal != null")
   public HttpResponse getCatalogAuthorization(
-      @Param("name") @AuthorizeResourceKey(CATALOG) String name) {
+      @Param("name") String name) {
     return getAuthorization(CATALOG, name);
   }
 
   @Get("/schema/{name}")
   @AuthorizeExpression("#principal != null")
   public HttpResponse getSchemaAuthorization(
-      @Param("name") @AuthorizeResourceKey(SCHEMA) String name) {
+      @Param("name") String name) {
     return getAuthorization(SCHEMA, name);
   }
 
   @Get("/table/{name}")
   @AuthorizeExpression("#principal != null")
   public HttpResponse getTableAuthorization(
-      @Param("name") @AuthorizeResourceKey(TABLE) String name) {
+      @Param("name") String name) {
     return getAuthorization(TABLE, name);
   }
 
   @Get("/function/{name}")
   @AuthorizeExpression("#principal != null")
   public HttpResponse getFunctionAuthorization(
-      @Param("name") @AuthorizeResourceKey(FUNCTION) String name) {
+      @Param("name") String name) {
     return getAuthorization(FUNCTION, name);
   }
 
   @Get("/volume/{name}")
   @AuthorizeExpression("#principal != null")
   public HttpResponse getVolumeAuthorization(
-      @Param("name") @AuthorizeResourceKey(VOLUME) String name) {
+      @Param("name") String name) {
     return getAuthorization(VOLUME, name);
   }
 
   @Get("/registered_model/{name}")
   @AuthorizeExpression("#principal != null")
   public HttpResponse getRegisteredModelAuthorization(
-      @Param("name") @AuthorizeResourceKey(REGISTERED_MODEL) String name) {
+      @Param("name") String name) {
     return getAuthorization(REGISTERED_MODEL, name);
   }
 
   @Get("/external_location/{name}")
   @AuthorizeExpression("#principal != null")
   public HttpResponse getExternalLocationAuthorization(
-      @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name) {
+      @Param("name") String name) {
     return getAuthorization(EXTERNAL_LOCATION, name);
   }
 
   @Get("/credential/{name}")
   @AuthorizeExpression("#principal != null")
   public HttpResponse getCredentialAuthorization(
-      @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name) {
+      @Param("name") String name) {
     return getAuthorization(CREDENTIAL, name);
   }
 
