@@ -40,6 +40,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.AuthorizedService;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
@@ -144,7 +145,7 @@ public class DeltaApiService extends AuthorizedService {
   // ==================== Delete Table API ====================
 
   /**
-   * Delete a table by three-part name. Delta REST counterpart of {@link
+   * Delete a table by three-part name. Mirrors {@link
    * io.unitycatalog.server.service.TableService#deleteTable}, but returns 204 No Content per
    * {@code delta.yaml} (the UC counterpart returns 200).
    */
@@ -155,7 +156,10 @@ public class DeltaApiService extends AuthorizedService {
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
+    TableInfoDAO tableInfo = tableRepository.findTableOrThrow(catalog, schema, table);
     tableRepository.deleteTable(String.join(".", catalog, schema, table));
+    removeHierarchicalAuthorizations(
+        tableInfo.getId().toString(), tableInfo.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
