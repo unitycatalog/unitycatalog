@@ -47,10 +47,6 @@ jobs:
             # Cross-version testing with Delta master is informational; failures
             # indicate upcoming incompatibilities but should not block PRs.
             non-blocking: true
-          - spark-version: "4.2.0-preview5"
-            delta-version: "master-SNAPSHOT"
-            validation-mode: "spark-tests"
-            non-blocking: true
 
     steps:
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
