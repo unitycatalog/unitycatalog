@@ -15,7 +15,7 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
-import io.unitycatalog.server.base.BaseServerTest;
+import io.unitycatalog.server.sdk.access.SdkAccessControlBaseCRUDTest;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -35,9 +35,9 @@ import org.junit.jupiter.api.BeforeEach;
  * Integration tests for {@link PermissionService}.
  *
  * <p>These tests follow the same approach as {@code AuthServiceTest}: a real Unity Catalog server
- * is booted (via {@link BaseServerTest}) and the permission endpoints are exercised end-to-end with
- * a raw Armeria {@link WebClient}. Unlike a Mockito unit test, this also covers the Armeria
- * authentication ({@code AuthDecorator}) and authorization ({@code UnityAccessDecorator})
+ * is booted (via {@link SdkAccessControlBaseCRUDTest}) and the permission endpoints are exercised
+ * end-to-end with a raw Armeria {@link WebClient}. Unlike a Mockito unit test, this also covers the
+ * Armeria authentication ({@code AuthDecorator}) and authorization ({@code UnityAccessDecorator})
  * decorators that wrap the service when {@code server.authorization=enable}.
  *
  * <p>The suite runs in two modes via the concrete subclasses below:
@@ -49,7 +49,7 @@ import org.junit.jupiter.api.BeforeEach;
  *       default), so the decorators are not installed and an {@code AllowingAuthorizer} is used.
  * </ul>
  */
-public abstract class PermissionServiceTest extends BaseServerTest {
+public abstract class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
 
   protected static final ObjectMapper MAPPER = new ObjectMapper();
   protected static final String BASE_PATH = "/api/2.1/unity-catalog/";

@@ -11,6 +11,7 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 import io.unitycatalog.control.model.User;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
@@ -80,63 +81,63 @@ public class PermissionService {
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Get("/metastore/{name}")
-  @AuthorizeExpression("#principal != null")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getMetastoreAuthorization(
       @Param("name") String name) {
     return getAuthorization(METASTORE, name);
   }
 
   @Get("/catalog/{name}")
-  @AuthorizeExpression("#principal != null")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getCatalogAuthorization(
       @Param("name") String name) {
     return getAuthorization(CATALOG, name);
   }
 
   @Get("/schema/{name}")
-  @AuthorizeExpression("#principal != null")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getSchemaAuthorization(
       @Param("name") String name) {
     return getAuthorization(SCHEMA, name);
   }
 
   @Get("/table/{name}")
-  @AuthorizeExpression("#principal != null")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getTableAuthorization(
       @Param("name") String name) {
     return getAuthorization(TABLE, name);
   }
 
   @Get("/function/{name}")
-  @AuthorizeExpression("#principal != null")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getFunctionAuthorization(
       @Param("name") String name) {
     return getAuthorization(FUNCTION, name);
   }
 
   @Get("/volume/{name}")
-  @AuthorizeExpression("#principal != null")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getVolumeAuthorization(
       @Param("name") String name) {
     return getAuthorization(VOLUME, name);
   }
 
   @Get("/registered_model/{name}")
-  @AuthorizeExpression("#principal != null")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getRegisteredModelAuthorization(
       @Param("name") String name) {
     return getAuthorization(REGISTERED_MODEL, name);
   }
 
   @Get("/external_location/{name}")
-  @AuthorizeExpression("#principal != null")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getExternalLocationAuthorization(
       @Param("name") String name) {
     return getAuthorization(EXTERNAL_LOCATION, name);
   }
 
   @Get("/credential/{name}")
-  @AuthorizeExpression("#principal != null")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getCredentialAuthorization(
       @Param("name") String name) {
     return getAuthorization(CREDENTIAL, name);
