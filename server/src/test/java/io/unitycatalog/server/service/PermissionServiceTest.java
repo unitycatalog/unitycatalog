@@ -12,6 +12,7 @@ import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
@@ -30,26 +31,18 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
- * Integration tests for {@link PermissionService}.
+ * Integration tests for {@link PermissionService} with authorization enabled.
  *
  * <p>These tests follow the same approach as {@code AuthServiceTest}: a real Unity Catalog server
- * is booted (via {@link SdkAccessControlBaseCRUDTest}) and the permission endpoints are exercised
- * end-to-end with a raw Armeria {@link WebClient}. Unlike a Mockito unit test, this also covers the
- * Armeria authentication ({@code AuthDecorator}) and authorization ({@code UnityAccessDecorator})
- * decorators that wrap the service when {@code server.authorization=enable}.
- *
- * <p>The suite runs in two modes via the concrete subclasses below:
- *
- * <ul>
- *   <li>{@link PermissionServiceWithAuthorizationTest} — authorization enabled, so the
- *       {@code @AuthorizeExpression} rules and token authentication are enforced.
- *   <li>{@link PermissionServiceWithoutAuthorizationTest} — authorization disabled (the server
- *       default), so the decorators are not installed and an {@code AllowingAuthorizer} is used.
- * </ul>
+ * is booted (via {@link SdkAccessControlBaseCRUDTest}) with {@code server.authorization=enable} and
+ * the permission endpoints are exercised end-to-end with a raw Armeria {@link WebClient}. Unlike a
+ * Mockito unit test, this also covers the Armeria authentication ({@code AuthDecorator}) and
+ * authorization ({@code UnityAccessDecorator}) decorators that wrap the service.
  */
-public abstract class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
+public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
 
   protected static final ObjectMapper MAPPER = new ObjectMapper();
   protected static final String BASE_PATH = "/api/2.1/unity-catalog/";
@@ -57,19 +50,17 @@ public abstract class PermissionServiceTest extends SdkAccessControlBaseCRUDTest
   protected static final String CATALOGS_ENDPOINT = BASE_PATH + "catalogs";
   protected static final String SCIM_USERS_ENDPOINT = CONTROL_PATH + "scim2/Users";
 
+  private static final String CATALOG_NAME = "perm_test_cat";
+  private static final String BOB = "bob@localhost";
+
   protected SecurityConfiguration securityConfiguration;
   protected SecurityContext securityContext;
   protected WebClient client;
 
-  /** Whether the server under test should boot with {@code server.authorization=enable}. */
-  protected abstract boolean authorizationEnabled();
-
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-    if (authorizationEnabled()) {
-      serverProperties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
-    }
+    serverProperties.setProperty(Property.AUTHORIZATION_ENABLED.getKey(), "enable");
   }
 
   @BeforeEach
@@ -88,9 +79,9 @@ public abstract class PermissionServiceTest extends SdkAccessControlBaseCRUDTest
   @AfterEach
   @Override
   public void tearDown() {
-    // When authorization is enabled the JCasbin authorizer persists grants in the casbin_rule
-    // table; clear it before the server (and its session factory) is shut down by super.tearDown().
-    if (authorizationEnabled() && hibernateConfigurator != null) {
+    // The JCasbin authorizer persists grants in the casbin_rule table; clear it before the server
+    // (and its session factory) is shut down by super.tearDown().
+    if (hibernateConfigurator != null) {
       SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
       try (Session session = sessionFactory.openSession()) {
         Transaction tx = session.beginTransaction();
@@ -100,6 +91,62 @@ public abstract class PermissionServiceTest extends SdkAccessControlBaseCRUDTest
     }
     System.clearProperty("server.authorization");
     super.tearDown();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tests
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void ownerCanGrantAndReadCatalogPermissions() {
+    String admin = adminToken();
+    createCatalog(CATALOG_NAME, admin);
+    createUser(BOB, admin);
+
+    // Admin (metastore + catalog owner) grants USE CATALOG to bob.
+    AggregatedHttpResponse grantResponse =
+        updateCatalogPermissions(CATALOG_NAME, admin, addPrivilegeBody(BOB, "USE CATALOG"));
+    assertThat(grantResponse.status()).isEqualTo(HttpStatus.OK);
+    assertThat(privilegesFor(parse(grantResponse), BOB)).containsExactly("USE CATALOG");
+
+    // Reading back as the owner exposes the full ACL, including bob's grant.
+    AggregatedHttpResponse getResponse = getCatalogPermissions(CATALOG_NAME, admin);
+    assertThat(getResponse.status()).isEqualTo(HttpStatus.OK);
+    assertThat(privilegesFor(parse(getResponse), BOB)).containsExactly("USE CATALOG");
+  }
+
+  @Test
+  public void nonOwnerCannotUpdateCatalogPermissions() {
+    String admin = adminToken();
+    createCatalog(CATALOG_NAME, admin);
+    createUser(BOB, admin);
+
+    // Bob is neither metastore nor catalog owner, so the @AuthorizeExpression rejects the update.
+    AggregatedHttpResponse response =
+        updateCatalogPermissions(
+            CATALOG_NAME, userToken(BOB), addPrivilegeBody(BOB, "USE CATALOG"));
+    assertThat(response.status()).isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  public void nonOwnerCanReadCatalogPermissions() {
+    String admin = adminToken();
+    createCatalog(CATALOG_NAME, admin);
+    createUser(BOB, admin);
+
+    // GET is gated only on authentication, so a non-owner gets their own (empty) view.
+    AggregatedHttpResponse response = getCatalogPermissions(CATALOG_NAME, userToken(BOB));
+    assertThat(response.status()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  public void unauthenticatedRequestIsRejected() {
+    String admin = adminToken();
+    createCatalog(CATALOG_NAME, admin);
+
+    // No bearer token -> the AuthDecorator rejects the request before it reaches the service.
+    AggregatedHttpResponse response = getCatalogPermissions(CATALOG_NAME, null);
+    assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
   }
 
   // ---------------------------------------------------------------------------
