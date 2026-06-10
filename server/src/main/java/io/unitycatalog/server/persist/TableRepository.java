@@ -145,6 +145,23 @@ public class TableRepository {
   }
 
   /**
+   * Checks that a regular table exists at the given three-part name, without reading any of its
+   * data.
+   *
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no table exists at the given name.
+   */
+  public void checkTableExists(String catalog, String schema, String table) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          findTableOrThrow(session, catalog, schema, table);
+          return null;
+        },
+        "Failed to check existence of table " + catalog + "." + schema + "." + table,
+        /* readOnly = */ true);
+  }
+
+  /**
    * Looks up the storage location for a staging table by ID. Unlike {@link
    * #getStorageLocationForTableOrStagingTable}, this rejects regular table UUIDs so endpoints
    * scoped to staging tables don't silently accept regular-table inputs.

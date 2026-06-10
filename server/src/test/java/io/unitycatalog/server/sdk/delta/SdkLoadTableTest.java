@@ -1,9 +1,11 @@
 package io.unitycatalog.server.sdk.delta;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.ApiResponse;
 import io.unitycatalog.client.api.DeltaCommitsApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
@@ -119,6 +121,8 @@ public class SdkLoadTableTest extends BaseServerTest {
                           .position(1)
                           .nullable(true))));
 
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
+
       DeltaLoadTableResponse response = loadTable(tableName);
       DeltaTableMetadata metadata = response.getMetadata();
 
@@ -154,6 +158,8 @@ public class SdkLoadTableTest extends BaseServerTest {
               tableName, TableType.MANAGED, Optional.empty(), tableOps);
       String tableId = tableInfo.getTableId();
       String tableUri = tableInfo.getStorageLocation();
+
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
 
       // Load before any commits: version 0, empty list
       DeltaLoadTableResponse r1 = loadTable(tableName);
@@ -216,6 +222,9 @@ public class SdkLoadTableTest extends BaseServerTest {
       ApiException ex = assertThrows(ApiException.class, () -> loadTable("nonexistent"));
       assertThat(ex.getMessage()).contains("Table not found");
       assertThat(ex.getCode()).isEqualTo(404);
+
+      // HEAD responses carry no body, so assert only the status code.
+      assertApiExceptionStatusOnly(() -> tableExists("nonexistent"), 404);
     }
 
     // -------- Full metadata: partition columns + property-derived fields + uniform Iceberg
@@ -276,6 +285,8 @@ public class SdkLoadTableTest extends BaseServerTest {
           icebergLocation,
           icebergVersion,
           new Date(icebergTimestampMs));
+
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
 
       DeltaLoadTableResponse response = loadTable(tableName);
       DeltaTableMetadata metadata = response.getMetadata();
@@ -342,6 +353,8 @@ public class SdkLoadTableTest extends BaseServerTest {
                           .partitionIndex(2)
                           .nullable(true))));
 
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
+
       assertThat(loadTable(tableName).getMetadata().getPartitionColumns()).isEmpty();
     }
 
@@ -367,6 +380,8 @@ public class SdkLoadTableTest extends BaseServerTest {
                                   + "\"nullable\":false,\"metadata\":{}}")
                           .position(0)
                           .nullable(false))));
+
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
 
       DeltaLoadTableResponse response = loadTable(tableName);
       assertThat(response.getMetadata()).isNotNull();
@@ -397,6 +412,8 @@ public class SdkLoadTableTest extends BaseServerTest {
                               .nullable(false))));
       corruptFirstColumnTypeJson(UUID.fromString(tableInfo.getTableId()), "not json at all");
 
+      assertThat(tableExists(tableName).getStatusCode()).isEqualTo(204);
+
       DeltaLoadTableResponse response = loadTable(tableName);
       assertThat(response.getMetadata()).isNotNull();
       assertThat(response.getMetadata().getColumns().getFields()).isEmpty();
@@ -405,6 +422,11 @@ public class SdkLoadTableTest extends BaseServerTest {
 
   private DeltaLoadTableResponse loadTable(String tableName) throws ApiException {
     return deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
+  }
+
+  private ApiResponse<Void> tableExists(String tableName) throws ApiException {
+    return deltaTablesApi.tableExistsWithHttpInfo(
+        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
   }
 
   private void corruptFirstColumnTypeJson(UUID tableId, String typeJson) {
