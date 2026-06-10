@@ -4,7 +4,7 @@ Read UC Spark version metadata for build scripts and GitHub Actions workflows.
 
 UC keeps Spark version policy in project/spark-versions.json. This helper is the
 workflow-facing API for that metadata, including the source-build cache fields
-used by the Spark artifact producer and consumer jobs.
+used by the single test job to restore or build the Spark Maven cache.
 """
 
 import argparse
@@ -266,7 +266,7 @@ def main():
     parser.add_argument(
         "--ci-test-matrix",
         action="store_true",
-        help="Output CI test matrix rows for published and source-build lanes",
+        help="Output one flat CI test matrix over all Spark rows, each tagged source-build",
     )
     parser.add_argument(
         "--get-field",
