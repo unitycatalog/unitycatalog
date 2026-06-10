@@ -867,15 +867,13 @@ public class TableRepository {
 
   /**
    * Deletes a table from a DAO the caller already holds (e.g. from {@link #findTableOrThrow}),
-   * sparing callers the dotted-name round-trip and schema lookup of {@link #deleteTable(String)}.
-   *
-   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if the table no longer exists.
+   * sparing callers the dotted-name round-trip and lookups of {@link #deleteTable(String)}.
    */
   public void deleteTable(TableInfoDAO dao) {
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          deleteTable(session, dao.getSchemaId(), dao.getName());
+          deleteTable(session, dao);
           return null;
         },
         "Failed to delete table " + dao.getName(),
@@ -887,6 +885,10 @@ public class TableRepository {
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
+    deleteTable(session, tableInfoDAO);
+  }
+
+  private void deleteTable(Session session, TableInfoDAO tableInfoDAO) {
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {
         FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
