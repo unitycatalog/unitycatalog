@@ -157,7 +157,7 @@ public class DeltaApiService extends AuthorizedService {
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
     TableInfoDAO tableInfo = tableRepository.findTableOrThrow(catalog, schema, table);
-    tableRepository.deleteTable(String.join(".", catalog, schema, table));
+    tableRepository.deleteTable(tableInfo);
     removeHierarchicalAuthorizations(
         tableInfo.getId().toString(), tableInfo.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);

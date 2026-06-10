@@ -865,6 +865,23 @@ public class TableRepository {
         /* readOnly = */ false);
   }
 
+  /**
+   * Deletes a table from a DAO the caller already holds (e.g. from {@link #findTableOrThrow}),
+   * sparing callers the dotted-name round-trip and schema lookup of {@link #deleteTable(String)}.
+   *
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if the table no longer exists.
+   */
+  public void deleteTable(TableInfoDAO dao) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          deleteTable(session, dao.getSchemaId(), dao.getName());
+          return null;
+        },
+        "Failed to delete table " + dao.getName(),
+        /* readOnly = */ false);
+  }
+
   public void deleteTable(Session session, UUID schemaId, String tableName) {
     TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
     if (tableInfoDAO == null) {
