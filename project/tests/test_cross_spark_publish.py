@@ -296,14 +296,14 @@ class CrossSparkPublishTest:
             )
             return False
         if "4.2.0-SNAPSHOT" in non_source_build_versions:
-            print("FAIL: 4.2.0-SNAPSHOT should be handled by test-spark-source")
+            print("FAIL: 4.2.0-SNAPSHOT is a source-build version, not a published one")
             return False
 
         print("PASS: --non-source-build-spark-versions: {}".format(non_source_build_versions))
         return True
 
     def test_ci_test_matrix(self) -> bool:
-        """CI matrix rows should come from spark-versions.json with workflow keys."""
+        """CI matrix should be one flat array with per-row source-build flags."""
         print("\n" + "=" * 70)
         print("TEST: --ci-test-matrix")
         print("=" * 70)
@@ -314,56 +314,55 @@ class CrossSparkPublishTest:
             print(f"FAIL: Spark version helper failed: {exc}")
             return False
 
-        published = matrix.get("published", [])
-        source_build = matrix.get("sourceBuild", [])
-        expected_published = [
+        if not isinstance(matrix, list):
+            print("FAIL: --ci-test-matrix must output a flat JSON array")
+            return False
+
+        expected = [
             {
                 "spark-version": "4.0.0",
                 "delta-version": "4.2.0",
                 "validation-mode": "all-tests",
                 "non-blocking": False,
+                "source-build": False,
             },
             {
                 "spark-version": "4.1.0",
                 "delta-version": "4.2.0",
                 "validation-mode": "spark-tests",
                 "non-blocking": False,
+                "source-build": False,
             },
             {
                 "spark-version": "4.1.0",
                 "delta-version": "master-SNAPSHOT",
                 "validation-mode": "spark-tests",
                 "non-blocking": True,
+                "source-build": False,
+            },
+            {
+                "spark-version": "4.2.0-SNAPSHOT",
+                "delta-version": "master-SNAPSHOT",
+                "validation-mode": "spark-tests",
+                "non-blocking": True,
+                "source-build": True,
             },
         ]
         all_passed = True
-        if published != expected_published:
-            print("FAIL: Unexpected published matrix rows")
-            print("  expected: {}".format(expected_published))
-            print("  actual:   {}".format(published))
+        if matrix != expected:
+            print("FAIL: Unexpected matrix rows")
+            print("  expected: {}".format(expected))
+            print("  actual:   {}".format(matrix))
             all_passed = False
 
-        if len(source_build) != 1:
-            print("FAIL: Expected one source-build matrix row, got {}".format(source_build))
-            all_passed = False
-        elif source_build[0] != {
-            "spark-version": "4.2.0-SNAPSHOT",
-            "delta-version": "master-SNAPSHOT",
-            "validation-mode": "spark-tests",
-            "non-blocking": True,
-            "source-build": True,
-        }:
-            print("FAIL: Unexpected source-build matrix row: {}".format(source_build[0]))
-            all_passed = False
-
-        for row in published + source_build:
+        for row in matrix:
             for key in row:
                 if "_" in key:
                     print("FAIL: Matrix key '{}' should use kebab-case".format(key))
                     all_passed = False
 
         if all_passed:
-            print("PASS: --ci-test-matrix published and source-build rows match metadata")
+            print("PASS: --ci-test-matrix is a flat array matching metadata")
         return all_passed
 
     def test_resolve_source_build_cache_key(self) -> bool:

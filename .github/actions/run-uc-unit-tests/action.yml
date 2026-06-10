@@ -14,7 +14,9 @@ inputs:
     description: all-tests or spark-tests.
     required: true
   use-spark-source-cache:
-    description: Restore and verify the prepared Spark Maven cache before running tests.
+    description: >-
+      Restore the Spark Maven cache for a source-built Spark version, building and
+      saving it on a cache miss, before running tests. Leave false for published Spark.
     required: false
     default: 'false'
 
@@ -33,41 +35,57 @@ runs:
       id: spark-source
       shell: bash
       run: |
-        # Recomputes the same exact cache key prepared by build-spark-source.
+        # Resolves the Spark compatibility line, metadata-owned source ref,
+        # immutable Spark SHA, commit-qualified local Maven version, and cache_key.
         python3 project/scripts/get_spark_version_info.py \
           --resolve-source-build \
           --spark-version "${{ inputs.spark-version }}"
 
-    - name: Restore prepared Spark Maven cache
+    - name: Restore Spark Maven cache
       if: inputs.use-spark-source-cache == 'true'
       id: spark-source-cache
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.m2/repository/org/apache/spark
-        # Recompute the same exact key used by build-spark-source for this Spark version.
+        # Exact-match cache only. Spark source builds must not fall back to a
+        # different SHA, artifact base version, or build_spark.sh hash.
         key: ${{ steps.spark-source.outputs.cache_key }}
 
-    - name: Verify restored Spark Maven artifacts
-      if: inputs.use-spark-source-cache == 'true'
+    - name: Build Spark source ref on cache miss
+      if: inputs.use-spark-source-cache == 'true' && steps.spark-source-cache.outputs.cache-hit != 'true'
       shell: bash
       env:
         SPARK_SOURCE_REF: ${{ steps.spark-source.outputs.source_ref }}
+        SPARK_VERSION: ${{ steps.spark-source.outputs.spark_version }}
+        SPARK_BASE_VERSION: ${{ steps.spark-source.outputs.artifact_base_version }}
+        SPARK_ARTIFACT_VERSION: ${{ steps.spark-source.outputs.spark_artifact_version }}
+      run: bash project/scripts/build_spark.sh
+
+    - name: Save Spark Maven cache on miss
+      if: inputs.use-spark-source-cache == 'true' && steps.spark-source-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.m2/repository/org/apache/spark
+        # Save under the same exact key so future runs hit instead of rebuilding.
+        key: ${{ steps.spark-source.outputs.cache_key }}
+
+    - name: Verify Spark Maven artifacts
+      if: inputs.use-spark-source-cache == 'true'
+      shell: bash
+      env:
         SPARK_ARTIFACT_VERSION: ${{ steps.spark-source.outputs.spark_artifact_version }}
       run: |
-        if [[ "${{ steps.spark-source-cache.outputs.cache-hit }}" != "true" ]]; then
-          echo "::error::Prepared Spark Maven cache was not found for $SPARK_SOURCE_REF."
-          exit 1
-        fi
+        # Integrity check for both cache-hit and freshly-built cases.
         missing=0
         for module in spark-sql_2.13 spark-core_2.13 spark-catalyst_2.13 spark-hive_2.13; do
           pom="$HOME/.m2/repository/org/apache/spark/$module/$SPARK_ARTIFACT_VERSION/$module-$SPARK_ARTIFACT_VERSION.pom"
           if [[ ! -f "$pom" ]]; then
-            echo "::error::Missing restored Spark Maven artifact: $pom"
+            echo "::error::Missing Spark Maven artifact: $pom"
             missing=1
           fi
         done
         if [[ "$missing" != "0" ]]; then
-          echo "The Spark cache was restored, but it does not contain the expected Maven artifacts."
+          echo "Spark Maven artifacts are not present after restore/build."
           exit 1
         fi
         # build_delta.sh and sbt read these to resolve the commit-qualified Spark artifacts.

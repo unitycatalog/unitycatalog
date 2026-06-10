@@ -109,6 +109,8 @@ def matrix_row_from_published(row):
         "delta-version": row["deltaVersion"],
         "validation-mode": row["validationMode"],
         "non-blocking": row["nonBlocking"],
+        # Published Spark artifacts: the single test job skips the Spark build step.
+        "source-build": False,
     }
 
 
@@ -118,11 +120,18 @@ def matrix_row_from_source_build(spark_version, template):
         "delta-version": template["deltaVersion"],
         "validation-mode": template["validationMode"],
         "non-blocking": template["nonBlocking"],
+        # Source-built Spark: the test job restores the cache and builds on miss.
         "source-build": True,
     }
 
 
 def generate_ci_test_matrix(data):
+    """Build one flat CI matrix over all Spark rows.
+
+    Each row carries a source-build flag so a single test job can decide whether
+    to restore/build the Spark Maven cache before running tests, instead of
+    splitting published and source-built lanes into separate jobs.
+    """
     ci_test_matrix = data.get("ciTestMatrix")
     if not ci_test_matrix:
         raise SystemExit(
@@ -130,7 +139,7 @@ def generate_ci_test_matrix(data):
         )
 
     versions_by_name = version_specs_by_full_version(data)
-    published_rows = []
+    rows = []
     for row in ci_test_matrix.get("published", []):
         spark_version = row["sparkVersion"]
         if spark_version not in versions_by_name:
@@ -139,14 +148,13 @@ def generate_ci_test_matrix(data):
                     spark_version
                 )
             )
-        published_rows.append(matrix_row_from_published(row))
+        rows.append(matrix_row_from_published(row))
 
     source_build_versions = [
         spec["version"] for spec in data["versions"]
         if spec.get("sourceBuildDefaultRef")
     ]
     source_build_template = ci_test_matrix.get("sourceBuild")
-    source_build_rows = []
     if source_build_versions:
         if not source_build_template:
             raise SystemExit(
@@ -154,14 +162,11 @@ def generate_ci_test_matrix(data):
                 "are configured in project/spark-versions.json"
             )
         for spark_version in source_build_versions:
-            source_build_rows.append(
+            rows.append(
                 matrix_row_from_source_build(spark_version, source_build_template)
             )
 
-    return {
-        "published": published_rows,
-        "sourceBuild": source_build_rows,
-    }
+    return rows
 
 
 def resolve_spark_sha(spark_repo, spark_ref, spark_dir):
