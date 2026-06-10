@@ -136,7 +136,7 @@ public class DeltaApiService extends AuthorizedService {
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
-    tableRepository.checkTableExists(catalog, schema, table);
+    tableRepository.findTableOrThrow(catalog, schema, table);
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
