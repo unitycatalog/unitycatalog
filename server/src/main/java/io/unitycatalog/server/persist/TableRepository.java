@@ -145,6 +145,21 @@ public class TableRepository {
   }
 
   /**
+   * Looks up a regular table by its three-part name and returns its DAO, without hydrating the full
+   * {@link TableInfo} with columns and properties. The DAO is detached (the read-only transaction
+   * closes before returning), so callers must not touch lazy associations.
+   *
+   * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no table exists at the given name.
+   */
+  public TableInfoDAO findTableOrThrow(String catalog, String schema, String table) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> findTableOrThrow(session, catalog, schema, table),
+        "Failed to find table " + catalog + "." + schema + "." + table,
+        /* readOnly = */ true);
+  }
+
+  /**
    * Looks up the storage location for a staging table by ID. Unlike {@link
    * #getStorageLocationForTableOrStagingTable}, this rejects regular table UUIDs so endpoints
    * scoped to staging tables don't silently accept regular-table inputs.

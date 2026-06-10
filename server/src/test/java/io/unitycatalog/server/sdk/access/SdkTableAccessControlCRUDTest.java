@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -171,6 +172,22 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
 
     // loadTable (regular-2) -> use schema, use catalog, select -> allowed
     assertThat(regular2DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1")).isNotNull();
+
+    // tableExists (admin) -> metastore admin -> allowed (204)
+    assertThat(
+            adminDeltaApi.tableExistsWithHttpInfo("cat_pr1", "sch_pr1", "tbl_pr1").getStatusCode())
+        .isEqualTo(204);
+
+    // tableExists (regular-1) -> use catalog, use schema, but no SELECT -> denied (403).
+    assertApiExceptionStatusOnly(
+        () -> regular1DeltaApi.tableExists("cat_pr1", "sch_pr1", "tbl_pr1"), 403);
+
+    // tableExists (regular-2) -> use schema, use catalog, select -> allowed (204)
+    assertThat(
+            regular2DeltaApi
+                .tableExistsWithHttpInfo("cat_pr1", "sch_pr1", "tbl_pr1")
+                .getStatusCode())
+        .isEqualTo(204);
 
     // Delta getTableCredentials authz: READ requires SELECT, READ_WRITE requires MODIFY
     // getTableCredentials READ (regular-1) -> use catalog, use schema, but no SELECT -> denied
