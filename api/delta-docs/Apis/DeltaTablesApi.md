@@ -49,7 +49,7 @@ No authorization required
 
 Create a table
 
-    Create a new Delta table in the specified schema. 
+    Create a new Delta table in the specified schema. Supports MANAGED, EXTERNAL, and MANAGED_SHALLOW_CLONE tables. EXTERNAL_SHALLOW_CLONE is not yet supported. 
 
 ### Parameters
 
@@ -78,7 +78,7 @@ No authorization required
 
 Delete a table
 
-    Delete a table from the catalog. 
+    Delete a table from the catalog. Deleting a table that is the base of shallow clones is rejected; the clones must be deleted first. 
 
 ### Parameters
 

@@ -6,6 +6,7 @@
 | **name** | **String** | The table name | [default to null] |
 | **location** | **String** | Storage location | [default to null] |
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) |  | [default to null] |
+| **base-table-id** | **UUID** | Table UUID of the base table this table is a shallow clone of. Required for shallow-clone table types; must be absent otherwise. The base table must be an existing Delta table in the same metastore with the matching table type (MANAGED for MANAGED_SHALLOW_CLONE), and must not be a shallow clone.  | [optional] [default to null] |
 | **comment** | **String** | Table comment | [optional] [default to null] |
 | **columns** | [**DeltaStructType**](DeltaStructType.md) |  | [default to null] |
 | **partition-columns** | **List** | Partition column names | [optional] [default to null] |

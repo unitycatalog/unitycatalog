@@ -6,6 +6,7 @@
 | **etag** | **String** | Entity tag for optimistic concurrency control | [default to null] |
 | **table-type** | [**DeltaTableType**](DeltaTableType.md) |  | [default to null] |
 | **table-uuid** | **UUID** | Unique identifier for the table | [default to null] |
+| **base-table-id** | **UUID** | Table UUID of the base table this table is a shallow clone of. Present only for shallow-clone table types.  | [optional] [default to null] |
 | **location** | **String** | Storage location of the table | [default to null] |
 | **created-time** | **Long** | Creation time in epoch milliseconds | [default to null] |
 | **updated-time** | **Long** | Last update time in epoch milliseconds | [default to null] |
