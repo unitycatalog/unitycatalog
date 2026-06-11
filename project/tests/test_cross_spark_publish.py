@@ -234,137 +234,6 @@ class CrossSparkPublishTest:
             print(f"PASS: Source-build metadata configured for {source_build_versions}")
         return all_passed
 
-    def test_spark_version_helper_metadata(self) -> bool:
-        """The workflow helper should expose UC's Spark metadata consistently."""
-        print("\n" + "=" * 70)
-        print("TEST: Spark version metadata helper")
-        print("=" * 70)
-
-        try:
-            source_build_versions = json.loads(
-                self.run_helper("--source-build-spark-versions")
-            )
-            artifact_base_version = json.loads(
-                self.run_helper(
-                    "--get-field",
-                    "4.2",
-                    "sourceBuildArtifactBaseVersion",
-                )
-            )
-            default_ref = json.loads(
-                self.run_helper("--get-field", "4.2", "sourceBuildDefaultRef")
-            )
-        except (subprocess.CalledProcessError, ValueError) as exc:
-            print(f"FAIL: Spark version helper failed: {exc}")
-            return False
-
-        all_passed = True
-        if "4.2.0-SNAPSHOT" not in source_build_versions:
-            print("FAIL: Expected 4.2.0-SNAPSHOT in source-build Spark versions")
-            all_passed = False
-        if artifact_base_version != "4.2.0":
-            print("FAIL: Expected 4.2 sourceBuildArtifactBaseVersion to be 4.2.0")
-            all_passed = False
-        if not default_ref:
-            print("FAIL: Expected 4.2 sourceBuildDefaultRef to be configured")
-            all_passed = False
-
-        if all_passed:
-            print("PASS: Spark version helper exposes source-build metadata")
-        return all_passed
-
-    def test_non_source_build_spark_versions(self) -> bool:
-        """Published Spark lanes should exclude source-build-only versions."""
-        print("\n" + "=" * 70)
-        print("TEST: --non-source-build-spark-versions")
-        print("=" * 70)
-
-        try:
-            non_source_build_versions = json.loads(
-                self.run_helper("--non-source-build-spark-versions")
-            )
-        except (subprocess.CalledProcessError, ValueError) as exc:
-            print(f"FAIL: Spark version helper failed: {exc}")
-            return False
-
-        expected = ["4.0.0", "4.1.0"]
-        if non_source_build_versions != expected:
-            print(
-                "FAIL: Expected {}, got {}".format(
-                    expected, non_source_build_versions
-                )
-            )
-            return False
-        if "4.2.0-SNAPSHOT" in non_source_build_versions:
-            print("FAIL: 4.2.0-SNAPSHOT is a source-build version, not a published one")
-            return False
-
-        print("PASS: --non-source-build-spark-versions: {}".format(non_source_build_versions))
-        return True
-
-    def test_ci_test_matrix(self) -> bool:
-        """CI matrix should be one flat array with per-row source-build flags."""
-        print("\n" + "=" * 70)
-        print("TEST: --ci-test-matrix")
-        print("=" * 70)
-
-        try:
-            matrix = json.loads(self.run_helper("--ci-test-matrix"))
-        except (subprocess.CalledProcessError, ValueError) as exc:
-            print(f"FAIL: Spark version helper failed: {exc}")
-            return False
-
-        if not isinstance(matrix, list):
-            print("FAIL: --ci-test-matrix must output a flat JSON array")
-            return False
-
-        expected = [
-            {
-                "spark-version": "4.0.0",
-                "delta-version": "4.2.0",
-                "validation-mode": "all-tests",
-                "non-blocking": False,
-                "source-build": False,
-            },
-            {
-                "spark-version": "4.1.0",
-                "delta-version": "4.2.0",
-                "validation-mode": "spark-tests",
-                "non-blocking": False,
-                "source-build": False,
-            },
-            {
-                "spark-version": "4.1.0",
-                "delta-version": "master-SNAPSHOT",
-                "validation-mode": "spark-tests",
-                "non-blocking": True,
-                "source-build": False,
-            },
-            {
-                "spark-version": "4.2.0-SNAPSHOT",
-                "delta-version": "master-SNAPSHOT",
-                "validation-mode": "spark-tests",
-                "non-blocking": True,
-                "source-build": True,
-            },
-        ]
-        all_passed = True
-        if matrix != expected:
-            print("FAIL: Unexpected matrix rows")
-            print("  expected: {}".format(expected))
-            print("  actual:   {}".format(matrix))
-            all_passed = False
-
-        for row in matrix:
-            for key in row:
-                if "_" in key:
-                    print("FAIL: Matrix key '{}' should use kebab-case".format(key))
-                    all_passed = False
-
-        if all_passed:
-            print("PASS: --ci-test-matrix is a flat array matching metadata")
-        return all_passed
-
     def test_resolve_source_build_cache_key(self) -> bool:
         """Source-build resolution should emit a stable Maven cache key."""
         print("\n" + "=" * 70)
@@ -439,55 +308,6 @@ class CrossSparkPublishTest:
                 return False
 
             print("PASS: --resolve-source-build emits deterministic cache_key")
-            return True
-        except Exception as exc:
-            print("FAIL: {}".format(exc))
-            return False
-
-    def test_ci_test_matrix_validation(self) -> bool:
-        """Invalid ciTestMatrix metadata should fail fast."""
-        print("\n" + "=" * 70)
-        print("TEST: ciTestMatrix validation")
-        print("=" * 70)
-
-        script_path = self.uc_root / "project" / "scripts" / "get_spark_version_info.py"
-        try:
-            spec = importlib.util.spec_from_file_location(
-                "get_spark_version_info", script_path
-            )
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-
-            data = module.load_spark_versions(self.uc_root)
-            bad_published = dict(data)
-            bad_published["ciTestMatrix"] = {
-                "published": [
-                    {
-                        "sparkVersion": "9.9.9",
-                        "deltaVersion": "4.2.0",
-                        "validationMode": "all-tests",
-                        "nonBlocking": False,
-                    }
-                ],
-                "sourceBuild": data["ciTestMatrix"]["sourceBuild"],
-            }
-            try:
-                module.generate_ci_test_matrix(bad_published)
-                print("FAIL: Unknown sparkVersion should raise SystemExit")
-                return False
-            except SystemExit:
-                pass
-
-            missing_matrix = dict(data)
-            missing_matrix.pop("ciTestMatrix", None)
-            try:
-                module.generate_ci_test_matrix(missing_matrix)
-                print("FAIL: Missing ciTestMatrix should raise SystemExit")
-                return False
-            except SystemExit:
-                pass
-
-            print("PASS: ciTestMatrix validation rejects invalid metadata")
             return True
         except Exception as exc:
             print("FAIL: {}".format(exc))
@@ -636,11 +456,7 @@ def main():
         test = CrossSparkPublishTest(uc_root)
 
         t0 = test.test_source_build_metadata()
-        t1 = test.test_spark_version_helper_metadata()
-        t1a = test.test_non_source_build_spark_versions()
-        t1b = test.test_ci_test_matrix()
-        t1c = test.test_resolve_source_build_cache_key()
-        t1d = test.test_ci_test_matrix_validation()
+        t1 = test.test_resolve_source_build_cache_key()
         t2 = test.test_default_publish()
         t3 = test.test_backward_compat_publish()
         t4 = test.test_per_version_publish()
@@ -653,19 +469,7 @@ def main():
             f"  Source-build metadata:                  {'PASS' if t0 else 'FAIL'}"
         )
         print(
-            f"  Spark version helper metadata:          {'PASS' if t1 else 'FAIL'}"
-        )
-        print(
-            f"  Non-source-build Spark versions:        {'PASS' if t1a else 'FAIL'}"
-        )
-        print(
-            f"  CI test matrix:                         {'PASS' if t1b else 'FAIL'}"
-        )
-        print(
-            f"  Source-build cache key:                 {'PASS' if t1c else 'FAIL'}"
-        )
-        print(
-            f"  CI test matrix validation:              {'PASS' if t1d else 'FAIL'}"
+            f"  Source-build cache key:                 {'PASS' if t1 else 'FAIL'}"
         )
         print(
             f"  Default publishM2 (with suffix):        {'PASS' if t2 else 'FAIL'}"
@@ -681,7 +485,7 @@ def main():
         )
         print("=" * 70)
 
-        metadata_passed = t0 and t1 and t1a and t1b and t1c and t1d
+        metadata_passed = t0 and t1
         if metadata_passed and t2 and t3 and t4 and t5:
             print("\nALL TESTS PASSED")
             sys.exit(0)

@@ -14,44 +14,26 @@ on:
 permissions:
   contents: read
 
-# Spark/Delta CI policy lives in project/spark-versions.json (ciTestMatrix + source-build
-# metadata). project/scripts/get_spark_version_info.py is the workflow-facing API.
+# The test matrix is inlined below. Each row sets source-build:
+#   - false: run against published Spark artifacts.
+#   - true:  the test job restores the Spark Maven cache, builds Spark from the metadata
+#            ref on a miss, saves the cache, then runs tests against it.
 #
-# Every PR runs two jobs:
-# 1. generate-matrix: read ciTestMatrix and emit one flat test matrix over all Spark rows.
-#    Each row carries a source-build flag derived from sourceBuildDefaultRef in metadata.
-# 2. test: a single matrix job over every row. For each Spark version:
-#      - published Spark (source-build: false): run tests against the published artifacts.
-#      - source-built Spark (source-build: true): restore the Spark Maven cache; on a miss
-#        build Spark and save the cache; then run tests against it.
+# The source-build Spark SHA, artifact version, and cache key come from
+# project/spark-versions.json (sourceBuildDefaultRef) via project/scripts/get_spark_version_info.py.
+# Bumping the source-build line is a one-line change there plus the matrix row below.
 #
-# There is no separate build job and no hardcoded Spark version. Published rows skip the
-# Spark build step entirely, so they never wait behind a source build, and the matrix runs
-# all rows in parallel. The Spark build is inlined per row because UC runs one runner per
-# combo (not sharded). Delta keeps a dedicated build job only because it shards each Spark
+# The Spark build is inlined per row (in the prepare-spark-env action) because UC runs one
+# runner per combo. Delta keeps a dedicated build job only because it shards each Spark
 # version across many runners and must build once and restore into every shard.
 #
-# Cache model: the test job saves ~/.m2/org/apache/spark under an exact cache key (no
-# restore-keys). When the Spark SHA or build_spark.sh changes, a new key is used; older
-# cache entries become orphaned and GitHub evicts them by LRU.
+# Cache model: the cache uses an exact key (no restore-keys). When the Spark SHA or
+# build_spark.sh changes, a new key is used; older entries are orphaned and GitHub evicts
+# them by LRU.
 jobs:
-  generate-matrix:
-    name: Generate CI test matrix
-    runs-on: ubuntu-latest
-    outputs:
-      test_matrix: ${{ steps.generate.outputs.test_matrix }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Generate CI test matrix from metadata
-        id: generate
-        run: |
-          TEST_MATRIX=$(python3 project/scripts/get_spark_version_info.py --ci-test-matrix)
-          echo "test_matrix=$(echo "$TEST_MATRIX" | jq -c '.')" >> "$GITHUB_OUTPUT"
-          echo "Test matrix: $(echo "$TEST_MATRIX" | jq -c '.')"
-
   test:
     runs-on: ubuntu-latest
-    needs: generate-matrix
+
     # Build a human-readable job name from the matrix entry, e.g.:
     #   "All tests (Spark 4.0.0, Delta 4.2.0)"
     #   "[Non Blocking] Spark tests (Spark 4.2.0-SNAPSHOT, Delta master-SNAPSHOT)"
@@ -63,7 +45,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(needs.generate-matrix.outputs.test_matrix) }}
+        include:
+          - spark-version: "4.0.0"
+            delta-version: "4.2.0"
+            # Primary combo: runs ALL tests (unit, spark, license). Other combos run only
+            # spark connector tests since unit/license checks don't depend on Spark/Delta.
+            validation-mode: "all-tests"
+            non-blocking: false
+            source-build: false
+          - spark-version: "4.1.0"
+            delta-version: "4.2.0"
+            validation-mode: "spark-tests"
+            non-blocking: false
+            source-build: false
+          - spark-version: "4.1.0"
+            delta-version: "master-SNAPSHOT"
+            # Cross-version testing with Delta master is informational; failures indicate
+            # upcoming incompatibilities but should not block PRs.
+            validation-mode: "spark-tests"
+            non-blocking: true
+            source-build: false
+          - spark-version: "4.2.0-SNAPSHOT"
+            delta-version: "master-SNAPSHOT"
+            # Source-built Spark line: Spark is built from the ref in spark-versions.json
+            # and cached. Non-blocking since it tracks unreleased Spark APIs.
+            validation-mode: "spark-tests"
+            non-blocking: true
+            source-build: true
+
     steps:
       # Local composite actions require checkout before uses: ./.github/actions/...
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
