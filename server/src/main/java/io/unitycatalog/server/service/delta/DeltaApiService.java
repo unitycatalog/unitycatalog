@@ -181,11 +181,13 @@ public class DeltaApiService extends AuthorizedService {
   // ==================== Create Table API ====================
 
   /**
-   * Create a Delta table. Both MANAGED and EXTERNAL are supported (at feature parity with the UC
-   * {@code TableService.createTable}). For MANAGED, the caller must have previously called {@code
-   * POST /staging-tables}, written the initial Delta commit at the returned staging location, and
-   * passes that same location back here. For EXTERNAL, the caller supplies any storage location
-   * they have rights on.
+   * Create a Delta table. MANAGED, EXTERNAL, and MANAGED_SHALLOW_CLONE are supported;
+   * EXTERNAL_SHALLOW_CLONE is rejected as not implemented. For MANAGED, the caller must have
+   * previously called {@code POST /staging-tables}, written the initial Delta commit at the
+   * returned staging location, and passes that same location back here. For EXTERNAL, the caller
+   * supplies any storage location they have rights on. MANAGED_SHALLOW_CLONE follows the MANAGED
+   * staging flow and additionally carries the base table's UUID in {@code base-table-id} (see
+   * {@link DeltaTableTypes}).
    *
    * <p>OWNER is the createTable-caller in both branches, matching UC REST {@code
    * TableService.createTable}. EXTERNAL wires it via the {@code
@@ -208,7 +210,7 @@ public class DeltaApiService extends AuthorizedService {
     DeltaCreateTableMapper.Result mapped =
         DeltaCreateTableMapper.toCreateTable(catalog, schema, request, serverProperties);
     DeltaLoadTableResponse response = tableRepository.createTableForDelta(
-        mapped.createTable(), mapped.uniformIcebergFields());
+        mapped.createTable(), mapped.uniformIcebergFields(), mapped.baseTableId());
     // Wire the new table into the auth hierarchy under its schema (mirrors
     // TableService.createTable). MANAGED tables reuse the staging-table UUID, whose auth row
     // was already created in createStagingTable, so re-init is unnecessary there.

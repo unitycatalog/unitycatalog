@@ -28,6 +28,7 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.persist.utils.ShallowCloneUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaTableTypes;
@@ -565,7 +566,8 @@ public class TableRepository {
   }
 
   public TableInfo createTable(CreateTable createTable) {
-    return createTableImpl(createTable, Optional.empty(), (session, dao, tableInfo) -> tableInfo);
+    return createTableImpl(
+        createTable, Optional.empty(), Optional.empty(), (session, dao, tableInfo) -> tableInfo);
   }
 
   /**
@@ -578,12 +580,19 @@ public class TableRepository {
    * DeltaCreateTableMapper.toCreateTable}) are written onto the DAO before {@code session.persist},
    * so the create lands as a single INSERT carrying the uniform fields and the metadata-location is
    * normalized exactly once on this code path.
+   *
+   * <p>If {@code baseTableId} is non-empty the table is a shallow clone of that base table: the
+   * base is validated inside the create transaction and the id is written onto the DAO before
+   * {@code session.persist}, so the clone relationship lands in the same single INSERT.
    */
   public DeltaLoadTableResponse createTableForDelta(
-      CreateTable createTable, Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
+      CreateTable createTable,
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      Optional<UUID> baseTableId) {
     return createTableImpl(
         createTable,
         uniformFields,
+        baseTableId,
         (session, dao, tableInfo) ->
             buildLoadTableResponse(
                 session,
@@ -597,14 +606,16 @@ public class TableRepository {
   /**
    * Shared implementation for the two {@code create} entry points. Validates the name, opens a
    * write transaction, builds the new {@link TableInfoDAO} (row, columns, properties), applies
-   * UniForm Iceberg metadata when {@code uniformFields} is non-empty, persists the DAO, then hands
-   * it and the built {@link TableInfo} to {@code mapper} which picks the return shape each caller
-   * needs. Keeps the create path as a single operation, and pins all DAO setters before {@code
-   * session.persist} so the create lands as a single INSERT.
+   * UniForm Iceberg metadata when {@code uniformFields} is non-empty and the shallow-clone base
+   * table id when {@code baseTableId} is non-empty, persists the DAO, then hands it and the built
+   * {@link TableInfo} to {@code mapper} which picks the return shape each caller needs. Keeps the
+   * create path as a single operation, and pins all DAO setters before {@code session.persist} so
+   * the create lands as a single INSERT.
    */
   private <T> T createTableImpl(
       CreateTable createTable,
       Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields,
+      Optional<UUID> baseTableId,
       CreateResultMapper<T> mapper) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -719,6 +730,12 @@ public class TableRepository {
           // UniForm Iceberg fields (when supplied by the Delta create path) are written while the
           // entity is still transient so they're folded into the single INSERT below.
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
+          // Shallow-clone base table: validated in the same transaction, stamped pre-persist.
+          baseTableId.ifPresent(
+              baseId -> {
+                ShallowCloneUtils.validateBaseTable(session, baseId, tableType);
+                tableInfoDAO.setBaseTableId(baseId);
+              });
           session.persist(tableInfoDAO);
           if (tableType == TableType.METRIC_VIEW) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;

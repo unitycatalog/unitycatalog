@@ -12,6 +12,7 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Converts a {@link DeltaCreateTableRequest} (with typed Delta columns and kebab-case field names)
@@ -19,10 +20,11 @@ import java.util.Optional;
  * server holds path params for catalog and schema; the rest comes from the request body.
  *
  * <p>Required-field checks (name, location, columns, protocol, table-type) apply to all tables. The
- * full UC catalog-managed contract ({@link UcManagedDeltaContract}) applies only to MANAGED tables;
- * EXTERNAL tables skip contract validation but still go through the same {@link
- * DeltaPropertyMapper} projection, so derived {@code delta.feature.*} and {@code clusteringColumns}
- * entries override any client-supplied values under those keys.
+ * full UC catalog-managed contract ({@link UcManagedDeltaContract}) applies only to MANAGED tables
+ * -- including MANAGED_SHALLOW_CLONE, which is stored as a MANAGED table carrying a base-table-id
+ * (see {@link DeltaTableTypes}); EXTERNAL tables skip contract validation but still go through the
+ * same {@link DeltaPropertyMapper} projection, so derived {@code delta.feature.*} and {@code
+ * clusteringColumns} entries override any client-supplied values under those keys.
  */
 public final class DeltaCreateTableMapper {
 
@@ -31,13 +33,15 @@ public final class DeltaCreateTableMapper {
   /**
    * Result of mapping a {@link DeltaCreateTableRequest}: the assembled UC {@link CreateTable}
    * together with the validated, normalized UniForm Iceberg fields ({@code Optional.empty()} when
-   * no UniForm metadata was supplied). Callers thread the uniform fields straight to {@code
+   * no UniForm metadata was supplied) and the base table UUID for shallow clones ({@code
+   * Optional.empty()} for non-clone tables). Callers thread both straight to {@code
    * TableRepository.createTableForDelta} so the metadata-location is normalized exactly once at the
-   * request boundary.
+   * request boundary and the base table is resolved inside the create transaction.
    */
   public record Result(
       CreateTable createTable,
-      Optional<DeltaUniformUtils.UniformIcebergFields> uniformIcebergFields) {}
+      Optional<DeltaUniformUtils.UniformIcebergFields> uniformIcebergFields,
+      Optional<UUID> baseTableId) {}
 
   public static Result toCreateTable(
       String catalog,
@@ -59,6 +63,7 @@ public final class DeltaCreateTableMapper {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "table-type is required.");
     }
     TableType tableType = DeltaTableTypes.toStoredTableType(req.getTableType());
+    Optional<UUID> baseTableId = validateBaseTableId(req);
     if (req.getProtocol() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "protocol is required.");
     }
@@ -95,6 +100,27 @@ public final class DeltaCreateTableMapper {
             .comment(req.getComment())
             .storageLocation(req.getLocation())
             .properties(DeltaPropertyMapper.buildStoredProperties(req));
-    return new Result(createTable, uniformFields);
+    return new Result(createTable, uniformFields, baseTableId);
+  }
+
+  /**
+   * base-table-id must only be present for shallow-clone types; all other types must not include it
+   * or the table will be stored as a shallow clone.
+   */
+  private static Optional<UUID> validateBaseTableId(DeltaCreateTableRequest req) {
+    if (DeltaTableTypes.isShallowClone(req.getTableType())) {
+      if (req.getBaseTableId() == null) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "base-table-id is required for table-type " + req.getTableType() + ".");
+      }
+      return Optional.of(req.getBaseTableId());
+    }
+    if (req.getBaseTableId() != null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "base-table-id must not be set for table-type " + req.getTableType() + ".");
+    }
+    return Optional.empty();
   }
 }

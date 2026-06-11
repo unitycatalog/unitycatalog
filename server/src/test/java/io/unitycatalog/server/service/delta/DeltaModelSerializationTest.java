@@ -29,6 +29,7 @@ import io.unitycatalog.server.delta.model.DeltaSetTableCommentUpdate;
 import io.unitycatalog.server.delta.model.DeltaStructField;
 import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
+import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.delta.model.DeltaTableUpdate;
 import io.unitycatalog.server.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.server.delta.model.DeltaUniformMetadataIceberg;
@@ -542,6 +543,11 @@ public class DeltaModelSerializationTest {
     DeltaStructField tagsField = req.getColumns().getFields().get(2);
     assertThat(tagsField.getType()).isInstanceOf(DeltaArrayType.class);
 
+    // Shallow-clone fields: enum wire value and kebab-case base-table-id key
+    assertThat(req.getTableType()).isEqualTo(DeltaTableType.MANAGED_SHALLOW_CLONE);
+    assertThat(req.getBaseTableId())
+        .isEqualTo(UUID.fromString("770e8400-e29b-41d4-a716-446655440222"));
+
     // Round-trip: re-serialize, decimal-as-object becomes bare "decimal(10,2)" string
     JsonNode actual = MAPPER.readTree(MAPPER.writeValueAsString(req));
     assertThat(actual.path("columns").path("fields").get(0).path("type").asText())
@@ -550,6 +556,9 @@ public class DeltaModelSerializationTest {
         .isEqualTo("decimal(10,2)");
     assertThat(actual.path("columns").path("fields").get(2).path("type").path("type").asText())
         .isEqualTo("array");
+    assertThat(actual.path("table-type").asText()).isEqualTo("MANAGED_SHALLOW_CLONE");
+    assertThat(actual.path("base-table-id").asText())
+        .isEqualTo("770e8400-e29b-41d4-a716-446655440222");
   }
 
   // ==================== DeltaLoadTableResponse round-trip ====================

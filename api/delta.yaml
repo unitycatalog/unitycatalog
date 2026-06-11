@@ -195,7 +195,8 @@ paths:
       operationId: createTable
       summary: Create a table
       description: |
-        Create a new Delta table in the specified schema.
+        Create a new Delta table in the specified schema. Supports MANAGED, EXTERNAL, and
+        MANAGED_SHALLOW_CLONE tables. EXTERNAL_SHALLOW_CLONE is not yet supported.
       requestBody:
         required: true
         content:
@@ -530,9 +531,9 @@ components:
 
         The shallow-clone types identify tables created via `CREATE TABLE ... SHALLOW CLONE`:
         their Delta log references data files in the base table's storage location, and the
-        clone relationship is carried by `base-table-id` on the table metadata. A
-        MANAGED_SHALLOW_CLONE table behaves like a MANAGED table in every other respect.
-        EXTERNAL_SHALLOW_CLONE is not yet supported; createTable rejects it with
+        clone relationship is carried by `base-table-id` on the create request and table
+        metadata. A MANAGED_SHALLOW_CLONE table behaves like a MANAGED table in every other
+        respect. EXTERNAL_SHALLOW_CLONE is not yet supported; createTable rejects it with
         NotImplementedException.
       enum:
         - MANAGED
@@ -705,6 +706,14 @@ components:
           description: Storage location
         table-type:
           $ref: '#/components/schemas/DeltaTableType'
+        base-table-id:
+          type: string
+          format: uuid
+          description: |
+            Table UUID of the base table this table is a shallow clone of. Required for
+            shallow-clone table types; must be absent otherwise. The base table must be an
+            existing Delta table in the same metastore with the matching table type
+            (MANAGED for MANAGED_SHALLOW_CLONE), and must not be a shallow clone.
         comment:
           type: string
           description: Table comment
