@@ -126,6 +126,10 @@ public class TableRepository {
         /* readOnly = */ true);
   }
 
+  // Includes optional base table reference when the table is a shallow clone.
+  public record TableStorageLocations(
+      NormalizedURL tableLocation, Optional<ShallowCloneUtils.BaseTableRef> baseTable) {}
+
   /**
    * Looks up the storage location for a regular table by its three-part name. Only reads what the
    * caller actually needs (the storage URL) rather than hydrating the full {@link TableInfo} with
@@ -134,12 +138,14 @@ public class TableRepository {
    *
    * @throws BaseException with ErrorCode.TABLE_NOT_FOUND if no table exists at the given name.
    */
-  public NormalizedURL getTableStorageLocation(String catalog, String schema, String table) {
+  public TableStorageLocations getTableStorageLocations(
+      String catalog, String schema, String table) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
-          return NormalizedURL.from(dao.getUrl());
+          return new TableStorageLocations(
+              NormalizedURL.from(dao.getUrl()), ShallowCloneUtils.getBaseTableRef(session, dao));
         },
         "Failed to get storage location of table " + catalog + "." + schema + "." + table,
         /* readOnly = */ true);
