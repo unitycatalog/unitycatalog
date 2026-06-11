@@ -78,7 +78,7 @@ No authorization required
 
 Delete a table
 
-    Delete a table from the catalog. 
+    Delete a table from the catalog. Deleting a table that is the base of shallow clones is rejected; the clones must be deleted first. 
 
 ### Parameters
 

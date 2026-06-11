@@ -292,6 +292,18 @@ public class SchemaRepository {
       if (!force) {
         throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Cannot delete schema with tables");
       }
+      // Delete shallow clones first so base tables are not blocked by drop protection.
+      List<String> cloneNames =
+          session
+              .createQuery(
+                  "SELECT t.name FROM TableInfoDAO t WHERE t.schemaId = :schemaId "
+                      + "AND t.baseTableId IS NOT NULL",
+                  String.class)
+              .setParameter("schemaId", schemaId)
+              .getResultList();
+      for (String cloneName : cloneNames) {
+        repositories.getTableRepository().deleteTable(session, schemaId, cloneName);
+      }
       String nextToken = null;
       do {
         ListTablesResponse listTablesResponse =

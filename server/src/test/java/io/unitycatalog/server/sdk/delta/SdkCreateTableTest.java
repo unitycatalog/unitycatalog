@@ -33,6 +33,7 @@ import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.service.delta.DeltaConsts;
@@ -42,6 +43,7 @@ import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import lombok.SneakyThrows;
@@ -510,6 +512,44 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                     .baseTableId(baseId)),
         DeltaErrorType.NOT_IMPLEMENTED_EXCEPTION,
         "EXTERNAL_SHALLOW_CLONE");
+
+    // -------- drop protection: a table with active clones cannot be deleted --------
+    // Deletes go through UC REST; all delete surfaces share TableRepository.deleteTable.
+    TestUtils.assertApiException(
+        () -> tablesApi.deleteTable(qualified("tbl_clone_base")),
+        ErrorCode.FAILED_PRECONDITION,
+        "base table of shallow clone");
+    // Deleting the clone first, then the base, succeeds.
+    tablesApi.deleteTable(qualified("tbl_clone"));
+    tablesApi.deleteTable(qualified("tbl_clone_base"));
+
+    // -------- schema force-delete removes clones before bases --------
+    // tbl_fd_base sorts before tbl_fd_clone, so without the clones-first pre-pass the cascade
+    // would hit drop protection on the base.
+    DeltaStagingTableResponse fdBaseStaging = createStaging("tbl_fd_base");
+    DeltaLoadTableResponse fdBase =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME2,
+            TestUtils.SCHEMA_NAME2,
+            managedTableRequest("tbl_fd_base", fdBaseStaging));
+    DeltaStagingTableResponse fdCloneStaging = createStaging("tbl_fd_clone");
+    deltaTablesApi.createTable(
+        TestUtils.CATALOG_NAME2,
+        TestUtils.SCHEMA_NAME2,
+        shallowCloneRequest("tbl_fd_clone", fdCloneStaging, fdBase.getMetadata().getTableUuid()));
+    schemaOperations.deleteSchema(
+        TestUtils.CATALOG_NAME2 + "." + TestUtils.SCHEMA_NAME2, Optional.of(true));
+    TestUtils.assertDeltaApiException(
+        () ->
+            deltaTablesApi.loadTable(
+                TestUtils.CATALOG_NAME2, TestUtils.SCHEMA_NAME2, "tbl_fd_base"),
+        DeltaErrorType.NO_SUCH_SCHEMA_EXCEPTION,
+        "Schema not found");
+  }
+
+  /** Three-part name under the test catalog and schema. */
+  private static String qualified(String table) {
+    return TestUtils.CATALOG_NAME2 + "." + TestUtils.SCHEMA_NAME2 + "." + table;
   }
 
   /**

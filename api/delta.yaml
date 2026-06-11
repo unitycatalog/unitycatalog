@@ -298,10 +298,13 @@ paths:
       operationId: deleteTable
       summary: Delete a table
       description: |
-        Delete a table from the catalog.
+        Delete a table from the catalog. Deleting a table that is the base of shallow
+        clones is rejected; the clones must be deleted first.
       responses:
         '204':
           description: Table deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
         '401':
           $ref: '#/components/responses/UnauthorizedResponse'
         '403':

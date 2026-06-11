@@ -28,6 +28,8 @@ import lombok.experimental.SuperBuilder;
     name = "uc_tables",
     indexes = {
       @Index(name = "idx_name", columnList = "name"),
+      // Reverse clone lookup: drop protection checks for shallow clones on delete.
+      @Index(name = "idx_base_table_id", columnList = "base_table_id"),
     })
 // Lombok annotations
 @Getter
