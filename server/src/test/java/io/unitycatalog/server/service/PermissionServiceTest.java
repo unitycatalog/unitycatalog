@@ -1,11 +1,16 @@
 package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.TABLE_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.TABLE_NAME;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.api.GrantsApi;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.PermissionsChange;
 import io.unitycatalog.client.model.PermissionsList;
 import io.unitycatalog.client.model.Privilege;
@@ -40,22 +45,56 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
     createTestUser(REGULAR_1);
     createTestUser(REGULAR_2);
   }
+
   // ---------------------------------------------------------------------------
   // Tests
   // ---------------------------------------------------------------------------
 
   @Test
   @SneakyThrows
-  public void ownerCanGrantAndReadCatalogPermissionsButOthersCannot() {
-    // Admin (metastore owner) grants USE CATALOG to regular-1.
+  public void testPermissionsServiceUseCases() {
+    // Grants are scoped to a single securable, so we exercise the catalog, schema and table levels
+    // independently and then read each one back. The base test only creates the catalog and schema,
+    // so the table is created here before privileges can be granted on it.
+    createExternalTable(
+        new TablesApi(adminApiClient), CATALOG_NAME, SCHEMA_NAME, TABLE_NAME, "/tmp/" + TABLE_NAME);
+
+    // Admin (metastore owner) grants catalog-level privileges.
     grantsApi.update(
-        SecurableType.CATALOG, CATALOG_NAME, addPrivilege(REGULAR_1, Privilege.USE_CATALOG));
+        SecurableType.CATALOG,
+        CATALOG_NAME,
+        addPrivileges(REGULAR_1, Privilege.USE_CATALOG, Privilege.CREATE_SCHEMA));
     grantsApi.update(
-        SecurableType.CATALOG, CATALOG_NAME, addPrivilege(REGULAR_2, Privilege.USE_CATALOG));
-    // Reading back as the owner exposes the full ACL, including regular-1's grant.
-    PermissionsList getResponse = grantsApi.get(SecurableType.CATALOG, CATALOG_NAME, null);
-    assertThat(privilegesFor(getResponse, REGULAR_1)).containsExactly(Privilege.USE_CATALOG);
-    assertThat(privilegesFor(getResponse, REGULAR_2)).containsExactly(Privilege.USE_CATALOG);
+        SecurableType.CATALOG, CATALOG_NAME, addPrivileges(REGULAR_2, Privilege.USE_CATALOG));
+
+    // Schema-level privileges for regular-1.
+    grantsApi.update(
+        SecurableType.SCHEMA,
+        SCHEMA_FULL_NAME,
+        addPrivileges(REGULAR_1, Privilege.USE_SCHEMA, Privilege.CREATE_TABLE));
+
+    // Table-level privileges for regular-1.
+    grantsApi.update(
+        SecurableType.TABLE,
+        TABLE_FULL_NAME,
+        addPrivileges(REGULAR_1, Privilege.SELECT, Privilege.MODIFY));
+
+    // Reading back as the owner exposes the full ACL. Each securable is queried separately because
+    // a GET only returns the privileges granted directly on that securable.
+    PermissionsList catalogPermissions = grantsApi.get(SecurableType.CATALOG, CATALOG_NAME, null);
+    assertThat(privilegesFor(catalogPermissions, REGULAR_1))
+        .containsExactlyInAnyOrder(Privilege.USE_CATALOG, Privilege.CREATE_SCHEMA);
+    assertThat(privilegesFor(catalogPermissions, REGULAR_2)).containsExactly(Privilege.USE_CATALOG);
+
+    PermissionsList schemaPermissions = grantsApi.get(SecurableType.SCHEMA, SCHEMA_FULL_NAME, null);
+    assertThat(privilegesFor(schemaPermissions, REGULAR_1))
+        .containsExactlyInAnyOrder(Privilege.USE_SCHEMA, Privilege.CREATE_TABLE);
+    assertThat(privilegesFor(schemaPermissions, REGULAR_2)).isEmpty();
+
+    PermissionsList tablePermissions = grantsApi.get(SecurableType.TABLE, TABLE_FULL_NAME, null);
+    assertThat(privilegesFor(tablePermissions, REGULAR_1))
+        .containsExactlyInAnyOrder(Privilege.SELECT, Privilege.MODIFY);
+    assertThat(privilegesFor(tablePermissions, REGULAR_2)).isEmpty();
   }
 
   @Test
@@ -68,7 +107,7 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
                 .update(
                     SecurableType.CATALOG,
                     CATALOG_NAME,
-                    addPrivilege(REGULAR_2, Privilege.USE_CATALOG)));
+                    addPrivileges(REGULAR_2, Privilege.USE_CATALOG)));
   }
 
   @Test
@@ -100,9 +139,9 @@ public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
     return new GrantsApi(TestUtils.createApiClient(userConfig));
   }
 
-  private static UpdatePermissions addPrivilege(String principal, Privilege privilege) {
+  private static UpdatePermissions addPrivileges(String principal, Privilege... privileges) {
     PermissionsChange change =
-        new PermissionsChange().principal(principal).add(List.of(privilege)).remove(List.of());
+        new PermissionsChange().principal(principal).add(List.of(privileges)).remove(List.of());
     return new UpdatePermissions().changes(List.of(change));
   }
 
