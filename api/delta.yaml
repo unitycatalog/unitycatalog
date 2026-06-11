@@ -87,7 +87,6 @@ paths:
                 endpoints:
                   - "POST /v1/catalogs/{catalog}/schemas/{schema}/staging-tables"
                   - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables"
-                  - "GET /v1/catalogs/{catalog}/schemas/{schema}/tables"
                   - "GET /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
                   - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
                   - "DELETE /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}"
@@ -152,7 +151,9 @@ paths:
                   min-reader-version: 3
                   min-writer-version: 7
                   reader-features:
+                    - "catalogManaged"
                     - "deletionVectors"
+                    - "v2Checkpoint"
                     - "vacuumProtocolCheck"
                   writer-features:
                     - "catalogManaged"
@@ -162,14 +163,24 @@ paths:
                     - "vacuumProtocolCheck"
                 suggested-protocol:
                   reader-features:
-                    - "typeWidening"
+                    - "columnMapping"
                   writer-features:
+                    - "columnMapping"
                     - "domainMetadata"
                     - "rowTracking"
-                    - "typeWidening"
                 required-properties:
                   delta.checkpointPolicy: "v2"
+                  delta.enableDeletionVectors: "true"
+                  delta.enableInCommitTimestamps: "true"
+                  delta.checkpoint.writeStatsAsStruct: "true"
+                  delta.checkpoint.writeStatsAsJson: "true"
+                  io.unitycatalog.tableId: "123e4567-e89b-12d3-a456-426614174000"
                 suggested-properties:
+                  delta.columnMapping.mode: "name"
+                  delta.columnMapping.maxColumnId: null
+                  delta.enableRowTracking: "true"
+                  delta.randomizeFilePrefixes: "true"
+                  delta.parquet.compression.codec: "zstd"
                   delta.rowTracking.materializedRowIdColumnName: null
                   delta.rowTracking.materializedRowCommitVersionColumnName: null
         '400':
@@ -231,7 +242,9 @@ paths:
       operationId: loadTable
       summary: Load table metadata
       description: |
-        Load table metadata including columns, properties, and optionally credentials.
+        Load table metadata including columns, properties, unbackfilled commits, and the latest
+        table version. Credentials are not included; clients obtain them from the dedicated
+        credentials endpoints.
       responses:
         '200':
           description: Table loaded successfully
@@ -239,6 +252,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeltaLoadTableResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestErrorResponse'
         '401':
           $ref: '#/components/responses/UnauthorizedResponse'
         '403':
@@ -748,10 +763,7 @@ components:
               nullable: false
               metadata: {}
             - name: "amount"
-              type:
-                type: "decimal"
-                precision: 10
-                scale: 2
+              type: "decimal(10,2)"
               nullable: true
               metadata: {}
         partition-columns:
@@ -775,7 +787,11 @@ components:
           description: Complete table metadata including schema and properties
         commits:
           type: array
-          description: All unbackfilled CCv2 commits
+          description: |
+            All unbackfilled CCv2 commits, in descending version order (newest first). For managed
+            Delta tables the list is complete and contiguous up to latest-table-version and is
+            returned atomically with the metadata; the server bounds its size at write time
+            (ResourceExhaustedException) rather than truncating the response.
           items:
             $ref: '#/components/schemas/DeltaCommit'
         uniform:
@@ -814,12 +830,17 @@ components:
           $ref: '#/components/schemas/DeltaStructType'
         partition-columns:
           type: array
-          description: Partition column names
+          description: Partition column names (logical schema column names)
           items:
             type: string
         properties:
           type: object
-          description: Table properties
+          description: |
+            Table properties. Besides the table's metaData.configuration entries, the map carries
+            server-derived keys (delta.minReaderVersion, delta.minWriterVersion, delta.feature.*,
+            delta.clusteringColumns, delta.rowTracking.rowIdHighWaterMark, delta.lastUpdateVersion,
+            delta.lastCommitTimestamp) that clients must not write back to the Delta log or send in
+            set-properties / remove-properties.
           additionalProperties:
             type: string
         last-commit-version:
@@ -854,15 +875,22 @@ components:
 
     DeltaUpdateTableRequest:
       type: object
-      description: Request to update a table with requirements and updates
+      description: |
+        Request to update a table with requirements and updates. All actions apply atomically.
+        Shape rules: updates must be non-empty; at most one action of each type and at most one
+        requirement of each type per request; an assert-table-uuid requirement is always required;
+        set-properties / remove-properties must not touch the same key, and set-domain-metadata /
+        remove-domain-metadata must not touch the same domain.
       properties:
         requirements:
           type: array
+          minItems: 1
           description: Pre-conditions that must be met for the update
           items:
             $ref: '#/components/schemas/DeltaTableRequirement'
         updates:
           type: array
+          minItems: 1
           description: Updates to apply to the table
           items:
             $ref: '#/components/schemas/DeltaTableUpdate'
@@ -1227,7 +1255,11 @@ components:
           description: In-commit timestamp, in epoch milliseconds
         file-name:
           type: string
-          description: UUID-based commit file name
+          description: |
+            UUID-based name of the staged commit file under _delta_log/_staged_commits/. Written by
+            the committing client and returned verbatim to readers, which read the file at that
+            path; when the same version is also published as _delta_log/<v>.json, this
+            catalog-named file is the authoritative copy.
         file-size:
           type: integer
           format: int64
@@ -1445,19 +1477,21 @@ components:
                       items:
                         type: integer
                         format: int64
-                      description: Sorted bin boundary values
+                      description: |
+                        Sorted bin boundaries. Each element is the start of a bin (inclusive) and
+                        the next element is the end (exclusive). The first element must be 0.
                     file-counts:
                       type: array
                       items:
                         type: integer
                         format: int64
-                      description: Count of files in each bin
+                      description: Count of files in each bin. Length must match sorted-bin-boundaries.
                     total-bytes:
                       type: array
                       items:
                         type: integer
                         format: int64
-                      description: Total bytes in each bin
+                      description: Total bytes in each bin. Length must match sorted-bin-boundaries.
                     commit-version:
                       type: integer
                       format: int64
