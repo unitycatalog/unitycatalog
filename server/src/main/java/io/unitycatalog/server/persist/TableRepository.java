@@ -884,6 +884,7 @@ public class TableRepository {
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
+    ShallowCloneUtils.validateNoActiveClones(session, tableInfoDAO);
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {
         FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
