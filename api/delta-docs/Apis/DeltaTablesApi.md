@@ -49,7 +49,7 @@ No authorization required
 
 Create a table
 
-    Create a new Delta table in the specified schema. 
+    Create a new Delta table in the specified schema. Supports MANAGED, EXTERNAL, and MANAGED_SHALLOW_CLONE tables. EXTERNAL_SHALLOW_CLONE is not yet supported. 
 
 ### Parameters
 

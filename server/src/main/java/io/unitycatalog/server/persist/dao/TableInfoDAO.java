@@ -81,6 +81,10 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "view_definition", length = 16777215)
   private String viewDefinition;
 
+  // Table UUID of the base table when this table is a shallow clone; {@code null} otherwise.
+  @Column(name = "base_table_id")
+  private UUID baseTableId;
+
   @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
 

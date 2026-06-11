@@ -12,6 +12,7 @@ import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -19,6 +20,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -32,10 +34,11 @@ public class DeltaCreateTableMapperTest {
 
   @Test
   public void happyPathManagedBuildsCreateTable() {
-    CreateTable created =
+    DeltaCreateTableMapper.Result result =
         DeltaCreateTableMapper.toCreateTable(
-                "cat", "sch", baseManagedRequest(), new ServerProperties())
-            .createTable();
+            "cat", "sch", baseManagedRequest(), new ServerProperties());
+    assertThat(result.baseTableId()).isEmpty();
+    CreateTable created = result.createTable();
 
     assertThat(created.getName()).isEqualTo("tbl");
     assertThat(created.getCatalogName()).isEqualTo("cat");
@@ -71,6 +74,77 @@ public class DeltaCreateTableMapperTest {
         DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties())
             .createTable();
     assertThat(created.getTableType()).isEqualTo(io.unitycatalog.server.model.TableType.EXTERNAL);
+  }
+
+  // ---------- shallow clone ----------
+
+  @Test
+  public void managedShallowCloneMapsToManagedWithBaseTableId() {
+    DeltaCreateTableMapper.Result result =
+        DeltaCreateTableMapper.toCreateTable(
+            "cat", "sch", baseManagedShallowCloneRequest(), new ServerProperties());
+
+    // Stored as a plain MANAGED table; the clone relationship rides separately as baseTableId.
+    assertThat(result.createTable().getTableType())
+        .isEqualTo(io.unitycatalog.server.model.TableType.MANAGED);
+    assertThat(result.baseTableId()).contains(BASE_TABLE_ID);
+  }
+
+  @Test
+  public void managedShallowCloneEnforcesUcManagedContract() {
+    // The MANAGED-only contract gate applies to clones too: a clone request whose protocol lacks
+    // catalogManaged must fail exactly like a plain MANAGED request would.
+    DeltaCreateTableRequest req =
+        baseManagedShallowCloneRequest()
+            .protocol(
+                new DeltaProtocol()
+                    .minReaderVersion(3)
+                    .minWriterVersion(7)
+                    .readerFeatures(List.of(TableFeature.DELETION_VECTORS.specName()))
+                    .writerFeatures(List.of(TableFeature.DELETION_VECTORS.specName())));
+
+    assertThatThrownBy(
+            () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(TableFeature.CATALOG_MANAGED.specName());
+  }
+
+  @Test
+  public void managedShallowCloneRequiresBaseTableId() {
+    DeltaCreateTableRequest req = baseManagedShallowCloneRequest().baseTableId(null);
+
+    assertThatThrownBy(
+            () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("base-table-id is required");
+  }
+
+  @Test
+  public void baseTableIdRejectedForNonCloneTypes() {
+    for (DeltaCreateTableRequest req :
+        List.of(
+            baseManagedRequest().baseTableId(BASE_TABLE_ID),
+            baseExternalRequest().baseTableId(BASE_TABLE_ID))) {
+      assertThatThrownBy(
+              () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
+          .isInstanceOf(BaseException.class)
+          .hasMessageContaining("base-table-id must not be set");
+    }
+  }
+
+  @Test
+  public void externalShallowCloneIsUnimplemented() {
+    DeltaCreateTableRequest req =
+        baseExternalRequest()
+            .tableType(DeltaTableType.EXTERNAL_SHALLOW_CLONE)
+            .baseTableId(BASE_TABLE_ID);
+
+    assertThatThrownBy(
+            () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
+        .isInstanceOf(BaseException.class)
+        .satisfies(
+            e -> assertThat(((BaseException) e).getErrorCode()).isEqualTo(ErrorCode.UNIMPLEMENTED))
+        .hasMessageContaining("EXTERNAL_SHALLOW_CLONE");
   }
 
   // ---------- allowMissingDvForUniformV2 flag ----------
@@ -121,6 +195,18 @@ public class DeltaCreateTableMapperTest {
   }
 
   // --- fixtures ---
+
+  private static final UUID BASE_TABLE_ID = UUID.fromString("11111111-2222-3333-4444-555555555555");
+
+  /**
+   * A canonical fully-compliant MANAGED_SHALLOW_CLONE createTable request: identical to {@link
+   * #baseManagedRequest()} except for the table type and the base-table-id that comes with it.
+   */
+  private static DeltaCreateTableRequest baseManagedShallowCloneRequest() {
+    return baseManagedRequest()
+        .tableType(DeltaTableType.MANAGED_SHALLOW_CLONE)
+        .baseTableId(BASE_TABLE_ID);
+  }
 
   /** A canonical fully-compliant MANAGED createTable request. */
   private static DeltaCreateTableRequest baseManagedRequest() {

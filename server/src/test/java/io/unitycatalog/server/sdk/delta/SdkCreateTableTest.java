@@ -3,6 +3,7 @@ package io.unitycatalog.server.sdk.delta;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
@@ -20,8 +21,14 @@ import io.unitycatalog.client.delta.model.DeltaStructType;
 import io.unitycatalog.client.delta.model.DeltaTableType;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.client.delta.model.DeltaUniformMetadataIceberg;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -35,6 +42,7 @@ import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +57,7 @@ import org.junit.jupiter.api.function.Executable;
 public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
 
   private DeltaTablesApi deltaTablesApi;
+  private TablesApi tablesApi;
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
@@ -64,7 +73,9 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
   @Override
   public void setUp() {
     super.setUp();
-    deltaTablesApi = new DeltaTablesApi(TestUtils.createApiClient(serverConfig));
+    var apiClient = TestUtils.createApiClient(serverConfig);
+    deltaTablesApi = new DeltaTablesApi(apiClient);
+    tablesApi = new TablesApi(apiClient);
     createS3Catalog();
   }
 
@@ -372,6 +383,167 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
                         .convertedDeltaTimestamp(1700000000000L)
                         .baseConvertedDeltaVersion(0L)),
         "base-converted-delta-version must not be set at create time");
+  }
+
+  @Test
+  public void testCreateShallowCloneEndpoint() throws ApiException {
+    // -------- base table: an ordinary MANAGED Delta table, and it carries no base-table-id ------
+    DeltaStagingTableResponse baseStaging = createStaging("tbl_clone_base");
+    DeltaLoadTableResponse base =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME2,
+            TestUtils.SCHEMA_NAME2,
+            managedTableRequest("tbl_clone_base", baseStaging));
+    UUID baseId = base.getMetadata().getTableUuid();
+    assertThat(base.getMetadata().getBaseTableId()).isNull();
+
+    // -------- MANAGED_SHALLOW_CLONE happy path: MANAGED staging flow + base-table-id --------
+    DeltaStagingTableResponse cloneStaging = createStaging("tbl_clone");
+    DeltaLoadTableResponse clone =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME2,
+            TestUtils.SCHEMA_NAME2,
+            shallowCloneRequest("tbl_clone", cloneStaging, baseId));
+    assertThat(clone.getMetadata().getTableType()).isEqualTo(DeltaTableType.MANAGED_SHALLOW_CLONE);
+    assertThat(clone.getMetadata().getBaseTableId()).isEqualTo(baseId);
+    // The clone is a regular managed table otherwise: it keeps its own staging-allocated UUID and
+    // location (its Delta log lives there; only the data files it references live under the base).
+    assertThat(clone.getMetadata().getTableUuid()).isEqualTo(cloneStaging.getTableId());
+    assertThat(clone.getMetadata().getLocation()).isEqualTo(cloneStaging.getLocation());
+
+    // -------- loadTable round-trips the clone type and relationship --------
+    DeltaLoadTableResponse loaded =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME2, TestUtils.SCHEMA_NAME2, "tbl_clone");
+    assertThat(loaded.getMetadata().getTableType()).isEqualTo(DeltaTableType.MANAGED_SHALLOW_CLONE);
+    assertThat(loaded.getMetadata().getBaseTableId()).isEqualTo(baseId);
+
+    // -------- clone of a clone: rejected --------
+    DeltaStagingTableResponse clone2Staging = createStaging("tbl_clone2");
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                shallowCloneRequest("tbl_clone2", clone2Staging, cloneStaging.getTableId())),
+        "cloning a clone is not supported");
+
+    // -------- base-table-id missing for a clone type --------
+    DeltaStagingTableResponse stagingNoBase = createStaging("tbl_clone_no_base");
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                shallowCloneRequest("tbl_clone_no_base", stagingNoBase, null)),
+        "base-table-id is required");
+
+    // -------- base-table-id supplied for a non-clone type --------
+    DeltaStagingTableResponse stagingStray = createStaging("tbl_stray_base");
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                managedTableRequest("tbl_stray_base", stagingStray).baseTableId(baseId)),
+        "base-table-id must not be set");
+
+    // -------- base table does not exist --------
+    DeltaStagingTableResponse stagingGhost = createStaging("tbl_clone_ghost");
+    TestUtils.assertDeltaApiException(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                shallowCloneRequest(
+                    "tbl_clone_ghost",
+                    stagingGhost,
+                    UUID.fromString("00000000-0000-0000-0000-000000000000"))),
+        DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
+        "Base table not found");
+
+    // -------- base table is not a Delta table --------
+    // A shallow clone's Delta log references data files under the base table's location, so a
+    // non-Delta base can never be valid. Created via UC REST since the Delta API only creates
+    // Delta tables.
+    TableInfo parquetBase = createExternalParquetTable("tbl_parquet_base");
+    DeltaStagingTableResponse stagingNonDelta = createStaging("tbl_clone_nondelta");
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                shallowCloneRequest(
+                    "tbl_clone_nondelta",
+                    stagingNonDelta,
+                    UUID.fromString(parquetBase.getTableId()))),
+        "must be a MANAGED Delta table");
+
+    // -------- base table type must match: MANAGED clone of an EXTERNAL base rejected --------
+    // A clone never crosses the managed/external boundary (matching managed UC's rule).
+    DeltaLoadTableResponse externalBase =
+        deltaTablesApi.createTable(
+            TestUtils.CATALOG_NAME2,
+            TestUtils.SCHEMA_NAME2,
+            externalTableRequest(
+                "tbl_external_base", "s3://test-bucket0/external-path/tbl_external_base"));
+    DeltaStagingTableResponse stagingExtBase = createStaging("tbl_clone_ext_base");
+    assertDeltaInvalidParam(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                shallowCloneRequest(
+                    "tbl_clone_ext_base",
+                    stagingExtBase,
+                    externalBase.getMetadata().getTableUuid())),
+        "must be a MANAGED Delta table");
+
+    // -------- EXTERNAL_SHALLOW_CLONE: spec-reserved, rejected as not implemented --------
+    TestUtils.assertDeltaApiException(
+        () ->
+            deltaTablesApi.createTable(
+                TestUtils.CATALOG_NAME2,
+                TestUtils.SCHEMA_NAME2,
+                externalTableRequest(
+                        "tbl_ext_clone", "s3://test-bucket0/external-path/tbl_ext_clone")
+                    .tableType(DeltaTableType.EXTERNAL_SHALLOW_CLONE)
+                    .baseTableId(baseId)),
+        DeltaErrorType.NOT_IMPLEMENTED_EXCEPTION,
+        "EXTERNAL_SHALLOW_CLONE");
+  }
+
+  /**
+   * A MANAGED_SHALLOW_CLONE request is exactly a MANAGED request (same staging flow, same UC
+   * catalog-managed contract) plus the clone type and the base table's UUID.
+   */
+  private static DeltaCreateTableRequest shallowCloneRequest(
+      String name, DeltaStagingTableResponse staging, UUID baseTableId) {
+    return managedTableRequest(name, staging)
+        .tableType(DeltaTableType.MANAGED_SHALLOW_CLONE)
+        .baseTableId(baseTableId);
+  }
+
+  /** Create an EXTERNAL PARQUET (non-Delta) table via UC REST, as a negative-case clone base. */
+  private TableInfo createExternalParquetTable(String name) throws ApiException {
+    return tablesApi.createTable(
+        new CreateTable()
+            .name(name)
+            .catalogName(TestUtils.CATALOG_NAME2)
+            .schemaName(TestUtils.SCHEMA_NAME2)
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.PARQUET)
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("id")
+                        .typeText("INTEGER")
+                        .typeJson(
+                            "{\"name\":\"id\",\"type\":\"integer\","
+                                + "\"nullable\":true,\"metadata\":{}}")
+                        .typeName(ColumnTypeName.INT)
+                        .position(0)
+                        .nullable(true)))
+            .storageLocation("s3://test-bucket0/external-path/" + name));
   }
 
   /**

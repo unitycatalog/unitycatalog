@@ -1,8 +1,9 @@
 {
   "metadata": {
     "etag": "etag-123",
-    "table-type": "MANAGED",
+    "table-type": "MANAGED_SHALLOW_CLONE",
     "table-uuid": "550e8400-e29b-41d4-a716-446655440000",
+    "base-table-id": "770e8400-e29b-41d4-a716-446655440222",
     "location": "s3://bucket/warehouse/catalog/schema/sales",
     "created-time": 1700000000000,
     "updated-time": 1700000100000,
