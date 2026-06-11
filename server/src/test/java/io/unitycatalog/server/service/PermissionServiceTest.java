@@ -19,6 +19,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.SneakyThrows;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -32,49 +33,50 @@ import org.junit.jupiter.api.Test;
  */
 public class PermissionServiceTest extends SdkAccessControlBaseCRUDTest {
 
+  @BeforeEach
+  @SneakyThrows
+  public void setUp() {
+    super.setUp();
+    createTestUser(REGULAR_1);
+    createTestUser(REGULAR_2);
+  }
   // ---------------------------------------------------------------------------
   // Tests
   // ---------------------------------------------------------------------------
 
   @Test
   @SneakyThrows
-  public void ownerCanGrantAndReadCatalogPermissions() {
-    createTestUser(REGULAR_1);
-
+  public void ownerCanGrantAndReadCatalogPermissionsButOthersCannot() {
     // Admin (metastore owner) grants USE CATALOG to regular-1.
-    PermissionsList grantResponse =
-        grantsApi.update(
-            SecurableType.CATALOG, CATALOG_NAME, addPrivilege(REGULAR_1, Privilege.USE_CATALOG));
-    assertThat(privilegesFor(grantResponse, REGULAR_1)).containsExactly(Privilege.USE_CATALOG);
-
+    grantsApi.update(
+        SecurableType.CATALOG, CATALOG_NAME, addPrivilege(REGULAR_1, Privilege.USE_CATALOG));
+    grantsApi.update(
+        SecurableType.CATALOG, CATALOG_NAME, addPrivilege(REGULAR_2, Privilege.USE_CATALOG));
     // Reading back as the owner exposes the full ACL, including regular-1's grant.
     PermissionsList getResponse = grantsApi.get(SecurableType.CATALOG, CATALOG_NAME, null);
     assertThat(privilegesFor(getResponse, REGULAR_1)).containsExactly(Privilege.USE_CATALOG);
+    assertThat(privilegesFor(getResponse, REGULAR_2)).containsExactly(Privilege.USE_CATALOG);
   }
 
   @Test
   @SneakyThrows
-  public void nonOwnerCannotUpdateCatalogPermissions() {
-    createTestUser(REGULAR_1);
-
-    // regular-1 is neither metastore nor catalog owner, so the decorator rejects the update.
-    GrantsApi regularGrantsApi = grantsApiFor(REGULAR_1);
+  public void nonOwnerCannotGrantPermissionsToOthers() {
+    // regular-1 cannot grant permissions to regular-2
     assertPermissionDenied(
         () ->
-            regularGrantsApi.update(
-                SecurableType.CATALOG,
-                CATALOG_NAME,
-                addPrivilege(REGULAR_1, Privilege.USE_CATALOG)));
+            grantsApiFor(REGULAR_1)
+                .update(
+                    SecurableType.CATALOG,
+                    CATALOG_NAME,
+                    addPrivilege(REGULAR_2, Privilege.USE_CATALOG)));
   }
 
   @Test
   @SneakyThrows
   public void nonOwnerCanReadCatalogPermissions() {
-    createTestUser(REGULAR_1);
-
     // GET is gated only on authentication, so a non-owner gets their own (empty) view.
-    GrantsApi regularGrantsApi = grantsApiFor(REGULAR_1);
-    PermissionsList response = regularGrantsApi.get(SecurableType.CATALOG, CATALOG_NAME, null);
+    PermissionsList response =
+        grantsApiFor(REGULAR_1).get(SecurableType.CATALOG, CATALOG_NAME, null);
     assertThat(privilegesFor(response, REGULAR_1)).isEmpty();
   }
 
