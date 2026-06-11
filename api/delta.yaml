@@ -525,10 +525,20 @@ components:
 
     DeltaTableType:
       type: string
-      description: The type of a Delta table.
+      description: |
+        The type of a Delta table.
+
+        The shallow-clone types identify tables created via `CREATE TABLE ... SHALLOW CLONE`:
+        their Delta log references data files in the base table's storage location, and the
+        clone relationship is carried by `base-table-id` on the table metadata. A
+        MANAGED_SHALLOW_CLONE table behaves like a MANAGED table in every other respect.
+        EXTERNAL_SHALLOW_CLONE is not yet supported; createTable rejects it with
+        NotImplementedException.
       enum:
         - MANAGED
         - EXTERNAL
+        - MANAGED_SHALLOW_CLONE
+        - EXTERNAL_SHALLOW_CLONE
 
     DeltaCredentialOperation:
       type: string
@@ -799,6 +809,12 @@ components:
           type: string
           format: uuid
           description: Unique identifier for the table
+        base-table-id:
+          type: string
+          format: uuid
+          description: |
+            Table UUID of the base table this table is a shallow clone of.
+            Present only for shallow-clone table types.
         location:
           type: string
           description: Storage location of the table

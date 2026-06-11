@@ -6,7 +6,6 @@ import io.unitycatalog.server.delta.model.DeltaCommit;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableMetadata;
-import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.delta.model.DeltaUniformMetadata;
 import io.unitycatalog.server.delta.model.DeltaUniformMetadataIceberg;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
@@ -31,6 +30,7 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import io.unitycatalog.server.service.delta.DeltaTableTypes;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
 import io.unitycatalog.server.service.delta.DeltaUpdateTableMapper;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
@@ -417,7 +417,8 @@ public class TableRepository {
       String table) {
     DeltaTableMetadata metadata = new DeltaTableMetadata();
     metadata.setEtag(DeltaUpdateTableMapper.computeEtag(dao));
-    metadata.setTableType(toDeltaTableType(dao.getType()));
+    metadata.setTableType(DeltaTableTypes.fromStored(dao.getType(), dao.getBaseTableId()));
+    metadata.setBaseTableId(dao.getBaseTableId());
     metadata.setTableUuid(dao.getId());
     metadata.setLocation(NormalizedURL.normalize(dao.getUrl()));
     metadata.setCreatedTime(dao.getCreatedAt() != null ? dao.getCreatedAt().getTime() : null);
@@ -542,10 +543,6 @@ public class TableRepository {
       iceberg.convertedDeltaTimestamp(dao.getUniformIcebergConvertedDeltaTimestamp().getTime());
     }
     response.setUniform(new DeltaUniformMetadata().iceberg(iceberg));
-  }
-
-  private static DeltaTableType toDeltaTableType(String value) {
-    return DeltaTableType.fromValue(value);
   }
 
   public String getTableUniformMetadataLocation(
