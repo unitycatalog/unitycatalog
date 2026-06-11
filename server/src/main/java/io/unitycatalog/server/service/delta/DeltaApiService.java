@@ -26,6 +26,7 @@ import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.server.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
+import io.unitycatalog.server.delta.model.DeltaStorageCredential;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
@@ -39,12 +40,15 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.utils.ShallowCloneUtils;
 import io.unitycatalog.server.service.AuthorizedService;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -252,6 +256,11 @@ public class DeltaApiService extends AuthorizedService {
    * operation} query param scopes the returned credentials: {@code READ} requires {@code SELECT}
    * (or OWNER); {@code READ_WRITE} requires {@code OWNER} or both {@code SELECT} and {@code
    * MODIFY}.
+   *
+   * <p>For a shallow clone the response carries a second, always-READ entry for the base table's
+   * location. The base entry requires the caller to also pass this endpoint's own policy against
+   * the base table with {@code operation=READ}; holding privileges on the clone alone is not
+   * enough to reach the base table's storage.
    */
   @Get("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials")
   @ProducesJson
@@ -261,11 +270,31 @@ public class DeltaApiService extends AuthorizedService {
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table,
       @Param("operation") @AuthorizeKey DeltaCredentialOperation operation) {
-    NormalizedURL storageLocation = tableRepository.getTableStorageLocation(catalog, schema, table);
-    TemporaryCredentials credentials =
-        storageCredentialVendor.vendCredential(storageLocation, toPrivileges(operation));
-    return DeltaCredentialsMapper.toCredentialsResponse(
-        storageLocation.toString(), credentials, operation);
+    TableRepository.TableStorageLocations locations =
+        tableRepository.getTableStorageLocations(catalog, schema, table);
+    List<DeltaStorageCredential> credentials = new ArrayList<>();
+    credentials.add(vendEntry(locations.tableLocation(), operation));
+    locations.baseTable().ifPresent(base -> credentials.add(vendBaseTableEntry(base)));
+    return DeltaCredentialsMapper.toCredentialsResponse(credentials);
+  }
+
+  // Vend credentials for one storage prefix and map them to a wire entry.
+  private DeltaStorageCredential vendEntry(
+      NormalizedURL location, DeltaCredentialOperation operation) {
+    return DeltaCredentialsMapper.toStorageCredential(
+        location.toString(),
+        storageCredentialVendor.vendCredential(location, toPrivileges(operation)),
+        operation);
+  }
+
+  // Vend the always-READ entry for a shallow clone's base table
+  private DeltaStorageCredential vendBaseTableEntry(ShallowCloneUtils.BaseTableRef base) {
+    enforce(
+        AuthorizeExpressions.VEND_TABLE_CREDENTIAL,
+        Map.of(CATALOG, base.catalogId(), SCHEMA, base.schemaId(), TABLE, base.tableId()),
+        Map.of("operation", DeltaCredentialOperation.READ.getValue()),
+        "Reading a shallow clone requires read access to its base table " + base.tableId() + ".");
+    return vendEntry(base.location(), DeltaCredentialOperation.READ);
   }
 
   /**

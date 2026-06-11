@@ -42,7 +42,7 @@ No authorization required
 
 Get table credentials
 
-    Get temporary credentials for accessing table data (vended credentials). The operation parameter controls the access level. 
+    Get temporary credentials for accessing table data (vended credentials). The operation parameter controls the access level.  For a shallow clone the response carries an additional READ-scoped credential for the base table&#39;s storage location, if the requestor has read access to the base table. 
 
 ### Parameters
 

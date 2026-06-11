@@ -142,7 +142,7 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
   }
 
   /** Canonical {@code (id long not null, amount double nullable)} columns. */
-  protected static DeltaStructType simpleSchema() {
+  public static DeltaStructType simpleSchema() {
     return new DeltaStructType()
         .type("struct")
         .fields(
@@ -164,7 +164,7 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
    * rowTracking} so callers may seed a {@code deltaRowTracking} domain at create time (Delta
    * requires the matching writer feature to back the domain metadata).
    */
-  protected static DeltaProtocol managedProtocol() {
+  public static DeltaProtocol managedProtocol() {
     List<String> writerFeatures = new ArrayList<>(UcManagedDeltaContract.REQUIRED_WRITER_FEATURES);
     writerFeatures.add(TableFeature.ROW_TRACKING.specName());
     return new DeltaProtocol()
@@ -175,7 +175,7 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
   }
 
   /** Minimum properties UC requires on a catalog-managed Delta table at create time. */
-  protected static Map<String, String> managedContractProperties(String tableId) {
+  public static Map<String, String> managedContractProperties(String tableId) {
     Map<String, String> props = new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);
     props.put(TableProperties.UC_TABLE_ID, tableId);
     // Engine-generated values; the contract only checks non-null, any placeholder works.

@@ -4,8 +4,11 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 
@@ -54,6 +57,40 @@ public final class ShallowCloneUtils {
               + base.getBaseTableId()
               + " instead.");
     }
+  }
+
+  /**
+   * A shallow clone's resolved base table: its id, parent hierarchy (for authorization checks
+   * against the base), and storage location (for credential vending).
+   */
+  public record BaseTableRef(UUID tableId, UUID catalogId, UUID schemaId, NormalizedURL location) {}
+
+  /** Resolve the base table when {@code table} is a shallow clone; empty for non-clones */
+  public static Optional<BaseTableRef> getBaseTableRef(Session session, TableInfoDAO table) {
+    if (table.getBaseTableId() == null) {
+      return Optional.empty();
+    }
+    TableInfoDAO base = session.get(TableInfoDAO.class, table.getBaseTableId());
+    if (base == null) {
+      throw new BaseException(
+          ErrorCode.INTERNAL,
+          "Base table "
+              + table.getBaseTableId()
+              + " of shallow clone "
+              + table.getName()
+              + " not found.");
+    }
+    SchemaInfoDAO baseSchema = session.get(SchemaInfoDAO.class, base.getSchemaId());
+    if (baseSchema == null) {
+      throw new BaseException(
+          ErrorCode.INTERNAL, "Schema not found for base table: " + base.getId());
+    }
+    return Optional.of(
+        new BaseTableRef(
+            base.getId(),
+            baseSchema.getCatalogId(),
+            baseSchema.getId(),
+            NormalizedURL.from(base.getUrl())));
   }
 
   /** Drop protection: block deleting a table that is still the base of shallow clones */

@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaClusteringDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaCreateStagingTableRequest;
 import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
+import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.client.delta.model.DeltaErrorType;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
@@ -15,6 +18,7 @@ import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
 import io.unitycatalog.client.delta.model.DeltaRowTrackingDomainMetadata;
 import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
@@ -418,6 +422,35 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
         deltaTablesApi.loadTable(TestUtils.CATALOG_NAME2, TestUtils.SCHEMA_NAME2, "tbl_clone");
     assertThat(loaded.getMetadata().getTableType()).isEqualTo(DeltaTableType.MANAGED_SHALLOW_CLONE);
     assertThat(loaded.getMetadata().getBaseTableId()).isEqualTo(baseId);
+
+    // -------- credentials for a clone include READ credentials for the base location --------
+    // The clone's Delta log references data files under the base table's location, so a reader
+    // needs both prefixes. The base entry is always READ: writes to a clone land under the
+    // clone's own location, never the base's.
+    DeltaTemporaryCredentialsApi credsApi =
+        new DeltaTemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
+    DeltaCredentialsResponse cloneCreds =
+        credsApi.getTableCredentials(
+            DeltaCredentialOperation.READ_WRITE,
+            TestUtils.CATALOG_NAME2,
+            TestUtils.SCHEMA_NAME2,
+            "tbl_clone");
+    assertThat(cloneCreds.getStorageCredentials()).hasSize(2);
+    DeltaStorageCredential cloneEntry = cloneCreds.getStorageCredentials().get(0);
+    assertThat(cloneEntry.getPrefix()).isEqualTo(cloneStaging.getLocation());
+    assertThat(cloneEntry.getOperation()).isEqualTo(DeltaCredentialOperation.READ_WRITE);
+    DeltaStorageCredential baseEntry = cloneCreds.getStorageCredentials().get(1);
+    assertThat(baseEntry.getPrefix()).isEqualTo(base.getMetadata().getLocation());
+    assertThat(baseEntry.getOperation()).isEqualTo(DeltaCredentialOperation.READ);
+
+    // Non-clone tables keep the single-entry response.
+    DeltaCredentialsResponse baseCreds =
+        credsApi.getTableCredentials(
+            DeltaCredentialOperation.READ,
+            TestUtils.CATALOG_NAME2,
+            TestUtils.SCHEMA_NAME2,
+            "tbl_clone_base");
+    assertThat(baseCreds.getStorageCredentials()).hasSize(1);
 
     // -------- clone of a clone: rejected --------
     DeltaStagingTableResponse clone2Staging = createStaging("tbl_clone2");

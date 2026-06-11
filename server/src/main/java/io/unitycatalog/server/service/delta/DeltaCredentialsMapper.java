@@ -12,9 +12,9 @@ import java.util.List;
  * UC Delta API's flat {@link DeltaStorageCredential} wire format (with a provider-agnostic typed
  * config of {@code s3.*} / {@code azure.*} / {@code gcs.*} fields).
  *
- * <p>The spec currently returns a single-element {@code storage-credentials} array; the response
- * type is an array to allow future multi-credential responses (e.g., federated access) without a
- * breaking change.
+ * <p>The {@code storage-credentials} response array carries one entry per storage prefix the caller
+ * needs: a single entry for regular tables, and an additional read-only entry for the base table's
+ * location when the table is a shallow clone.
  */
 public final class DeltaCredentialsMapper {
 
@@ -26,11 +26,17 @@ public final class DeltaCredentialsMapper {
    */
   public static DeltaCredentialsResponse toCredentialsResponse(
       String prefix, TemporaryCredentials credentials, DeltaCredentialOperation operation) {
-    return new DeltaCredentialsResponse()
-        .storageCredentials(List.of(toStorageCredential(prefix, credentials, operation)));
+    return toCredentialsResponse(List.of(toStorageCredential(prefix, credentials, operation)));
   }
 
-  private static DeltaStorageCredential toStorageCredential(
+  /** Build a {@link DeltaCredentialsResponse} from already-mapped per-prefix credentials. */
+  public static DeltaCredentialsResponse toCredentialsResponse(
+      List<DeltaStorageCredential> storageCredentials) {
+    return new DeltaCredentialsResponse().storageCredentials(storageCredentials);
+  }
+
+  /** Map UC {@link TemporaryCredentials} to a single per-prefix {@link DeltaStorageCredential}. */
+  public static DeltaStorageCredential toStorageCredential(
       String prefix, TemporaryCredentials credentials, DeltaCredentialOperation operation) {
     DeltaStorageCredentialConfig config = new DeltaStorageCredentialConfig();
     var aws = credentials.getAwsTempCredentials();
