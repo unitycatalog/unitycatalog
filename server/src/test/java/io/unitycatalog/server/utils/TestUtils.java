@@ -84,6 +84,16 @@ public class TestUtils {
     assertThat(ex.getCode()).isEqualTo(errorCode.getHttpStatus().code());
   }
 
+  /**
+   * Asserts the call fails by checking the HTTP status code is {@code expectedStatus}. Use for
+   * body-less responses; otherwise use {@link #assertApiException} / {@link
+   * #assertDeltaApiException}.
+   */
+  public static void assertApiExceptionStatusOnly(Executable executable, int expectedStatus) {
+    ApiException ex = assertThrows(ApiException.class, executable);
+    assertThat(ex.getCode()).isEqualTo(expectedStatus);
+  }
+
   public static void assertDeltaApiException(
       Executable executable, DeltaErrorType expectedType, String expectedMessageSubstring) {
     int expectedCode = ErrorCode.getDeltaHttpStatus(expectedType.getValue()).code();
