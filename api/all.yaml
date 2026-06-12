@@ -1685,6 +1685,7 @@ components:
       type: string
       enum:
         - DELTA
+        - ICEBERG
         - CSV
         - JSON
         - AVRO

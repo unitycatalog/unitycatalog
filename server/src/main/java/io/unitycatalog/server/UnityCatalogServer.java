@@ -292,7 +292,7 @@ public class UnityCatalogServer {
     armeriaServerBuilder.annotatedService(
         BASE_PATH + "iceberg",
         new IcebergRestCatalogService(
-            schemaService, tableConfigService, metadataService, repositories),
+            schemaService, tableService, tableConfigService, metadataService, repositories),
         icebergRequestConverter,
         icebergResponseConverter);
   }
