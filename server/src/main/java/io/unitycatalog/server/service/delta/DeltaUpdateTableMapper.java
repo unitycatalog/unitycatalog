@@ -186,6 +186,13 @@ public final class DeltaUpdateTableMapper {
      * the auto-stamping of {@code delta.lastUpdateVersion} / {@code delta.lastCommitTimestamp} on
      * a MANAGED {@code add-commit}. {@code update-metadata-snapshot-version} is intentionally
      * omitted: it is EXTERNAL-only and so can never co-occur with {@code add-commit}.
+     *
+     * <p>A {@code set-domain-metadata} that touches only the {@code delta.rowTracking} domain does
+     * not count: the Delta protocol requires writers to advance the row-tracking high-water mark in
+     * every commit that assigns fresh row IDs, so clients mirror it alongside otherwise data-only
+     * {@code add-commit}s. It is per-commit snapshot bookkeeping, not a metadata change; counting
+     * it would advance {@code updatedAt} and the {@code delta.lastUpdateVersion} stamp on every
+     * data commit of a row-tracking table. The high-water-mark property itself is still persisted.
      */
     boolean hasManagedTableMetadataChange() {
       return setProperties.isPresent()
@@ -194,8 +201,31 @@ public final class DeltaUpdateTableMapper {
           || setSchema.isPresent()
           || setPartitionColumns.isPresent()
           || setTableComment.isPresent()
-          || setDomainMetadata.isPresent()
+          || setsDomainMetadataBeyondRowTracking()
           || removeDomainMetadata.isPresent();
+    }
+
+    /**
+     * True if {@code set-domain-metadata} is present and sets any domain other than {@code
+     * delta.rowTracking}. Extend this check when new domains are added to {@link
+     * DeltaDomainMetadataUpdates}.
+     */
+    private boolean setsDomainMetadataBeyondRowTracking() {
+      if (setDomainMetadata.isEmpty()) {
+        return false;
+      }
+      DeltaDomainMetadataUpdates updates = setDomainMetadata.get().getUpdates();
+      return updates != null && updates.getDeltaClustering() != null;
+    }
+
+    /**
+     * True if this request changes catalog-visible table metadata: any MANAGED-applicable
+     * metadata action ({@link #hasManagedTableMetadataChange()}) or the EXTERNAL-only {@code
+     * update-metadata-snapshot-version}. Data-only {@code add-commit} and backfill-only
+     * requests carry no metadata change and return false.
+     */
+    public boolean changesTableMetadata() {
+      return hasManagedTableMetadataChange() || updateSnapshotVersion.isPresent();
     }
 
     void putOnce(DeltaTableUpdate update) {

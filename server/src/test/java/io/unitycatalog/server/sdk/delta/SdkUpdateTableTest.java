@@ -88,6 +88,11 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       Handle h =
           createDeltaManaged(
               "tbl_umbrella", Map.of("keep", "v1", "update_me", "v_old", "drop_me", "v3"));
+      Long t0 =
+          deltaTablesApi
+              .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name())
+              .getMetadata()
+              .getUpdatedTime();
 
       // Must keep the managed-contract required features; adding CLUSTERING proves features are
       // replaced (not merged) by what the request carries.
@@ -130,6 +135,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(props1)
           .containsEntry(TableProperties.CLUSTERING_COLUMNS, "[[\"id\"]]")
           .containsKey(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK);
+      // A metadata change advances updated-time, and with it the etag.
+      assertThat(r1.getMetadata().getUpdatedTime()).isGreaterThan(t0);
       assertThat(r1.getMetadata().getEtag()).isNotEqualTo(h.etag());
 
       // Phase 2: remove-domain-metadata alone -- now the rowTracking entry must disappear.
@@ -140,6 +147,25 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r2.getMetadata().getProperties())
           .doesNotContainKey(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK)
           .containsKey(TableProperties.CLUSTERING_COLUMNS);
+
+      // Phase 3: a set-domain-metadata touching clustering is a metadata change and rolls the
+      // etag, even when the exempt rowTracking high-water mark rides in the same action --
+      // contrast with the HWM-only case in the tbl_commit_meta_stamp section.
+      DeltaLoadTableResponse r3 =
+          updateTable(
+              h.withEtag(r2.getMetadata().getEtag()),
+              new DeltaSetDomainMetadataUpdate()
+                  .updates(
+                      new DeltaDomainMetadataUpdates()
+                          .deltaClustering(
+                              new DeltaClusteringDomainMetadata()
+                                  .clusteringColumns(List.of(List.of("name"))))
+                          .deltaRowTracking(
+                              new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(123L))));
+      assertThat(r3.getMetadata().getProperties())
+          .containsEntry(TableProperties.CLUSTERING_COLUMNS, "[[\"name\"]]")
+          .containsEntry(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK, "123");
+      assertThat(r3.getMetadata().getEtag()).isNotEqualTo(r2.getMetadata().getEtag());
     }
 
     // -------- set-protocol-drops-feature + sibling remove-DM in same RPC succeeds (post-apply
@@ -554,6 +580,11 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     // -------- add-commit on managed Delta (+ version conflict) --------
     {
       Handle h = createDeltaManaged("tbl_commit", Map.of());
+      Long t0 =
+          deltaTablesApi
+              .loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, h.name())
+              .getMetadata()
+              .getUpdatedTime();
       DeltaLoadTableResponse r1 =
           updateTable(
               h,
@@ -568,6 +599,11 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r1.getCommits()).hasSize(1);
       assertThat(r1.getCommits().get(0).getVersion()).isEqualTo(1L);
       assertThat(r1.getLatestTableVersion()).isEqualTo(1L);
+      // A data-only commit changes no metadata, so it must not advance updated-time (and hence
+      // must not roll the etag). The conflict calls below reuse this etag in assert-etag and
+      // fail on the version check, which also proves the pre-commit etag remains valid.
+      assertThat(r1.getMetadata().getUpdatedTime()).isEqualTo(t0);
+      assertThat(r1.getMetadata().getEtag()).isEqualTo(h.etag());
 
       // Replaying v1 should surface as a CommitVersionConflict (409). Pin assert-etag against
       // the post-r1 etag so the conflict comes from the version check, not from assert-etag.
@@ -639,6 +675,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r2.getLatestTableVersion()).isEqualTo(2L);
       assertThat(r2.getCommits()).hasSize(1);
       assertThat(r2.getCommits().get(0).getVersion()).isEqualTo(2L);
+      // The combined commit+backfill request is still data-only: updated-time must not advance.
+      assertThat(r2.getMetadata().getUpdatedTime()).isEqualTo(r1.getMetadata().getUpdatedTime());
     }
 
     // -------- MANAGED add-commit + metadata change stamps lastUpdateVersion/timestamp --------
@@ -679,6 +717,34 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                           .fileModificationTimestamp(1700000002L)));
       assertThat(r2.getMetadata().getLastCommitVersion()).isEqualTo(1L);
       assertThat(r2.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
+
+      // v3: add-commit + set-domain-metadata touching only delta.rowTracking. The Delta protocol
+      // makes writers mirror the row-tracking high-water mark on every fresh-row commit, so this
+      // is data-stream bookkeeping: the HWM property must persist, but lastUpdateVersion,
+      // updated-time, and the etag must all stay where the last real metadata change (v1) left
+      // them.
+      DeltaLoadTableResponse r3 =
+          updateTable(
+              h.withEtag(r2.getMetadata().getEtag()),
+              new DeltaAddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(3L)
+                          .timestamp(1700000003L)
+                          .fileName("00000003.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000003L)),
+              new DeltaSetDomainMetadataUpdate()
+                  .updates(
+                      new DeltaDomainMetadataUpdates()
+                          .deltaRowTracking(
+                              new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(150L))));
+      assertThat(r3.getMetadata().getProperties())
+          .containsEntry(TableProperties.ROW_TRACKING_ROW_ID_HIGH_WATER_MARK, "150");
+      assertThat(r3.getMetadata().getLastCommitVersion()).isEqualTo(1L);
+      assertThat(r3.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
+      assertThat(r3.getMetadata().getUpdatedTime()).isEqualTo(r1.getMetadata().getUpdatedTime());
+      assertThat(r3.getMetadata().getEtag()).isEqualTo(r1.getMetadata().getEtag());
     }
 
     // -------- add-commit with no commit block is rejected --------
@@ -769,7 +835,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               h.withEtag(r1.getMetadata().getEtag()),
               new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(1L));
       assertThat(r2.getLatestTableVersion()).isEqualTo(1L);
-      assertThat(r2.getMetadata().getEtag()).isNotEqualTo(r1.getMetadata().getEtag());
+      // A backfill notification is not a metadata change, so it must not advance updated-time
+      // (and hence must not roll the etag).
+      assertThat(r2.getMetadata().getUpdatedTime()).isEqualTo(r1.getMetadata().getUpdatedTime());
+      assertThat(r2.getMetadata().getEtag()).isEqualTo(r1.getMetadata().getEtag());
     }
 
     // -------- set-latest-backfilled-version on a table with no prior commits rejected --------
