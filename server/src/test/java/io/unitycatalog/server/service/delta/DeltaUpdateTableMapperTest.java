@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service.delta;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -10,10 +11,12 @@ import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
 import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaRemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaRemovePropertiesUpdate;
+import io.unitycatalog.server.delta.model.DeltaRowTrackingDomainMetadata;
 import io.unitycatalog.server.delta.model.DeltaSetDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetPropertiesUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetProtocolUpdate;
 import io.unitycatalog.server.delta.model.DeltaTableRequirement;
+import io.unitycatalog.server.delta.model.DeltaTableUpdate;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.MutablePropertyMap;
@@ -337,7 +340,65 @@ public class DeltaUpdateTableMapperTest {
         .hasMessageContaining(TableFeature.DELETION_VECTORS.specName());
   }
 
+  @Test
+  public void changesTableMetadataExemptsRowTrackingOnlyDomainMetadata() {
+    // The Delta protocol requires writers to advance the rowTracking high-water mark on every
+    // fresh-row commit, so an HWM-only set-domain-metadata rides along with data commits and
+    // must not classify the request as a metadata change.
+    DeltaSetDomainMetadataUpdate hwmOnly =
+        new DeltaSetDomainMetadataUpdate()
+            .updates(
+                new DeltaDomainMetadataUpdates()
+                    .deltaRowTracking(new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(7L)))
+            .action("set-domain-metadata");
+    assertThat(collectUpdatesRequest(hwmOnly).updates().changesTableMetadata()).isFalse();
+
+    // A set-domain-metadata with no updates body sets nothing and is likewise not a change.
+    assertThat(
+            collectUpdatesRequest(new DeltaSetDomainMetadataUpdate().action("set-domain-metadata"))
+                .updates()
+                .changesTableMetadata())
+        .isFalse();
+
+    // Touching any other domain in the same action still counts...
+    assertThat(
+            collectUpdatesRequest(
+                    new DeltaSetDomainMetadataUpdate()
+                        .updates(
+                            new DeltaDomainMetadataUpdates()
+                                .deltaRowTracking(
+                                    new DeltaRowTrackingDomainMetadata().rowIdHighWaterMark(7L))
+                                .deltaClustering(
+                                    new DeltaClusteringDomainMetadata()
+                                        .clusteringColumns(List.of(List.of("id")))))
+                        .action("set-domain-metadata"))
+                .updates()
+                .changesTableMetadata())
+        .isTrue();
+
+    // ... as does any sibling metadata action alongside the HWM.
+    assertThat(
+            collectUpdatesRequest(
+                    hwmOnly,
+                    new DeltaSetPropertiesUpdate()
+                        .updates(Map.of("k", "v"))
+                        .action("set-properties"))
+                .updates()
+                .changesTableMetadata())
+        .isTrue();
+  }
+
   // --- fixtures ---
+
+  /** Build a {@link CollectedRequest} with the canonical requirement and the given updates. */
+  private static CollectedRequest collectUpdatesRequest(DeltaTableUpdate... updates) {
+    return DeltaUpdateTableMapper.collectRequest(
+        new DeltaUpdateTableRequest()
+            .requirements(
+                List.of(
+                    new DeltaAssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
+            .updates(List.of(updates)));
+  }
 
   /** Build a {@link CollectedRequest} with the supplied requirements and a no-op update. */
   private static CollectedRequest collectRequestFor(DeltaTableRequirement... requirements) {
@@ -352,28 +413,15 @@ public class DeltaUpdateTableMapperTest {
   }
 
   private static CollectedRequest collectSetProtocolRequest(DeltaProtocol protocol) {
-    return DeltaUpdateTableMapper.collectRequest(
-        new DeltaUpdateTableRequest()
-            .requirements(
-                List.of(
-                    new DeltaAssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
-            .updates(
-                List.of(new DeltaSetProtocolUpdate().protocol(protocol).action("set-protocol"))));
+    return collectUpdatesRequest(
+        new DeltaSetProtocolUpdate().protocol(protocol).action("set-protocol"));
   }
 
   private static CollectedRequest collectSetProtocolAndSetPropertiesRequest(
       DeltaProtocol protocol, Map<String, String> extraProperties) {
-    return DeltaUpdateTableMapper.collectRequest(
-        new DeltaUpdateTableRequest()
-            .requirements(
-                List.of(
-                    new DeltaAssertTableUUID().uuid(UUID.randomUUID()).type("assert-table-uuid")))
-            .updates(
-                List.of(
-                    new DeltaSetProtocolUpdate().protocol(protocol).action("set-protocol"),
-                    new DeltaSetPropertiesUpdate()
-                        .updates(extraProperties)
-                        .action("set-properties"))));
+    return collectUpdatesRequest(
+        new DeltaSetProtocolUpdate().protocol(protocol).action("set-protocol"),
+        new DeltaSetPropertiesUpdate().updates(extraProperties).action("set-properties"));
   }
 
   private static TableInfoDAO managedDao() {
