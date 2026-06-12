@@ -522,7 +522,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // Drop the table
     {
       AggregatedHttpResponse resp = client.delete(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(204);
+      assertThat(resp.status().code()).isEqualTo(200);
 
       resp = client.head(tablePath).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(404);
@@ -556,7 +556,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           .isEqualTo(loadTableResponse.tableMetadata().location());
 
       resp = client.delete(managedTablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(204);
+      assertThat(resp.status().code()).isEqualTo(200);
     }
   }
 

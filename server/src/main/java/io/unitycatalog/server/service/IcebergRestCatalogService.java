@@ -421,7 +421,9 @@ public class IcebergRestCatalogService {
     // spec compatibility but does not delete files); MANAGED tables have their storage directory
     // removed by the repository's delete path.
     tableService.deleteTable(fullName);
-    return HttpResponse.of(HttpStatus.NO_CONTENT);
+    // 200 instead of the spec's 204: Armeria stalls body-less 204 responses on HTTP/1.1
+    // connections, and clients accept 200 here (apache/iceberg-rest-fixture also returns 200).
+    return HttpResponse.of(HttpStatus.OK);
   }
 
   /** Looks up the UC table entry, translating UC's not-found error into the Iceberg shape. */
