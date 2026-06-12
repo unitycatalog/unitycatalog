@@ -22,12 +22,11 @@ import java.util.Set;
 
 public class TableConfigService {
 
+  private static final Set<CredentialContext.Privilege> READ_ONLY =
+      Set.of(CredentialContext.Privilege.SELECT);
+
   private final StorageCredentialVendor storageCredentialVendor;
   private final Map<NormalizedURL, S3StorageConfig> s3Configurations;
-  // FIXME!! privileges are defaulted to READ only here for now as Iceberg REST impl doesn't
-  // support write
-  private final Set<CredentialContext.Privilege> privileges =
-      Set.of(CredentialContext.Privilege.SELECT);
 
   public TableConfigService(
       StorageCredentialVendor storageCredentialVendor, ServerProperties serverProperties) {
@@ -36,18 +35,24 @@ public class TableConfigService {
   }
 
   public Map<String, String> getTableConfig(TableMetadata tableMetadata) {
+    return getTableConfig(tableMetadata, READ_ONLY);
+  }
+
+  public Map<String, String> getTableConfig(
+      TableMetadata tableMetadata, Set<CredentialContext.Privilege> privileges) {
     NormalizedURL location = NormalizedURL.from(tableMetadata.location());
     UriScheme scheme = UriScheme.fromURI(location.toUri());
 
     return switch(scheme) {
-      case ABFS, ABFSS -> getADLSConfig(location);
-      case GS -> getGCSConfig(location);
-      case S3 -> getS3Config(location);
+      case ABFS, ABFSS -> getADLSConfig(location, privileges);
+      case GS -> getGCSConfig(location, privileges);
+      case S3 -> getS3Config(location, privileges);
       case FILE, NULL -> Map.of();
     };
   }
 
-  private Map<String, String> getADLSConfig(NormalizedURL location) {
+  private Map<String, String> getADLSConfig(
+      NormalizedURL location, Set<CredentialContext.Privilege> privileges) {
     ADLSLocationUtils.ADLSLocationParts locationParts = ADLSLocationUtils.parseLocation(location);
 
     AzureUserDelegationSAS azureCredential =
@@ -58,7 +63,8 @@ public class TableConfigService {
         azureCredential.getSasToken());
   }
 
-  private Map<String, String> getGCSConfig(NormalizedURL location) {
+  private Map<String, String> getGCSConfig(
+      NormalizedURL location, Set<CredentialContext.Privilege> privileges) {
     TemporaryCredentials credential = storageCredentialVendor.vendCredential(location, privileges);
     GcpOauthToken token = credential.getGcpOauthToken();
 
@@ -68,7 +74,8 @@ public class TableConfigService {
         Long.toString(credential.getExpirationTime()));
   }
 
-  private Map<String, String> getS3Config(NormalizedURL location) {
+  private Map<String, String> getS3Config(
+      NormalizedURL location, Set<CredentialContext.Privilege> privileges) {
     S3StorageConfig s3StorageConfig = s3Configurations.get(location.getStorageBase());
     AwsCredentials awsCredential =
         storageCredentialVendor.vendCredential(location, privileges).getAwsTempCredentials();

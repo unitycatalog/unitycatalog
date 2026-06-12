@@ -201,7 +201,8 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             ex ->
                 assertThat(ex.getCode())
                     .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
-        .withMessageContaining("Managed table creation is only supported for Delta format");
+        .withMessageContaining(
+            "Managed table creation is only supported for Delta and Iceberg formats");
 
     // Step 3: Create a managed table using the staging location
     CreateTable createTableRequest =

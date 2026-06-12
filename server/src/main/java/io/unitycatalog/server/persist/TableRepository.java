@@ -307,7 +307,7 @@ public class TableRepository {
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
           requireDeltaTable(dao, catalog, schema, table);
-          lockTableForDeltaUpdate(session, dao, catalog, schema, table);
+          lockTableForUpdate(session, dao, catalog, schema, table);
           DeltaUpdateTableMapper.checkRequirements(dao, collected);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
           DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected, serverProperties)
@@ -354,7 +354,7 @@ public class TableRepository {
    * concurrent {@link #updateTableForDelta} calls serialize. Lock-wait timeouts and deadlock
    * victims surface as {@code UPDATE_REQUIREMENT_CONFLICT} (409) instead of a generic 500.
    */
-  private static void lockTableForDeltaUpdate(
+  private static void lockTableForUpdate(
       Session session, TableInfoDAO dao, String catalog, String schema, String table) {
     try {
       session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
@@ -554,6 +554,133 @@ public class TableRepository {
     return dao.getUniformIcebergMetadataLocation();
   }
 
+  /**
+   * Compare-and-swap the Iceberg metadata location of a native Iceberg table (created through the
+   * Iceberg REST catalog). This is the linearization point of an Iceberg REST commit: the metadata
+   * file for {@code newMetadataLocation} is written by the caller before this method runs, and the
+   * swap only succeeds when the stored location still matches {@code expectedMetadataLocation}
+   * ({@code null} for a freshly created table). A mismatch means a concurrent commit won and
+   * surfaces as {@link ErrorCode#UPDATE_REQUIREMENT_CONFLICT} so the caller can translate it into
+   * an Iceberg {@code CommitFailedException}.
+   *
+   * <p>Only tables with {@link DataSourceFormat#ICEBERG} can be committed to: UniForm-enabled Delta
+   * tables also carry a uniform metadata location, but their Iceberg metadata is derived from the
+   * Delta log and stays read-only through this API.
+   */
+  /**
+   * Assigns a storage location for a new managed Iceberg table (an Iceberg REST createTable request
+   * without an explicit location), mirroring how staging locations are assigned for managed Delta
+   * tables: under the schema's managed storage location when set, else the catalog's, else the
+   * {@code storage-root.tables} server property, with the table UUID as the leaf directory. {@code
+   * createTableImpl} later recovers the UUID from that leaf (see {@link
+   * #extractManagedIcebergTableUuid}).
+   */
+  public NormalizedURL assignManagedIcebergTableLocation(
+      String catalogName, String schemaName, UUID tableUUID) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session ->
+            ExternalLocationUtils.getManagedLocationForTable(
+                managedTablesParentLocation(session, catalogName, schemaName), tableUUID),
+        "Failed to assign a managed Iceberg table location in " + catalogName + "." + schemaName,
+        /* readOnly = */ true);
+  }
+
+  /**
+   * Returns whether {@code location} sits under the managed-tables area that {@link
+   * #assignManagedIcebergTableLocation} assigns from, i.e. {@code <managed-root>/tables/}. The
+   * Iceberg REST commit path uses this to classify a staged create whose location was assigned by
+   * the server (MANAGED) versus supplied by the client (EXTERNAL). Returns false when no managed
+   * root is configured.
+   */
+  public boolean isManagedIcebergTableLocation(
+      String catalogName, String schemaName, String location) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          NormalizedURL parentStorageLocation;
+          try {
+            parentStorageLocation = managedTablesParentLocation(session, catalogName, schemaName);
+          } catch (BaseException e) {
+            if (e.getErrorCode() == ErrorCode.FAILED_PRECONDITION) {
+              // No managed root configured, so nothing can be under it.
+              return false;
+            }
+            throw e;
+          }
+          return NormalizedURL.from(location)
+              .toString()
+              .startsWith(parentStorageLocation + "/tables/");
+        },
+        "Failed to resolve the managed storage root for " + catalogName + "." + schemaName,
+        /* readOnly = */ true);
+  }
+
+  private NormalizedURL managedTablesParentLocation(
+      Session session, String catalogName, String schemaName) {
+    RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
+        RepositoryUtils.getCatalogAndSchemaDaoOrThrow(session, catalogName, schemaName);
+    return ExternalLocationUtils.getManagedStorageLocation(
+        catalogAndSchemaDao,
+        () ->
+            Optional.ofNullable(serverProperties.get(ServerProperties.Property.TABLE_STORAGE_ROOT))
+                .map(NormalizedURL::from));
+  }
+
+  private static UUID extractManagedIcebergTableUuid(NormalizedURL storageLocation) {
+    String path = storageLocation.toString();
+    String leaf = path.substring(path.lastIndexOf('/') + 1);
+    try {
+      return UUID.fromString(leaf);
+    } catch (IllegalArgumentException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Managed Iceberg tables can only be created through the Iceberg REST catalog (the"
+              + " storage location must end in the table UUID): "
+              + path);
+    }
+  }
+
+  public void setIcebergMetadataLocation(
+      String catalogName,
+      String schemaName,
+      String tableName,
+      String expectedMetadataLocation,
+      String newMetadataLocation) {
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    String fullName = catalogName + "." + schemaName + "." + tableName;
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTableOrThrow(session, catalogName, schemaName, tableName);
+          if (!DataSourceFormat.ICEBERG.toString().equals(dao.getDataSourceFormat())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                "Table is not a native Iceberg table and cannot be committed to via the Iceberg"
+                    + " REST catalog: "
+                    + fullName);
+          }
+          lockTableForUpdate(session, dao, catalogName, schemaName, tableName);
+          if (!Objects.equals(dao.getUniformIcebergMetadataLocation(), expectedMetadataLocation)) {
+            throw new BaseException(
+                ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
+                "Metadata location for "
+                    + fullName
+                    + " changed concurrently: expected "
+                    + expectedMetadataLocation
+                    + " but found "
+                    + dao.getUniformIcebergMetadataLocation());
+          }
+          dao.setUniformIcebergMetadataLocation(newMetadataLocation);
+          dao.setUpdatedAt(new Date());
+          dao.setUpdatedBy(callerId);
+          session.merge(dao);
+          return null;
+        },
+        "Failed to update Iceberg metadata location for " + fullName,
+        /* readOnly = */ false);
+  }
+
   private TableInfoDAO findTableOrThrow(
       Session session, String catalogName, String schemaName, String tableName) {
     UUID schemaId =
@@ -655,24 +782,31 @@ public class TableRepository {
           } else if (tableType == TableType.MANAGED) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());
             serverProperties.checkManagedTableEnabled();
-            if (createTable.getDataSourceFormat() != DataSourceFormat.DELTA) {
+            if (createTable.getDataSourceFormat() == DataSourceFormat.ICEBERG) {
+              // Managed Iceberg tables are created through the Iceberg REST catalog, which
+              // assigns the storage location under the managed root (see
+              // assignManagedIcebergTableLocation) with the table UUID as the leaf directory.
+              // No Delta staging table is involved.
+              tableUUID = extractManagedIcebergTableUuid(storageLocation);
+            } else if (createTable.getDataSourceFormat() != DataSourceFormat.DELTA) {
               throw new BaseException(
                   ErrorCode.INVALID_ARGUMENT,
-                  "Managed table creation is only supported for Delta format.");
+                  "Managed table creation is only supported for Delta and Iceberg formats.");
+            } else {
+              // Find and commit staging table with the same staging location
+              StagingTableDAO stagingTableDAO =
+                  repositories
+                      .getStagingTableRepository()
+                      .commitStagingTable(session, callerId, storageLocation);
+              tableUUID = stagingTableDAO.getId();
+              // MANAGED tables (created via either UC REST or Delta REST) must carry UC_TABLE_ID
+              // in their properties, matching the staging UUID. UC has the staging UUID as the
+              // source of truth; a request with a missing or mismatched UC_TABLE_ID gets rejected
+              // here instead of producing an internally-inconsistent UC table that subsequent
+              // commits would fail on.
+              UcManagedDeltaContract.validateTableIdProperty(
+                  createTable.getProperties(), tableUUID.toString());
             }
-            // Find and commit staging table with the same staging location
-            StagingTableDAO stagingTableDAO =
-                repositories
-                    .getStagingTableRepository()
-                    .commitStagingTable(session, callerId, storageLocation);
-            tableUUID = stagingTableDAO.getId();
-            // MANAGED tables (created via either UC REST or Delta REST) must carry UC_TABLE_ID in
-            // their properties, matching the staging UUID. UC has the staging UUID as the source of
-            // truth; a request with a missing or mismatched UC_TABLE_ID gets rejected here
-            // instead of producing an internally-inconsistent UC table that subsequent commits
-            // would fail on.
-            UcManagedDeltaContract.validateTableIdProperty(
-                createTable.getProperties(), tableUUID.toString());
           } else if (tableType == TableType.METRIC_VIEW) {
             storageLocation = null;
             validateMetricView(createTable);
