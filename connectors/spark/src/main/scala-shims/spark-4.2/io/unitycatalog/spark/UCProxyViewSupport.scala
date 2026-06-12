@@ -85,7 +85,14 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
   override def loadTableOrView(ident: Identifier): Table = loadTable(ident)
 
   override def loadView(ident: Identifier): ViewInfo = {
-    val t = getUcTable(ident)
+    // `getUcTable` throws `NoSuchTableException` on a 404. On the view API surface
+    // (`DESCRIBE`/`SHOW`/`DROP VIEW IF EXISTS`) callers branch on `NoSuchViewException`, so
+    // translate the not-found case to the view-typed exception, mirroring `dropView`.
+    val t = try {
+      getUcTable(ident)
+    } catch {
+      case _: NoSuchTableException => throw new NoSuchViewException(ident)
+    }
     // Gate on the command-supported predicate (excludes listed-but-unmapped kinds like
     // MATERIALIZED_VIEW). A kind we list but have no Spark `TableSummary` mapping for cannot be
     // turned into a `ViewInfo` -- `toViewInfo -> ucTableTypeToSparkViewType` would throw
