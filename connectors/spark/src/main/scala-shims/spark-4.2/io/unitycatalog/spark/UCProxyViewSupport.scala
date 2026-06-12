@@ -56,9 +56,23 @@ import org.apache.spark.sql.types.DataType
  */
 trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
 
-  /** Spark 4.2: wrap a view-like UC row as `MetadataTable + ViewInfo`. */
+  /**
+   * Spark 4.2: wrap a view-like UC row as `MetadataTable + ViewInfo`.
+   *
+   * `loadTable` routes every view-like row here (per `isViewLikeTableType`, which includes
+   * listed-but-unmapped kinds like `MATERIALIZED_VIEW`). Spark's resolver calls `loadTable`
+   * during ordinary identifier resolution and only understands a returned `Table` or a
+   * `NoSuchTableException` -- so a kind we list but cannot build a Spark `ViewInfo` for (no
+   * `TableSummary` mapping) must surface as `NoSuchTableException`, not the
+   * `UnsupportedOperationException` that `toViewInfo` -> `ucTableTypeToSparkViewType` would
+   * otherwise throw.
+   */
   protected def wrapAsView(t: UCTableInfo, ident: Identifier): Table =
-    new MetadataTable(toViewInfo(t), ident.toString)
+    if (UCSingleCatalog.isViewCommandsSupportedTableType(t.getTableType)) {
+      new MetadataTable(toViewInfo(t), ident.toString)
+    } else {
+      throw new NoSuchTableException(ident)
+    }
 
   override def listViews(namespace: Array[String]): Array[Identifier] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)

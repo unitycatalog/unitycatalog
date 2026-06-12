@@ -1197,6 +1197,14 @@ private[spark] object UCColumnJson {
    * matches what Spark's own `CatalogV2Util.structFieldToV2Column` does on the v1 path.
    */
   def parseStructFieldJson(jsonStr: String): Column = {
+    // `ColumnInfo.type_json` is nullable on the wire (e.g. a view-like row created by an older
+    // writer or a non-Spark client that did not round-trip the field). Fail with a clear,
+    // actionable error rather than letting `json4s.parse(null)` throw a raw NPE out of the
+    // view-load path.
+    if (jsonStr == null) {
+      throw new IllegalArgumentException(
+        "Column type_json is missing; cannot reconstruct the Spark column for this view")
+    }
     val parsed = parse(jsonStr)
     val name = (parsed \ "name") match {
       case JString(s) => s
