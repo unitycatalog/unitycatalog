@@ -25,7 +25,7 @@ lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.2.0")
 // Intentionally shadows CrossSparkVersions.autoImport.sparkVersion (SettingKey).
 // This String val is used for libraryDependencies coordinates; the SettingKey is
 // queryable in SBT via `show spark/sparkVersion`.
-lazy val sparkVersion = CrossSparkVersions.getSparkVersionSpec().fullVersion
+lazy val sparkVersion = CrossSparkVersions.getSparkArtifactVersion()
 lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
 
 // delta-spark is only needed for tests. When UC is published to local Maven before
