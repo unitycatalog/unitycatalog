@@ -532,6 +532,32 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
           .isEqualTo(NoSuchTableException.class.getSimpleName());
     }
+
+    // A create request without a location gets a server-assigned managed location
+    {
+      String managedTablePath = tablesPath + "/managed_iceberg_table";
+      CreateTableRequest request =
+          CreateTableRequest.builder().withName("managed_iceberg_table").withSchema(schema).build();
+      AggregatedHttpResponse resp =
+          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(200);
+      LoadTableResponse loadTableResponse =
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      assertThat(loadTableResponse.tableMetadata().location()).contains("/tables/");
+      assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
+          .contains("/metadata/00000-");
+
+      TableInfo tableInfo =
+          tableOperations.getTable(
+              TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".managed_iceberg_table");
+      assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.ICEBERG);
+      assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
+      assertThat(tableInfo.getStorageLocation())
+          .isEqualTo(loadTableResponse.tableMetadata().location());
+
+      resp = client.delete(managedTablePath).aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(204);
+    }
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
