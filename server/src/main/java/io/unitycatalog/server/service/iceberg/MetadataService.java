@@ -2,6 +2,9 @@ package io.unitycatalog.server.service.iceberg;
 
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.UriScheme;
+import java.io.File;
+import java.net.URI;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -42,6 +45,23 @@ public class MetadataService {
     CompletableFuture.runAsync(
             () -> TableMetadataParser.write(tableMetadata, fileIO.newOutputFile(metadataLocation)))
         .join();
+  }
+
+  /**
+   * For local file locations, pre-creates the table's directory layout so clients that write data
+   * and manifest files before the first commit (e.g. staged creates) don't fail on missing parent
+   * directories. Object stores have no directories, so this is a no-op for them.
+   */
+  public void prepareTableLocation(TableMetadata tableMetadata) {
+    NormalizedURL location = NormalizedURL.from(tableMetadata.location());
+    UriScheme scheme = UriScheme.fromURI(location.toUri());
+    if (scheme != UriScheme.FILE && scheme != UriScheme.NULL) {
+      return;
+    }
+    String base = tableMetadata.location();
+    File baseDir = base.startsWith("file:") ? new File(URI.create(base).getPath()) : new File(base);
+    new File(baseDir, "metadata").mkdirs();
+    new File(baseDir, "data").mkdirs();
   }
 
   /** Best-effort cleanup of a metadata file that lost a commit race or whose commit failed. */

@@ -579,20 +579,52 @@ public class TableRepository {
       String catalogName, String schemaName, UUID tableUUID) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> {
-          RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
-              RepositoryUtils.getCatalogAndSchemaDaoOrThrow(session, catalogName, schemaName);
-          NormalizedURL parentStorageLocation =
-              ExternalLocationUtils.getManagedStorageLocation(
-                  catalogAndSchemaDao,
-                  () ->
-                      Optional.ofNullable(
-                              serverProperties.get(ServerProperties.Property.TABLE_STORAGE_ROOT))
-                          .map(NormalizedURL::from));
-          return ExternalLocationUtils.getManagedLocationForTable(parentStorageLocation, tableUUID);
-        },
+        session ->
+            ExternalLocationUtils.getManagedLocationForTable(
+                managedTablesParentLocation(session, catalogName, schemaName), tableUUID),
         "Failed to assign a managed Iceberg table location in " + catalogName + "." + schemaName,
         /* readOnly = */ true);
+  }
+
+  /**
+   * Returns whether {@code location} sits under the managed-tables area that {@link
+   * #assignManagedIcebergTableLocation} assigns from, i.e. {@code <managed-root>/tables/}. The
+   * Iceberg REST commit path uses this to classify a staged create whose location was assigned by
+   * the server (MANAGED) versus supplied by the client (EXTERNAL). Returns false when no managed
+   * root is configured.
+   */
+  public boolean isManagedIcebergTableLocation(
+      String catalogName, String schemaName, String location) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          NormalizedURL parentStorageLocation;
+          try {
+            parentStorageLocation = managedTablesParentLocation(session, catalogName, schemaName);
+          } catch (BaseException e) {
+            if (e.getErrorCode() == ErrorCode.FAILED_PRECONDITION) {
+              // No managed root configured, so nothing can be under it.
+              return false;
+            }
+            throw e;
+          }
+          return NormalizedURL.from(location)
+              .toString()
+              .startsWith(parentStorageLocation + "/tables/");
+        },
+        "Failed to resolve the managed storage root for " + catalogName + "." + schemaName,
+        /* readOnly = */ true);
+  }
+
+  private NormalizedURL managedTablesParentLocation(
+      Session session, String catalogName, String schemaName) {
+    RepositoryUtils.CatalogAndSchemaDao catalogAndSchemaDao =
+        RepositoryUtils.getCatalogAndSchemaDaoOrThrow(session, catalogName, schemaName);
+    return ExternalLocationUtils.getManagedStorageLocation(
+        catalogAndSchemaDao,
+        () ->
+            Optional.ofNullable(serverProperties.get(ServerProperties.Property.TABLE_STORAGE_ROOT))
+                .map(NormalizedURL::from));
   }
 
   private static UUID extractManagedIcebergTableUuid(NormalizedURL storageLocation) {

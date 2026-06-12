@@ -40,9 +40,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
@@ -270,11 +272,6 @@ public class IcebergRestCatalogService {
       @Param("namespace") String namespace,
       CreateTableRequest request) {
     request.validate();
-    if (request.stageCreate()) {
-      throw new BadRequestException(
-          "Staged table creation is not supported yet. Clients should create tables directly,"
-              + " e.g. DuckDB with `STAGE_CREATE_TABLES false` or PyIceberg/Spark createTable.");
-    }
     String location = request.location();
     TableType tableType;
     if (location == null || location.isEmpty()) {
@@ -297,35 +294,72 @@ public class IcebergRestCatalogService {
         request.writeOrder() == null ? SortOrder.unsorted() : request.writeOrder();
     TableMetadata tableMetadata =
         TableMetadata.newTableMetadata(request.schema(), spec, writeOrder, location, properties);
+
+    if (request.stageCreate()) {
+      // Staged creation is stateless, mirroring Iceberg's reference CatalogHandlers: nothing is
+      // registered and no metadata file is written. The client writes data files against the
+      // returned metadata and the table materializes when it commits with an assert-create
+      // requirement (see commitStagedCreate). The returned metadata carries no metadata-location.
+      if (ucTableExists(catalog, namespace, request.name())) {
+        throw new AlreadyExistsException("Table already exists: %s.%s", namespace, request.name());
+      }
+      metadataService.prepareTableLocation(tableMetadata);
+      return LoadTableResponse.builder()
+          .withTableMetadata(tableMetadata)
+          .addAllConfig(tableConfigService.getTableConfig(tableMetadata, READ_WRITE))
+          .build();
+    }
+
+    return finalizeIcebergTableCreation(
+        catalog, namespace, request.name(), tableType, tableMetadata, properties, false);
+  }
+
+  /**
+   * Registers a new Iceberg table in UC, writes its first metadata file, and links the metadata
+   * location, rolling the UC entry back when a later step fails. Shared by direct creates and
+   * commits of staged creates; {@code fromCommit} only changes the already-exists error shape (409
+   * {@link CommitFailedException} for commits, 409 {@link AlreadyExistsException} for creates).
+   */
+  private LoadTableResponse finalizeIcebergTableCreation(
+      String catalog,
+      String namespace,
+      String name,
+      TableType tableType,
+      TableMetadata tableMetadata,
+      Map<String, String> properties,
+      boolean fromCommit) {
     String metadataLocation = MetadataService.newMetadataLocation(tableMetadata, 0);
 
     CreateTable createTable =
         new CreateTable()
-            .name(request.name())
+            .name(name)
             .catalogName(catalog)
             .schemaName(namespace)
             .tableType(tableType)
             .dataSourceFormat(DataSourceFormat.ICEBERG)
             .columns(IcebergSchemaConverter.toColumnInfos(tableMetadata.schema()))
-            .storageLocation(location)
+            .storageLocation(tableMetadata.location())
             .properties(properties);
     try {
       tableService.createTable(createTable);
     } catch (BaseException e) {
       if (e.getErrorCode() == ErrorCode.TABLE_ALREADY_EXISTS) {
-        throw new AlreadyExistsException("Table already exists: %s.%s", namespace, request.name());
+        if (fromCommit) {
+          throw new CommitFailedException(
+              "Requirement failed: table already exists: %s.%s", namespace, name);
+        }
+        throw new AlreadyExistsException("Table already exists: %s.%s", namespace, name);
       }
       throw e;
     }
     try {
       metadataService.writeTableMetadata(tableMetadata, metadataLocation);
-      tableRepository.setIcebergMetadataLocation(
-          catalog, namespace, request.name(), null, metadataLocation);
+      tableRepository.setIcebergMetadataLocation(catalog, namespace, name, null, metadataLocation);
     } catch (RuntimeException e) {
       // Roll the UC entry back so a failed create doesn't leave behind a table that can never be
       // loaded through this catalog.
       try {
-        tableService.deleteTable(catalog + "." + namespace + "." + request.name());
+        tableService.deleteTable(catalog + "." + namespace + "." + name);
       } catch (RuntimeException cleanupFailure) {
         e.addSuppressed(cleanupFailure);
       }
@@ -350,6 +384,12 @@ public class IcebergRestCatalogService {
       @Param("table") String table,
       UpdateTableRequest request) {
     String fullName = catalog + "." + namespace + "." + table;
+    boolean isCreateCommit =
+        request.requirements().stream()
+            .anyMatch(r -> r instanceof UpdateRequirement.AssertTableDoesNotExist);
+    if (isCreateCommit) {
+      return commitStagedCreate(catalog, namespace, table, request);
+    }
     TableInfo tableInfo = getIcebergTableInfo(catalog, namespace, table);
     String metadataLocation;
     try (Session session = sessionFactory.openSession()) {
@@ -424,6 +464,63 @@ public class IcebergRestCatalogService {
     // 200 instead of the spec's 204: Armeria stalls body-less 204 responses on HTTP/1.1
     // connections, and clients accept 200 here (apache/iceberg-rest-fixture also returns 200).
     return HttpResponse.of(HttpStatus.OK);
+  }
+
+  /**
+   * Materializes a staged create: a commit whose requirements carry {@code assert-create}
+   * (AssertTableDoesNotExist). Mirroring Iceberg's reference CatalogHandlers, the staged metadata
+   * is rebuilt from the commit's updates against an empty base, the first metadata file is written,
+   * and the table is registered in UC. The table is MANAGED when its location sits under the
+   * managed-tables area this service assigns from, EXTERNAL otherwise.
+   */
+  private LoadTableResponse commitStagedCreate(
+      String catalog, String namespace, String table, UpdateTableRequest request) {
+    String fullName = catalog + "." + namespace + "." + table;
+    for (UpdateRequirement requirement : request.requirements()) {
+      if (!(requirement instanceof UpdateRequirement.AssertTableDoesNotExist)) {
+        throw new BadRequestException(
+            "Invalid requirement for a create commit: %s", requirement.getClass().getSimpleName());
+      }
+    }
+    if (ucTableExists(catalog, namespace, table)) {
+      throw new CommitFailedException("Requirement failed: table already exists: %s", fullName);
+    }
+
+    // Pick the format version out of the updates before building, like CatalogHandlers.create:
+    // buildFromEmpty defaults to v2, and applying an upgrade-format-version update for a lower
+    // version would otherwise fail as a downgrade.
+    Optional<Integer> formatVersion =
+        request.updates().stream()
+            .filter(update -> update instanceof MetadataUpdate.UpgradeFormatVersion)
+            .map(update -> ((MetadataUpdate.UpgradeFormatVersion) update).formatVersion())
+            .findFirst();
+    TableMetadata.Builder builder =
+        formatVersion.map(TableMetadata::buildFromEmpty).orElseGet(TableMetadata::buildFromEmpty);
+    request.updates().forEach(update -> update.applyTo(builder));
+    TableMetadata tableMetadata = builder.build();
+    if (tableMetadata.location() == null || tableMetadata.location().isEmpty()) {
+      throw new BadRequestException(
+          "Create commit for %s must include a set-location update", fullName);
+    }
+
+    TableType tableType =
+        tableRepository.isManagedIcebergTableLocation(catalog, namespace, tableMetadata.location())
+            ? TableType.MANAGED
+            : TableType.EXTERNAL;
+    return finalizeIcebergTableCreation(
+        catalog, namespace, table, tableType, tableMetadata, tableMetadata.properties(), true);
+  }
+
+  private boolean ucTableExists(String catalog, String namespace, String table) {
+    try {
+      tableRepository.getTable(catalog + "." + namespace + "." + table);
+      return true;
+    } catch (BaseException e) {
+      if (e.getErrorCode() == ErrorCode.TABLE_NOT_FOUND) {
+        return false;
+      }
+      throw e;
+    }
   }
 
   /** Looks up the UC table entry, translating UC's not-found error into the Iceberg shape. */

@@ -407,7 +407,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     String location =
         java.nio.file.Files.createTempDirectory("iceberg-rest-table").toUri().toString();
 
-    // Staged creation is rejected with a clear error
+    // Staged creation is stateless: it returns metadata without a metadata-location and
+    // registers nothing, so the direct create below still succeeds.
     {
       CreateTableRequest request =
           CreateTableRequest.builder()
@@ -418,7 +419,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .build();
       AggregatedHttpResponse resp =
           postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(400);
+      assertThat(resp.status().code()).isEqualTo(200);
+      LoadTableResponse loadTableResponse =
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      assertThat(loadTableResponse.tableMetadata().metadataFileLocation()).isNull();
+      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(404);
     }
 
     // Create the table
@@ -557,6 +562,97 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
       resp = client.delete(managedTablePath).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(200);
+    }
+  }
+
+  @Test
+  public void testStagedCreateAndCommit() throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+
+    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
+    String tablePath = tablesPath + "/" + TestUtils.TABLE_NAME;
+    Schema schema =
+        new Schema(
+            Types.NestedField.required(1, "id", Types.LongType.get()),
+            Types.NestedField.optional(2, "data", Types.StringType.get()));
+
+    // Stage the create (no location -> server-assigned managed location). Nothing is registered.
+    org.apache.iceberg.TableMetadata staged;
+    {
+      CreateTableRequest request =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .stageCreate()
+              .build();
+      AggregatedHttpResponse resp =
+          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(200);
+      LoadTableResponse loadTableResponse =
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      staged = loadTableResponse.tableMetadata();
+      assertThat(staged.metadataFileLocation()).isNull();
+      assertThat(staged.location()).contains("/tables/");
+
+      // the staged table is not registered: not in UC, not loadable, not listable
+      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(404);
+    }
+
+    // Commit the staged create: assert-create requirement + updates rebuilding the metadata
+    {
+      UpdateTableRequest request =
+          new UpdateTableRequest(
+              List.of(new UpdateRequirement.AssertTableDoesNotExist()),
+              List.of(
+                  new MetadataUpdate.AssignUUID(staged.uuid()),
+                  new MetadataUpdate.UpgradeFormatVersion(staged.formatVersion()),
+                  new MetadataUpdate.AddSchema(staged.schema()),
+                  new MetadataUpdate.SetCurrentSchema(-1),
+                  new MetadataUpdate.AddPartitionSpec(staged.spec()),
+                  new MetadataUpdate.SetDefaultPartitionSpec(-1),
+                  new MetadataUpdate.AddSortOrder(staged.sortOrder()),
+                  new MetadataUpdate.SetDefaultSortOrder(-1),
+                  new MetadataUpdate.SetLocation(staged.location()),
+                  new MetadataUpdate.SetProperties(Map.of("staged", "true"))));
+      AggregatedHttpResponse resp =
+          postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(200);
+      LoadTableResponse loadTableResponse =
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
+          .contains("/metadata/00000-");
+      assertThat(loadTableResponse.tableMetadata().uuid()).isEqualTo(staged.uuid());
+      assertThat(loadTableResponse.tableMetadata().properties()).containsEntry("staged", "true");
+
+      // the table is now registered in UC as a managed Iceberg table and loadable
+      TableInfo tableInfo = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+      assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.ICEBERG);
+      assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
+      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(200);
+
+      // replaying the create commit loses the race: 409 CommitFailedException
+      resp = postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(409);
+      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+          .isEqualTo(CommitFailedException.class.getSimpleName());
+    }
+
+    // staging a create for an existing table is a conflict
+    {
+      CreateTableRequest request =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .stageCreate()
+              .build();
+      AggregatedHttpResponse resp =
+          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(409);
+      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+          .isEqualTo(AlreadyExistsException.class.getSimpleName());
     }
   }
 
