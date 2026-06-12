@@ -149,6 +149,12 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
     } catch {
       case _: NoSuchTableException => return false
     }
+    // Known limitation: a listed-but-unmapped view kind (e.g. MATERIALIZED_VIEW, `None` in
+    // `viewLikeUcTypes`) is rejected here AND by `UCProxy.dropTable` (which passive-filters all
+    // `isViewLikeTableType` rows), so such a row is not droppable through this connector and a
+    // `DROP ... IF EXISTS` no-ops. This is intentional: the connector treats unsupported view
+    // kinds as uniformly inert (no load / create / drop) rather than allowing a drop of a kind it
+    // can't otherwise handle. Revisit when MATERIALIZED_VIEW becomes a supported (mapped) kind.
     if (!UCSingleCatalog.isViewCommandsSupportedTableType(t.getTableType)) {
       return false
     }
