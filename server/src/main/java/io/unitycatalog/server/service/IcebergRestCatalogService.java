@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.SortOrder;
@@ -275,12 +276,21 @@ public class IcebergRestCatalogService {
               + " e.g. DuckDB with `STAGE_CREATE_TABLES false` or PyIceberg/Spark createTable.");
     }
     String location = request.location();
+    TableType tableType;
     if (location == null || location.isEmpty()) {
-      throw new BadRequestException(
-          "Table location is required: Unity Catalog does not assign storage locations to"
-              + " Iceberg REST tables yet.");
+      // No client-supplied location: assign one under the managed storage root (schema's, else
+      // catalog's, else the storage-root.tables server property) and create a MANAGED table,
+      // mirroring how staging locations are assigned for managed Delta tables. Clients like
+      // DuckDB rely on server-assigned locations.
+      tableType = TableType.MANAGED;
+      location =
+          tableRepository
+              .assignManagedIcebergTableLocation(catalog, namespace, UUID.randomUUID())
+              .toString();
+    } else {
+      tableType = TableType.EXTERNAL;
+      location = location.replaceAll("/+$", "");
     }
-    location = location.replaceAll("/+$", "");
     Map<String, String> properties = request.properties() == null ? Map.of() : request.properties();
     PartitionSpec spec = request.spec() == null ? PartitionSpec.unpartitioned() : request.spec();
     SortOrder writeOrder =
@@ -294,7 +304,7 @@ public class IcebergRestCatalogService {
             .name(request.name())
             .catalogName(catalog)
             .schemaName(namespace)
-            .tableType(TableType.EXTERNAL)
+            .tableType(tableType)
             .dataSourceFormat(DataSourceFormat.ICEBERG)
             .columns(IcebergSchemaConverter.toColumnInfos(tableMetadata.schema()))
             .storageLocation(location)
@@ -407,8 +417,9 @@ public class IcebergRestCatalogService {
               + " Catalog API instead.",
           fullName);
     }
-    // Tables created through this API are EXTERNAL: data and metadata files are left in place,
-    // so purgeRequested is accepted for spec compatibility but does not delete files.
+    // EXTERNAL tables leave data and metadata files in place (purgeRequested is accepted for
+    // spec compatibility but does not delete files); MANAGED tables have their storage directory
+    // removed by the repository's delete path.
     tableService.deleteTable(fullName);
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
