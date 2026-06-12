@@ -294,8 +294,9 @@ public class TableRepository {
    * diff-flush at the end applies only the keys that actually changed. Request classification runs
    * before opening the transaction (see {@link DeltaUpdateTableMapper#collectRequest}); inside,
    * requirement checks run first so a stale-snapshot conflict short-circuits before any write is
-   * persisted. The DAO's {@code updatedAt}/{@code updatedBy} advance once at the end; the resulting
-   * etag naturally rolls.
+   * persisted. The DAO's {@code updatedAt}/{@code updatedBy} advance at the end only when the
+   * request changes catalog-visible metadata; data-only commits and backfill notifications leave
+   * them untouched.
    */
   public DeltaLoadTableResponse updateTableForDelta(
       String catalog, String schema, String table, DeltaUpdateTableRequest request) {
@@ -322,8 +323,13 @@ public class TableRepository {
                               d.uniformFields(),
                               d.latestBackfilledVersion()));
           properties.flush(session, dao.getId());
-          dao.setUpdatedAt(new Date());
-          dao.setUpdatedBy(callerId);
+          // updatedAt/updatedBy track the last change to the table's catalog-visible metadata.
+          // Data-only add-commit and backfill-only requests change no metadata, so they must
+          // not advance these fields.
+          if (collected.updates().changesTableMetadata()) {
+            dao.setUpdatedAt(new Date());
+            dao.setUpdatedBy(callerId);
+          }
           session.merge(dao);
           session.flush();
           return buildLoadTableResponse(
