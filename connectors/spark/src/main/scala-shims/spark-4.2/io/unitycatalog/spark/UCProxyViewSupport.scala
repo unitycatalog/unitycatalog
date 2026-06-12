@@ -86,7 +86,12 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
 
   override def loadView(ident: Identifier): ViewInfo = {
     val t = getUcTable(ident)
-    if (!UCSingleCatalog.isViewLikeTableType(t.getTableType)) {
+    // Gate on the command-supported predicate (excludes listed-but-unmapped kinds like
+    // MATERIALIZED_VIEW). A kind we list but have no Spark `TableSummary` mapping for cannot be
+    // turned into a `ViewInfo` -- `toViewInfo -> ucTableTypeToSparkViewType` would throw
+    // `UnsupportedOperationException`, which `DESCRIBE`/`SHOW`/view-resolution callers don't
+    // understand. Surface `NoSuchViewException` instead, mirroring `wrapAsView`.
+    if (!UCSingleCatalog.isViewCommandsSupportedTableType(t.getTableType)) {
       throw new NoSuchViewException(ident)
     }
     toViewInfo(t)
@@ -175,6 +180,10 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
     val props = new util.HashMap[String, String]()
     Option(t.getProperties).foreach(props.putAll)
     val sqlConfigs = extractSqlConfigs(props)
+    // The VIEW_SQL_CONFIG_PREFIX keys are surfaced (un-prefixed) via `withSqlConfigs`; drop them
+    // from `props` so they don't also leak into the user-visible `properties()` map and get
+    // re-persisted (double-counted) on a createView/replace round-trip.
+    props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX))
 
     val builder = new ViewInfo.Builder()
       .withColumns(columns)
