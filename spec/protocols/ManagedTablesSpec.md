@@ -2,7 +2,7 @@
 
 > **Status**: Proposed  
 > **Version**: 0.1.0  
-> **Last Updated**: 2026-02-17
+> **Last Updated**: 2026-05-08
 
 ## Table of Contents
 
@@ -728,7 +728,6 @@ Publishes metrics information for maintenance operations provided by the Unity C
 Field Name | Data Type | Description | Optional/Required
 -|-|-|-
 table_id | string | Uniquely identifies the Delta table in Unity Catalog.<br>Format: UUID string. | required
-table_uri | string | The storage location of the Delta table.<br>Format: URI string (`s3://`, `abfss://`, `gs://`, etc.). | required
 report | Report | Contains information about which metrics are being sent. | optional
 &nbsp;&nbsp;report.commit_report | CommitReport | The commit report metrics. | optional
 &nbsp;&nbsp;&nbsp;&nbsp;report.commit_report.num_files_added | int64 | Number of files added by this commit. | optional
@@ -755,7 +754,6 @@ Request:
 ```json
 {
   "table_id": "abcdef12-3456-7890-abcd-ef1234567890",
-  "table_uri": "s3://my-bucket/main/default/my_table",
   "report": {
     "commit_report": {
       "num_files_added": 10,
