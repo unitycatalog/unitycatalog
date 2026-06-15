@@ -37,6 +37,7 @@ This is a community effort. Unity Catalog is supported by
 - [NVIDIA](https://www.nvidia.com/)
 - [Onehouse](https://www.onehouse.ai/)
 - [PuppyGraph](https://www.puppygraph.com/)
+- [RisingWave](https://risingwave.com/)
 - [Salesforce](https://www.salesforce.com/)
 - [StarRocks (CelerData)](https://celerdata.com/)
 - [Spice AI](https://github.com/spiceai/spiceai)
