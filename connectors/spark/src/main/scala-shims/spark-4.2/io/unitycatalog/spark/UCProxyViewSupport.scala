@@ -186,7 +186,11 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
    * helper.
    */
   private[spark] def toViewInfo(t: UCTableInfo): ViewInfo = {
-    val columns = t.getColumns.asScala.map { col =>
+    // Guard the columns collection itself (nullable on the wire for a row written by an older or
+    // non-Spark client), mirroring the `Option(t.getProperties)` handling below and the per-column
+    // `type_json` guard in `parseStructFieldJson` -- so a missing list degrades to an empty schema
+    // rather than NPE-ing out of `loadView` / `loadTable`.
+    val columns = Option(t.getColumns).map(_.asScala).getOrElse(Seq.empty).map { col =>
       UCColumnJson.parseStructFieldJson(col.getTypeJson)
     }.toArray
 
