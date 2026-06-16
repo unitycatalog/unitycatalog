@@ -107,7 +107,7 @@ No authorization required
 
 Load table metadata
 
-    Load table metadata including columns, properties, and optionally credentials. 
+    Load table metadata including columns, properties, unbackfilled commits, and the latest table version. Credentials are not included; clients obtain them from the dedicated credentials endpoints. 
 
 ### Parameters
 
