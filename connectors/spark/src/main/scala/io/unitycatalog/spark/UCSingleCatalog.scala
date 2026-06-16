@@ -36,7 +36,6 @@ import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import org.json4s.{JBool, JObject, JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods.{compact, parse, render}
 import org.sparkproject.guava.base.Preconditions
@@ -679,23 +678,31 @@ object UCSingleCatalog {
     sparkViewTypeToUcType.get(sparkType)
 
   /**
-   * Used by view-side commands (`createView`, `dropView`, ...) to gate by whether the
-   * connector supports the given view kind. Two overloads cover both call sites:
-   *
-   *   - `String` overload: caller has a Spark `TableSummary` view-type string (e.g. from
-   *     `ViewInfo.properties().get(PROP_TABLE_TYPE)` on the create path).
-   *   - `TableType` overload: caller has a UC `TableType` (e.g. from `getUcTable(...)` on
-   *     the drop path).
-   *
-   * Both return `true` iff the kind is in `viewLikeUcTypes` AND has a Spark mapping
-   * (i.e. `Some(_)` in the map). Listed-but-unmapped kinds (`None`) are filtered into
-   * `listViews` for surface correctness but rejected from view CRUD commands.
+   * Used by view-side commands (`loadView`, `dropView`, `wrapAsView`, ...) to gate by whether
+   * the connector supports the given view kind. The caller has a UC `TableType` (e.g. from
+   * `getUcTable(...)`). Returns `true` iff the kind is in `viewLikeUcTypes` AND has a Spark
+   * mapping (i.e. `Some(_)` in the map). Listed-but-unmapped kinds (`None`) are filtered into
+   * `listViews` for surface correctness but rejected from view CRUD commands. (The create path
+   * gates differently, via `sparkViewTypeToUcTableType` on the `PROP_TABLE_TYPE` string.)
    */
-  def isViewCommandsSupportedTableType(sparkType: String): Boolean =
-    sparkViewTypeToUcType.contains(sparkType)
-
   def isViewCommandsSupportedTableType(ucType: TableType): Boolean =
     viewLikeUcTypes.get(ucType).exists(_.isDefined)
+
+  /**
+   * Splits the `VIEW_SQL_CONFIG_PREFIX`-prefixed entries out of a UC properties map and returns
+   * them un-prefixed, as Spark's `ViewInfo.sqlConfigs()` expects. Shared by the view-load path
+   * (`UCProxyViewSupport.toViewInfo` on Spark 4.2); kept on this companion so it stays free of any
+   * Spark-4.2-only types and compiles on all three Spark versions.
+   */
+  def extractSqlConfigs(properties: util.Map[String, String]): util.Map[String, String] = {
+    val configs = new util.HashMap[String, String]()
+    properties.asScala.foreach { case (k, v) =>
+      if (k.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX)) {
+        configs.put(k.substring(CatalogTable.VIEW_SQL_CONFIG_PREFIX.length), v)
+      }
+    }
+    configs
+  }
 }
 
 // An internal proxy to talk to the UC client.
@@ -771,7 +778,6 @@ private[spark] class UCProxy(
       loadV1Table(ident, t)
     }
   }
-
 
   private def loadV1Table(
       ident: Identifier,
@@ -852,8 +858,6 @@ private[spark] class UCProxy(
       .asInstanceOf[Table]
   }
 
-  // UC OSS does not currently expose a rename endpoint for tables or views; mirror the
-  // existing `renameTable` stub below until UC adds a rename API.
   // Spark 4.2's `TableViewCatalog` made `createTable(ident, TableInfo)` the canonical entry
   // point; the legacy 4-arg method below carries all the create-table logic, which keeps the
   // diff vs. main scoped to "add the new overload + 409 -> TableAlreadyExistsException catch
@@ -940,16 +944,6 @@ private[spark] class UCProxy(
         ("metadata" -> parse(field.metadata.json))))
   }
 
-  private def extractSqlConfigs(properties: util.Map[String, String]): util.Map[String, String] = {
-    val configs = new util.HashMap[String, String]()
-    properties.asScala.foreach { case (k, v) =>
-      if (k.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX)) {
-        configs.put(k.substring(CatalogTable.VIEW_SQL_CONFIG_PREFIX.length), v)
-      }
-    }
-    configs
-  }
-
   private def convertDatasourceFormat(format: String): DataSourceFormat = {
     format.toUpperCase match {
       case "PARQUET" => DataSourceFormat.PARQUET
@@ -1033,10 +1027,14 @@ private[spark] class UCProxy(
     if (UCSingleCatalog.isViewLikeTableType(t.getTableType)) {
       return false
     }
-    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
-    if (ret == 200) true else false
+    // `deleteTable` returns the (empty) response body, not an HTTP status; a real failure throws
+    // ApiException. Issue the delete for its side effect and report success.
+    tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    true
   }
 
+  // UC OSS does not currently expose a rename endpoint for tables or views; stub until UC adds
+  // a rename API. `UCProxyViewSupport.renameView` mirrors this stub.
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
     throw new UnsupportedOperationException("Renaming a table is not supported yet")
   }
@@ -1108,129 +1106,3 @@ private[spark] class UCProxy(
   }
 }
 
-private object UCProxy {
-
-  /**
-   * Converts Spark's typed [[DependencyList]] into the wire-format UC [[UCDependencyList]].
-   * Only `TableDependency` is currently translated; UC OSS does not persist function
-   * dependencies for now.
-   *
-   * Spark's `TableDependency.nameParts` is the structural multi-part identifier (preserves
-   * arity for multi-level-namespace catalogs, and is normalized to the stable 3-part
-   * `[spark_catalog, db, table]` shape for v1 sources by Spark's `MetricViewHelper`); UC's
-   * wire format is the legacy `tableFullName: String` -- a dot-joined flattening of the
-   * parts. The conversion is lossy for identifiers containing literal `.` (the wire side
-   * has no quoting convention), but UC's server-side dependency tracking has the same
-   * limitation today, so no fidelity is lost vs. the pre-PR producer that emitted
-   * dot-joined strings directly.
-   */
-  /**
-   * Converts the wire-format UC [[UCDependencyList]] back into Spark's typed
-   * [[DependencyList]]. Splits UC's dot-joined `tableFullName` back into the structural
-   * `nameParts` accepted by the `Dependency.table(String[])` factory; same dot-flattening
-   * caveat as [[toUcDependencyList]].
-   */
-  /**
-   * Builds the UC column-info list for `createView` from a Spark `TableInfo` (or its
-   * `ViewInfo` subtype). Preserves nullability, comment, partition position, and the
-   * canonical Spark column JSON in `typeJson` so column-level analyzer metadata (e.g.
-   * `metric_view.type`, `metric_view.expr`) survives the round-trip through Unity Catalog.
-   * The wire shape is the Spark `StructField` JSON (`{name, type, nullable, metadata}`),
-   * matching the Databricks Runtime wire format.
-   *
-   * Iterates `tableInfo.columns()` directly and uses the in-connector [[UCColumnJson]]
-   * helper to serialize each column to its canonical StructField-shape JSON form. The
-   * helper uses only public Spark APIs (`Column.{name, dataType, nullable, comment,
-   * metadataInJSON}`, `DataType.json` / `DataType.fromJson`, `Column.create` factory) so
-   * no Spark `private[sql]` dependency is required.
-   */
-}
-
-/**
- * Helpers that round-trip a Spark V2 [[Column]] through the canonical "Spark `StructField`
- * shape" JSON that Unity Catalog stores in `ColumnInfo.type_json`. Wire-format compatible
- * with what Databricks Runtime emits via `StructField.toJson`.
- *
- * Implemented with json4s + Spark's already-public V2 surface only:
- *
- *   - [[Column.name]] / [[Column.dataType]] / [[Column.nullable]] / [[Column.comment]] /
- *     [[Column.metadataInJSON]] -- public accessors on the V2 catalog `Column` interface.
- *   - [[org.apache.spark.sql.types.DataType.json]] / [[DataType.fromJson]] -- public on
- *     Spark `DataType`.
- *   - [[Column.create]] (5-arg overload) -- public static factory on the V2 `Column`.
- *
- * No `private[sql]` helpers, no Spark API additions. The shape is just
- * `{name, type, nullable, metadata}`.
- *
- * Comment handling mirrors Spark's StructField wire convention: comments live inside
- * `metadata` under the `"comment"` key on the wire, but on the in-memory `Column` they are
- * exposed via the dedicated [[Column.comment]] accessor. The helpers merge / strip the
- * `"comment"` key at the JSON boundary so callers never see it duplicated.
- */
-private[spark] object UCColumnJson {
-
-  /** Spark V2 -> wire: build the `StructField`-shape JSON for one [[Column]]. */
-  def buildStructFieldJson(col: Column): String = {
-    val typeNode: JValue = parse(col.dataType.json)
-    // metadataInJSON may be null for fields without analyzer-attached metadata.
-    val baseMetadata: JObject = Option(col.metadataInJSON) match {
-      case Some(s) => parse(s).asInstanceOf[JObject]
-      case None    => JObject(Nil)
-    }
-    val metadataNode: JObject = Option(col.comment) match {
-      case Some(c) => baseMetadata ~ ("comment" -> c)
-      case None    => baseMetadata
-    }
-    val fieldNode: JValue =
-      ("name"     -> col.name) ~
-        ("type"     -> typeNode) ~
-        ("nullable" -> col.nullable) ~
-        ("metadata" -> metadataNode)
-    compact(render(fieldNode))
-  }
-
-  /**
-   * Wire -> Spark V2: parse a `StructField`-shape JSON string back into a [[Column]].
-   *
-   * The `"comment"` key (if present in the wire metadata) is lifted out and passed to
-   * [[Column.create]] as the dedicated `comment` arg, NOT left in `metadataInJSON` --
-   * matches what Spark's own `CatalogV2Util.structFieldToV2Column` does on the v1 path.
-   */
-  def parseStructFieldJson(jsonStr: String): Column = {
-    // `ColumnInfo.type_json` is nullable on the wire (e.g. a view-like row created by an older
-    // writer or a non-Spark client that did not round-trip the field). Fail with a clear,
-    // actionable error rather than letting `json4s.parse(null)` throw a raw NPE out of the
-    // view-load path.
-    if (jsonStr == null) {
-      throw new IllegalArgumentException(
-        "Column type_json is missing; cannot reconstruct the Spark column for this view")
-    }
-    val parsed = parse(jsonStr)
-    val name = (parsed \ "name") match {
-      case JString(s) => s
-      case other      => throw new IllegalArgumentException(
-        s"Expected string `name` in StructField JSON, got: $other")
-    }
-    val typeNode = parsed \ "type"
-    val dataType = DataType.fromJson(compact(render(typeNode)))
-    val nullable = (parsed \ "nullable") match {
-      case JBool(b) => b
-      case other    => throw new IllegalArgumentException(
-        s"Expected boolean `nullable` in StructField JSON, got: $other")
-    }
-    val metadataObj = (parsed \ "metadata") match {
-      case obj: JObject => obj
-      case _            => JObject(Nil)
-    }
-    val (commentFields, otherFields) = metadataObj.obj.partition(_._1 == "comment")
-    val comment = commentFields.headOption.map(_._2) match {
-      case Some(JString(s)) => s
-      case _                => null
-    }
-    val metadataInJSON = otherFields match {
-      case Nil => null
-      case xs  => compact(render(JObject(xs)))
-    }
-    Column.create(name, dataType, nullable, comment, metadataInJSON)
-  }
-}

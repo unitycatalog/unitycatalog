@@ -165,7 +165,10 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
     if (!UCSingleCatalog.isViewCommandsSupportedTableType(t.getTableType)) {
       return false
     }
-    tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident)) == 200
+    // `deleteTable` returns the (empty) response body, not an HTTP status; a real failure throws
+    // ApiException. Issue the delete for its side effect and report success.
+    tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    true
   }
 
   override def renameView(oldIdent: Identifier, newIdent: Identifier): Unit = {
@@ -196,7 +199,7 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
 
     val props = new util.HashMap[String, String]()
     Option(t.getProperties).foreach(props.putAll)
-    val sqlConfigs = extractSqlConfigs(props)
+    val sqlConfigs = UCSingleCatalog.extractSqlConfigs(props)
     // The VIEW_SQL_CONFIG_PREFIX keys are surfaced (un-prefixed) via `withSqlConfigs`; drop them
     // from `props` so they don't also leak into the user-visible `properties()` map and get
     // re-persisted (double-counted) on a createView/replace round-trip.
@@ -217,16 +220,6 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
       builder.withViewDependencies(fromUcDependencyList(ucDeps))
     }
     builder.build()
-  }
-
-  private def extractSqlConfigs(properties: util.Map[String, String]): util.Map[String, String] = {
-    val configs = new util.HashMap[String, String]()
-    properties.asScala.foreach { case (k, v) =>
-      if (k.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX)) {
-        configs.put(k.substring(CatalogTable.VIEW_SQL_CONFIG_PREFIX.length), v)
-      }
-    }
-    configs
   }
 
   /**
@@ -268,6 +261,12 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
    * `ViewInfo` subtype). Preserves nullability, comment, partition position, and the
    * canonical Spark column JSON in `typeJson` so column-level analyzer metadata
    * (`metric_view.type`, `metric_view.expr`) survives the round-trip through Unity Catalog.
+   *
+   * This intentionally mirrors the column loop in `UCProxy.createTable` (shared file), but
+   * operates on the Spark V2 `TableInfo` / `Column` surface that only exists on Spark 4.2. The
+   * shared `UCProxy.createTable` works on `StructType` / `StructField` (via `toStructFieldJson`)
+   * and cannot reference these V2 types, so the two loops cannot be merged without breaking the
+   * 4.0/4.1 builds -- the near-duplication is a consequence of the cross-Spark type split.
    */
   private def buildColumnInfos(
       tableInfo: TableInfo,

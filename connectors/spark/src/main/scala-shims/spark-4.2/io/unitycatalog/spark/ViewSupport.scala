@@ -23,7 +23,7 @@ import org.apache.spark.sql.connector.catalog.{
  *
  *   - `scala-shims/spark-4.0/io/unitycatalog/spark/ViewSupport.scala`: empty trait
  *   - `scala-shims/spark-4.1/io/unitycatalog/spark/ViewSupport.scala`: empty trait
- *   - this file:                                                              real impl
+ *   - this file (`scala-shims/spark-4.2/...`): real impl
  *
  * The trait is self-typed against [[UCSingleCatalog]] so it can read the catalog's
  * `delegate` and `ucProxy` state (declared `protected[spark]` for that purpose).
