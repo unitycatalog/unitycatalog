@@ -1,37 +1,27 @@
 package io.unitycatalog.spark;
 
+import static io.unitycatalog.spark.UCProxyTestFixture.CATALOG_NAME;
+import static io.unitycatalog.spark.UCProxyTestFixture.NAMESPACE;
+import static io.unitycatalog.spark.UCProxyTestFixture.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
-import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.Dependency;
 import io.unitycatalog.client.model.DependencyList;
-import io.unitycatalog.client.model.ListSchemasResponse;
 import io.unitycatalog.client.model.ListTablesResponse;
-import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Parameter;
-import java.net.URI;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
@@ -40,176 +30,48 @@ import org.apache.spark.sql.catalyst.analysis.ViewAlreadyExistsException;
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.MetadataTable;
-import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.connector.catalog.TableSummary;
 import org.apache.spark.sql.connector.catalog.TableViewCatalog;
 import org.apache.spark.sql.connector.catalog.ViewCatalog;
 import org.apache.spark.sql.connector.catalog.ViewInfo;
 import org.apache.spark.sql.types.DataTypes;
-import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * Unit tests for UCProxy pagination using mocked API responses.
+ * Spark-4.2-only view-side unit tests for {@code UCProxy}. Composes the shared
+ * {@link UCProxyTestFixture} (which builds the mock-backed proxy) and adds the
+ * {@code TableViewCatalog} / {@code ViewCatalog} casts plus the view CRUD / metric-view tests.
  *
- * <p>UCProxy is a private Scala class, so Java cannot instantiate it directly. We use reflection
- * with dynamic arg resolution to handle constructor changes across branches.
+ * <p>This file lives under {@code src/test/scala-shims/spark-4.2/}, so the cross-Spark build only
+ * compiles and runs it for the Spark 4.2 build, where {@code UCProxy} actually mixes in the V2 view
+ * catalog surface ({@code MetadataTable}, {@code ViewInfo}, {@code TableViewCatalog},
+ * {@code ViewCatalog}, the V2 {@code TableInfo}). The version-agnostic table/namespace tests live
+ * in {@code UCProxySuite} under {@code src/test/java/} and run on all Spark versions.
  *
- * <p>End-to-end integration tests that exercise pagination through UCSingleCatalog and a real UC
- * server are in {@link BaseTableReadWriteTest#testListTablesPagination} and {@link
- * SchemaOperationsTest#testListSchemasPagination}.
+ * <p>The Spark V2 {@code Dependency} / {@code DependencyList} / {@code TableDependency} /
+ * {@code TableInfo} types are used fully-qualified to disambiguate from the UC-client homonyms
+ * imported above.
  */
-public class UCProxySuite {
-
-  private static final String CATALOG_NAME = "test_catalog";
-  private static final String SCHEMA_NAME = "test_schema";
-  private static final String[] NAMESPACE = new String[] {SCHEMA_NAME};
+public class UCViewProxySuite {
 
   private TablesApi mockTablesApi;
-  private SchemasApi mockSchemasApi;
   private TableCatalog proxy;
   private TableViewCatalog proxyRelations;
   private ViewCatalog proxyViews;
-  private SupportsNamespaces proxyNs;
 
   @BeforeEach
   public void setUp() throws Exception {
-    mockTablesApi = mock(TablesApi.class);
-    mockSchemasApi = mock(SchemasApi.class);
-    ApiClient mockApiClient = mock(ApiClient.class);
-    TokenProvider mockTokenProvider = mock(TokenProvider.class);
-    TemporaryCredentialsApi mockTempCredApi = mock(TemporaryCredentialsApi.class);
-
-    // UCProxy is a private Scala class — Java cannot call `new UCProxy(...)` directly.
-    // We use reflection with dynamic arg resolution so the test adapts when the
-    // constructor gains or loses boolean flags across branches.
-    Map<Class<?>, Object> argsByType = new HashMap<>();
-    argsByType.put(URI.class, new URI("http://localhost:8080"));
-    argsByType.put(TokenProvider.class, mockTokenProvider);
-    argsByType.put(ApiClient.class, mockApiClient);
-    argsByType.put(TablesApi.class, mockTablesApi);
-    argsByType.put(TemporaryCredentialsApi.class, mockTempCredApi);
-
-    Class<?> proxyClass = Class.forName("io.unitycatalog.spark.UCProxy");
-    Constructor<?> ctor = proxyClass.getDeclaredConstructors()[0];
-    ctor.setAccessible(true);
-
-    Parameter[] params = ctor.getParameters();
-    Object[] args = new Object[params.length];
-    for (int i = 0; i < params.length; i++) {
-      Class<?> type = params[i].getType();
-      if (argsByType.containsKey(type)) {
-        args[i] = argsByType.get(type);
-      } else if (type == boolean.class) {
-        args[i] = false;
-      } else {
-        args[i] = null;
-      }
-    }
-
-    Object proxyObj = ctor.newInstance(args);
-
-    proxy = (TableCatalog) proxyObj;
-    proxy.initialize(CATALOG_NAME, new CaseInsensitiveStringMap(Collections.emptyMap()));
-
-    // Inject mock schemasApi (initialize() creates a real one from apiClient)
-    Field schemasField = proxyClass.getDeclaredField("schemasApi");
-    schemasField.setAccessible(true);
-    schemasField.set(proxyObj, mockSchemasApi);
-
-    proxyNs = (SupportsNamespaces) proxyObj;
-    proxyRelations = (TableViewCatalog) proxyObj;
-    proxyViews = (ViewCatalog) proxyObj;
-  }
-
-  // -- listTables tests --
-
-  @Test
-  public void testListTablesSinglePage() throws Exception {
-    ListTablesResponse response =
-        new ListTablesResponse()
-            .tables(List.of(new TableInfo().name("table1"), new TableInfo().name("table2")))
-            .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
-        .thenReturn(response);
-
-    Identifier[] result = proxy.listTables(NAMESPACE);
-
-    assertThat(result).hasSize(2);
-    assertThat(result[0]).isEqualTo(Identifier.of(NAMESPACE, "table1"));
-    assertThat(result[1]).isEqualTo(Identifier.of(NAMESPACE, "table2"));
-  }
-
-  @Test
-  public void testListTablesMultiplePages() throws Exception {
-    ListTablesResponse page1 =
-        new ListTablesResponse()
-            .tables(List.of(new TableInfo().name("table1"), new TableInfo().name("table2")))
-            .nextPageToken("token1");
-    ListTablesResponse page2 =
-        new ListTablesResponse()
-            .tables(List.of(new TableInfo().name("table3")))
-            .nextPageToken(null);
-
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
-        .thenReturn(page1);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1")))
-        .thenReturn(page2);
-
-    Identifier[] result = proxy.listTables(NAMESPACE);
-
-    assertThat(result).hasSize(3);
-    assertThat(result[0]).isEqualTo(Identifier.of(NAMESPACE, "table1"));
-    assertThat(result[1]).isEqualTo(Identifier.of(NAMESPACE, "table2"));
-    assertThat(result[2]).isEqualTo(Identifier.of(NAMESPACE, "table3"));
-
-    verify(mockTablesApi).listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull());
-    verify(mockTablesApi).listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), eq("token1"));
-  }
-
-  @Test
-  public void testListTablesEmptyResult() throws Exception {
-    ListTablesResponse response =
-        new ListTablesResponse().tables(Collections.emptyList()).nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
-        .thenReturn(response);
-
-    Identifier[] result = proxy.listTables(NAMESPACE);
-
-    assertThat(result).isEmpty();
-  }
-
-  @Test
-  public void testListTablesEmptyStringPageTokenStopsPagination() throws Exception {
-    ListTablesResponse response =
-        new ListTablesResponse().tables(List.of(new TableInfo().name("table1"))).nextPageToken("");
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
-        .thenReturn(response);
-
-    Identifier[] result = proxy.listTables(NAMESPACE);
-
-    assertThat(result).hasSize(1);
-    assertThat(result[0]).isEqualTo(Identifier.of(NAMESPACE, "table1"));
-  }
-
-  @Test
-  public void testListTablesFiltersMetricViews() throws Exception {
-    ListTablesResponse response =
-        new ListTablesResponse()
-            .tables(
-                List.of(
-                    new TableInfo().name("table1").tableType(TableType.EXTERNAL),
-                    new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
-            .nextPageToken(null);
-    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
-        .thenReturn(response);
-
-    Identifier[] result = proxy.listTables(NAMESPACE);
-
-    assertThat(result).containsExactly(Identifier.of(NAMESPACE, "table1"));
+    UCProxyTestFixture fixture = new UCProxyTestFixture().build();
+    mockTablesApi = fixture.mockTablesApi;
+    proxy = fixture.proxy;
+    // These casts succeed only on the Spark 4.2 build, where UCProxy's UCProxyViewSupport mixes in
+    // TableViewCatalog (which extends ViewCatalog). On 4.0/4.1 they would throw, which is why this
+    // suite lives in the 4.2-only test source dir.
+    proxyRelations = (TableViewCatalog) fixture.proxyObj;
+    proxyViews = (ViewCatalog) fixture.proxyObj;
   }
 
   @Test
@@ -386,43 +248,6 @@ public class UCProxySuite {
   }
 
   @Test
-  public void testLoadTableTriggersExactlyOneGetTableRpc() throws Exception {
-    // Regression guard for the double-RPC bug fixed in
-    // https://github.com/unitycatalog/unitycatalog/pull/1513 review feedback. Before the
-    // flip, `UCSingleCatalog.loadTableOrView` would call `getUcTable` for view
-    // classification, then re-fetch via `delegate.loadTable -> UCProxy.loadTableOrView ->
-    // getUcTable`, producing two `tablesApi.getTable` RPCs per identifier resolution. After
-    // the flip, `UCProxy.loadTable` is the single primitive and is called exactly once per
-    // resolution.
-    TableInfo ucTable =
-        new TableInfo()
-            .catalogName(CATALOG_NAME)
-            .schemaName(SCHEMA_NAME)
-            .name("t1")
-            .tableId("test-table-id")
-            .tableType(TableType.EXTERNAL)
-            .storageLocation("file:///tmp/t1")
-            .dataSourceFormat(io.unitycatalog.client.model.DataSourceFormat.PARQUET)
-            .columns(
-                List.of(
-                    new ColumnInfo()
-                        .name("id")
-                        .typeName(ColumnTypeName.INT)
-                        .typeText("int")
-                        .typeJson(
-                            "{\"name\":\"id\",\"type\":\"integer\","
-                                + "\"nullable\":true,\"metadata\":{}}")
-                        .nullable(true)
-                        .position(0)));
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
-        .thenReturn(ucTable);
-
-    proxy.loadTable(Identifier.of(NAMESPACE, "t1"));
-    verify(mockTablesApi, org.mockito.Mockito.times(1))
-        .getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true));
-  }
-
-  @Test
   public void testLoadTableOrViewTriggersExactlyOneGetTableRpc() throws Exception {
     // Same regression guard but exercised through the `loadTableOrView` API surface.
     // After the flip `loadTableOrView` is a thin passthrough to `loadTable`, so it must
@@ -455,26 +280,6 @@ public class UCProxySuite {
 
     assertThatThrownBy(() -> proxyViews.loadView(Identifier.of(NAMESPACE, "t1")))
         .isInstanceOf(NoSuchViewException.class);
-  }
-
-  @Test
-  public void testDropTableReturnsFalseForMetricViewAndDoesNotDelete() throws Exception {
-    TableInfo ucMetricView =
-        new TableInfo()
-            .catalogName(CATALOG_NAME)
-            .schemaName(SCHEMA_NAME)
-            .name("mv1")
-            .tableType(TableType.METRIC_VIEW);
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
-        .thenReturn(ucMetricView);
-
-    boolean dropped = proxy.dropTable(Identifier.of(NAMESPACE, "mv1"));
-
-    assertThat(dropped).isFalse();
-    // Crucial: deleteTable must not be called, otherwise DROP TABLE on a metric view would
-    // silently delete it.
-    verify(mockTablesApi, org.mockito.Mockito.never())
-        .deleteTable(org.mockito.ArgumentMatchers.anyString());
   }
 
   @Test
@@ -532,61 +337,5 @@ public class UCProxySuite {
 
     assertThatThrownBy(() -> proxy.createTable(Identifier.of(NAMESPACE, "t1"), sparkInfo))
         .isInstanceOf(TableAlreadyExistsException.class);
-  }
-
-  // -- listNamespaces tests --
-
-  @Test
-  public void testListNamespacesSinglePage() throws Exception {
-    ListSchemasResponse response =
-        new ListSchemasResponse()
-            .schemas(List.of(new SchemaInfo().name("schema1"), new SchemaInfo().name("schema2")))
-            .nextPageToken(null);
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(response);
-
-    String[][] result = proxyNs.listNamespaces();
-
-    assertThat(result).hasNumberOfRows(2);
-    assertThat(result[0]).containsExactly("schema1");
-    assertThat(result[1]).containsExactly("schema2");
-  }
-
-  @Test
-  public void testListNamespacesMultiplePages() throws Exception {
-    ListSchemasResponse page1 =
-        new ListSchemasResponse()
-            .schemas(List.of(new SchemaInfo().name("schema1"), new SchemaInfo().name("schema2")))
-            .nextPageToken("token1");
-    ListSchemasResponse page2 =
-        new ListSchemasResponse()
-            .schemas(List.of(new SchemaInfo().name("schema3")))
-            .nextPageToken(null);
-
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(page1);
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), eq("token1"))).thenReturn(page2);
-
-    String[][] result = proxyNs.listNamespaces();
-
-    assertThat(result).hasNumberOfRows(3);
-    assertThat(result[0]).containsExactly("schema1");
-    assertThat(result[1]).containsExactly("schema2");
-    assertThat(result[2]).containsExactly("schema3");
-
-    verify(mockSchemasApi).listSchemas(eq(CATALOG_NAME), eq(0), isNull());
-    verify(mockSchemasApi).listSchemas(eq(CATALOG_NAME), eq(0), eq("token1"));
-  }
-
-  @Test
-  public void testListNamespacesEmptyStringPageTokenStopsPagination() throws Exception {
-    ListSchemasResponse response =
-        new ListSchemasResponse()
-            .schemas(List.of(new SchemaInfo().name("schema1")))
-            .nextPageToken("");
-    when(mockSchemasApi.listSchemas(eq(CATALOG_NAME), eq(0), isNull())).thenReturn(response);
-
-    String[][] result = proxyNs.listNamespaces();
-
-    assertThat(result).hasNumberOfRows(1);
-    assertThat(result[0]).containsExactly("schema1");
   }
 }
