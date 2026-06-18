@@ -1,8 +1,3 @@
-/*
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- */
-
 package io.unitycatalog.spark
 
 import java.util
@@ -93,13 +88,18 @@ trait UCProxyViewSupport extends TableViewCatalog { self: UCProxy =>
     } catch {
       case _: NoSuchTableException => throw new NoSuchViewException(ident)
     }
-    // Gate on the command-supported predicate (excludes listed-but-unmapped kinds like
-    // MATERIALIZED_VIEW). A kind we list but have no Spark `TableSummary` mapping for cannot be
-    // turned into a `ViewInfo` -- `toViewInfo -> ucTableTypeToSparkViewType` would throw
-    // `UnsupportedOperationException`, which `DESCRIBE`/`SHOW`/view-resolution callers don't
-    // understand. Surface `NoSuchViewException` instead, mirroring `wrapAsView`.
-    if (!UCSingleCatalog.isViewCommandsSupportedTableType(t.getTableType)) {
+    if (!UCSingleCatalog.isViewLikeTableType(t.getTableType)) {
+      // A real table sits at this identifier -- it genuinely isn't a view.
       throw new NoSuchViewException(ident)
+    }
+    if (!UCSingleCatalog.isViewCommandsSupportedTableType(t.getTableType)) {
+      // A listed-but-unmapped view kind (e.g. MATERIALIZED_VIEW, `None` in `viewLikeUcTypes`):
+      // it DOES appear in `listViews`, so reporting `NoSuchViewException` here would be
+      // confusing ("SHOW VIEWS lists it, DESCRIBE says it's missing"). Report that the kind is
+      // not loadable yet instead. (`wrapAsView` on the table-resolution path still throws
+      // `NoSuchTableException` because Spark's table resolver only understands that.)
+      throw new UnsupportedOperationException(
+        s"Loading a ${t.getTableType} view is not supported yet")
     }
     toViewInfo(t)
   }

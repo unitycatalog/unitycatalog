@@ -283,6 +283,24 @@ public class UCViewProxySuite {
   }
 
   @Test
+  public void testLoadViewThrowsUnsupportedForListedButUnmappedViewKind() throws Exception {
+    // MATERIALIZED_VIEW is listed by listViews (it's view-like) but has no Spark TableSummary
+    // mapping yet, so loadView reports it as unsupported -- NOT NoSuchViewException, which would
+    // contradict its presence in SHOW VIEWS.
+    TableInfo ucMaterializedView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mtv1")
+            .tableType(TableType.MATERIALIZED_VIEW);
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mtv1"), eq(true), eq(true)))
+        .thenReturn(ucMaterializedView);
+
+    assertThatThrownBy(() -> proxyViews.loadView(Identifier.of(NAMESPACE, "mtv1")))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
   public void testDropViewReturnsFalseForRegularTableAndDoesNotDelete() throws Exception {
     TableInfo ucTable =
         new TableInfo()
