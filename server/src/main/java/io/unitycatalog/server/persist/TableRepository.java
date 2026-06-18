@@ -877,7 +877,7 @@ public class TableRepository {
         /* readOnly = */ false);
   }
 
-  public TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
+  TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
     TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
