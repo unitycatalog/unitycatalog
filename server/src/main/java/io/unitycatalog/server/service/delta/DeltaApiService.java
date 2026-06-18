@@ -8,6 +8,7 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Head;
@@ -39,6 +40,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.AuthorizedService;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
@@ -137,6 +139,27 @@ public class DeltaApiService extends AuthorizedService {
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
     tableRepository.findTableOrThrow(catalog, schema, table);
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  // ==================== Delete Table API ====================
+
+  /**
+   * Delete a table by three-part name. Mirrors {@link
+   * io.unitycatalog.server.service.TableService#deleteTable}, but returns 204 No Content per {@code
+   * delta.yaml} (the UC counterpart returns 200). {@code deleteTable} returns the deleted table's
+   * DAO, so the table and schema UUIDs for the authorization cleanup come from the same lookup that
+   * removed the table.
+   */
+  @Delete("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse deleteTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table) {
+    TableInfoDAO deleted = tableRepository.deleteTable(catalog, schema, table);
+    removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
