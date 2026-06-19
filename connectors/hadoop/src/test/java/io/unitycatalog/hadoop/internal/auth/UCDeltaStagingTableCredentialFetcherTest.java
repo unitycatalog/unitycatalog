@@ -6,11 +6,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
-import io.unitycatalog.client.delta.model.CredentialsResponse;
-import io.unitycatalog.client.delta.model.StorageCredential;
-import io.unitycatalog.client.delta.model.StorageCredentialConfig;
+import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
+import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import java.util.UUID;
@@ -24,9 +24,9 @@ class UCDeltaStagingTableCredentialFetcherTest {
   @Test
   void createCredentialCallsDeltaStagingApiAndReturnsCredential() throws Exception {
     DeltaStagingTableCredId credId = new DeltaStagingTableCredId(STAGING_ID.toString(), LOCATION);
-    CredentialsResponse response = s3StagingResponse();
+    DeltaCredentialsResponse response = s3StagingResponse();
 
-    TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
+    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(response);
 
     GenericCredential cred =
@@ -45,7 +45,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
   void createCredentialRejectsNullResponse() throws Exception {
     DeltaStagingTableCredId credId = new DeltaStagingTableCredId(STAGING_ID.toString(), LOCATION);
 
-    TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
+    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(null);
 
     assertThatThrownBy(
@@ -54,17 +54,17 @@ class UCDeltaStagingTableCredentialFetcherTest {
         .hasMessageContaining("returned no credentials response");
   }
 
-  private static CredentialsResponse s3StagingResponse() {
-    StorageCredential sc =
-        new StorageCredential()
+  private static DeltaCredentialsResponse s3StagingResponse() {
+    DeltaStorageCredential sc =
+        new DeltaStorageCredential()
             .prefix(LOCATION)
             .operation(DeltaCredentialOperation.READ_WRITE)
             .expirationTimeMs(1234L)
             .config(
-                new StorageCredentialConfig()
+                new DeltaStorageCredentialConfig()
                     .s3AccessKeyId("ak")
                     .s3SecretAccessKey("sk")
                     .s3SessionToken("st"));
-    return new CredentialsResponse().addStorageCredentialsItem(sc);
+    return new DeltaCredentialsResponse().addStorageCredentialsItem(sc);
   }
 }
