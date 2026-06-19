@@ -95,6 +95,15 @@ public class UCHadoopConfConstants {
       "fs.unitycatalog.credential.cache.enabled";
   public static final boolean UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = true;
 
+  // Key to enable caching of the initial vended credential on the driver, keyed by the credential
+  // scope (CredId). When enabled, repeated credential requests for the same scope (e.g. different
+  // Spark queries reading the same table) reuse a cached credential instead of re-fetching from the
+  // UC server, reducing UC QPS. Disabled by default since it shares a vended credential across
+  // requests of the same scope within the JVM.
+  public static final String UC_INITIAL_CREDENTIAL_CACHE_ENABLED_KEY =
+      "fs.unitycatalog.initial.credential.cache.enabled";
+  public static final boolean UC_INITIAL_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = false;
+
   // Keys for HTTP request configuration - see ApiClientConf for more details.
   public static final String REQUEST_RETRY_MAX_ATTEMPTS_KEY =
       "fs.unitycatalog.request.retry.maxAttempts";

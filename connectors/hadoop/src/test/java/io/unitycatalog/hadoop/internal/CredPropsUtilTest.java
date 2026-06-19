@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
@@ -15,7 +16,10 @@ import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
@@ -739,6 +743,7 @@ class CredPropsUtilTest {
   @AfterEach
   void resetFactory() {
     CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
+    CredPropsUtil.initialCredentialCache.clear();
   }
 
   @Test
@@ -996,6 +1001,116 @@ class CredPropsUtilTest {
     assertThat(deltaProps).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
   }
 
+  // Initial credential cache: reuse across queries for the same credential scope.
+
+  @Test
+  void initialCredCacheReusesCredentialForSameScope() throws Exception {
+    AtomicInteger fetchCount = new AtomicInteger();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> {
+          fetchCount.incrementAndGet();
+          return mockGenericCredentialFetcher(s3Creds());
+        };
+
+    // First query for "tid" fetches from the server and populates the cache.
+    Map<String, String> first = createCachedTableCredProps(cacheEnabledConf(), "tid");
+    // Second query for the same scope reuses the cached credential, no extra server fetch.
+    Map<String, String> second = createCachedTableCredProps(cacheEnabledConf(), "tid");
+
+    assertThat(fetchCount.get()).isEqualTo(1);
+    assertThat(CredPropsUtil.initialCredentialCache.size()).isEqualTo(1);
+    assertThat(first).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
+    assertThat(second).containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak");
+  }
+
+  @Test
+  void initialCredCacheIsolatesDifferentScopes() throws Exception {
+    AtomicInteger fetchCount = new AtomicInteger();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> {
+          fetchCount.incrementAndGet();
+          return mockGenericCredentialFetcher(s3Creds());
+        };
+
+    createCachedTableCredProps(cacheEnabledConf(), "tidA");
+    createCachedTableCredProps(cacheEnabledConf(), "tidB");
+
+    assertThat(fetchCount.get()).isEqualTo(2);
+    assertThat(CredPropsUtil.initialCredentialCache.size()).isEqualTo(2);
+  }
+
+  @Test
+  void initialCredCacheRefetchesWhenCachedCredentialNearExpiry() throws Exception {
+    String clockName = UUID.randomUUID().toString();
+    Clock clock = Clock.getManualClock(clockName);
+    try {
+      AtomicInteger fetchCount = new AtomicInteger();
+      // Each fetch returns a credential expiring 2s after the current clock time.
+      CredPropsUtil.genericCredFetcherFactory =
+          (apiClient, credId) -> {
+            fetchCount.incrementAndGet();
+            return mockGenericCredentialFetcher(
+                s3CredsExpiringAt(clock.now().toEpochMilli() + 2000L));
+          };
+
+      Configuration conf = cacheEnabledConf();
+      conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+      conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+
+      // First query fetches and caches.
+      createCachedTableCredProps(conf, "tid");
+      // Still well within validity: second query reuses the cache.
+      createCachedTableCredProps(conf, "tid");
+      assertThat(fetchCount.get()).isEqualTo(1);
+
+      // Advance past (expiry - leadTime): the cached credential must be refreshed.
+      clock.sleep(Duration.ofMillis(1000));
+      createCachedTableCredProps(conf, "tid");
+      assertThat(fetchCount.get()).isEqualTo(2);
+      assertThat(CredPropsUtil.initialCredentialCache.size()).isEqualTo(1);
+    } finally {
+      Clock.removeManualClock(clockName);
+    }
+  }
+
+  @Test
+  void initialCredCacheDisabledByDefaultAlwaysFetches() throws Exception {
+    AtomicInteger fetchCount = new AtomicInteger();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> {
+          fetchCount.incrementAndGet();
+          return mockGenericCredentialFetcher(s3Creds());
+        };
+
+    // Default configuration leaves the initial credential cache disabled.
+    createCachedTableCredProps(new Configuration(false), "tid");
+    createCachedTableCredProps(new Configuration(false), "tid");
+
+    assertThat(fetchCount.get()).isEqualTo(2);
+    assertThat(CredPropsUtil.initialCredentialCache.size()).isZero();
+  }
+
+  private static Map<String, String> createCachedTableCredProps(Configuration conf, String tableId)
+      throws Exception {
+    return CredPropsUtil.createTableCredProps(
+        true,
+        false,
+        conf,
+        "s3",
+        null,
+        "http://uc",
+        tokenProvider(),
+        tableId,
+        UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+        Map.of());
+  }
+
+  private static Configuration cacheEnabledConf() {
+    Configuration conf = new Configuration(false);
+    conf.setBoolean(UCHadoopConfConstants.UC_INITIAL_CREDENTIAL_CACHE_ENABLED_KEY, true);
+    return conf;
+  }
+
   private static GenericCredentialFetcher mockGenericCredentialFetcher(TemporaryCredentials creds) {
     GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {
@@ -1014,6 +1129,10 @@ class CredPropsUtilTest {
     return new TemporaryCredentials()
         .awsTempCredentials(
             new AwsCredentials().accessKeyId("ak").secretAccessKey("sk").sessionToken("st"));
+  }
+
+  private static TemporaryCredentials s3CredsExpiringAt(long expirationMillis) {
+    return s3Creds().expirationTime(expirationMillis);
   }
 
   private static TemporaryCredentials gcsCreds() {

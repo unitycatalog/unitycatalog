@@ -4,17 +4,20 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.ApiClientUtils;
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
+import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
+import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
@@ -43,6 +46,17 @@ public class CredPropsUtil {
 
   public static volatile GenericCredentialFetcherFactory genericCredFetcherFactory =
       GenericCredentialFetcher::create;
+
+  // Driver-side cache of the initial vended credential, keyed by the credential scope
+  // ({@link CredId}). Enabled by {@link
+  // UCHadoopConfConstants#UC_INITIAL_CREDENTIAL_CACHE_ENABLED_KEY} so that repeated credential
+  // requests for the same scope (e.g. different Spark queries reading the same table) reuse a
+  // cached credential instead of re-fetching from the UC server.
+  private static final int INITIAL_CRED_CACHE_MAX_SIZE =
+      Integer.getInteger("unitycatalog.credential.cache.maxSize", 1024);
+
+  static final BoundedKeyedCache<CredId, TemporaryCredentials> initialCredentialCache =
+      new BoundedKeyedCache<>(INITIAL_CRED_CACHE_MAX_SIZE);
 
   private static final String CRED_SCOPED_FS_CLASS =
       "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem";
@@ -341,7 +355,8 @@ public class CredPropsUtil {
       throws ApiException {
     TableCredId credId = new TableCredId(tableId, tableOp.value());
     TemporaryCredentials tempCreds =
-        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
+        fetchTemporaryCredentials(
+            hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
@@ -398,7 +413,8 @@ public class CredPropsUtil {
       throws ApiException {
     DeltaTableCredId credId = new DeltaTableCredId(identifier, tableOp.value(), location);
     TemporaryCredentials tempCreds =
-        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
+        fetchTemporaryCredentials(
+            hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
@@ -454,7 +470,8 @@ public class CredPropsUtil {
       throws ApiException {
     DeltaStagingTableCredId credId = new DeltaStagingTableCredId(stagingTableId, location);
     TemporaryCredentials tempCreds =
-        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
+        fetchTemporaryCredentials(
+            hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
@@ -507,7 +524,8 @@ public class CredPropsUtil {
       throws ApiException {
     PathCredId credId = new PathCredId(path, pathOp.value());
     TemporaryCredentials tempCreds =
-        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
+        fetchTemporaryCredentials(
+            hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
@@ -546,6 +564,43 @@ public class CredPropsUtil {
   }
 
   private static TemporaryCredentials fetchTemporaryCredentials(
+      Configuration hadoopConf,
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      Map<String, String> appVersions,
+      CredId credId)
+      throws ApiException {
+    boolean cacheEnabled =
+        hadoopConf.getBoolean(
+            UCHadoopConfConstants.UC_INITIAL_CREDENTIAL_CACHE_ENABLED_KEY,
+            UCHadoopConfConstants.UC_INITIAL_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE);
+    if (!cacheEnabled) {
+      return fetchFromServer(apiClient, catalogUri, tokenProvider, appVersions, credId);
+    }
+
+    Clock clock = clock(hadoopConf);
+    long renewalLeadTimeMillis =
+        hadoopConf.getLong(
+            UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
+            UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
+
+    // Serialize lookup-then-fetch so concurrent requests for the same scope only fetch once.
+    synchronized (initialCredentialCache) {
+      TemporaryCredentials cached = initialCredentialCache.getIfPresent(credId);
+      // Reuse the cached credential when it still has more than the renewal lead time remaining.
+      if (cached != null
+          && !new GenericCredential(cached).readyToRenew(clock, renewalLeadTimeMillis)) {
+        return cached;
+      }
+      TemporaryCredentials created =
+          fetchFromServer(apiClient, catalogUri, tokenProvider, appVersions, credId);
+      initialCredentialCache.put(credId, created);
+      return created;
+    }
+  }
+
+  private static TemporaryCredentials fetchFromServer(
       ApiClient apiClient,
       String catalogUri,
       TokenProvider tokenProvider,
@@ -558,6 +613,11 @@ public class CredPropsUtil {
         .create(client, credId)
         .createCredential()
         .temporaryCredentials();
+  }
+
+  private static Clock clock(Configuration hadoopConf) {
+    String clockName = hadoopConf.get(UCHadoopConfConstants.UC_TEST_CLOCK_NAME);
+    return clockName != null ? Clock.getManualClock(clockName) : Clock.systemClock();
   }
 
   private static ApiClient createApiClient(
