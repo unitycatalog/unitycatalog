@@ -6,11 +6,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
-import io.unitycatalog.client.delta.model.CredentialsResponse;
-import io.unitycatalog.client.delta.model.StorageCredential;
-import io.unitycatalog.client.delta.model.StorageCredentialConfig;
+import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
+import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
@@ -26,19 +26,20 @@ class UCDeltaGenericCredentialFetcherTest {
             "READ_WRITE",
             "s3://bucket/events");
 
-    StorageCredential sc =
-        new StorageCredential()
+    DeltaStorageCredential sc =
+        new DeltaStorageCredential()
             .prefix("s3://bucket/events")
             .operation(DeltaCredentialOperation.READ_WRITE)
             .expirationTimeMs(789L)
             .config(
-                new StorageCredentialConfig()
+                new DeltaStorageCredentialConfig()
                     .s3AccessKeyId("ak")
                     .s3SecretAccessKey("sk")
                     .s3SessionToken("st"));
-    CredentialsResponse response = new CredentialsResponse().addStorageCredentialsItem(sc);
+    DeltaCredentialsResponse response =
+        new DeltaCredentialsResponse().addStorageCredentialsItem(sc);
 
-    TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
+    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events"))
         .thenReturn(response);
 
@@ -50,18 +51,19 @@ class UCDeltaGenericCredentialFetcherTest {
     assertThat(out.getAwsTempCredentials().getSecretAccessKey()).isEqualTo("sk");
     assertThat(out.getAwsTempCredentials().getSessionToken()).isEqualTo("st");
     assertThat(out.getExpirationTime()).isEqualTo(789L);
-    verify(api).getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events");
+    verify(api)
+        .getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events");
   }
 
   @Test
-  void createCredentialRejectsMissingCredentialsResponse() throws Exception {
+  void createCredentialRejectsMissingDeltaCredentialsResponse() throws Exception {
     DeltaTableCredId credId =
         new DeltaTableCredId(
             UCDeltaTableIdentifier.of("main", "default", "events"),
             "READ_WRITE",
             "s3://bucket/events");
 
-    TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
+    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events"))
         .thenReturn(null);
 
@@ -75,7 +77,7 @@ class UCDeltaGenericCredentialFetcherTest {
     DeltaTableCredId credId =
         new DeltaTableCredId(UCDeltaTableIdentifier.of("c", "s", "n"), "UNKNOWN", "s3://b/p");
 
-    TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
+    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(credId, api))
         .isInstanceOf(IllegalArgumentException.class);
   }

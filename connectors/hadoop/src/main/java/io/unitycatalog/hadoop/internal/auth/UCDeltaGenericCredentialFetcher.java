@@ -1,9 +1,9 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.delta.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
-import io.unitycatalog.client.delta.model.CredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.DeltaStorageCredentialUtil;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
@@ -11,11 +11,11 @@ import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 
 /** Adapts the UC Delta temporary credentials SDK API for Hadoop token providers. */
 final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher {
-  private final TemporaryCredentialsApi api;
+  private final DeltaTemporaryCredentialsApi api;
   private final DeltaTableCredId credId;
   private final DeltaCredentialOperation operation;
 
-  UCDeltaGenericCredentialFetcher(DeltaTableCredId credId, TemporaryCredentialsApi api) {
+  UCDeltaGenericCredentialFetcher(DeltaTableCredId credId, DeltaTemporaryCredentialsApi api) {
     this.api = Preconditions.checkNotNull(api, "api is required");
     this.credId = Preconditions.checkNotNull(credId, "credId is required");
     DeltaCredentialOperation op = DeltaCredentialOperation.fromValue(credId.tableOperation());
@@ -29,7 +29,7 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
   @Override
   public GenericCredential createCredential() throws ApiException {
     UCDeltaTableIdentifier id = credId.identifier();
-    CredentialsResponse response =
+    DeltaCredentialsResponse response =
         api.getTableCredentials(operation, id.catalog(), id.schema(), id.table());
     Preconditions.checkArgument(
         response != null,
