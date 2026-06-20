@@ -1,16 +1,22 @@
 package io.unitycatalog.server.service.iceberg;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.amazonaws.util.IOUtils;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import lombok.SneakyThrows;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.aws.s3.S3FileIO;
+import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -78,5 +84,33 @@ public class MetadataServiceTest {
             .toString();
     TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
     assertThat(tableMetadata.uuid()).isEqualTo("55d4dc69-5b14-4483-bfc8-f33b80f99f99");
+  }
+
+  @SneakyThrows
+  @Test
+  public void testWriteAndDeleteTableMetadataOnS3() {
+    when(mockFileIOFactory.getFileIO(any())).thenReturn(new S3FileIO(() -> mockS3Client));
+    when(mockFileIOFactory.getFileIO(any(), any())).thenReturn(new S3FileIO(() -> mockS3Client));
+    // Dedicated bucket: the S3Mock extension is static and shared across this class's tests.
+    String bucket = "metadata-write-test";
+    mockS3Client.createBucket(builder -> builder.bucket(bucket).build());
+
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    String tableLocation = "s3://" + bucket + "/write-roundtrip";
+    TableMetadata tableMetadata =
+        TableMetadata.newTableMetadata(
+            schema, PartitionSpec.unpartitioned(), tableLocation, Map.of());
+    String metadataLocation =
+        tableLocation + "/metadata/00000-" + UUID.randomUUID() + ".metadata.json";
+
+    // The metadata is written to S3 through the FileIO and reads back identically.
+    metadataService.writeTableMetadata(tableMetadata, metadataLocation);
+    assertThat(metadataService.readTableMetadata(metadataLocation).uuid())
+        .isEqualTo(tableMetadata.uuid());
+
+    // Delete removes the object, so a subsequent read of that location fails.
+    metadataService.deleteTableMetadata(metadataLocation);
+    assertThatThrownBy(() -> metadataService.readTableMetadata(metadataLocation))
+        .isInstanceOf(RuntimeException.class);
   }
 }
