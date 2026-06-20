@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.HttpResponse;
@@ -27,7 +28,6 @@ import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
-import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.iceberg.IcebergSchemaConverter;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
@@ -37,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.iceberg.MetadataUpdate;
@@ -83,11 +82,6 @@ public class IcebergRestCatalogService {
           Endpoint.V1_CREATE_TABLE,
           Endpoint.V1_UPDATE_TABLE,
           Endpoint.V1_DELETE_TABLE);
-
-  // All Iceberg REST endpoints currently authorize as metastore owner (see the
-  // @AuthorizeExpression on each route), so write-capable storage credentials are only handed to
-  // principals that could already write through the UC API.
-  private static final Set<CredentialContext.Privilege> READ_WRITE = CredentialContext.READ_WRITE;
 
   private final SchemaService schemaService;
   private final TableService tableService;
@@ -250,7 +244,9 @@ public class IcebergRestCatalogService {
 
     TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
     // Native Iceberg tables are writable through this catalog, so vend write-capable storage
-    // credentials; UniForm-derived metadata stays read-only.
+    // credentials; UniForm-derived metadata stays read-only. All write-capable routes authorize as
+    // metastore owner (see the @AuthorizeExpression on each), so READ_WRITE creds are only handed
+    // to principals that could already write through the UC API.
     Map<String, String> config =
         tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG
             ? tableConfigService.getTableConfig(tableMetadata, READ_WRITE)
