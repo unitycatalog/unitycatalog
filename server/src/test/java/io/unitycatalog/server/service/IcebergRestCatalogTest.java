@@ -32,11 +32,19 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
@@ -655,6 +663,94 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
           .isEqualTo(AlreadyExistsException.class.getSimpleName());
     }
+  }
+
+  @Test
+  public void testConcurrentCommitsSerializeWithCompareAndSwap()
+      throws ApiException, IOException, InterruptedException, ExecutionException, TimeoutException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+
+    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
+    String tablePath = tablesPath + "/" + TestUtils.TABLE_NAME;
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    String location = Files.createTempDirectory("iceberg-rest-concurrent").toUri().toString();
+
+    // Create the table; its current-schema-id is 0.
+    CreateTableRequest createRequest =
+        CreateTableRequest.builder()
+            .withName(TestUtils.TABLE_NAME)
+            .withSchema(schema)
+            .withLocation(location)
+            .build();
+    AggregatedHttpResponse createResp =
+        postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(createRequest));
+    assertThat(createResp.status().code()).isEqualTo(200);
+    LoadTableResponse created =
+        IcebergObjectMapper.mapper().readValue(createResp.contentUtf8(), LoadTableResponse.class);
+    assertThat(created.tableMetadata().metadataFileLocation()).contains("/metadata/00000-");
+
+    // Fire N commits at once. Each asserts the original current-schema-id (0) and bumps the schema
+    // to a new id, so the commits are mutually exclusive: only the first to land can both satisfy
+    // its requirement and win the metadata-location compare-and-swap in
+    // TableRepository#setIcebergMetadataLocation. A loser fails either because it raced and lost
+    // the CAS, or because it read post-winner state where assert-current-schema-id no longer holds;
+    // both surface as 409 CommitFailedException. The CyclicBarrier releases the threads together to
+    // exercise the CAS path when timing allows, but the outcome is deterministic either way.
+    int concurrency = 8;
+    Schema bumpedSchema =
+        new Schema(
+            Types.NestedField.required(1, "id", Types.LongType.get()),
+            Types.NestedField.optional(2, "added", Types.StringType.get()));
+    CyclicBarrier barrier = new CyclicBarrier(concurrency);
+    ExecutorService pool = Executors.newFixedThreadPool(concurrency);
+    List<Future<Integer>> futures = new ArrayList<>();
+    for (int i = 0; i < concurrency; i++) {
+      futures.add(
+          pool.submit(
+              () -> {
+                UpdateTableRequest request =
+                    new UpdateTableRequest(
+                        List.of(new UpdateRequirement.AssertCurrentSchemaID(0)),
+                        List.of(
+                            new MetadataUpdate.AddSchema(bumpedSchema),
+                            new MetadataUpdate.SetCurrentSchema(-1)));
+                String body = IcebergObjectMapper.mapper().writeValueAsString(request);
+                barrier.await();
+                return postJson(tablePath, body).status().code();
+              }));
+    }
+
+    int successes = 0;
+    int conflicts = 0;
+    for (Future<Integer> future : futures) {
+      int code = future.get(30, TimeUnit.SECONDS);
+      // A commit either wins (200) or loses cleanly (409 CommitFailedException); any other status
+      // would mean the contention surfaced as a server error.
+      assertThat(code).isIn(200, 409);
+      if (code == 200) {
+        successes++;
+      } else {
+        conflicts++;
+      }
+    }
+    pool.shutdown();
+    assertThat(pool.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+
+    // Exactly one commit wins and the rest lose cleanly: no lost updates, no double-applies.
+    assertThat(successes).isEqualTo(1);
+    assertThat(conflicts).isEqualTo(concurrency - 1);
+
+    // The single winner advanced the table to version 1 with the bumped schema; losers left no
+    // trace (their metadata files were rolled back), so the table is loadable and consistent.
+    AggregatedHttpResponse loadResp = client.get(tablePath).aggregate().join();
+    assertThat(loadResp.status().code()).isEqualTo(200);
+    LoadTableResponse loaded =
+        IcebergObjectMapper.mapper().readValue(loadResp.contentUtf8(), LoadTableResponse.class);
+    assertThat(loaded.tableMetadata().metadataFileLocation()).contains("/metadata/00001-");
+    assertThat(loaded.tableMetadata().schema().columns()).hasSize(2);
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
