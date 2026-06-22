@@ -319,6 +319,121 @@ public class UCViewProxySuite {
   }
 
   @Test
+  public void testDropViewReturnsFalseForListedButUnmappedViewKind() throws Exception {
+    // A listed-but-unmapped view kind (e.g. MATERIALIZED_VIEW) is treated as uniformly inert:
+    // dropView returns false WITHOUT issuing a delete, so a `DROP VIEW IF EXISTS` no-ops rather
+    // than the connector attempting to drop a kind it can't otherwise load or create. This is the
+    // subtler sibling of testDropViewReturnsFalseForRegularTableAndDoesNotDelete.
+    TableInfo ucMaterializedView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mtv1")
+            .tableType(TableType.MATERIALIZED_VIEW);
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mtv1"), eq(true), eq(true)))
+        .thenReturn(ucMaterializedView);
+
+    boolean dropped = proxyViews.dropView(Identifier.of(NAMESPACE, "mtv1"));
+
+    assertThat(dropped).isFalse();
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .deleteTable(org.mockito.ArgumentMatchers.anyString());
+  }
+
+  @Test
+  public void testLoadViewDegradesToEmptySchemaWhenColumnsNull() throws Exception {
+    // `TableInfo.columns` is nullable on the wire (a row written by an older or non-Spark client).
+    // toViewInfo's `Option(t.getColumns)` guard must degrade to an empty schema rather than NPE-ing
+    // out of the view-load path.
+    TableInfo ucMetricView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW)
+            .viewDefinition("version: \"0.1\"")
+            .columns(null)
+            .properties(Map.of("metric_view.from.type", "ASSET"));
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+        .thenReturn(ucMetricView);
+
+    ViewInfo loaded = proxyViews.loadView(Identifier.of(NAMESPACE, "mv1"));
+
+    assertThat(loaded.schema().fields()).isEmpty();
+    assertThat(loaded.queryColumnNames()).isEmpty();
+  }
+
+  @Test
+  public void testReplaceViewThrowsUnsupportedOperation() throws Exception {
+    ViewInfo viewInfo =
+        new ViewInfo.Builder()
+            .withColumns(new Column[] {Column.create("c", DataTypes.StringType, true)})
+            .withProperties(
+                Map.of(TableCatalog.PROP_TABLE_TYPE, TableSummary.METRIC_VIEW_TABLE_TYPE))
+            .withQueryText("version: \"0.1\"")
+            .withCurrentCatalog(CATALOG_NAME)
+            .withCurrentNamespace(NAMESPACE)
+            .build();
+
+    assertThatThrownBy(() -> proxyViews.replaceView(Identifier.of(NAMESPACE, "mv1"), viewInfo))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  public void testRenameViewThrowsUnsupportedOperation() throws Exception {
+    assertThatThrownBy(
+            () ->
+                proxyViews.renameView(
+                    Identifier.of(NAMESPACE, "mv1"), Identifier.of(NAMESPACE, "mv2")))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  public void testCreateViewDropsFunctionDependencies() throws Exception {
+    // UC OSS does not persist function dependencies, so toUcDependencyList silently drops them.
+    // Pin that the lossy drop is intentional: a ViewInfo carrying both a table dep and a function
+    // dep must produce a CreateTable payload containing only the table dep.
+    ViewInfo viewInfo =
+        new ViewInfo.Builder()
+            .withColumns(new Column[] {Column.create("c", DataTypes.StringType, true)})
+            .withProperties(
+                Map.of(TableCatalog.PROP_TABLE_TYPE, TableSummary.METRIC_VIEW_TABLE_TYPE))
+            .withQueryText("version: \"0.1\"")
+            .withCurrentCatalog(CATALOG_NAME)
+            .withCurrentNamespace(NAMESPACE)
+            .withViewDependencies(
+                org.apache.spark.sql.connector.catalog.DependencyList.of(
+                    new org.apache.spark.sql.connector.catalog.Dependency[] {
+                      org.apache.spark.sql.connector.catalog.Dependency.table(
+                          new String[] {"test_catalog", "test_schema", "events"}),
+                      org.apache.spark.sql.connector.catalog.Dependency.function(
+                          new String[] {"test_catalog", "test_schema", "my_udf"})
+                    }))
+            .build();
+
+    TableInfo ucMetricView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW)
+            .viewDefinition(viewInfo.queryText());
+    when(mockTablesApi.createTable(any(CreateTable.class))).thenReturn(ucMetricView);
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+        .thenReturn(ucMetricView);
+
+    proxyViews.createView(Identifier.of(NAMESPACE, "mv1"), viewInfo);
+
+    ArgumentCaptor<CreateTable> captor = ArgumentCaptor.forClass(CreateTable.class);
+    verify(mockTablesApi).createTable(captor.capture());
+    List<Dependency> sentDeps = captor.getValue().getViewDependencies().getDependencies();
+    // Only the table dependency survives; the function dependency was dropped.
+    assertThat(sentDeps).hasSize(1);
+    assertThat(sentDeps.get(0).getTable().getTableFullName())
+        .isEqualTo("test_catalog.test_schema.events");
+  }
+
+  @Test
   public void testCreateViewMapsConflictToViewAlreadyExistsException() throws Exception {
     when(mockTablesApi.createTable(any(CreateTable.class)))
         .thenThrow(new ApiException(409, "conflict"));
