@@ -1,5 +1,5 @@
 {
-  "default": "4.1.0",
+  "default": "4.0.0",
   "versions": [
     {"version": "4.0.0", "sourceDir": "scala-shims/spark-4.0"},
     {"version": "4.1.0", "sourceDir": "scala-shims/spark-4.1"},

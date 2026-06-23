@@ -19,6 +19,7 @@
 
 package org.apache.spark.sql.catalyst.analysis
 
+import io.unitycatalog.spark.compat.SparkViewCompatibility
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.FunctionIdentifier
 import org.apache.spark.sql.catalyst.analysis.ViewUtil.IcebergViewHelper
@@ -127,7 +128,7 @@ case class ResolveViews(spark: SparkSession) extends Rule[LogicalPlan] with Look
     // Substitute CTEs and Unresolved Ordinals within the view, then rewrite unresolved functions and relations
     qualifyTableIdentifiers(
       qualifyFunctionIdentifiers(
-        CTESubstitution.apply(plan),
+        SparkViewCompatibility.substituteCtesAndOrdinals(plan),
         catalogAndNamespace),
       catalogAndNamespace)
   }

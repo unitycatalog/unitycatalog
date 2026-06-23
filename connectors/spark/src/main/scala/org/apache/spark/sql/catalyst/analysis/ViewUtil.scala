@@ -19,8 +19,8 @@
 
 package org.apache.spark.sql.catalyst.analysis
 
+import io.unitycatalog.spark.compat.SparkViewCompatibility
 import org.apache.spark.sql.connector.catalog.{CatalogPlugin, Identifier, View, ViewCatalog}
-import org.apache.spark.sql.errors.QueryCompilationErrors
 
 object ViewUtil {
   def loadView(catalog: CatalogPlugin, ident: Identifier): Option[View] = catalog match {
@@ -42,7 +42,7 @@ object ViewUtil {
       case viewCatalog: ViewCatalog =>
         viewCatalog
       case _ =>
-        throw QueryCompilationErrors.missingCatalogViewsAbilityError(plugin)
+        throw SparkViewCompatibility.missingCatalogViewsAbilityError(plugin)
     }
   }
 }
