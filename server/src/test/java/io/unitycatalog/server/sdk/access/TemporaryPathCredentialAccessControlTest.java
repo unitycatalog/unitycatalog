@@ -66,6 +66,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
   private static final String READONLY_EMAIL = "readonly@example.com";
   private static final String READWRITE_EMAIL = "readwrite@example.com";
   private static final String CREATE_TABLE_EMAIL = "createtable@example.com";
+  private static final String EXTERNAL_USE_LOCATION_EMAIL = "externaluse@example.com";
   private static final String UNAUTHORIZED_EMAIL = "unauthorized@example.com";
   /** User dedicated to creating external tables and volumes for testing. */
   private static final String TABLE_VOLUME_OWNER_EMAIL = "table_volume_owner@example.com";
@@ -209,6 +210,9 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
         new TemporaryCredentialsApi(readWriteUserApiClient);
     TemporaryCredentialsApi createTableTempCredsApi =
         createTempCredApiForNewUser(CREATE_TABLE_EMAIL, List.of(Privileges.CREATE_EXTERNAL_TABLE));
+    TemporaryCredentialsApi externalUseLocationTempCredsApi =
+        createTempCredApiForNewUser(
+            EXTERNAL_USE_LOCATION_EMAIL, List.of(Privileges.EXTERNAL_USE_LOCATION));
     TemporaryCredentialsApi unauthorizedTempCredsApi =
         createTempCredApiForNewUser(UNAUTHORIZED_EMAIL, List.of());
 
@@ -224,6 +228,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
             new TestCase(readWriteTempCredsApi, TestCase.READ_WRITE),
             new TestCase(readOnlyTempCredsApi, TestCase.READONLY),
             new TestCase(createTableTempCredsApi, TestCase.CREATE_EXTERNAL_TABLE),
+            new TestCase(externalUseLocationTempCredsApi, TestCase.ALL_OPERATIONS),
             new TestCase(unauthorizedTempCredsApi, Set.of())));
 
     // For URLs outside the external location, only metastore owner can get credential
