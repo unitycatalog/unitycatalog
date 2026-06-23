@@ -66,7 +66,12 @@ public class TableRepository {
   private final FileOperations fileOperations;
   private final ServerProperties serverProperties;
   private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
-      new PagedListingHelper<>(TableInfoDAO.class);
+      new PagedListingHelper<>(
+          TableInfoDAO.class,
+          (cb, root) ->
+              cb.or(
+                  cb.equal(root.get("type"), TableType.MANAGED.toString()),
+                  cb.equal(root.get("type"), TableType.EXTERNAL.toString())));
 
   public TableRepository(
       Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
@@ -104,7 +109,7 @@ public class TableRepository {
         session -> {
           LOGGER.debug("Getting storage location of table by id: {}", tableId);
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
-          if (tableInfoDAO != null) {
+          if (tableInfoDAO != null && isTable(tableInfoDAO)) {
             return new TableStorageLocationInfo(
                 NormalizedURL.from(tableInfoDAO.getUrl()),
                 TableType.fromValue(tableInfoDAO.getType()));
@@ -242,6 +247,9 @@ public class TableRepository {
           String schemaName = parts[1];
           String tableName = parts[2];
           TableInfoDAO tableInfoDAO = findTableOrThrow(session, catalogName, schemaName, tableName);
+          if (!isTable(tableInfoDAO)) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + fullName);
+          }
           TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
               tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
@@ -573,6 +581,10 @@ public class TableRepository {
     return dao;
   }
 
+  private boolean isTable(TableInfoDAO tableInfoDAO) {
+    return tableInfoDAO != null && !TableType.VIEW.toString().equals(tableInfoDAO.getType());
+  }
+
   public TableInfo createTable(CreateTable createTable) {
     return createTableImpl(createTable, Optional.empty(), (session, dao, tableInfo) -> tableInfo);
   }
@@ -768,7 +780,12 @@ public class TableRepository {
   }
 
   public TableInfoDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
-    String hql = "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
+    String hql =
+        "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name AND t.type IN ('"
+            + TableType.MANAGED
+            + "', '"
+            + TableType.EXTERNAL
+            + "')";
     Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
     query.setParameter("schemaId", schemaId);
     query.setParameter("name", name);
@@ -873,7 +890,7 @@ public class TableRepository {
 
   public void deleteTable(Session session, UUID schemaId, String tableName) {
     TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
-    if (tableInfoDAO == null) {
+    if (!isTable(tableInfoDAO)) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {

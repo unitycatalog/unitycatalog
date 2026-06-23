@@ -26,6 +26,8 @@ public enum CliParams {
       "table_type",
       "The type of the table. Supported values are MANAGED and EXTERNAL. For create table only EXTERNAL tables are supported in this CLI example.",
       "table_type"),
+  SQL_QUERY(
+      "sql_query", "SQL query that constructs the view from tables or other views.", "sql_query"),
   DATA_SOURCE_FORMAT(
       "format",
       "The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO and TEXT.",

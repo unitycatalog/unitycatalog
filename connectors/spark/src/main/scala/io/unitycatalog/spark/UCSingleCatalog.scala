@@ -1,6 +1,6 @@
 package io.unitycatalog.spark
 
-import io.unitycatalog.client.api.{SchemasApi, TablesApi}
+import io.unitycatalog.client.api.{SchemasApi, TablesApi, ViewsApi}
 import io.unitycatalog.client.auth.TokenProvider
 import io.unitycatalog.client.model._
 import io.unitycatalog.client.model.TableInfo
@@ -16,7 +16,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
+import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -39,6 +39,7 @@ import scala.language.existentials
  */
 class UCSingleCatalog
   extends StagingTableCatalog
+  with ViewCatalog
   with SupportsNamespaces
   with Logging {
 
@@ -61,6 +62,7 @@ class UCSingleCatalog
   private[this] var deltaCatalogLoaded: Boolean = false
 
   @volatile private var delegate: TableCatalog = null
+  @volatile private var viewDelegate: ViewCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get(OptionsUtil.URI)
@@ -83,6 +85,7 @@ class UCSingleCatalog
     val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
       serverSidePlanningEnabled, apiClient, tablesApi)
     proxy.initialize(name, options)
+    viewDelegate = proxy
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
@@ -401,6 +404,30 @@ class UCSingleCatalog
     delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
   }
 
+  override def listViews(namespace: String*): Array[Identifier] = {
+    viewDelegate.listViews(namespace: _*)
+  }
+
+  override def loadView(ident: Identifier): View = {
+    viewDelegate.loadView(ident)
+  }
+
+  override def createView(viewInfo: org.apache.spark.sql.connector.catalog.ViewInfo): View = {
+    viewDelegate.createView(viewInfo)
+  }
+
+  override def alterView(ident: Identifier, changes: ViewChange*): View = {
+    throw new UnsupportedOperationException("Altering a view is not supported yet")
+  }
+
+  override def dropView(ident: Identifier): Boolean = {
+    viewDelegate.dropView(ident)
+  }
+
+  override def renameView(oldIdent: Identifier, newIdent: Identifier): Unit = {
+    throw new UnsupportedOperationException("Renaming a view is not supported yet")
+  }
+
   /** Only called for REPLACE TABLE and RTAS */
   override def stageReplace(
       ident: Identifier,
@@ -610,13 +637,15 @@ private class UCProxy(
     credScopedFsEnabled: Boolean,
     serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
-    tablesApi: TablesApi) extends TableCatalog with SupportsNamespaces with Logging {
+    tablesApi: TablesApi) extends TableCatalog with ViewCatalog with SupportsNamespaces with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
+  private[this] var viewsApi: ViewsApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
     schemasApi = new SchemasApi(apiClient)
+    viewsApi = new ViewsApi(apiClient)
   }
 
   override def name(): String = {
@@ -940,5 +969,96 @@ private class UCProxy(
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
     schemasApi.deleteSchema(name + "." + namespace.head, cascade)
     true
+  }
+
+  override def listViews(namespace: String*): Array[Identifier] = {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace.toArray)
+
+    val catalogName = this.name
+    val schemaName = namespace.head
+    val maxResults = 0
+    val pageToken: String = null
+    val response: ListViewsResponse =
+      viewsApi.listViews(catalogName, schemaName, maxResults, pageToken)
+    response.getViews.toSeq.map(view => Identifier.of(namespace.toArray, view.getName)).toArray
+  }
+
+  override def loadView(ident: Identifier): View = {
+    val t = try {
+      viewsApi.getView(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        throw new NoSuchTableException(ident)
+    }
+    val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
+    val partitionCols = scala.collection.mutable.ArrayBuffer.empty[(String, Int)]
+    val fields = t.getColumns.asScala.map { col =>
+      Option(col.getPartitionIndex).foreach { index =>
+        partitionCols += col.getName -> index
+      }
+      StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
+        .withComment(col.getComment)
+    }.toArray
+
+    val view = CatalogTable(
+      identifier,
+      tableType = if (t.getViewType == TableType.VIEW) {
+        CatalogTableType.VIEW
+      } else {
+        throw new NotImplementedError("Materialized views are not implemented.")
+      },
+      storage = CatalogStorageFormat.empty,
+      schema = StructType(fields),
+      viewText = Some(t.getSqlQuery),
+      createTime = t.getCreatedAt,
+      tracksPartitionsInCatalog = false,
+      partitionColumnNames = partitionCols.sortBy(_._2).map(_._1).toSeq
+    )
+
+    SparkView(view)
+  }
+
+  override def createView(viewInfo: org.apache.spark.sql.connector.catalog.ViewInfo): View = {
+    val ident = viewInfo.ident()
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+
+    val createView = new CreateView()
+    createView.setName(ident.name())
+    createView.setSchemaName(ident.namespace().head)
+    createView.setCatalogName(this.name)
+
+    createView.setViewType(TableType.VIEW)
+    createView.setSqlQuery(viewInfo.sql())
+
+    val columns: Seq[ColumnInfo] = viewInfo.schema().fields.toSeq.zipWithIndex.map { case (field, i) =>
+      val column = new ColumnInfo()
+      column.setName(field.name)
+      if (field.getComment().isDefined) {
+        column.setComment(field.getComment.get)
+      }
+      column.setNullable(field.nullable)
+      column.setTypeText(field.dataType.simpleString)
+      column.setTypeName(convertDataTypeToTypeName(field.dataType))
+      column.setTypeJson(field.dataType.json)
+      column.setPosition(i)
+      column
+    }
+    createView.setColumns(columns)
+    viewsApi.createView(createView)
+    loadView(ident)
+  }
+
+  override def alterView(ident: Identifier, changes: ViewChange*): View = {
+    throw new UnsupportedOperationException("Altering a view is not supported yet")
+  }
+
+  override def dropView(ident: Identifier): Boolean = {
+    val ret =
+      viewsApi.deleteView(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    if (ret == 200) true else false
+  }
+
+  override def renameView(oldIdent: Identifier, newIdent: Identifier): Unit = {
+    throw new UnsupportedOperationException("Renaming a view is not supported yet")
   }
 }

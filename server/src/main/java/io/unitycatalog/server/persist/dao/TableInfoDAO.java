@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.ViewInfo;
 import io.unitycatalog.server.utils.NormalizedURL;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -61,6 +62,9 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "data_source_format")
   private String dataSourceFormat;
 
+  @Column(name = "view_sql_query")
+  private String viewSqlQuery;
+
   @Column(name = "comment", length = 65535)
   private String comment;
 
@@ -114,6 +118,24 @@ public class TableInfoDAO extends IdentifiableDAO {
         .build();
   }
 
+  public static TableInfoDAO from(ViewInfo viewInfo, UUID schemaId) {
+    return TableInfoDAO.builder()
+        .id(UUID.fromString(viewInfo.getViewId()))
+        .name(viewInfo.getName())
+        .comment(viewInfo.getComment())
+        .owner(viewInfo.getOwner())
+        .createdAt(viewInfo.getCreatedAt() != null ? new Date(viewInfo.getCreatedAt()) : new Date())
+        .createdBy(viewInfo.getCreatedBy())
+        .updatedAt(viewInfo.getUpdatedAt() != null ? new Date(viewInfo.getUpdatedAt()) : null)
+        .updatedBy(viewInfo.getUpdatedBy())
+        .columnCount(viewInfo.getColumns() != null ? viewInfo.getColumns().size() : 0)
+        .type(viewInfo.getViewType().toString())
+        .columns(ColumnInfoDAO.fromList(viewInfo.getColumns()))
+        .schemaId(schemaId)
+        .viewSqlQuery(viewInfo.getSqlQuery())
+        .build();
+  }
+
   public TableInfo toTableInfo(boolean fetchColumns, String catalogName, String schemaName) {
     TableInfo tableInfo =
         new TableInfo()
@@ -149,5 +171,26 @@ public class TableInfoDAO extends IdentifiableDAO {
     setUniformIcebergMetadataLocation(metadataLocation.toString());
     setUniformIcebergConvertedDeltaVersion(convertedDeltaVersion);
     setUniformIcebergConvertedDeltaTimestamp(new Date(convertedDeltaTimestampMs));
+  }
+
+  public ViewInfo toViewInfo(boolean fetchColumns, String catalogName, String schemaName) {
+    ViewInfo viewInfo =
+        new ViewInfo()
+            .viewId(getId().toString())
+            .name(getName())
+            .catalogName(catalogName)
+            .schemaName(schemaName)
+            .viewType(TableType.valueOf(type))
+            .sqlQuery(viewSqlQuery)
+            .comment(comment)
+            .owner(owner)
+            .createdAt(createdAt != null ? createdAt.getTime() : null)
+            .createdBy(createdBy)
+            .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
+            .updatedBy(updatedBy);
+    if (fetchColumns) {
+      viewInfo.columns(ColumnInfoDAO.toList(columns));
+    }
+    return viewInfo;
   }
 }

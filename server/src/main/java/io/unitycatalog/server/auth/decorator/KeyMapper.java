@@ -8,6 +8,7 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
+import static io.unitycatalog.server.model.SecurableType.VIEW;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 import io.unitycatalog.server.model.CatalogInfo;
@@ -16,6 +17,7 @@ import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.ViewInfo;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.CredentialRepository;
@@ -26,6 +28,7 @@ import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.ViewRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -119,6 +122,7 @@ public class KeyMapper {
   private final CatalogRepository catalogRepository;
   private final SchemaRepository schemaRepository;
   private final TableRepository tableRepository;
+  private final ViewRepository viewRepository;
   private final VolumeRepository volumeRepository;
   private final FunctionRepository functionRepository;
   private final ModelRepository modelRepository;
@@ -131,6 +135,7 @@ public class KeyMapper {
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.tableRepository = repositories.getTableRepository();
+    this.viewRepository = repositories.getViewRepository();
     this.volumeRepository = repositories.getVolumeRepository();
     this.functionRepository = repositories.getFunctionRepository();
     this.modelRepository = repositories.getModelRepository();
@@ -187,6 +192,34 @@ public class KeyMapper {
       resourceIds.put(TABLE, tableId);
       resourceIds.put(SCHEMA, schemaId);
       resourceIds.put(CATALOG, catalogId);
+    }
+
+    if (resourceKeys.containsKey(CATALOG)
+        && resourceKeys.containsKey(SCHEMA)
+        && resourceKeys.containsKey(VIEW)) {
+      String fullName =
+          resourceKeys.get(CATALOG) + "." + resourceKeys.get(SCHEMA) + "." + resourceKeys.get(VIEW);
+      ViewInfo view = viewRepository.getView(fullName);
+      resourceIds.put(VIEW, UUID.fromString(view.getViewId()));
+    }
+
+    // If only VIEW is specified, assuming its value is a full view name (including catalog and
+    // schema)
+    if (!resourceKeys.containsKey(CATALOG)
+        && !resourceKeys.containsKey(SCHEMA)
+        && resourceKeys.containsKey(VIEW)) {
+      String fullName = (String) resourceKeys.get(VIEW);
+      // If the full name contains a dot, we assume it's a full name, otherwise we assume it's an id
+      ViewInfo view =
+          fullName.contains(".")
+              ? viewRepository.getView(fullName)
+              : viewRepository.getViewById(fullName);
+      String fullSchemaName = view.getCatalogName() + "." + view.getSchemaName();
+      SchemaInfo schema = schemaRepository.getSchema(fullSchemaName);
+      CatalogInfo catalog = catalogRepository.getCatalog(view.getCatalogName());
+      resourceIds.put(VIEW, UUID.fromString(view.getViewId()));
+      resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
+      resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
     }
 
     if (resourceKeys.containsKey(CATALOG)

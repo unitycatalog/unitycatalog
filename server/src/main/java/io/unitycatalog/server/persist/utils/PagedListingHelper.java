@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
 
@@ -23,9 +24,16 @@ import org.hibernate.query.Query;
 public class PagedListingHelper<T extends IdentifiableDAO> {
 
   private final Class<T> entityClass;
+  private final BiFunction<CriteriaBuilder, Root<T>, Predicate> filter;
 
   public PagedListingHelper(Class<T> entityClass) {
+    this(entityClass, null);
+  }
+
+  public PagedListingHelper(
+      Class<T> entityClass, BiFunction<CriteriaBuilder, Root<T>, Predicate> filter) {
     this.entityClass = entityClass;
+    this.filter = filter;
   }
 
   // @VisibleForTesting
@@ -77,6 +85,9 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
     Root<T> root = cr.from(entityClass);
 
     List<Predicate> predicates = new ArrayList<>();
+    if (filter != null) {
+      predicates.add(filter.apply(cb, root));
+    }
     Optional<String> parentEntityIdColumn = IdentifiableDAO.getParentIdColumnName(entityClass);
     parentEntityIdColumn.ifPresent(s -> predicates.add(cb.equal(root.get(s), parentEntityId)));
     predicates.add(
