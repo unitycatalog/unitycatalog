@@ -9,6 +9,7 @@ import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.ViewInfo;
 import io.unitycatalog.server.model.VolumeInfo;
 
 import java.util.HashMap;
@@ -169,6 +170,7 @@ public class ResultFilter {
   private UUID resolveResourceId(SecurableType securableType, Object item) {
     String id = switch (securableType) {
       case TABLE -> ((TableInfo)item).getTableId();
+      case VIEW -> ((ViewInfo)item).getViewId();
       case VOLUME -> ((VolumeInfo)item).getVolumeId();
       case FUNCTION -> ((FunctionInfo)item).getFunctionId();
       case REGISTERED_MODEL -> ((RegisteredModelInfo)item).getId();

@@ -127,7 +127,7 @@ case class ResolveViews(spark: SparkSession) extends Rule[LogicalPlan] with Look
     // Substitute CTEs and Unresolved Ordinals within the view, then rewrite unresolved functions and relations
     qualifyTableIdentifiers(
       qualifyFunctionIdentifiers(
-        SubstituteUnresolvedOrdinals.apply(CTESubstitution.apply(plan)),
+        CTESubstitution.apply(plan),
         catalogAndNamespace),
       catalogAndNamespace)
   }

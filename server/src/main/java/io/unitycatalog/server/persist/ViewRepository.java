@@ -183,10 +183,7 @@ public class ViewRepository {
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
     SchemaInfoDAO schemaInfo =
-        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-    }
+        repositories.getSchemaRepository().getSchemaDaoOrThrow(session, catalogName, schemaName);
     return schemaInfo.getId();
   }
 

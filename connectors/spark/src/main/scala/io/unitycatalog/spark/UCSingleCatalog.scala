@@ -412,7 +412,7 @@ class UCSingleCatalog
     viewDelegate.loadView(ident)
   }
 
-  override def createView(viewInfo: ViewInfo): View = {
+  override def createView(viewInfo: org.apache.spark.sql.connector.catalog.ViewInfo): View = {
     viewDelegate.createView(viewInfo)
   }
 
@@ -1018,7 +1018,7 @@ private class UCProxy(
     SparkView(view)
   }
 
-  override def createView(viewInfo: ViewInfo): View = {
+  override def createView(viewInfo: org.apache.spark.sql.connector.catalog.ViewInfo): View = {
     val ident = viewInfo.ident()
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
 

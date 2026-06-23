@@ -582,8 +582,7 @@ public class TableRepository {
   }
 
   private boolean isTable(TableInfoDAO tableInfoDAO) {
-    return tableInfoDAO != null
-        && !TableType.VIEW.toString().equals(tableInfoDAO.getType());
+    return tableInfoDAO != null && !TableType.VIEW.toString().equals(tableInfoDAO.getType());
   }
 
   public TableInfo createTable(CreateTable createTable) {

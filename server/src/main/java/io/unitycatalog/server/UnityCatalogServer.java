@@ -179,7 +179,7 @@ public class UnityCatalogServer {
     SchemaService schemaService = new SchemaService(authorizer, repositories, serverProperties);
     VolumeService volumeService = new VolumeService(authorizer, repositories, serverProperties);
     TableService tableService = new TableService(authorizer, repositories, serverProperties);
-    ViewService viewService = new ViewService(authorizer, repositories);
+    ViewService viewService = new ViewService(authorizer, repositories, serverProperties);
     StagingTableService stagingTableService =
         new StagingTableService(authorizer, repositories, serverProperties);
     FunctionService functionService =
