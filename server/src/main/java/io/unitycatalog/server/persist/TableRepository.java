@@ -71,7 +71,8 @@ public class TableRepository {
           (cb, root) ->
               cb.or(
                   cb.equal(root.get("type"), TableType.MANAGED.toString()),
-                  cb.equal(root.get("type"), TableType.EXTERNAL.toString())));
+                  cb.equal(root.get("type"), TableType.EXTERNAL.toString()),
+                  cb.equal(root.get("type"), TableType.METRIC_VIEW.toString())));
 
   public TableRepository(
       Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
@@ -785,6 +786,8 @@ public class TableRepository {
             + TableType.MANAGED
             + "', '"
             + TableType.EXTERNAL
+            + "', '"
+            + TableType.METRIC_VIEW
             + "')";
     Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
     query.setParameter("schemaId", schemaId);

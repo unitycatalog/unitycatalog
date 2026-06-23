@@ -151,7 +151,8 @@ public class AwsCredentialVendor {
         return Optional.of(config.getEndpointUrl());
       }
     }
-    if (awsS3MasterRoleConfig.getEndpointUrl() != null
+    if (awsS3MasterRoleConfig != null
+        && awsS3MasterRoleConfig.getEndpointUrl() != null
         && !awsS3MasterRoleConfig.getEndpointUrl().isEmpty()) {
       return Optional.of(awsS3MasterRoleConfig.getEndpointUrl());
     }
