@@ -8,6 +8,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import lombok.Getter;
@@ -141,5 +142,19 @@ public class AwsCredentialVendor {
               context.getStorageBase(), storageBase -> createPerBucketCredentialGenerator(config));
     }
     return generator.generate(context);
+  }
+
+  public Optional<String> resolveS3EndpointUrl(CredentialContext context) {
+    if (context.getStorageBase() != null) {
+      S3StorageConfig config = perBucketS3Configs.get(context.getStorageBase());
+      if (config != null && config.getEndpointUrl() != null && !config.getEndpointUrl().isEmpty()) {
+        return Optional.of(config.getEndpointUrl());
+      }
+    }
+    if (awsS3MasterRoleConfig.getEndpointUrl() != null
+        && !awsS3MasterRoleConfig.getEndpointUrl().isEmpty()) {
+      return Optional.of(awsS3MasterRoleConfig.getEndpointUrl());
+    }
+    return Optional.empty();
   }
 }

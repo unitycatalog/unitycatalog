@@ -73,6 +73,7 @@ public class CloudCredentialVendor {
     if (awsSessionCredentials.expiration() != null) {
       temporaryCredentials.expirationTime(awsSessionCredentials.expiration().toEpochMilli());
     }
+    awsCredentialVendor.resolveS3EndpointUrl(context).ifPresent(temporaryCredentials::endpointUrl);
     return temporaryCredentials;
   }
 }

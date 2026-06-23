@@ -293,11 +293,17 @@ public class CredPropsUtil {
   private static Map<String, String> s3FixedCredProps(
       boolean credScopedFsEnabled, Configuration hadoopConf, TemporaryCredentials tempCreds) {
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
-    return new S3PropsBuilder(credScopedFsEnabled, hadoopConf)
-        .set("fs.s3a.access.key", awsCred.getAccessKeyId())
-        .set("fs.s3a.secret.key", awsCred.getSecretAccessKey())
-        .set("fs.s3a.session.token", awsCred.getSessionToken())
-        .build();
+    S3PropsBuilder builder =
+        new S3PropsBuilder(credScopedFsEnabled, hadoopConf)
+            .set("fs.s3a.access.key", awsCred.getAccessKeyId())
+            .set("fs.s3a.secret.key", awsCred.getSecretAccessKey())
+            .set("fs.s3a.session.token", awsCred.getSessionToken());
+    if (tempCreds.getEndpointUrl() != null && !tempCreds.getEndpointUrl().isEmpty()) {
+      builder
+          .set("fs.s3a.endpoint", tempCreds.getEndpointUrl())
+          .set(UCHadoopConfConstants.S3A_INIT_ENDPOINT_URL, tempCreds.getEndpointUrl());
+    }
+    return builder.build();
   }
 
   private static S3PropsBuilder s3TempCredPropsBuilder(
@@ -322,6 +328,12 @@ public class CredPropsUtil {
       builder.set(
           UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME,
           String.valueOf(tempCreds.getExpirationTime()));
+    }
+
+    if (tempCreds.getEndpointUrl() != null && !tempCreds.getEndpointUrl().isEmpty()) {
+      builder
+          .set("fs.s3a.endpoint", tempCreds.getEndpointUrl())
+          .set(UCHadoopConfConstants.S3A_INIT_ENDPOINT_URL, tempCreds.getEndpointUrl());
     }
 
     return builder;

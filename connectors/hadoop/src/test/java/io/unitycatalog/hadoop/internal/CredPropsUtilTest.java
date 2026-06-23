@@ -1022,6 +1022,29 @@ class CredPropsUtilTest {
     return TokenProvider.create(Map.of("type", "static", "token", "tok"));
   }
 
+  @Test
+  void s3EndpointUrlAppliedFromTemporaryCredentials() {
+    TemporaryCredentials creds =
+        s3Creds().endpointUrl("http://localhost:9000").expirationTime(Long.MAX_VALUE);
+
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false,
+            true,
+            new Configuration(false),
+            "s3",
+            "http://uc",
+            null,
+            "tid",
+            TableOperation.READ_WRITE,
+            creds,
+            Map.of());
+
+    assertThat(props.get("fs.s3a.endpoint")).isEqualTo("http://localhost:9000");
+    assertThat(props.get(UCHadoopConfConstants.S3A_INIT_ENDPOINT_URL))
+        .isEqualTo("http://localhost:9000");
+  }
+
   private static TemporaryCredentials s3Creds() {
     return new TemporaryCredentials()
         .awsTempCredentials(

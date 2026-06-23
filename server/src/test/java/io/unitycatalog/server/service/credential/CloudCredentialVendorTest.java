@@ -114,6 +114,35 @@ public class CloudCredentialVendorTest {
   }
 
   @Test
+  public void testGenerateS3TemporaryCredentialsIncludeEndpointUrl() {
+    final String ACCESS_KEY = "accessKey";
+    final String SECRET_KEY = "secretKey";
+    final String SESSION_TOKEN = "sessionToken";
+    final String ENDPOINT_URL = "http://localhost:9000";
+    when(serverProperties.getS3Configurations())
+        .thenReturn(
+            Map.of(
+                NormalizedURL.from("s3://storageBase"),
+                S3StorageConfig.builder()
+                    .accessKey(ACCESS_KEY)
+                    .secretKey(SECRET_KEY)
+                    .sessionToken(SESSION_TOKEN)
+                    .endpointUrl(ENDPOINT_URL)
+                    .build()));
+    AwsCredentialVendor awsCredentialVendor = new AwsCredentialVendor(serverProperties);
+    credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
+    TemporaryCredentials s3TemporaryCredentials =
+        vendCredential("s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT));
+    assertThat(s3TemporaryCredentials.getAwsTempCredentials())
+        .isEqualTo(
+            new AwsCredentials()
+                .accessKeyId(ACCESS_KEY)
+                .secretAccessKey(SECRET_KEY)
+                .sessionToken(SESSION_TOKEN));
+    assertThat(s3TemporaryCredentials.getEndpointUrl()).isEqualTo(ENDPOINT_URL);
+  }
+
+  @Test
   public void testGenerateAzureTemporaryCredentials() {
     final String CLIENT_ID = "clientId";
     final String CLIENT_SECRET = "clientSecret";
