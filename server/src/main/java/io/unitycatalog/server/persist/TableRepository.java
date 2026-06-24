@@ -649,8 +649,8 @@ public class TableRepository {
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
           // `tableUUID` is the table's primary key. The shape is uniform across the three
-          // creatable branches (external, managed, metric view); the only divergence is the
-          // source of the UUID (random for external/metric-view, staging-table id for managed).
+          // creatable branches (external, managed, view-like rows); the only divergence is the
+          // source of the UUID (random for external/views, staging-table id for managed).
           // The string form is generated exactly once below at `tableInfo.tableId(...)`.
           UUID tableUUID;
           NormalizedURL storageLocation;
@@ -682,6 +682,10 @@ public class TableRepository {
           } else if (tableType == TableType.METRIC_VIEW) {
             storageLocation = null;
             validateMetricView(createTable);
+            tableUUID = UUID.randomUUID();
+          } else if (tableType == TableType.VIEW) {
+            storageLocation = null;
+            validateSqlView(createTable, columnInfos);
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
@@ -764,6 +768,19 @@ public class TableRepository {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "view_dependencies must contain at least one entry for metric view");
+    }
+  }
+
+  private static void validateSqlView(CreateTable createTable, List<ColumnInfo> columnInfos) {
+    if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "view_definition is required for view");
+    }
+    if (columnInfos == null || columnInfos.isEmpty()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "columns are required for view");
+    }
+    if (createTable.getStorageLocation() != null && !createTable.getStorageLocation().isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "storage_location must not be provided for view");
     }
   }
 

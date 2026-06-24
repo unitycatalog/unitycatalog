@@ -27,6 +27,7 @@ lazy val deltaVersion = sys.props.getOrElse("deltaVersion", "4.2.0")
 // queryable in SBT via `show spark/sparkVersion`.
 lazy val sparkVersion = CrossSparkVersions.getSparkArtifactVersion()
 lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().shortVersion
+lazy val icebergSparkRuntimeVersion = "1.11.0"
 
 // delta-spark is only needed for tests. When UC is published to local Maven before
 // Delta is built (e.g. CI pre-Delta publishM2 step), the matching Delta artifact may
@@ -34,6 +35,17 @@ lazy val sparkMajorMinorVersion = CrossSparkVersions.getSparkVersionSpec().short
 def deltaSparkTestDeps: Seq[ModuleID] =
   if (sys.props.getOrElse("skipDeltaSpark", "false").toBoolean) Seq.empty
   else Seq("io.delta" %% s"delta-spark_$sparkMajorMinorVersion" % deltaVersion % Test)
+
+def icebergSparkRuntimeTestDeps: Seq[ModuleID] =
+  sparkMajorMinorVersion match {
+    case "4.0" | "4.1" =>
+      Seq(
+        "org.apache.iceberg" %
+          s"iceberg-spark-runtime-${sparkMajorMinorVersion}_2.13" %
+          icebergSparkRuntimeVersion %
+          Test)
+    case _ => Seq.empty
+  }
 
 // Apache Snapshots resolver is in build/sbt-config/repositories (global).
 // No per-module sparkResolvers needed.
@@ -667,7 +679,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-    ) ++ deltaSparkTestDeps,
+    ) ++ deltaSparkTestDeps ++ icebergSparkRuntimeTestDeps,
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",

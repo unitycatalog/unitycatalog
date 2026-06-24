@@ -32,10 +32,6 @@ public class FileIOFactory {
 
   private final StorageCredentialVendor storageCredentialVendor;
   private final Map<NormalizedURL, S3StorageConfig> s3Configurations;
-  // FIXME!! privileges are defaulted to READ only here for now as Iceberg REST impl doesn't
-  //  support write
-  private final Set<CredentialContext.Privilege> privileges =
-      Set.of(CredentialContext.Privilege.SELECT);
 
   public FileIOFactory(
       StorageCredentialVendor storageCredentialVendor, ServerProperties serverProperties) {
@@ -45,15 +41,20 @@ public class FileIOFactory {
 
   // TODO: Cache fileIOs
   public FileIO getFileIO(NormalizedURL location) {
+    return getFileIO(location, Set.of(CredentialContext.Privilege.SELECT));
+  }
+
+  public FileIO getFileIO(NormalizedURL location, Set<CredentialContext.Privilege> privileges) {
     return switch (UriScheme.fromURI(location.toUri())) {
-      case ABFS, ABFSS -> getADLSFileIO(location);
-      case GS -> getGCSFileIO(location);
-      case S3 -> getS3FileIO(location);
+      case ABFS, ABFSS -> getADLSFileIO(location, privileges);
+      case GS -> getGCSFileIO(location, privileges);
+      case S3 -> getS3FileIO(location, privileges);
       case FILE, NULL -> new SimpleLocalFileIO();
     };
   }
 
-  protected ADLSFileIO getADLSFileIO(NormalizedURL location) {
+  protected ADLSFileIO getADLSFileIO(
+      NormalizedURL location, Set<CredentialContext.Privilege> privileges) {
     AzureUserDelegationSAS credential =
         storageCredentialVendor.vendCredential(location, privileges).getAzureUserDelegationSas();
     ADLSLocationUtils.ADLSLocationParts locationParts = ADLSLocationUtils.parseLocation(location);
@@ -69,7 +70,8 @@ public class FileIOFactory {
   }
 
   @SneakyThrows
-  protected GCSFileIO getGCSFileIO(NormalizedURL location) {
+  protected GCSFileIO getGCSFileIO(
+      NormalizedURL location, Set<CredentialContext.Privilege> privileges) {
     GcpOauthToken gcpToken =
         storageCredentialVendor.vendCredential(location, privileges).getGcpOauthToken();
 
@@ -82,12 +84,15 @@ public class FileIOFactory {
     return result;
   }
 
-  protected S3FileIO getS3FileIO(NormalizedURL location) {
+  protected S3FileIO getS3FileIO(
+      NormalizedURL location, Set<CredentialContext.Privilege> privileges) {
     S3StorageConfig s3StorageConfig = s3Configurations.get(location.getStorageBase());
 
     S3FileIO s3FileIO =
-        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(location),
-            s3StorageConfig.getRegion()));
+        new S3FileIO(
+            () ->
+                getS3Client(
+                    getAwsCredentialsProvider(location, privileges), s3StorageConfig.getRegion()));
 
     s3FileIO.initialize(Map.of());
 
@@ -102,7 +107,8 @@ public class FileIOFactory {
         .build();
   }
 
-  private AwsCredentialsProvider getAwsCredentialsProvider(NormalizedURL location) {
+  private AwsCredentialsProvider getAwsCredentialsProvider(
+      NormalizedURL location, Set<CredentialContext.Privilege> privileges) {
     try {
       AwsCredentials awsSessionCredentials =
           storageCredentialVendor.vendCredential(location, privileges).getAwsTempCredentials();
