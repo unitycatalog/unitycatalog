@@ -183,7 +183,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         // This code block is not called immediately. It is called later as part of delegate.serve()
         LOGGER.debug("Authorization peekData invoked.");
 
-        peekDataHandler.processPeekData(data);
+        // Only evaluate authorization after the payload parses as complete JSON. peekData may
+        // deliver the body in multiple chunks; evaluating on every chunk (including ones that
+        // do not yet end with '}') leaves resourceKeys empty and causes authorizeAny NPEs.
+        if (!peekDataHandler.processPeekData(data)) {
+          return;
+        }
         Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
         evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
       });

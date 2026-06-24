@@ -59,6 +59,9 @@ public class UnityAccessEvaluator {
     // TODO: Find a better way to deal with the varargs authorizeAny() method.
     UUID principalId = (UUID) parameters[0];
     UUID resource = (UUID) parameters[1];
+    if (resource == null) {
+      return false;
+    }
     Privileges[] privileges = new Privileges[parameters.length - 2];
     System.arraycopy(parameters, 2, privileges, 0, privileges.length);
     return authorizer.authorizeAny(principalId, resource, privileges);
@@ -68,6 +71,9 @@ public class UnityAccessEvaluator {
     // TODO: Find a better way to deal with the varargs authorizeAll() method.
     UUID principalId = (UUID) parameters[0];
     UUID resource = (UUID) parameters[1];
+    if (resource == null) {
+      return false;
+    }
     Privileges[] privileges = new Privileges[parameters.length - 2];
     System.arraycopy(parameters, 2, privileges, 0, privileges.length);
     return authorizer.authorizeAll(principalId, resource, privileges);
