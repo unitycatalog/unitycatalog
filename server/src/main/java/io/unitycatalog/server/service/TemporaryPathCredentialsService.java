@@ -77,7 +77,7 @@ public class TemporaryPathCredentialsService {
          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
          #authorizeAny(#principal, #registered_model, OWNER, EXECUTE)) ||
         (#external_location != null &&
-         #authorizeAny(#principal, #external_location, OWNER, READ_FILES, EXTERNAL_USE_LOCATION))
+         #authorizeAny(#principal, #external_location, OWNER, READ_FILES))
       )
       : #operation == 'PATH_READ_WRITE' ? (
         #authorize(#principal, #metastore, OWNER) ||
@@ -96,19 +96,13 @@ public class TemporaryPathCredentialsService {
          #authorize(#principal, #registered_model, OWNER)) ||
         (#external_location != null &&
          (#authorize(#principal, #external_location, OWNER) ||
-          #authorizeAll(#principal, #external_location, READ_FILES, WRITE_FILES) ||
-          #authorize(#principal, #external_location, EXTERNAL_USE_LOCATION)))
+          #authorizeAll(#principal, #external_location, READ_FILES, WRITE_FILES)))
       )
       : #operation == 'PATH_CREATE_TABLE' ? (
         #no_overlap_with_data_securable &&
         (#authorize(#principal, #metastore, OWNER) ||
          (#external_location != null &&
-          #authorizeAny(
-              #principal,
-              #external_location,
-              OWNER,
-              CREATE_EXTERNAL_TABLE,
-              EXTERNAL_USE_LOCATION)))
+          #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE)))
       )
       : #deny
       """)
