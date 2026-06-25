@@ -85,6 +85,15 @@ public class UCHadoopConfConstants {
   public static final String UC_PATH_KEY = "fs.unitycatalog.path";
   public static final String UC_PATH_OPERATION_KEY = "fs.unitycatalog.path.operation";
 
+  // Multi-location credential scopes. Scope i in [0, count) carries the location prefix it
+  // covers plus a complete set of Hadoop credential properties under its prop. namespace;
+  // CredScopedFileSystem overlays the covering scope's properties for paths the table's own
+  // credential does not cover.
+  public static final String UC_CRED_SCOPE_COUNT_KEY = "fs.unitycatalog.credscope.count";
+  public static final String UC_CRED_SCOPE_PREFIX = "fs.unitycatalog.credscope.";
+  public static final String UC_CRED_SCOPE_PREFIX_SUFFIX = ".prefix";
+  public static final String UC_CRED_SCOPE_PROP_SUFFIX = ".prop.";
+
   // Key indicating the credential request type, table or path.
   public static final String UC_CREDENTIALS_TYPE_KEY = "fs.unitycatalog.credentials.type";
   public static final String UC_CREDENTIALS_TYPE_TABLE_VALUE = "table";

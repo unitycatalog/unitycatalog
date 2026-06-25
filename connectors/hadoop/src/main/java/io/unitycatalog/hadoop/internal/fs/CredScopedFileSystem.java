@@ -84,8 +84,11 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    CredId key = CredId.create(conf, () -> new DefaultCredId(uri, conf));
-    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
+    // Paths covered by another credential scope get that scope's credentials overlaid, yielding a
+    // distinct key and delegate per scope.
+    Configuration effectiveConf = CredentialScopes.selectConf(uri, conf);
+    CredId key = CredId.create(effectiveConf, () -> new DefaultCredId(uri, effectiveConf));
+    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, effectiveConf));
   }
 
   /**

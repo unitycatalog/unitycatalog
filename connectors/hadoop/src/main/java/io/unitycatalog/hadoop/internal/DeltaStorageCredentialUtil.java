@@ -96,7 +96,7 @@ public final class DeltaStorageCredentialUtil {
     return best;
   }
 
-  static boolean prefixCovers(String location, String prefix) {
+  public static boolean prefixCovers(String location, String prefix) {
     String l = stripTrailingSlashes(location);
     String p = stripTrailingSlashes(prefix);
     return !p.isEmpty() && (l.equals(p) || (l.startsWith(p) && l.charAt(p.length()) == '/'));
