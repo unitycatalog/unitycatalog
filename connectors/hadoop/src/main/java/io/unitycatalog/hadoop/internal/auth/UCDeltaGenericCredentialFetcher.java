@@ -4,10 +4,12 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.DeltaStorageCredentialUtil;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
+import java.util.List;
 
 /** Adapts the UC Delta temporary credentials SDK API for Hadoop token providers. */
 final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher {
@@ -39,9 +41,13 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
         id.catalog(),
         id.schema(),
         id.table());
+    DeltaStorageCredential primary =
+        DeltaStorageCredentialUtil.selectForLocation(
+            credId.location(), response.getStorageCredentials());
+    List<ScopedCredential> additionalScopedCredentials =
+        DeltaStorageCredentialUtil.toAdditionalScopedCredentials(
+            primary, response.getStorageCredentials());
     return new GenericCredential(
-        DeltaStorageCredentialUtil.toTemporaryCredentials(
-            DeltaStorageCredentialUtil.selectForLocation(
-                credId.location(), response.getStorageCredentials())));
+        DeltaStorageCredentialUtil.toTemporaryCredentials(primary), additionalScopedCredentials);
   }
 }

@@ -5,18 +5,31 @@ import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 /**
  * Internal credential wrapper used by Hadoop token providers.
  *
- * <p>This class normalizes UC SDK temporary credentials into cloud-specific credential values.
+ * <p>This class normalizes UC SDK temporary credentials into cloud-specific credential values. A
+ * vend may also carry {@link #additionalScopedCredentials()} for other locations a table's reads
+ * span.
  */
 public class GenericCredential {
   private final TemporaryCredentials tempCred;
+  private final List<ScopedCredential> additionalScopedCredentials;
 
   public GenericCredential(TemporaryCredentials tempCred) {
+    this(tempCred, Collections.emptyList());
+  }
+
+  public GenericCredential(
+      TemporaryCredentials tempCred, List<ScopedCredential> additionalScopedCredentials) {
     this.tempCred = tempCred;
+    this.additionalScopedCredentials =
+        Collections.unmodifiableList(new ArrayList<>(additionalScopedCredentials));
   }
 
   public static GenericCredential forAws(
@@ -59,6 +72,14 @@ public class GenericCredential {
 
   public TemporaryCredentials temporaryCredentials() {
     return tempCred;
+  }
+
+  /**
+   * Credentials vended alongside the primary one for other location prefixes. Empty unless the
+   * backing API returned multiple scoped credentials.
+   */
+  public List<ScopedCredential> additionalScopedCredentials() {
+    return additionalScopedCredentials;
   }
 
   /**
