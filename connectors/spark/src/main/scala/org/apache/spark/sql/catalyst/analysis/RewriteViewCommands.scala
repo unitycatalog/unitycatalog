@@ -23,7 +23,7 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.analysis.ViewUtil.IcebergViewHelper
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.connector.catalog.{CatalogManager, LookupCatalog}
+import org.apache.spark.sql.connector.catalog.{CatalogManager, LookupCatalog, SparkView}
 
 /**
  * ResolveSessionCatalog exits early for some v2 View commands,
@@ -65,9 +65,12 @@ case class RewriteViewCommands(spark: SparkSession) extends Rule[LogicalPlan] wi
     // needs to be done here instead of in ResolveViews, so that a V2 view can be resolved before the Analyzer
     // tries to resolve it, which would result in an error, saying that V2 views aren't supported
     case u@UnresolvedView(ResolvedView(resolved), _, _, _) =>
-      ViewUtil.loadView(resolved.catalog, resolved.identifier)
-        .map(_ => ResolvedUCView(resolved.catalog.asViewCatalog, resolved.identifier))
-        .getOrElse(u)
+      resolved
+
+    case u@UnresolvedView(CatalogAndIdentifier(catalog, ident), _, _, _) if ViewUtil.isViewCatalog(catalog) =>
+      ViewUtil.loadView(catalog, ident).collect {
+        case sv: SparkView => ResolvedPersistentView(catalog, ident, sv.table)
+      }.getOrElse(u)
   }
 
   private def isTempView(nameParts: Seq[String]): Boolean = {
@@ -88,12 +91,14 @@ case class RewriteViewCommands(spark: SparkSession) extends Rule[LogicalPlan] wi
   }
 
   private object ResolvedView {
-    def unapply(identifier: Seq[String]): Option[ResolvedUCView] = identifier match {
+    def unapply(identifier: Seq[String]): Option[ResolvedPersistentView] = identifier match {
       case nameParts if isTempView(nameParts) =>
         None
 
       case CatalogAndIdentifier(catalog, ident) if ViewUtil.isViewCatalog(catalog) =>
-        ViewUtil.loadView(catalog, ident).flatMap(_ => Some(ResolvedUCView(catalog.asViewCatalog, ident)))
+        ViewUtil.loadView(catalog, ident).collect {
+          case sv: SparkView => ResolvedPersistentView(catalog, ident, sv.table)
+        }
 
       case _ =>
         None

@@ -15,7 +15,8 @@ case class SparkView(table: CatalogTable) extends View {
   override def currentCatalog(): String = table.identifier.catalog.getOrElse("")
 
 
-  override def currentNamespace(): Array[String] = table.identifier.nameParts.toArray
+  override def currentNamespace(): Array[String] =
+    table.identifier.database.map(Array(_)).getOrElse(Array.empty)
 
   override def schema(): StructType = table.schema
 

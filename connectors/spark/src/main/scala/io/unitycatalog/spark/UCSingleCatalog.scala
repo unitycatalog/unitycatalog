@@ -15,7 +15,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, NoSuchNamespaceException, NoSuchTableException}
+import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, NoSuchNamespaceException, NoSuchTableException, NoSuchViewException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog._
@@ -988,7 +988,7 @@ private class UCProxy(
       viewsApi.getView(UCSingleCatalog.fullTableNameForApi(this.name, ident))
     } catch {
       case e: ApiException if e.getCode == 404 =>
-        throw new NoSuchTableException(ident)
+        throw new NoSuchViewException(ident)
     }
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
     val partitionCols = scala.collection.mutable.ArrayBuffer.empty[(String, Int)]
