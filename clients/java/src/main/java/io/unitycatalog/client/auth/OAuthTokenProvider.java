@@ -9,6 +9,7 @@ import io.unitycatalog.client.internal.RetryingApiClient;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -33,6 +34,7 @@ class OAuthTokenProvider implements TokenProvider {
   private String oauthUri;
   private String oauthClientId;
   private String oauthClientSecret;
+  private String oauthScope;
   private long leadRenewalTimeSeconds;
   private HttpClient httpClient;
   private Clock clock;
@@ -49,9 +51,29 @@ class OAuthTokenProvider implements TokenProvider {
       long leadRenewalTimeSeconds,
       ApiClient apiClient,
       Clock clock) {
+    this(
+        oauthUri,
+        oauthClientId,
+        oauthClientSecret,
+        AuthConfigs.DEFAULT_OAUTH_SCOPE,
+        leadRenewalTimeSeconds,
+        apiClient,
+        clock);
+  }
+
+  // Package-private constructor for testing with a custom OAuth scope.
+  OAuthTokenProvider(
+      String oauthUri,
+      String oauthClientId,
+      String oauthClientSecret,
+      String oauthScope,
+      long leadRenewalTimeSeconds,
+      ApiClient apiClient,
+      Clock clock) {
     Preconditions.checkNotNull(oauthUri, "OAuth URI must not be null");
     Preconditions.checkNotNull(oauthClientId, "OAuth client ID must not be null");
     Preconditions.checkNotNull(oauthClientSecret, "OAuth client secret must not be null");
+    Preconditions.checkNotNull(oauthScope, "OAuth scope must not be null");
     Preconditions.checkArgument(
         leadRenewalTimeSeconds >= 0,
         "Lead renewal time must be non-negative, but got %s",
@@ -62,6 +84,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthUri = oauthUri;
     this.oauthClientId = oauthClientId;
     this.oauthClientSecret = oauthClientSecret;
+    this.oauthScope = oauthScope;
     this.leadRenewalTimeSeconds = leadRenewalTimeSeconds;
     this.httpClient = apiClient.getHttpClient();
     this.clock = clock;
@@ -93,6 +116,11 @@ class OAuthTokenProvider implements TokenProvider {
         AuthConfigs.OAUTH_CLIENT_SECRET);
     this.oauthClientSecret = oauthClientSecret;
 
+    // Optional OAuth scope; defaults to all-apis when unset.
+    String oauthScope = configs.get(AuthConfigs.OAUTH_SCOPE);
+    this.oauthScope =
+        (oauthScope == null || oauthScope.isEmpty()) ? AuthConfigs.DEFAULT_OAUTH_SCOPE : oauthScope;
+
     this.leadRenewalTimeSeconds = DEFAULT_LEAD_RENEWAL_TIME_SECONDS;
     this.httpClient =
         new RetryingApiClient(JitterDelayRetryPolicy.builder().build()).getHttpClient();
@@ -117,7 +145,8 @@ class OAuthTokenProvider implements TokenProvider {
         AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE,
         AuthConfigs.OAUTH_URI, oauthUri,
         AuthConfigs.OAUTH_CLIENT_ID, oauthClientId,
-        AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret);
+        AuthConfigs.OAUTH_CLIENT_SECRET, oauthClientSecret,
+        AuthConfigs.OAUTH_SCOPE, oauthScope);
   }
 
   private TempToken renewToken() {
@@ -128,7 +157,9 @@ class OAuthTokenProvider implements TokenProvider {
           Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
 
       // Prepare form data
-      String formData = "grant_type=client_credentials&scope=all-apis";
+      String formData =
+          "grant_type=client_credentials&scope="
+              + URLEncoder.encode(oauthScope, StandardCharsets.UTF_8);
 
       // Build HTTP request
       HttpRequest request =
