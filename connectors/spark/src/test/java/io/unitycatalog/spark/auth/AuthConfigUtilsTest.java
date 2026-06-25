@@ -81,7 +81,9 @@ public class AuthConfigUtilsTest {
             "oauth.clientId",
             "client-id",
             "oauth.clientSecret",
-            "client-secret"));
+            "client-secret",
+            "oauth.scope",
+            "all-apis"));
 
     // Case-insensitive OAuth configs.
     configs =
@@ -104,7 +106,9 @@ public class AuthConfigUtilsTest {
             "oauth.clientId",
             "client-id",
             "oauth.clientSecret",
-            "client-secret"));
+            "client-secret",
+            "oauth.scope",
+            "all-apis"));
   }
 
   @Test

@@ -11,11 +11,17 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.internal.RetryingApiClient;
 import java.io.IOException;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -181,6 +187,68 @@ public class OAuthTokenProviderTest {
                     OAUTH_URI, CLIENT_ID, CLIENT_SECRET, -1L, mockRetryingApiClient, clock))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Lead renewal time must be non-negative");
+  }
+
+  @Test
+  public void testAccessTokenUsesConfiguredScope() throws Exception {
+    mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
+    String customScope = "https://example.com/.default";
+    OAuthTokenProvider provider =
+        new OAuthTokenProvider(
+            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, customScope, 30L, mockRetryingApiClient, clock);
+
+    provider.accessToken();
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockHttpClient).send(requestCaptor.capture(), any());
+    String body = requestBody(requestCaptor.getValue());
+    assertThat(body).contains("grant_type=client_credentials");
+    assertThat(body).contains("scope=" + URLEncoder.encode(customScope, StandardCharsets.UTF_8));
+  }
+
+  @Test
+  public void testAccessTokenDefaultsScopeToAllApis() throws Exception {
+    mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
+    OAuthTokenProvider provider =
+        new OAuthTokenProvider(
+            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
+
+    provider.accessToken();
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockHttpClient).send(requestCaptor.capture(), any());
+    assertThat(requestBody(requestCaptor.getValue())).contains("scope=all-apis");
+  }
+
+  /** Reads the string body of an HttpRequest built from a BodyPublishers.ofString publisher. */
+  private static String requestBody(HttpRequest request) throws InterruptedException {
+    HttpRequest.BodyPublisher publisher = request.bodyPublisher().orElseThrow();
+    StringBuilder body = new StringBuilder();
+    CountDownLatch latch = new CountDownLatch(1);
+    publisher.subscribe(
+        new Flow.Subscriber<ByteBuffer>() {
+          @Override
+          public void onSubscribe(Flow.Subscription subscription) {
+            subscription.request(Long.MAX_VALUE);
+          }
+
+          @Override
+          public void onNext(ByteBuffer item) {
+            body.append(StandardCharsets.UTF_8.decode(item));
+          }
+
+          @Override
+          public void onError(Throwable throwable) {
+            latch.countDown();
+          }
+
+          @Override
+          public void onComplete() {
+            latch.countDown();
+          }
+        });
+    latch.await(5, TimeUnit.SECONDS);
+    return body.toString();
   }
 
   /** Helper method to mock a successful OAuth response. */
