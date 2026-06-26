@@ -107,6 +107,11 @@ public class TokenProviderTest {
     configs.remove(AuthConfigs.OAUTH_SCOPE);
     assertThat(TokenProvider.create(configs).configs())
         .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+
+    // When set to an empty string, it also falls back to the default scope.
+    configs.put(AuthConfigs.OAUTH_SCOPE, "");
+    assertThat(TokenProvider.create(configs).configs())
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
   }
 
   @Test
