@@ -1,0 +1,21 @@
+{
+  "interactiveLogin": true,
+  "httpServer": "NETTY",
+  "tokenCallbacks": [
+    {
+      "issuerId": "default",
+      "tokenExpiry": 3600,
+      "requestMappings": [
+        {
+          "requestParam": "client_id",
+          "match": "unity-catalog-local",
+          "claims": {
+            "sub": "admin",
+            "email": "admin",
+            "aud": ["unity-catalog-local"]
+          }
+        }
+      ]
+    }
+  ]
+}

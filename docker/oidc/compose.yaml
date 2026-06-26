@@ -1,0 +1,35 @@
+# Local OIDC provider for Unity Catalog auth testing.
+#
+# Start:
+#   docker compose -f docker/oidc/compose.yaml up -d
+#
+# Keycloak admin console: http://localhost:9090/admin  (admin / admin)
+# Realm login page:       http://localhost:9090/realms/unity-catalog/account
+#
+# Lighter alternative: see compose.mock-oauth2.yaml and README.md
+
+name: unitycatalog-oidc
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: start-dev --import-realm
+    environment:
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 9090
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "9090:8080"
+    volumes:
+      - ./keycloak/unity-catalog-realm.json:/opt/keycloak/data/import/unity-catalog-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s

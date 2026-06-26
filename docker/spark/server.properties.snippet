@@ -1,0 +1,6 @@
+# Optional: merge into etc/conf/server.properties when Spark runs on the HOST (not in Docker).
+# Docker Spark uses minio:9000 via docker/spark/scripts/entrypoint.sh instead.
+# host.docker.internal:9000 is for host-side Spark reaching MinIO published on port 9000.
+
+aws.endpointUrl=http://host.docker.internal:9000
+s3.endpointUrl.0=http://host.docker.internal:9000

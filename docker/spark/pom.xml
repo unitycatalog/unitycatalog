@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.unitycatalog.docker</groupId>
+  <artifactId>spark-uc-deps</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <properties>
+    <!-- Built from repo source in the Docker image (see docker/spark/Dockerfile). -->
+    <uc.spark.version>0.5.0-SNAPSHOT</uc.spark.version>
+    <delta.version>4.2.0</delta.version>
+    <hadoop.aws.version>3.4.2</hadoop.aws.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.unitycatalog</groupId>
+      <artifactId>unitycatalog-client</artifactId>
+      <version>${uc.spark.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.unitycatalog</groupId>
+      <artifactId>unitycatalog-hadoop</artifactId>
+      <version>${uc.spark.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.unitycatalog</groupId>
+      <artifactId>unitycatalog-spark_4.1_2.13</artifactId>
+      <version>${uc.spark.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.delta</groupId>
+      <artifactId>delta-spark_2.13</artifactId>
+      <version>${delta.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-aws</artifactId>
+      <version>${hadoop.aws.version}</version>
+    </dependency>
+  </dependencies>
+</project>

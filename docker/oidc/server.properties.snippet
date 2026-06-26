@@ -1,0 +1,11 @@
+# Copy these settings into etc/conf/server.properties when testing with
+# docker/oidc/compose.yaml (Keycloak on port 9090).
+
+server.authorization=enable
+server.authorization-url=http://localhost:9090/realms/unity-catalog/protocol/openid-connect/auth
+server.token-url=http://localhost:9090/realms/unity-catalog/protocol/openid-connect/token
+server.client-id=unity-catalog-local
+server.client-secret=unity-catalog-local-secret
+server.redirect-port=8080
+server.allowed-issuers=http://localhost:9090/realms/unity-catalog
+server.audiences=unity-catalog-local

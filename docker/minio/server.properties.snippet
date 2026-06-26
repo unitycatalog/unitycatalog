@@ -1,0 +1,30 @@
+# Copy these settings into etc/conf/server.properties when using MinIO from
+# docker/compose.yaml (API on http://localhost:9000).
+#
+# On macOS + Docker, Java may resolve localhost to 127.0.0.1 while MinIO only
+# listens on IPv6. Use http://[::1]:9000 for aws.endpointUrl / s3.endpointUrl.*
+# if STS credential vending fails with "The target server failed to respond".
+#
+# Managed tables, volumes, and models are stored under storage-root.* on the
+# unity-catalog bucket. Legacy per-bucket s3.* config vends credentials to
+# clients (Spark, Hadoop connector, etc.).
+
+s3.bucketPath.0=s3://unity-catalog
+s3.region.0=us-east-1
+s3.accessKey.0=minioadmin
+s3.secretKey.0=minioadmin
+s3.endpointUrl.0=http://[::1]:9000
+# MinIO has no STS assume-role flow; use the test-only static credential path.
+s3.sessionToken.0=minio
+
+# Tenant catalogs (docker/test/bootstrapTenantViaRest.sh / catalogTest.sh) also get a supplementary
+# external location on s3://data/tenant/{id} (el_<catalog>_data).
+s3.bucketPath.1=s3://data
+s3.region.1=us-east-1
+s3.accessKey.1=minioadmin
+s3.secretKey.1=minioadmin
+s3.endpointUrl.1=http://[::1]:9000
+s3.sessionToken.1=minio
+
+storage-root.tables=s3://unity-catalog/ucroot
+storage-root.models=s3://unity-catalog/ucroot
