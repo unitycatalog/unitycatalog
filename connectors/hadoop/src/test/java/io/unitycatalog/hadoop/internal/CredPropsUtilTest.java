@@ -1046,7 +1046,7 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void s3LoopbackVendedEndpointDefersToClientConfiguredEndpoint() {
+  void s3VendedEndpointDefersToClientConfiguredEndpoint() {
     TemporaryCredentials creds =
         s3Creds().endpointUrl("http://[::1]:9000").expirationTime(Long.MAX_VALUE);
     Configuration conf = new Configuration(false);

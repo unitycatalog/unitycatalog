@@ -17,7 +17,6 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
@@ -343,37 +342,15 @@ public class CredPropsUtil {
   }
 
   /**
-   * UC may vend a loopback MinIO endpoint for host-side clients; Spark in Docker sets {@code
-   * fs.s3a.endpoint} to the compose service hostname (e.g. {@code http://minio:9000}) and that
-   * should win over a vended {@code localhost}/[::1] URL.
+   * Prefer an existing client {@code fs.s3a.endpoint} over a vended URL so containerized clients
+   * (e.g. Spark with {@code http://minio:9000}) are not overwritten by a host-side loopback URL.
    */
   private static String resolveS3Endpoint(Configuration hadoopConf, String vendedEndpointUrl) {
-    if (vendedEndpointUrl == null || vendedEndpointUrl.isEmpty()) {
-      return vendedEndpointUrl;
-    }
     String clientEndpoint = hadoopConf.get("fs.s3a.endpoint");
-    if (clientEndpoint != null
-        && !clientEndpoint.isEmpty()
-        && isLoopbackEndpoint(vendedEndpointUrl)) {
+    if (clientEndpoint != null && !clientEndpoint.isEmpty()) {
       return clientEndpoint;
     }
     return vendedEndpointUrl;
-  }
-
-  private static boolean isLoopbackEndpoint(String endpointUrl) {
-    try {
-      String host = URI.create(endpointUrl).getHost();
-      if (host == null) {
-        return false;
-      }
-      String normalized = host.toLowerCase(Locale.ROOT);
-      return "localhost".equals(normalized)
-          || "127.0.0.1".equals(normalized)
-          || "[::1]".equals(normalized)
-          || "::1".equals(normalized);
-    } catch (IllegalArgumentException e) {
-      return false;
-    }
   }
 
   private static Map<String, String> s3TableTempCredProps(
