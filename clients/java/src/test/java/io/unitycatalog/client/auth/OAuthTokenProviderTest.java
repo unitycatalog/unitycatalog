@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.internal.RetryingApiClient;
 import java.io.IOException;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -202,8 +201,41 @@ public class OAuthTokenProviderTest {
     ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
     verify(mockHttpClient).send(requestCaptor.capture(), any());
     String body = requestBody(requestCaptor.getValue());
-    assertThat(body).contains("grant_type=client_credentials");
-    assertThat(body).contains("scope=" + URLEncoder.encode(customScope, StandardCharsets.UTF_8));
+    assertThat(body)
+        .isEqualTo("grant_type=client_credentials&scope=https%3A%2F%2Fexample.com%2F.default");
+  }
+
+  @Test
+  public void testAccessTokenEncodesSpaceSeparatedAndFineGrainedScopes() throws Exception {
+    mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
+    String customScope = "https://example.com/.default catalog.tables:read";
+    OAuthTokenProvider provider =
+        new OAuthTokenProvider(
+            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, customScope, 30L, mockRetryingApiClient, clock);
+
+    provider.accessToken();
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockHttpClient).send(requestCaptor.capture(), any());
+    assertThat(requestBody(requestCaptor.getValue()))
+        .isEqualTo(
+            "grant_type=client_credentials&scope="
+                + "https%3A%2F%2Fexample.com%2F.default+catalog.tables%3Aread");
+  }
+
+  @Test
+  public void testAccessTokenDefaultsBlankScopeToAllApis() throws Exception {
+    mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
+    OAuthTokenProvider provider =
+        new OAuthTokenProvider(
+            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, "   ", 30L, mockRetryingApiClient, clock);
+
+    provider.accessToken();
+
+    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(mockHttpClient).send(requestCaptor.capture(), any());
+    assertThat(requestBody(requestCaptor.getValue()))
+        .isEqualTo("grant_type=client_credentials&scope=all-apis");
   }
 
   @Test
