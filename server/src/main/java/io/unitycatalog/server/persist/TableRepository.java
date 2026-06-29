@@ -898,7 +898,7 @@ public class TableRepository {
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {
-        fileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
+        FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
       } catch (Throwable e) {
         LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }

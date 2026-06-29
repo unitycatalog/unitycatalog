@@ -24,8 +24,7 @@ public class FileOperationsTest {
         ExternalLocationUtils.getManagedLocationForModel(parentStorageLocation, modelId);
     assertThat(modelPathUri.toString()).isEqualTo(parentStorageLocation + "/models/" + modelId);
 
-    FileOperations fileOperations = new FileOperations(new ServerProperties());
-    fileOperations.createStorageLocationDir(modelPathUri);
-    fileOperations.deleteDirectory(modelPathUri);
+    FileOperations.createStorageLocationDir(modelPathUri);
+    FileOperations.deleteDirectory(modelPathUri);
   }
 }

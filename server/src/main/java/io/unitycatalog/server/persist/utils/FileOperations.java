@@ -5,6 +5,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.UriScheme;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.FileVisitOption;
@@ -23,7 +24,7 @@ public class FileOperations {
   }
 
   /** Delete entire directory recursively. Note that currently it does nothing for cloud FS */
-  public void deleteDirectory(NormalizedURL url) throws IOException {
+  public static void deleteDirectory(NormalizedURL url) throws IOException {
     switch (UriScheme.fromURI(url.toUri())) {
       case FILE, NULL -> deleteLocalDirectory(url);
       // Currently we can NOT delete the path in cloud storage. We will update this in future
@@ -54,7 +55,7 @@ public class FileOperations {
   }
 
   /** Create a directory for storage location. Note that currently it does nothing for cloud FS */
-  public void createStorageLocationDir(NormalizedURL url) {
+  public static void createStorageLocationDir(NormalizedURL url) {
     switch (UriScheme.fromURI(url.toUri())) {
       case FILE, NULL -> createLocalDirectory(url);
       // Currently we can NOT create the directory in cloud storage. We will update this in future
