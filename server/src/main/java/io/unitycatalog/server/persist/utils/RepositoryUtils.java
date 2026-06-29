@@ -61,7 +61,8 @@ public class RepositoryUtils {
       TableInfoDAO tableInfoDAO,
       Session session,
       DependencyRepository dependencyRepository) {
-    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())) {
+    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())
+        || TableType.VIEW.getValue().equals(tableInfoDAO.getType())) {
       List<DependencyDAO> deps =
           dependencyRepository.getDependencies(
               session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);

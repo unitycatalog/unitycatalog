@@ -187,7 +187,9 @@ public class CliUtils {
                               CliParams.DATA_SOURCE_FORMAT,
                               CliParams.PROPERTIES,
                               CliParams.STORAGE_LOCATION,
-                              CliParams.TABLE_TYPE)));
+                              CliParams.TABLE_TYPE,
+                              CliParams.VIEW_DEFINITION,
+                              CliParams.VIEW_DEPENDENCIES)));
                   put(
                       LIST,
                       new CliOptions(

@@ -683,6 +683,10 @@ public class TableRepository {
             storageLocation = null;
             validateMetricView(createTable);
             tableUUID = UUID.randomUUID();
+          } else if (tableType == TableType.VIEW) {
+            storageLocation = null;
+            validateView(session, createTable);
+            tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
@@ -729,7 +733,7 @@ public class TableRepository {
           // entity is still transient so they're folded into the single INSERT below.
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           session.persist(tableInfoDAO);
-          if (tableType == TableType.METRIC_VIEW) {
+          if (isViewLike(tableType)) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
             List<DependencyDAO> depDAOs =
                 createTable.getViewDependencies().getDependencies().stream()
@@ -738,6 +742,8 @@ public class TableRepository {
             repositories
                 .getDependencyRepository()
                 .createDependencies(session, tableUUID, dependentType, depDAOs);
+            tableInfo.setViewDependencies(
+                new DependencyList().dependencies(DependencyDAO.toDependencyList(depDAOs)));
           }
           return mapper.apply(session, tableInfoDAO, tableInfo);
         },
@@ -764,6 +770,58 @@ public class TableRepository {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "view_dependencies must contain at least one entry for metric view");
+    }
+  }
+
+  private void validateView(Session session, CreateTable createTable) {
+    if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "view_definition is required for view");
+    }
+    DependencyList viewDeps = createTable.getViewDependencies();
+    if (viewDeps == null || viewDeps.getDependencies() == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for view");
+    }
+    List<DependencyDAO> depDAOs =
+        viewDeps.getDependencies().stream()
+            .map(dep -> DependencyDAO.from(dep, null, DependencyDAO.DependentType.TABLE))
+            .collect(Collectors.toList());
+    validateDependenciesExist(session, depDAOs);
+  }
+
+  private static boolean isViewLike(TableType tableType) {
+    return tableType == TableType.METRIC_VIEW || tableType == TableType.VIEW;
+  }
+
+  private void validateDependenciesExist(Session session, List<DependencyDAO> depDAOs) {
+    for (DependencyDAO dep : depDAOs) {
+      String fullName =
+          dep.getDependencyCatalog()
+              + "."
+              + dep.getDependencySchema()
+              + "."
+              + dep.getDependencyName();
+      UUID schemaId =
+          repositories
+              .getSchemaRepository()
+              .getSchemaIdOrThrow(session, dep.getDependencyCatalog(), dep.getDependencySchema());
+      boolean exists;
+      switch (dep.getDependencyType()) {
+        case TABLE:
+          exists = findBySchemaIdAndName(session, schemaId, dep.getDependencyName()) != null;
+          break;
+        case FUNCTION:
+          exists =
+              repositories
+                      .getFunctionRepository()
+                      .getFunctionDAO(session, schemaId, dep.getDependencyName())
+                  != null;
+          break;
+        default:
+          exists = false;
+      }
+      if (!exists) {
+        throw new BaseException(ErrorCode.NOT_FOUND, "View dependency does not exist: " + fullName);
+      }
     }
   }
 
@@ -886,7 +944,8 @@ public class TableRepository {
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
     }
-    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())) {
+    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())
+        || TableType.VIEW.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getDependencyRepository()
           .deleteDependencies(session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);

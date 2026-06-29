@@ -1,6 +1,8 @@
 package io.unitycatalog.cli.table;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.cli.BaseCliOperations;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
@@ -13,6 +15,8 @@ import java.util.List;
 import java.util.Optional;
 
 public class CliTableOperations extends BaseCliOperations implements TableOperations {
+
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   public CliTableOperations(ServerConfig config) {
     super("table", config);
@@ -48,6 +52,20 @@ public class CliTableOperations extends BaseCliOperations implements TableOperat
     if (createTableRequest.getTableType() != null) {
       argsList.add("--table_type");
       argsList.add(createTableRequest.getTableType().name());
+    }
+    if (createTableRequest.getViewDefinition() != null) {
+      argsList.add("--view_definition");
+      argsList.add(createTableRequest.getViewDefinition());
+    }
+    if (createTableRequest.getViewDependencies() != null) {
+      argsList.add("--view_dependencies");
+      try {
+        argsList.add(
+            OBJECT_MAPPER.writeValueAsString(
+                createTableRequest.getViewDependencies().getDependencies()));
+      } catch (JsonProcessingException e) {
+        throw new ApiException(e);
+      }
     }
     return execute(TableInfo.class, "create", argsList);
   }

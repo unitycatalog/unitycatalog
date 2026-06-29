@@ -3,6 +3,7 @@ package io.unitycatalog.cli;
 import static io.unitycatalog.cli.utils.CliUtils.EMPTY;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.delta.kernel.exceptions.TableAlreadyExistsException;
@@ -20,6 +21,8 @@ import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.Dependency;
+import io.unitycatalog.client.model.DependencyList;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
@@ -104,6 +107,9 @@ public class TableCli {
                 TableType.valueOf(
                     json.getString(CliParams.TABLE_TYPE.getServerParam()).toUpperCase()))
             .dataSourceFormat(DataSourceFormat.valueOf(format.toUpperCase()));
+    if (createTable.getTableType() == TableType.VIEW) {
+      return createView(tablesApi, createTable, json);
+    }
     TemporaryCredentials temporaryCredentials;
     String stagingTableId = null;
     if (createTable.getTableType() == TableType.EXTERNAL) {
@@ -185,6 +191,24 @@ public class TableCli {
       }
     }
 
+    TableInfo tableInfo = tablesApi.createTable(createTable);
+    return objectWriter.writeValueAsString(tableInfo);
+  }
+
+  private static String createView(TablesApi tablesApi, CreateTable createTable, JSONObject json)
+      throws JsonProcessingException, ApiException {
+    if (!json.has(CliParams.VIEW_DEFINITION.getServerParam())) {
+      throw new CliException("view_definition is required for views");
+    }
+    if (!json.has(CliParams.VIEW_DEPENDENCIES.getServerParam())) {
+      throw new CliException("view_dependencies is required for views");
+    }
+    createTable.setViewDefinition(json.getString(CliParams.VIEW_DEFINITION.getServerParam()));
+    List<Dependency> dependencies =
+        objectMapper.readValue(
+            json.getString(CliParams.VIEW_DEPENDENCIES.getServerParam()),
+            new TypeReference<List<Dependency>>() {});
+    createTable.setViewDependencies(new DependencyList().dependencies(dependencies));
     TableInfo tableInfo = tablesApi.createTable(createTable);
     return objectWriter.writeValueAsString(tableInfo);
   }
