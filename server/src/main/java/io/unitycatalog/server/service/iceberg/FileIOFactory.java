@@ -102,12 +102,13 @@ public class FileIOFactory {
 
   protected S3Client getS3Client(
       AwsCredentialsProvider awsCredentialsProvider, String region, String endpointUrl) {
+    boolean customEndpoint = endpointUrl != null && !endpointUrl.isEmpty();
     S3ClientBuilder s3ClientBuilder =
         S3Client.builder()
             .region(Region.of(region))
             .credentialsProvider(awsCredentialsProvider)
-            .forcePathStyle(false);
-    if (endpointUrl != null && !endpointUrl.isEmpty()) {
+            .forcePathStyle(customEndpoint);
+    if (customEndpoint) {
       s3ClientBuilder.endpointOverride(URI.create(endpointUrl));
     }
     return s3ClientBuilder.build();

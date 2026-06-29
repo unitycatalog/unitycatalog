@@ -169,6 +169,7 @@ public class DeltaKernelUtils {
       conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
       conf.set("fs.s3a.path.style.access", "true");
 
+      // Host-side CLI: apply the vended endpoint (no pre-existing fs.s3a.endpoint to preserve).
       if (temporaryCredentials.getEndpointUrl() != null
           && !temporaryCredentials.getEndpointUrl().isEmpty()) {
         conf.set("fs.s3a.endpoint", temporaryCredentials.getEndpointUrl());

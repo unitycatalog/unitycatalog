@@ -211,7 +211,6 @@ public class ServerProperties {
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
     AWS_ENDPOINT_URL("aws.endpointUrl"),
-    AWS_S3_ENDPOINT_URL("aws.s3.endpointUrl"),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
