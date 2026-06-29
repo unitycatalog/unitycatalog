@@ -67,6 +67,38 @@ server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline
 server.audiences=your-google-client-id,your-azure-client-id
 ```
 
+### OAuth Client Scope
+
+Java clients that use the OAuth token provider request the `all-apis` scope by default. If your
+Identity Provider expects a resource-specific scope, configure it with `oauth.scope`. Unity Catalog
+does not restrict this value; follow the scope format required by your Identity Provider and resource
+server.
+
+For example, Java client configuration can include:
+
+```java
+Map<String, String> configs = Map.of(
+    "type", "oauth",
+    "oauth.uri", "https://login.example.com/oauth2/v2.0/token",
+    "oauth.clientId", "<client ID>",
+    "oauth.clientSecret", "<client secret>",
+    "oauth.scope", "https://example.com/.default");
+```
+
+Spark catalog configuration uses the same key with the catalog auth prefix:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=https://login.example.com/oauth2/v2.0/token" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope=https://example.com/.default"
+```
+
+Scope values can be provider-specific strings such as `all-apis`, URL-like scopes such as
+`https://example.com/.default`, fine-grained scopes such as `catalog.tables:read`, or multiple
+space-separated scopes.
+
 ### Restart the UC Server
 
 Now that the Google Authentication is configured, restart the UC Server with the following command.

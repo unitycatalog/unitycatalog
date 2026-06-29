@@ -84,7 +84,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthUri = oauthUri;
     this.oauthClientId = oauthClientId;
     this.oauthClientSecret = oauthClientSecret;
-    this.oauthScope = oauthScope;
+    this.oauthScope = normalizeOAuthScope(oauthScope);
     this.leadRenewalTimeSeconds = leadRenewalTimeSeconds;
     this.httpClient = apiClient.getHttpClient();
     this.clock = clock;
@@ -117,9 +117,7 @@ class OAuthTokenProvider implements TokenProvider {
     this.oauthClientSecret = oauthClientSecret;
 
     // Optional OAuth scope; defaults to all-apis when unset.
-    String oauthScope = configs.get(AuthConfigs.OAUTH_SCOPE);
-    this.oauthScope =
-        (oauthScope == null || oauthScope.isEmpty()) ? AuthConfigs.DEFAULT_OAUTH_SCOPE : oauthScope;
+    this.oauthScope = normalizeOAuthScope(configs.get(AuthConfigs.OAUTH_SCOPE));
 
     this.leadRenewalTimeSeconds = DEFAULT_LEAD_RENEWAL_TIME_SECONDS;
     this.httpClient =
@@ -190,6 +188,13 @@ class OAuthTokenProvider implements TokenProvider {
     } catch (Exception e) {
       throw new RuntimeException("Failed to renew OAuth token", e);
     }
+  }
+
+  private static String normalizeOAuthScope(String oauthScope) {
+    if (oauthScope == null || oauthScope.trim().isEmpty()) {
+      return AuthConfigs.DEFAULT_OAUTH_SCOPE;
+    }
+    return oauthScope.trim();
   }
 
   private class TempToken {
