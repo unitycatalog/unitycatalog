@@ -112,6 +112,11 @@ public class TokenProviderTest {
     configs.put(AuthConfigs.OAUTH_SCOPE, "");
     assertThat(TokenProvider.create(configs).configs())
         .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+
+    // When set to whitespace, it also falls back to the default scope.
+    configs.put(AuthConfigs.OAUTH_SCOPE, "   ");
+    assertThat(TokenProvider.create(configs).configs())
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
   }
 
   @Test

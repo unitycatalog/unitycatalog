@@ -70,7 +70,9 @@ public class AuthConfigUtilsTest {
             "auth.oauth.clientId",
             "client-id",
             "auth.oauth.clientSecret",
-            "client-secret");
+            "client-secret",
+            "auth.oauth.scope",
+            "https://example.com/.default");
     assertMapEquals(
         TokenProvider.create(configs).configs(),
         Map.of(
@@ -83,7 +85,7 @@ public class AuthConfigUtilsTest {
             "oauth.clientSecret",
             "client-secret",
             "oauth.scope",
-            "all-apis"));
+            "https://example.com/.default"));
 
     // Case-insensitive OAuth configs.
     configs =
@@ -95,7 +97,9 @@ public class AuthConfigUtilsTest {
             "auth.oAuth.clientid",
             "client-id",
             "auth.oauth.clientsecret",
-            "client-secret");
+            "client-secret",
+            "auth.oAuth.scope",
+            "catalog.tables:read");
     assertMapEquals(
         TokenProvider.create(configs).configs(),
         Map.of(
@@ -108,7 +112,7 @@ public class AuthConfigUtilsTest {
             "oauth.clientSecret",
             "client-secret",
             "oauth.scope",
-            "all-apis"));
+            "catalog.tables:read"));
   }
 
   @Test
