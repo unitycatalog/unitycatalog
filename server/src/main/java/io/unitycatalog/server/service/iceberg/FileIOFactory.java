@@ -24,7 +24,9 @@ import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
 
+import java.net.URI;
 import java.util.Map;
 import java.util.Set;
 
@@ -86,20 +88,30 @@ public class FileIOFactory {
     S3StorageConfig s3StorageConfig = s3Configurations.get(location.getStorageBase());
 
     S3FileIO s3FileIO =
-        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(location),
-            s3StorageConfig.getRegion()));
+        new S3FileIO(
+            () ->
+                getS3Client(
+                    getAwsCredentialsProvider(location),
+                    s3StorageConfig.getRegion(),
+                    s3StorageConfig.getEndpointUrl()));
 
     s3FileIO.initialize(Map.of());
 
     return s3FileIO;
   }
 
-  protected S3Client getS3Client(AwsCredentialsProvider awsCredentialsProvider, String region) {
-    return S3Client.builder()
-        .region(Region.of(region))
-        .credentialsProvider(awsCredentialsProvider)
-        .forcePathStyle(false)
-        .build();
+  protected S3Client getS3Client(
+      AwsCredentialsProvider awsCredentialsProvider, String region, String endpointUrl) {
+    boolean customEndpoint = endpointUrl != null && !endpointUrl.isEmpty();
+    S3ClientBuilder s3ClientBuilder =
+        S3Client.builder()
+            .region(Region.of(region))
+            .credentialsProvider(awsCredentialsProvider)
+            .forcePathStyle(customEndpoint);
+    if (customEndpoint) {
+      s3ClientBuilder.endpointOverride(URI.create(endpointUrl));
+    }
+    return s3ClientBuilder.build();
   }
 
   private AwsCredentialsProvider getAwsCredentialsProvider(NormalizedURL location) {

@@ -1121,6 +1121,58 @@ class CredPropsUtilTest {
     return TokenProvider.create(Map.of("type", "static", "token", "tok"));
   }
 
+  @Test
+  void s3EndpointUrlAppliedFromTemporaryCredentials() throws Exception {
+    TemporaryCredentials creds =
+        s3Creds().endpointUrl("http://localhost:9000").expirationTime(Long.MAX_VALUE);
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(creds);
+
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false,
+            true,
+            new Configuration(false),
+            "s3",
+            null,
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+            Map.of());
+
+    assertThat(props.get("fs.s3a.endpoint")).isEqualTo("http://localhost:9000");
+    assertThat(props.get(UCHadoopConfConstants.S3A_INIT_ENDPOINT_URL))
+        .isEqualTo("http://localhost:9000");
+  }
+
+  @Test
+  void s3VendedEndpointDefersToClientConfiguredEndpoint() throws Exception {
+    TemporaryCredentials creds =
+        s3Creds().endpointUrl("http://[::1]:9000").expirationTime(Long.MAX_VALUE);
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(creds);
+    Configuration conf = new Configuration(false);
+    conf.set("fs.s3a.endpoint", "http://minio:9000");
+
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            false,
+            true,
+            conf,
+            "s3",
+            null,
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+            Map.of());
+
+    assertThat(props.get("fs.s3a.endpoint")).isEqualTo("http://minio:9000");
+    assertThat(props.get(UCHadoopConfConstants.S3A_INIT_ENDPOINT_URL))
+        .isEqualTo("http://minio:9000");
+  }
+
   private static TemporaryCredentials s3Creds() {
     return new TemporaryCredentials()
         .awsTempCredentials(
