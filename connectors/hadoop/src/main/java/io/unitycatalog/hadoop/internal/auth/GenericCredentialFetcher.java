@@ -56,20 +56,20 @@ public interface GenericCredentialFetcher {
    * carries authentication.
    */
   static GenericCredentialFetcher create(ApiClient apiClient, CredId credId) {
-    if (credId instanceof DeltaStagingTableCredId) {
-      return forUcDeltaStagingTable(
-          (DeltaStagingTableCredId) credId,
-          new io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi(apiClient));
+    if (credId instanceof TableCredId) {
+      return forUc(
+          (TableCredId) credId, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
+    } else if (credId instanceof PathCredId) {
+      return forUc(
+          (PathCredId) credId, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
     } else if (credId instanceof DeltaTableCredId) {
       return forUcDelta(
           (DeltaTableCredId) credId,
           new io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi(apiClient));
-    } else if (credId instanceof PathCredId) {
-      return forUc(
-          (PathCredId) credId, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
-    } else if (credId instanceof TableCredId) {
-      return forUc(
-          (TableCredId) credId, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
+    } else if (credId instanceof DeltaStagingTableCredId) {
+      return forUcDeltaStagingTable(
+          (DeltaStagingTableCredId) credId,
+          new io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi(apiClient));
     } else {
       throw new IllegalArgumentException("Unsupported CredId type: " + credId);
     }
@@ -81,10 +81,9 @@ public interface GenericCredentialFetcher {
         ucUriStr,
         "Failed to create GenericCredentialFetcher, the '%s' is not set in hadoop configuration",
         UCHadoopConfConstants.UC_URI_KEY);
-    URI ucUri = URI.create(ucUriStr);
     ApiClient apiClient =
         ApiClientUtils.create(
-            ucUri,
+            URI.create(ucUriStr),
             TokenProvider.create(conf.getPropsWithPrefix(UCHadoopConfConstants.UC_AUTH_PREFIX)),
             UCHadoopConfConstants.createRequestRetryPolicy(conf),
             conf.getPropsWithPrefix(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX));
