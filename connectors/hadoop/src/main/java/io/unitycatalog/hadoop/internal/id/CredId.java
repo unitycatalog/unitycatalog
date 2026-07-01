@@ -17,6 +17,7 @@ import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_ID_
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_OPERATION_KEY;
 
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 import org.apache.hadoop.conf.Configuration;
@@ -44,14 +45,19 @@ import org.apache.hadoop.conf.Configuration;
  */
 public interface CredId {
 
-  Supplier<CredId> NO_FALLBACK =
-      () -> {
-        throw new IllegalArgumentException(
-            "Cannot recognize the correct hadoop config to initialize the CredId.");
-      };
-
   static CredId create(Configuration conf) {
-    return create(conf, NO_FALLBACK);
+    return create(
+        conf,
+        () -> {
+          Map<String, String> observed = new LinkedHashMap<>();
+          observed.put(UC_CREDENTIALS_TYPE_KEY, conf.get(UC_CREDENTIALS_TYPE_KEY));
+          observed.put(
+              UC_DELTA_CREDENTIALS_API_ENABLED_KEY, conf.get(UC_DELTA_CREDENTIALS_API_ENABLED_KEY));
+          observed.put(UC_DELTA_STAGING_TABLE_ID_KEY, conf.get(UC_DELTA_STAGING_TABLE_ID_KEY));
+
+          throw new IllegalArgumentException(
+              "Cannot recognize the hadoop config to initialize the CredId. Observed: " + observed);
+        });
   }
 
   static CredId create(Configuration conf, Supplier<CredId> defaultCredId) {
