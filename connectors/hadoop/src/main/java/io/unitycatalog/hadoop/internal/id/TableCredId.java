@@ -20,8 +20,10 @@ public class TableCredId implements CredId {
   private final String tableOperation;
 
   public TableCredId(String tableId, String tableOperation) {
-    this.tableId = Preconditions.checkNotNull(tableId, "tableId is required");
-    this.tableOperation = Preconditions.checkNotNull(tableOperation, "tableOperation is required");
+    Preconditions.checkNotNull(tableId, "tableId is required");
+    Preconditions.checkNotNull(tableOperation, "tableOperation is required");
+    this.tableId = tableId;
+    this.tableOperation = tableOperation;
   }
 
   public String tableId() {

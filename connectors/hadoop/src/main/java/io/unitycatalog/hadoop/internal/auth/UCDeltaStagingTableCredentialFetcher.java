@@ -18,8 +18,9 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
   UCDeltaStagingTableCredentialFetcher(
       DeltaStagingTableCredId credId, DeltaTemporaryCredentialsApi api) {
     Preconditions.checkNotNull(credId, "credId is required");
+    Preconditions.checkNotNull(api, "Temporary credentials API is required");
 
-    this.api = Preconditions.checkNotNull(api, "Temporary credentials API is required");
+    this.api = api;
     this.stagingTableId = UUID.fromString(credId.stagingTableId());
     this.stagingTableLocation = credId.location();
   }

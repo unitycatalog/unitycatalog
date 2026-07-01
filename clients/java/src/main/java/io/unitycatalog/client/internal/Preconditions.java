@@ -9,11 +9,10 @@ public class Preconditions {
     }
   }
 
-  public static <T> T checkNotNull(T object, String message, Object... args) {
+  public static void checkNotNull(Object object, String message, Object... args) {
     if (object == null) {
       throw new NullPointerException(String.format(message, args));
     }
-    return object;
   }
 
   public static void checkState(boolean expression, String message, Object... args) {

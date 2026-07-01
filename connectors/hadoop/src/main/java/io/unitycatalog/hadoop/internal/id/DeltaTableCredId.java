@@ -27,9 +27,12 @@ public class DeltaTableCredId implements CredId {
 
   public DeltaTableCredId(
       UCDeltaTableIdentifier identifier, String tableOperation, String location) {
-    this.identifier = Preconditions.checkNotNull(identifier, "identifier is required");
-    this.tableOperation = Preconditions.checkNotNull(tableOperation, "tableOperation is required");
-    this.location = Preconditions.checkNotNull(location, "location is required");
+    Preconditions.checkNotNull(identifier, "identifier is required");
+    Preconditions.checkNotNull(tableOperation, "tableOperation is required");
+    Preconditions.checkNotNull(location, "location is required");
+    this.identifier = identifier;
+    this.tableOperation = tableOperation;
+    this.location = location;
   }
 
   public UCDeltaTableIdentifier identifier() {

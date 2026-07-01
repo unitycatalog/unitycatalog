@@ -17,8 +17,10 @@ public class PathCredId implements CredId {
   private final String pathOperation;
 
   public PathCredId(String path, String pathOperation) {
-    this.path = Preconditions.checkNotNull(path, "path is required");
-    this.pathOperation = Preconditions.checkNotNull(pathOperation, "pathOperation is required");
+    Preconditions.checkNotNull(path, "path is required");
+    Preconditions.checkNotNull(pathOperation, "pathOperation is required");
+    this.path = path;
+    this.pathOperation = pathOperation;
   }
 
   public String path() {

@@ -16,8 +16,10 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
   private final DeltaCredentialOperation operation;
 
   UCDeltaGenericCredentialFetcher(DeltaTableCredId credId, DeltaTemporaryCredentialsApi api) {
-    this.api = Preconditions.checkNotNull(api, "api is required");
-    this.credId = Preconditions.checkNotNull(credId, "credId is required");
+    Preconditions.checkNotNull(api, "api is required");
+    Preconditions.checkNotNull(credId, "credId is required");
+    this.api = api;
+    this.credId = credId;
     DeltaCredentialOperation op = DeltaCredentialOperation.fromValue(credId.tableOperation());
     Preconditions.checkArgument(
         op == DeltaCredentialOperation.READ || op == DeltaCredentialOperation.READ_WRITE,

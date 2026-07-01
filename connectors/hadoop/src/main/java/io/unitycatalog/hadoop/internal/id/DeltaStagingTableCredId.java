@@ -19,8 +19,10 @@ public class DeltaStagingTableCredId implements CredId {
   private final String location;
 
   public DeltaStagingTableCredId(String stagingTableId, String location) {
-    this.stagingTableId = Preconditions.checkNotNull(stagingTableId, "stagingTableId is required");
-    this.location = Preconditions.checkNotNull(location, "location is required");
+    Preconditions.checkNotNull(stagingTableId, "stagingTableId is required");
+    Preconditions.checkNotNull(location, "location is required");
+    this.stagingTableId = stagingTableId;
+    this.location = location;
   }
 
   public String stagingTableId() {
