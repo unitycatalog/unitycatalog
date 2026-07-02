@@ -5,8 +5,6 @@ import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_DELTA_STA
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY;
 
 import io.unitycatalog.client.internal.Preconditions;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -35,11 +33,10 @@ public class DeltaStagingTableCredId implements CredId {
 
   @Override
   public Map<String, String> props() {
-    Map<String, String> props = new HashMap<>();
-    props.put(UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
-    props.put(UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId);
-    props.put(UC_DELTA_STAGING_TABLE_LOCATION_KEY, location);
-    return Collections.unmodifiableMap(props);
+    return Map.of(
+        UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true",
+        UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId,
+        UC_DELTA_STAGING_TABLE_LOCATION_KEY, location);
   }
 
   @Override

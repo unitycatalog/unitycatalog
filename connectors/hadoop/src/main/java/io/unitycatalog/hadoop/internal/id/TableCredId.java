@@ -6,8 +6,6 @@ import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_ID_
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_OPERATION_KEY;
 
 import io.unitycatalog.client.internal.Preconditions;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -36,11 +34,10 @@ public class TableCredId implements CredId {
 
   @Override
   public Map<String, String> props() {
-    Map<String, String> props = new HashMap<>();
-    props.put(UC_CREDENTIALS_TYPE_KEY, UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    props.put(UC_TABLE_ID_KEY, tableId);
-    props.put(UC_TABLE_OPERATION_KEY, tableOperation);
-    return Collections.unmodifiableMap(props);
+    return Map.of(
+        UC_CREDENTIALS_TYPE_KEY, UC_CREDENTIALS_TYPE_TABLE_VALUE,
+        UC_TABLE_ID_KEY, tableId,
+        UC_TABLE_OPERATION_KEY, tableOperation);
   }
 
   @Override

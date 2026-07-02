@@ -2,7 +2,9 @@ package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
@@ -25,27 +27,24 @@ public interface GenericCredentialFetcher {
   GenericCredential createCredential() throws ApiException;
 
   /** Creates a fetcher backed by the standard UC temporary credentials API for a table. */
-  static GenericCredentialFetcher forUc(
-      TableCredId credId, io.unitycatalog.client.api.TemporaryCredentialsApi api) {
+  static GenericCredentialFetcher forUc(TableCredId credId, TemporaryCredentialsApi api) {
     return new UCGenericCredentialFetcher(credId, api);
   }
 
   /** Creates a fetcher backed by the standard UC temporary credentials API for a path. */
-  static GenericCredentialFetcher forUc(
-      PathCredId credId, io.unitycatalog.client.api.TemporaryCredentialsApi api) {
+  static GenericCredentialFetcher forUc(PathCredId credId, TemporaryCredentialsApi api) {
     return new UCGenericCredentialFetcher(credId, api);
   }
 
   /** Creates a fetcher backed by the UC Delta temporary credentials API. */
   static GenericCredentialFetcher forUcDelta(
-      DeltaTableCredId credId, io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi api) {
+      DeltaTableCredId credId, DeltaTemporaryCredentialsApi api) {
     return new UCDeltaGenericCredentialFetcher(credId, api);
   }
 
   /** Creates a fetcher backed by the UC Delta staging table credentials API. */
   static GenericCredentialFetcher forUcDeltaStagingTable(
-      DeltaStagingTableCredId credId,
-      io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi api) {
+      DeltaStagingTableCredId credId, DeltaTemporaryCredentialsApi api) {
     return new UCDeltaStagingTableCredentialFetcher(credId, api);
   }
 
@@ -57,19 +56,14 @@ public interface GenericCredentialFetcher {
    */
   static GenericCredentialFetcher create(ApiClient apiClient, CredId credId) {
     if (credId instanceof TableCredId) {
-      return forUc(
-          (TableCredId) credId, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
+      return forUc((TableCredId) credId, new TemporaryCredentialsApi(apiClient));
     } else if (credId instanceof PathCredId) {
-      return forUc(
-          (PathCredId) credId, new io.unitycatalog.client.api.TemporaryCredentialsApi(apiClient));
+      return forUc((PathCredId) credId, new TemporaryCredentialsApi(apiClient));
     } else if (credId instanceof DeltaTableCredId) {
-      return forUcDelta(
-          (DeltaTableCredId) credId,
-          new io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi(apiClient));
+      return forUcDelta((DeltaTableCredId) credId, new DeltaTemporaryCredentialsApi(apiClient));
     } else if (credId instanceof DeltaStagingTableCredId) {
       return forUcDeltaStagingTable(
-          (DeltaStagingTableCredId) credId,
-          new io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi(apiClient));
+          (DeltaStagingTableCredId) credId, new DeltaTemporaryCredentialsApi(apiClient));
     } else {
       throw new IllegalArgumentException("Unsupported CredId type: " + credId);
     }

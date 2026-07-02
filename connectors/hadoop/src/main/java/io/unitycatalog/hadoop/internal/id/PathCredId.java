@@ -6,8 +6,6 @@ import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_PATH_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_PATH_OPERATION_KEY;
 
 import io.unitycatalog.client.internal.Preconditions;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -33,11 +31,10 @@ public class PathCredId implements CredId {
 
   @Override
   public Map<String, String> props() {
-    Map<String, String> props = new HashMap<>();
-    props.put(UC_CREDENTIALS_TYPE_KEY, UC_CREDENTIALS_TYPE_PATH_VALUE);
-    props.put(UC_PATH_KEY, path);
-    props.put(UC_PATH_OPERATION_KEY, pathOperation);
-    return Collections.unmodifiableMap(props);
+    return Map.of(
+        UC_CREDENTIALS_TYPE_KEY, UC_CREDENTIALS_TYPE_PATH_VALUE,
+        UC_PATH_KEY, path,
+        UC_PATH_OPERATION_KEY, pathOperation);
   }
 
   @Override

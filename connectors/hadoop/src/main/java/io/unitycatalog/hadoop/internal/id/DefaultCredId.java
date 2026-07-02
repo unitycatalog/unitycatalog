@@ -1,7 +1,6 @@
 package io.unitycatalog.hadoop.internal.id;
 
 import java.net.URI;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 import org.apache.hadoop.conf.Configuration;
@@ -30,7 +29,7 @@ public class DefaultCredId implements CredId {
   public Map<String, String> props() {
     // The fallback scope is identified by URI scheme + authority and carries no Unity Catalog
     // credential-request properties, so there is nothing to emit.
-    return Collections.emptyMap();
+    return Map.of();
   }
 
   @Override

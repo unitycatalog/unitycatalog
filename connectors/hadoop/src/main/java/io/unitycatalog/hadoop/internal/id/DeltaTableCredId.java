@@ -11,8 +11,6 @@ import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_OPE
 
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -49,15 +47,21 @@ public class DeltaTableCredId implements CredId {
 
   @Override
   public Map<String, String> props() {
-    Map<String, String> props = new HashMap<>();
-    props.put(UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
-    props.put(UC_CREDENTIALS_TYPE_KEY, UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    props.put(UC_DELTA_CATALOG_KEY, identifier.catalog());
-    props.put(UC_DELTA_SCHEMA_KEY, identifier.schema());
-    props.put(UC_DELTA_TABLE_NAME_KEY, identifier.table());
-    props.put(UC_DELTA_LOCATION_KEY, location);
-    props.put(UC_TABLE_OPERATION_KEY, tableOperation);
-    return Collections.unmodifiableMap(props);
+    return Map.of(
+        UC_DELTA_CREDENTIALS_API_ENABLED_KEY,
+        "true",
+        UC_CREDENTIALS_TYPE_KEY,
+        UC_CREDENTIALS_TYPE_TABLE_VALUE,
+        UC_DELTA_CATALOG_KEY,
+        identifier.catalog(),
+        UC_DELTA_SCHEMA_KEY,
+        identifier.schema(),
+        UC_DELTA_TABLE_NAME_KEY,
+        identifier.table(),
+        UC_DELTA_LOCATION_KEY,
+        location,
+        UC_TABLE_OPERATION_KEY,
+        tableOperation);
   }
 
   @Override
