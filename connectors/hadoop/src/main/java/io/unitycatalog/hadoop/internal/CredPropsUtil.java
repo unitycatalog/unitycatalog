@@ -4,11 +4,15 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.ApiClientUtils;
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
+import io.unitycatalog.hadoop.internal.auth.CredentialCache;
+import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
+import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
@@ -43,6 +47,23 @@ public class CredPropsUtil {
 
   public static volatile GenericCredentialFetcherFactory genericCredFetcherFactory =
       GenericCredentialFetcher::create;
+
+  // Caches the initial credential fetched here so that different queries targeting the same
+  // credential scope ({@link CredId}) reuse the same vended credential instead of re-fetching from
+  // the UC server. It is re-fetched only once the cached credential is about to expire. Kept
+  // separate from the token-provider renewal cache since this runs on the query-planning side (e.g.
+  // the Spark driver), which is engine-agnostic here.
+  private static final String UC_INITIAL_CREDENTIAL_CACHE_MAX_SIZE =
+      "unitycatalog.initial.credential.cache.maxSize";
+  private static final int UC_INITIAL_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
+  static final CredentialCache initialCredCache;
+
+  static {
+    int maxSize =
+        Integer.getInteger(
+            UC_INITIAL_CREDENTIAL_CACHE_MAX_SIZE, UC_INITIAL_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
+    initialCredCache = new CredentialCache(maxSize);
+  }
 
   private static final String CRED_SCOPED_FS_CLASS =
       "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem";
@@ -221,7 +242,8 @@ public class CredPropsUtil {
   }
 
   private static Map<String, String> s3FixedCredProps(
-      boolean credScopedFsEnabled, Configuration hadoopConf, TemporaryCredentials tempCreds) {
+      boolean credScopedFsEnabled, Configuration hadoopConf, GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     return new S3PropsBuilder(credScopedFsEnabled, hadoopConf)
         .set("fs.s3a.access.key", awsCred.getAccessKeyId())
@@ -235,7 +257,8 @@ public class CredPropsUtil {
       Configuration hadoopConf,
       String uri,
       TokenProvider tokenProvider,
-      TemporaryCredentials tempCreds) {
+      GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     S3PropsBuilder builder =
         new S3PropsBuilder(credScopedFsEnabled, hadoopConf)
@@ -257,7 +280,8 @@ public class CredPropsUtil {
   }
 
   private static Map<String, String> gsFixedCredProps(
-      boolean credScopedFsEnabled, Configuration hadoopConf, TemporaryCredentials tempCreds) {
+      boolean credScopedFsEnabled, Configuration hadoopConf, GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     GcpOauthToken gcpOauthToken = tempCreds.getGcpOauthToken();
     Long expirationTime =
         tempCreds.getExpirationTime() == null ? Long.MAX_VALUE : tempCreds.getExpirationTime();
@@ -272,7 +296,8 @@ public class CredPropsUtil {
       Configuration hadoopConf,
       String uri,
       TokenProvider tokenProvider,
-      TemporaryCredentials tempCreds) {
+      GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     GcpOauthToken gcpToken = tempCreds.getGcpOauthToken();
     GcsPropsBuilder builder =
         new GcsPropsBuilder(credScopedFsEnabled, hadoopConf)
@@ -293,7 +318,8 @@ public class CredPropsUtil {
   }
 
   private static Map<String, String> abfsFixedCredProps(
-      boolean credScopedFsEnabled, Configuration hadoopConf, TemporaryCredentials tempCreds) {
+      boolean credScopedFsEnabled, Configuration hadoopConf, GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     return new AbfsPropsBuilder(credScopedFsEnabled, hadoopConf)
         .set(ABFS_FIXED_SAS_TOKEN_KEY, azureSas.getSasToken())
@@ -305,7 +331,8 @@ public class CredPropsUtil {
       Configuration hadoopConf,
       String uri,
       TokenProvider tokenProvider,
-      TemporaryCredentials tempCreds) {
+      GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     AbfsPropsBuilder builder =
         new AbfsPropsBuilder(credScopedFsEnabled, hadoopConf)
@@ -449,46 +476,78 @@ public class CredPropsUtil {
       Map<String, String> appVersions,
       CredId credId)
       throws ApiException {
-    TemporaryCredentials tempCreds =
-        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
+    GenericCredential cred =
+        fetchGenericCredential(
+            hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
     switch (scheme) {
       case "s3":
         if (renewCredEnabled) {
           return s3TempCredPropsBuilder(
-                  credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, tempCreds)
+                  credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, cred)
               .credId(credId)
               .appVersions(appVersions)
               .build();
         } else {
-          return s3FixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
+          return s3FixedCredProps(credScopedFsEnabled, hadoopConf, cred);
         }
       case "gs":
         if (renewCredEnabled) {
           return gcsTempCredPropsBuilder(
-                  credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, tempCreds)
+                  credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, cred)
               .credId(credId)
               .appVersions(appVersions)
               .build();
         } else {
-          return gsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
+          return gsFixedCredProps(credScopedFsEnabled, hadoopConf, cred);
         }
       case "abfss":
       case "abfs":
         if (renewCredEnabled) {
           return abfsTempCredPropsBuilder(
-                  credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, tempCreds)
+                  credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, cred)
               .credId(credId)
               .appVersions(appVersions)
               .build();
         } else {
-          return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
+          return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, cred);
         }
       default:
         return Collections.emptyMap();
     }
   }
 
-  private static TemporaryCredentials fetchTemporaryCredentials(
+  private static GenericCredential fetchGenericCredential(
+      Configuration hadoopConf,
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      Map<String, String> appVersions,
+      CredId credId)
+      throws ApiException {
+    boolean credCacheEnabled =
+        hadoopConf.getBoolean(
+            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY,
+            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE);
+    if (!credCacheEnabled) {
+      return createCredential(apiClient, catalogUri, tokenProvider, appVersions, credId);
+    }
+
+    long renewalLeadTimeMillis =
+        hadoopConf.getLong(
+            UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
+            UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
+    Clock clock = clock(hadoopConf);
+
+    return initialCredCache.access(
+        credId,
+        () ->
+            new RenewableCredential(
+                renewalLeadTimeMillis,
+                clock,
+                createCredential(apiClient, catalogUri, tokenProvider, appVersions, credId)));
+  }
+
+  private static GenericCredential createCredential(
       ApiClient apiClient,
       String catalogUri,
       TokenProvider tokenProvider,
@@ -497,10 +556,13 @@ public class CredPropsUtil {
       throws ApiException {
     ApiClient client =
         apiClient != null ? apiClient : createApiClient(catalogUri, tokenProvider, appVersions);
-    return genericCredFetcherFactory
-        .create(client, credId)
-        .createCredential()
-        .temporaryCredentials();
+    return genericCredFetcherFactory.create(client, credId).createCredential();
+  }
+
+  private static Clock clock(Configuration hadoopConf) {
+    // Use the test clock if one is intentionally configured for testing.
+    String clockName = hadoopConf.get(UCHadoopConfConstants.UC_TEST_CLOCK_NAME);
+    return clockName != null ? Clock.getManualClock(clockName) : Clock.systemClock();
   }
 
   private static ApiClient createApiClient(
