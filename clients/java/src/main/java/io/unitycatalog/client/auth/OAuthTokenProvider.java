@@ -43,24 +43,6 @@ class OAuthTokenProvider implements TokenProvider {
 
   OAuthTokenProvider() {}
 
-  // Package-private constructor for testing with custom dependencies
-  OAuthTokenProvider(
-      String oauthUri,
-      String oauthClientId,
-      String oauthClientSecret,
-      long leadRenewalTimeSeconds,
-      ApiClient apiClient,
-      Clock clock) {
-    this(
-        oauthUri,
-        oauthClientId,
-        oauthClientSecret,
-        AuthConfigs.DEFAULT_OAUTH_SCOPE,
-        leadRenewalTimeSeconds,
-        apiClient,
-        clock);
-  }
-
   // Package-private constructor for testing with a custom OAuth scope.
   OAuthTokenProvider(
       String oauthUri,
