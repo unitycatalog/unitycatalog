@@ -772,6 +772,33 @@ class CredPropsUtilTest {
   }
 
   @Test
+  void createTableCredPropsIncludesQueryCacheScopeAndQueryId() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
+
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "s3",
+            null,
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+            Map.of(),
+            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY,
+            "query-1");
+
+    assertThat(props)
+        .containsEntry(
+            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_KEY,
+            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY)
+        .containsEntry(UCHadoopConfConstants.UC_QUERY_CRED_ID_KEY, "query-1");
+  }
+
+  @Test
   void createDeltaTableCredPropsAssemblesReqConfAndReturnsCredProps() throws Exception {
     AtomicReference<CredId> captured = new AtomicReference<>();
     CredPropsUtil.genericCredFetcherFactory =

@@ -319,6 +319,42 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertGlobalCache(4, tableACred2, tableBCred2, pathACred2, pathBCred2);
   }
 
+  @Test
+  public void testQueryScopedCredCache() throws Exception {
+    Configuration query1Conf = newTableBasedConf("tableA");
+    query1Conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    query1Conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    query1Conf.set(
+        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_KEY,
+        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY);
+    query1Conf.set(UCHadoopConfConstants.UC_QUERY_CRED_ID_KEY, "query-1");
+
+    Configuration query2Conf = newTableBasedConf("tableA");
+    query2Conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    query2Conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    query2Conf.set(
+        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_KEY,
+        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY);
+    query2Conf.set(UCHadoopConfConstants.UC_QUERY_CRED_ID_KEY, "query-2");
+
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    TemporaryCredentials cred1 = newTempCred("query_1", clock.now().toEpochMilli() + 2000L);
+    TemporaryCredentials cred2 = newTempCred("query_2", clock.now().toEpochMilli() + 2000L);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
+
+    T providerQuery1 = createTestProvider(query1Conf, tempCredApi);
+    T providerQuery2 = createTestProvider(query2Conf, tempCredApi);
+
+    assertCred(providerQuery1, cred1);
+    assertGlobalCache(1, cred1);
+
+    assertCred(providerQuery2, cred2);
+    assertGlobalCache(2, cred1, cred2);
+
+    assertCred(providerQuery1, cred1);
+    assertGlobalCache(2, cred1, cred2);
+  }
+
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {
     assertThat(expectedSize).isEqualTo(creds.length);
     assertThat(GenericCredentialProvider.globalCache.size()).isEqualTo(expectedSize);

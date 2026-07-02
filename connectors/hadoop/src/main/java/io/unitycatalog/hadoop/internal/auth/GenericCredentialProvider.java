@@ -3,7 +3,7 @@ package io.unitycatalog.hadoop.internal.auth;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
-import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.QueryCredId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import org.apache.hadoop.conf.Configuration;
 
@@ -16,7 +16,7 @@ import org.apache.hadoop.conf.Configuration;
 public abstract class GenericCredentialProvider {
   // The credential cache, for saving QPS to unity catalog server. Keyed by the credential scope
   // ({@link CredId}) so that requests targeting the same scope can share a vended credential.
-  static final BoundedKeyedCache<CredId, GenericCredential> globalCache;
+  static final BoundedKeyedCache<Object, GenericCredential> globalCache;
   private static final String UC_CREDENTIAL_CACHE_MAX_SIZE =
       "unitycatalog.credential.cache.maxSize";
   private static final int UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
@@ -30,7 +30,7 @@ public abstract class GenericCredentialProvider {
   private Configuration conf;
   private Clock clock;
   private long renewalLeadTimeMillis;
-  private CredId cacheKey;
+  private Object cacheKey;
   private boolean credCacheEnabled;
 
   private volatile GenericCredential credential;
@@ -48,9 +48,15 @@ public abstract class GenericCredentialProvider {
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
 
-    // Identify the credential scope; used as the global cache key so that requests targeting the
-    // same scope can share a vended credential.
-    this.cacheKey = CredId.create(conf);
+    // Identify the credential cache key. Cluster scope shares by CredId; query scope isolates by
+    // (CredId, queryId).
+    this.cacheKey =
+        QueryCredId.resolveCacheKey(
+            conf,
+            () -> {
+              throw new IllegalArgumentException(
+                  "Cannot recognize the hadoop config to initialize the credential cache key.");
+            });
 
     this.credCacheEnabled =
         conf.getBoolean(

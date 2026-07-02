@@ -20,6 +20,7 @@ import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, Ca
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.execution.SQLExecution
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.json4s.JsonDSL._
@@ -46,6 +47,7 @@ class UCSingleCatalog
   private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
   private[this] var credScopedFsEnabled: Boolean = true
+  private[this] var credentialCacheScope: String = OptionsUtil.DEFAULT_CREDENTIAL_CACHE_SCOPE
   private[this] var apiClient: ApiClient = null;
   private[this] var tablesApi: TablesApi = null
 
@@ -72,6 +74,8 @@ class UCSingleCatalog
       OptionsUtil.RENEW_CREDENTIAL_ENABLED, OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
     credScopedFsEnabled = options.getBoolean(
       OptionsUtil.CRED_SCOPED_FS_ENABLED, OptionsUtil.DEFAULT_CRED_SCOPED_FS_ENABLED)
+    credentialCacheScope = Option(options.get(OptionsUtil.CREDENTIAL_CACHE_SCOPE))
+      .getOrElse(OptionsUtil.DEFAULT_CREDENTIAL_CACHE_SCOPE)
     val serverSidePlanningEnabled = options.getBoolean(
       OptionsUtil.SERVER_SIDE_PLANNING_ENABLED, OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
     deltaRestApiEnabled = options.getBoolean(
@@ -81,7 +85,7 @@ class UCSingleCatalog
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
     tablesApi = new TablesApi(apiClient)
     val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
-      serverSidePlanningEnabled, apiClient, tablesApi)
+      credentialCacheScope, serverSidePlanningEnabled, apiClient, tablesApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -204,14 +208,16 @@ class UCSingleCatalog
     // user-specified but system-generated, which is exactly the case here.
     newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
 
-    val credentialProps = UCCredentialHadoopConfs
-      .builder(uri.toString, CatalogUtils.stringToURI(stagingLocation).getScheme)
-      .addAppVersions(ApiClientFactory.appEngineVersions())
-      .tokenProvider(tokenProvider)
-      .apiClient(apiClient)
-      .enableCredentialRenewal(renewCredEnabled)
-      .enableCredentialScopedFs(credScopedFsEnabled)
-      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+    val credentialProps = UCSingleCatalog.configureCredentialCache(
+      UCCredentialHadoopConfs
+        .builder(uri.toString, CatalogUtils.stringToURI(stagingLocation).getScheme)
+        .addAppVersions(ApiClientFactory.appEngineVersions())
+        .tokenProvider(tokenProvider)
+        .apiClient(apiClient)
+        .enableCredentialRenewal(renewCredEnabled)
+        .enableCredentialScopedFs(credScopedFsEnabled)
+        .hadoopConf(UCSingleCatalog.sessionHadoopConf()),
+      credentialCacheScope)
       .buildForTable(stagingTableId, TableOperation.READ_WRITE)
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     newProps
@@ -308,14 +314,16 @@ class UCSingleCatalog
 
     // Finally, vend fresh READ_WRITE credentials for the existing table location.
     val tableUriScheme = new Path(tableLocation).toUri.getScheme
-    val credentialProps = UCCredentialHadoopConfs
-      .builder(uri.toString, tableUriScheme)
-      .addAppVersions(ApiClientFactory.appEngineVersions())
-      .tokenProvider(tokenProvider)
-      .apiClient(apiClient)
-      .enableCredentialRenewal(renewCredEnabled)
-      .enableCredentialScopedFs(credScopedFsEnabled)
-      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+    val credentialProps = UCSingleCatalog.configureCredentialCache(
+      UCCredentialHadoopConfs
+        .builder(uri.toString, tableUriScheme)
+        .addAppVersions(ApiClientFactory.appEngineVersions())
+        .tokenProvider(tokenProvider)
+        .apiClient(apiClient)
+        .enableCredentialRenewal(renewCredEnabled)
+        .enableCredentialScopedFs(credScopedFsEnabled)
+        .hadoopConf(UCSingleCatalog.sessionHadoopConf()),
+      credentialCacheScope)
       .buildForTable(tableId, TableOperation.READ_WRITE)
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     newProps
@@ -344,14 +352,16 @@ class UCSingleCatalog
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
 
-    val credentialProps = UCCredentialHadoopConfs
-      .builder(uri.toString, CatalogUtils.stringToURI(location).getScheme)
-      .addAppVersions(ApiClientFactory.appEngineVersions())
-      .tokenProvider(tokenProvider)
-      .apiClient(apiClient)
-      .enableCredentialRenewal(renewCredEnabled)
-      .enableCredentialScopedFs(credScopedFsEnabled)
-      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+    val credentialProps = UCSingleCatalog.configureCredentialCache(
+      UCCredentialHadoopConfs
+        .builder(uri.toString, CatalogUtils.stringToURI(location).getScheme)
+        .addAppVersions(ApiClientFactory.appEngineVersions())
+        .tokenProvider(tokenProvider)
+        .apiClient(apiClient)
+        .enableCredentialRenewal(renewCredEnabled)
+        .enableCredentialScopedFs(credScopedFsEnabled)
+        .hadoopConf(UCSingleCatalog.sessionHadoopConf()),
+      credentialCacheScope)
       .buildForPath(location, PathOperation.PATH_CREATE_TABLE)
 
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
@@ -529,6 +539,28 @@ object UCSingleCatalog {
       .getOrElse(new Configuration())
   }
 
+  /**
+   * Returns the per-query credential cache identity for the active Spark SQL execution, or a fresh
+   * UUID when no execution is active (for example in unit tests).
+   */
+  def currentQueryCredId(): String = {
+    SparkSession.getActiveSession
+      .flatMap(session => Option(session.sparkContext.getLocalProperty(SQLExecution.EXECUTION_ID_KEY)))
+      .map(_.toString)
+      .getOrElse(java.util.UUID.randomUUID().toString)
+  }
+
+  def configureCredentialCache(
+      builder: UCCredentialHadoopConfs.Builder,
+      credentialCacheScope: String): UCCredentialHadoopConfs.Builder = {
+    val configured = builder.credentialCacheScope(credentialCacheScope)
+    if (OptionsUtil.CREDENTIAL_CACHE_SCOPE_QUERY == credentialCacheScope) {
+      configured.queryCredId(currentQueryCredId())
+    } else {
+      configured
+    }
+  }
+
   def setCredentialProps(props: util.HashMap[String, String],
                          credentialProps: util.Map[String, String]): Unit = {
     props.putAll(credentialProps)
@@ -608,6 +640,7 @@ private class UCProxy(
     tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
     credScopedFsEnabled: Boolean,
+    credentialCacheScope: String,
     serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
     tablesApi: TablesApi) extends TableCatalog with SupportsNamespaces with Logging {
@@ -661,7 +694,7 @@ private class UCProxy(
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
 
-    val credBuilder =
+    val credBuilder = UCSingleCatalog.configureCredentialCache(
       UCCredentialHadoopConfs
         .builder(uri.toString, locationUri.getScheme)
         .addAppVersions(ApiClientFactory.appEngineVersions())
@@ -669,7 +702,8 @@ private class UCProxy(
         .apiClient(apiClient)
         .enableCredentialRenewal(renewCredEnabled)
         .enableCredentialScopedFs(credScopedFsEnabled)
-        .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+        .hadoopConf(UCSingleCatalog.sessionHadoopConf()),
+      credentialCacheScope)
 
     // TODO: at this time, we don't know if the table will be read or written. For now we always
     //       request READ_WRITE credentials as the server doesn't distinguish between READ and

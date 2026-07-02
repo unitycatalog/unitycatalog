@@ -95,6 +95,17 @@ public class UCHadoopConfConstants {
       "fs.unitycatalog.credential.cache.enabled";
   public static final boolean UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = true;
 
+  // Credential cache scope: "query" isolates per query; "cluster" shares cluster-wide.
+  public static final String UC_CREDENTIAL_CACHE_SCOPE_KEY =
+      "fs.unitycatalog.credential.cache.scope";
+  public static final String UC_CREDENTIAL_CACHE_SCOPE_QUERY = "query";
+  public static final String UC_CREDENTIAL_CACHE_SCOPE_CLUSTER = "cluster";
+  public static final String UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE =
+      UC_CREDENTIAL_CACHE_SCOPE_CLUSTER;
+
+  // Per-query credential cache identity, propagated from the Spark driver to executors.
+  public static final String UC_QUERY_CRED_ID_KEY = "fs.unitycatalog.credentials.query.id";
+
   // Keys for HTTP request configuration - see ApiClientConf for more details.
   public static final String REQUEST_RETRY_MAX_ATTEMPTS_KEY =
       "fs.unitycatalog.request.retry.maxAttempts";

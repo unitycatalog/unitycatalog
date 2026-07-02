@@ -19,6 +19,7 @@ import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -79,6 +80,19 @@ public class CredPropsUtil {
       tokenProvider
           .configs()
           .forEach((key, value) -> builder.put(UCHadoopConfConstants.UC_AUTH_PREFIX + key, value));
+      return self();
+    }
+
+    /** Applies credential cache scope and optional per-query identity to credential props. */
+    public T credentialCache(String scope, String queryCredId) {
+      set(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_KEY, scope);
+      if (UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY.equals(scope)) {
+        String id =
+            queryCredId != null && !queryCredId.isEmpty()
+                ? queryCredId
+                : UUID.randomUUID().toString();
+        set(UCHadoopConfConstants.UC_QUERY_CRED_ID_KEY, id);
+      }
       return self();
     }
 
@@ -339,6 +353,36 @@ public class CredPropsUtil {
       UCCredentialHadoopConfs.TableOperation tableOp,
       Map<String, String> appVersions)
       throws ApiException {
+    return createTableCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        hadoopConf,
+        scheme,
+        apiClient,
+        catalogUri,
+        tokenProvider,
+        tableId,
+        tableOp,
+        appVersions,
+        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE,
+        null);
+  }
+
+  /** Fetches table credentials from the UC REST API and builds Hadoop configuration properties. */
+  public static Map<String, String> createTableCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Configuration hadoopConf,
+      String scheme,
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      String tableId,
+      UCCredentialHadoopConfs.TableOperation tableOp,
+      Map<String, String> appVersions,
+      String credentialCacheScope,
+      String queryCredId)
+      throws ApiException {
     return createCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
@@ -348,7 +392,9 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new TableCredId(tableId, tableOp.value()));
+        new TableCredId(tableId, tableOp.value()),
+        credentialCacheScope,
+        queryCredId);
   }
 
   /**
@@ -368,6 +414,41 @@ public class CredPropsUtil {
       UCCredentialHadoopConfs.TableOperation tableOp,
       Map<String, String> appVersions)
       throws ApiException {
+    return createDeltaTableCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        hadoopConf,
+        scheme,
+        apiClient,
+        catalogUri,
+        tokenProvider,
+        identifier,
+        location,
+        tableOp,
+        appVersions,
+        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE,
+        null);
+  }
+
+  /**
+   * Fetches Delta table credentials from the UC Delta API and builds Hadoop configuration
+   * properties.
+   */
+  public static Map<String, String> createDeltaTableCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Configuration hadoopConf,
+      String scheme,
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      UCDeltaTableIdentifier identifier,
+      String location,
+      UCCredentialHadoopConfs.TableOperation tableOp,
+      Map<String, String> appVersions,
+      String credentialCacheScope,
+      String queryCredId)
+      throws ApiException {
     return createCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
@@ -377,7 +458,9 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new DeltaTableCredId(identifier, tableOp.value(), location));
+        new DeltaTableCredId(identifier, tableOp.value(), location),
+        credentialCacheScope,
+        queryCredId);
   }
 
   /**
@@ -396,6 +479,39 @@ public class CredPropsUtil {
       String location,
       Map<String, String> appVersions)
       throws ApiException {
+    return createDeltaStagingTableCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        hadoopConf,
+        scheme,
+        apiClient,
+        catalogUri,
+        tokenProvider,
+        stagingTableId,
+        location,
+        appVersions,
+        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE,
+        null);
+  }
+
+  /**
+   * Fetches Delta staging table credentials from the UC Delta API and builds Hadoop configuration
+   * properties.
+   */
+  public static Map<String, String> createDeltaStagingTableCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Configuration hadoopConf,
+      String scheme,
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      String stagingTableId,
+      String location,
+      Map<String, String> appVersions,
+      String credentialCacheScope,
+      String queryCredId)
+      throws ApiException {
     return createCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
@@ -405,7 +521,9 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new DeltaStagingTableCredId(stagingTableId, location));
+        new DeltaStagingTableCredId(stagingTableId, location),
+        credentialCacheScope,
+        queryCredId);
   }
 
   /** Fetches path credentials from the UC REST API and builds Hadoop configuration properties. */
@@ -421,6 +539,36 @@ public class CredPropsUtil {
       UCCredentialHadoopConfs.PathOperation pathOp,
       Map<String, String> appVersions)
       throws ApiException {
+    return createPathCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        hadoopConf,
+        scheme,
+        apiClient,
+        catalogUri,
+        tokenProvider,
+        path,
+        pathOp,
+        appVersions,
+        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE,
+        null);
+  }
+
+  /** Fetches path credentials from the UC REST API and builds Hadoop configuration properties. */
+  public static Map<String, String> createPathCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Configuration hadoopConf,
+      String scheme,
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      String path,
+      UCCredentialHadoopConfs.PathOperation pathOp,
+      Map<String, String> appVersions,
+      String credentialCacheScope,
+      String queryCredId)
+      throws ApiException {
     return createCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
@@ -430,7 +578,9 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new PathCredId(path, pathOp.value()));
+        new PathCredId(path, pathOp.value()),
+        credentialCacheScope,
+        queryCredId);
   }
 
   /**
@@ -447,7 +597,9 @@ public class CredPropsUtil {
       String catalogUri,
       TokenProvider tokenProvider,
       Map<String, String> appVersions,
-      CredId credId)
+      CredId credId,
+      String credentialCacheScope,
+      String queryCredId)
       throws ApiException {
     TemporaryCredentials tempCreds =
         fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
@@ -457,6 +609,7 @@ public class CredPropsUtil {
           return s3TempCredPropsBuilder(
                   credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, tempCreds)
               .credId(credId)
+              .credentialCache(credentialCacheScope, queryCredId)
               .appVersions(appVersions)
               .build();
         } else {
@@ -467,6 +620,7 @@ public class CredPropsUtil {
           return gcsTempCredPropsBuilder(
                   credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, tempCreds)
               .credId(credId)
+              .credentialCache(credentialCacheScope, queryCredId)
               .appVersions(appVersions)
               .build();
         } else {
@@ -478,6 +632,7 @@ public class CredPropsUtil {
           return abfsTempCredPropsBuilder(
                   credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, tempCreds)
               .credId(credId)
+              .credentialCache(credentialCacheScope, queryCredId)
               .appVersions(appVersions)
               .build();
         } else {

@@ -2,6 +2,7 @@ package io.unitycatalog.hadoop.internal.fs;
 
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.DefaultCredId;
+import io.unitycatalog.hadoop.internal.id.QueryCredId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
@@ -64,7 +65,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * {@code unitycatalog.credScopedFs.cache.maxSize}.
    */
   /** Visible for testing. */
-  static final BoundedKeyedCache<CredId, FileSystem> CACHE;
+  static final BoundedKeyedCache<Object, FileSystem> CACHE;
 
   static {
     int maxSize =
@@ -84,7 +85,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    CredId key = CredId.create(conf, () -> new DefaultCredId(uri, conf));
+    Object key = QueryCredId.resolveCacheKey(conf, () -> new DefaultCredId(uri, conf));
     this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
   }
 

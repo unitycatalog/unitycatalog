@@ -6,6 +6,7 @@ import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
@@ -82,6 +83,9 @@ public final class UCCredentialHadoopConfs {
     private ApiClient apiClient;
     private boolean credentialRenewalEnabled = true;
     private boolean credentialScopedFsEnabled = true;
+    private String credentialCacheScope =
+        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE;
+    private String queryCredId;
 
     private Configuration hadoopConf = new Configuration(false);
     private final Map<String, String> appVersions = new LinkedHashMap<>();
@@ -125,6 +129,37 @@ public final class UCCredentialHadoopConfs {
      */
     public Builder enableCredentialScopedFs(boolean enabled) {
       this.credentialScopedFsEnabled = enabled;
+      return this;
+    }
+
+    /**
+     * Credential cache scope (default {@code cluster}).
+     *
+     * <ul>
+     *   <li>{@code query} — isolate vended credentials per query via {@link
+     *       io.unitycatalog.hadoop.internal.id.QueryCredId}.
+     *   <li>{@code cluster} — share vended credentials cluster-wide keyed by {@link
+     *       io.unitycatalog.hadoop.internal.id.CredId}.
+     * </ul>
+     */
+    public Builder credentialCacheScope(String scope) {
+      Preconditions.checkArgument(
+          UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY.equals(scope)
+              || UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_CLUSTER.equals(scope),
+          "credential cache scope must be '%s' or '%s', got '%s'",
+          UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY,
+          UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_CLUSTER,
+          scope);
+      this.credentialCacheScope = scope;
+      return this;
+    }
+
+    /**
+     * Per-query credential cache identity. Required when {@link #credentialCacheScope} is {@code
+     * query}; when absent, a random UUID is generated at props-build time.
+     */
+    public Builder queryCredId(String queryCredId) {
+      this.queryCredId = queryCredId;
       return this;
     }
 
@@ -178,7 +213,9 @@ public final class UCCredentialHadoopConfs {
           tokenProvider,
           tableId,
           tableOperation,
-          appVersions);
+          appVersions,
+          credentialCacheScope,
+          queryCredId);
     }
 
     /**
@@ -213,7 +250,9 @@ public final class UCCredentialHadoopConfs {
           identifier,
           location,
           operation,
-          appVersions);
+          appVersions,
+          credentialCacheScope,
+          queryCredId);
     }
 
     /**
@@ -244,7 +283,9 @@ public final class UCCredentialHadoopConfs {
           tokenProvider,
           stagingTableId,
           location,
-          appVersions);
+          appVersions,
+          credentialCacheScope,
+          queryCredId);
     }
 
     /**
@@ -267,7 +308,9 @@ public final class UCCredentialHadoopConfs {
           tokenProvider,
           path,
           pathOperation,
-          appVersions);
+          appVersions,
+          credentialCacheScope,
+          queryCredId);
     }
   }
 }
