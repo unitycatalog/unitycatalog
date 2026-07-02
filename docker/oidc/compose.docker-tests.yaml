@@ -1,0 +1,11 @@
+# Override Keycloak hostname for docker-mode UC integration tests.
+# The UC server container reaches Keycloak via host.docker.internal:9090;
+# token issuers must match so JWKS discovery works inside the container.
+#
+#   docker compose -f docker/oidc/compose.yaml -f docker/oidc/compose.docker-tests.yaml up -d --force-recreate keycloak
+
+services:
+  keycloak:
+    environment:
+      KC_HOSTNAME: host.docker.internal
+      KC_HOSTNAME_PORT: 9090

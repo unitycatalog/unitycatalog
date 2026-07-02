@@ -68,6 +68,49 @@ _uc_java_install_local_jar() {
     -Dpackaging=jar
 }
 
+ensure_uc_server() {
+  if [[ "${DOCKER_TESTS_ENSURE_UC:-1}" == "0" ]]; then
+    return
+  fi
+
+  local mode="${UC_SERVER_MODE:-binary}"
+  echo "==> Ensuring UC server (mode: ${mode})" >&2
+  if [[ "$mode" == "docker" && -z "${UC_DOCKER_IMAGE:-}" ]]; then
+    echo "ERROR: UC_DOCKER_IMAGE is required when UC_SERVER_MODE=docker" >&2
+    exit 1
+  fi
+  UC_KEYCLOAK_BASE_URL="$(resolve_keycloak_base_url)"
+  UC_SERVER_MODE="$mode" UC_DOCKER_IMAGE="${UC_DOCKER_IMAGE:-}" UC_ENABLE_OIDC="${UC_ENABLE_OIDC:-1}" \
+    UC_KEYCLOAK_BASE_URL="$UC_KEYCLOAK_BASE_URL" \
+    "$UC_JAVA_ROOT/docker/start-uc-for-tests.sh" "$UC_JAVA_ROOT"
+}
+
+resolve_keycloak_base_url() {
+  if [[ -n "${UC_KEYCLOAK_BASE_URL:-}" ]]; then
+    echo "$UC_KEYCLOAK_BASE_URL"
+    return
+  fi
+  if [[ "${UC_SERVER_MODE:-binary}" == "docker" ]]; then
+    echo "http://host.docker.internal:9090"
+    return
+  fi
+  echo "http://localhost:9090"
+}
+
+docker_test_env() {
+  local keycloak_url
+  keycloak_url="$(resolve_keycloak_base_url)"
+  if [[ -n "$keycloak_url" ]]; then
+    echo "UC_KEYCLOAK_BASE_URL=$keycloak_url"
+  fi
+}
+
+stop_uc_server() {
+  if [[ -x "$UC_JAVA_ROOT/docker/stop-uc-for-tests.sh" ]]; then
+    "$UC_JAVA_ROOT/docker/stop-uc-for-tests.sh" "$UC_JAVA_ROOT"
+  fi
+}
+
 ensure_uc_client_jars() {
   if [[ ! -f "$UC_CLIENT_JAR" || ! -f "$UC_CONTROL_API_JAR" || ! -f "$UC_CONTROL_MODELS_JAR" ]]; then
     echo "==> Building Unity Catalog Java client + control API (first run, ~1-2 min)" >&2
@@ -95,12 +138,13 @@ run_docker_tests() {
   shift
   local timeout_secs="${DOCKER_TESTS_TIMEOUT_SECS:-600}"
   local log="${DOCKER_TESTS_LOG:-$UC_JAVA_ROOT/docker/tests/target/last-test-run.log}"
+  ensure_uc_server
   ensure_uc_client_jars
   mkdir -p "$(dirname "$log")"
   echo "==> Running $test_class (timeout ${timeout_secs}s, ETA ~2-4 min)" >&2
   echo "==> Live log: $log" >&2
   set -o pipefail
-  run_with_timeout "$timeout_secs" env UC_REPO_ROOT="$UC_JAVA_ROOT" \
+  run_with_timeout "$timeout_secs" env UC_REPO_ROOT="$UC_JAVA_ROOT" $(docker_test_env) \
     mvn -f "$UC_TESTS_POM" test -Dtest="$test_class" "$@" 2>&1 | tee "$log"
   return "${PIPESTATUS[0]}"
 }
@@ -108,18 +152,20 @@ run_docker_tests() {
 run_all_docker_tests() {
   local timeout_secs="${DOCKER_TESTS_TIMEOUT_SECS:-480}"
   local log="${DOCKER_TESTS_LOG:-$UC_JAVA_ROOT/docker/tests/target/last-test-run.log}"
+  ensure_uc_server
   ensure_uc_client_jars
   mkdir -p "$(dirname "$log")"
   echo "==> Running all docker tests (hard timeout ${timeout_secs}s, ETA ~4-6 min)" >&2
   echo "==> Started at $(date '+%H:%M:%S'); will abort after ${timeout_secs}s" >&2
   echo "==> Live log: $log  (tail -f \"$log\" in another terminal)" >&2
   set -o pipefail
-  run_with_timeout "$timeout_secs" env UC_REPO_ROOT="$UC_JAVA_ROOT" \
+  run_with_timeout "$timeout_secs" env UC_REPO_ROOT="$UC_JAVA_ROOT" $(docker_test_env) \
     mvn -f "$UC_TESTS_POM" test "$@" 2>&1 | tee "$log"
   return "${PIPESTATUS[0]}"
 }
 
 bootstrap_tenant_java() {
+  ensure_uc_server
   ensure_uc_client_jars
   local args=""
   for arg in "$@"; do

@@ -370,13 +370,17 @@ public final class TenantBootstrap {
 
     for (int attempt = 1; attempt <= 15; attempt++) {
       try {
-        AuthSupport.ucTokenForUser(DockerTestConfig.SERVER_URL, spec.userEmail(), kcPassword);
+        AuthSupport.verifyKeycloakLogin(spec.userEmail(), kcPassword);
         return;
-      } catch (IllegalStateException e) {
+      } catch (Exception e) {
+        if (e instanceof InterruptedException) {
+          Thread.currentThread().interrupt();
+          throw e;
+        }
         TimeUnit.SECONDS.sleep(1);
       }
     }
-    throw new IllegalStateException("Keycloak password grant failed for " + kcUsername);
+    throw new IllegalStateException("Keycloak login verification failed for " + kcUsername);
   }
 
   private static String findKeycloakUserId(String container, String username) throws Exception {
