@@ -20,8 +20,10 @@ UC_SERVER_MODE="${UC_SERVER_MODE:-binary}"
 UC_DOCKER_IMAGE="${UC_DOCKER_IMAGE:-}"
 UC_DOCKER_CONTAINER_NAME="${UC_DOCKER_CONTAINER_NAME:-uc-test-server}"
 UC_DOCKER_HOME="${UC_DOCKER_HOME:-/home/unitycatalog}"
-UC_DOCKER_MINIO_ENDPOINT="${UC_DOCKER_MINIO_ENDPOINT:-http://host.docker.internal:9000}"
-UC_DOCKER_KEYCLOAK_HOST="${UC_DOCKER_KEYCLOAK_HOST:-host.docker.internal:9090}"
+UC_DOCKER_MINIO_ENDPOINT="${UC_DOCKER_MINIO_ENDPOINT:-}"
+UC_DOCKER_MINIO_NETWORK="${UC_DOCKER_MINIO_NETWORK:-}"
+UC_DOCKER_OAUTH_HOST="${UC_DOCKER_OAUTH_HOST:-dev.dev.celonis.cloud}"
+UC_OAUTH_ISSUER="${UC_OAUTH_ISSUER:-https://dev.dev.celonis.cloud}"
 UC_ENABLE_OIDC="${UC_ENABLE_OIDC:-}"
 UC_API_PORT="${UC_API_PORT:-8080}"
 UC_BACKEND_PORT="${UC_BACKEND_PORT:-8081}"
@@ -57,6 +59,58 @@ cleanup_on_failure() {
   if [[ -n "$DOCKER_CONF_DIR" && -d "$DOCKER_CONF_DIR" ]]; then
     rm -rf "$DOCKER_CONF_DIR"
     DOCKER_CONF_DIR=""
+  fi
+}
+
+prepare_oauth_truststore() {
+  local cert_dir="$ROOT_DIR/docker/oidc/caddy"
+  local root_cert="$cert_dir/root.crt"
+  local intermediate_cert="$cert_dir/intermediate.crt"
+  local truststore="${TMPDIR:-/tmp}/uc-oauth-truststore.jks"
+  local gateway_container="${UC_OAUTH_GATEWAY_CONTAINER:-unitycatalog-oidc-oauth-gateway-1}"
+
+  if command -v docker >/dev/null 2>&1 \
+      && docker ps --format '{{.Names}}' | grep -qx "$gateway_container"; then
+    mkdir -p "$cert_dir"
+    docker cp "${gateway_container}:/data/caddy/pki/authorities/local/root.crt" "$root_cert" >/dev/null 2>&1 || true
+    docker cp "${gateway_container}:/data/caddy/pki/authorities/local/intermediate.crt" \
+      "$intermediate_cert" >/dev/null 2>&1 || true
+  fi
+
+  if [[ ! -f "$root_cert" ]]; then
+    echo "WARN: OAuth CA cert not found at $root_cert; HTTPS discovery may fail" >&2
+    return 1
+  fi
+  rm -f "$truststore"
+  keytool -importcert -noprompt \
+    -alias celonis-oauth-root \
+    -file "$root_cert" \
+    -keystore "$truststore" \
+    -storepass changeit >/dev/null 2>&1
+  if [[ -f "$intermediate_cert" ]]; then
+    keytool -importcert -noprompt \
+      -alias celonis-oauth-intermediate \
+      -file "$intermediate_cert" \
+      -keystore "$truststore" \
+      -storepass changeit >/dev/null 2>&1
+  fi
+  echo "$truststore"
+}
+
+resolve_docker_minio_settings() {
+  if [[ -z "$UC_DOCKER_MINIO_ENDPOINT" ]] \
+      && docker ps --format '{{.Names}}' | grep -qx 'unitycatalog-local-minio-1'; then
+    UC_DOCKER_MINIO_ENDPOINT="http://minio:9000"
+    UC_DOCKER_MINIO_NETWORK="${UC_DOCKER_MINIO_NETWORK:-unitycatalog-local_default}"
+    echo "MinIO reachable via docker network ${UC_DOCKER_MINIO_NETWORK} at ${UC_DOCKER_MINIO_ENDPOINT}" >&2
+  fi
+  UC_DOCKER_MINIO_ENDPOINT="${UC_DOCKER_MINIO_ENDPOINT:-http://host.docker.internal:9000}"
+}
+
+oauth_java_opts() {
+  local truststore
+  if truststore="$(prepare_oauth_truststore)"; then
+    echo "-Djavax.net.ssl.trustStore=$truststore -Djavax.net.ssl.trustStorePassword=changeit"
   fi
 }
 
@@ -107,13 +161,14 @@ prepare_docker_conf() {
   minio_snippet="$ROOT_DIR/docker/minio/server.properties.snippet"
   oidc_snippet="$ROOT_DIR/docker/oidc/server.properties.docker.snippet"
   enable_oidc="${UC_ENABLE_OIDC:-1}"
-  local keycloak_issuer="http://${UC_DOCKER_KEYCLOAK_HOST}/realms/unity-catalog"
+  local oauth_issuer="$UC_OAUTH_ISSUER"
 
   if [[ -f "$props" ]]; then
     sed -i.bak \
       -e "s|http://\\[::1\\]:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
       -e "s|http://127\\.0\\.0\\.1:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
       -e "s|http://localhost:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
+      -e "s|http://host\\.docker\\.internal:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
       "$props"
     rm -f "${props}.bak"
   fi
@@ -123,27 +178,33 @@ prepare_docker_conf() {
     {
       echo ""
       echo "# Appended for docker/tests (MinIO on host)"
-      sed "s|http://\\[::1\\]:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" "$minio_snippet"
+      sed -e "s|http://\\[::1\\]:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
+          -e "s|http://host\\.docker\\.internal:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
+          "$minio_snippet"
     } >>"$props"
   fi
 
   if [[ "$enable_oidc" == "1" && -f "$oidc_snippet" && -f "$props" ]]; then
     if command -v curl >/dev/null 2>&1; then
       local actual_issuer
-      actual_issuer="$(curl -sf "http://${UC_DOCKER_KEYCLOAK_HOST}/realms/unity-catalog/.well-known/openid-configuration" 2>/dev/null | sed -n 's/.*"issuer":"\([^"]*\)".*/\1/p' | head -1 || true)"
-      if [[ -n "$actual_issuer" && "$actual_issuer" != "$keycloak_issuer" ]]; then
-        echo "ERROR: Keycloak issuer is '$actual_issuer' but docker tests expect '$keycloak_issuer'" >&2
-        echo "Restart Keycloak with:" >&2
-        echo "  docker compose -f docker/oidc/compose.yaml -f docker/oidc/compose.docker-tests.yaml up -d --force-recreate keycloak" >&2
+      actual_issuer="$(curl -skf --resolve "${UC_DOCKER_OAUTH_HOST}:443:127.0.0.1" \
+        -H 'X-Celonis-Team-Domain: dev' \
+        -H 'X-Celonis-Team-Id: 79257834-828d-48cb-951d-75294d6e1cce' \
+        "https://${UC_DOCKER_OAUTH_HOST}/.well-known/openid-configuration" 2>/dev/null \
+        | sed -n 's/.*"issuer":"\([^"]*\)".*/\1/p' | head -1 || true)"
+      if [[ -n "$actual_issuer" && "$actual_issuer" != "$oauth_issuer" ]]; then
+        echo "ERROR: OAuth issuer is '$actual_issuer' but docker tests expect '$oauth_issuer'" >&2
+        echo "Start the OAuth stack with:" >&2
+        echo "  docker compose -f docker/oidc/compose.yaml up -d" >&2
         exit 1
       fi
     fi
     {
       echo ""
-      echo "# Appended for docker/tests (Keycloak at ${UC_DOCKER_KEYCLOAK_HOST})"
+      echo "# Appended for docker/tests (Celonis OAuth at ${UC_DOCKER_OAUTH_HOST})"
       grep -v '^#' "$oidc_snippet" | grep -v '^[[:space:]]*$'
     } >>"$props"
-    echo "OIDC auth enabled for docker tests (issuer ${keycloak_issuer})" >&2
+    echo "OIDC auth enabled for docker tests (issuer ${oauth_issuer})" >&2
   fi
 
   DOCKER_CONF_DIR="$conf_dir"
@@ -154,7 +215,10 @@ start_binary_server() {
   echo "Starting UC server in binary mode"
   : > "$LOG_FILE"
 
-  env "storage-root.models=file:///tmp/ucroot" bin/start-uc-server >"$LOG_FILE" 2>&1 &
+  local java_opts
+  java_opts="$(oauth_java_opts || true)"
+
+  env ${java_opts:+JAVA_TOOL_OPTIONS="$java_opts"} "storage-root.models=file:///tmp/ucroot" bin/start-uc-server >"$LOG_FILE" 2>&1 &
   UC_SERVER_PID=$!
   echo "$UC_SERVER_PID" > "$PID_FILE"
   echo "binary" > "$MODE_FILE"
@@ -201,16 +265,31 @@ start_docker_server() {
   fi
 
   if container_running; then
-    echo "Reusing running UC server container: $UC_DOCKER_CONTAINER_NAME"
-    echo "docker" > "$MODE_FILE"
-    echo "$UC_DOCKER_CONTAINER_NAME" > "$CONTAINER_FILE"
-    wait_for_server "docker (existing container)" check_container
-    echo "UC server container up and running"
-    return 0
+    if [[ -n "$UC_DOCKER_MINIO_NETWORK" ]]; then
+      echo "Recreating UC container to join MinIO network ${UC_DOCKER_MINIO_NETWORK}" >&2
+      docker rm -f "$UC_DOCKER_CONTAINER_NAME" 2>/dev/null || true
+    else
+      echo "Reusing running UC server container: $UC_DOCKER_CONTAINER_NAME"
+      echo "docker" > "$MODE_FILE"
+      echo "$UC_DOCKER_CONTAINER_NAME" > "$CONTAINER_FILE"
+      wait_for_server "docker (existing container)" check_container
+      echo "UC server container up and running"
+      return 0
+    fi
   fi
 
-  local conf_mount
+  resolve_docker_minio_settings
+  local conf_mount truststore java_opts docker_network_arg=()
+  if [[ -n "$UC_DOCKER_MINIO_NETWORK" ]]; then
+    docker_network_arg=(--network "$UC_DOCKER_MINIO_NETWORK")
+  fi
   conf_mount="$(prepare_docker_conf)"
+  truststore="$(prepare_oauth_truststore || true)"
+  java_opts=""
+  if [[ -n "$truststore" ]]; then
+    java_opts="-Djavax.net.ssl.trustStore=${UC_DOCKER_HOME}/etc/conf/oauth-truststore.jks -Djavax.net.ssl.trustStorePassword=changeit"
+    cp "$truststore" "$conf_mount/oauth-truststore.jks"
+  fi
 
   echo "Starting UC server in docker mode"
   echo "Image: $UC_DOCKER_IMAGE"
@@ -224,9 +303,12 @@ start_docker_server() {
     --name "$UC_DOCKER_CONTAINER_NAME" \
     -p "${UC_API_PORT}:8080" \
     -p "${UC_BACKEND_PORT}:8081" \
+    "${docker_network_arg[@]}" \
     --add-host=host.docker.internal:host-gateway \
+    --add-host="${UC_DOCKER_OAUTH_HOST}:host-gateway" \
     -v "${conf_mount}:${UC_DOCKER_HOME}/etc/conf" \
     -e "storage-root.models=file:///tmp/ucroot" \
+    ${java_opts:+-e "JAVA_TOOL_OPTIONS=$java_opts"} \
     "$UC_DOCKER_IMAGE"
 
   echo "docker" > "$MODE_FILE"

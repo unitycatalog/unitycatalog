@@ -1,5 +1,6 @@
 package io.unitycatalog.docker.tests.support;
 
+import cloud.celonis.oauth.client.OAuthClientApi;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.control.model.GrantType;
@@ -7,30 +8,14 @@ import io.unitycatalog.control.model.OAuthTokenExchangeForm;
 import io.unitycatalog.control.model.TokenType;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public final class AuthSupport {
-
-  private static final String KC_CLIENT_ID = "unity-catalog-local";
-  private static final String KC_CLIENT_SECRET = "unity-catalog-local-secret";
-  private static final String KC_TOKEN_PATH =
-      "/realms/unity-catalog/protocol/openid-connect/token";
-
-  private static String keycloakBaseUrl() {
-    String fromEnv = System.getenv("UC_KEYCLOAK_BASE_URL");
-    if (fromEnv != null && !fromEnv.isBlank()) {
-      return fromEnv.replaceAll("/$", "");
-    }
-    return "http://localhost:9090";
-  }
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final HttpClient HTTP =
@@ -38,7 +23,7 @@ public final class AuthSupport {
 
   private AuthSupport() {}
 
-  public static String deriveKeycloakUsername(String email) {
+  public static String deriveOAuthUsername(String email) {
     return emailLocalPart(email).toLowerCase(Locale.ROOT);
   }
 
@@ -55,20 +40,24 @@ public final class AuthSupport {
 
   public static String ucTokenForUser(String serverUrl, String email, String password)
       throws IOException, InterruptedException {
-    String kcUsername = deriveKeycloakUsername(email);
-    String kcPassword =
-        password != null && !password.isBlank() ? password : deriveDefaultPassword(email);
-    String idToken = fetchKeycloakIdToken(kcUsername, kcPassword);
+    String idToken = obtainIdToken(email);
     return exchangeUcAccessToken(serverUrl, idToken);
   }
 
-  /** Verify Keycloak credentials only (before the UC user record exists). */
-  public static void verifyKeycloakLogin(String email, String password)
+  /** Verify Celonis OAuth is reachable and the configured client can mint user tokens. */
+  public static void verifyOAuthLogin(String email, String password)
       throws IOException, InterruptedException {
-    String kcUsername = deriveKeycloakUsername(email);
-    String kcPassword =
-        password != null && !password.isBlank() ? password : deriveDefaultPassword(email);
-    fetchKeycloakIdToken(kcUsername, kcPassword);
+    obtainIdToken(email);
+  }
+
+  private static String obtainIdToken(String email) throws IOException, InterruptedException {
+    verifyOAuthClientRegistered();
+    return CelonisOAuthAuthorizationCodeFlow.fetchIdToken(email);
+  }
+
+  private static void verifyOAuthClientRegistered() {
+    OAuthClientApi oauthClient = CelonisOAuthClients.client();
+    oauthClient.findOne(CelonisOAuthTestConstants.OAUTH_CLIENT_ID, true);
   }
 
   private static String exchangeUcAccessToken(String serverUrl, String idToken)
@@ -101,50 +90,6 @@ public final class AuthSupport {
       throw new IllegalStateException("UC token exchange response missing access_token");
     }
     return accessToken;
-  }
-
-  private static String fetchKeycloakIdToken(String username, String password)
-      throws IOException, InterruptedException {
-    URI tokenUri = URI.create(keycloakBaseUrl() + KC_TOKEN_PATH);
-    String form =
-        formBody(
-            Map.of(
-                "grant_type", "password",
-                "client_id", KC_CLIENT_ID,
-                "client_secret", KC_CLIENT_SECRET,
-                "username", username,
-                "password", password,
-                "scope", "openid"));
-
-    HttpRequest request =
-        HttpRequest.newBuilder()
-            .uri(tokenUri)
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .POST(HttpRequest.BodyPublishers.ofString(form))
-            .build();
-
-    HttpResponse<String> response =
-        HTTP.send(request, HttpResponse.BodyHandlers.ofString());
-    if (response.statusCode() != 200) {
-      throw new IllegalStateException("Keycloak password grant failed: " + response.body());
-    }
-    Map<String, String> tokenResponse =
-        MAPPER.readValue(response.body(), new TypeReference<Map<String, String>>() {});
-    String idToken = tokenResponse.get("id_token");
-    if (idToken == null || idToken.isBlank()) {
-      throw new IllegalStateException("Keycloak response missing id_token");
-    }
-    return idToken;
-  }
-
-  private static String formBody(Map<String, String> fields) {
-    return fields.entrySet().stream()
-        .map(
-            e ->
-                URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
-                    + "="
-                    + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
-        .collect(Collectors.joining("&"));
   }
 
   private static String emailLocalPart(String email) {

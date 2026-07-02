@@ -1,8 +1,6 @@
 package io.unitycatalog.docker.tests.support;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,32 +9,20 @@ import java.util.Map;
 /** Start MinIO + Spark Thrift Server via docker compose (SQL runs separately over JDBC). */
 public final class DockerCompose {
 
-  private static volatile String activeCatalog;
-  private static volatile String activeToken;
+  private static volatile boolean sparkStackUp;
 
   private DockerCompose() {}
 
+  /** Ensure MinIO and a shared Spark Thrift server are running (catalog/token come from JDBC URL). */
   public static void upSparkStack(String catalog, String userToken)
       throws IOException, InterruptedException {
-    if (catalog.equals(activeCatalog) && userToken.equals(activeToken)) {
+    if (sparkStackUp) {
       return;
     }
-    run(
-        "up",
-        "-d",
-        "--remove-orphans",
-        "minio",
-        "minio-init");
-    run(
-        Map.of("UC_CATALOG", catalog, "UC_AUTH_TOKEN", userToken),
-        "up",
-        "-d",
-        "--force-recreate",
-        "--wait",
-        "spark-thrift");
+    run("up", "-d", "--remove-orphans", "minio", "minio-init");
+    run("up", "-d", "--wait", "spark-thrift");
     SparkJdbcClient.waitForPort();
-    activeCatalog = catalog;
-    activeToken = userToken;
+    sparkStackUp = true;
   }
 
   private static void run(String... args) throws IOException, InterruptedException {

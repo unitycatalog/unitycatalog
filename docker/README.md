@@ -28,7 +28,7 @@ provider:
 docker compose -f docker/oidc/compose.yaml up -d
 ```
 
-See [oidc/README.md](oidc/README.md) for Keycloak setup, `server.properties`
+See [oidc/README.md](oidc/README.md) for Celonis OAuth setup, `server.properties`
 snippets, and a lighter mock-oauth2 alternative.
 
 ### MinIO + OIDC together

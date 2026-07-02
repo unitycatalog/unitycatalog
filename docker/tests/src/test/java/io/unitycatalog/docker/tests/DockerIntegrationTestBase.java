@@ -18,6 +18,8 @@ abstract class DockerIntegrationTestBase {
 
   protected static final String SERVER = DockerTestConfig.SERVER_URL;
   protected static String adminToken;
+  private static String sparkCatalog;
+  private static String sparkToken;
 
   @BeforeAll
   static void assumeInfrastructure() throws IOException, InterruptedException {
@@ -50,24 +52,34 @@ abstract class DockerIntegrationTestBase {
   protected static void ensureSpark(String catalog, String token)
       throws IOException, InterruptedException {
     DockerCompose.upSparkStack(catalog, token);
+    sparkCatalog = catalog;
+    sparkToken = token;
   }
 
   protected static String runSparkSql(String schema, String sql) throws SQLException {
-    return SparkJdbcClient.execute(schema, sql);
+    requireSparkSession();
+    return SparkJdbcClient.execute(sparkCatalog, sparkToken, schema, sql);
   }
 
   protected static String runSparkSqlAs(String catalog, String schema, String token, String sql)
       throws Exception {
     DockerCompose.upSparkStack(catalog, token);
-    return SparkJdbcClient.execute(schema, sql);
+    return SparkJdbcClient.execute(catalog, token, schema, sql);
   }
 
   protected static void assertSparkSqlFails(String schema, String sql) throws SQLException {
+    requireSparkSession();
     try {
-      runSparkSql(schema, sql);
+      SparkJdbcClient.execute(sparkCatalog, sparkToken, schema, sql);
       throw new AssertionError("Expected Spark SQL to fail: " + sql);
     } catch (SQLException e) {
       // expected
+    }
+  }
+
+  private static void requireSparkSession() {
+    if (sparkCatalog == null || sparkToken == null) {
+      throw new IllegalStateException("Call ensureSpark(catalog, token) before runSparkSql");
     }
   }
 

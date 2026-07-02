@@ -119,7 +119,7 @@ public final class UcOperations {
     return schemasApi().getSchema(catalog + "." + schema);
   }
 
-  public TableInfo createExternalTable(
+public TableInfo createExternalTable(
       String catalog,
       String schema,
       String table,

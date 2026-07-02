@@ -43,7 +43,6 @@ public final class BootstrapCli {
             .dataBucket(values.getOrDefault("data-bucket", DockerTestConfig.DATA_BUCKET))
             .storageRoleArn(
                 values.getOrDefault("storage-role-arn", DockerTestConfig.STORAGE_ROLE_ARN))
-            .keycloakContainer(values.get("keycloak-container"))
             .build();
 
     String serverUrl = values.getOrDefault("server-url", DockerTestConfig.SERVER_URL);

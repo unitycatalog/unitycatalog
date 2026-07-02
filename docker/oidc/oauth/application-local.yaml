@@ -1,0 +1,77 @@
+logging:
+  level:
+    org.springframework: INFO
+    org.jooq.tools.LoggerListener: INFO
+    org.springframework.security: INFO
+
+server:
+  error:
+    include-stacktrace: always
+    include-message: always
+
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/oauth-server
+    username: celonis
+    password: celonis
+
+cloud:
+  celonis:
+    realm: dev.celonis.cloud
+    oauth:
+      server:
+        jwksPath: /etc/oauth-server/jwks.json
+        default-client-settings:
+          require-pkce: false
+        static-clients-map:
+          unity-catalog-local:
+            enabled: true
+            client-name: Unity Catalog Local
+            client-secret: "{bcrypt}$2y$10$Qmg940pqwYtc6a2Ok8enEuS/QfOMqPy/bknYSCUmpKGwen8lv1K3W"
+            grant-types:
+              - authorization_code
+              - client_credentials
+              - refresh_token
+            authentication-methods:
+              - client_secret_basic
+              - client_secret_post
+            scopes:
+              - openid
+              - email
+              - profile
+            redirect-uris:
+              - http://127.0.0.1:8080/callback
+              - http://localhost:8080/callback
+              - http://127.0.0.1:61918/callback
+              - http://localhost:61918/callback
+            settings:
+              require-consent: false
+        available-scopes:
+          - name: openid
+            published: true
+          - name: email
+            published: true
+          - name: profile
+            published: true
+        impersonation-allowed-services:
+          - unity-catalog-tests
+
+security:
+  jwt:
+    secret: my-super-secret-key
+
+celonis:
+  services:
+    filescand:
+      url: http://localhost:9876
+      enabled: false
+    log:
+      url: http://localhost:8089/log
+    team:
+      url: http://localhost:8082
+
+authorization:
+  grpc:
+    host: localhost
+    port: 9090
+    threads: 5

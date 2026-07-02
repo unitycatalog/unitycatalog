@@ -10,6 +10,9 @@ public final class DockerTestConfig {
 
   public static final String SERVER_URL =
       System.getenv().getOrDefault("UC_SERVER_URL", "http://localhost:8080");
+  /** UC REST base URL as seen from the Spark Thrift container (not the test JVM). */
+  public static final String SPARK_UC_SERVER_URI =
+      System.getenv().getOrDefault("SPARK_UC_SERVER_URI", "http://host.docker.internal:8080");
   public static final String BUCKET =
       System.getenv().getOrDefault("BUCKET", "s3://unity-catalog");
   public static final String DATA_BUCKET =
