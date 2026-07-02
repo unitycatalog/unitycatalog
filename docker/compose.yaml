@@ -63,14 +63,11 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       UC_SERVER_URI: http://host.docker.internal:8080
-      UC_CATALOG: ${UC_CATALOG:-catA}
-      UC_AUTH_TOKEN: ${UC_AUTH_TOKEN:-}
       MINIO_ENDPOINT: http://minio:9000
     profiles:
       - spark
 
-  # Long-running Spark Thrift Server; SQL clients connect via JDBC (beeline).
-  # UCSingleCatalog in spark-defaults.conf talks to UC REST on the host.
+  # Long-running Spark Thrift Server; UC catalog/token are supplied per JDBC connection.
   spark-thrift:
     image: unitycatalog-local-spark:4.1.2
     build:
@@ -88,8 +85,6 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       UC_SERVER_URI: http://host.docker.internal:8080
-      UC_CATALOG: ${UC_CATALOG:-catA}
-      UC_AUTH_TOKEN: ${UC_AUTH_TOKEN:-}
       MINIO_ENDPOINT: http://minio:9000
       THRIFT_BIND_HOST: 0.0.0.0
       THRIFT_PORT: "10000"

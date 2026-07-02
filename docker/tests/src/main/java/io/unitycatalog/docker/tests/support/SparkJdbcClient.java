@@ -9,9 +9,14 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Properties;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /** Run Spark SQL against the long-running Thrift Server via Hive JDBC (host → localhost:10000). */
 public final class SparkJdbcClient {
+
+  private static final String UC_CATALOG_CLASS = "io.unitycatalog.spark.UCSingleCatalog";
 
   static {
     try {
@@ -26,10 +31,13 @@ public final class SparkJdbcClient {
   private static final int QUERY_TIMEOUT_SECS =
       Integer.parseInt(System.getenv().getOrDefault("DOCKER_TESTS_SPARK_SQL_TIMEOUT_SECS", "180"));
 
-  public static String execute(String schema, String sql) throws SQLException {
+  public static String execute(String catalog, String token, String schema, String sql)
+      throws SQLException {
     String jdbcUrl = jdbcUrl(schema);
-    System.err.println("==> Spark SQL [" + schema + "]: " + sql);
-    try (Connection connection = DriverManager.getConnection(jdbcUrl)) {
+    Properties sessionConf = sessionConfProperties(catalog, token);
+    System.err.println(
+        "==> Spark SQL [" + catalog + "." + schema + "] via " + jdbcUrl + ": " + sql);
+    try (Connection connection = DriverManager.getConnection(jdbcUrl, sessionConf)) {
       connection.setAutoCommit(true);
       return executeSql(connection, sql);
     }
@@ -59,10 +67,28 @@ public final class SparkJdbcClient {
                 + DockerTestConfig.SPARK_JDBC_PORT);
   }
 
-  private static String jdbcUrl(String schema) {
+  static String jdbcUrl(String schema) {
     return String.format(
         "jdbc:hive2://%s:%d/%s",
         DockerTestConfig.SPARK_JDBC_HOST, DockerTestConfig.SPARK_JDBC_PORT, schema);
+  }
+
+  private static Properties sessionConfProperties(String catalog, String token) {
+    Properties properties = new Properties();
+    for (Map.Entry<String, String> entry : catalogSessionConf(catalog, token).entrySet()) {
+      properties.setProperty("hiveconf:" + entry.getKey(), entry.getValue());
+    }
+    return properties;
+  }
+
+  private static Map<String, String> catalogSessionConf(String catalog, String token) {
+    Map<String, String> conf = new LinkedHashMap<>();
+    conf.put("spark.sql.catalog." + catalog, UC_CATALOG_CLASS);
+    conf.put("spark.sql.catalog." + catalog + ".uri", DockerTestConfig.SPARK_UC_SERVER_URI);
+    conf.put("spark.sql.catalog." + catalog + ".token", token);
+    conf.put("spark.sql.catalog." + catalog + ".warehouse", catalog);
+    conf.put("spark.sql.defaultCatalog", catalog);
+    return conf;
   }
 
   private static String executeSql(Connection connection, String sql) throws SQLException {

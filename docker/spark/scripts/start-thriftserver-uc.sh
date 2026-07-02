@@ -6,7 +6,7 @@ set -euo pipefail
 THRIFT_BIND_HOST="${THRIFT_BIND_HOST:-0.0.0.0}"
 THRIFT_PORT="${THRIFT_PORT:-10000}"
 
-echo "==> Starting Spark Thrift Server (catalog=${UC_CATALOG}, UC=${UC_SERVER_URI})"
+echo "==> Starting Spark Thrift Server (UC catalog via JDBC session conf)"
 echo "    JDBC: jdbc:hive2://localhost:${THRIFT_PORT} (bind ${THRIFT_BIND_HOST}:${THRIFT_PORT})"
 
 /opt/spark/sbin/start-thriftserver.sh \
