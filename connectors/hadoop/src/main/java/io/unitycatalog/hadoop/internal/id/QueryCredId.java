@@ -1,78 +1,73 @@
 package io.unitycatalog.hadoop.internal.id;
 
+import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY;
-import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_QUERY_CRED_ID_KEY;
 
 import io.unitycatalog.client.internal.Preconditions;
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs.CredentialCacheScope;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.apache.hadoop.conf.Configuration;
 
 /**
- * Credential cache key that isolates vended credentials to a single query.
+ * Per-query credential cache identity.
  *
- * <p>When {@link #isQueryScoped(Configuration)} is true, the global credential cache keys entries
- * by {@code (CredId, queryId)} instead of {@link CredId} alone, so separate queries do not reuse
- * each other's credentials even when they target the same table or path.
+ * <p>Used only when credential cache scope is {@code query}. Cluster-scoped caching continues to
+ * key entries by the resource {@link CredId} alone.
  */
-public final class QueryCredId {
-  private final CredId scope;
-  private final String queryId;
+public final class QueryCredId implements CredId {
+  private final String uuid;
 
-  public QueryCredId(CredId scope, String queryId) {
-    Preconditions.checkNotNull(scope, "scope is required");
-    Preconditions.checkNotNull(queryId, "queryId is required");
-    Preconditions.checkArgument(!queryId.isEmpty(), "queryId cannot be empty");
-    this.scope = scope;
-    this.queryId = queryId;
+  public QueryCredId(String uuid) {
+    Preconditions.checkNotNull(uuid, "uuid is required");
+    Preconditions.checkArgument(!uuid.isEmpty(), "uuid cannot be empty");
+    this.uuid = uuid;
   }
 
-  public CredId scope() {
-    return scope;
+  public String uuid() {
+    return uuid;
   }
 
-  public String queryId() {
-    return queryId;
-  }
-
-  /** Returns the Hadoop properties needed to reconstruct this query-scoped cache key. */
+  @Override
   public Map<String, String> props() {
     return Map.of(
         UC_CREDENTIAL_CACHE_SCOPE_KEY,
         UC_CREDENTIAL_CACHE_SCOPE_QUERY,
-        UC_QUERY_CRED_ID_KEY,
-        queryId);
+        UC_CREDENTIALS_UID_KEY,
+        uuid);
   }
 
   public static boolean isQueryScoped(Configuration conf) {
-    return UC_CREDENTIAL_CACHE_SCOPE_QUERY.equals(
-        conf.get(UC_CREDENTIAL_CACHE_SCOPE_KEY, UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE));
+    return CredentialCacheScope.QUERY
+        .value()
+        .equals(conf.get(UC_CREDENTIAL_CACHE_SCOPE_KEY, UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE));
   }
 
   /**
    * Resolves the credential cache key for {@code conf}.
    *
-   * <p>Returns a {@link QueryCredId} when the cache scope is {@code query}; otherwise returns the
-   * credential scope {@link CredId}.
+   * <p>Returns a query-scoped composite key when cache scope is {@code query}; otherwise returns
+   * the resource {@link CredId}.
    */
-  public static Object resolveCacheKey(Configuration conf, Supplier<CredId> defaultCredId) {
-    CredId scope = CredId.create(conf, defaultCredId);
+  public static CredId resolveCacheKey(Configuration conf, Supplier<CredId> defaultCredId) {
+    CredId credId = CredId.create(conf, defaultCredId);
     if (isQueryScoped(conf)) {
-      return new QueryCredId(scope, requireQueryId(conf));
+      return new QueryScopedCacheKey(credId, new QueryCredId(requireUuid(conf)));
     }
-    return scope;
+    return credId;
   }
 
-  private static String requireQueryId(Configuration conf) {
-    String queryId = conf.get(UC_QUERY_CRED_ID_KEY);
+  static String requireUuid(Configuration conf) {
+    String uuid = conf.get(UC_CREDENTIALS_UID_KEY);
     Preconditions.checkState(
-        queryId != null && !queryId.isEmpty(),
+        uuid != null && !uuid.isEmpty(),
         "Query-scoped credential cache requires '%s' in hadoop configuration",
-        UC_QUERY_CRED_ID_KEY);
-    return queryId;
+        UC_CREDENTIALS_UID_KEY);
+    return uuid;
   }
 
   @Override
@@ -84,16 +79,56 @@ public final class QueryCredId {
       return false;
     }
     QueryCredId that = (QueryCredId) o;
-    return Objects.equals(scope, that.scope) && Objects.equals(queryId, that.queryId);
+    return Objects.equals(uuid, that.uuid);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(scope, queryId);
+    return Objects.hash(uuid);
   }
 
   @Override
   public String toString() {
-    return "QueryCredId{scope=" + scope + ", queryId=" + queryId + "}";
+    return "QueryCredId{uuid=" + uuid + "}";
+  }
+
+  /** Cache key combining a resource {@link CredId} with a per-query {@link QueryCredId}. */
+  private static final class QueryScopedCacheKey implements CredId {
+    private final CredId credId;
+    private final QueryCredId queryCredId;
+
+    private QueryScopedCacheKey(CredId credId, QueryCredId queryCredId) {
+      this.credId = credId;
+      this.queryCredId = queryCredId;
+    }
+
+    @Override
+    public Map<String, String> props() {
+      Map<String, String> merged = new LinkedHashMap<>(credId.props());
+      merged.putAll(queryCredId.props());
+      return Map.copyOf(merged);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof QueryScopedCacheKey)) {
+        return false;
+      }
+      QueryScopedCacheKey that = (QueryScopedCacheKey) o;
+      return Objects.equals(credId, that.credId) && Objects.equals(queryCredId, that.queryCredId);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(credId, queryCredId);
+    }
+
+    @Override
+    public String toString() {
+      return "QueryScopedCacheKey{credId=" + credId + ", queryCredId=" + queryCredId + "}";
+    }
   }
 }

@@ -65,7 +65,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * {@code unitycatalog.credScopedFs.cache.maxSize}.
    */
   /** Visible for testing. */
-  static final BoundedKeyedCache<Object, FileSystem> CACHE;
+  static final BoundedKeyedCache<CredId, FileSystem> CACHE;
 
   static {
     int maxSize =
@@ -85,7 +85,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    Object key = QueryCredId.resolveCacheKey(conf, () -> new DefaultCredId(uri, conf));
+    CredId key = QueryCredId.resolveCacheKey(conf, () -> new DefaultCredId(uri, conf));
     this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
   }
 

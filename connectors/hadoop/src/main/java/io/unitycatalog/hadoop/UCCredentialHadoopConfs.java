@@ -60,6 +60,42 @@ public final class UCCredentialHadoopConfs {
   }
 
   /**
+   * Credential cache scope.
+   *
+   * @since 0.5.0
+   */
+  public enum CredentialCacheScope {
+    QUERY(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY),
+    CLUSTER(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_CLUSTER);
+
+    private final String value;
+
+    CredentialCacheScope(String value) {
+      this.value = value;
+    }
+
+    public String value() {
+      return value;
+    }
+
+    public static CredentialCacheScope fromValue(String value) {
+      for (CredentialCacheScope scope : values()) {
+        if (scope.value.equals(value)) {
+          return scope;
+        }
+      }
+      throw new IllegalArgumentException(
+          "credential cache scope must be '"
+              + QUERY.value
+              + "' or '"
+              + CLUSTER.value
+              + "', got '"
+              + value
+              + "'");
+    }
+  }
+
+  /**
    * Creates a new {@link Builder} with the two required fields.
    *
    * @param catalogUri the Unity Catalog server base URI, e.g. {@code "https://my-uc-server"}
@@ -83,9 +119,7 @@ public final class UCCredentialHadoopConfs {
     private ApiClient apiClient;
     private boolean credentialRenewalEnabled = true;
     private boolean credentialScopedFsEnabled = true;
-    private String credentialCacheScope =
-        UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE;
-    private String queryCredId;
+    private CredentialCacheScope credentialCacheScope = CredentialCacheScope.CLUSTER;
 
     private Configuration hadoopConf = new Configuration(false);
     private final Map<String, String> appVersions = new LinkedHashMap<>();
@@ -133,34 +167,23 @@ public final class UCCredentialHadoopConfs {
     }
 
     /**
-     * Credential cache scope (default {@code cluster}).
+     * Credential cache scope (default {@link CredentialCacheScope#CLUSTER}).
      *
      * <ul>
-     *   <li>{@code query} — isolate vended credentials per query via {@link
+     *   <li>{@link CredentialCacheScope#QUERY} — isolate vended credentials per query via {@link
      *       io.unitycatalog.hadoop.internal.id.QueryCredId}.
-     *   <li>{@code cluster} — share vended credentials cluster-wide keyed by {@link
-     *       io.unitycatalog.hadoop.internal.id.CredId}.
+     *   <li>{@link CredentialCacheScope#CLUSTER} — share vended credentials cluster-wide keyed by
+     *       {@link io.unitycatalog.hadoop.internal.id.CredId}.
      * </ul>
      */
-    public Builder credentialCacheScope(String scope) {
-      Preconditions.checkArgument(
-          UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY.equals(scope)
-              || UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_CLUSTER.equals(scope),
-          "credential cache scope must be '%s' or '%s', got '%s'",
-          UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY,
-          UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_CLUSTER,
-          scope);
+    public Builder credentialCacheScope(CredentialCacheScope scope) {
+      Preconditions.checkNotNull(scope, "scope is required");
       this.credentialCacheScope = scope;
       return this;
     }
 
-    /**
-     * Per-query credential cache identity. Required when {@link #credentialCacheScope} is {@code
-     * query}; when absent, a random UUID is generated at props-build time.
-     */
-    public Builder queryCredId(String queryCredId) {
-      this.queryCredId = queryCredId;
-      return this;
+    public Builder credentialCacheScope(String scope) {
+      return credentialCacheScope(CredentialCacheScope.fromValue(scope));
     }
 
     /**
@@ -215,7 +238,7 @@ public final class UCCredentialHadoopConfs {
           tableOperation,
           appVersions,
           credentialCacheScope,
-          queryCredId);
+          hadoopConf);
     }
 
     /**
@@ -252,7 +275,7 @@ public final class UCCredentialHadoopConfs {
           operation,
           appVersions,
           credentialCacheScope,
-          queryCredId);
+          hadoopConf);
     }
 
     /**
@@ -285,7 +308,7 @@ public final class UCCredentialHadoopConfs {
           location,
           appVersions,
           credentialCacheScope,
-          queryCredId);
+          hadoopConf);
     }
 
     /**
@@ -310,7 +333,7 @@ public final class UCCredentialHadoopConfs {
           pathOperation,
           appVersions,
           credentialCacheScope,
-          queryCredId);
+          hadoopConf);
     }
   }
 }

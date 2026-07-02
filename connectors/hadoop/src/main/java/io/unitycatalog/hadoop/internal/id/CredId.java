@@ -28,7 +28,7 @@ import org.apache.hadoop.conf.Configuration;
  * <p>Two requests sharing the same {@code CredId} target the same credential scope and can reuse a
  * vended credential, while requests with different ids are isolated.
  *
- * <p>There are five implementations:
+ * <p>There are six implementations:
  *
  * <ul>
  *   <li>{@link TableCredId} — keyed by table ID and operation; used for table-level temporary
@@ -41,6 +41,8 @@ import org.apache.hadoop.conf.Configuration;
  *       staging-table-level temporary credentials via the UC Delta credentials API.
  *   <li>{@link DefaultCredId} — keyed by URI scheme and authority; used as a fallback when no Unity
  *       Catalog credential type is present in the configuration.
+ *   <li>{@link QueryCredId} — per-query cache identity used when credential cache scope is {@code
+ *       query}.
  * </ul>
  */
 public interface CredId {

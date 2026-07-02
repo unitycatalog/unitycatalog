@@ -327,7 +327,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     query1Conf.set(
         UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY);
-    query1Conf.set(UCHadoopConfConstants.UC_QUERY_CRED_ID_KEY, "query-1");
+    query1Conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, "query-1");
 
     Configuration query2Conf = newTableBasedConf("tableA");
     query2Conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
@@ -335,7 +335,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     query2Conf.set(
         UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY);
-    query2Conf.set(UCHadoopConfConstants.UC_QUERY_CRED_ID_KEY, "query-2");
+    query2Conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, "query-2");
 
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     TemporaryCredentials cred1 = newTempCred("query_1", clock.now().toEpochMilli() + 2000L);

@@ -8,6 +8,7 @@ import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs.{PathOperation, TableOperation}
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants
 import io.unitycatalog.spark.auth.AuthConfigUtils
 import io.unitycatalog.spark.compat.SparkCatalogCompatibility
 import io.unitycatalog.spark.utils.OptionsUtil
@@ -553,12 +554,11 @@ object UCSingleCatalog {
   def configureCredentialCache(
       builder: UCCredentialHadoopConfs.Builder,
       credentialCacheScope: String): UCCredentialHadoopConfs.Builder = {
-    val configured = builder.credentialCacheScope(credentialCacheScope)
+    val hadoopConf = new Configuration(UCSingleCatalog.sessionHadoopConf())
     if (OptionsUtil.CREDENTIAL_CACHE_SCOPE_QUERY == credentialCacheScope) {
-      configured.queryCredId(currentQueryCredId())
-    } else {
-      configured
+      hadoopConf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, currentQueryCredId())
     }
+    builder.credentialCacheScope(credentialCacheScope).hadoopConf(hadoopConf)
   }
 
   def setCredentialProps(props: util.HashMap[String, String],

@@ -103,8 +103,10 @@ public class UCHadoopConfConstants {
   public static final String UC_CREDENTIAL_CACHE_SCOPE_DEFAULT_VALUE =
       UC_CREDENTIAL_CACHE_SCOPE_CLUSTER;
 
-  // Per-query credential cache identity, propagated from the Spark driver to executors.
-  public static final String UC_QUERY_CRED_ID_KEY = "fs.unitycatalog.credentials.query.id";
+  // Key representing a unique credential ID. It identifies a job-level credential for a specific
+  // table, meaning that the same job–table combination shares the same credential. Cached
+  // credentials are indexed by this key and are not reused across different jobs.
+  public static final String UC_CREDENTIALS_UID_KEY = "fs.unitycatalog.credentials.uid";
 
   // Keys for HTTP request configuration - see ApiClientConf for more details.
   public static final String REQUEST_RETRY_MAX_ATTEMPTS_KEY =

@@ -772,15 +772,17 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void createTableCredPropsIncludesQueryCacheScopeAndQueryId() throws Exception {
+  void createTableCredPropsIncludesQueryCacheScopeAndUuid() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
+    Configuration conf = new Configuration(false);
+    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, "query-1");
 
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             true,
             false,
-            new Configuration(false),
+            conf,
             "s3",
             null,
             "http://uc",
@@ -788,14 +790,14 @@ class CredPropsUtilTest {
             "tid",
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of(),
-            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY,
-            "query-1");
+            UCCredentialHadoopConfs.CredentialCacheScope.QUERY,
+            conf);
 
     assertThat(props)
         .containsEntry(
             UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_KEY,
             UCHadoopConfConstants.UC_CREDENTIAL_CACHE_SCOPE_QUERY)
-        .containsEntry(UCHadoopConfConstants.UC_QUERY_CRED_ID_KEY, "query-1");
+        .containsEntry(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, "query-1");
   }
 
   @Test
