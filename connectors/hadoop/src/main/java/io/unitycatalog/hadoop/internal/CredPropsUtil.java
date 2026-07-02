@@ -4,7 +4,6 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.ApiClientUtils;
-import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
@@ -19,6 +18,7 @@ import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
+import io.unitycatalog.hadoop.internal.util.ClockUtil;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
@@ -536,14 +536,13 @@ public class CredPropsUtil {
         hadoopConf.getLong(
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
-    Clock clock = clock(hadoopConf);
 
     return initialCredCache.access(
         credId,
         () ->
             new RenewableCredential(
                 renewalLeadTimeMillis,
-                clock,
+                ClockUtil.resolveClock(hadoopConf),
                 createCredential(apiClient, catalogUri, tokenProvider, appVersions, credId)));
   }
 
@@ -557,12 +556,6 @@ public class CredPropsUtil {
     ApiClient client =
         apiClient != null ? apiClient : createApiClient(catalogUri, tokenProvider, appVersions);
     return genericCredFetcherFactory.create(client, credId).createCredential();
-  }
-
-  private static Clock clock(Configuration hadoopConf) {
-    // Use the test clock if one is intentionally configured for testing.
-    String clockName = hadoopConf.get(UCHadoopConfConstants.UC_TEST_CLOCK_NAME);
-    return clockName != null ? Clock.getManualClock(clockName) : Clock.systemClock();
   }
 
   private static ApiClient createApiClient(

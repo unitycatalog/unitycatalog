@@ -53,6 +53,12 @@ public class CredentialCache {
     RenewableCredential create() throws ApiException;
   }
 
+  /**
+   * A cached credential together with the renewal policy ({@code clock} and {@code
+   * renewalLeadTimeMillis}) used to decide when it should be renewed. The policy is captured from
+   * the caller that created the entry; since both are derived from the same Hadoop configuration,
+   * later readers observe the same renewal behavior.
+   */
   public static class RenewableCredential {
     private final long renewalLeadTimeMillis;
     private final Clock clock;

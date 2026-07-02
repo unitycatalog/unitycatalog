@@ -779,28 +779,8 @@ class CredPropsUtilTest {
           return mockGenericCredentialFetcher(s3Creds());
         };
 
-    CredPropsUtil.createTableCredProps(
-        false,
-        false,
-        new Configuration(false),
-        "s3",
-        null,
-        "http://uc",
-        tokenProvider(),
-        "tidA",
-        UCCredentialHadoopConfs.TableOperation.READ_WRITE,
-        Map.of());
-    CredPropsUtil.createTableCredProps(
-        false,
-        false,
-        new Configuration(false),
-        "s3",
-        null,
-        "http://uc",
-        tokenProvider(),
-        "tidB",
-        UCCredentialHadoopConfs.TableOperation.READ_WRITE,
-        Map.of());
+    createTableCredProps(new Configuration(false), "tidA");
+    createTableCredProps(new Configuration(false), "tidB");
 
     assertThat(fetches.get()).isEqualTo(2);
   }
@@ -854,6 +834,11 @@ class CredPropsUtilTest {
   }
 
   private static Map<String, String> createTableCredProps(Configuration conf) throws Exception {
+    return createTableCredProps(conf, "tid");
+  }
+
+  private static Map<String, String> createTableCredProps(Configuration conf, String tableId)
+      throws Exception {
     return CredPropsUtil.createTableCredProps(
         false,
         false,
@@ -862,7 +847,7 @@ class CredPropsUtilTest {
         null,
         "http://uc",
         tokenProvider(),
-        "tid",
+        tableId,
         UCCredentialHadoopConfs.TableOperation.READ_WRITE,
         Map.of());
   }

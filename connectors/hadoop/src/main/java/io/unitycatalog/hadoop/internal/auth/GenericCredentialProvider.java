@@ -5,6 +5,7 @@ import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.util.ClockUtil;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -38,10 +39,7 @@ public abstract class GenericCredentialProvider {
 
   protected void initialize(Configuration conf) {
     this.conf = conf;
-
-    // Use the test clock if one is intentionally configured for testing.
-    String clockName = conf.get(UCHadoopConfConstants.UC_TEST_CLOCK_NAME);
-    this.clock = clockName != null ? Clock.getManualClock(clockName) : Clock.systemClock();
+    this.clock = ClockUtil.resolveClock(conf);
 
     this.renewalLeadTimeMillis =
         conf.getLong(
