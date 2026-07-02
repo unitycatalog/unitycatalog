@@ -1,35 +1,52 @@
-# Local OIDC provider for Unity Catalog auth testing.
+# Local OIDC provider for Unity Catalog auth testing (Celonis cloud-oauth-server).
 #
 # Start:
 #   docker compose -f docker/oidc/compose.yaml up -d
 #
-# Keycloak admin console: http://localhost:9090/admin  (admin / admin)
-# Realm login page:       http://localhost:9090/realms/unity-catalog/account
+# OAuth discovery: https://dev.dev.celonis.cloud/.well-known/openid-configuration
+# (add `127.0.0.1 dev.dev.celonis.cloud` to /etc/hosts; Caddy serves TLS on port 443)
 #
 # Lighter alternative: see compose.mock-oauth2.yaml and README.md
 
 name: unitycatalog-oidc
 
 services:
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.0.7
-    command: start-dev --import-realm
+  postgres:
+    image: postgres:13-alpine
     environment:
-      KC_HEALTH_ENABLED: "true"
-      KC_HTTP_ENABLED: "true"
-      KC_HOSTNAME: localhost
-      KC_HOSTNAME_PORT: 9090
-      KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME_STRICT_HTTPS: "false"
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-    ports:
-      - "9090:8080"
-    volumes:
-      - ./keycloak/unity-catalog-realm.json:/opt/keycloak/data/import/unity-catalog-realm.json:ro
+      POSTGRES_USER: celonis
+      POSTGRES_PASSWORD: celonis
+      POSTGRES_DB: oauth-server
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U celonis -d oauth-server"]
+      interval: 5s
       timeout: 5s
       retries: 12
-      start_period: 30s
+      start_period: 10s
+
+  oauth-server:
+    image: ghcr.io/celonis/cloud-oauth-server/oauth-server:${OAUTH_SERVER_TAG:-latest}
+    environment:
+      SPRING_PROFILES_ACTIVE: default,local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/oauth-server
+      SPRING_DATASOURCE_USERNAME: celonis
+      SPRING_DATASOURCE_PASSWORD: celonis
+      JAVA_TOOL_OPTIONS: "-XX:+IgnoreUnrecognizedVMOptions -XX:UseSVE=0"
+    volumes:
+      - ./oauth/jwks.json:/etc/oauth-server/jwks.json:ro
+      - ./oauth/application-local.yaml:/usr/share/app/resources/application-local.yaml:ro
+    ports:
+      - "9099:9099"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  oauth-gateway:
+    image: caddy:2-alpine
+    ports:
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      oauth-server:
+        condition: service_started

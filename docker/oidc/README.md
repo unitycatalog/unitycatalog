@@ -1,19 +1,27 @@
 # Local OIDC for Unity Catalog
 
-Spin up an OpenID Connect provider for testing Unity Catalog authentication locally.
+Spin up the [Celonis cloud-oauth-server](https://github.com/celonis/cloud-oauth-server) for testing Unity Catalog authentication locally.
 
 ## Options
 
 | Provider | Compose file | Best for |
 |---|---|---|
-| **Keycloak** (recommended) | `compose.yaml` | Interactive login, admin UI, CLI `auth login`, realistic OAuth flows |
+| **Celonis OAuth** (recommended) | `compose.yaml` | Production-like OAuth flows, CLI `auth login`, integration tests |
 | **mock-oauth2-server** | `compose.mock-oauth2.yaml` | Fast startup, scripted/token tests, minimal setup |
 
-Both bind **port 9090** on the host. Do not run both at once.
+The Celonis OAuth stack binds **port 443** (TLS gateway) and **9099** (direct HTTP). mock-oauth2 binds **port 9090**. Do not run both Celonis OAuth and mock-oauth2 at once if ports would conflict.
 
-## Keycloak (recommended)
+## Celonis OAuth (recommended)
 
-### 1. Start Keycloak
+### 1. Hostname
+
+Token issuers use `https://dev.dev.celonis.cloud`. Add this to `/etc/hosts`:
+
+```sh
+127.0.0.1 dev.dev.celonis.cloud
+```
+
+### 2. Start the OAuth stack
 
 From the repository root:
 
@@ -27,15 +35,30 @@ Wait until healthy:
 docker compose -f docker/oidc/compose.yaml ps
 ```
 
-- Admin console: http://localhost:9090/admin (`admin` / `admin`)
-- Realm: `unity-catalog`
-- Pre-created user: `admin` / `admin` (email claim `admin`, matches UC bootstrap admin)
+- Discovery: https://dev.dev.celonis.cloud/.well-known/openid-configuration
+- Direct HTTP (tests / debugging): http://localhost:9099
+- OAuth client: `unity-catalog-local` / `unity-catalog-local-secret`
+- Local tenant: `dev` (`X-Celonis-Team-Domain: dev`)
 
-### 2. Configure Unity Catalog server
+The stack runs:
+
+- **postgres** — database for the OAuth server
+- **oauth-server** — `ghcr.io/celonis/cloud-oauth-server/oauth-server`
+- **oauth-gateway** — Caddy TLS proxy for the `dev.dev.celonis.cloud` issuer
+
+Configuration lives in `docker/oidc/oauth/application-local.yaml` and `docker/oidc/oauth/jwks.json`, following the [development-setup example](https://github.com/celonis/development-setup/blob/master/files/docker/docker-compose.with-oauth-server.yml).
+
+### 3. Configure Unity Catalog server
 
 Merge `docker/oidc/server.properties.snippet` into `etc/conf/server.properties`, or copy the auth block manually.
 
-### 3. Start UC and test
+For docker-mode integration tests, `docker/oidc/server.properties.docker.snippet` is merged automatically by `docker/start-uc-for-tests.sh`.
+
+### 4. Trust the local TLS certificate
+
+The Caddy gateway uses an internal CA. Import `docker/oidc/caddy/root.crt` into your JVM truststore before starting an auth-enabled UC server, or let `docker/start-uc-for-tests.sh` do this for binary/docker test runs.
+
+### 5. Start UC and test
 
 ```sh
 build/sbt server/package   # if not already built
@@ -54,15 +77,15 @@ Use the bootstrap admin token (created on first auth-enabled startup):
 bin/uc --auth_token "$(cat etc/conf/token.txt)" user list
 ```
 
-Interactive CLI login (opens browser → Keycloak):
+Interactive CLI login (opens browser → Celonis OAuth):
 
 ```sh
 bin/uc auth login
 ```
 
-### 4. UI
+### 6. UI
 
-The bundled UI login page targets **Google** and **Okta**. Keycloak UI wiring is still a stub, so for Keycloak-backed servers keep Google auth disabled in `ui/.env` (see `ui.env.snippet`). Use the CLI or API for authenticated testing.
+The bundled UI login page targets **Google** and **Okta**. For Celonis OAuth-backed servers keep Google auth disabled in `ui/.env` (see `ui.env.snippet`). Use the CLI or API for authenticated testing.
 
 To run the UI against an auth-enabled server:
 
@@ -124,6 +147,8 @@ docker compose -f docker/compose.yaml down
 
 ## Troubleshooting
 
-- **Port 9090 in use** — stop the other OIDC compose stack or change the host port mapping.
-- **CLI login redirect fails** — Keycloak client allows `http://localhost:*` redirects for the CLI callback.
-- **Token exchange fails** — ensure `server.allowed-issuers` and `server.audiences` match the IdP issuer URL and client id (`unity-catalog-local`).
+- **Port 443 or 9099 in use** — stop the other OIDC compose stack or change the host port mapping.
+- **Issuer / JWKS errors** — ensure `dev.dev.celonis.cloud` resolves to `127.0.0.1` and the OAuth gateway is running.
+- **CLI login redirect fails** — the `unity-catalog-local` client allows `http://127.0.0.1:8080/callback` and `http://localhost:8080/callback`.
+- **Token exchange fails** — ensure `server.allowed-issuers` is `https://dev.dev.celonis.cloud` and `server.audiences` is `unity-catalog-local`.
+- **Integration tests** — start the OAuth stack first, then run `docker/tests/run-tests.sh`. Tests use the [`cloud-oauth-server-internal-client`](https://github.com/celonis/maven-internal/packages/1915797) library for internal OAuth server APIs (client lookup, etc.) and direct HTTP for the public authorization-code flow (user `id_token`s). Session JWTs are signed with `my-super-secret-key` (see `docker/oidc/oauth/application-local.yaml`).

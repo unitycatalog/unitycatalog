@@ -3,7 +3,7 @@
 # Start MinIO only:
 #   docker compose -f docker/compose.yaml up -d
 #
-# Start MinIO + Keycloak (OIDC):
+# Start MinIO + Celonis OAuth (OIDC):
 #   docker compose -f docker/compose.yaml -f docker/oidc/compose.yaml up -d
 #
 # Spark 4.1 smoke test (UC server on host required — see docker/spark/run-test.sh):

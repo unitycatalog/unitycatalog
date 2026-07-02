@@ -22,17 +22,11 @@ import io.unitycatalog.control.api.UsersApi;
 import io.unitycatalog.control.model.Email;
 import io.unitycatalog.control.model.UserResource;
 import io.unitycatalog.control.model.UserResourceList;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 public final class TenantBootstrap {
-
-  private static final String KC_REALM = "unity-catalog";
 
   private TenantBootstrap() {}
 
@@ -46,8 +40,7 @@ public final class TenantBootstrap {
       String dataExternalLocationName,
       String bucket,
       String dataBucket,
-      String storageRoleArn,
-      String keycloakContainer) {
+      String storageRoleArn) {
 
     public static Builder builder() {
       return new Builder();
@@ -64,7 +57,6 @@ public final class TenantBootstrap {
       private String bucket = DockerTestConfig.BUCKET;
       private String dataBucket = DockerTestConfig.DATA_BUCKET;
       private String storageRoleArn = DockerTestConfig.STORAGE_ROLE_ARN;
-      private String keycloakContainer;
 
       public Builder tenantId(String v) {
         tenantId = v;
@@ -116,11 +108,6 @@ public final class TenantBootstrap {
         return this;
       }
 
-      public Builder keycloakContainer(String v) {
-        keycloakContainer = v;
-        return this;
-      }
-
       public TenantSpec build() {
         return new TenantSpec(
             tenantId,
@@ -132,8 +119,7 @@ public final class TenantBootstrap {
             dataExternalLocationName,
             bucket,
             dataBucket,
-            storageRoleArn,
-            keycloakContainer);
+            storageRoleArn);
       }
     }
   }
@@ -142,8 +128,7 @@ public final class TenantBootstrap {
       throws Exception {
     String catalogTenantPath = spec.bucket() + "/tenant/" + spec.tenantId();
     String dataTenantPath = spec.dataBucket() + "/tenant/" + spec.tenantId();
-    String kcUsername = AuthSupport.deriveKeycloakUsername(spec.userEmail());
-    String kcPassword =
+    String oauthPassword =
         spec.userPassword() != null && !spec.userPassword().isBlank()
             ? spec.userPassword()
             : AuthSupport.deriveDefaultPassword(spec.userEmail());
@@ -156,7 +141,7 @@ public final class TenantBootstrap {
     UsersApi usersApi = new UsersApi(UcClientFactory.controlClient(serverUrl, adminToken));
 
     UcOperations.waitForServer(serverUrl, adminToken);
-    ensureKeycloakUser(spec, kcUsername, kcPassword);
+    ensureOAuthLogin(spec.userEmail(), oauthPassword);
     ensureStorageCredential(credentialsApi, spec);
     ensureExternalLocation(
         externalLocationsApi, spec, spec.externalLocationName(), catalogTenantPath);
@@ -181,8 +166,24 @@ public final class TenantBootstrap {
     grantExternalLocationPrivileges(
         grantsApi, spec.dataExternalLocationName(), spec.userEmail());
 
-    String userToken = AuthSupport.ucTokenForUser(serverUrl, spec.userEmail(), kcPassword);
+    String userToken = AuthSupport.ucTokenForUser(serverUrl, spec.userEmail(), oauthPassword);
     verifyCatalogVisible(serverUrl, spec.catalogName(), userToken);
+  }
+
+  private static void ensureOAuthLogin(String email, String password) throws Exception {
+    for (int attempt = 1; attempt <= 15; attempt++) {
+      try {
+        AuthSupport.verifyOAuthLogin(email, password);
+        return;
+      } catch (Exception e) {
+        if (e instanceof InterruptedException) {
+          Thread.currentThread().interrupt();
+          throw e;
+        }
+        TimeUnit.SECONDS.sleep(1);
+      }
+    }
+    throw new IllegalStateException("Celonis OAuth login verification failed for " + email);
   }
 
   private static void ensureStorageCredential(CredentialsApi credentialsApi, TenantSpec spec)
@@ -300,162 +301,6 @@ public final class TenantBootstrap {
   private static void verifyCatalogVisible(String serverUrl, String catalog, String userToken)
       throws ApiException {
     new UcOperations(serverUrl, userToken).assertCatalogVisible(catalog);
-  }
-
-  private static void ensureKeycloakUser(TenantSpec spec, String kcUsername, String kcPassword)
-      throws Exception {
-    String container = resolveKeycloakContainer(spec.keycloakContainer());
-    runKcadm(
-        container,
-        "config",
-        "credentials",
-        "--server",
-        "http://localhost:8080",
-        "--realm",
-        "master",
-        "--user",
-        "admin",
-        "--password",
-        "admin");
-
-    String userId = findKeycloakUserId(container, kcUsername);
-    String emailLocalPart = emailLocalPart(spec.userEmail());
-    if (userId == null) {
-      runKcadm(
-          container,
-          "create",
-          "users",
-          "-r",
-          KC_REALM,
-          "-s",
-          "username=" + kcUsername,
-          "-s",
-          "enabled=true",
-          "-s",
-          "emailVerified=true",
-          "-s",
-          "email=" + spec.userEmail(),
-          "-s",
-          "firstName=" + emailLocalPart,
-          "-s",
-          "lastName=" + spec.tenantId(),
-          "-s",
-          "requiredActions=[]");
-    } else {
-      runKcadm(
-          container,
-          "update",
-          "users/" + userId,
-          "-r",
-          KC_REALM,
-          "-s",
-          "email=" + spec.userEmail(),
-          "-s",
-          "emailVerified=true",
-          "-s",
-          "enabled=true",
-          "-s",
-          "requiredActions=[]");
-    }
-
-    runKcadm(
-        container,
-        "set-password",
-        "-r",
-        KC_REALM,
-        "--username",
-        kcUsername,
-        "--new-password",
-        kcPassword);
-
-    for (int attempt = 1; attempt <= 15; attempt++) {
-      try {
-        AuthSupport.verifyKeycloakLogin(spec.userEmail(), kcPassword);
-        return;
-      } catch (Exception e) {
-        if (e instanceof InterruptedException) {
-          Thread.currentThread().interrupt();
-          throw e;
-        }
-        TimeUnit.SECONDS.sleep(1);
-      }
-    }
-    throw new IllegalStateException("Keycloak login verification failed for " + kcUsername);
-  }
-
-  private static String findKeycloakUserId(String container, String username) throws Exception {
-    String output =
-        runKcadmCapture(
-            container,
-            "get",
-            "users",
-            "-r",
-            KC_REALM,
-            "-q",
-            "username=" + username,
-            "--fields",
-            "id",
-            "--format",
-            "csv",
-            "--noquotes");
-    for (String line : output.lines().toList()) {
-      if (line.equals("id") || line.isBlank()) {
-        continue;
-      }
-      return line.trim();
-    }
-    return null;
-  }
-
-  private static String resolveKeycloakContainer(String explicit) throws Exception {
-    if (explicit != null && !explicit.isBlank()) {
-      return explicit;
-    }
-    Process process =
-        new ProcessBuilder("docker", "ps", "--format", "{{.Names}}")
-            .redirectErrorStream(true)
-            .start();
-    String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-    if (process.waitFor() != 0) {
-      throw new IllegalStateException("docker ps failed");
-    }
-    List<String> names =
-        output.lines().filter(name -> name.toLowerCase(Locale.ROOT).contains("keycloak")).toList();
-    if (names.isEmpty()) {
-      throw new IllegalStateException("Keycloak container not found");
-    }
-    return names.get(0);
-  }
-
-  private static void runKcadm(String container, String... args) throws Exception {
-    List<String> command = new ArrayList<>();
-    command.add("docker");
-    command.add("exec");
-    command.add(container);
-    command.add("/opt/keycloak/bin/kcadm.sh");
-    command.addAll(List.of(args));
-    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-    int exit = process.waitFor();
-    if (exit != 0) {
-      throw new IllegalStateException("kcadm failed (" + exit + "): " + output.trim());
-    }
-  }
-
-  private static String runKcadmCapture(String container, String... args) throws Exception {
-    List<String> command = new ArrayList<>();
-    command.add("docker");
-    command.add("exec");
-    command.add(container);
-    command.add("/opt/keycloak/bin/kcadm.sh");
-    command.addAll(List.of(args));
-    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-    String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-    int exit = process.waitFor();
-    if (exit != 0) {
-      throw new IllegalStateException("kcadm failed (" + exit + "): " + output.trim());
-    }
-    return output;
   }
 
   private static String emailLocalPart(String email) {

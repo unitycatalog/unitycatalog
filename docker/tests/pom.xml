@@ -16,13 +16,29 @@
     <jackson.version>2.17.0</jackson.version>
     <junit.version>5.10.3</junit.version>
     <assertj.version>3.26.0</assertj.version>
+    <celonis.oauth.internal.client.version>1.7.0</celonis.oauth.internal.client.version>
+    <celonis.cloud.core.version>2026.3.0</celonis.cloud.core.version>
   </properties>
+
+  <repositories>
+    <repository>
+      <id>github-celonis-maven-internal</id>
+      <name>Celonis GitHub Maven Internal</name>
+      <url>https://maven.pkg.github.com/celonis/maven-internal/</url>
+    </repository>
+  </repositories>
 
   <dependencies>
     <dependency>
       <groupId>io.unitycatalog</groupId>
       <artifactId>unitycatalog-client</artifactId>
       <version>${uc.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.apache.logging.log4j</groupId>
+          <artifactId>log4j-slf4j2-impl</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>io.unitycatalog</groupId>
@@ -63,6 +79,26 @@
       <groupId>com.google.code.findbugs</groupId>
       <artifactId>jsr305</artifactId>
       <version>3.0.2</version>
+    </dependency>
+    <dependency>
+      <groupId>cloud.celonis</groupId>
+      <artifactId>cloud-oauth-server-internal-client</artifactId>
+      <version>${celonis.oauth.internal.client.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>cloud.celonis</groupId>
+      <artifactId>cloud-core-security</artifactId>
+      <version>${celonis.cloud.core.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>cloud.celonis</groupId>
+      <artifactId>cloud-core-internal-client</artifactId>
+      <version>${celonis.cloud.core.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webflux</artifactId>
+      <version>3.4.4</version>
     </dependency>
     <dependency>
       <groupId>org.apache.hive</groupId>

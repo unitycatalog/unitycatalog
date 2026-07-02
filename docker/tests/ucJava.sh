@@ -79,29 +79,25 @@ ensure_uc_server() {
     echo "ERROR: UC_DOCKER_IMAGE is required when UC_SERVER_MODE=docker" >&2
     exit 1
   fi
-  UC_KEYCLOAK_BASE_URL="$(resolve_keycloak_base_url)"
+  UC_OAUTH_BASE_URL="$(resolve_oauth_base_url)"
   UC_SERVER_MODE="$mode" UC_DOCKER_IMAGE="${UC_DOCKER_IMAGE:-}" UC_ENABLE_OIDC="${UC_ENABLE_OIDC:-1}" \
-    UC_KEYCLOAK_BASE_URL="$UC_KEYCLOAK_BASE_URL" \
+    UC_OAUTH_BASE_URL="$UC_OAUTH_BASE_URL" \
     "$UC_JAVA_ROOT/docker/start-uc-for-tests.sh" "$UC_JAVA_ROOT"
 }
 
-resolve_keycloak_base_url() {
-  if [[ -n "${UC_KEYCLOAK_BASE_URL:-}" ]]; then
-    echo "$UC_KEYCLOAK_BASE_URL"
+resolve_oauth_base_url() {
+  if [[ -n "${UC_OAUTH_BASE_URL:-}" ]]; then
+    echo "$UC_OAUTH_BASE_URL"
     return
   fi
-  if [[ "${UC_SERVER_MODE:-binary}" == "docker" ]]; then
-    echo "http://host.docker.internal:9090"
-    return
-  fi
-  echo "http://localhost:9090"
+  echo "http://localhost:9099"
 }
 
 docker_test_env() {
-  local keycloak_url
-  keycloak_url="$(resolve_keycloak_base_url)"
-  if [[ -n "$keycloak_url" ]]; then
-    echo "UC_KEYCLOAK_BASE_URL=$keycloak_url"
+  local oauth_url
+  oauth_url="$(resolve_oauth_base_url)"
+  if [[ -n "$oauth_url" ]]; then
+    echo "UC_OAUTH_BASE_URL=$oauth_url"
   fi
 }
 

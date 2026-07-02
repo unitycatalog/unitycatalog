@@ -1,11 +1,12 @@
-# OIDC settings for docker-mode UC tests (Keycloak reachable at host.docker.internal:9090).
-# Use with: docker compose -f docker/oidc/compose.yaml -f docker/oidc/compose.docker-tests.yaml up -d
+# OIDC settings for docker-mode UC tests (Celonis OAuth at dev.dev.celonis.cloud).
+# Use with: docker compose -f docker/oidc/compose.yaml up -d
+# UC containers need: --add-host=dev.dev.celonis.cloud:host-gateway
 
 server.authorization=enable
-server.authorization-url=http://host.docker.internal:9090/realms/unity-catalog/protocol/openid-connect/auth
-server.token-url=http://host.docker.internal:9090/realms/unity-catalog/protocol/openid-connect/token
+server.authorization-url=https://dev.dev.celonis.cloud/oauth2/authorize
+server.token-url=https://dev.dev.celonis.cloud/oauth2/token
 server.client-id=unity-catalog-local
 server.client-secret=unity-catalog-local-secret
 server.redirect-port=8080
-server.allowed-issuers=http://host.docker.internal:9090/realms/unity-catalog
+server.allowed-issuers=https://dev.dev.celonis.cloud
 server.audiences=unity-catalog-local

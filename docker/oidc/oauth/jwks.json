@@ -1,0 +1,14 @@
+{
+  "keys": [
+    {
+      "kid": "dev-es384",
+      "kty": "EC",
+      "crv": "P-384",
+      "x": "CiKi0XiMi-kXTy-zlmYIvvn6aHWBl_HDpG93RsgJigaojjny4r_I9PSfQbeUAaCO",
+      "y": "iLrwNMIVbi_AXX6O8sOOxxSVrTqyokkbfHHlWMxYMzk98-nL2LZRk4c3g715EKt8",
+      "d": "omzb9uPq0-2GQgxk3JCppzb5_7GbMHP1A3HlmRSZOhiMSt8xTVlXO2HLq7aHueHf",
+      "alg": "ES384",
+      "use": "sig"
+    }
+  ]
+}

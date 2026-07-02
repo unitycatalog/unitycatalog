@@ -8,4 +8,4 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-exec "$ROOT/docker/start-uc-for-tests.sh" "$ROOT"
+exec "$ROOT/dev/start-uc-for-tests.sh" "$ROOT"
