@@ -49,9 +49,7 @@ public class OAuthTokenProviderTest {
   @Test
   public void testAccessTokenCachesTokenAndReusesIt() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
-    OAuthTokenProvider provider =
-        new OAuthTokenProvider(
-            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
 
     String token1 = provider.accessToken();
     verifyOAuthRequest(1);
@@ -70,9 +68,7 @@ public class OAuthTokenProviderTest {
   @Test
   public void testAccessTokenRenewsTokenBeforeExpiration() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, 60L);
-    OAuthTokenProvider provider =
-        new OAuthTokenProvider(
-            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
 
     String token1 = provider.accessToken();
     assertThat(token1).isEqualTo(ACCESS_TOKEN_1);
@@ -96,9 +92,7 @@ public class OAuthTokenProviderTest {
   @Test
   public void testAccessTokenSendsCorrectHttpRequest() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
-    OAuthTokenProvider provider =
-        new OAuthTokenProvider(
-            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
 
     provider.accessToken();
 
@@ -128,9 +122,7 @@ public class OAuthTokenProviderTest {
     when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
         .thenReturn(mockResponse);
 
-    OAuthTokenProvider provider =
-        new OAuthTokenProvider(
-            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
 
     assertThatThrownBy(provider::accessToken)
         .isInstanceOf(RuntimeException.class)
@@ -141,9 +133,7 @@ public class OAuthTokenProviderTest {
   @Test
   public void testAccessTokenRenewsImmediatelyWhenExpired() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, 10L);
-    OAuthTokenProvider provider =
-        new OAuthTokenProvider(
-            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
 
     String token1 = provider.accessToken();
     assertThat(token1).isEqualTo(ACCESS_TOKEN_1);
@@ -162,28 +152,52 @@ public class OAuthTokenProviderTest {
     assertThatThrownBy(
             () ->
                 new OAuthTokenProvider(
-                    null, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock))
+                    null,
+                    CLIENT_ID,
+                    CLIENT_SECRET,
+                    AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    30L,
+                    mockRetryingApiClient,
+                    clock))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("OAuth URI must not be null");
 
     assertThatThrownBy(
             () ->
                 new OAuthTokenProvider(
-                    OAUTH_URI, null, CLIENT_SECRET, 30L, mockRetryingApiClient, clock))
+                    OAUTH_URI,
+                    null,
+                    CLIENT_SECRET,
+                    AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    30L,
+                    mockRetryingApiClient,
+                    clock))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("OAuth client ID must not be null");
 
     assertThatThrownBy(
             () ->
                 new OAuthTokenProvider(
-                    OAUTH_URI, CLIENT_ID, null, 30L, mockRetryingApiClient, clock))
+                    OAUTH_URI,
+                    CLIENT_ID,
+                    null,
+                    AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    30L,
+                    mockRetryingApiClient,
+                    clock))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("OAuth client secret must not be null");
 
     assertThatThrownBy(
             () ->
                 new OAuthTokenProvider(
-                    OAUTH_URI, CLIENT_ID, CLIENT_SECRET, -1L, mockRetryingApiClient, clock))
+                    OAUTH_URI,
+                    CLIENT_ID,
+                    CLIENT_SECRET,
+                    AuthConfigs.DEFAULT_OAUTH_SCOPE,
+                    -1L,
+                    mockRetryingApiClient,
+                    clock))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Lead renewal time must be non-negative");
   }
@@ -192,9 +206,7 @@ public class OAuthTokenProviderTest {
   public void testAccessTokenUsesConfiguredScope() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
     String customScope = "https://example.com/.default";
-    OAuthTokenProvider provider =
-        new OAuthTokenProvider(
-            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, customScope, 30L, mockRetryingApiClient, clock);
+    OAuthTokenProvider provider = oauthTokenProvider(customScope);
 
     provider.accessToken();
 
@@ -209,9 +221,7 @@ public class OAuthTokenProviderTest {
   public void testAccessTokenEncodesSpaceSeparatedAndFineGrainedScopes() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
     String customScope = "https://example.com/.default catalog.tables:read";
-    OAuthTokenProvider provider =
-        new OAuthTokenProvider(
-            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, customScope, 30L, mockRetryingApiClient, clock);
+    OAuthTokenProvider provider = oauthTokenProvider(customScope);
 
     provider.accessToken();
 
@@ -226,9 +236,7 @@ public class OAuthTokenProviderTest {
   @Test
   public void testAccessTokenDefaultsBlankScopeToAllApis() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
-    OAuthTokenProvider provider =
-        new OAuthTokenProvider(
-            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, "   ", 30L, mockRetryingApiClient, clock);
+    OAuthTokenProvider provider = oauthTokenProvider("   ");
 
     provider.accessToken();
 
@@ -241,15 +249,22 @@ public class OAuthTokenProviderTest {
   @Test
   public void testAccessTokenDefaultsScopeToAllApis() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
-    OAuthTokenProvider provider =
-        new OAuthTokenProvider(
-            OAUTH_URI, CLIENT_ID, CLIENT_SECRET, 30L, mockRetryingApiClient, clock);
+    OAuthTokenProvider provider = defaultOAuthTokenProvider();
 
     provider.accessToken();
 
     ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
     verify(mockHttpClient).send(requestCaptor.capture(), any());
     assertThat(requestBody(requestCaptor.getValue())).contains("scope=all-apis");
+  }
+
+  private OAuthTokenProvider defaultOAuthTokenProvider() {
+    return oauthTokenProvider(AuthConfigs.DEFAULT_OAUTH_SCOPE);
+  }
+
+  private OAuthTokenProvider oauthTokenProvider(String oauthScope) {
+    return new OAuthTokenProvider(
+        OAUTH_URI, CLIENT_ID, CLIENT_SECRET, oauthScope, 30L, mockRetryingApiClient, clock);
   }
 
   /** Reads the string body of an HttpRequest built from a BodyPublishers.ofString publisher. */

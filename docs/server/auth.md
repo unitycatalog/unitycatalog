@@ -108,30 +108,30 @@ Identity Provider expects a resource-specific scope, configure it with `oauth.sc
 does not restrict this value; follow the scope format required by your Identity Provider and resource
 server.
 
-For example, Java client configuration can include:
+For example, Microsoft Entra ID Java client configuration can include:
 
 ```java
 Map<String, String> configs = Map.of(
     "type", "oauth",
-    "oauth.uri", "https://login.example.com/oauth2/v2.0/token",
+    "oauth.uri", "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
     "oauth.clientId", "<client ID>",
     "oauth.clientSecret", "<client secret>",
-    "oauth.scope", "https://example.com/.default");
+    "oauth.scope", "<resource-application-id-uri>/.default");
 ```
 
 Spark catalog configuration uses the same key with the catalog auth prefix:
 
 ```sh
 --conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=https://login.example.com/oauth2/v2.0/token" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token" \
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
 --conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope=https://example.com/.default"
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope=<resource-application-id-uri>/.default"
 ```
 
-Scope values can be provider-specific strings such as `all-apis`, URL-like scopes such as
-`https://example.com/.default`, fine-grained scopes such as `catalog.tables:read`, or multiple
-space-separated scopes.
+Scope values can be provider-specific strings such as `all-apis`, resource scopes such as
+`<resource-application-id-uri>/.default`, fine-grained scopes such as `catalog.tables:read`, or
+multiple space-separated scopes.
 
 ### Restart the UC Server
 

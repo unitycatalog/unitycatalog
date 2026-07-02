@@ -135,11 +135,12 @@ public class TokenProviderTest {
 
     assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(provider.configs())
-        .hasSize(4)
+        .hasSize(5)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
   }
 
   @Test
@@ -157,11 +158,12 @@ public class TokenProviderTest {
 
     assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(provider.configs())
-        .hasSize(4)
+        .hasSize(5)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
   }
 
   /**
