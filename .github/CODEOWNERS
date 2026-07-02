@@ -15,6 +15,6 @@
 # Integration tests.
 /integration-tests/ @tdas @openinx @yili-db
 
-# OSS UC Server
+# UC Server
 /server/ @tdas @openinx @yili-db
 /server-shaded/ @tdas @openinx @yili-db
