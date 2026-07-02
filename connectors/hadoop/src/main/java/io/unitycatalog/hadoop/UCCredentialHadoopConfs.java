@@ -168,7 +168,7 @@ public final class UCCredentialHadoopConfs {
     public Map<String, String> buildForTable(String tableId, TableOperation tableOperation)
         throws ApiException {
       Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
-      return CredPropsUtil.fetchTableCredProps(
+      return CredPropsUtil.createTableCredProps(
           credentialRenewalEnabled,
           credentialScopedFsEnabled,
           hadoopConf,
@@ -202,7 +202,7 @@ public final class UCCredentialHadoopConfs {
       Preconditions.checkArgument(operation != null, "operation is required");
       Preconditions.checkArgument(location != null && !location.isEmpty(), "location is required");
       Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
-      return CredPropsUtil.fetchDeltaTableCredProps(
+      return CredPropsUtil.createDeltaTableCredProps(
           credentialRenewalEnabled,
           credentialScopedFsEnabled,
           hadoopConf,
@@ -234,7 +234,7 @@ public final class UCCredentialHadoopConfs {
           stagingTableId != null && !stagingTableId.isEmpty(), "stagingTableId is required");
       Preconditions.checkArgument(location != null && !location.isEmpty(), "location is required");
       Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
-      return CredPropsUtil.fetchDeltaStagingTableCredProps(
+      return CredPropsUtil.createDeltaStagingTableCredProps(
           credentialRenewalEnabled,
           credentialScopedFsEnabled,
           hadoopConf,
@@ -257,7 +257,7 @@ public final class UCCredentialHadoopConfs {
     public Map<String, String> buildForPath(String path, PathOperation pathOperation)
         throws ApiException {
       Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
-      return CredPropsUtil.fetchPathCredProps(
+      return CredPropsUtil.createPathCredProps(
           credentialRenewalEnabled,
           credentialScopedFsEnabled,
           hadoopConf,

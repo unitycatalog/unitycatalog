@@ -1,7 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.hadoop.util.AccessTokenProvider;
@@ -30,7 +29,7 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
 
     TestGcsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
       setConf(conf);
-      this.credentialFetcher = GenericCredentialFetcher.forUc(conf, mockApi);
+      this.credentialFetcher = BaseTokenProviderTest.ucFetcher(conf, mockApi);
     }
 
     @Override
@@ -76,18 +75,6 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
       assertThat(token.getExpirationTime()).isNotNull();
       assertThat(token.getExpirationTime().toEpochMilli()).isEqualTo(expectedExpiration);
     }
-  }
-
-  @Test
-  public void testConstructor() {
-    Configuration conf = new Configuration();
-    GcsVendedTokenProvider provider = new GcsVendedTokenProvider();
-
-    assertThatThrownBy(() -> provider.setConf(conf))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessage(
-            "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
-            UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
   }
 
   @Test

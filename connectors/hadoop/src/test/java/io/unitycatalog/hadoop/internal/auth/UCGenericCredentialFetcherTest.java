@@ -15,6 +15,8 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.id.PathCredId;
+import io.unitycatalog.hadoop.internal.id.TableCredId;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -43,20 +45,13 @@ class UCGenericCredentialFetcherTest {
   }
 
   @Test
-  void tableRequestArgumentsAreParsedOnceAtConstruction() throws Exception {
-    Configuration conf = BaseTokenProviderTest.newTableBasedConf("original-table-id");
+  void tableRequestBuiltFromCredId() throws Exception {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     when(api.generateTemporaryTableCredentials(any())).thenReturn(new TemporaryCredentials());
 
-    GenericCredentialFetcher credentialFetcher = GenericCredentialFetcher.forUc(conf, api);
-
-    conf.set(
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, "mutated-table-id");
-    conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "UNKNOWN");
-    conf.set(UCHadoopConfConstants.UC_PATH_KEY, "s3://mutated/path");
-    conf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ_WRITE.getValue());
+    GenericCredentialFetcher credentialFetcher =
+        GenericCredentialFetcher.forUc(
+            new TableCredId("original-table-id", TableOperation.READ.getValue()), api);
 
     credentialFetcher.createCredential();
 
@@ -69,20 +64,13 @@ class UCGenericCredentialFetcherTest {
   }
 
   @Test
-  void pathRequestArgumentsAreParsedOnceAtConstruction() throws Exception {
-    Configuration conf = BaseTokenProviderTest.newPathBasedConf("s3://bucket/original-path");
+  void pathRequestBuiltFromCredId() throws Exception {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     when(api.generateTemporaryPathCredentials(any())).thenReturn(new TemporaryCredentials());
 
-    GenericCredentialFetcher credentialFetcher = GenericCredentialFetcher.forUc(conf, api);
-
-    conf.set(
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConfConstants.UC_PATH_KEY, "s3://bucket/mutated-path");
-    conf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, "UNKNOWN");
-    conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, "mutated-table-id");
-    conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, TableOperation.READ_WRITE.getValue());
+    GenericCredentialFetcher credentialFetcher =
+        GenericCredentialFetcher.forUc(
+            new PathCredId("s3://bucket/original-path", PathOperation.PATH_READ.getValue()), api);
 
     credentialFetcher.createCredential();
 

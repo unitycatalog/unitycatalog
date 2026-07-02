@@ -6,54 +6,42 @@ import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.DeltaStorageCredentialUtil;
-import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
-import org.apache.hadoop.conf.Configuration;
+import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
+import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 
 /** Adapts the UC Delta temporary credentials SDK API for Hadoop token providers. */
 final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher {
   private final DeltaTemporaryCredentialsApi api;
+  private final DeltaTableCredId credId;
   private final DeltaCredentialOperation operation;
-  private final String catalog;
-  private final String schema;
-  private final String tableName;
-  private final String location;
 
-  UCDeltaGenericCredentialFetcher(Configuration conf, DeltaTemporaryCredentialsApi api) {
+  UCDeltaGenericCredentialFetcher(DeltaTableCredId credId, DeltaTemporaryCredentialsApi api) {
     Preconditions.checkNotNull(api, "api is required");
+    Preconditions.checkNotNull(credId, "credId is required");
     this.api = api;
-    String rawOp = require(conf, UCHadoopConfConstants.UC_TABLE_OPERATION_KEY);
-    DeltaCredentialOperation op = DeltaCredentialOperation.fromValue(rawOp);
+    this.credId = credId;
+    DeltaCredentialOperation op = DeltaCredentialOperation.fromValue(credId.tableOperation());
     Preconditions.checkArgument(
         op == DeltaCredentialOperation.READ || op == DeltaCredentialOperation.READ_WRITE,
         "UC Delta supports READ and READ_WRITE table operations, got: %s",
-        rawOp);
+        credId.tableOperation());
     this.operation = op;
-    this.catalog = require(conf, UCHadoopConfConstants.UC_DELTA_CATALOG_KEY);
-    this.schema = require(conf, UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY);
-    this.tableName = require(conf, UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY);
-    this.location = require(conf, UCHadoopConfConstants.UC_DELTA_LOCATION_KEY);
   }
 
   @Override
   public GenericCredential createCredential() throws ApiException {
+    UCDeltaTableIdentifier id = credId.identifier();
     DeltaCredentialsResponse response =
-        api.getTableCredentials(operation, catalog, schema, tableName);
+        api.getTableCredentials(operation, id.catalog(), id.schema(), id.table());
     Preconditions.checkArgument(
         response != null,
         "UC Delta API returned no credentials response for '%s.%s.%s'.",
-        catalog,
-        schema,
-        tableName);
+        id.catalog(),
+        id.schema(),
+        id.table());
     return new GenericCredential(
         DeltaStorageCredentialUtil.toTemporaryCredentials(
             DeltaStorageCredentialUtil.selectForLocation(
-                location, response.getStorageCredentials())));
-  }
-
-  private static String require(Configuration conf, String key) {
-    String value = conf.get(key);
-    Preconditions.checkArgument(
-        value != null && !value.isEmpty(), "'%s' is not set in hadoop configuration", key);
-    return value;
+                credId.location(), response.getStorageCredentials())));
   }
 }
