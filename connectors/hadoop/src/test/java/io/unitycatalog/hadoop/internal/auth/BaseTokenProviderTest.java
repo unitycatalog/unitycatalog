@@ -11,6 +11,9 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.PathCredId;
+import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.time.Duration;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
@@ -21,6 +24,18 @@ import org.junit.jupiter.api.Test;
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
   private String clockName;
   private Clock clock;
+
+  /**
+   * Builds a standard UC fetcher from a (table- or path-based) conf, dispatching to the concrete
+   * {@link CredId} subtype expected by {@link GenericCredentialFetcher#forUc}.
+   */
+  static GenericCredentialFetcher ucFetcher(Configuration conf, TemporaryCredentialsApi api) {
+    CredId credId = CredId.create(conf);
+    if (credId instanceof PathCredId) {
+      return GenericCredentialFetcher.forUc((PathCredId) credId, api);
+    }
+    return GenericCredentialFetcher.forUc((TableCredId) credId, api);
+  }
 
   /** Use the {@link Configuration} and the mocked api to create a new provider. */
   protected abstract T createTestProvider(Configuration conf, TemporaryCredentialsApi mockApi);
@@ -318,7 +333,6 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For table-based temporary requests.
     conf.set(
@@ -339,7 +353,6 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For path-based temporary requests.
     conf.set(
