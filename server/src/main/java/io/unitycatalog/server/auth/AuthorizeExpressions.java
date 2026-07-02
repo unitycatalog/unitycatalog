@@ -103,4 +103,11 @@ public final class AuthorizeExpressions {
           : (#authorize(#principal, #table, OWNER) ||
               #authorizeAll(#principal, #table, SELECT, MODIFY)))
       """;
+
+  /**
+   * Authorization policy for the {@code get*Authorization} (permission read) endpoints. These
+   * endpoints check authorization themselves and tailor the response based on whether the principal
+   * is an owner, so the only requirement here is that the caller is authenticated.
+   */
+  public static final String GET_RESOURCE_AUTHORIZATION = "#principal != null";
 }
