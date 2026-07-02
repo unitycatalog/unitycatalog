@@ -24,6 +24,14 @@ public final class AuthSupport {
   private static final String KC_TOKEN_PATH =
       "/realms/unity-catalog/protocol/openid-connect/token";
 
+  private static String keycloakBaseUrl() {
+    String fromEnv = System.getenv("UC_KEYCLOAK_BASE_URL");
+    if (fromEnv != null && !fromEnv.isBlank()) {
+      return fromEnv.replaceAll("/$", "");
+    }
+    return "http://localhost:9090";
+  }
+
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final HttpClient HTTP =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
@@ -52,6 +60,15 @@ public final class AuthSupport {
         password != null && !password.isBlank() ? password : deriveDefaultPassword(email);
     String idToken = fetchKeycloakIdToken(kcUsername, kcPassword);
     return exchangeUcAccessToken(serverUrl, idToken);
+  }
+
+  /** Verify Keycloak credentials only (before the UC user record exists). */
+  public static void verifyKeycloakLogin(String email, String password)
+      throws IOException, InterruptedException {
+    String kcUsername = deriveKeycloakUsername(email);
+    String kcPassword =
+        password != null && !password.isBlank() ? password : deriveDefaultPassword(email);
+    fetchKeycloakIdToken(kcUsername, kcPassword);
   }
 
   private static String exchangeUcAccessToken(String serverUrl, String idToken)
@@ -88,7 +105,7 @@ public final class AuthSupport {
 
   private static String fetchKeycloakIdToken(String username, String password)
       throws IOException, InterruptedException {
-    URI tokenUri = URI.create("http://localhost:9090" + KC_TOKEN_PATH);
+    URI tokenUri = URI.create(keycloakBaseUrl() + KC_TOKEN_PATH);
     String form =
         formBody(
             Map.of(

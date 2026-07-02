@@ -1,0 +1,11 @@
+# OIDC settings for docker-mode UC tests (Keycloak reachable at host.docker.internal:9090).
+# Use with: docker compose -f docker/oidc/compose.yaml -f docker/oidc/compose.docker-tests.yaml up -d
+
+server.authorization=enable
+server.authorization-url=http://host.docker.internal:9090/realms/unity-catalog/protocol/openid-connect/auth
+server.token-url=http://host.docker.internal:9090/realms/unity-catalog/protocol/openid-connect/token
+server.client-id=unity-catalog-local
+server.client-secret=unity-catalog-local-secret
+server.redirect-port=8080
+server.allowed-issuers=http://host.docker.internal:9090/realms/unity-catalog
+server.audiences=unity-catalog-local
