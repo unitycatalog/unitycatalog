@@ -385,6 +385,32 @@ class UCSingleCatalog
     newProps
   }
 
+  /**
+   * Vends UC path credentials for a bare storage `location` and returns the resulting Hadoop
+   * `fs.*` configuration entries (credential-scoped filesystem impl, initial vended credentials,
+   * and the `fs.unitycatalog.*` keys that arm lazy renewal).
+   *
+   * This mirrors [[prepareExternalTableProperties]] but targets a path referenced directly in a
+   * query (e.g. `parquet.`s3://bucket/dir``), which never flows through `loadTable`/`createTable`.
+   * Used by [[ResolvePathCredentials]] to inject credentials as relation/table options so S3A can
+   * access the path without a pre-registered external table. Returns an empty map for schemes the
+   * credential builder does not recognize (e.g. local paths), so callers can no-op safely.
+   */
+  private[spark] def vendPathCredentialConf(
+      location: String, operation: PathOperation): util.Map[String, String] = {
+    val scheme = new Path(location).toUri.getScheme
+    if (scheme == null) return util.Collections.emptyMap[String, String]()
+    UCCredentialHadoopConfs
+      .builder(uri.toString, scheme)
+      .addAppVersions(ApiClientFactory.appEngineVersions())
+      .tokenProvider(tokenProvider)
+      .apiClient(apiClient)
+      .enableCredentialRenewal(renewCredEnabled)
+      .enableCredentialScopedFs(credScopedFsEnabled)
+      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+      .buildForPath(location, operation)
+  }
+
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     throw new AssertionError("deprecated `createTable` should not be called")
   }
