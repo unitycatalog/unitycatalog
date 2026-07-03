@@ -19,10 +19,12 @@ import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import io.unitycatalog.hadoop.internal.util.ClockUtil;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -360,7 +362,7 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new TableCredId(tableId, tableOp.value()));
+        new TableCredId(authUniqueId(tokenProvider), tableId, tableOp.value()));
   }
 
   /**
@@ -389,7 +391,7 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new DeltaTableCredId(identifier, tableOp.value(), location));
+        new DeltaTableCredId(authUniqueId(tokenProvider), identifier, tableOp.value(), location));
   }
 
   /**
@@ -417,7 +419,7 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new DeltaStagingTableCredId(stagingTableId, location));
+        new DeltaStagingTableCredId(authUniqueId(tokenProvider), stagingTableId, location));
   }
 
   /** Fetches path credentials from the UC REST API and builds Hadoop configuration properties. */
@@ -442,7 +444,7 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new PathCredId(path, pathOp.value()));
+        new PathCredId(authUniqueId(tokenProvider), path, pathOp.value()));
   }
 
   /**
@@ -499,6 +501,11 @@ public class CredPropsUtil {
       default:
         return Collections.emptyMap();
     }
+  }
+
+  private static String authUniqueId(TokenProvider tokenProvider) {
+    Objects.requireNonNull(tokenProvider, "tokenProvider is required");
+    return MapIdGenerator.generateId(tokenProvider.configs());
   }
 
   private static GenericCredential fetchGenericCredential(

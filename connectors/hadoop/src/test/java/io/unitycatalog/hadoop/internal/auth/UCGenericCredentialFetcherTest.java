@@ -15,6 +15,7 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import org.apache.hadoop.conf.Configuration;
@@ -51,7 +52,9 @@ class UCGenericCredentialFetcherTest {
 
     GenericCredentialFetcher credentialFetcher =
         GenericCredentialFetcher.forUc(
-            new TableCredId("original-table-id", TableOperation.READ.getValue()), api);
+            new TableCredId(
+                CredId.EMPTY_AUTH_UNIQUE_ID, "original-table-id", TableOperation.READ.getValue()),
+            api);
 
     credentialFetcher.createCredential();
 
@@ -70,7 +73,11 @@ class UCGenericCredentialFetcherTest {
 
     GenericCredentialFetcher credentialFetcher =
         GenericCredentialFetcher.forUc(
-            new PathCredId("s3://bucket/original-path", PathOperation.PATH_READ.getValue()), api);
+            new PathCredId(
+                CredId.EMPTY_AUTH_UNIQUE_ID,
+                "s3://bucket/original-path",
+                PathOperation.PATH_READ.getValue()),
+            api);
 
     credentialFetcher.createCredential();
 

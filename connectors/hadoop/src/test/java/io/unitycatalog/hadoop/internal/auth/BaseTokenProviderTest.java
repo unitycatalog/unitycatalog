@@ -14,7 +14,9 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
@@ -317,6 +319,39 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // PathB: 3rd access. renew pathBCred1 to pathBCred2.
     assertCred(providerPathB, pathBCred2);
     assertGlobalCache(4, tableACred2, tableBCred2, pathACred2, pathBCred2);
+  }
+
+  @Test
+  public void sameTableDifferentAuthUsesSeparateGlobalCacheEntries() throws Exception {
+    String authA = MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
+    String authB = MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-b"));
+
+    Configuration confA = newTableBasedConf("shared-table");
+    confA.set(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, authA);
+    confA.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    confA.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+
+    Configuration confB = newTableBasedConf("shared-table");
+    confB.set(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, authB);
+    confB.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    confB.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+
+    TemporaryCredentials credA = newTempCred("tenantA", clock.now().toEpochMilli() + 2000L);
+    TemporaryCredentials credB = newTempCred("tenantB", clock.now().toEpochMilli() + 2000L);
+
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(credA).thenReturn(credB);
+
+    T providerA = createTestProvider(confA, tempCredApi);
+    T providerB = createTestProvider(confB, tempCredApi);
+
+    assertCred(providerA, credA);
+    assertCred(providerB, credB);
+    assertGlobalCache(2, credA, credB);
+
+    assertCred(providerA, credA);
+    assertCred(providerB, credB);
+    assertGlobalCache(2, credA, credB);
   }
 
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {

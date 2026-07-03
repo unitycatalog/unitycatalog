@@ -16,6 +16,7 @@ import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
@@ -786,6 +787,49 @@ class CredPropsUtilTest {
   }
 
   @Test
+  void sameTableDifferentAuthConfigsAreCachedSeparately() throws Exception {
+    AtomicInteger fetches = new AtomicInteger();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> {
+          fetches.incrementAndGet();
+          return mockGenericCredentialFetcher(
+              s3CredsExpiringAt(
+                  String.valueOf(fetches.get()), System.currentTimeMillis() + 60_000));
+        };
+
+    TokenProvider tenantA = TokenProvider.create(Map.of("type", "static", "token", "tenant-a"));
+    TokenProvider tenantB = TokenProvider.create(Map.of("type", "static", "token", "tenant-b"));
+
+    createTableCredProps(new Configuration(false), "shared-table", tenantA);
+    createTableCredProps(new Configuration(false), "shared-table", tenantB);
+
+    assertThat(fetches.get()).isEqualTo(2);
+  }
+
+  @Test
+  void credPropsIncludeAuthUniqueIdFromTokenProvider() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
+    TokenProvider provider = TokenProvider.create(Map.of("type", "static", "token", "tenant-a"));
+    String expectedAuthId = MapIdGenerator.generateId(provider.configs());
+
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true,
+            false,
+            new Configuration(false),
+            "s3",
+            null,
+            "http://uc",
+            provider,
+            "tid",
+            UCCredentialHadoopConfs.TableOperation.READ,
+            Map.of());
+
+    assertThat(props).containsEntry(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, expectedAuthId);
+  }
+
+  @Test
   void cacheDisabledFetchesForEveryQuery() throws Exception {
     AtomicInteger fetches = new AtomicInteger();
     CredPropsUtil.genericCredFetcherFactory =
@@ -839,6 +883,11 @@ class CredPropsUtilTest {
 
   private static Map<String, String> createTableCredProps(Configuration conf, String tableId)
       throws Exception {
+    return createTableCredProps(conf, tableId, tokenProvider());
+  }
+
+  private static Map<String, String> createTableCredProps(
+      Configuration conf, String tableId, TokenProvider tokenProvider) throws Exception {
     return CredPropsUtil.createTableCredProps(
         false,
         false,
@@ -846,7 +895,7 @@ class CredPropsUtilTest {
         "s3",
         null,
         "http://uc",
-        tokenProvider(),
+        tokenProvider,
         tableId,
         UCCredentialHadoopConfs.TableOperation.READ_WRITE,
         Map.of());
@@ -874,6 +923,8 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
+    assertThat(captured.get().props().get(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY))
+        .isEqualTo(MapIdGenerator.generateId(tokenProvider().configs()));
     assertThat(captured.get().props().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
         .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
     assertThat(captured.get().props().get(UCHadoopConfConstants.UC_TABLE_ID_KEY)).isEqualTo("tid");

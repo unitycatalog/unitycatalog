@@ -7,7 +7,9 @@ import static org.mockito.Mockito.verify;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
+import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +23,11 @@ import org.junit.jupiter.api.Test;
  */
 class CredScopedFileSystemCacheTest {
 
+  private static final String AUTH_A =
+      MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
+  private static final String AUTH_B =
+      MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-b"));
+
   @AfterEach
   void clearCache() {
     CredScopedFileSystem.clearCacheForTesting();
@@ -33,14 +40,17 @@ class CredScopedFileSystemCacheTest {
   }
 
   private static Configuration tableConf(String tableId, String op) {
+    return tableConf(tableId, op, CredId.EMPTY_AUTH_UNIQUE_ID);
+  }
+
+  private static Configuration tableConf(String tableId, String op, String authUniqueId) {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, authUniqueId);
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
     conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
     conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, op);
-    // Disable Hadoop's internal filesystem cache so newFileSystem() creates a fresh instance per
-    // credential scope, making it possible to assert identity inequality across scopes.
     conf.set("fs.file.impl.disable.cache", "true");
     return conf;
   }
@@ -67,13 +77,21 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
+  void sameTableDifferentAuthGetsDifferentDelegate() throws Exception {
+    URI uri = new URI("file:///tmp");
+
+    CredScopedFileSystem fsTenantA = init(uri, tableConf("tid-1", "READ", AUTH_A));
+    CredScopedFileSystem fsTenantB = init(uri, tableConf("tid-1", "READ", AUTH_B));
+
+    assertThat(fsTenantA.getDelegate()).isNotSameAs(fsTenantB.getDelegate());
+  }
+
+  @Test
   void evictedEntryClosesCachedDelegate() throws Exception {
-    // Pre-seed the cache with a mock delegate so we can verify close() is called.
     FileSystem mockFs = mock(FileSystem.class);
-    CredId key = new TableCredId("tid-evict", "READ");
+    CredId key = new TableCredId(CredId.EMPTY_AUTH_UNIQUE_ID, "tid-evict", "READ");
     CredScopedFileSystem.CACHE.put(key, mockFs);
 
-    // Invalidate (simulates LRU eviction) and flush the removal listener.
     CredScopedFileSystem.clearCacheForTesting();
 
     verify(mockFs).close();

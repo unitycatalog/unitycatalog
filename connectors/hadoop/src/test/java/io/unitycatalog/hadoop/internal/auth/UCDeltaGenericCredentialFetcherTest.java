@@ -13,6 +13,7 @@ import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
+import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +23,7 @@ class UCDeltaGenericCredentialFetcherTest {
   void createCredentialCallsDeltaApiWithCredIdFieldsAndReturnsCredential() throws Exception {
     DeltaTableCredId credId =
         new DeltaTableCredId(
+            CredId.EMPTY_AUTH_UNIQUE_ID,
             UCDeltaTableIdentifier.of("main", "default", "events"),
             "READ_WRITE",
             "s3://bucket/events");
@@ -59,6 +61,7 @@ class UCDeltaGenericCredentialFetcherTest {
   void createCredentialRejectsMissingDeltaCredentialsResponse() throws Exception {
     DeltaTableCredId credId =
         new DeltaTableCredId(
+            CredId.EMPTY_AUTH_UNIQUE_ID,
             UCDeltaTableIdentifier.of("main", "default", "events"),
             "READ_WRITE",
             "s3://bucket/events");
@@ -75,7 +78,11 @@ class UCDeltaGenericCredentialFetcherTest {
   @Test
   void factoryRejectsUnsupportedTableOperation() {
     DeltaTableCredId credId =
-        new DeltaTableCredId(UCDeltaTableIdentifier.of("c", "s", "n"), "UNKNOWN", "s3://b/p");
+        new DeltaTableCredId(
+            CredId.EMPTY_AUTH_UNIQUE_ID,
+            UCDeltaTableIdentifier.of("c", "s", "n"),
+            "UNKNOWN",
+            "s3://b/p");
 
     DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(credId, api))

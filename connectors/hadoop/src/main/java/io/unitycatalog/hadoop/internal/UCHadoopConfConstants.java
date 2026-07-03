@@ -46,6 +46,8 @@ public class UCHadoopConfConstants {
   public static final String UC_AUTH_PREFIX = "fs.unitycatalog.auth.";
   public static final String UC_AUTH_TYPE = "fs.unitycatalog.auth.type";
   public static final String UC_AUTH_TOKEN_KEY = "fs.unitycatalog.auth.token";
+  /** Stable id derived from {@code TokenProvider.configs()} to isolate caches per auth config. */
+  public static final String UC_AUTH_UNIQUE_ID_KEY = "fs.unitycatalog.auth.uniqueId";
 
   // Prefix for engine version metadata (e.g. fs.unitycatalog.engine.version.Spark=4.0.0). Values
   // stored under this prefix are propagated to the User-Agent header on UC API calls so the
