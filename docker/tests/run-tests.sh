@@ -2,9 +2,14 @@
 # Run docker/tests JUnit integration suite against a UC server.
 #
 # UC_SERVER_MODE:
-#   binary   (default) start bin/start-uc-server from this repo
+#   binary   (default) start bin/start-uc-server from this repo (OIDC snippet merged automatically)
 #   docker   start a container from UC_DOCKER_IMAGE
 #   external use an already-running server (set UC_SERVER_URL if not localhost:8080)
+#
+# Binary mode (local server with peekData fix):
+#   docker compose -f docker/oidc/compose.yaml up -d
+#   docker stop uc-test-server   # free :8080 if a docker UC image is already running
+#   ./docker/tests/run-tests.sh AnotherBucketTest
 #
 # Start container from a prebuilt image (Celonis OAuth required for auth tests):
 #   docker compose -f docker/oidc/compose.yaml up -d

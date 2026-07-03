@@ -258,6 +258,37 @@ public TableInfo createExternalTable(
     }
   }
 
+  public void assertPathReadWriteAllowed(String url) throws ApiException {
+    TemporaryCredentials creds =
+        pathCredentialsApi()
+            .generateTemporaryPathCredentials(
+                new GenerateTemporaryPathCredential()
+                    .url(url)
+                    .operation(PathOperation.PATH_READ_WRITE));
+    if (creds.getAwsTempCredentials() == null
+        || creds.getAwsTempCredentials().getAccessKeyId() == null
+        || creds.getAwsTempCredentials().getAccessKeyId().isBlank()) {
+      throw new AssertionError("PATH_READ_WRITE credentials missing access_key_id");
+    }
+  }
+
+  public void grantExternalLocationReadWrite(String externalLocationName, String principal)
+      throws ApiException {
+    PermissionsChange change =
+        new PermissionsChange()
+            .principal(principal)
+            .add(
+                List.of(
+                    Privilege.fromValue("READ FILES"),
+                    Privilege.fromValue("WRITE FILES")))
+            .remove(List.of());
+    grantsApi()
+        .update(
+            SecurableType.EXTERNAL_LOCATION,
+            externalLocationName,
+            new UpdatePermissions().changes(List.of(change)));
+  }
+
   public static List<ColumnInfo> idIntColumn() {
     return ColumnModels.columns(ColumnModels.column("id", ColumnTypeName.INT, "int", true, 0));
   }

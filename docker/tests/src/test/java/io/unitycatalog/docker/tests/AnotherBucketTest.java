@@ -16,6 +16,11 @@ import org.junit.jupiter.api.TestMethodOrder;
 
 /**
  * Data-bucket import/export and cross-tenant isolation — parity with anotherBucketTest.sh.
+ *
+ * <p>Orders 3–4 exercise direct {@code s3://} path credential vending without a pre-registered
+ * external table: {@link #writeToBareS3Path} ({@code INSERT OVERWRITE DIRECTORY}, PATH_READ_WRITE)
+ * then {@link #importManagedTableFromBareS3Path} ({@code parquet.`s3://...`} read + CTAS,
+ * PATH_READ).
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -37,6 +42,8 @@ class AnotherBucketTest extends DockerIntegrationTestBase {
   private static final String EL_B = "el_catother";
   private static final String DATA_EL_B = "el_catother_data";
   private static final String IMPORT_TABLE = "t_parquet_import";
+  private static final String DIRECT_IMPORT_TABLE = "t_direct_import";
+  private static final int DIRECT_IMPORT_ROWS = 80;
   private static final String VIEW_LANDING = "v_landing";
   private static final int LANDING_ROWS = 120;
   private static final String TABLE_CUSTOMERS = "t_customers";
@@ -50,6 +57,8 @@ class AnotherBucketTest extends DockerIntegrationTestBase {
   private final String landingTable = "t_landing_" + runTs;
   private final String landingS3 =
       DockerTestConfig.DATA_BUCKET + "/tenant/" + TENANT_A + "/landing/import_" + runTs;
+  private final String directImportS3 =
+      DockerTestConfig.DATA_BUCKET + "/tenant/" + TENANT_A + "/direct/import_" + runTs;
   private final String exportBase =
       DockerTestConfig.DATA_BUCKET + "/tenant/" + TENANT_A + "/export/run_" + runTs;
   private final String isolationS3 =
@@ -80,6 +89,8 @@ class AnotherBucketTest extends DockerIntegrationTestBase {
     tokenA = userToken(USER_A, null);
     ucA = new UcOperations(SERVER, tokenA);
     ucA.assertCatalogVisible(CATALOG_A);
+    // Re-apply after first OAuth login so path-credential grants bind to the active principal.
+    new UcOperations(SERVER, adminToken).grantExternalLocationReadWrite(DATA_EL_A, USER_A);
   }
 
   @Test
@@ -91,6 +102,45 @@ class AnotherBucketTest extends DockerIntegrationTestBase {
 
   @Test
   @Order(3)
+  void writeToBareS3Path() throws Exception {
+    ensureSpark(CATALOG_A, tokenA);
+    ucA.assertPathReadWriteAllowed(directImportS3);
+    runSparkSql(
+        SCHEMA,
+        "INSERT OVERWRITE DIRECTORY '"
+            + directImportS3
+            + "' USING parquet SELECT cast(id AS int) AS id, concat('row-', cast(id AS string)) AS"
+            + " label, rand() AS value FROM range("
+            + DIRECT_IMPORT_ROWS
+            + ")");
+  }
+
+  @Test
+  @Order(4)
+  void importManagedTableFromBareS3Path() throws Exception {
+    ucA.assertPathReadAllowed(directImportS3);
+    assertRowCount(
+        runSparkSql(
+            SCHEMA,
+            "SELECT count(*) AS row_count FROM parquet.`" + directImportS3 + "`"),
+        DIRECT_IMPORT_ROWS);
+    runSparkSql(
+        SCHEMA,
+        "CREATE OR REPLACE TABLE "
+            + fq(CATALOG_A, SCHEMA, DIRECT_IMPORT_TABLE)
+            + " USING DELTA AS SELECT id, label, value FROM parquet.`"
+            + directImportS3
+            + "`");
+    assertRowCount(
+        runSparkSql(
+            SCHEMA,
+            "SELECT count(*) AS row_count FROM " + fq(CATALOG_A, SCHEMA, DIRECT_IMPORT_TABLE)),
+        DIRECT_IMPORT_ROWS);
+    ucA.getTable(CATALOG_A, SCHEMA, DIRECT_IMPORT_TABLE);
+  }
+
+  @Test
+  @Order(5)
   void seedAndImportLandingDataViaExternalTable() throws Exception {
     ensureSpark(CATALOG_A, tokenA);
     ucA.createExternalTable(
@@ -119,7 +169,7 @@ class AnotherBucketTest extends DockerIntegrationTestBase {
   }
 
   @Test
-  @Order(4)
+  @Order(6)
   void seedAndImportLandingDataViaView() throws Exception {
     runSparkSql(
         SCHEMA,
@@ -160,7 +210,7 @@ class AnotherBucketTest extends DockerIntegrationTestBase {
   }
 
   @Test
-  @Order(5)
+  @Order(7)
   void createAndLoadManagedTables() throws Exception {
     runSparkSql(
         SCHEMA,
@@ -202,7 +252,7 @@ class AnotherBucketTest extends DockerIntegrationTestBase {
   }
 
   @Test
-  @Order(6)
+  @Order(8)
   void createViewsAndLoadViaViews() throws Exception {
     ucA.createView(
         CATALOG_A,
@@ -264,7 +314,7 @@ class AnotherBucketTest extends DockerIntegrationTestBase {
   }
 
   @Test
-  @Order(7)
+  @Order(9)
   void exportToDataBucket() throws Exception {
     exportTable(IMPORT_TABLE, UcOperations.landingColumns(), LANDING_ROWS * 2L);
     exportTable(TABLE_CUSTOMERS, UcOperations.customerColumns(), CUSTOMERS_ROWS * 2L);
@@ -272,7 +322,7 @@ class AnotherBucketTest extends DockerIntegrationTestBase {
   }
 
   @Test
-  @Order(8)
+  @Order(10)
   void bootstrapCatalogBAndVerifyIsolation() throws Exception {
     bootstrapTenant(tenantSpec(TENANT_B, CATALOG_B, USER_B, CRED_B, EL_B, DATA_EL_B));
     new UcOperations(SERVER, adminToken)
