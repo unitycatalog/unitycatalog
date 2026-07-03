@@ -323,7 +323,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertThat(expectedSize).isEqualTo(creds.length);
     assertThat(GenericCredentialProvider.globalCache.size()).isEqualTo(expectedSize);
     for (TemporaryCredentials cred : creds) {
-      assertThat(GenericCredentialProvider.globalCache.values())
+      assertThat(GenericCredentialProvider.globalCache.credentials())
           .contains(new GenericCredential(cred));
     }
   }
