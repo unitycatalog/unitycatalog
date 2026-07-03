@@ -15,7 +15,9 @@ import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,7 +55,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   public void before() {
     clockName = UUID.randomUUID().toString();
     clock = Clock.getManualClock(clockName);
-    GenericCredentialProvider.globalCache.clear();
+    GenericCredentialProvider.globalCache.cache.clear();
   }
 
   @AfterEach
@@ -61,7 +63,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     Clock.removeManualClock(clockName);
     clock = null;
     clockName = null;
-    GenericCredentialProvider.globalCache.clear();
+    GenericCredentialProvider.globalCache.cache.clear();
   }
 
   @Test
@@ -321,10 +323,13 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {
     assertThat(expectedSize).isEqualTo(creds.length);
-    assertThat(GenericCredentialProvider.globalCache.size()).isEqualTo(expectedSize);
+    assertThat(GenericCredentialProvider.globalCache.cache.size()).isEqualTo(expectedSize);
+    List<GenericCredential> cachedCreds =
+        GenericCredentialProvider.globalCache.cache.values().stream()
+            .map(CredentialCache.RenewableCredential::credential)
+            .collect(Collectors.toList());
     for (TemporaryCredentials cred : creds) {
-      assertThat(GenericCredentialProvider.globalCache.values())
-          .contains(new GenericCredential(cred));
+      assertThat(cachedCreds).contains(new GenericCredential(cred));
     }
   }
 

@@ -4,8 +4,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Caches vended {@link GenericCredential}s keyed by their scope ({@link CredId}). A cached
@@ -13,13 +11,13 @@ import java.util.stream.Collectors;
  * is about to expire.
  */
 public class CredentialCache {
-  // Max number of distinct credential scopes ({@link CredId}) held before the eldest is evicted.
   private static final int DEFAULT_MAX_SIZE = 1024;
   private static final String GLOBAL_CACHE_MAX_SIZE_KEY = "unitycatalog.credential.cache.maxSize";
   private static final String INITIAL_CACHE_MAX_SIZE_KEY =
       "unitycatalog.initial.credential.cache.maxSize";
 
-  private final BoundedKeyedCache<CredId, RenewableCredential> cache;
+  // Visible for testing so tests can inspect and reset the underlying cache directly.
+  public final BoundedKeyedCache<CredId, RenewableCredential> cache;
 
   public CredentialCache(int maxSize) {
     this.cache = new BoundedKeyedCache<>(maxSize);
@@ -42,6 +40,15 @@ public class CredentialCache {
     return new CredentialCache(Integer.getInteger(INITIAL_CACHE_MAX_SIZE_KEY, DEFAULT_MAX_SIZE));
   }
 
+  /**
+   * Returns the credential for {@code credId}, handling three cases:
+   *
+   * <ul>
+   *   <li>Cached and still valid: return it as is.
+   *   <li>Cached but about to expire: create a fresh one via {@code factory}, cache it, return it.
+   *   <li>Not cached: create it via {@code factory}, cache it, return it.
+   * </ul>
+   */
   public GenericCredential access(CredId credId, RenewableCredentialFactory factory)
       throws ApiException {
     synchronized (cache) {
@@ -55,20 +62,6 @@ public class CredentialCache {
       cache.put(credId, created);
       return created.credential();
     }
-  }
-
-  public void clear() {
-    cache.clear();
-  }
-
-  public int size() {
-    return cache.size();
-  }
-
-  public List<GenericCredential> values() {
-    return cache.values().stream()
-        .map(RenewableCredential::credential)
-        .collect(Collectors.toList());
   }
 
   @FunctionalInterface

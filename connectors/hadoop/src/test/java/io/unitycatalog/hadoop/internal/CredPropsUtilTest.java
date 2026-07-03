@@ -41,7 +41,7 @@ class CredPropsUtilTest {
 
   @BeforeEach
   void clearCredentialCache() {
-    CredPropsUtil.initialCredCache.clear();
+    CredPropsUtil.initialCredCache.cache.clear();
   }
 
   @Test
@@ -749,7 +749,7 @@ class CredPropsUtilTest {
   @AfterEach
   void resetFactory() {
     CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
-    CredPropsUtil.initialCredCache.clear();
+    CredPropsUtil.initialCredCache.cache.clear();
   }
 
   // Driver-side credential cache: different queries reuse the same credential for the same credId.
