@@ -13,10 +13,33 @@ import java.util.stream.Collectors;
  * is about to expire.
  */
 public class CredentialCache {
+  // Max number of distinct credential scopes ({@link CredId}) held before the eldest is evicted.
+  private static final int DEFAULT_MAX_SIZE = 1024;
+  private static final String GLOBAL_CACHE_MAX_SIZE_KEY = "unitycatalog.credential.cache.maxSize";
+  private static final String INITIAL_CACHE_MAX_SIZE_KEY =
+      "unitycatalog.initial.credential.cache.maxSize";
+
   private final BoundedKeyedCache<CredId, RenewableCredential> cache;
 
   public CredentialCache(int maxSize) {
     this.cache = new BoundedKeyedCache<>(maxSize);
+  }
+
+  /**
+   * Creates the JVM-wide cache used by the Hadoop token providers to renew and share vended
+   * credentials across requests targeting the same scope, saving QPS to the Unity Catalog server.
+   */
+  public static CredentialCache createGlobalCache() {
+    return new CredentialCache(Integer.getInteger(GLOBAL_CACHE_MAX_SIZE_KEY, DEFAULT_MAX_SIZE));
+  }
+
+  /**
+   * Creates the cache for the initial credential fetched during query planning (e.g. on the Spark
+   * driver) so that different queries targeting the same scope reuse the same vended credential
+   * instead of re-fetching from the Unity Catalog server.
+   */
+  public static CredentialCache createInitialCredentialCache() {
+    return new CredentialCache(Integer.getInteger(INITIAL_CACHE_MAX_SIZE_KEY, DEFAULT_MAX_SIZE));
   }
 
   public GenericCredential access(CredId credId, RenewableCredentialFactory factory)

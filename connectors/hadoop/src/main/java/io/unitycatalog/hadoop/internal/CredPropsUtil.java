@@ -48,22 +48,7 @@ public class CredPropsUtil {
   public static volatile GenericCredentialFetcherFactory genericCredFetcherFactory =
       GenericCredentialFetcher::create;
 
-  // Caches the initial credential fetched here so that different queries targeting the same
-  // credential scope ({@link CredId}) reuse the same vended credential instead of re-fetching from
-  // the UC server. It is re-fetched only once the cached credential is about to expire. Kept
-  // separate from the token-provider renewal cache since this runs on the query-planning side (e.g.
-  // the Spark driver), which is engine-agnostic here.
-  private static final String UC_INITIAL_CREDENTIAL_CACHE_MAX_SIZE =
-      "unitycatalog.initial.credential.cache.maxSize";
-  private static final int UC_INITIAL_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
-  static final CredentialCache initialCredCache;
-
-  static {
-    int maxSize =
-        Integer.getInteger(
-            UC_INITIAL_CREDENTIAL_CACHE_MAX_SIZE, UC_INITIAL_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
-    initialCredCache = new CredentialCache(maxSize);
-  }
+  static final CredentialCache initialCredCache = CredentialCache.createInitialCredentialCache();
 
   private static final String CRED_SCOPED_FS_CLASS =
       "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem";

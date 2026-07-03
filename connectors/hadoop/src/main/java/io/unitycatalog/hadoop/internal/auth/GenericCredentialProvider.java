@@ -15,18 +15,7 @@ import org.apache.hadoop.conf.Configuration;
  * cache lookup.
  */
 public abstract class GenericCredentialProvider {
-  // The credential cache, for saving QPS to unity catalog server. Keyed by the credential scope
-  // ({@link CredId}) so that requests targeting the same scope can share a vended credential.
-  static final CredentialCache globalCache;
-  private static final String UC_CREDENTIAL_CACHE_MAX_SIZE =
-      "unitycatalog.credential.cache.maxSize";
-  private static final int UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
-
-  static {
-    int maxSize =
-        Integer.getInteger(UC_CREDENTIAL_CACHE_MAX_SIZE, UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
-    globalCache = new CredentialCache(maxSize);
-  }
+  static final CredentialCache globalCache = CredentialCache.createGlobalCache();
 
   private Configuration conf;
   private Clock clock;
