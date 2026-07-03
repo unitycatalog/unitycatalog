@@ -1,6 +1,0 @@
-# No extra overrides required for docker-mode UC integration tests.
-# Ensure the UC container maps the OAuth hostname:
-#   --add-host=dev.dev.celonis.cloud:host-gateway
-#
-# Start the OAuth stack:
-#   docker compose -f docker/oidc/compose.yaml up -d

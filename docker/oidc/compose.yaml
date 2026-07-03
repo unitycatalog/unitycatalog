@@ -3,10 +3,8 @@
 # Start:
 #   docker compose -f docker/oidc/compose.yaml up -d
 #
-# OAuth discovery: https://dev.dev.celonis.cloud/.well-known/openid-configuration
-# (add `127.0.0.1 dev.dev.celonis.cloud` to /etc/hosts; Caddy serves TLS on port 443)
-#
-# Lighter alternative: see compose.mock-oauth2.yaml and README.md
+# OAuth discovery: http://dev.dev.celonis.cloud:9010/.well-known/openid-configuration
+# (add `127.0.0.1 dev.dev.celonis.cloud` to /etc/hosts; Envoy + gateway resolve team from subdomain)
 
 name: unitycatalog-oidc
 
@@ -16,13 +14,110 @@ services:
     environment:
       POSTGRES_USER: celonis
       POSTGRES_PASSWORD: celonis
-      POSTGRES_DB: oauth-server
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/01-init-databases.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U celonis -d oauth-server"]
+      test: ["CMD-SHELL", "pg_isready -U celonis -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 10s
+
+  team:
+    image: ghcr.io/celonis/cloud-team/team:${CELONIS_TEAM_IMAGE_TAG:-prod}
+    environment:
+      SPRING_PROFILES_ACTIVE: default,compose
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/team
+      SPRING_DATASOURCE_USERNAME: celonis
+      SPRING_DATASOURCE_PASSWORD: celonis
+      CLOUD_CELONIS_AUTH_IDP_URL: http://id.dev.celonis.cloud:8150
+      CLOUD_CELONIS_AUTH_IDP_OIDCDOMAIN: http://id.dev.celonis.cloud:8150
+      CELONIS_FEATURES_0_KEY: enable-feature-configuration-api-reads
+      CELONIS_FEATURES_0_ENABLED: "true"
+      CLOUD_CELONIS_SESSIONTOKEN_STORAGESTRATEGY: parallel
+      CELONIS_SERVICES_AUTHENTICATION_URL: http://authentication:8400/authentication
+      CELONIS_SERVICES_FILESCAND_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: "-XX:+IgnoreUnrecognizedVMOptions -XX:UseSVE=0"
+      CLOUD_CELONIS_PERMISSIONS_MIGRATION_ENABLED: "true"
+      CLOUD_CELONIS_PERMISSIONS_MIGRATION_ENABLEPOLICYEVALFORALLTEAMS: "true"
+      SCHEDULING_JOB-TRIGGER-VALUES_ACL-MIGRATION: "0 0/3 * * * ? *"
+      AUTHORIZATION_GRPC_HOST: authentication
+    volumes:
+      - team-data:/tmp
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 120s
+
+  authentication:
+    image: ghcr.io/celonis/cloud-authentication/authentication:${CELONIS_IMAGE_TAG:-latest}
+    environment:
+      SPRING_PROFILES_ACTIVE: default
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/authentication
+      SPRING_DATASOURCE_USERNAME: celonis
+      SPRING_DATASOURCE_PASSWORD: celonis
+      CELONIS_SERVICES_TEAM_URL: http://team:8080
+      CLOUD_CELONIS_AUTH_TOKENEXCHANGE_JWKSURI: http://oauth-server:9099/.well-known/jwks.json
+      JAVA_TOOL_OPTIONS: "-XX:+IgnoreUnrecognizedVMOptions -XX:UseSVE=0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      team:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8400' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  bootstrapper:
+    image: ghcr.io/celonis/cloud-bootstrapper:prod
+    environment:
+      TEAM_DB_USER: celonis
+      TEAM_DB_PASSWORD: celonis
+      TEAM_DB_PORT: 5432
+      TEAM_DB_HOST: postgres
+      TEAM_DB_NAME: team
+      ENV: cloud
+      ADMIN_PASSWORD: admin
+      NUMBER_OF_TEAMS: 0
+      SECURITY_JWT_SECRET: my-super-secret-key
+      SECURITY_JWT_HMACKEYS: ""
+      JAVA_TOOL_OPTIONS: "-XX:+IgnoreUnrecognizedVMOptions -XX:UseSVE=0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      team:
+        condition: service_healthy
+    restart: "no"
+
+  gateway:
+    image: ghcr.io/celonis/cloud-gateway/cloud-gateway:${CELONIS_IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: dev
+      SECURITY_JWT_SECRET: my-super-secret-key
+      CELONIS_CONFIG: /etc/gateway/application.yml
+    volumes:
+      - ./gateway/application.yml:/etc/gateway/application.yml:ro
+    depends_on:
+      team:
+        condition: service_healthy
+      authentication:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5s bash -c ':> /dev/tcp/127.0.0.1/5050' || exit 1"]
+      start_period: 30s
+      timeout: 5s
+      interval: 15s
+      retries: 5
 
   oauth-server:
     image: ghcr.io/celonis/cloud-oauth-server/oauth-server:${OAUTH_SERVER_TAG:-latest}
@@ -40,13 +135,24 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      team:
+        condition: service_healthy
 
-  oauth-gateway:
-    image: caddy:2-alpine
+  envoy:
+    image: envoyproxy/envoy:v1.28-latest
+    command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml --service-cluster oauth-envoy --service-node oauth-envoy
     ports:
+      - "9010:9010"
       - "443:443"
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./envoy/certs:/etc/envoy/certs:ro
     depends_on:
+      gateway:
+        condition: service_healthy
       oauth-server:
         condition: service_started
+
+volumes:
+  postgres-data:
+  team-data:

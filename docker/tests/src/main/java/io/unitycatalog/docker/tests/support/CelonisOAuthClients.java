@@ -5,7 +5,6 @@ import cloud.celonis.oauth.client.OAuthClientApi;
 import cloud.celonis.oauth.client.OAuthClientApiImpl;
 import cloud.celonis.oauth.internal.client.generated.async.ApiClient;
 import cloud.celonis.oauth.internal.client.generated.async.OAuthClientsInternalAsyncApi;
-import cloud.celonis.security.SecurityConstants;
 import cloud.celonis.security.auth.client.AuthenticationHeadersProvider;
 import cloud.celonis.security.auth.token.SystemTokenCreator;
 import cloud.celonis.security.config.JwtConfig;
@@ -42,11 +41,6 @@ public final class CelonisOAuthClients {
 
     ApiClient apiClient = new ApiClient(webClient);
     apiClient.setBasePath(CelonisOAuthTestConstants.oauthBaseUrl());
-    apiClient.addDefaultHeader(
-        SecurityConstants.TeamHeaders.TEAM_ID_HEADER, CelonisOAuthTestConstants.OAUTH_TEAM_ID);
-    apiClient.addDefaultHeader(
-        SecurityConstants.TeamHeaders.TEAM_DOMAIN_HEADER,
-        CelonisOAuthTestConstants.OAUTH_TEAM_DOMAIN);
 
     OAuthClientsInternalAsyncApi internalApi = new OAuthClientsInternalAsyncApi(apiClient);
     return new OAuthClientApiImpl(internalApi);

@@ -1,10 +1,10 @@
-# OIDC settings for docker-mode UC tests (Celonis OAuth at dev.dev.celonis.cloud).
-# Use with: docker compose -f docker/oidc/compose.yaml up -d
-# UC containers need: --add-host=dev.dev.celonis.cloud:host-gateway
+# OIDC settings for docker/tests (Celonis OAuth via Envoy + gateway).
+# Start stack: docker compose -f docker/oidc/compose.yaml up -d
+# Add to /etc/hosts: 127.0.0.1 dev.dev.celonis.cloud
 
 server.authorization=enable
-server.authorization-url=https://dev.dev.celonis.cloud/oauth2/authorize
-server.token-url=https://dev.dev.celonis.cloud/oauth2/token
+server.authorization-url=http://dev.dev.celonis.cloud:9010/oauth2/authorize
+server.token-url=http://dev.dev.celonis.cloud:9010/oauth2/token
 server.client-id=unity-catalog-local
 server.client-secret=unity-catalog-local-secret
 server.redirect-port=8080

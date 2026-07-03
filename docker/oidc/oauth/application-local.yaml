@@ -68,7 +68,7 @@ celonis:
     log:
       url: http://localhost:8089/log
     team:
-      url: http://localhost:8082
+      url: http://team:8080
 
 authorization:
   grpc:

@@ -1,0 +1,17 @@
+server:
+  port: 9010
+cloud:
+  celonis:
+    proxy:
+      token-exchange:
+        excluded-paths:
+          - /oauth2/token
+      realm: dev.celonis.cloud
+      error-page-endpoint: https://id.celonis.cloud/user/ui/error
+      team-endpoint: http://team:8080
+      auth-endpoint: http://authentication:8400/authentication
+      oauth:
+        allowed-endpoints:
+          - path: /*
+      csrf:
+        level: DISABLED

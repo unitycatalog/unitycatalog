@@ -72,7 +72,7 @@ Pre-seeded sample data under `etc/data/` remains on the local filesystem. Only *
 docker compose -f docker/compose.yaml -f docker/oidc/compose.yaml up -d
 ```
 
-Merge both `docker/minio/server.properties.snippet` and `docker/oidc/server.properties.snippet` into `etc/conf/server.properties`.
+Merge both `docker/minio/server.properties.snippet` and `docker/oidc/server.properties.docker.snippet` into `etc/conf/server.properties`.
 
 ## Stop
 

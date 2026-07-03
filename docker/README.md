@@ -1,5 +1,21 @@
 # Docker Developer Docs
 
+## Integration tests (`docker/tests`)
+
+End-to-end JUnit suite (UC + Celonis OAuth + MinIO + Spark). Prerequisites:
+
+1. `/etc/hosts`: `127.0.0.1 dev.dev.celonis.cloud`
+2. OAuth stack: `docker compose -f docker/oidc/compose.yaml up -d`
+3. UC server: `./docker/start-uc-for-tests.sh` (binary mode merges OIDC truststore for JWKS)
+
+Run:
+
+```sh
+./docker/tests/run-tests.sh
+```
+
+See [oidc/README.md](oidc/README.md) and [tests/run-tests.sh](tests/run-tests.sh) for options.
+
 ## Overview
 Build the Unity Catalog Docker image for a specific ref by locally checking out
 the ref and then running `docker build -t <tag> .` from the main project
@@ -7,50 +23,6 @@ directory.
 
 It is recommended to use the forthcoming offical DockerHub image, with the
 specific version tag, rather than building the images locally from a ref.
-
-## Local object storage (MinIO)
-
-Start S3-compatible storage for catalog managed tables and models:
-
-```sh
-docker compose -f docker/compose.yaml up -d
-```
-
-See [minio/README.md](minio/README.md) for `server.properties` settings and
-verification steps.
-
-## Local OIDC (auth testing)
-
-To run Unity Catalog with authorization enabled, start a local OpenID Connect
-provider:
-
-```sh
-docker compose -f docker/oidc/compose.yaml up -d
-```
-
-See [oidc/README.md](oidc/README.md) for Celonis OAuth setup, `server.properties`
-snippets, and a lighter mock-oauth2 alternative.
-
-### MinIO + OIDC together
-
-```sh
-docker compose -f docker/compose.yaml -f docker/oidc/compose.yaml up -d
-```
-
-Merge `minio/server.properties.snippet` and `oidc/server.properties.snippet`
-into `etc/conf/server.properties`.
-
-## Spark SQL (optional profile)
-
-Spark **4.1.2** with Unity Catalog, Delta Lake, and `hadoop-aws` for MinIO:
-
-```sh
-docker/spark/run-test.sh
-```
-
-See [spark/README.md](spark/README.md). UC always runs on the host via
-`bin/start-uc-server`. Merge `spark/server.properties.snippet` so vended S3
-credentials use an endpoint reachable from inside Docker (`host.docker.internal:9000`).
 
 ## Further Reading
 To extend the Unity Catalog image, refer to the [Docker

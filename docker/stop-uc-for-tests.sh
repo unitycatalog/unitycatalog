@@ -10,32 +10,6 @@ MODE_FILE="$ROOT_DIR/uc_server.mode"
 PID_FILE="$ROOT_DIR/uc_server.pid"
 CONTAINER_FILE="$ROOT_DIR/uc_server.container"
 
-CONF_BACKUP_MARKER="$ROOT_DIR/uc_server.conf_backup"
-ETC_CONF_LINK="$ROOT_DIR/etc/conf"
-
-restore_binary_test_conf() {
-  if [[ ! -L "$ETC_CONF_LINK" && ! -f "$CONF_BACKUP_MARKER" ]]; then
-    return 0
-  fi
-  local conf_dir=""
-  if [[ -L "$ETC_CONF_LINK" ]]; then
-    conf_dir="$(readlink "$ETC_CONF_LINK")"
-    rm -f "$ETC_CONF_LINK"
-  fi
-  if [[ -f "$CONF_BACKUP_MARKER" ]]; then
-    local kind
-    kind="$(cat "$CONF_BACKUP_MARKER")"
-    if [[ "$kind" == "dir" || "$kind" == "file" ]] \
-        && [[ -e "${ETC_CONF_LINK}.uc-test-bak" ]]; then
-      mv "${ETC_CONF_LINK}.uc-test-bak" "$ETC_CONF_LINK"
-    fi
-    rm -f "$CONF_BACKUP_MARKER"
-  fi
-  if [[ -n "$conf_dir" && "$conf_dir" == *uc-test-conf* && -d "$conf_dir" ]]; then
-    rm -rf "$conf_dir"
-  fi
-}
-
 cd "$ROOT_DIR"
 
 echo "Stopping Unity Catalog Server..."
@@ -82,7 +56,6 @@ if [[ -f "$PID_FILE" ]]; then
     echo "Process with PID $PID is not running"
   fi
   rm -f "$PID_FILE" "$MODE_FILE" "$CONTAINER_FILE"
-  restore_binary_test_conf
   exit 0
 fi
 
@@ -103,5 +76,4 @@ else
 fi
 
 rm -f "$MODE_FILE" "$CONTAINER_FILE" "$PID_FILE"
-restore_binary_test_conf
 echo "Teardown complete"

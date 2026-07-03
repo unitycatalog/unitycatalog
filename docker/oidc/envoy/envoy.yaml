@@ -1,0 +1,222 @@
+admin:
+  access_log_path: /dev/null
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901
+
+static_resources:
+  listeners:
+    - name: oauth_listener_http
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 9010 }
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: oauth_ingress_http
+                access_log:
+                  - name: envoy.access_loggers.stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                http_filters:
+                  - name: envoy.filters.http.lua
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                      inline_code: |
+                        function envoy_on_request(handle)
+                          local auth = handle:headers():get("authorization")
+                          if auth then
+                            handle:headers():add("x-uc-preserve-authorization", auth)
+                          end
+                        end
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      http_service:
+                        server_uri:
+                          uri: http://gateway
+                          cluster: gateway_ext_authz
+                          timeout: 5s
+                        path_prefix: /api/external-auth/filter
+                        authorization_request:
+                          allowed_headers:
+                            patterns:
+                              - exact: host
+                              - exact: x-forwarded-proto
+                              - exact: x-forwarded-host
+                              - exact: x-forwarded-port
+                              - exact: cookie
+                              - exact: user-agent
+                              - exact: origin
+                              - exact: referer
+                        authorization_response:
+                          allowed_upstream_headers:
+                            patterns:
+                              - exact: x-celonis-realm
+                              - exact: x-celonis-team-id
+                              - exact: x-celonis-team-domain
+                              - exact: x-celonis-request-info
+                              - exact: authorization
+                          allowed_client_headers:
+                            patterns:
+                              - exact: set-cookie
+                              - exact: x-celonis-realm
+                          allowed_client_headers_on_success:
+                            patterns:
+                              - exact: set-cookie
+                              - exact: x-celonis-realm
+                      failure_mode_allow: false
+                  - name: envoy.filters.http.lua
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                      inline_code: |
+                        function envoy_on_request(handle)
+                          if not handle:headers():get("authorization") then
+                            local preserved = handle:headers():get("x-uc-preserve-authorization")
+                            if preserved then
+                              handle:headers():add("authorization", preserved)
+                            end
+                          end
+                          handle:headers():remove("x-uc-preserve-authorization")
+                        end
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                route_config:
+                  name: oauth_routes
+                  virtual_hosts:
+                    - name: oauth_host
+                      domains: ["*"]
+                      routes:
+                        - match: { prefix: "/.well-known/" }
+                          route: { cluster: oauth_server }
+                        - match: { prefix: "/oauth2/" }
+                          route: { cluster: oauth_server }
+                        - match: { prefix: "/oidc/" }
+                          route: { cluster: oauth_server }
+                        - match: { prefix: "/" }
+                          route: { cluster: oauth_server }
+
+    - name: oauth_listener_https
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 443 }
+      filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain: { filename: /etc/envoy/certs/cert.pem }
+                    private_key: { filename: /etc/envoy/certs/key.pem }
+          filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: oauth_ingress_https
+                access_log:
+                  - name: envoy.access_loggers.stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                http_filters:
+                  - name: envoy.filters.http.lua
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                      inline_code: |
+                        function envoy_on_request(handle)
+                          local auth = handle:headers():get("authorization")
+                          if auth then
+                            handle:headers():add("x-uc-preserve-authorization", auth)
+                          end
+                        end
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      http_service:
+                        server_uri:
+                          uri: http://gateway
+                          cluster: gateway_ext_authz
+                          timeout: 5s
+                        path_prefix: /api/external-auth/filter
+                        authorization_request:
+                          allowed_headers:
+                            patterns:
+                              - exact: host
+                              - exact: x-forwarded-proto
+                              - exact: x-forwarded-host
+                              - exact: x-forwarded-port
+                              - exact: cookie
+                              - exact: user-agent
+                              - exact: origin
+                              - exact: referer
+                        authorization_response:
+                          allowed_upstream_headers:
+                            patterns:
+                              - exact: x-celonis-realm
+                              - exact: x-celonis-team-id
+                              - exact: x-celonis-team-domain
+                              - exact: x-celonis-request-info
+                              - exact: authorization
+                          allowed_client_headers:
+                            patterns:
+                              - exact: set-cookie
+                              - exact: x-celonis-realm
+                          allowed_client_headers_on_success:
+                            patterns:
+                              - exact: set-cookie
+                              - exact: x-celonis-realm
+                      failure_mode_allow: false
+                  - name: envoy.filters.http.lua
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                      inline_code: |
+                        function envoy_on_request(handle)
+                          if not handle:headers():get("authorization") then
+                            local preserved = handle:headers():get("x-uc-preserve-authorization")
+                            if preserved then
+                              handle:headers():add("authorization", preserved)
+                            end
+                          end
+                          handle:headers():remove("x-uc-preserve-authorization")
+                        end
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                route_config:
+                  name: oauth_routes_https
+                  virtual_hosts:
+                    - name: oauth_host_https
+                      domains: ["*"]
+                      routes:
+                        - match: { prefix: "/.well-known/" }
+                          route: { cluster: oauth_server }
+                        - match: { prefix: "/oauth2/" }
+                          route: { cluster: oauth_server }
+                        - match: { prefix: "/oidc/" }
+                          route: { cluster: oauth_server }
+                        - match: { prefix: "/" }
+                          route: { cluster: oauth_server }
+
+  clusters:
+    - name: gateway_ext_authz
+      connect_timeout: 5s
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: gateway_ext_authz
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: gateway, port_value: 5050 }
+    - name: oauth_server
+      connect_timeout: 5s
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: oauth_server
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: oauth-server, port_value: 9099 }

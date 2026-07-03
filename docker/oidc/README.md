@@ -2,26 +2,22 @@
 
 Spin up the [Celonis cloud-oauth-server](https://github.com/celonis/cloud-oauth-server) for testing Unity Catalog authentication locally.
 
-## Options
+Ports: **9010** (HTTP Envoy for tests) and **443** (HTTPS Envoy for UC JWKS/issuer discovery). Direct oauth-server HTTP **9099** is exposed for debugging only.
 
-| Provider | Compose file | Best for |
-|---|---|---|
-| **Celonis OAuth** (recommended) | `compose.yaml` | Production-like OAuth flows, CLI `auth login`, integration tests |
-| **mock-oauth2-server** | `compose.mock-oauth2.yaml` | Fast startup, scripted/token tests, minimal setup |
+## 1. Hostname
 
-The Celonis OAuth stack binds **port 443** (TLS gateway) and **9099** (direct HTTP). mock-oauth2 binds **port 9090**. Do not run both Celonis OAuth and mock-oauth2 at once if ports would conflict.
+OAuth traffic uses:
 
-## Celonis OAuth (recommended)
+- `http://dev.dev.celonis.cloud:9010` — integration tests and authorize/token calls
+- `https://dev.dev.celonis.cloud` — UC issuer/JWKS discovery (Envoy TLS on :443)
 
-### 1. Hostname
-
-Token issuers use `https://dev.dev.celonis.cloud`. Add this to `/etc/hosts`:
+Add this to `/etc/hosts`:
 
 ```sh
 127.0.0.1 dev.dev.celonis.cloud
 ```
 
-### 2. Start the OAuth stack
+## 2. Start the OAuth stack
 
 From the repository root:
 
@@ -29,40 +25,52 @@ From the repository root:
 docker compose -f docker/oidc/compose.yaml up -d
 ```
 
+The first start can take several minutes while **team**, **authentication**, and **bootstrapper** initialize.
+
 Wait until healthy:
 
 ```sh
 docker compose -f docker/oidc/compose.yaml ps
 ```
 
-- Discovery: https://dev.dev.celonis.cloud/.well-known/openid-configuration
-- Direct HTTP (tests / debugging): http://localhost:9099
+Verify discovery (team context is resolved from the subdomain by gateway):
+
+```sh
+curl -sk https://dev.dev.celonis.cloud/.well-known/openid-configuration | jq .issuer
+curl -s http://dev.dev.celonis.cloud:9010/.well-known/openid-configuration | jq .issuer
+```
+
+- Discovery (UC): https://dev.dev.celonis.cloud/.well-known/openid-configuration
+- Discovery/tests: http://dev.dev.celonis.cloud:9010/.well-known/openid-configuration
+- Direct HTTP (debugging only): http://localhost:9099
 - OAuth client: `unity-catalog-local` / `unity-catalog-local-secret`
-- Local tenant: `dev` (`X-Celonis-Team-Domain: dev`)
+- Local tenant: `dev` (from hostname `dev.dev.celonis.cloud`)
 
 The stack runs:
 
-- **postgres** — database for the OAuth server
+- **postgres** — databases for oauth-server, team, and authentication
+- **team** — team registry (subdomain → team id)
+- **authentication** — session/auth service used by gateway
+- **bootstrapper** — seeds the `dev` team (runs once per fresh volume)
+- **gateway** — `cloud-gateway` ext_authz (injects `X-Celonis-Team-*` headers)
+- **envoy** — HTTP/HTTPS entry point (:9010 / :443)
 - **oauth-server** — `ghcr.io/celonis/cloud-oauth-server/oauth-server`
-- **oauth-gateway** — Caddy TLS proxy for the `dev.dev.celonis.cloud` issuer
 
-Configuration lives in `docker/oidc/oauth/application-local.yaml` and `docker/oidc/oauth/jwks.json`, following the [development-setup example](https://github.com/celonis/development-setup/blob/master/files/docker/docker-compose.with-oauth-server.yml).
+Configuration lives in `docker/oidc/oauth/application-local.yaml` and `docker/oidc/oauth/jwks.json`.
 
-### 3. Configure Unity Catalog server
+TLS certs for Envoy HTTPS: `docker/oidc/envoy/certs/` (regenerate with `docker/oidc/envoy/generate-certs.sh`).
 
-Merge `docker/oidc/server.properties.snippet` into `etc/conf/server.properties`, or copy the auth block manually.
+## 3. Configure Unity Catalog server
 
-For docker-mode integration tests, `docker/oidc/server.properties.docker.snippet` is merged automatically by `docker/start-uc-for-tests.sh`.
+Merge `docker/oidc/server.properties.docker.snippet` into `etc/conf/server.properties`, or copy the auth block manually.
 
-### 4. Trust the local TLS certificate
+For docker-mode integration tests, `docker/start-uc-for-tests.sh` imports `docker/oidc/envoy/certs/cert.pem` into a JVM truststore for HTTPS issuer discovery.
 
-The Caddy gateway uses an internal CA. Import `docker/oidc/caddy/root.crt` into your JVM truststore before starting an auth-enabled UC server, or let `docker/start-uc-for-tests.sh` do this for binary/docker test runs.
-
-### 5. Start UC and test
+## 4. Start UC and test
 
 ```sh
 build/sbt server/package   # if not already built
-bin/start-uc-server
+./docker/start-uc-for-tests.sh
 ```
 
 Verify auth is enforced (expect 401):
@@ -83,43 +91,6 @@ Interactive CLI login (opens browser → Celonis OAuth):
 bin/uc auth login
 ```
 
-### 6. UI
-
-The bundled UI login page targets **Google** and **Okta**. For Celonis OAuth-backed servers keep Google auth disabled in `ui/.env` (see `ui.env.snippet`). Use the CLI or API for authenticated testing.
-
-To run the UI against an auth-enabled server:
-
-```sh
-cd ui
-corepack yarn install
-corepack yarn start
-```
-
-The UI loads at http://localhost:3000 and proxies API calls to the server.
-
-## mock-oauth2-server (lighter alternative)
-
-[NAV mock-oauth2-server](https://github.com/navikt/mock-oauth2-server) starts in seconds and exposes a built-in login page. It is ideal for CI-style checks and quick token minting, but has no admin UI.
-
-```sh
-docker compose -f docker/oidc/compose.mock-oauth2.yaml up -d
-```
-
-Use these `server.properties` values instead:
-
-```properties
-server.authorization=enable
-server.authorization-url=http://localhost:9090/default/authorize
-server.token-url=http://localhost:9090/default/token
-server.client-id=unity-catalog-local
-server.client-secret=unity-catalog-local-secret
-server.redirect-port=8080
-server.allowed-issuers=http://localhost:9090/default
-server.audiences=unity-catalog-local
-```
-
-Discovery: http://localhost:9090/default/.well-known/openid-configuration
-
 ## Object storage (MinIO)
 
 To run OIDC and S3-compatible catalog storage together:
@@ -128,15 +99,12 @@ To run OIDC and S3-compatible catalog storage together:
 docker compose -f docker/compose.yaml -f docker/oidc/compose.yaml up -d
 ```
 
-See [../minio/README.md](../minio/README.md) for MinIO `server.properties`
-settings.
+See [../minio/README.md](../minio/README.md) for MinIO `server.properties` settings.
 
 ## Stop
 
 ```sh
 docker compose -f docker/oidc/compose.yaml down
-# or
-docker compose -f docker/oidc/compose.mock-oauth2.yaml down
 ```
 
 To stop MinIO as well:
@@ -147,8 +115,9 @@ docker compose -f docker/compose.yaml down
 
 ## Troubleshooting
 
-- **Port 443 or 9099 in use** — stop the other OIDC compose stack or change the host port mapping.
-- **Issuer / JWKS errors** — ensure `dev.dev.celonis.cloud` resolves to `127.0.0.1` and the OAuth gateway is running.
+- **Port 9010 or 9099 in use** — stop the other stack or change the host port mapping.
+- **Issuer / JWKS errors** — ensure `dev.dev.celonis.cloud` resolves to `127.0.0.1`, Envoy is healthy, and bootstrapper completed (`docker compose -f docker/oidc/compose.yaml logs bootstrapper`).
+- **403 from Envoy** — gateway could not resolve the team; check team/bootstrapper logs and that requests use hostname `dev.dev.celonis.cloud` (not `localhost`).
 - **CLI login redirect fails** — the `unity-catalog-local` client allows `http://127.0.0.1:8080/callback` and `http://localhost:8080/callback`.
-- **Token exchange fails** — ensure `server.allowed-issuers` is `https://dev.dev.celonis.cloud` and `server.audiences` is `unity-catalog-local`.
-- **Integration tests** — start the OAuth stack first, then run `docker/tests/run-tests.sh`. Tests use the [`cloud-oauth-server-internal-client`](https://github.com/celonis/maven-internal/packages/1915797) library for internal OAuth server APIs (client lookup, etc.) and direct HTTP for the public authorization-code flow (user `id_token`s). Session JWTs are signed with `my-super-secret-key` (see `docker/oidc/oauth/application-local.yaml`).
+- **Token exchange fails** — ensure `server.allowed-issuers` is `https://dev.dev.celonis.cloud` and authorize/token URLs point at `http://dev.dev.celonis.cloud:9010`.
+- **Integration tests** — start the OAuth stack first, then run `docker/tests/run-tests.sh`. Tests reach OAuth via Envoy at `http://dev.dev.celonis.cloud:9010`; gateway injects team headers from the subdomain.

@@ -2,7 +2,7 @@
 # Start Unity Catalog for integration tests.
 #
 # Modes (UC_SERVER_MODE):
-#   binary   - run bin/start-uc-server from the repo (default; merges Celonis OIDC when UC_ENABLE_OIDC=1)
+#   binary   - run bin/start-uc-server from the repo (default)
 #   docker   - run a prebuilt UC Docker image (UC_DOCKER_IMAGE required)
 #   external - UC server already running; only verify reachability
 #
@@ -35,9 +35,7 @@ LOG_FILE="${LOG_FILE:-uc_server.log}"
 MODE_FILE="$ROOT_DIR/uc_server.mode"
 PID_FILE="$ROOT_DIR/uc_server.pid"
 CONTAINER_FILE="$ROOT_DIR/uc_server.container"
-CONF_BACKUP_MARKER="$ROOT_DIR/uc_server.conf_backup"
-TEST_CONF_DIR=""
-ETC_CONF_LINK="$ROOT_DIR/etc/conf"
+DOCKER_CONF_DIR=""
 
 cd "$ROOT_DIR"
 
@@ -58,79 +56,26 @@ cleanup_on_failure() {
       rm -f "$PID_FILE" "$MODE_FILE"
       ;;
   esac
-  restore_test_conf_overlay
-  if [[ -n "$TEST_CONF_DIR" && -d "$TEST_CONF_DIR" ]]; then
-    rm -rf "$TEST_CONF_DIR"
-    TEST_CONF_DIR=""
+  if [[ -n "$DOCKER_CONF_DIR" && -d "$DOCKER_CONF_DIR" ]]; then
+    rm -rf "$DOCKER_CONF_DIR"
+    DOCKER_CONF_DIR=""
   fi
-}
-
-restore_test_conf_overlay() {
-  if [[ -L "$ETC_CONF_LINK" ]]; then
-    rm -f "$ETC_CONF_LINK"
-  fi
-  if [[ -f "$CONF_BACKUP_MARKER" ]]; then
-    local kind
-    kind="$(cat "$CONF_BACKUP_MARKER")"
-    if [[ "$kind" == "dir" || "$kind" == "file" ]] \
-        && [[ -e "${ETC_CONF_LINK}.uc-test-bak" ]]; then
-      mv "${ETC_CONF_LINK}.uc-test-bak" "$ETC_CONF_LINK"
-    fi
-    rm -f "$CONF_BACKUP_MARKER"
-  fi
-}
-
-install_test_conf_overlay() {
-  local conf_dir="$1"
-  if [[ -L "$ETC_CONF_LINK" ]] && [[ "$(readlink "$ETC_CONF_LINK")" == "$conf_dir" ]]; then
-    return 0
-  fi
-  restore_test_conf_overlay
-  if [[ -d "$ETC_CONF_LINK" && ! -L "$ETC_CONF_LINK" ]]; then
-    mv "$ETC_CONF_LINK" "${ETC_CONF_LINK}.uc-test-bak"
-    echo "dir" >"$CONF_BACKUP_MARKER"
-  elif [[ -e "$ETC_CONF_LINK" ]]; then
-    mv "$ETC_CONF_LINK" "${ETC_CONF_LINK}.uc-test-bak"
-    echo "file" >"$CONF_BACKUP_MARKER"
-  else
-    mkdir -p "$ROOT_DIR/etc"
-    echo "missing" >"$CONF_BACKUP_MARKER"
-  fi
-  ln -sfn "$conf_dir" "$ETC_CONF_LINK"
 }
 
 prepare_oauth_truststore() {
-  local cert_dir="$ROOT_DIR/docker/oidc/caddy"
-  local root_cert="$cert_dir/root.crt"
-  local intermediate_cert="$cert_dir/intermediate.crt"
+  local cert_file="$ROOT_DIR/docker/oidc/envoy/certs/cert.pem"
   local truststore="${TMPDIR:-/tmp}/uc-oauth-truststore.jks"
-  local gateway_container="${UC_OAUTH_GATEWAY_CONTAINER:-unitycatalog-oidc-oauth-gateway-1}"
 
-  if command -v docker >/dev/null 2>&1 \
-      && docker ps --format '{{.Names}}' | grep -qx "$gateway_container"; then
-    mkdir -p "$cert_dir"
-    docker cp "${gateway_container}:/data/caddy/pki/authorities/local/root.crt" "$root_cert" >/dev/null 2>&1 || true
-    docker cp "${gateway_container}:/data/caddy/pki/authorities/local/intermediate.crt" \
-      "$intermediate_cert" >/dev/null 2>&1 || true
-  fi
-
-  if [[ ! -f "$root_cert" ]]; then
-    echo "WARN: OAuth CA cert not found at $root_cert; HTTPS discovery may fail" >&2
+  if [[ ! -f "$cert_file" ]]; then
+    echo "WARN: OAuth TLS cert not found at $cert_file; HTTPS discovery may fail" >&2
     return 1
   fi
   rm -f "$truststore"
   keytool -importcert -noprompt \
-    -alias celonis-oauth-root \
-    -file "$root_cert" \
+    -alias celonis-oauth-envoy \
+    -file "$cert_file" \
     -keystore "$truststore" \
     -storepass changeit >/dev/null 2>&1
-  if [[ -f "$intermediate_cert" ]]; then
-    keytool -importcert -noprompt \
-      -alias celonis-oauth-intermediate \
-      -file "$intermediate_cert" \
-      -keystore "$truststore" \
-      -storepass changeit >/dev/null 2>&1
-  fi
   echo "$truststore"
 }
 
@@ -190,12 +135,9 @@ wait_for_server() {
   exit 1
 }
 
-# Build a temp etc/conf tree for integration tests (binary or docker).
-# Optional minio_endpoint rewrites host MinIO URLs for UC running inside Docker.
-prepare_test_conf() {
-  local minio_endpoint="${1:-}"
+prepare_docker_conf() {
   local conf_dir props minio_snippet oidc_snippet enable_oidc
-  conf_dir="$(mktemp -d "${TMPDIR:-/tmp}/uc-test-conf.XXXXXX")"
+  conf_dir="$(mktemp -d "${TMPDIR:-/tmp}/uc-docker-conf.XXXXXX")"
   cp -a "$ROOT_DIR/etc/conf/." "$conf_dir/"
   props="$conf_dir/server.properties"
   minio_snippet="$ROOT_DIR/docker/minio/server.properties.snippet"
@@ -203,12 +145,12 @@ prepare_test_conf() {
   enable_oidc="${UC_ENABLE_OIDC:-1}"
   local oauth_issuer="$UC_OAUTH_ISSUER"
 
-  if [[ -n "$minio_endpoint" && -f "$props" ]]; then
+  if [[ -f "$props" ]]; then
     sed -i.bak \
-      -e "s|http://\\[::1\\]:9000|${minio_endpoint}|g" \
-      -e "s|http://127\\.0\\.0\\.1:9000|${minio_endpoint}|g" \
-      -e "s|http://localhost:9000|${minio_endpoint}|g" \
-      -e "s|http://host\\.docker\\.internal:9000|${minio_endpoint}|g" \
+      -e "s|http://\\[::1\\]:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
+      -e "s|http://127\\.0\\.0\\.1:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
+      -e "s|http://localhost:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
+      -e "s|http://host\\.docker\\.internal:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
       "$props"
     rm -f "${props}.bak"
   fi
@@ -218,13 +160,9 @@ prepare_test_conf() {
     {
       echo ""
       echo "# Appended for docker/tests (MinIO on host)"
-      if [[ -n "$minio_endpoint" ]]; then
-        sed -e "s|http://\\[::1\\]:9000|${minio_endpoint}|g" \
-            -e "s|http://host\\.docker\\.internal:9000|${minio_endpoint}|g" \
-            "$minio_snippet"
-      else
-        cat "$minio_snippet"
-      fi
+      sed -e "s|http://\\[::1\\]:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
+          -e "s|http://host\\.docker\\.internal:9000|${UC_DOCKER_MINIO_ENDPOINT}|g" \
+          "$minio_snippet"
     } >>"$props"
   fi
 
@@ -232,8 +170,6 @@ prepare_test_conf() {
     if command -v curl >/dev/null 2>&1; then
       local actual_issuer
       actual_issuer="$(curl -skf --resolve "${UC_DOCKER_OAUTH_HOST}:443:127.0.0.1" \
-        -H 'X-Celonis-Team-Domain: dev' \
-        -H 'X-Celonis-Team-Id: 79257834-828d-48cb-951d-75294d6e1cce' \
         "https://${UC_DOCKER_OAUTH_HOST}/.well-known/openid-configuration" 2>/dev/null \
         | sed -n 's/.*"issuer":"\([^"]*\)".*/\1/p' | head -1 || true)"
       if [[ -n "$actual_issuer" && "$actual_issuer" != "$oauth_issuer" ]]; then
@@ -248,10 +184,10 @@ prepare_test_conf() {
       echo "# Appended for docker/tests (Celonis OAuth at ${UC_DOCKER_OAUTH_HOST})"
       grep -v '^#' "$oidc_snippet" | grep -v '^[[:space:]]*$'
     } >>"$props"
-    echo "OIDC auth enabled for integration tests (issuer ${oauth_issuer})" >&2
+    echo "OIDC auth enabled for docker tests (issuer ${oauth_issuer})" >&2
   fi
 
-  TEST_CONF_DIR="$conf_dir"
+  DOCKER_CONF_DIR="$conf_dir"
   echo "$conf_dir"
 }
 
@@ -259,16 +195,8 @@ start_binary_server() {
   echo "Starting UC server in binary mode"
   : > "$LOG_FILE"
 
-  local conf_dir truststore java_opts
-  conf_dir="$(prepare_test_conf)"
-  install_test_conf_overlay "$conf_dir"
-  truststore="$(prepare_oauth_truststore || true)"
-  if [[ -n "$truststore" ]]; then
-    cp "$truststore" "$conf_dir/oauth-truststore.jks"
-  fi
+  local java_opts
   java_opts="$(oauth_java_opts || true)"
-
-  echo "Config overlay: $conf_dir -> etc/conf"
 
   env ${java_opts:+JAVA_TOOL_OPTIONS="$java_opts"} "storage-root.models=file:///tmp/ucroot" bin/start-uc-server >"$LOG_FILE" 2>&1 &
   UC_SERVER_PID=$!
@@ -335,7 +263,7 @@ start_docker_server() {
   if [[ -n "$UC_DOCKER_MINIO_NETWORK" ]]; then
     docker_network_arg=(--network "$UC_DOCKER_MINIO_NETWORK")
   fi
-  conf_mount="$(prepare_test_conf "$UC_DOCKER_MINIO_ENDPOINT")"
+  conf_mount="$(prepare_docker_conf)"
   truststore="$(prepare_oauth_truststore || true)"
   java_opts=""
   if [[ -n "$truststore" ]]; then
@@ -385,9 +313,6 @@ verify_external_server() {
 
 if check_server; then
   echo "UC server already running at $HEALTH_URL"
-  if [[ "$UC_SERVER_MODE" == "binary" ]]; then
-    echo "WARN: stop any docker UC container on this port before expecting the local binary server" >&2
-  fi
   exit 0
 fi
 

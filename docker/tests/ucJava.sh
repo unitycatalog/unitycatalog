@@ -90,14 +90,36 @@ resolve_oauth_base_url() {
     echo "$UC_OAUTH_BASE_URL"
     return
   fi
-  echo "http://localhost:9099"
+  echo "http://dev.dev.celonis.cloud:9010"
+}
+
+resolve_oauth_team_id() {
+  if [[ -n "${UC_OAUTH_TEAM_ID:-}" ]]; then
+    echo "$UC_OAUTH_TEAM_ID"
+    return
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    local team_id
+    team_id="$(docker compose -f "$UC_JAVA_ROOT/docker/oidc/compose.yaml" exec -T postgres \
+      psql -U celonis -d team -tAc "SELECT cpm_id FROM cpm_team_team WHERE cpm_domain='dev' LIMIT 1" 2>/dev/null \
+      | tr -d '[:space:]')"
+    if [[ -n "$team_id" ]]; then
+      echo "$team_id"
+      return
+    fi
+  fi
+  echo ""
 }
 
 docker_test_env() {
-  local oauth_url
+  local oauth_url oauth_team_id
   oauth_url="$(resolve_oauth_base_url)"
+  oauth_team_id="$(resolve_oauth_team_id)"
   if [[ -n "$oauth_url" ]]; then
     echo "UC_OAUTH_BASE_URL=$oauth_url"
+  fi
+  if [[ -n "$oauth_team_id" ]]; then
+    echo "UC_OAUTH_TEAM_ID=$oauth_team_id"
   fi
 }
 
