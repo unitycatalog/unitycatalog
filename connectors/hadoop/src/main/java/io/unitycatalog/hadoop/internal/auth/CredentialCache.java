@@ -4,6 +4,8 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Caches vended {@link GenericCredential}s keyed by their scope ({@link CredId}). A cached
@@ -16,8 +18,7 @@ public class CredentialCache {
   private static final String INITIAL_CACHE_MAX_SIZE_KEY =
       "unitycatalog.initial.credential.cache.maxSize";
 
-  // Visible for testing so tests can inspect and reset the underlying cache directly.
-  public final BoundedKeyedCache<CredId, RenewableCredential> cache;
+  private final BoundedKeyedCache<CredId, RenewableCredential> cache;
 
   public CredentialCache(int maxSize) {
     this.cache = new BoundedKeyedCache<>(maxSize);
@@ -62,6 +63,23 @@ public class CredentialCache {
       cache.put(credId, created);
       return created.credential();
     }
+  }
+
+  /** Removes all cached credentials. Public so tests in other packages can reset shared caches. */
+  public void clear() {
+    cache.clear();
+  }
+
+  // Visible for testing only.
+  int size() {
+    return cache.size();
+  }
+
+  // Visible for testing only.
+  List<GenericCredential> credentials() {
+    return cache.values().stream()
+        .map(RenewableCredential::credential)
+        .collect(Collectors.toList());
   }
 
   @FunctionalInterface
