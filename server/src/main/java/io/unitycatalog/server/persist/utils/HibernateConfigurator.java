@@ -93,9 +93,7 @@ public class HibernateConfigurator {
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
       hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
     } else {
-      InputStream input;
-      try {
-        input = Files.newInputStream(hibernatePropertiesPath);
+      try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
         hibernateProperties.load(input);
       } catch (IOException e) {
         throw new RuntimeException(e);
