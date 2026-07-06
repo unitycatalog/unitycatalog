@@ -66,7 +66,7 @@ import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class UnityCatalogServer {
+public class UnityCatalogServer implements AutoCloseable {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
   private static final String BASE_PATH = "/api/2.1/unity-catalog/";
   private static final String CONTROL_PATH = "/api/1.0/unity-control/";
@@ -75,6 +75,9 @@ public class UnityCatalogServer {
   private final Server server;
   private final ServerProperties serverProperties;
   private final SecurityContext securityContext;
+  private final HibernateConfigurator hibernateConfigurator;
+  /** True when this server built the configurator itself and must therefore close it. */
+  private final boolean ownsHibernateConfigurator;
 
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
@@ -89,7 +92,36 @@ public class UnityCatalogServer {
     this.securityContext =
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
     this.serverProperties = unityCatalogServerBuilder.serverProperties;
-    this.server = initializeServer(unityCatalogServerBuilder);
+    // An injected configurator stays the caller's to close; only a self-built one is ours.
+    this.ownsHibernateConfigurator = unityCatalogServerBuilder.hibernateConfigurator == null;
+    this.hibernateConfigurator =
+        ownsHibernateConfigurator
+            ? new HibernateConfigurator(serverProperties)
+            : unityCatalogServerBuilder.hibernateConfigurator;
+    try {
+      this.server = initializeServer(unityCatalogServerBuilder);
+    } catch (Throwable t) {
+      // Construction failed after the SessionFactory was built; close it so a failed boot does
+      // not leak its connection pool. Errors matter as much as RuntimeExceptions here: a
+      // NoClassDefFoundError out of initializeServer() would leak the pool just the same.
+      closeOwnedSessionFactory(t);
+      throw t;
+    }
+  }
+
+  /**
+   * Closes the SessionFactory if this server created it, leaving an injected one to its owner. A
+   * failure to close is attached to {@code primaryFailure} so it cannot mask the original error.
+   */
+  private void closeOwnedSessionFactory(Throwable primaryFailure) {
+    if (!ownsHibernateConfigurator) {
+      return;
+    }
+    try {
+      hibernateConfigurator.getSessionFactory().close();
+    } catch (Throwable closeFailure) {
+      primaryFailure.addSuppressed(closeFailure);
+    }
   }
 
   private void setDefaults(UnityCatalogServer.Builder unityCatalogServerBuilder) {
@@ -107,11 +139,6 @@ public class UnityCatalogServer {
             .http(unityCatalogServerBuilder.port)
             .serviceUnder("/docs", new DocService());
 
-    // Init hibernate
-    HibernateConfigurator hibernateConfigurator =
-        unityCatalogServerBuilder.hibernateConfigurator != null
-            ? unityCatalogServerBuilder.hibernateConfigurator
-            : new HibernateConfigurator(unityCatalogServerBuilder.serverProperties);
     // Init all repositories
     Repositories repositories =
         new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
@@ -369,9 +396,29 @@ public class UnityCatalogServer {
     LOGGER.info("Unity Catalog server started.");
   }
 
+  /** Stops the HTTP server. The server can be restarted afterwards with {@link #start()}. */
   public void stop() {
     server.stop().join();
     LOGGER.info("Unity Catalog server stopped.");
+  }
+
+  /**
+   * Stops the server and closes the Hibernate SessionFactory it created, releasing its pooled
+   * database connections, which the Armeria shutdown does not touch and which would otherwise stay
+   * open until the JVM exits. A configurator supplied via {@link Builder#hibernateConfigurator} is
+   * left open — the caller owns its lifecycle. Unlike {@link #stop()}, a server that owns its
+   * SessionFactory must not be restarted after this call: the factory is closed, so all persistence
+   * operations would fail. Safe to call more than once and safe to call before {@link #start()}.
+   */
+  @Override
+  public void close() {
+    try {
+      stop();
+    } finally {
+      if (ownsHibernateConfigurator) {
+        hibernateConfigurator.getSessionFactory().close();
+      }
+    }
   }
 
   private void printArt() {

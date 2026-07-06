@@ -136,7 +136,16 @@ public abstract class BaseServerTest {
       tx.commit();
       session.close();
 
-      unityCatalogServer.stop();
+      // close() rather than stop() so a server that built its own SessionFactory releases it;
+      // this harness injects one, so the server leaves it open and we close it below.
+      unityCatalogServer.close();
+      // Release the factory this harness built and injected in setUp(). setUp() builds a fresh
+      // one per test, so leaked factories would otherwise accumulate for the whole JVM run. In
+      // test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
+      // cleanup queries above.
+      sessionFactory.close();
+      // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
+      unityCatalogServer = null;
     }
   }
 }
