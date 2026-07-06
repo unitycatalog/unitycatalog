@@ -39,6 +39,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.utils.IssuerAllowlist;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -165,7 +166,7 @@ public class AuthService {
     String issuer = decodedJWT.getIssuer();
 
     // Validate issuer is in allowlist BEFORE fetching JWKS
-    if (!allowedIssuers.contains(issuer)) {
+    if (!IssuerAllowlist.isAllowed(issuer, allowedIssuers)) {
       LOGGER.debug("Token rejected: invalid issuer '{}'", issuer);
       throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid issuer");
     }
