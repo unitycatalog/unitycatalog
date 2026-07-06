@@ -11,6 +11,8 @@ _uc_lib_dir() {
 }
 
 UC_JAVA_ROOT="${UC_JAVA_ROOT:-$(cd "$(_uc_lib_dir)/../.." && pwd)}"
+# shellcheck source=../oidc/resolve-oauth-tenant.sh
+source "$UC_JAVA_ROOT/docker/oidc/resolve-oauth-tenant.sh"
 UC_TESTS_POM="$UC_JAVA_ROOT/docker/tests/pom.xml"
 UC_VERSION="0.5.0-SNAPSHOT"
 UC_CLIENT_JAR="$UC_JAVA_ROOT/clients/java/target/unitycatalog-client-${UC_VERSION}.jar"
@@ -79,18 +81,8 @@ ensure_uc_server() {
     echo "ERROR: UC_DOCKER_IMAGE is required when UC_SERVER_MODE=docker" >&2
     exit 1
   fi
-  UC_OAUTH_BASE_URL="$(resolve_oauth_base_url)"
   UC_SERVER_MODE="$mode" UC_DOCKER_IMAGE="${UC_DOCKER_IMAGE:-}" UC_ENABLE_OIDC="${UC_ENABLE_OIDC:-1}" \
-    UC_OAUTH_BASE_URL="$UC_OAUTH_BASE_URL" \
     "$UC_JAVA_ROOT/docker/start-uc-for-tests.sh" "$UC_JAVA_ROOT"
-}
-
-resolve_oauth_base_url() {
-  if [[ -n "${UC_OAUTH_BASE_URL:-}" ]]; then
-    echo "$UC_OAUTH_BASE_URL"
-    return
-  fi
-  echo "http://dev.dev.celonis.cloud:9010"
 }
 
 resolve_oauth_team_id() {
@@ -101,7 +93,7 @@ resolve_oauth_team_id() {
   if command -v docker >/dev/null 2>&1; then
     local team_id
     team_id="$(docker compose -f "$UC_JAVA_ROOT/docker/oidc/compose.yaml" exec -T postgres \
-      psql -U celonis -d team -tAc "SELECT cpm_id FROM cpm_team_team WHERE cpm_domain='dev' LIMIT 1" 2>/dev/null \
+      psql -U celonis -d team -tAc "SELECT cpm_id FROM cpm_team_team WHERE cpm_domain='${UC_OAUTH_TEAM}' LIMIT 1" 2>/dev/null \
       | tr -d '[:space:]')"
     if [[ -n "$team_id" ]]; then
       echo "$team_id"
@@ -112,12 +104,13 @@ resolve_oauth_team_id() {
 }
 
 docker_test_env() {
-  local oauth_url oauth_team_id
-  oauth_url="$(resolve_oauth_base_url)"
+  local oauth_team_id
   oauth_team_id="$(resolve_oauth_team_id)"
-  if [[ -n "$oauth_url" ]]; then
-    echo "UC_OAUTH_BASE_URL=$oauth_url"
-  fi
+  echo "UC_OAUTH_TEAM=$UC_OAUTH_TEAM"
+  echo "UC_OAUTH_REALM=$UC_OAUTH_REALM"
+  echo "UC_OAUTH_HOST=$UC_OAUTH_HOST"
+  echo "UC_OAUTH_BASE_URL=$UC_OAUTH_BASE_URL"
+  echo "UC_OAUTH_ALLOWED_ISSUERS=$UC_OAUTH_ALLOWED_ISSUERS"
   if [[ -n "$oauth_team_id" ]]; then
     echo "UC_OAUTH_TEAM_ID=$oauth_team_id"
   fi

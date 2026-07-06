@@ -15,6 +15,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${1:-${GITHUB_WORKSPACE:-$(cd "$SCRIPT_DIR/.." && pwd)}}"
+# shellcheck source=oidc/resolve-oauth-tenant.sh
+source "$SCRIPT_DIR/oidc/resolve-oauth-tenant.sh"
 
 UC_SERVER_MODE="${UC_SERVER_MODE:-binary}"
 UC_DOCKER_IMAGE="${UC_DOCKER_IMAGE:-}"
@@ -22,8 +24,6 @@ UC_DOCKER_CONTAINER_NAME="${UC_DOCKER_CONTAINER_NAME:-uc-test-server}"
 UC_DOCKER_HOME="${UC_DOCKER_HOME:-/home/unitycatalog}"
 UC_DOCKER_MINIO_ENDPOINT="${UC_DOCKER_MINIO_ENDPOINT:-}"
 UC_DOCKER_MINIO_NETWORK="${UC_DOCKER_MINIO_NETWORK:-}"
-UC_DOCKER_OAUTH_HOST="${UC_DOCKER_OAUTH_HOST:-dev.dev.celonis.cloud}"
-UC_OAUTH_ISSUER="${UC_OAUTH_ISSUER:-https://dev.dev.celonis.cloud}"
 UC_ENABLE_OIDC="${UC_ENABLE_OIDC:-}"
 UC_API_PORT="${UC_API_PORT:-8080}"
 UC_BACKEND_PORT="${UC_BACKEND_PORT:-8081}"
@@ -135,15 +135,51 @@ wait_for_server() {
   exit 1
 }
 
+append_oidc_server_properties() {
+  local props_file="$1"
+  {
+    echo ""
+    echo "# Appended for docker/tests (Celonis OAuth realm ${UC_OAUTH_REALM})"
+    echo "server.authorization=enable"
+    echo "server.authorization-url=${UC_OAUTH_BASE_URL}/oauth2/authorize"
+    echo "server.token-url=${UC_OAUTH_BASE_URL}/oauth2/token"
+    echo "server.client-id=unity-catalog-local"
+    echo "server.client-secret=unity-catalog-local-secret"
+    echo "server.redirect-port=8080"
+    echo "server.allowed-issuers=${UC_OAUTH_ALLOWED_ISSUERS}"
+    echo "server.audiences=unity-catalog-local"
+  } >>"$props_file"
+}
+
+oauth_team_host_add_args() {
+  local domains=()
+  local domain host
+  if command -v docker >/dev/null 2>&1; then
+    while IFS= read -r domain; do
+      [[ -n "$domain" ]] && domains+=("$domain")
+    done < <(
+      docker compose -f "$ROOT_DIR/docker/oidc/compose.yaml" exec -T postgres \
+        psql -U celonis -d team -tAc "SELECT cpm_domain FROM cpm_team_team" 2>/dev/null \
+        | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' || true
+    )
+  fi
+  if [[ ${#domains[@]} -eq 0 ]]; then
+    echo "--add-host=${UC_OAUTH_HOST}:host-gateway"
+    return
+  fi
+  for domain in "${domains[@]}"; do
+    host="${domain}.${UC_OAUTH_REALM}"
+    echo "--add-host=${host}:host-gateway"
+  done
+}
+
 prepare_docker_conf() {
-  local conf_dir props minio_snippet oidc_snippet enable_oidc
+  local conf_dir props minio_snippet enable_oidc
   conf_dir="$(mktemp -d "${TMPDIR:-/tmp}/uc-docker-conf.XXXXXX")"
   cp -a "$ROOT_DIR/etc/conf/." "$conf_dir/"
   props="$conf_dir/server.properties"
   minio_snippet="$ROOT_DIR/docker/minio/server.properties.snippet"
-  oidc_snippet="$ROOT_DIR/docker/oidc/server.properties.docker.snippet"
   enable_oidc="${UC_ENABLE_OIDC:-1}"
-  local oauth_issuer="$UC_OAUTH_ISSUER"
 
   if [[ -f "$props" ]]; then
     sed -i.bak \
@@ -166,25 +202,18 @@ prepare_docker_conf() {
     } >>"$props"
   fi
 
-  if [[ "$enable_oidc" == "1" && -f "$oidc_snippet" && -f "$props" ]]; then
+  if [[ "$enable_oidc" == "1" && -f "$props" ]]; then
     if command -v curl >/dev/null 2>&1; then
       local actual_issuer
-      actual_issuer="$(curl -skf --resolve "${UC_DOCKER_OAUTH_HOST}:443:127.0.0.1" \
-        "https://${UC_DOCKER_OAUTH_HOST}/.well-known/openid-configuration" 2>/dev/null \
+      actual_issuer="$(curl -skf --resolve "${UC_OAUTH_HOST}:443:127.0.0.1" \
+        "https://${UC_OAUTH_HOST}/.well-known/openid-configuration" 2>/dev/null \
         | sed -n 's/.*"issuer":"\([^"]*\)".*/\1/p' | head -1 || true)"
       if [[ -n "$actual_issuer" && "$actual_issuer" != "$oauth_issuer" ]]; then
-        echo "ERROR: OAuth issuer is '$actual_issuer' but docker tests expect '$oauth_issuer'" >&2
-        echo "Start the OAuth stack with:" >&2
-        echo "  docker compose -f docker/oidc/compose.yaml up -d" >&2
-        exit 1
+        echo "WARN: OAuth issuer for ${UC_OAUTH_HOST} is '${actual_issuer}' (UC allows ${UC_OAUTH_ALLOWED_ISSUERS})" >&2
       fi
     fi
-    {
-      echo ""
-      echo "# Appended for docker/tests (Celonis OAuth at ${UC_DOCKER_OAUTH_HOST})"
-      grep -v '^#' "$oidc_snippet" | grep -v '^[[:space:]]*$'
-    } >>"$props"
-    echo "OIDC auth enabled for docker tests (issuer ${oauth_issuer})" >&2
+    append_oidc_server_properties "$props"
+    echo "OIDC auth enabled for docker tests (allowed issuers ${UC_OAUTH_ALLOWED_ISSUERS})" >&2
   fi
 
   DOCKER_CONF_DIR="$conf_dir"
@@ -279,13 +308,18 @@ start_docker_server() {
 
   docker rm -f "$UC_DOCKER_CONTAINER_NAME" 2>/dev/null || true
 
+  local oauth_host_args=()
+  while IFS= read -r arg; do
+    [[ -n "$arg" ]] && oauth_host_args+=("$arg")
+  done < <(oauth_team_host_add_args)
+
   docker run -d \
     --name "$UC_DOCKER_CONTAINER_NAME" \
     -p "${UC_API_PORT}:8080" \
     -p "${UC_BACKEND_PORT}:8081" \
     "${docker_network_arg[@]}" \
     --add-host=host.docker.internal:host-gateway \
-    --add-host="${UC_DOCKER_OAUTH_HOST}:host-gateway" \
+    "${oauth_host_args[@]}" \
     -v "${conf_mount}:${UC_DOCKER_HOME}/etc/conf" \
     -e "storage-root.models=file:///tmp/ucroot" \
     ${java_opts:+-e "JAVA_TOOL_OPTIONS=$java_opts"} \

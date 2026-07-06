@@ -3,8 +3,8 @@
 # Start:
 #   docker compose -f docker/oidc/compose.yaml up -d
 #
-# OAuth discovery: http://dev.dev.celonis.cloud:9010/.well-known/openid-configuration
-# (add `127.0.0.1 dev.dev.celonis.cloud` to /etc/hosts; Envoy + gateway resolve team from subdomain)
+# OAuth discovery: http://{UC_OAUTH_TEAM}.{UC_OAUTH_REALM}:9010/.well-known/openid-configuration
+# (default UC_OAUTH_TEAM=dev, UC_OAUTH_REALM=dev.celonis.cloud; gateway resolves team from Host)
 
 name: unitycatalog-oidc
 

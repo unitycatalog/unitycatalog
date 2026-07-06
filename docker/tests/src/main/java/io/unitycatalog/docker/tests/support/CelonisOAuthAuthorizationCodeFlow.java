@@ -9,7 +9,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,11 +29,7 @@ import javax.crypto.spec.SecretKeySpec;
 public final class CelonisOAuthAuthorizationCodeFlow {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
-  private static final HttpClient HTTP =
-      HttpClient.newBuilder()
-          .connectTimeout(Duration.ofSeconds(10))
-          .followRedirects(HttpClient.Redirect.NEVER)
-          .build();
+  private static final HttpClient HTTP = OAuthHttp.createHttpClient();
 
   private CelonisOAuthAuthorizationCodeFlow() {}
 
@@ -126,7 +121,7 @@ public final class CelonisOAuthAuthorizationCodeFlow {
     Map<String, Object> team =
         Map.of(
             "id", CelonisOAuthTestConstants.oauthTeamId(),
-            "domain", CelonisOAuthTestConstants.OAUTH_TEAM_DOMAIN,
+            "domain", CelonisOAuthTestConstants.oauthTeamDomain(),
             "role", 1,
             "featureKeys", List.of(),
             "groups", List.of());

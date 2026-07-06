@@ -1,12 +1,17 @@
-# OIDC settings for docker/tests (Celonis OAuth via Envoy + gateway).
-# Start stack: docker compose -f docker/oidc/compose.yaml up -d
-# Add to /etc/hosts: 127.0.0.1 dev.dev.celonis.cloud
-
-server.authorization=enable
-server.authorization-url=http://dev.dev.celonis.cloud:9010/oauth2/authorize
-server.token-url=http://dev.dev.celonis.cloud:9010/oauth2/token
-server.client-id=unity-catalog-local
-server.client-secret=unity-catalog-local-secret
-server.redirect-port=8080
-server.allowed-issuers=https://dev.dev.celonis.cloud
-server.audiences=unity-catalog-local
+# Reference only — OIDC settings for docker/tests are generated at runtime by
+# docker/start-uc-for-tests.sh from UC_OAUTH_TEAM, UC_OAUTH_REALM, and derived URLs.
+#
+# Defaults (UC_OAUTH_TEAM=dev, UC_OAUTH_REALM=dev.celonis.cloud):
+#   host   = dev.dev.celonis.cloud
+#   issuer = https://dev.dev.celonis.cloud
+#   base   = http://dev.dev.celonis.cloud:9010
+#
+# Example generated block:
+# server.authorization=enable
+# server.authorization-url=${UC_OAUTH_BASE_URL}/oauth2/authorize
+# server.token-url=${UC_OAUTH_BASE_URL}/oauth2/token
+# server.client-id=unity-catalog-local
+# server.client-secret=unity-catalog-local-secret
+# server.redirect-port=8080
+# server.allowed-issuers=${UC_OAUTH_ISSUER}
+# server.audiences=unity-catalog-local

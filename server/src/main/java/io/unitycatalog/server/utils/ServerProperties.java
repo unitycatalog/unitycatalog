@@ -521,7 +521,7 @@ public class ServerProperties {
    * <p>When authorization is enabled, tokens will only be accepted from issuers in this list. This
    * prevents attackers from using their own identity provider to forge tokens.
    *
-   * @return List of allowed issuer URLs (exact match required)
+   * @return List of allowed issuer URLs (exact match or wildcard with {@code *})
    */
   public List<String> getAllowedIssuers() {
     return getCommaSeparatedList("server.allowed-issuers");

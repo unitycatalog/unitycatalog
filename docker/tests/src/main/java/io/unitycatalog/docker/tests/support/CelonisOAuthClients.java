@@ -37,7 +37,7 @@ public final class CelonisOAuthClients {
     AuthenticationHeadersProvider headersProvider = new AuthenticationHeadersProvider(tokenCreator);
     AuthenticationFilter authFilter = new AuthenticationFilter(headersProvider);
 
-    WebClient webClient = WebClient.builder().filter(authFilter).build();
+    WebClient webClient = OAuthHttp.webClientBuilder().filter(authFilter).build();
 
     ApiClient apiClient = new ApiClient(webClient);
     apiClient.setBasePath(CelonisOAuthTestConstants.oauthBaseUrl());

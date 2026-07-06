@@ -10,7 +10,7 @@
   <packaging>jar</packaging>
 
   <properties>
-    <maven.compiler.release>17</maven.compiler.release>
+    <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <uc.version>0.5.0-SNAPSHOT</uc.version>
     <jackson.version>2.17.0</jackson.version>

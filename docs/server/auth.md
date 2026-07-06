@@ -55,7 +55,7 @@ server.audiences=<Client ID provided earlier>
 
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
 
-- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
+- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
 - **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain one of these audience values. This is typically your application's client ID.
 
 #### Multiple Identity Providers
@@ -65,6 +65,12 @@ You can configure multiple issuers and audiences by separating them with commas:
 ```properties
 server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline.com/{tenant-id}/v2.0
 server.audiences=your-google-client-id,your-azure-client-id
+```
+
+Wildcard issuers match a single DNS label per `*` (useful for multi-tenant Celonis realms):
+
+```properties
+server.allowed-issuers=https://*.dev.celonis.cloud
 ```
 
 ### Restart the UC Server

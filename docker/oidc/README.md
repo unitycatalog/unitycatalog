@@ -4,18 +4,24 @@ Spin up the [Celonis cloud-oauth-server](https://github.com/celonis/cloud-oauth-
 
 Ports: **9010** (HTTP Envoy for tests) and **443** (HTTPS Envoy for UC JWKS/issuer discovery). Direct oauth-server HTTP **9099** is exposed for debugging only.
 
-## 1. Hostname
+## 1. Tenant hostname
 
-OAuth traffic uses:
+OAuth uses the Celonis pattern `{team}.{realm}`:
 
-- `http://dev.dev.celonis.cloud:9010` — integration tests and authorize/token calls
-- `https://dev.dev.celonis.cloud` — UC issuer/JWKS discovery (Envoy TLS on :443)
+| Variable | Default | Example |
+|----------|---------|---------|
+| `UC_OAUTH_TEAM` | `dev` | `acme` |
+| `UC_OAUTH_REALM` | `dev.celonis.cloud` | `dev.celonis.cloud` |
+| `UC_OAUTH_HOST` | `{team}.{realm}` | `acme.dev.celonis.cloud` |
 
-Add this to `/etc/hosts`:
+Traffic endpoints (derived from env):
 
-```sh
-127.0.0.1 dev.dev.celonis.cloud
-```
+- `http://{host}:9010` — integration tests and authorize/token calls
+- `https://{host}` — UC issuer/JWKS discovery (Envoy TLS on :443)
+
+Docker integration tests map `{UC_OAUTH_HOST}` to loopback via `jdk.net.hosts.file` in the test
+JVM and `--add-host` on the UC container; `/etc/hosts` is not required for the docker test path.
+Set `UC_OAUTH_RESOLVE_LOCAL=0` when targeting external Celonis OAuth (public DNS).
 
 ## 2. Start the OAuth stack
 
@@ -33,44 +39,50 @@ Wait until healthy:
 docker compose -f docker/oidc/compose.yaml ps
 ```
 
-Verify discovery (team context is resolved from the subdomain by gateway):
+Verify discovery (team context is resolved from the subdomain by gateway; default team `dev`):
 
 ```sh
-curl -sk https://dev.dev.celonis.cloud/.well-known/openid-configuration | jq .issuer
-curl -s http://dev.dev.celonis.cloud:9010/.well-known/openid-configuration | jq .issuer
+source docker/oidc/resolve-oauth-tenant.sh
+curl -sk --resolve "${UC_OAUTH_HOST}:443:127.0.0.1" \
+  "https://${UC_OAUTH_HOST}/.well-known/openid-configuration" | jq .issuer
+curl -s "http://${UC_OAUTH_HOST}:9010/.well-known/openid-configuration" | jq .issuer
 ```
 
-- Discovery (UC): https://dev.dev.celonis.cloud/.well-known/openid-configuration
-- Discovery/tests: http://dev.dev.celonis.cloud:9010/.well-known/openid-configuration
 - Direct HTTP (debugging only): http://localhost:9099
 - OAuth client: `unity-catalog-local` / `unity-catalog-local-secret`
-- Local tenant: `dev` (from hostname `dev.dev.celonis.cloud`)
+- Gateway realm: `dev.celonis.cloud` (fixed for this local stack; teams are dynamic via Host)
 
 The stack runs:
 
 - **postgres** — databases for oauth-server, team, and authentication
 - **team** — team registry (subdomain → team id)
 - **authentication** — session/auth service used by gateway
-- **bootstrapper** — seeds the `dev` team (runs once per fresh volume)
+- **bootstrapper** — seeds teams (runs once per fresh volume)
 - **gateway** — `cloud-gateway` ext_authz (injects `X-Celonis-Team-*` headers)
 - **envoy** — HTTP/HTTPS entry point (:9010 / :443)
 - **oauth-server** — `ghcr.io/celonis/cloud-oauth-server/oauth-server`
 
 Configuration lives in `docker/oidc/oauth/application-local.yaml` and `docker/oidc/oauth/jwks.json`.
 
-TLS certs for Envoy HTTPS: `docker/oidc/envoy/certs/` (regenerate with `docker/oidc/envoy/generate-certs.sh`).
+TLS certs for Envoy HTTPS: `docker/oidc/envoy/certs/` (regenerate with `docker/oidc/envoy/generate-certs.sh`; wildcard `*.dev.celonis.cloud`).
 
 ## 3. Configure Unity Catalog server
 
-Merge `docker/oidc/server.properties.docker.snippet` into `etc/conf/server.properties`, or copy the auth block manually.
-
-For docker-mode integration tests, `docker/start-uc-for-tests.sh` imports `docker/oidc/envoy/certs/cert.pem` into a JVM truststore for HTTPS issuer discovery.
+For docker-mode integration tests, `docker/start-uc-for-tests.sh` generates OIDC `server.properties`
+from `UC_OAUTH_TEAM` / `UC_OAUTH_REALM` and imports `docker/oidc/envoy/certs/cert.pem` into a JVM
+truststore for HTTPS issuer discovery.
 
 ## 4. Start UC and test
 
 ```sh
-build/sbt server/package   # if not already built
-./docker/start-uc-for-tests.sh
+UC_SERVER_MODE=docker UC_DOCKER_IMAGE=... ./docker/start-uc-for-tests.sh
+UC_SERVER_MODE=docker UC_DOCKER_IMAGE=... ./docker/tests/run-tests.sh
+```
+
+Another tenant (team must exist in team DB):
+
+```sh
+UC_OAUTH_TEAM=acme UC_SERVER_MODE=docker UC_DOCKER_IMAGE=... ./docker/tests/run-tests.sh
 ```
 
 Verify auth is enforced (expect 401):
@@ -116,8 +128,8 @@ docker compose -f docker/compose.yaml down
 ## Troubleshooting
 
 - **Port 9010 or 9099 in use** — stop the other stack or change the host port mapping.
-- **Issuer / JWKS errors** — ensure `dev.dev.celonis.cloud` resolves to `127.0.0.1`, Envoy is healthy, and bootstrapper completed (`docker compose -f docker/oidc/compose.yaml logs bootstrapper`).
-- **403 from Envoy** — gateway could not resolve the team; check team/bootstrapper logs and that requests use hostname `dev.dev.celonis.cloud` (not `localhost`).
+- **Issuer / JWKS errors** — ensure OAuth stack is healthy, bootstrapper completed, and `UC_OAUTH_HOST` matches a seeded team (`docker compose -f docker/oidc/compose.yaml logs bootstrapper`).
+- **403 from Envoy** — gateway could not resolve the team; check team DB has `cpm_domain = UC_OAUTH_TEAM` and requests use hostname `{team}.{realm}` (not `localhost`).
 - **CLI login redirect fails** — the `unity-catalog-local` client allows `http://127.0.0.1:8080/callback` and `http://localhost:8080/callback`.
-- **Token exchange fails** — ensure `server.allowed-issuers` is `https://dev.dev.celonis.cloud` and authorize/token URLs point at `http://dev.dev.celonis.cloud:9010`.
-- **Integration tests** — start the OAuth stack first, then run `docker/tests/run-tests.sh`. Tests reach OAuth via Envoy at `http://dev.dev.celonis.cloud:9010`; gateway injects team headers from the subdomain.
+- **Token exchange fails** — ensure `server.allowed-issuers` matches `UC_OAUTH_ALLOWED_ISSUERS` (default `https://*.{realm}`) and authorize/token URLs use `UC_OAUTH_BASE_URL`.
+- **Integration tests** — start the OAuth stack first, then run `docker/tests/run-tests.sh` with `UC_SERVER_MODE=docker`.
