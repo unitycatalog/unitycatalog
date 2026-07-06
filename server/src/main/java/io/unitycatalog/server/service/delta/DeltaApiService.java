@@ -153,7 +153,6 @@ public class DeltaApiService extends AuthorizedService {
    */
   @Delete("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
   @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
-  @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
