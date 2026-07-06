@@ -399,7 +399,7 @@ lazy val server = (project in file("server"))
       "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
       "org.testcontainers" % "postgresql" % "1.19.8" % Test,
       "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
-      "org.postgresql" % "postgresql" % "42.7.3" % Test,
+      "org.postgresql" % "postgresql" % "42.7.12" % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
