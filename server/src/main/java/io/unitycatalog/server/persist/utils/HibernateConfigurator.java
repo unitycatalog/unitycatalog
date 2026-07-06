@@ -100,23 +100,22 @@ public class HibernateConfigurator {
       }
     }
 
-    // TODO: use dependency injection for test hibernate properties
     if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
-      // Allow system property overrides for integration testing with external databases
+      // Connection overrides let a test point Hibernate at an external database
       // (e.g., PostgreSQL via Testcontainers). Defaults to H2 in-memory when not overridden.
       hibernateProperties.setProperty(
           "hibernate.connection.driver_class",
-          System.getProperty("hibernate.connection.driver_class", "org.h2.Driver"));
+          serverProperties.getProperty("hibernate.connection.driver_class", "org.h2.Driver"));
       hibernateProperties.setProperty(
           "hibernate.connection.url",
-          System.getProperty("hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1"));
-      String username = System.getProperty("hibernate.connection.username");
-      if (username != null) {
-        hibernateProperties.setProperty("hibernate.connection.username", username);
-      }
-      String password = System.getProperty("hibernate.connection.password");
-      if (password != null) {
-        hibernateProperties.setProperty("hibernate.connection.password", password);
+          serverProperties.getProperty(
+              "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1"));
+      for (String key :
+          new String[] {"hibernate.connection.username", "hibernate.connection.password"}) {
+        String value = serverProperties.getProperty(key);
+        if (value != null) {
+          hibernateProperties.setProperty(key, value);
+        }
       }
       hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
       LOGGER.debug("Hibernate configuration set for testing");

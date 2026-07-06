@@ -408,8 +408,8 @@ public class ServerProperties {
     return getProperty(property.key);
   }
 
-  /** Get a property value by key name. */
-  private String getProperty(String key) {
+  /** Get a property value by key name. Resolution order: system property, env, properties. */
+  public String getProperty(String key) {
     if (System.getProperty(key) != null) {
       return System.getProperty(key);
     }
@@ -419,6 +419,12 @@ public class ServerProperties {
     // Finally try properties. If not found in properties, this would return default value or null
     // if no default value.
     return properties.getProperty(key);
+  }
+
+  /** Get a property value by key name, or {@code defaultValue} if the key is not set. */
+  public String getProperty(String key, String defaultValue) {
+    String value = getProperty(key);
+    return value != null ? value : defaultValue;
   }
 
   public void set(Property property, String value) {
