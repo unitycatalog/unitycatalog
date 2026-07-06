@@ -622,7 +622,11 @@ public class DeltaCommitRepository {
 
   /**
    * Builds a batch DELETE query using a subquery instead of DELETE...LIMIT for cross-database
-   * compatibility. PostgreSQL does not support LIMIT in DELETE statements directly.
+   * compatibility. PostgreSQL does not support LIMIT in DELETE statements directly. The extra
+   * derived-table layer ({@code batch_to_delete}) is required by MySQL, which rejects LIMIT inside
+   * an IN subquery (error 1235) and rejects subqueries that read the DELETE's target table (error
+   * 1093); materializing the id list through a derived table works around both. PostgreSQL and H2
+   * accept the flat single-subquery form, so do not "simplify" this to one SELECT layer.
    */
   private static String buildBatchDeleteQuery(String whereClause) {
     return "DELETE FROM uc_delta_commits WHERE id IN ("
