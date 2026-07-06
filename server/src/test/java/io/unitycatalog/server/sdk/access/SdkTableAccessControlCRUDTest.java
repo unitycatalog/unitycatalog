@@ -66,8 +66,10 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     TablesApi regular2TablesApi = new TablesApi(TestUtils.createApiClient(regular2Config));
     SchemasApi regular2SchemasApi = new SchemasApi(TestUtils.createApiClient(regular2Config));
 
-    // UC Delta API clients for loadTable tests
+    // UC Delta API clients for loadTable and delete tests
     DeltaTablesApi adminDeltaApi = new DeltaTablesApi(adminApiClient);
+    DeltaTablesApi principal1DeltaApi =
+        new DeltaTablesApi(TestUtils.createApiClient(principal1Config));
     DeltaTablesApi regular1DeltaApi = new DeltaTablesApi(TestUtils.createApiClient(regular1Config));
     DeltaTablesApi regular2DeltaApi = new DeltaTablesApi(TestUtils.createApiClient(regular2Config));
 
@@ -283,11 +285,35 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
                 .getTableUuid())
         .isEqualTo(deltaCreated.getMetadata().getTableUuid());
 
-    // delete table (regular-1) -> -- -> denied
+    // delete table (regular-1) -> -- -> denied via UC REST and Delta REST
     assertPermissionDenied(() -> regular1TablesApi.deleteTable("cat_pr1.sch_rg2.tab_rg2"));
+    assertPermissionDenied(() -> regular1DeltaApi.deleteTable("cat_pr1", "sch_rg2", "tab_rg2"));
 
-    // delete table (principal-1) -> owner [catalog] -> allowed
+    // delete table (principal-1) -> owner [catalog] -> allowed (UC REST)
     principal1TablesApi.deleteTable("cat_pr1.sch_rg2.tab_rg2");
+
+    // Delta REST delete also allows the owner
+    CreateTable createTableRg2Delta =
+        new CreateTable()
+            .name("tab_rg2_delta")
+            .catalogName("cat_pr1")
+            .schemaName("sch_rg2")
+            .columns(TEST_COLUMNS)
+            .storageLocation("/tmp/tab_rg2_delta")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA);
+    regular2TablesApi.createTable(createTableRg2Delta);
+
+    // Delta delete (regular-1) -> -- -> denied
+    assertPermissionDenied(
+        () -> regular1DeltaApi.deleteTable("cat_pr1", "sch_rg2", "tab_rg2_delta"));
+
+    // Delta delete (principal-1) -> owner [catalog] -> allowed
+    assertThat(
+            principal1DeltaApi
+                .deleteTableWithHttpInfo("cat_pr1", "sch_rg2", "tab_rg2_delta")
+                .getStatusCode())
+        .isEqualTo(204);
   }
 
   /**
