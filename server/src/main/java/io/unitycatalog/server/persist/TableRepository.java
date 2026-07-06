@@ -849,29 +849,35 @@ public class TableRepository {
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
   }
 
-  public void deleteTable(String fullName) {
-    TransactionManager.executeWithTransaction(
+  /**
+   * Variant of {@link #deleteTable(String, String, String)} taking the table's three-part name as a
+   * single dotted string.
+   */
+  public TableInfoDAO deleteTable(String fullName) {
+    String[] parts = fullName.split("\\.");
+    if (parts.length != 3) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+    }
+    return deleteTable(parts[0], parts[1], parts[2]);
+  }
+
+  /**
+   * Deletes a table and returns the deleted table's DAO. The DAO is detached; do not access its
+   * lazy fields.
+   */
+  public TableInfoDAO deleteTable(String catalog, String schema, String table) {
+    return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          String[] parts = fullName.split("\\.");
-          if (parts.length != 3) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
-          }
-          String catalogName = parts[0];
-          String schemaName = parts[1];
-          String tableName = parts[2];
           UUID schemaId =
-              repositories
-                  .getSchemaRepository()
-                  .getSchemaIdOrThrow(session, catalogName, schemaName);
-          deleteTable(session, schemaId, tableName);
-          return null;
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
+          return deleteTable(session, schemaId, table);
         },
         "Failed to delete table",
         /* readOnly = */ false);
   }
 
-  public void deleteTable(Session session, UUID schemaId, String tableName) {
+  TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
     TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
@@ -894,5 +900,6 @@ public class TableRepository {
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
     session.remove(tableInfoDAO);
+    return tableInfoDAO;
   }
 }
