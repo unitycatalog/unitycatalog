@@ -39,6 +39,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.utils.AudienceAllowlist;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -96,8 +97,9 @@ public class AuthService {
    *
    * <p>The issuer of the incoming token must be in the configured allowlist
    * (server.allowed-issuers) and the token must contain a valid audience claim matching the
-   * configured audiences (server.audiences). Both configurations are required when authorization is
-   * enabled.
+   * configured audiences (server.audiences). Audience entries support exact match or wildcard
+   * patterns with {@code *} (same rules as server.allowed-issuers). A single value of {@code *}
+   * disables audience validation. Both configurations are required when authorization is enabled.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
@@ -177,12 +179,18 @@ public class AuthService {
 
     try {
       JWTVerifier jwtVerifier =
-          jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg, audiences);
+          jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg, List.of());
       decodedJWT = jwtVerifier.verify(decodedJWT);
     } catch (JWTVerificationException e) {
       LOGGER.debug("Token rejected: verification failed", e);
       throw new OAuthInvalidRequestException(
           ErrorCode.UNAUTHENTICATED, "Token verification failed: " + e.getMessage(), e);
+    }
+
+    if (!serverProperties.isAudienceValidationDisabled()
+        && !AudienceAllowlist.isAllowed(decodedJWT.getAudience(), audiences)) {
+      LOGGER.debug("Token rejected: audience not in allowlist");
+      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
     }
 
     verifyPrincipal(decodedJWT);
