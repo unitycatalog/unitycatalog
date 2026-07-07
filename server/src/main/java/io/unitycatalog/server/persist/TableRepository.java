@@ -681,7 +681,7 @@ public class TableRepository {
                 createTable.getProperties(), tableUUID.toString());
           } else if (tableType == TableType.METRIC_VIEW) {
             storageLocation = null;
-            validateMetricView(createTable);
+            validateMetricView(session, createTable);
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.VIEW) {
             storageLocation = null;
@@ -756,17 +756,9 @@ public class TableRepository {
     T apply(Session session, TableInfoDAO dao, TableInfo tableInfo);
   }
 
-  private static void validateMetricView(CreateTable createTable) {
-    if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "view_definition is required for metric view");
-    }
-    DependencyList viewDeps = createTable.getViewDependencies();
-    if (viewDeps == null || viewDeps.getDependencies() == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for metric view");
-    }
-    if (viewDeps.getDependencies().isEmpty()) {
+  private void validateMetricView(Session session, CreateTable createTable) {
+    validateViewLike(session, createTable, "metric view");
+    if (createTable.getViewDependencies().getDependencies().isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "view_dependencies must contain at least one entry for metric view");
@@ -774,12 +766,18 @@ public class TableRepository {
   }
 
   private void validateView(Session session, CreateTable createTable) {
+    validateViewLike(session, createTable, "view");
+  }
+
+  private void validateViewLike(Session session, CreateTable createTable, String entityLabel) {
     if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "view_definition is required for view");
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "view_definition is required for " + entityLabel);
     }
     DependencyList viewDeps = createTable.getViewDependencies();
     if (viewDeps == null || viewDeps.getDependencies() == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for view");
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for " + entityLabel);
     }
     List<DependencyDAO> depDAOs =
         viewDeps.getDependencies().stream()

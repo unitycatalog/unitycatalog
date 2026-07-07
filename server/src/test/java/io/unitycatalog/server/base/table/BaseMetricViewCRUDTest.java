@@ -3,15 +3,23 @@ package io.unitycatalog.server.base.table;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateFunction;
+import io.unitycatalog.client.model.CreateFunctionRequest;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.Dependency;
 import io.unitycatalog.client.model.DependencyList;
 import io.unitycatalog.client.model.FunctionDependency;
+import io.unitycatalog.client.model.FunctionParameterInfos;
 import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.base.function.FunctionOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.TestUtils;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +27,7 @@ import java.util.Optional;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -29,10 +38,53 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
   protected static final String METRIC_VIEW_NAME = "uc_test_metric_view";
   protected static final String METRIC_VIEW_FULL_NAME =
       TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + METRIC_VIEW_NAME;
+  protected static final String SOURCE_TABLE_NAME = "source_events";
   protected static final String SOURCE_TABLE_FULL_NAME =
-      TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".source_events";
+      TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + SOURCE_TABLE_NAME;
+  protected static final String SOURCE_FUNCTION_NAME = "event_bucket";
   protected static final String SOURCE_FUNCTION_FULL_NAME =
-      TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".event_bucket";
+      TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + SOURCE_FUNCTION_NAME;
+
+  protected FunctionOperations functionOperations;
+
+  protected abstract FunctionOperations createFunctionOperations(ServerConfig serverConfig);
+
+  @BeforeEach
+  @Override
+  public void setUp() {
+    super.setUp();
+    functionOperations = createFunctionOperations(serverConfig);
+  }
+
+  private void createSourceTable() throws Exception {
+    createTestingTable(
+        SOURCE_TABLE_NAME,
+        TableType.EXTERNAL,
+        Optional.of(Files.createTempDirectory(testDirectoryRoot, "source").toString()),
+        tableOperations);
+  }
+
+  private void createSourceFunction() throws ApiException {
+    CreateFunction createFunction =
+        new CreateFunction()
+            .name(SOURCE_FUNCTION_NAME)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .parameterStyle(CreateFunction.ParameterStyleEnum.S)
+            .isDeterministic(true)
+            .comment(TestUtils.COMMENT)
+            .externalLanguage("python")
+            .dataType(ColumnTypeName.INT)
+            .fullDataType("Integer")
+            .isNullCall(false)
+            .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
+            .routineDefinition("def event_bucket():\n  return 1")
+            .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
+            .specificName(SOURCE_FUNCTION_NAME)
+            .sqlDataAccess(CreateFunction.SqlDataAccessEnum.NO_SQL)
+            .inputParams(new FunctionParameterInfos().parameters(List.of()));
+    functionOperations.createFunction(new CreateFunctionRequest().functionInfo(createFunction));
+  }
 
   protected static final String VIEW_DEFINITION_ASSET_SOURCE =
       "version: \"0.1\"\n"
@@ -74,6 +126,8 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
         () -> tableOperations.getTable(METRIC_VIEW_FULL_NAME),
         ErrorCode.TABLE_NOT_FOUND,
         METRIC_VIEW_FULL_NAME);
+
+    createSourceTable();
 
     // --- Create with asset source ---
     CreateTable createRequest =
@@ -144,6 +198,15 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
                 request -> request.viewDependencies(new DependencyList().dependencies(List.of())),
             ErrorCode.INVALID_ARGUMENT,
             "view_dependencies must contain at least one entry for metric view"),
+        Arguments.of(
+            "non-existent dependency",
+            (UnaryOperator<CreateTable>)
+                request ->
+                    request.viewDependencies(
+                        makeDependencyList(
+                            TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".missing")),
+            ErrorCode.NOT_FOUND,
+            "View dependency does not exist"),
         Arguments.of(
             "dependency entry with neither table nor function set",
             (UnaryOperator<CreateTable>)
@@ -243,6 +306,9 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
                         .function(
                             new FunctionDependency().functionFullName(SOURCE_FUNCTION_FULL_NAME))));
     CreateTable createRequest = validMetricViewRequest().viewDependencies(mixed);
+
+    createSourceTable();
+    createSourceFunction();
 
     try {
       TableInfo created = tableOperations.createTable(createRequest);
