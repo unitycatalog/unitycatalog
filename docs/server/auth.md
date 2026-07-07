@@ -56,7 +56,7 @@ server.audiences=<Client ID provided earlier>
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
 
 - **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
-- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain one of these audience values. This is typically your application's client ID.
+- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values.
 
 #### Multiple Identity Providers
 
@@ -65,6 +65,23 @@ You can configure multiple issuers and audiences by separating them with commas:
 ```properties
 server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline.com/{tenant-id}/v2.0
 server.audiences=your-google-client-id,your-azure-client-id
+```
+
+Wildcard audience patterns match a single DNS label per `*`. For example, `https://*.dev.example.com`
+accepts tokens whose `aud` includes `https://dev.dev.example.com` or
+`https://backend.dev.example.com`:
+
+```properties
+server.audiences=unity-catalog-local,https://*.dev.example.com
+```
+
+When the identity provider issues per-client UUID audiences that cannot be pre-listed (for example
+dynamic OAuth client IDs in `id_token.aud`), use `*` alone to skip audience validation while still
+enforcing issuer and user checks:
+
+```properties
+server.audiences=*
+server.allowed-issuers=https://*.dev.example.com
 ```
 
 ### Restart the UC Server

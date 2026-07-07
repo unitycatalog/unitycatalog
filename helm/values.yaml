@@ -133,9 +133,9 @@ auth:
   # @default -- not set
   # @raw
   #
-  # When authorization is enabled, tokens must contain one of these audience values.
-  # This ensures tokens are intended for this Unity Catalog instance.
-  # Typically your application's client ID or API identifier.
+  # When authorization is enabled, tokens must contain an aud value matching one of these entries.
+  # Supports exact match or wildcard patterns with * (same rules as allowedIssuers).
+  # Use "*" alone to disable audience validation (issuer and user checks still apply).
   #
   audiences:
 
