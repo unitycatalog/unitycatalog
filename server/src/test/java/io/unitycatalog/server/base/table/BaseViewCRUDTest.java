@@ -134,7 +134,7 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
                         makeDependencyList(
                             TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".missing")),
             ErrorCode.NOT_FOUND,
-            "View dependency does not exist"));
+            "View dependency table does not exist"));
   }
 
   @ParameterizedTest(name = "createTable rejects view with {0}")

@@ -806,23 +806,26 @@ public class TableRepository {
           repositories
               .getSchemaRepository()
               .getSchemaIdOrThrow(session, dep.getDependencyCatalog(), dep.getDependencySchema());
-      boolean exists;
       switch (dep.getDependencyType()) {
         case TABLE:
-          exists = findBySchemaIdAndName(session, schemaId, dep.getDependencyName()) != null;
+          if (findBySchemaIdAndName(session, schemaId, dep.getDependencyName()) == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "View dependency table does not exist: " + fullName);
+          }
           break;
         case FUNCTION:
-          exists =
-              repositories
-                      .getFunctionRepository()
-                      .getFunctionDAO(session, schemaId, dep.getDependencyName())
-                  != null;
+          if (repositories
+                  .getFunctionRepository()
+                  .getFunctionDAO(session, schemaId, dep.getDependencyName())
+              == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "View dependency function does not exist: " + fullName);
+          }
           break;
         default:
-          exists = false;
-      }
-      if (!exists) {
-        throw new BaseException(ErrorCode.NOT_FOUND, "View dependency does not exist: " + fullName);
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "View dependency type " + dep.getDependencyType() + " not supported: " + fullName);
       }
     }
   }

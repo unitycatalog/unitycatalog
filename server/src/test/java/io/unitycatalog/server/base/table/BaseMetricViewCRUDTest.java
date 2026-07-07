@@ -206,7 +206,7 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
                         makeDependencyList(
                             TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".missing")),
             ErrorCode.NOT_FOUND,
-            "View dependency does not exist"),
+            "View dependency table does not exist"),
         Arguments.of(
             "dependency entry with neither table nor function set",
             (UnaryOperator<CreateTable>)
