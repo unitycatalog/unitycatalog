@@ -268,6 +268,17 @@ public class ServerProperties {
       }
       property.validator.validate(property.key, value);
     }
+    validateAudienceConfiguration();
+  }
+
+  private void validateAudienceConfiguration() {
+    List<String> audiences = getAudiences();
+    if (audiences.contains("*") && audiences.size() > 1) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.audiences cannot combine '*' with other values; use '*' alone to disable"
+              + " audience validation");
+    }
   }
 
   // Load properties from a configuration file
@@ -517,7 +528,7 @@ public class ServerProperties {
    * <p>When authorization is enabled, tokens will only be accepted from issuers in this list. This
    * prevents attackers from using their own identity provider to forge tokens.
    *
-   * @return List of allowed issuer URLs (exact match required)
+   * @return List of allowed issuer URLs (exact match or wildcard with {@code *})
    */
   public List<String> getAllowedIssuers() {
     return getCommaSeparatedList("server.allowed-issuers");
@@ -526,13 +537,26 @@ public class ServerProperties {
   /**
    * Get the list of expected JWT audience values.
    *
-   * <p>When authorization is enabled, tokens must contain one of these audience values. This
-   * ensures tokens are intended for this Unity Catalog instance.
+   * <p>When authorization is enabled, tokens must contain an {@code aud} value matching one of
+   * these entries (exact match or wildcard with {@code *}, same rules as {@link
+   * #getAllowedIssuers()}).
+   *
+   * <p>A single entry of {@code *} disables audience validation (issuer and user checks still
+   * apply). That sentinel cannot be combined with other values.
    *
    * @return List of expected audience values
    */
   public List<String> getAudiences() {
     return getCommaSeparatedList("server.audiences");
+  }
+
+  /**
+   * Returns true when {@code server.audiences} is exactly {@code *}, disabling JWT audience checks
+   * during token exchange.
+   */
+  public boolean isAudienceValidationDisabled() {
+    List<String> audiences = getAudiences();
+    return audiences.size() == 1 && "*".equals(audiences.get(0));
   }
 
   /**

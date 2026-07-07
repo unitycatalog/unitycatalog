@@ -243,4 +243,18 @@ public class ServerPropertiesTest {
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("endpoint is disabled when");
   }
+
+  @Test
+  public void testWildcardAudienceConfiguration() {
+    Properties wildcardOnly = new Properties();
+    wildcardOnly.setProperty("server.audiences", "*");
+    ServerProperties props = new ServerProperties(wildcardOnly);
+    assertThat(props.isAudienceValidationDisabled()).isTrue();
+
+    Properties mixed = new Properties();
+    mixed.setProperty("server.audiences", "*,unity-catalog-local");
+    assertThatThrownBy(() -> new ServerProperties(mixed))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("cannot combine '*' with other values");
+  }
 }
