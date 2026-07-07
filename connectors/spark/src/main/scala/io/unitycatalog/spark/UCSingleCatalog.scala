@@ -601,7 +601,7 @@ object UCSingleCatalog {
 }
 
 // An internal proxy to talk to the UC client.
-private class UCProxy(
+private[spark] class UCProxy(
     uri: URI,
     tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
