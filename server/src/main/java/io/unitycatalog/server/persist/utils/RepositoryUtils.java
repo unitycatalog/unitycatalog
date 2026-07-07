@@ -56,13 +56,17 @@ public class RepositoryUtils {
     }
   }
 
+  public static boolean isViewLike(String tableTypeValue) {
+    return TableType.METRIC_VIEW.getValue().equals(tableTypeValue)
+        || TableType.VIEW.getValue().equals(tableTypeValue);
+  }
+
   public static void attachDependencies(
       TableInfo tableInfo,
       TableInfoDAO tableInfoDAO,
       Session session,
       DependencyRepository dependencyRepository) {
-    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())
-        || TableType.VIEW.getValue().equals(tableInfoDAO.getType())) {
+    if (isViewLike(tableInfoDAO.getType())) {
       List<DependencyDAO> deps =
           dependencyRepository.getDependencies(
               session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);
