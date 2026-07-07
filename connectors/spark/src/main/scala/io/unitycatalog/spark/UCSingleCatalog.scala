@@ -22,8 +22,6 @@ import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import org.json4s.JsonDSL._
-import org.json4s.jackson.JsonMethods.{compact, parse, render}
 import org.sparkproject.guava.base.Preconditions
 
 import java.net.URI
@@ -751,19 +749,8 @@ private class UCProxy(
     }
     createTable.setStorageLocation(storageLocation)
 
-    val partitionColNames: Seq[String] = partitions.flatMap { t =>
-      t.name() match {
-        case "identity" =>
-          val fieldNames = t.references().flatMap(_.fieldNames())
-          require(fieldNames.length == 1,
-            s"Expected single-field partition reference but got: ${fieldNames.mkString(".")}")
-          Some(fieldNames.head)
-        case "cluster_by" =>
-          None
-        case other =>
-          throw new ApiException(s"Unsupported partition transform: $other")
-      }
-    }.toSeq
+    val partitionColNames: Seq[String] =
+      UCColumnConversions.partitionColumnNames(partitions).asScala.toSeq
     val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
       val column = new ColumnInfo()
       column.setName(field.name)
@@ -773,7 +760,7 @@ private class UCProxy(
       column.setNullable(field.nullable)
       column.setTypeText(field.dataType.catalogString)
       column.setTypeName(convertDataTypeToTypeName(field.dataType))
-      column.setTypeJson(toStructFieldJson(field))
+      column.setTypeJson(UCColumnConversions.toStructFieldJson(field))
       column.setPosition(i)
       val partitionIdx = partitionColNames.indexWhere(_.equalsIgnoreCase(field.name))
       if (partitionIdx >= 0) column.setPartitionIndex(partitionIdx)
@@ -791,13 +778,6 @@ private class UCProxy(
     loadTable(ident)
   }
 
-  private def toStructFieldJson(field: StructField): String = {
-    compact(render(
-      ("name" -> field.name) ~
-        ("type" -> parse(field.dataType.json)) ~
-        ("nullable" -> field.nullable) ~
-        ("metadata" -> parse(field.metadata.json))))
-  }
 
   private def convertDatasourceFormat(format: String): DataSourceFormat = {
     format.toUpperCase match {
