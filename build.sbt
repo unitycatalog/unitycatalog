@@ -398,8 +398,10 @@ lazy val server = (project in file("server"))
       // Integration testing
       "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
       "org.testcontainers" % "postgresql" % "1.19.8" % Test,
+      "org.testcontainers" % "mysql" % "1.19.8" % Test,
       "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
       "org.postgresql" % "postgresql" % "42.7.12" % Test,
+      "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
