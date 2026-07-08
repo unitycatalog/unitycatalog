@@ -16,7 +16,7 @@ To use the Unity Catalog UI, start a new terminal and ensure you have already st
 To start the UI locally, run the following commands to start `yarn`
 
 ```sh
-cd /ui
+cd ui
 yarn install
 yarn start
 ```

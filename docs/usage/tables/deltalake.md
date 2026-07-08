@@ -69,7 +69,7 @@ Your output should look something like this:
 │                    │nullable\":false,\"metadata\":{}}","type_name":"DOUBLE","type_precision":0,"type_scale":0,"type_inte│
 │                    │rval_type":null,"position":1,"comment":"Double column","nullable":false,"partition_index":null}     │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│STORAGE_LOCATION    │file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/nu│
+│STORAGE_LOCATION    │file:///path/to/unitycatalog/etc/data/external/unity/default/tables/nu│
 │                    │mbers/                                                                                              │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │COMMENT             │External table                                                                                      │
@@ -124,13 +124,15 @@ Run the command below with the correct `path/to/storage` to create a new DELTA t
 You can get the storage location from the `STORAGE_LOCATION` field of your `bin/uc table get ...` call above.
 
 ```sh
-bin/uc table create --full_name unity.default.test --columns "some_numbers INT, some_letters STRING, some_times TIMESTAMP" --storage_location file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/test
+bin/uc table create --full_name unity.default.test \
+  --columns "some_numbers INT, some_letters STRING, some_times TIMESTAMP" \
+  --storage_location /tmp/uc/test
 ```
 
 This should output:
 
 ```console
-Table created successfully at: file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/test
+Table created successfully at: /tmp/uc/test
 
 ┌────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │        KEY         │                                               VALUE                                                │
@@ -152,8 +154,7 @@ Table created successfully at: file:///Users/avriiil/Documents/git/my-forks/unit
 │                    │g\",\"nullable\":true,\"metadata\":{}}","type_name":"STRING","type_precision":0,"type_scale":0,"type│
 │                    │_interval_type":null,"position":1,"comment":null,"nullable":true,"partition_index":null}            │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│STORAGE_LOCATION    │file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/te │
-│                    │st2                                                                                                 │
+│STORAGE_LOCATION    │/tmp/uc/test                                                                                        │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │COMMENT             │null                                                                                                │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤

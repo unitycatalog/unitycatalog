@@ -22,7 +22,7 @@ The MLflow client connects both MLflow and Unity Catalog services (via `port:500
 ## Setting up MLflow and Unity Catalog
 
 !!! warning "Prerequisites"
-    For Unity Catalog MLflow Integration, ensure you are using MLflow version >= 2.16.1 and Unity Catalog >= 0.2.
+    For Unity Catalog MLflow Integration, ensure you are using MLflow version >= 2.16.1 and Unity Catalog >= 0.4.
 
 ### Spin up Unity Catalog
 

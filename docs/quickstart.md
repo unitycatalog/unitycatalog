@@ -24,6 +24,13 @@ OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
 OpenJDK 64-Bit Server VM Homebrew (build 17.0.12+0, mixed mode, sharing)
 ```
 
+From the repository root, build the server artifacts. The startup script can trigger this automatically on first run,
+but building explicitly is recommended:
+
+```sh
+build/sbt package
+```
+
 Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server. Here is what you
 should see:
 
@@ -36,7 +43,7 @@ should see:
 # | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #
 #  \____/|_| |_|_|\__|\__, |  \_____\__,_|\__\__,_|_|\___/ \__, | #
 #                      __/ |                                __/ | #
-#                     |___/               v0.2.0           |___/  #
+#                     |___/               v0.5.0           |___/  #
 ###################################################################
 ```
 
@@ -286,7 +293,7 @@ To use the Unity Catalog UI, start a new terminal and ensure you have already st
 To start the UI locally, run the following commands to start `yarn`
 
 ```console
-cd /ui
+cd ui
 yarn install
 yarn start
 ```
@@ -370,10 +377,10 @@ result["predicted_class"] = predictions
 result[:4]
 ```
 
-This code snippet will create a registered model `default.unity.iris` and log the trained model as model version 1. It
+This code snippet will create a registered model `unity.default.iris` and log the trained model as model version 1. It
 then loads the model from the Unity Catalog server, and performs batch inference on the test set using the loaded model.
 
-The results can be seen in the Unity Catalog UI at [http://localhost:3000,](http://localhost:3000) per the instructions
+The results can be seen in the Unity Catalog UI at [http://localhost:3000](http://localhost:3000), per the instructions
 in the [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui).
 
 ![UC UI models](./assets/images/uc_ui_models.png)

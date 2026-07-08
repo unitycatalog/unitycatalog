@@ -14,7 +14,7 @@ This document walks through how to use [PuppyGraph](https://www.puppygraph.com) 
 Run the command From the cloned repository root directory
 
 ```sh
-build/sbt clean package publishLocal spark/publishLocal
+build/sbt -mem 4096 -DsparkVersion=4.0 clean package publishLocal spark/publishLocal
 ```
 
 ## Run the Unity Catalog Server
@@ -47,7 +47,7 @@ Run the command from the Spark folder to start a Spark SQL shell .
 ```sh
 ./bin/spark-sql \
   --packages \
-    io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark:0.3.0-SNAPSHOT \
+    io.delta:delta-spark_4.0_2.13:4.3.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0 \
   --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
   --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
   --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
