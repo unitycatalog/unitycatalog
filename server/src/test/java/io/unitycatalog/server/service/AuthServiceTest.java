@@ -22,6 +22,7 @@ import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
 import java.util.Date;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -129,6 +130,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(body.get("issued_token_type").asText())
         .isEqualTo("urn:ietf:params:oauth:token-type:access_token");
     assertThat(body.get("token_type").asText()).isEqualTo("Bearer");
+    assertThat(body.get("expires_in").asLong()).isEqualTo(Duration.parse("PT24H").getSeconds());
+    assertThat(JWT.decode(body.get("access_token").asText()).getExpiresAt()).isNotNull();
   }
 
   @Test
