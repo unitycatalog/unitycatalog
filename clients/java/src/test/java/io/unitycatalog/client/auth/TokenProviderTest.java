@@ -89,6 +89,28 @@ public class TokenProviderTest {
   }
 
   @Test
+  public void testCreateResolvesOAuthConfigCaseInsensitively() {
+    // Keys can arrive lower-cased when catalog options pass through a
+    // case-insensitive map (e.g. Spark's CaseInsensitiveStringMap in the
+    // Delta UC integration). create() must still resolve them.
+    Map<String, String> lowerCasedConfigs = new HashMap<>();
+    lowerCasedConfigs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
+    lowerCasedConfigs.put("oauth.uri", OAUTH_URI);
+    lowerCasedConfigs.put("oauth.clientid", CLIENT_ID); // lower-cased on purpose
+    lowerCasedConfigs.put("oauth.clientsecret", CLIENT_SECRET); // lower-cased on purpose
+
+    TokenProvider provider = TokenProvider.create(lowerCasedConfigs);
+
+    assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
+    assertThat(provider.configs())
+        .hasSize(4)
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
+        .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+  }
+
+  @Test
   public void testCustomTokenProvider() {
     // Test with custom TokenProvider using fully qualified class name
     Map<String, String> customConfigs = new HashMap<>();

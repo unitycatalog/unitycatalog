@@ -2,6 +2,7 @@ package io.unitycatalog.client.auth;
 
 import io.unitycatalog.client.internal.Preconditions;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Interface for providing access tokens to authenticate with Unity Catalog.
@@ -107,7 +108,9 @@ public interface TokenProvider {
    *     not found, no default constructor, or instantiation failure)
    */
   static TokenProvider create(Map<String, String> configs) {
-    String authType = configs.get(AuthConfigs.TYPE);
+    Map<String, String> ci = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    ci.putAll(configs);
+    String authType = ci.get(AuthConfigs.TYPE);
     Preconditions.checkArgument(
         authType != null && !authType.trim().isEmpty(),
         "Required configuration key '%s' is missing or empty. "
@@ -140,7 +143,7 @@ public interface TokenProvider {
     }
 
     // Initialize the TokenProvider with configs.
-    tokenProvider.initialize(configs);
+    tokenProvider.initialize(ci);
     return tokenProvider;
   }
 }
