@@ -170,7 +170,7 @@ Table created successfully at: /tmp/uc/test
 
 ## How to Write to Delta Tables
 
-Use the `bin/uc write ...` command to write data to a Delta table.
+Use the `bin/uc table write ...` command to write data to a Delta table.
 
 Let's use our new `test` table as an example. This table should be empty. Let's confirm:
 

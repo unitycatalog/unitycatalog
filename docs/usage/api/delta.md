@@ -30,19 +30,19 @@ Set the API base path and verify the server is up:
 ```sh
 export UC="http://localhost:8080/api/2.1/unity-catalog/delta/v1"
 
-curl -s "$UC/config?catalog=unity&protocol-versions=1.0" | jq
+curl -s "$UC/config?catalog=unity&protocol-versions=1.0" | python3 -m json.tool
 ```
 
 Load metadata for a preloaded sample table:
 
 ```sh
-curl -s "$UC/catalogs/unity/schemas/default/tables/numbers" | jq
+curl -s "$UC/catalogs/unity/schemas/default/tables/numbers" | python3 -m json.tool
 ```
 
 Vend read credentials for that table:
 
 ```sh
-curl -s "$UC/catalogs/unity/schemas/default/tables/numbers/credentials?operation=READ" | jq
+curl -s "$UC/catalogs/unity/schemas/default/tables/numbers/credentials?operation=READ" | python3 -m json.tool
 ```
 
 ## API reference

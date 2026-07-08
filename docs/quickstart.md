@@ -28,10 +28,10 @@ From the repository root, build the server artifacts. The startup script can tri
 but building explicitly is recommended:
 
 ```sh
-build/sbt package
+build/sbt -mem 4096 package
 ```
 
-Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server. Here is what you
+From the repository root, run `bin/start-uc-server` to instantiate the server. Here is what you
 should see:
 
 ```console
@@ -43,9 +43,13 @@ should see:
 # | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #
 #  \____/|_| |_|_|\__|\__, |  \_____\__,_|\__\__,_|_|\___/ \__, | #
 #                      __/ |                                __/ | #
-#                     |___/               v0.5.0           |___/  #
+#                     |___/      v0.5.0-SNAPSHOT           |___/  #
 ###################################################################
 ```
+
+!!! note "Server version string"
+    Released builds display `v0.5.0`. When you build from the `main` branch, the banner shows
+    `v0.5.0-SNAPSHOT`.
 
 Well, that was pretty easy!
 
@@ -228,11 +232,8 @@ bin/uc table create --full_name unity.default.mytable \
 ├──────────────────────┼───────────────────────────────────────────┤
 │DATA_SOURCE_FORMAT    │DELTA                                      │
 ├──────────────────────┼───────────────────────────────────────────┤
-│COLUMNS               │{"name":"as_int","type_text":"int","type_js│
-│                      │NT","type_precision":0,"type_scale":0,"type│
-│                      │{"name":"as_double","type_text":"double","t│
-│                      │name":"DOUBLE","type_precision":0,"type_sca│
-│                      │column","nullable":false,"partition_index":│
+│COLUMNS               │{"name":"col1","type_text":"int","type_json"│
+│                      │{"name":"col2","type_text":"double","type_js│
 ├──────────────────────┼───────────────────────────────────────────┤
 │...                   │...                                        │
 ├──────────────────────┼───────────────────────────────────────────┤

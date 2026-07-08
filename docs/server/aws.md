@@ -9,7 +9,7 @@ This page explains how to configure Unity Catalog server with AWS storage and cr
 
 # Prerequisites
 
-* Unity Catalog server version \>= 0.5.0
+* Unity Catalog server version \>= 0.4.0
 * Ownership of running Unity Catalog server instance
 * AWS account IAM permissions: create and configure roles
 * AWS S3 bucket permissions: s3:PutBucketPolicy to configure bucket policy

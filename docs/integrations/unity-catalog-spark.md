@@ -100,13 +100,13 @@ bin/start-uc-server
 Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-sql`) or PySpark shell (`bin/pyspark`)
 within the terminal of your Apache Spark installation against your local UC.
 
-You can run the code below to work with data stored in a Unity Catalog server. Replace `<catalog_name>` with the
-catalog you want to use (for example, `unity`).
+You can run the code below to work with data stored in a Unity Catalog server. The examples use the preloaded
+`unity` catalog; change `CATALOG_NAME` if you are using a different catalog.
 
 === "Spark SQL (Spark 4.0.x)"
 
     ```sh
-    export CATALOG_NAME=<catalog_name>
+    export CATALOG_NAME=unity
     export UC_URI=http://localhost:8080
     export UC_TOKEN=
 
@@ -124,7 +124,7 @@ catalog you want to use (for example, `unity`).
 === "PySpark (Spark 4.0.x)"
 
     ```sh
-    export CATALOG_NAME=<catalog_name>
+    export CATALOG_NAME=unity
     export UC_URI=http://localhost:8080
     export UC_TOKEN=
 
@@ -142,7 +142,7 @@ catalog you want to use (for example, `unity`).
 === "Spark SQL (Spark 4.1.x)"
 
     ```sh
-    export CATALOG_NAME=<catalog_name>
+    export CATALOG_NAME=unity
     export UC_URI=http://localhost:8080
     export UC_TOKEN=
 
@@ -160,7 +160,7 @@ catalog you want to use (for example, `unity`).
 === "PySpark (Spark 4.1.x)"
 
     ```sh
-    export CATALOG_NAME=<catalog_name>
+    export CATALOG_NAME=unity
     export UC_URI=http://localhost:8080
     export UC_TOKEN=
 
@@ -206,7 +206,7 @@ your Spark version. The examples below use Spark 4.0.x coordinates.
 === "AWS S3"
 
     ```sh
-    export CATALOG_NAME=<catalog_name>
+    export CATALOG_NAME=unity
     export UC_URI=http://localhost:8080
     export UC_TOKEN=
 
@@ -225,7 +225,7 @@ your Spark version. The examples below use Spark 4.0.x coordinates.
 === "Azure ADLSgen2"
 
     ```sh
-    export CATALOG_NAME=<catalog_name>
+    export CATALOG_NAME=unity
     export UC_URI=http://localhost:8080
     export UC_TOKEN=
 
@@ -243,7 +243,7 @@ your Spark version. The examples below use Spark 4.0.x coordinates.
 === "Google Cloud Storage"
 
     ```sh
-    export CATALOG_NAME=<catalog_name>
+    export CATALOG_NAME=unity
     export UC_URI=http://localhost:8080
     export UC_TOKEN=
 
