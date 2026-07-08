@@ -82,26 +82,21 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(created.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
     assertThat(created.getTableType()).isEqualTo(TableType.VIEW);
     assertThat(created.getViewDefinition()).isEqualTo(VIEW_DEFINITION);
+    assertThat(created.getComment()).isEqualTo("A simple SQL view");
     assertThat(created.getColumns()).hasSize(COLUMNS.size());
+    assertThat(created.getCreatedAt()).isNotNull();
     assertThat(created.getTableId()).isNotNull();
     assertThat(created.getStorageLocation()).as("Views should have no storage location").isNull();
-
-    TableInfo fetched = tableOperations.getTable(VIEW_FULL_NAME);
-    assertThat(fetched.getName()).isEqualTo(VIEW_NAME);
-    assertThat(fetched.getTableType()).isEqualTo(TableType.VIEW);
-    assertThat(fetched.getViewDefinition()).isEqualTo(VIEW_DEFINITION);
-    assertThat(fetched.getComment()).isEqualTo("A simple SQL view");
-    assertThat(fetched.getColumns()).hasSize(COLUMNS.size());
-    assertThat(fetched.getCreatedAt()).isNotNull();
-    assertThat(fetched.getTableId()).isNotNull();
-    assertThat(fetched.getViewDependencies()).isNotNull();
-    assertThat(fetched.getViewDependencies().getDependencies()).hasSize(1);
-    assertThat(fetched.getViewDependencies().getDependencies().get(0).getTable().getTableFullName())
+    assertThat(created.getProperties()).containsAllEntriesOf(PROPERTIES);
+    assertThat(created.getViewDependencies()).isNotNull();
+    assertThat(created.getViewDependencies().getDependencies()).hasSize(1);
+    assertThat(created.getViewDependencies().getDependencies().get(0).getTable().getTableFullName())
         .isEqualTo(SOURCE_TABLE_FULL_NAME);
 
-    assertThat(fetched.getProperties()).isNotNull();
-    assertThat(fetched.getProperties().get("team")).isEqualTo("analytics");
-    assertThat(fetched.getProperties().get("refresh")).isEqualTo("daily");
+    TableInfo fetched = tableOperations.getTable(VIEW_FULL_NAME);
+    assertThat(fetched)
+        .as("getTable should return the same view that createTable returned")
+        .isEqualTo(created);
 
     List<TableInfo> tables =
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty());
