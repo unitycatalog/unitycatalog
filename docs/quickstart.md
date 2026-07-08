@@ -28,7 +28,7 @@ From the repository root, build the server artifacts. The startup script can tri
 but building explicitly is recommended:
 
 ```sh
-build/sbt -mem 4096 package
+build/sbt package
 ```
 
 From the repository root, run `bin/start-uc-server` to instantiate the server. Here is what you

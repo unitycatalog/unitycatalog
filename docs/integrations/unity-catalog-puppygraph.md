@@ -14,7 +14,7 @@ This document walks through how to use [PuppyGraph](https://www.puppygraph.com) 
 Run the command From the cloned repository root directory
 
 ```sh
-build/sbt -mem 4096 -DsparkVersion=4.0 clean package publishLocal spark/publishLocal
+build/sbt -DsparkVersion=4.0 clean package publishLocal spark/publishLocal
 ```
 
 ## Run the Unity Catalog Server
