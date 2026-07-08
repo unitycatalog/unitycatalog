@@ -190,12 +190,19 @@ public class ServerPropertiesTest {
     testValidProperty(Property.COOKIE_TIMEOUT, "P5D");
     testValidProperty(Property.COOKIE_TIMEOUT, "PT2H");
     testValidProperty(Property.COOKIE_TIMEOUT, "P1DT12H30M");
+    testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT24H");
+    testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT1H");
 
     // Invalid values
     testInvalidProperty(
         Property.COOKIE_TIMEOUT, "5 days", "Invalid value '5 days'", "server.cookie-timeout");
     testInvalidProperty(
         Property.COOKIE_TIMEOUT, "P5X", "Invalid value 'P5X'", "server.cookie-timeout");
+    testInvalidProperty(
+        Property.ACCESS_TOKEN_TIMEOUT,
+        "24 hours",
+        "Invalid value '24 hours'",
+        "server.access-token-timeout");
   }
 
   @Test

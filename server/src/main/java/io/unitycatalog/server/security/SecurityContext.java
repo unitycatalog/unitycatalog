@@ -2,12 +2,13 @@ package io.unitycatalog.server.security;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
@@ -69,20 +70,13 @@ public class SecurityContext {
     LOGGER.info(getInternalCertsFile());
   }
 
-  public String createAccessToken(DecodedJWT decodedJWT) {
-    String subject =
-        decodedJWT
-            .getClaims()
-            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
-            .asString();
-    return createAccessToken(subject);
-  }
-
-  public String createAccessToken(String principalEmail) {
+  public String createAccessToken(String principalEmail, Duration ttl) {
+    Instant expiresAt = Instant.now().plus(ttl);
     return JWT.create()
         .withSubject(serviceName)
         .withIssuer(localIssuer)
         .withIssuedAt(new Date())
+        .withExpiresAt(Date.from(expiresAt))
         .withKeyId(keyId)
         .withJWTId(UUID.randomUUID().toString())
         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())

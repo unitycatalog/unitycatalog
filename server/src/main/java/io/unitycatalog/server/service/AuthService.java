@@ -186,13 +186,15 @@ public class AuthService {
 
     LOGGER.debug("Validated. Creating access token for principal {}.", principalEmail);
 
-    String accessToken = securityContext.createAccessToken(principalEmail);
+    Duration accessTokenTimeout = serverProperties.getAccessTokenTimeout();
+    String accessToken = securityContext.createAccessToken(principalEmail, accessTokenTimeout);
 
     OAuthTokenExchangeInfo tokenExchangeInfo =
         new OAuthTokenExchangeInfo()
             .accessToken(accessToken)
             .issuedTokenType(TokenType.ACCESS_TOKEN)
-            .tokenType(AccessTokenType.BEARER);
+            .tokenType(AccessTokenType.BEARER)
+            .expiresIn(accessTokenTimeout.getSeconds());
 
     // Set token as cookie if ext param is set to cookie
     ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
