@@ -120,14 +120,17 @@ This command has multiple parameters:
 | `storage_location` | The storage location associated with the table. It is a mandatory field for EXTERNAL tables. |
 | `properties` | [Optional] The properties of the entity in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(") inside the properties string or just use single quotes(`''`) around the same. |
 
-Run the command below with the correct `path/to/storage` to create a new DELTA table with 2 columns: `some_numbers` and `some_letters`.
+Run the command below to create a new DELTA table with 2 columns: `some_numbers` and `some_letters`.
 You can get the storage location from the `STORAGE_LOCATION` field of your `bin/uc table get ...` call above.
 
 ```sh
 bin/uc table create --full_name unity.default.test \
-  --columns "some_numbers INT, some_letters STRING, some_times TIMESTAMP" \
+  --columns "some_numbers INT, some_letters STRING" \
   --storage_location /tmp/uc/test
 ```
+
+If you are re-running this tutorial, remove any existing files at the storage location first (for example,
+`rm -rf /tmp/uc/test`) so the on-disk Delta schema matches the catalog metadata.
 
 This should output:
 
@@ -192,7 +195,8 @@ Now use the following command to write some sample data to this table.
 bin/uc table write --full_name <catalog>.<schema>.<table>
 ```
 
-This is an experimental feature. Currently, this will only write sample data and supports only some primitive data types.
+This is an experimental feature. Currently, this will only write sample data and supports a limited set of
+primitive data types (for example, `INT`, `STRING`, and `DOUBLE`). Types such as `TIMESTAMP` are not supported yet.
 
 ## How to Delete a Delta Table
 

@@ -138,7 +138,7 @@ The following steps show how you can view your UC functions metadata and descrip
     
 === "2. View functions metadata"
 
-    Click on the volume (e.g., `unity.default.lowercase`) to view its metadata.  You have the option to delete it by
+    Click on the function (e.g., `unity.default.lowercase`) to view its metadata.  You have the option to delete it by
     click on the *three horizontal dots* to the right.
 
 ![View Functions Metadata](../assets/images/ui/uc-ui-functions-2.png)
