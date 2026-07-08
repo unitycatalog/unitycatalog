@@ -106,7 +106,9 @@ public class UnityCatalogServer {
 
     // Init hibernate
     HibernateConfigurator hibernateConfigurator =
-        new HibernateConfigurator(unityCatalogServerBuilder.serverProperties);
+        unityCatalogServerBuilder.hibernateConfigurator != null
+            ? unityCatalogServerBuilder.hibernateConfigurator
+            : new HibernateConfigurator(unityCatalogServerBuilder.serverProperties);
     // Init all repositories
     Repositories repositories =
         new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
@@ -366,6 +368,7 @@ public class UnityCatalogServer {
   public static class Builder {
     private int port;
     private ServerProperties serverProperties;
+    private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
 
     private Builder() {}
@@ -377,6 +380,17 @@ public class UnityCatalogServer {
 
     public UnityCatalogServer.Builder serverProperties(ServerProperties serverProperties) {
       this.serverProperties = serverProperties;
+      return this;
+    }
+
+    /**
+     * Uses the given {@link HibernateConfigurator} instead of creating one from the server
+     * properties. Lets tests share the server's session factory and customize the hibernate
+     * properties (e.g. run against PostgreSQL via Testcontainers).
+     */
+    public UnityCatalogServer.Builder hibernateConfigurator(
+        HibernateConfigurator hibernateConfigurator) {
+      this.hibernateConfigurator = hibernateConfigurator;
       return this;
     }
 

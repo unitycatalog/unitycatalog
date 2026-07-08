@@ -46,7 +46,15 @@ public class HibernateConfigurator {
   private final Properties hibernateProperties;
 
   public HibernateConfigurator(ServerProperties serverProperties) {
-    this.hibernateProperties = setupHibernateProperties(serverProperties);
+    this(setupHibernateProperties(serverProperties));
+  }
+
+  /**
+   * Builds a session factory from explicit hibernate properties. Lets tests customize the
+   * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
+   */
+  public HibernateConfigurator(Properties hibernateProperties) {
+    this.hibernateProperties = hibernateProperties;
     this.sessionFactory = createSessionFactory(hibernateProperties);
   }
 
@@ -101,22 +109,9 @@ public class HibernateConfigurator {
     }
 
     if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
-      // Connection overrides let a test point Hibernate at an external database
-      // (e.g., PostgreSQL via Testcontainers). Defaults to H2 in-memory when not overridden.
+      hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
-          "hibernate.connection.driver_class",
-          serverProperties.getProperty("hibernate.connection.driver_class", "org.h2.Driver"));
-      hibernateProperties.setProperty(
-          "hibernate.connection.url",
-          serverProperties.getProperty(
-              "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1"));
-      for (String key :
-          new String[] {"hibernate.connection.username", "hibernate.connection.password"}) {
-        String value = serverProperties.getProperty(key);
-        if (value != null) {
-          hibernateProperties.setProperty(key, value);
-        }
-      }
+          "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
       hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
       LOGGER.debug("Hibernate configuration set for testing");
     }
