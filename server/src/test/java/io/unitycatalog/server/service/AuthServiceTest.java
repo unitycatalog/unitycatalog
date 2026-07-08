@@ -17,6 +17,7 @@ import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
+import io.unitycatalog.server.security.JwtClaim;
 import java.io.IOException;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -126,6 +127,11 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     JsonNode body = MAPPER.readTree(response.contentUtf8());
     assertThat(body.has("access_token")).isTrue();
     assertThat(body.get("access_token").asText()).isNotEmpty();
+    assertThat(
+            JWT.decode(body.get("access_token").asText())
+                .getClaim(JwtClaim.SUBJECT.key())
+                .asString())
+        .isEqualTo("admin");
     assertThat(body.get("issued_token_type").asText())
         .isEqualTo("urn:ietf:params:oauth:token-type:access_token");
     assertThat(body.get("token_type").asText()).isEqualTo("Bearer");

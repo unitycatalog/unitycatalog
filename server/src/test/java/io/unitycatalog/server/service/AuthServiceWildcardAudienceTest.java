@@ -14,12 +14,14 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
+import io.unitycatalog.server.security.JwtClaim;
 import java.io.IOException;
 import java.util.Date;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/** Integration tests for audiences=* on email-based token exchange. */
 public class AuthServiceWildcardAudienceTest extends BaseAuthCRUDTest {
 
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
@@ -51,7 +53,11 @@ public class AuthServiceWildcardAudienceTest extends BaseAuthCRUDTest {
     assertThat(response.status()).isEqualTo(HttpStatus.OK);
     JsonNode body = MAPPER.readTree(response.contentUtf8());
     assertThat(body.has("access_token")).isTrue();
-    assertThat(body.get("access_token").asText()).isNotEmpty();
+    assertThat(
+            JWT.decode(body.get("access_token").asText())
+                .getClaim(JwtClaim.SUBJECT.key())
+                .asString())
+        .isEqualTo("admin");
   }
 
   @Test
