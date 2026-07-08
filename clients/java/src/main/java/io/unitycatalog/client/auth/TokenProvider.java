@@ -108,11 +108,9 @@ public interface TokenProvider {
    *     not found, no default constructor, or instantiation failure)
    */
   static TokenProvider create(Map<String, String> configs) {
-    // Try normalizing to a case-insensitive view if possible so downstream lookups regardless of
-    // casing
-    Map<String, String> normalizedConfigs = toCaseInsensitiveMap(configs);
-
-    String authType = normalizedConfigs.get(AuthConfigs.TYPE);
+    Map<String, String> ci = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    ci.putAll(configs);
+    String authType = ci.get(AuthConfigs.TYPE);
     Preconditions.checkArgument(
         authType != null && !authType.trim().isEmpty(),
         "Required configuration key '%s' is missing or empty. "
@@ -145,22 +143,7 @@ public interface TokenProvider {
     }
 
     // Initialize the TokenProvider with configs.
-    tokenProvider.initialize(normalizedConfigs);
+    tokenProvider.initialize(ci);
     return tokenProvider;
-  }
-
-  /**
-   * Returns a case-insensitive view of {@code configs} so key lookups succeed regardless of key
-   * casing (some callers pass keys that were lower-cased upstream). If the map is already
-   * case-insensitive it is returned as-is to avoid an unnecessary copy. The check is by simple
-   * class name.
-   */
-  private static Map<String, String> toCaseInsensitiveMap(Map<String, String> configs) {
-    if (configs == null || configs.getClass().getSimpleName().equals("CaseInsensitiveStringMap")) {
-      return configs;
-    }
-    Map<String, String> caseInsensitive = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-    caseInsensitive.putAll(configs);
-    return caseInsensitive;
   }
 }
