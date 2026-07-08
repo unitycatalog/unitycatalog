@@ -47,7 +47,7 @@ Run the command from the Spark folder to start a Spark SQL shell .
 ```sh
 ./bin/spark-sql \
   --packages \
-    io.delta:delta-spark_4.0_2.13:4.3.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0 \
+    io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0 \
   --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
   --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
   --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
