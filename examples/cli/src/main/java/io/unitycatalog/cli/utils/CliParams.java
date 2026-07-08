@@ -24,7 +24,7 @@ public enum CliParams {
   PAGE_TOKEN("page_token", "Opaque token to retrieve the next page of results.", "page_token"),
   TABLE_TYPE(
       "table_type",
-      "The type of the table. Supported values are MANAGED, EXTERNAL and VIEW. For create table EXTERNAL and VIEW tables are supported in this CLI example.",
+      "The type of the table. Supported values are MANAGED and EXTERNAL. For create table only EXTERNAL tables are supported in this CLI example.",
       "table_type"),
   DATA_SOURCE_FORMAT(
       "format",
@@ -70,15 +70,7 @@ public enum CliParams {
   STORAGE_ROOT(
       "storage_root",
       "The storage root URL for managed tables/volumes within the catalog or schema.",
-      "storage_root"),
-  VIEW_DEFINITION(
-      "view_definition",
-      "The SQL definition text for a view. Required when table_type is VIEW.",
-      "view_definition"),
-  VIEW_DEPENDENCIES(
-      "view_dependencies",
-      "The dependencies of a view in json format. For example: \"[{\"table\": {\"table_full_name\": \"catalog.schema.table\"}}]\". Required when table_type is VIEW.",
-      "view_dependencies");
+      "storage_root");
   private final String value;
   private final String helpMessage;
   private final String serverParam;

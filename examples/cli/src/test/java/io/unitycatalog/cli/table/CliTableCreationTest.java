@@ -22,9 +22,6 @@ import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.DataSourceFormat;
-import io.unitycatalog.client.model.Dependency;
-import io.unitycatalog.client.model.DependencyList;
-import io.unitycatalog.client.model.TableDependency;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.BaseServerTest;
@@ -154,50 +151,6 @@ public class CliTableCreationTest extends BaseServerTest {
                         .columns(COLUMNS)));
     assertThat(ex2.getMessage())
         .contains("Only Delta tables are supported for managed tables: PARQUET");
-  }
-
-  @Test
-  public void testCreateView() throws IOException, ApiException {
-    String sourceTableFullName = CATALOG_NAME + "." + SCHEMA_NAME + ".source_events";
-    tableOperations.createTable(
-        new CreateTable()
-            .catalogName(CATALOG_NAME)
-            .schemaName(SCHEMA_NAME)
-            .name("source_events")
-            .tableType(TableType.EXTERNAL)
-            .storageLocation(testDirectoryRoot.resolve("source_events").toString())
-            .columns(COLUMNS));
-    String viewDefinition = "SELECT id, name FROM " + sourceTableFullName;
-    DependencyList dependencies =
-        new DependencyList()
-            .dependencies(
-                List.of(
-                    new Dependency()
-                        .table(new TableDependency().tableFullName(sourceTableFullName))));
-
-    TableInfo tableInfo =
-        tableOperations.createTable(
-            new CreateTable()
-                .catalogName(CATALOG_NAME)
-                .schemaName(SCHEMA_NAME)
-                .name(TABLE_NAME)
-                .tableType(TableType.VIEW)
-                .columns(COLUMNS)
-                .viewDefinition(viewDefinition)
-                .viewDependencies(dependencies));
-
-    assertThat(tableInfo).isNotNull();
-    assertThat(tableInfo.getTableId()).isNotNull();
-    assertThat(tableInfo.getTableType()).isEqualTo(TableType.VIEW);
-    assertThat(tableInfo.getViewDefinition()).isEqualTo(viewDefinition);
-    assertThat(tableInfo.getStorageLocation()).isNull();
-
-    TableInfo fetched = tableOperations.getTable(TABLE_FULL_NAME);
-    assertThat(fetched.getTableId()).isEqualTo(tableInfo.getTableId());
-    assertThat(fetched.getViewDependencies()).isNotNull();
-    assertThat(fetched.getViewDependencies().getDependencies()).hasSize(1);
-    assertThat(fetched.getViewDependencies().getDependencies().get(0).getTable().getTableFullName())
-        .isEqualTo(sourceTableFullName);
   }
 
   private void createTableAndAssertReadTableSucceeds(
