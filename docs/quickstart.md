@@ -308,6 +308,17 @@ interact directly with your Unity Catalog service for the creation and access of
 
 ### Setup MLflow for usage with Unity Catalog
 
+Before registering models, configure managed model storage in `etc/conf/server.properties` and restart the UC server
+if it is already running:
+
+```properties
+storage-root.models=file:/tmp/ucroot
+```
+
+```sh
+mkdir -p /tmp/ucroot
+```
+
 In your desired development environment, install MLflow 2.16.1 or higher:
 
 ```sh

@@ -201,9 +201,10 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
 If you would like to run this against cloud object storage, use the matching Spark and UC connector artifacts for
-your Spark version. The examples below use Spark 4.0.x coordinates.
+your Spark version. Use `hadoop-aws` and `hadoop-azure` **3.4.1** with Spark 4.0.x and **3.4.2** with Spark 4.1.x
+(`hadoop-azure` requires 3.4.1 or later; see [issue #1175](https://github.com/unitycatalog/unitycatalog/issues/1175)).
 
-=== "AWS S3"
+=== "AWS S3 (Spark 4.0.x)"
 
     ```sh
     export CATALOG_NAME=unity
@@ -212,7 +213,7 @@ your Spark version. The examples below use Spark 4.0.x coordinates.
 
     bin/spark-sql --name "s3-uc-test" \
         --master "local[*]" \
-        --packages "org.apache.hadoop:hadoop-aws:3.4.0,io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0" \
+        --packages "org.apache.hadoop:hadoop-aws:3.4.1,io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
@@ -222,7 +223,26 @@ your Spark version. The examples below use Spark 4.0.x coordinates.
         --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
 
-=== "Azure ADLSgen2"
+=== "AWS S3 (Spark 4.1.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "s3-uc-test" \
+        --master "local[*]" \
+        --packages "org.apache.hadoop:hadoop-aws:3.4.2,io.delta:delta-spark_4.1_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.5.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "Azure ADLSgen2 (Spark 4.0.x)"
 
     ```sh
     export CATALOG_NAME=unity
@@ -231,7 +251,25 @@ your Spark version. The examples below use Spark 4.0.x coordinates.
 
     bin/spark-sql --name "azure-uc-test" \
         --master "local[*]" \
-        --packages "org.apache.hadoop:hadoop-azure:3.3.6,io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0" \
+        --packages "org.apache.hadoop:hadoop-azure:3.4.1,io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "Azure ADLSgen2 (Spark 4.1.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "azure-uc-test" \
+        --master "local[*]" \
+        --packages "org.apache.hadoop:hadoop-azure:3.4.2,io.delta:delta-spark_4.1_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.5.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \

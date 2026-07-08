@@ -11,11 +11,19 @@ This document walks through how to use [PuppyGraph](https://www.puppygraph.com) 
 
 ## Build the Unity Server and Spark support
 
-Run the command From the cloned repository root directory
+Run one of the following from the cloned repository root directory, depending on your Spark version:
 
-```sh
-build/sbt -DsparkVersion=4.0 clean package publishLocal spark/publishLocal
-```
+=== "Spark 4.0.x"
+
+    ```sh
+    build/sbt -DsparkVersion=4.0 clean package publishLocal spark/publishLocal
+    ```
+
+=== "Spark 4.1.x"
+
+    ```sh
+    build/sbt -DsparkVersion=4.1 clean package publishLocal spark/publishLocal
+    ```
 
 ## Run the Unity Catalog Server
 
@@ -42,17 +50,32 @@ Create a catalog `puppygraph` and several Delta tables under the schema `modern`
 
 ## Load Data into the Tables
 
-Run the command from the Spark folder to start a Spark SQL shell .
+Run the command from the Spark folder to start a Spark SQL shell. Use the `--packages` coordinates that match your
+Spark version:
 
-```sh
-./bin/spark-sql \
-  --packages \
-    io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0 \
-  --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
-  --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
-  --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
-  --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
-```
+=== "Spark 4.0.x"
+
+    ```sh
+    ./bin/spark-sql \
+      --packages \
+        io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0 \
+      --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
+      --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
+      --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+    ```
+
+=== "Spark 4.1.x"
+
+    ```sh
+    ./bin/spark-sql \
+      --packages \
+        io.delta:delta-spark_4.1_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.5.0 \
+      --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
+      --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
+      --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+    ```
 
 Run the following SQL to insert data into the Delta tables.
 

@@ -30,19 +30,19 @@ Set the API base path and verify the server is up:
 ```sh
 export UC="http://localhost:8080/api/2.1/unity-catalog/delta/v1"
 
-curl -s "$UC/config?catalog=unity&protocol-versions=1.0" | python3 -m json.tool
+curl -s "$UC/config?catalog=unity&protocol-versions=1.0" | jq .
 ```
 
 Load metadata for a preloaded sample table:
 
 ```sh
-curl -s "$UC/catalogs/unity/schemas/default/tables/numbers" | python3 -m json.tool
+curl -s "$UC/catalogs/unity/schemas/default/tables/numbers" | jq .
 ```
 
 Vend read credentials for that table:
 
 ```sh
-curl -s "$UC/catalogs/unity/schemas/default/tables/numbers/credentials?operation=READ" | python3 -m json.tool
+curl -s "$UC/catalogs/unity/schemas/default/tables/numbers/credentials?operation=READ" | jq .
 ```
 
 ## API reference
@@ -50,7 +50,8 @@ curl -s "$UC/catalogs/unity/schemas/default/tables/numbers/credentials?operation
 The generated OpenAPI documentation lives in the repository:
 
 - [UC Delta API reference](https://github.com/unitycatalog/unitycatalog/tree/main/api/delta-docs)
-- [OpenAPI specification](https://github.com/unitycatalog/unitycatalog/tree/main/api)
+- [UC Delta API OpenAPI spec (`delta.yaml`)](https://github.com/unitycatalog/unitycatalog/blob/main/api/delta.yaml)
+- [Unity Catalog OpenAPI specification](https://github.com/unitycatalog/unitycatalog/tree/main/api)
 
 ## Spark integration
 

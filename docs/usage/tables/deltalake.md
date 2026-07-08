@@ -157,7 +157,7 @@ Table created successfully at: /tmp/uc/test
 │                    │g\",\"nullable\":true,\"metadata\":{}}","type_name":"STRING","type_precision":0,"type_scale":0,"type│
 │                    │_interval_type":null,"position":1,"comment":null,"nullable":true,"partition_index":null}            │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│STORAGE_LOCATION    │/tmp/uc/test                                                                                        │
+│STORAGE_LOCATION    │file:///tmp/uc/test                                                                                 │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │COMMENT             │null                                                                                                │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤

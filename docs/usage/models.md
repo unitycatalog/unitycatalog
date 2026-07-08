@@ -39,6 +39,19 @@ Spin up a local UC server by running the following code in a terminal from the r
 bin/start-uc-server
 ```
 
+Model registration requires a managed storage location. For local development, add the following to
+`etc/conf/server.properties` before starting the server (or restart after editing):
+
+```properties
+storage-root.models=file:/tmp/ucroot
+```
+
+Then create the storage directory:
+
+```sh
+mkdir -p /tmp/ucroot
+```
+
 ### Install (or upgrade) MLflow
 
 ```sh
