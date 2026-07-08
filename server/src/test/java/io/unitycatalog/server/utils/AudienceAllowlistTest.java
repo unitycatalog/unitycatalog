@@ -36,8 +36,7 @@ class AudienceAllowlistTest {
         .isTrue();
     assertThat(
             AudienceAllowlist.isAllowed(
-                List.of("oauth-client-uuid", "https://backend.dev.example.com"),
-                List.of(pattern)))
+                List.of("oauth-client-uuid", "https://backend.dev.example.com"), List.of(pattern)))
         .isTrue();
     assertThat(
             AudienceAllowlist.isAllowed(List.of("https://acme.eu.example.com"), List.of(pattern)))
