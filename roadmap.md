@@ -35,17 +35,19 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td><b>v0.2</b></td>
     <td><b>v0.3</b></td>
     <td><b>v0.4</b></td>
-    <td><b>v0.5+</b></td>
+    <td><b>v0.5</b></td>
+    <td><b>v0.6+</b></td>
   </tr>
   
   <!-- Core Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">Core</td>
+    <td colspan="8" bgcolor="grey" align="center">Core</td>
   </tr>
 
   <tr>
     <td>Catalog</td>
     <td>API + Server</td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
@@ -60,6 +62,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Managed location in catalog</td>
@@ -68,6 +71,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
@@ -78,6 +82,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Credential</td>
@@ -86,6 +91,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td align="center">🛠️</td>
     <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
@@ -96,10 +102,12 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center">🛠️</td>
     <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Multi-tenancy</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -109,13 +117,14 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
 
   <!-- Identity & Authentication Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">Identity & Authentication</td>
+    <td colspan="8" bgcolor="grey" align="center">Identity & Authentication</td>
   </tr>
 
   <tr>
     <td>Local identity management (user)</td>
     <td>API + Server</td>
     <td></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
@@ -128,11 +137,13 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Support for Machine identities (SPs)</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -147,6 +158,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>OAuth/OIDC for Users</td>
@@ -156,10 +168,12 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>OAuth/OIDC for Services</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -174,10 +188,12 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>SAML authentication support</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -187,12 +203,13 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
 
   <!-- Access Control & Governance Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">Access Control & Governance</td>
+    <td colspan="8" bgcolor="grey" align="center">Access Control & Governance</td>
   </tr>
 
   <tr>
     <td>Support for change of ownership</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -206,6 +223,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
@@ -215,11 +233,13 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Permission parity with Databricks UC</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -234,11 +254,13 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Temporary credential vending for volumes</td>
     <td>API + Server</td>
     <td></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
@@ -252,6 +274,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Basic grants</td>
@@ -261,10 +284,12 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Auditing</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -278,11 +303,13 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>RBAC</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -296,11 +323,13 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   <tr>
     <td>Column level masks</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -314,6 +343,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   <tr>
@@ -323,17 +353,19 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   
   <!-- Server production-readiness (support running as a HMS replacement) Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">Server production-readiness (support running as a HMS replacement)</td>
+    <td colspan="8" bgcolor="grey" align="center">Server production-readiness (support running as a HMS replacement)</td>
   </tr>
 
   <tr>
     <td>Monitoring and Telemetry</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -347,6 +379,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   <tr>
@@ -356,17 +389,19 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   
   <!-- Tables Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">Tables</td>
+    <td colspan="8" bgcolor="grey" align="center">Tables</td>
   </tr>
   
   <tr>
     <td rowspan="3">External table reads & writes</td>
     <td>API + Server</td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
@@ -380,10 +415,12 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Delta integration</td>
     <td></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
@@ -398,9 +435,11 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Delta+Spark integration</td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
@@ -416,11 +455,13 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Delta-Spark integration</td>
     <td></td>
     <td></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
@@ -432,6 +473,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   
   <tr>
@@ -441,10 +483,12 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center">🛠️</td>
     <td align="center">🛠️</td>
     <td align="center">🛠️</td>
+    <td align="center">🛠️</td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Delta integration</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -459,6 +503,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   
@@ -469,17 +514,19 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   
   <!-- Views Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">Views</td>
+    <td colspan="8" bgcolor="grey" align="center">Views</td>
   </tr>
   
   <tr>
     <td rowspan="1">Basic Spark SQL flavor views</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -494,12 +541,14 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   
   <tr>
     <td rowspan="1">Iceberg view support</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -514,6 +563,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td align="center">🛠️</td>
+    <td align="center">🛠️</td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
 
@@ -524,7 +574,8 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
-    <td align="center">🛠️</td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   
   <tr>
@@ -533,6 +584,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td align="center">🛠️</td>
     <td align="center">🛠️</td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
@@ -544,17 +596,19 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   
   <!-- Non-tabular and AI assets Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">Non-tabular and AI assets</td>
+    <td colspan="8" bgcolor="grey" align="center">Non-tabular and AI assets</td>
   </tr>
   
   <tr>
     <td rowspan="3">Functions (SQL UDFs, Python UDFs)</td>
     <td>API + Server</td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
@@ -568,9 +622,11 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Spark integration</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -585,12 +641,14 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   
   <tr>
     <td rowspan="1">Remote functions</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -606,9 +664,11 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Spark integration</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -623,10 +683,12 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Spark integration</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -642,6 +704,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>MLflow integration</td>
@@ -650,9 +713,11 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   <tr>
     <td>Spark integration</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -667,6 +732,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   
@@ -677,62 +743,57 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   
   <!-- Sharing Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">Sharing</td>
+    <td colspan="8" bgcolor="grey" align="center">Sharing</td>
   </tr>
   
   <tr>
-    <td rowspan="1">Delta Sharing integration</td>
+    <td rowspan="1"><a href="https://github.com/OpenSharing-IO/OpenSharing">OpenSharing</a> Shares</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
     <td></td>
     <td></td>
-    <td align="center">❓</td>
+    <td></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   
   <tr>
-    <td rowspan="1">Shares</td>
+    <td rowspan="1"><a href="https://github.com/OpenSharing-IO/OpenSharing">OpenSharing</a> Recipients</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
     <td></td>
     <td></td>
-    <td align="center">❓</td>
+    <td></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   
   <tr>
-    <td rowspan="1">Recipients</td>
+    <td rowspan="1"><a href="https://github.com/OpenSharing-IO/OpenSharing">OpenSharing</a> Providers</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
     <td></td>
     <td></td>
-    <td align="center">❓</td>
-  </tr>
-  
-  <tr>
-    <td rowspan="1">Providers</td>
-    <td>API + Server</td>
     <td></td>
-    <td></td>
-    <td></td>
-    <td></td>
-    <td align="center">❓</td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
   
   <!-- Federation Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">Federation</td>
+    <td colspan="8" bgcolor="grey" align="center">Federation</td>
   </tr>
   
   <tr>
     <td rowspan="1">Connections</td>
     <td>API + Server</td>
+    <td></td>
     <td></td>
     <td></td>
     <td></td>
@@ -747,6 +808,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   
@@ -757,11 +819,12 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
+    <td></td>
     <td align="center">❓</td>
   </tr>
   
   <!-- UI Section -->
   <tr>
-    <td colspan="7" bgcolor="grey" align="center">UI (needs to be completed)</td>
+    <td colspan="8" bgcolor="grey" align="center">UI (needs to be completed)</td>
   </tr>
 </table>
