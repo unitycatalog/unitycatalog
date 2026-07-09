@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 
 public class TokenProviderTest {
@@ -108,6 +109,38 @@ public class TokenProviderTest {
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+  }
+
+  @Test
+  public void testCreatePassesThroughAlreadyCaseInsensitiveMap() {
+    // A map whose simple class name is "CaseInsensitiveStringMap" is treated as already
+    // case-insensitive and passed through as-is. Backing it with a
+    // case-insensitive map and using lower-cased keys verifies lookups still resolve.
+    CaseInsensitiveStringMap configs = new CaseInsensitiveStringMap();
+    configs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
+    configs.put("oauth.uri", OAUTH_URI);
+    configs.put("oauth.clientid", CLIENT_ID);
+    configs.put("oauth.clientsecret", CLIENT_SECRET);
+
+    TokenProvider provider = TokenProvider.create(configs);
+
+    assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
+    assertThat(provider.configs())
+        .hasSize(4)
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
+        .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+  }
+
+  /**
+   * Minimal stand-in named to match the class-simple-name check in {@code TokenProvider.create};
+   * backed by a case-insensitive map so lookups are case-insensitive.
+   */
+  private static class CaseInsensitiveStringMap extends TreeMap<String, String> {
+    CaseInsensitiveStringMap() {
+      super(String.CASE_INSENSITIVE_ORDER);
+    }
   }
 
   @Test
