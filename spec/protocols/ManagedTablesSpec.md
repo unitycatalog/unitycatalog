@@ -862,13 +862,34 @@ Publishing (copying a ratified commit file to `_delta_log/<v>.json`) and reporti
 
 ##### Commit recovery
 
-`add-commit` carries no idempotency token in this protocol version; the UUID embedded in `file-name` is the deduplication handle. When a commit outcome is unknown (`CommitStateUnknownException`, a network failure, or a process restart mid-commit), the client recovers as follows:
+`add-commit` carries no idempotency token in this protocol version. Instead, the server deduplicates retries using:
+
+- the UUID embedded in `file-name` (the primary handle), and
+- the commit file's content (a backup handle the server may consult once the commit for that version has been backfilled).
+
+A retry is deduplicated only when these are unchanged from the original attempt.
+
+**Retrying the same RPC on `5xx` or timeout is safe.** A `5xx` or timeout leaves the commit's outcome unknown. The client may simply resend the same RPC. Because the dedup handle is unchanged, the server resolves the retry to the actual outcome of the original attempt instead of treating it as a new commit — so a retry is never harmful. Each retry returns exactly one of:
+
+- **`200`** — the commit landed. This includes the case where an earlier attempt already landed and the dedup handle recognizes this retry as the same commit.
+- **`409` conflict** — the commit definitively did *not* land; the client must rebase (see below) before trying again. This does not necessarily mean a different commit occupies the target version — it may be a version conflict (`CommitVersionConflictException`: another writer won the version) or a precondition failure (`UpdateRequirementConflictException`: an `assert-etag` / `assert-table-uuid` requirement no longer holds because the table changed underneath the proposal, e.g. a metadata-only change).
+- **`429`** (`ResourceExhaustedException`) — the unbackfilled-commit limit is reached. The commit did not land, but retrying (identically *or* rebased) will keep failing until the client publishes and reports backfill for pending versions; back off and backfill first.
+- **another `5xx` / timeout** (`CommitStateUnknownException`, or a transient server error) — the outcome is still unknown; keep retrying the same RPC.
+
+**A retry without rebasing must be byte-for-byte identical.** To retry an unknown-outcome commit *without* rebasing, resend the exact same commit — same target `version`, same `file-name` (same UUID), and same staged commit file content. Never regenerate the file, allocate a new UUID, or bump the version. Any such change makes the request a new, distinct commit proposal and defeats deduplication.
+
+**Rebase only when the client knows the attempt did not land.** Rebasing means rebuilding the commit against the current table state and retrying with a fresh commit file and a new UUID. The target version may or may not change: it advances to the new latest version + 1 if another writer won the version, but can stay the same if the table changed without taking that version. The client may rebase only after confirming the previous attempt did not land, via either:
+
+- a **`409` conflict** response (`CommitVersionConflictException` or `UpdateRequirementConflictException` — the server has determined the proposal did not land), or
+- **checking table status** — reloading the table and seeing that the proposed version was won by another writer, or is otherwise not its own commit.
+
+**Warning:** Never rebase to *learn* the outcome. Submitting a rebased commit (a new version / commit file / UUID) while the outcome is still unknown — or when the attempt actually landed — creates a **duplicate commit**: the rebased proposal re-commits the same logical change on top of a state that already includes it. Always resolve the outcome first (below), then decide whether to resend identically or to rebase.
+
+When the outcome is unknown (`CommitStateUnknownException`, a network failure, or a process restart mid-commit), the client resolves it in one of two ways. The simplest is to resend the identical RPC (safe, as above) and read its response: `200` means it landed; a `409` (`CommitVersionConflictException` / `UpdateRequirementConflictException`) means it did not, so rebase; another `5xx` / timeout leaves it unknown, so keep resending. Alternatively, the client can inspect table state directly:
 
 1. Reload the table via [`loadTable`](#load-a-table).
 2. If `latest-table-version` >= `v` (the proposed version), look up version `v`: in the `commits` array, or in `_delta_log` if already published. If its `file-name` matches the UUID filename the client generated, the commit was accepted; resume from publishing. If it differs, a concurrent writer won version `v`; rebuild the snapshot and retry at the new latest version + 1.
 3. If `latest-table-version` is `v-1`, the proposal was not accepted; re-send the same `add-commit`.
-
-Re-sending an `add-commit` that was already accepted fails with `CommitVersionConflictException`; the client distinguishes "my commit won" from "someone else won" by the `file-name` comparison above, never by the error code alone.
 
 In this protocol version, conflict responses carry no commit information: the reload in step 1 is how the client learns the outcome of a contended commit.
 
