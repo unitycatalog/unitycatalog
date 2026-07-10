@@ -32,13 +32,14 @@ should see:
 # | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #
 #  \____/|_| |_|_|\__|\__, |  \_____\__,_|\__\__,_|_|\___/ \__, | #
 #                      __/ |                                __/ | #
-#                     |___/      v0.5.0-SNAPSHOT           |___/  #
+#                     |___/           v<version>           |___/  #
 ###################################################################
 ```
 
 !!! note "Server version string"
-    Released builds display `v0.5.0`. When you build from the `main` branch, the banner shows
-    `v0.5.0-SNAPSHOT`.
+    `<version>` is the version you are running. Released builds display the release version (for
+    example `v0.5.0`), while builds from the `main` branch append `-SNAPSHOT` (for example
+    `v0.5.0-SNAPSHOT`).
 
 The server can be started by issuing the below command from the project root directory:
 

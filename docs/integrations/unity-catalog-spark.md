@@ -278,7 +278,7 @@ your Spark version. Use `hadoop-aws` and `hadoop-azure` **3.4.1** with Spark 4.0
         --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
 
-=== "Google Cloud Storage"
+=== "Google Cloud Storage (Spark 4.0.x)"
 
     ```sh
     export CATALOG_NAME=unity
@@ -289,6 +289,27 @@ your Spark version. Use `hadoop-aws` and `hadoop-azure` **3.4.1** with Spark 4.0
         --master "local[*]" \
         --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
         --packages "io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+        --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
+        --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
+        --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+        --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+        --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
+    ```
+
+=== "Google Cloud Storage (Spark 4.1.x)"
+
+    ```sh
+    export CATALOG_NAME=unity
+    export UC_URI=http://localhost:8080
+    export UC_TOKEN=
+
+    bin/spark-sql --name "gcs-uc-test" \
+        --master "local[*]" \
+        --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
+        --packages "io.delta:delta-spark_4.1_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.5.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
