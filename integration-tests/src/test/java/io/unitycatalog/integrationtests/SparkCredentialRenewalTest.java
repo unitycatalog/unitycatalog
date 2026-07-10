@@ -69,7 +69,7 @@ public class SparkCredentialRenewalTest {
 
   // Define the CREDENTIAL_RENEWAL_TEST_CRED_SCOPED_FS_ENABLED environment variable.
   private static final boolean CRED_SCOPED_FS_ENABLED =
-      envAsBoolean(PREFIX + "CRED_SCOPED_FS_ENABLED", false);
+      envAsBoolean(PREFIX + "CRED_SCOPED_FS_ENABLED", true);
 
   // Define the CREDENTIAL_RENEWAL_TEST_DURATION_SECONDS environment variable, which control how
   // long will the test run. 90 minutes by default.
@@ -124,13 +124,9 @@ public class SparkCredentialRenewalTest {
     sql("DROP TABLE IF EXISTS %s", dstTable(tableType));
     if (MANAGED_TABLE_TYPE.equals(tableType)) {
       sql(
-          "CREATE TABLE %s (id INT) USING delta PARTITIONED BY (partition INT)"
-              + " TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')",
+          "CREATE TABLE %s (id INT) USING delta PARTITIONED BY (partition INT)",
           srcTable(tableType));
-      sql(
-          "CREATE TABLE %s (id INT) USING delta"
-              + " TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')",
-          dstTable(tableType));
+      sql("CREATE TABLE %s (id INT) USING delta", dstTable(tableType));
     } else {
       sql(
           "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",

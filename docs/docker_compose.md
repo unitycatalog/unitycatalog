@@ -46,5 +46,5 @@ and the mount will reflect the changes in the container.
 
 The configuration will also create a persistent, named volume to store the
 server's data. This will persist between restarts of the container. See the
-[deployment](./deployment.md) page for more details on how to configure other
+[deployment](./server/deployment.md) page for more details on how to configure other
 databases like Postgres.

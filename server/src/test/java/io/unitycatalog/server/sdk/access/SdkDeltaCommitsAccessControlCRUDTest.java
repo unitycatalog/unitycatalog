@@ -6,6 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.api.DeltaCommitsApi;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.model.DeltaAddCommitUpdate;
+import io.unitycatalog.client.delta.model.DeltaAssertTableUUID;
+import io.unitycatalog.client.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateStagingTable;
@@ -22,8 +26,11 @@ import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,7 +58,9 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
           new ColumnInfo()
               .name("test_col")
               .typeText("INTEGER")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson(
+                  "{\"name\":\"test_col\",\"type\":\"integer\","
+                      + "\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .nullable(true));
@@ -90,13 +99,15 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
     StagingTableInfo stagingTableInfo = adminTablesApi.createStagingTable(createStagingTable);
 
     // Then, create the managed table using the staging location
+    Map<String, String> properties = new HashMap<>(TestUtils.PROPERTIES);
+    properties.put(TableProperties.UC_TABLE_ID, stagingTableInfo.getId());
     CreateTable createTable =
         new CreateTable()
             .name(TestUtils.TABLE_NAME)
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
             .columns(COLUMNS)
-            .properties(TestUtils.PROPERTIES)
+            .properties(properties)
             .comment(TestUtils.COMMENT)
             .storageLocation(stagingTableInfo.getStagingLocation())
             .tableType(TableType.MANAGED)
@@ -207,5 +218,33 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
         () -> unauthCommitsApi.commit(commit2), ErrorCode.UNAUTHENTICATED, "authorization");
     assertApiException(
         () -> getCommits(unauthCommitsApi), ErrorCode.UNAUTHENTICATED, "authorization");
+
+    // Delta updateTable's add-commit shares the same UPDATE_TABLE expression as DeltaCommitsApi
+    // postCommit, so SELECT-only users must be denied here too. Pins that the new action inherits
+    // the existing authz contract.
+    DeltaTablesApi readUserDeltaApi = new DeltaTablesApi(TestUtils.createApiClient(readUserConfig));
+    DeltaUpdateTableRequest addCommitRequest =
+        new DeltaUpdateTableRequest()
+            .requirements(
+                List.of(
+                    new DeltaAssertTableUUID()
+                        .uuid(java.util.UUID.fromString(tableInfo.getTableId()))))
+            .updates(
+                List.of(
+                    new DeltaAddCommitUpdate()
+                        .commit(
+                            new io.unitycatalog.client.delta.model.DeltaCommit()
+                                .version(3L)
+                                .timestamp(1700000003L)
+                                .fileName("00000003.json")
+                                .fileSize(1024L)
+                                .fileModificationTimestamp(1700000003L))));
+    assertPermissionDenied(
+        () ->
+            readUserDeltaApi.updateTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                tableInfo.getName(),
+                addCommitRequest));
   }
 }

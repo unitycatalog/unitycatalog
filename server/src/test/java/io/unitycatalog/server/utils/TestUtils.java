@@ -4,12 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.delta.DeltaApiException;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
@@ -60,17 +66,13 @@ public class TestUtils {
   public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
 
   public static ApiClient createApiClient(ServerConfig serverConfig) {
-    ApiClient apiClient = new ApiClient();
     URI uri = URI.create(serverConfig.getServerUrl());
-    int port = uri.getPort();
-    apiClient.setHost(uri.getHost());
-    apiClient.setPort(port);
-    apiClient.setScheme(uri.getScheme());
-    if (serverConfig.getAuthToken() != null && !serverConfig.getAuthToken().isEmpty()) {
-      apiClient.setRequestInterceptor(
-          request -> request.header("Authorization", "Bearer " + serverConfig.getAuthToken()));
-    }
-    return apiClient;
+    String token = serverConfig.getAuthToken() != null ? serverConfig.getAuthToken() : "";
+    return ApiClientBuilder.create()
+        .uri(uri)
+        .tokenProvider(TokenProvider.create(Map.of("type", "static", "token", token)))
+        .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(1).build())
+        .build();
   }
 
   public static void assertApiException(
@@ -82,7 +84,48 @@ public class TestUtils {
     assertThat(ex.getCode()).isEqualTo(errorCode.getHttpStatus().code());
   }
 
+  /**
+   * Asserts the call fails by checking the HTTP status code is {@code expectedStatus}. Use for
+   * body-less responses; otherwise use {@link #assertApiException} / {@link
+   * #assertDeltaApiException}.
+   */
+  public static void assertApiExceptionStatusOnly(Executable executable, int expectedStatus) {
+    ApiException ex = assertThrows(ApiException.class, executable);
+    assertThat(ex.getCode()).isEqualTo(expectedStatus);
+  }
+
+  public static void assertDeltaApiException(
+      Executable executable, DeltaErrorType expectedType, String expectedMessageSubstring) {
+    int expectedCode = ErrorCode.getDeltaHttpStatus(expectedType.getValue()).code();
+    ApiException ex = assertThrows(ApiException.class, executable);
+    // Check message first for better diagnostics on failure (includes the full response body)
+    assertThat(ex.getMessage()).contains(expectedMessageSubstring);
+    assertThat(ex.getCode()).isEqualTo(expectedCode);
+    Optional<DeltaApiException> deltaExOpt = DeltaApiException.from(ex);
+    assertThat(deltaExOpt)
+        .as("Failed to parse Delta error response: " + ex.getResponseBody())
+        .isPresent();
+    DeltaApiException delta = deltaExOpt.get();
+    assertThat(delta.getErrorCode()).isEqualTo(expectedCode);
+    assertThat(delta.getErrorType()).isEqualTo(expectedType);
+    assertThat(delta.getErrorMessage()).contains(expectedMessageSubstring);
+  }
+
+  /**
+   * Asserts the call fails with PERMISSION_DENIED (HTTP 403) and the exception message contains
+   * {@code containsMessage}. Use this when the test cares that a specific authz check fired -- e.g.
+   * a staging-table ownership check -- rather than just that something produced a 403.
+   */
+  public static void assertPermissionDenied(Executable executable, String containsMessage) {
+    assertApiException(executable, ErrorCode.PERMISSION_DENIED, containsMessage);
+  }
+
+  /**
+   * Asserts the call fails with PERMISSION_DENIED (HTTP 403). Only checks the error code and the
+   * generic {@code "PERMISSION_DENIED"} marker in the message; use {@link
+   * #assertPermissionDenied(Executable, String)} when the specific cause matters.
+   */
   public static void assertPermissionDenied(Executable executable) {
-    assertApiException(executable, ErrorCode.PERMISSION_DENIED, "PERMISSION_DENIED");
+    assertPermissionDenied(executable, "PERMISSION_DENIED");
   }
 }

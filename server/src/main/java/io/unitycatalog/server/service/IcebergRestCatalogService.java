@@ -1,7 +1,8 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
@@ -10,6 +11,8 @@ import com.linecorp.armeria.server.annotation.Head;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
@@ -55,24 +58,18 @@ public class IcebergRestCatalogService {
           Endpoint.V1_REPORT_METRICS,
           Endpoint.V1_LIST_TABLES);
 
-  private final CatalogService catalogService;
   private final SchemaService schemaService;
-  private final TableService tableService;
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
   private final TableRepository tableRepository;
   private final SessionFactory sessionFactory;
 
   public IcebergRestCatalogService(
-      CatalogService catalogService,
       SchemaService schemaService,
-      TableService tableService,
       TableConfigService tableConfigService,
       MetadataService metadataService,
       Repositories repositories) {
-    this.catalogService = catalogService;
     this.schemaService = schemaService;
-    this.tableService = tableService;
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
     this.tableRepository = repositories.getTableRepository();
@@ -83,6 +80,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/config")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public ConfigResponse config(@Param("warehouse") Optional<String> catalogOpt) {
     String catalog =
         catalogOpt.orElseThrow(
@@ -100,6 +99,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public ListNamespacesResponse listNamespaces(
       @Param("catalog") String catalog, @Param("parent") Optional<String> parent)
       throws JsonProcessingException {
@@ -128,6 +129,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public GetNamespaceResponse getNamespace(
       @Param("catalog") String catalog, @Param("namespace") String namespace)
       throws JsonProcessingException {
@@ -142,6 +145,8 @@ public class IcebergRestCatalogService {
   // Table APIs
 
   @Head("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse tableExists(
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
@@ -160,6 +165,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public LoadTableResponse loadTable(
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
@@ -186,6 +193,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public LoadViewResponse loadView(
       @Param("namespace") String namespace, @Param("view") String view) {
     // this is not supported yet, but Iceberg REST client tries to load
@@ -196,6 +205,8 @@ public class IcebergRestCatalogService {
   }
 
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse reportMetrics(
       @Param("namespace") String namespace, @Param("table") String table) {
     return HttpResponse.of(HttpStatus.OK);
@@ -203,28 +214,18 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
       @Param("catalog") String catalog, @Param("namespace") String namespace)
       throws JsonProcessingException {
-    AggregatedHttpResponse resp =
-        tableService
-            .listTables(
-                catalog,
-                namespace,
-                Optional.of(Integer.MAX_VALUE),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty())
-            .aggregate()
-            .join();
+    ListTablesResponse tables =
+        tableRepository.listTables(
+            catalog, namespace, Optional.of(Integer.MAX_VALUE), Optional.empty(), false, false);
     List<TableIdentifier> filteredTables;
     try (Session session = sessionFactory.openSession()) {
       filteredTables =
-          Objects.requireNonNull(
-                  JsonUtils.getInstance()
-                      .readValue(resp.contentUtf8(), ListTablesResponse.class)
-                      .getTables())
-              .stream()
+          Objects.requireNonNull(tables.getTables()).stream()
               .filter(
                   tableInfo -> {
                     String metadataLocation =

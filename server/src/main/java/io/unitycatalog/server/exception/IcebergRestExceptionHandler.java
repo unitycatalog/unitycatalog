@@ -1,12 +1,9 @@
 package io.unitycatalog.server.exception;
 
-import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
-import com.linecorp.armeria.server.ServiceRequestContext;
-import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
-import io.unitycatalog.server.utils.RESTObjectMapper;
+import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import lombok.SneakyThrows;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
@@ -17,47 +14,57 @@ import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 
-public class IcebergRestExceptionHandler implements ExceptionHandlerFunction {
-  @Override
-  public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
-    try {
-      if (cause instanceof BaseException) {
-        // FIXME!! we should probably translate BaseException -> Iceberg REST exception somewhere
-        return handleBaseException((BaseException) cause);
-      } else if (cause instanceof NoSuchNamespaceException
-          || cause instanceof NoSuchTableException
-          || cause instanceof NoSuchViewException) {
-        return createErrorResponse(HttpStatus.NOT_FOUND, cause);
-      } else if (cause instanceof AlreadyExistsException
-          || cause instanceof NamespaceNotEmptyException
-          || cause instanceof CommitFailedException) {
-        return createErrorResponse(HttpStatus.CONFLICT, cause);
-      } else if (cause instanceof IllegalArgumentException
-          || cause instanceof BadRequestException) {
-        return createErrorResponse(HttpStatus.BAD_REQUEST, cause);
-      } else {
-        return createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, cause);
-      }
-    } catch (Exception e) {
-      return HttpResponse.of(HttpStatus.INTERNAL_SERVER_ERROR);
+/**
+ * Exception handler for the Iceberg REST Catalog API. Formats errors using Iceberg's {@link
+ * ErrorResponse} with the original exception's class name as the error type (e.g.,
+ * "NoSuchTableException"). Uses {@link IcebergObjectMapper} for Iceberg-specific serialization.
+ */
+public class IcebergRestExceptionHandler extends BaseExceptionHandler {
+
+  /**
+   * Walks the cause chain past BaseException wrappers to find the original exception, so the
+   * Iceberg error type reflects the actual exception (e.g., "NoSuchTableException") rather than
+   * "BaseException".
+   */
+  private static Throwable getOriginalException(BaseException exception) {
+    Throwable current = exception;
+    while (current instanceof BaseException && current.getCause() != null) {
+      current = current.getCause();
     }
+    return current;
   }
 
-  private HttpResponse handleBaseException(BaseException exception) {
-    return createErrorResponse(exception.getErrorCode().getHttpStatus(), exception);
+  @Override
+  protected BaseException toBaseException(Throwable cause) {
+    if (cause instanceof NoSuchNamespaceException
+        || cause instanceof NoSuchTableException
+        || cause instanceof NoSuchViewException) {
+      return wrapException(ErrorCode.NOT_FOUND, cause);
+    }
+    if (cause instanceof AlreadyExistsException
+        || cause instanceof NamespaceNotEmptyException
+        || cause instanceof CommitFailedException) {
+      return wrapException(ErrorCode.ALREADY_EXISTS, cause);
+    }
+    if (cause instanceof BadRequestException) {
+      return wrapException(ErrorCode.INVALID_ARGUMENT, cause);
+    }
+    return super.toBaseException(cause);
   }
 
   @SneakyThrows
-  private HttpResponse createErrorResponse(HttpStatus status, Throwable cause) {
+  @Override
+  protected HttpResponse createErrorResponse(BaseException exception) {
+    HttpStatus status = exception.getErrorCode().getHttpStatus();
     return HttpResponse.of(
         status,
         MediaType.JSON,
-        RESTObjectMapper.mapper()
+        IcebergObjectMapper.mapper()
             .writeValueAsString(
                 ErrorResponse.builder()
                     .responseCode(status.code())
-                    .withType(cause.getClass().getSimpleName())
-                    .withMessage(cause.getMessage())
+                    .withType(getOriginalException(exception).getClass().getSimpleName())
+                    .withMessage(exception.getErrorMessage())
                     .build()));
   }
 }

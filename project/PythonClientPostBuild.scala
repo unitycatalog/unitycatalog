@@ -104,6 +104,64 @@ object PythonClientPostBuild {
       }
     }
     moveGeneratedUnityCatalog(log, openApiOutputDir)
+    patchDeltaDataTypeModule(log, baseDir, openApiOutputDir)
+  }
+
+  /**
+   * Copies the hand-written delta_data_type_module.py into the generated delta package's
+   * internal/serde/ subpackage and appends an import to the generated models/__init__.py
+   * so the patch is applied automatically when the package is imported.
+   */
+  def patchDeltaDataTypeModule(
+      log: Logger,
+      baseDir: File,
+      openApiOutputDir: String
+  ): Unit = {
+    val srcModule = baseDir.toPath.resolve("src")
+      .resolve("unitycatalog").resolve("delta").resolve("internal").resolve("serde")
+      .resolve("delta_data_type_module.py")
+    val targetDir = Paths.get(openApiOutputDir, "src", "unitycatalog", "delta")
+    val targetInternalDir = targetDir.resolve("internal")
+    val targetSerdeDir = targetInternalDir.resolve("serde")
+    val targetModule = targetSerdeDir.resolve("delta_data_type_module.py")
+
+    if (!Files.exists(srcModule)) {
+      log.warn(s"delta_data_type_module.py not found at $srcModule, skipping patch")
+      return
+    }
+    if (!Files.exists(targetDir)) {
+      log.warn(s"Delta package not found at $targetDir, skipping patch")
+      return
+    }
+
+    // Copy the module into internal/serde/ subdirectory
+    Files.createDirectories(targetSerdeDir)
+    Files.copy(srcModule, targetModule, StandardCopyOption.REPLACE_EXISTING)
+    // Create __init__.py for the internal and serde packages
+    val internalInit = targetInternalDir.resolve("__init__.py")
+    if (!Files.exists(internalInit)) {
+      Files.writeString(internalInit, "")
+    }
+    val serdeInit = targetSerdeDir.resolve("__init__.py")
+    if (!Files.exists(serdeInit)) {
+      Files.writeString(serdeInit, "")
+    }
+    log.info(s"Copied delta_data_type_module.py to $targetModule")
+
+    // Append import to models/__init__.py so the patch activates on any model import
+    val modelsInit = targetDir.resolve("models").resolve("__init__.py")
+    if (Files.exists(modelsInit)) {
+      val patchLine = "\n# Auto-import DeltaDataType string-or-object patch\nimport unitycatalog.delta.internal.serde.delta_data_type_module  # noqa: F401\n"
+      val content = new String(Files.readAllBytes(modelsInit))
+      if (!content.contains("delta_data_type_module")) {
+        Files.write(modelsInit, (content + patchLine).getBytes)
+        log.info(s"Patched $modelsInit with delta_data_type_module import")
+      } else {
+        log.info(s"$modelsInit already patched, skipping")
+      }
+    } else {
+      log.warn(s"$modelsInit not found, skipping patch")
+    }
   }
 
     /**

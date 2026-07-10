@@ -6,12 +6,14 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.FunctionsApi;
 import io.unitycatalog.client.api.GrantsApi;
 import io.unitycatalog.client.api.ModelVersionsApi;
 import io.unitycatalog.client.api.RegisteredModelsApi;
+import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
@@ -450,10 +452,9 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
   @SneakyThrows
   protected void setupCommonCatalogAndSchema() {
     ServerConfig principal1Config = createTestUserServerConfig(PRINCIPAL_1);
-    io.unitycatalog.client.api.CatalogsApi principal1CatalogsApi =
-        new io.unitycatalog.client.api.CatalogsApi(TestUtils.createApiClient(principal1Config));
-    io.unitycatalog.client.api.SchemasApi principal1SchemasApi =
-        new io.unitycatalog.client.api.SchemasApi(TestUtils.createApiClient(principal1Config));
+    CatalogsApi principal1CatalogsApi =
+        new CatalogsApi(TestUtils.createApiClient(principal1Config));
+    SchemasApi principal1SchemasApi = new SchemasApi(TestUtils.createApiClient(principal1Config));
 
     // give user CREATE CATALOG
     grantPermissions(
@@ -481,7 +482,7 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
           new ColumnInfo()
               .name("id")
               .typeText("INT")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson("{\"name\":\"id\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .nullable(true));

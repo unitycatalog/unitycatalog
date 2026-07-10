@@ -33,6 +33,8 @@ nav:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
       - Users and Privileges: server/users-privileges.md
+      - Deployment: server/deployment.md
+      - Deploy for AWS: server/aws.md
   - Integrations:
       - Overview: integrations/index.md
       - Apache Spark: integrations/unity-catalog-spark.md
@@ -44,7 +46,6 @@ nav:
       - SpiceAI: integrations/unity-catalog-spiceai.md
       - Trino: integrations/unity-catalog-trino.md
       - XTable: integrations/unity-catalog-xtable.md
-  - Deployment: deployment.md
   - AI:
       - Quickstart: ai/quickstart.md
       - Usage: ai/usage.md

@@ -31,8 +31,10 @@ import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.sdk.volume.SdkVolumeOperations;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
+import java.util.Map;
 import java.util.Optional;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
@@ -111,7 +113,8 @@ public class SdkManagedLocationTest extends BaseManagedLocationTest {
             .name(TABLE_NAME)
             .dataSourceFormat(DataSourceFormat.DELTA)
             .tableType(TableType.MANAGED)
-            .storageLocation(stagingTableInfo.getStagingLocation()));
+            .storageLocation(stagingTableInfo.getStagingLocation())
+            .properties(Map.of(TableProperties.UC_TABLE_ID, stagingTableInfo.getId())));
     tablesApi.deleteTable(TABLE_FULL_NAME);
 
     VolumeInfo externalVolumeInfo = volumeOperations.createVolume(createExternalVolume);

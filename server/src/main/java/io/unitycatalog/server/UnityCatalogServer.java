@@ -19,6 +19,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -49,11 +50,13 @@ import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.delta.DeltaApiMappers;
+import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
+import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
-import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
@@ -118,8 +121,16 @@ public class UnityCatalogServer {
     UnityCatalogAuthorizer authorizer =
         initializeAuthorizer(
             unityCatalogServerBuilder.serverProperties, hibernateConfigurator, repositories);
+    // Configure error response stack traces
+    BaseExceptionHandler.setIncludeStackTrace(
+        unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
-    addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
+    addApiServices(
+        armeriaServerBuilder,
+        unityCatalogServerBuilder,
+        unityCatalogServerBuilder.serverProperties,
+        authorizer,
+        repositories);
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
@@ -149,37 +160,42 @@ public class UnityCatalogServer {
   private void addApiServices(
       ServerBuilder armeriaServerBuilder,
       UnityCatalogServer.Builder unityCatalogServerBuilder,
+      ServerProperties serverProperties,
       UnityCatalogAuthorizer authorizer,
       Repositories repositories) {
     LOGGER.info("Adding Unity Catalog API services...");
     CloudCredentialVendor cloudCredentialVendor =
         unityCatalogServerBuilder.cloudCredentialVendor != null
             ? unityCatalogServerBuilder.cloudCredentialVendor
-            : new CloudCredentialVendor(unityCatalogServerBuilder.serverProperties);
+            : new CloudCredentialVendor(serverProperties);
     StorageCredentialVendor storageCredentialVendor =
         new StorageCredentialVendor(cloudCredentialVendor, repositories.getExternalLocationUtils());
 
     // Add support for Unity Catalog APIs
-    AuthService authService =
-        new AuthService(securityContext, unityCatalogServerBuilder.serverProperties, repositories);
+    AuthService authService = new AuthService(securityContext, serverProperties, repositories);
     PermissionService permissionService = new PermissionService(authorizer, repositories);
     Scim2UserService scim2UserService = new Scim2UserService(authorizer, repositories);
     Scim2SelfService scim2SelfService = new Scim2SelfService(authorizer, repositories);
-    CatalogService catalogService = new CatalogService(authorizer, repositories);
-    SchemaService schemaService = new SchemaService(authorizer, repositories);
-    VolumeService volumeService = new VolumeService(authorizer, repositories);
-    TableService tableService = new TableService(authorizer, repositories);
-    StagingTableService stagingTableService = new StagingTableService(authorizer, repositories);
-    FunctionService functionService = new FunctionService(authorizer, repositories);
-    ModelService modelService = new ModelService(authorizer, repositories);
-    CredentialService credentialService = new CredentialService(authorizer, repositories);
+    CatalogService catalogService = new CatalogService(authorizer, repositories, serverProperties);
+    SchemaService schemaService = new SchemaService(authorizer, repositories, serverProperties);
+    VolumeService volumeService = new VolumeService(authorizer, repositories, serverProperties);
+    TableService tableService = new TableService(authorizer, repositories, serverProperties);
+    StagingTableService stagingTableService =
+        new StagingTableService(authorizer, repositories, serverProperties);
+    FunctionService functionService =
+        new FunctionService(authorizer, repositories, serverProperties);
+    ModelService modelService = new ModelService(authorizer, repositories, serverProperties);
+    CredentialService credentialService =
+        new CredentialService(authorizer, repositories, serverProperties);
     ExternalLocationService externalLocationService =
-        new ExternalLocationService(authorizer, repositories);
-    DeltaCommitsService deltaCommitsService = new DeltaCommitsService(authorizer, repositories);
+        new ExternalLocationService(authorizer, repositories, serverProperties);
+    DeltaCommitsService deltaCommitsService =
+        new DeltaCommitsService(authorizer, repositories, serverProperties);
     MetastoreService metastoreService = new MetastoreService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
-        new TemporaryTableCredentialsService(storageCredentialVendor, repositories);
+        new TemporaryTableCredentialsService(
+            storageCredentialVendor, repositories, serverProperties);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
         new TemporaryVolumeCredentialsService(storageCredentialVendor, repositories);
     TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
@@ -244,12 +260,14 @@ public class UnityCatalogServer {
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
-        unityCatalogServerBuilder.serverProperties,
+        serverProperties,
         storageCredentialVendor,
         catalogService,
         schemaService,
         tableService,
         repositories);
+    addDeltaApiServices(
+        armeriaServerBuilder, authorizer, repositories, serverProperties, storageCredentialVendor);
   }
 
   private void addIcebergApiServices(
@@ -263,7 +281,7 @@ public class UnityCatalogServer {
     LOGGER.info("Adding Iceberg services...");
 
     // Add support for Iceberg REST APIs
-    ObjectMapper icebergMapper = RESTObjectMapper.mapper();
+    ObjectMapper icebergMapper = IcebergObjectMapper.mapper();
     JacksonRequestConverterFunction icebergRequestConverter =
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
@@ -276,14 +294,26 @@ public class UnityCatalogServer {
     armeriaServerBuilder.annotatedService(
         BASE_PATH + "iceberg",
         new IcebergRestCatalogService(
-            catalogService,
-            schemaService,
-            tableService,
-            tableConfigService,
-            metadataService,
-            repositories),
+            schemaService, tableConfigService, metadataService, repositories),
         icebergRequestConverter,
         icebergResponseConverter);
+  }
+
+  private void addDeltaApiServices(
+      ServerBuilder armeriaServerBuilder,
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties,
+      StorageCredentialVendor storageCredentialVendor) {
+    LOGGER.info("Adding UC Delta API services...");
+    DeltaApiService deltaApiService =
+        new DeltaApiService(authorizer, repositories, serverProperties, storageCredentialVendor);
+    ObjectMapper deltaMapper = DeltaApiMappers.MAPPER;
+    armeriaServerBuilder.annotatedService(
+        BASE_PATH,
+        deltaApiService,
+        new JacksonRequestConverterFunction(deltaMapper),
+        new JacksonResponseConverterFunction(deltaMapper));
   }
 
   private void addSecurityDecorators(

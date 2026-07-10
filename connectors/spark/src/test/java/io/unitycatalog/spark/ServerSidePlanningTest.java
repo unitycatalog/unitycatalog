@@ -3,6 +3,7 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
+import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
@@ -96,8 +97,20 @@ public class ServerSidePlanningTest extends BaseSparkIntegrationTest {
     }
 
     if (!sspEnabled) {
-      // SSP disabled (default): loadTable() throws ApiException because credential API fails
-      assertThat(caughtException).isInstanceOf(ApiException.class);
+      // SSP disabled (default): loadTable() throws because the credential API fails. Delta
+      // < 4.3.0 surfaces UC's ApiException directly. Delta >= 4.3.0 ships
+      // UCDeltaTokenBasedRestClient, which wraps the credential-API failure in
+      // io.delta.storage.commit.uccommitcoordinator.exceptions.CredentialFetchFailedException
+      // (matched by short class name to avoid taking a hard dependency on a Delta-internal
+      // exception type).
+      if (DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API)) {
+        assertThat(caughtException)
+            .isNotNull()
+            .satisfies(
+                e -> assertThat(e.getClass().getName()).endsWith("CredentialFetchFailedException"));
+      } else {
+        assertThat(caughtException).isInstanceOf(ApiException.class);
+      }
     } else {
       // SSP enabled: loadTable() succeeds with empty credentials (no ApiException)
       assertThat(caughtException).isNull();

@@ -3,6 +3,7 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
+import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -70,11 +71,6 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   protected static final String ANOTHER_TEST_TABLE = "test_table_another";
-  protected static final String TBLPROPERTIES_CATALOG_OWNED_CLAUSE =
-      String.format(
-          "TBLPROPERTIES ('%s'='%s')",
-          UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW,
-          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE);
 
   /**
    * This class is used for control various options for table creation during test. The tableFormat
@@ -164,7 +160,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
     public String createManagedTableSql() {
       return String.format(
-          "%s TABLE %s.%s.%s %s USING %s %s %s %s %s",
+          "%s TABLE %s.%s.%s %s USING %s %s %s %s",
           ddlCommand(),
           catalogName,
           schemaName,
@@ -172,7 +168,6 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
           columnsClause(),
           tableFormat(),
           partitionClause(),
-          TBLPROPERTIES_CATALOG_OWNED_CLAUSE,
           commentClause(),
           asSelectClause());
     }
@@ -248,9 +243,16 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     return tableFormat().equalsIgnoreCase("DELTA");
   }
 
+  protected abstract boolean isManagedTable();
+
   protected final boolean canUpdateColumnsToUC() {
-    // DELTA tables can't update columns to UC yet.
-    return !tableFormat().equalsIgnoreCase("DELTA") || DeltaVersionUtils.isDeltaAtLeast("4.2.0");
+    if (tableFormat().equalsIgnoreCase("DELTA")) {
+      // Delta external tables don't update columns to UC yet.
+      // Delta managed tables can update columns starting from Delta 4.3.
+      return isManagedTable()
+          && DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API);
+    }
+    return true;
   }
 
   protected List<TableDdlMode> supportedTableDdlModes() {
@@ -481,9 +483,21 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       sql("DROP TABLE %s", fullTableName);
       assertThat(session.catalog().tableExists(fullTableName)).isFalse();
     }
+    // Delta < 4.3.0 forwards the 4-part identifier to UC, which rejects it server-side with
+    // ApiException("Nested namespaces are not supported"). Delta >= 4.3.0 ships
+    // UCDeltaCatalogClientImpl, which rejects the same input client-side with
+    // IllegalArgumentException("UC table identifier must be one of ...") before reaching UC.
+    boolean rejectedClientSide =
+        DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API);
+    Class<? extends Throwable> expectedType =
+        rejectedClientSide ? IllegalArgumentException.class : ApiException.class;
+    String expectedMessage =
+        rejectedClientSide
+            ? "UC table identifier must be one of"
+            : "Nested namespaces are not supported";
     assertThatThrownBy(() -> sql("DROP TABLE a.b.c.d"))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Nested namespaces are not supported");
+        .isInstanceOf(expectedType)
+        .hasMessageContaining(expectedMessage);
   }
 
   // With page size 2 and 3 tables, pagination must occur (2 API calls) for all 3 to be returned.
@@ -546,7 +560,6 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
    * literal used in the INSERT, the expected toString() from the result row (null = byte-array ref
    * check via startsWith("[B@")), and the expected UC catalog metadata fields.
    */
-  @AllArgsConstructor
   @Getter
   private static final class ColSpec {
     private final String name;
@@ -555,10 +568,68 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     private final String rowValue; // null = byte-array object ref, checked with startsWith
     private final ColumnTypeName typeName;
     private final String typeText;
+    private final boolean nullable;
     private final String typeJson;
+
+    private ColSpec(
+        String name,
+        String sqlType,
+        String insertValue,
+        String rowValue,
+        ColumnTypeName typeName,
+        String typeText,
+        String dataTypeJson) {
+      this(name, sqlType, insertValue, rowValue, typeName, typeText, true, "{}", dataTypeJson);
+    }
+
+    private ColSpec(
+        String name,
+        String sqlType,
+        String insertValue,
+        String rowValue,
+        ColumnTypeName typeName,
+        String typeText,
+        boolean nullable,
+        String metadataJson,
+        String dataTypeJson) {
+      this.name = name;
+      this.sqlType = sqlType;
+      this.insertValue = insertValue;
+      this.rowValue = rowValue;
+      this.typeName = typeName;
+      this.typeText = typeText;
+      this.nullable = nullable;
+      this.typeJson = structFieldTypeJson(name, dataTypeJson, nullable, metadataJson);
+    }
   }
 
-  // Currently this test only works for non-Delta tables. Later it will work for more.
+  private static String structFieldTypeJson(String name, String dataTypeJson) {
+    return structFieldTypeJson(name, dataTypeJson, true, "{}");
+  }
+
+  private static String structFieldTypeJson(
+      String name, String dataTypeJson, boolean nullable, String metadataJson) {
+    return String.format(
+        "{\"name\":\"%s\",\"type\":%s,\"nullable\":%s,\"metadata\":%s}",
+        name, dataTypeJson, nullable, metadataJson);
+  }
+
+  /**
+   * Expected metadata JSON for a CHAR(n) / VARCHAR(n) column. Delta managed tables on Delta 4.2+
+   * carry Spark's internal {@code __CHAR_VARCHAR_TYPE_STRING} marker (added by DeltaCatalog when
+   * processing the create-table schema). Other formats (Parquet external) and Delta external tables
+   * don't see the marker. The test is gated to Delta 4.2+ for managed tables via {@link
+   * #canUpdateColumnsToUC()}, so this branch only triggers when the marker is present.
+   */
+  protected String charVarcharMetadata(String typeText) {
+    if (isManagedTable() && tableFormat().equalsIgnoreCase("DELTA")) {
+      return String.format("{\"__CHAR_VARCHAR_TYPE_STRING\":\"%s\"}", typeText);
+    }
+    return "{}";
+  }
+
+  // Runs whenever the test's column-set roundtrips cleanly to UC: non-Delta tables always, and
+  // managed Delta tables only with Delta version >=4.3. Delta external tables are still excluded.
   @Test
   @EnabledIf("canUpdateColumnsToUC")
   public void testTableWithSupportedDataTypes() throws ApiException {
@@ -571,6 +642,9 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
         "{\"type\":\"struct\",\"fields\":["
             + "{\"name\":\"a\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}},"
             + "{\"name\":\"b\",\"type\":\"string\",\"nullable\":true,\"metadata\":{}}]}";
+    // Delta normalizes CHAR(n)/VARCHAR(n) to STRING and tags the column with the
+    // __CHAR_VARCHAR_TYPE_STRING marker; Parquet preserves the original types. The CHAR/VARCHAR
+    // specs below inline `testingDelta() ? ... : ...` directly to pick the right expected shape.
     List<ColSpec> cols =
         List.of(
             new ColSpec(
@@ -618,28 +692,34 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "\"decimal(10,2)\""),
             new ColSpec(
                 "col_string",
-                "STRING",
+                "STRING COMMENT 'column metadata comment'",
                 "'test'",
                 "test",
                 ColumnTypeName.STRING,
                 "string",
+                true,
+                "{\"comment\":\"column metadata comment\"}",
                 "\"string\""),
             new ColSpec(
                 "col_char",
                 "CHAR(10)",
                 "'char_test'",
                 "char_test ",
-                ColumnTypeName.CHAR,
-                "char(10)",
-                "\"char(10)\""),
+                testingDelta() ? ColumnTypeName.STRING : ColumnTypeName.CHAR,
+                testingDelta() ? "string" : "char(10)",
+                true,
+                charVarcharMetadata("char(10)"),
+                testingDelta() ? "\"string\"" : "\"char(10)\""),
             new ColSpec(
                 "col_varchar",
                 "VARCHAR(20)",
                 "'varchar_test'",
                 "varchar_test",
                 ColumnTypeName.STRING,
-                "varchar(20)",
-                "\"varchar(20)\""),
+                testingDelta() ? "string" : "varchar(20)",
+                true,
+                charVarcharMetadata("varchar(20)"),
+                testingDelta() ? "\"string\"" : "\"varchar(20)\""),
             new ColSpec(
                 "col_binary",
                 "BINARY",
@@ -650,11 +730,13 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 "\"binary\""),
             new ColSpec(
                 "col_boolean",
-                "BOOLEAN",
+                "BOOLEAN NOT NULL",
                 "true",
                 "true",
                 ColumnTypeName.BOOLEAN,
                 "boolean",
+                false,
+                "{}",
                 "\"boolean\""),
             new ColSpec(
                 "col_date",
@@ -680,22 +762,23 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 ColumnTypeName.TIMESTAMP_NTZ,
                 "timestamp_ntz",
                 "\"timestamp_ntz\""),
-            new ColSpec(
-                "col_daytime_interval",
-                "INTERVAL DAY TO SECOND",
-                "INTERVAL '1 00:00:00' DAY TO SECOND",
-                "PT24H",
-                ColumnTypeName.INTERVAL,
-                "interval day to second",
-                "\"interval day to second\""),
-            new ColSpec(
-                "col_yearmonth_interval",
-                "INTERVAL YEAR TO MONTH",
-                "INTERVAL '0-1' YEAR TO MONTH",
-                "P1M",
-                ColumnTypeName.INTERVAL,
-                "interval year to month",
-                "\"interval year to month\""),
+            // Interval types are not supported in Delta (DELTA_UNSUPPORTED_DATA_TYPES).
+            // new ColSpec(
+            //     "col_daytime_interval",
+            //     "INTERVAL DAY TO SECOND",
+            //     "INTERVAL '1 00:00:00' DAY TO SECOND",
+            //     "PT24H",
+            //     ColumnTypeName.INTERVAL,
+            //     "interval day to second",
+            //     "\"interval day to second\""),
+            // new ColSpec(
+            //     "col_yearmonth_interval",
+            //     "INTERVAL YEAR TO MONTH",
+            //     "INTERVAL '0-1' YEAR TO MONTH",
+            //     "P1M",
+            //     ColumnTypeName.INTERVAL,
+            //     "interval year to month",
+            //     "\"interval year to month\""),
             new ColSpec(
                 "col_arr",
                 "ARRAY<INT>",
@@ -731,7 +814,7 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
 
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String tableName = TEST_TABLE + "_complex_type";
-    List<String> partitionColumns = List.of("col_daytime_interval", "col_string", "col_bigint");
+    List<String> partitionColumns = List.of("col_string", "col_bigint");
     String fullTableName =
         setupTable(
             new TableSetupOptions()
@@ -762,6 +845,21 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
     List<ColumnInfo> columns = tableInfo.getColumns();
     assertThat(columns).hasSize(cols.size());
 
+    // Explicit coverage that columnMapping IS enabled on the managed Delta 4.3+ path. The
+    // per-column equality below strips `delta.columnMapping.{id,physicalName}` before
+    // comparing, so without this check a future Delta change that stops emitting those fields
+    // would silently pass. (The `__CHAR_VARCHAR_TYPE_STRING` marker doesn't need a separate
+    // assertion: it's kept in the expected typeJson via `charVarcharMetadata` and verified by
+    // the same equality.)
+    if (isManagedTable() && testingDelta()) {
+      for (ColumnInfo col : columns) {
+        assertThat(col.getTypeJson())
+            .as("columnMapping metadata for %s", col.getName())
+            .contains("\"delta.columnMapping.id\"")
+            .contains("\"delta.columnMapping.physicalName\"");
+      }
+    }
+
     for (int i = 0; i < cols.size(); i++) {
       ColSpec spec = cols.get(i);
       if (spec.getTypeName() == ColumnTypeName.BINARY) {
@@ -778,7 +876,14 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
       assertThat(col.getTypeText())
           .as("typeText for %s", spec.getName())
           .isEqualTo(spec.getTypeText());
-      assertThat(col.getTypeJson())
+      assertThat(col.getNullable())
+          .as("nullable for %s", spec.getName())
+          .isEqualTo(spec.isNullable());
+      // Delta >= 4.3.0 enables columnMapping by default on managed Delta tables, which injects
+      // `delta.columnMapping.id` and `delta.columnMapping.physicalName` into per-column metadata
+      // that the test fixtures do not carry. The strip is a no-op when those keys are absent
+      // (older Delta and non-Delta), so apply it unconditionally and keep the equality strict.
+      assertThat(stripColumnMappingMetadata(col.getTypeJson()))
           .as("typeJson for %s", spec.getName())
           .isEqualTo(spec.getTypeJson());
       int partitionIndex = partitionColumns.indexOf(col.getName());
@@ -788,6 +893,28 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
         assertThat(col.getPartitionIndex()).isNull();
       }
     }
+  }
+
+  /**
+   * Strips `delta.columnMapping.id` and `delta.columnMapping.physicalName` entries from the
+   * `metadata` object inside a column typeJson string. Delta managed tables on Delta 4.3+ enable
+   * columnMapping by default, which injects those auto-generated entries; the test fixtures don't
+   * carry them, so we drop them before comparing.
+   *
+   * <p>A single greedy "preceding-or-trailing comma" regex would over-strip when the columnMapping
+   * entry sits between two siblings (e.g. {@code "a":1,"delta.columnMapping.id":2,"b":3} would
+   * collapse to {@code "a":1"b":3}, losing the separator). So strip in two phases: first remove the
+   * entry together with its leading comma (handles entries that follow another key), then remove
+   * any remaining entry together with its trailing comma (handles the "first entry" fallback).
+   * Anything still left is a lone entry inside an otherwise-empty metadata object, which the final
+   * pass removes standalone.
+   */
+  private static String stripColumnMappingMetadata(String typeJson) {
+    if (typeJson == null) return null;
+    String entry = "\"delta\\.columnMapping\\.[A-Za-z]+\"\\s*:\\s*(?:\"[^\"]*\"|-?\\d+)";
+    String s = typeJson.replaceAll(",\\s*" + entry, "");
+    s = s.replaceAll(entry + "\\s*,", "");
+    return s.replaceAll(entry, "");
   }
 
   protected String quoteEntityName(String entityName) {

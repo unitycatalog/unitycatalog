@@ -56,8 +56,7 @@ public abstract class BaseServerTest {
   protected void setUpProperties() {
     serverProperties = new Properties();
     serverProperties.setProperty(Property.SERVER_ENV.getKey(), "test");
-    // Enable managed table creation for tests
-    serverProperties.setProperty(Property.MANAGED_TABLE_ENABLED.getKey(), "true");
+    serverProperties.setProperty(Property.INCLUDE_STACK_TRACE_IN_ERROR.getKey(), "true");
     tableStorageRoot = getManagedStorageCloudPath(testDirectoryRoot);
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
   }

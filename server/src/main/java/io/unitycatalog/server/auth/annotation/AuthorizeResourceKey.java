@@ -35,7 +35,8 @@ import java.lang.annotation.Target;
  * <p>Method parameter level with Armeria @Param annotation - When used on a method parameter, and
  * the parameter also has annotated with the Armeria @Param annotation, the key is taken from
  * the @Param annotations value and that is what is used to retrieve the resource value. Since the
- * key is taken from the @Param, the key value in this annotation should be left unset.
+ * key is taken from the @Param, the key value in this annotation should be left unset; if it is set
+ * explicitly, it must equal the @Param value or registration fails.
  *
  * <p>Example: Map the request "catalog" parameter to the CATALOG resource type.
  *

@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
@@ -196,7 +197,11 @@ public class ServerProperties {
     CLIENT_SECRET("server.client-secret"),
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
-    MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false", BOOLEAN_VALIDATOR),
+    MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
+    MANAGED_TABLE_USE_DELTA_API_ONLY(
+        "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
+    UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV(
+        "server.managed-table.uniform-iceberg-v2.allow-missing-dv", "false", BOOLEAN_VALIDATOR),
     // `storage-root.*` are replaced by managed storage locations of catalog and schema.
     MODEL_STORAGE_ROOT("storage-root.models", STORAGE_PATH_VALIDATOR), // Deprecated
     TABLE_STORAGE_ROOT("storage-root.tables", STORAGE_PATH_VALIDATOR), // Deprecated
@@ -204,7 +209,8 @@ public class ServerProperties {
     AWS_ACCESS_KEY("aws.accessKey"),
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
-    AWS_REGION("aws.region");
+    AWS_REGION("aws.region"),
+    INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
     // getS3Configurations.
@@ -435,6 +441,10 @@ public class ServerProperties {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
   }
 
+  public boolean isIncludeStackTraceInError() {
+    return isTrueOrEnable(get(Property.INCLUDE_STACK_TRACE_IN_ERROR));
+  }
+
   /**
    * Check if experimental MANAGED table feature is enabled. This method throws BaseException with
    * ErrorCode.INVALID_ARGUMENT if it's disabled.
@@ -443,8 +453,61 @@ public class ServerProperties {
     if (!isTrueOrEnable(get(Property.MANAGED_TABLE_ENABLED))) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "MANAGED table is an experimental feature and is currently disabled. "
-              + "To enable it, set 'server.managed-table.enabled=true' in server.properties");
+          "MANAGED table is an is currently disabled. To enable it, set "
+              + "'server.managed-table.enabled=true' in server.properties");
+    }
+  }
+
+  /**
+   * Reject the UC request when MANAGED_TABLES_USE_DELTA_API_ONLY is on and the targeted table is
+   * MANAGED. Call from UC endpoints whose Delta equivalent should be used instead. Any non-MANAGED
+   * table would continue to work: EXTERNAL, METRIC_VIEW etc.
+   *
+   * @param tableType the table type to check; only {@link TableType#MANAGED} triggers the gate.
+   * @param deltaEndpoint full Delta endpoint to suggest in the error, e.g. {@code "POST
+   *     /delta/v1/catalogs/{catalog}/schemas/{schema}/tables"}.
+   */
+  public void checkDeltaApiOnlyForManagedTable(TableType tableType, String deltaEndpoint) {
+    if (tableType == TableType.MANAGED
+        && isTrueOrEnable(get(Property.MANAGED_TABLE_USE_DELTA_API_ONLY))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "This Unity Catalog endpoint is disabled for MANAGED Delta tables when "
+              + Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey()
+              + "=true. Use the Delta endpoint "
+              + deltaEndpoint
+              + " instead.");
+    }
+  }
+
+  /**
+   * Returns true when the server is configured to allow creation and writing of IcebergCompatV2
+   * tables ({@code delta.enableIcebergCompatV2=true}) without requiring deletion vectors. Set
+   * {@code server.managed-table.uniform-iceberg-v2.allow-missing-dv=true} in server.properties to
+   * enable.
+   */
+  public boolean isUniformIcebergV2AllowMissingDv() {
+    return isTrueOrEnable(get(Property.UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV));
+  }
+
+  /**
+   * Similar to checkDeltaApiOnlyForManagedTable, reject the UC request when
+   * MANAGED_TABLES_USE_DELTA_API_ONLY is on and the target endpoint is for MANAGED tables only. In
+   * this case it doesn't need to check table type. Call from UC endpoints whose Delta equivalent
+   * should be used instead.
+   *
+   * @param deltaEndpoint full Delta endpoint to suggest in the error, e.g. {@code "POST
+   *     /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables"}.
+   */
+  public void checkDeltaApiOnlyEnabled(String deltaEndpoint) {
+    if (isTrueOrEnable(get(Property.MANAGED_TABLE_USE_DELTA_API_ONLY))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "This Unity Catalog endpoint is disabled when "
+              + Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey()
+              + "=true. Use the Delta endpoint "
+              + deltaEndpoint
+              + " instead.");
     }
   }
 
