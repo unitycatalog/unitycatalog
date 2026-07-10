@@ -1,6 +1,6 @@
-# Local databases (H2, MLflow, Derby, etc.) in any directory
-*.db
-
+etc/db/h2db.mv.db
+etc/db/h2db.trace.db
+mlflow.db
 target/
 
 # Intellij IDEA files
