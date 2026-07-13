@@ -191,6 +191,10 @@ public class ServerProperties {
     SERVER_ENV("server.env", "dev", new EnumValidator(true, "dev", "prod", "test")),
     AUTHORIZATION_ENABLED(
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
+    AUTHENTICATION_MODE(
+        "server.authentication.mode", "jwt", new EnumValidator(true, "jwt", "trusted-header")),
+    TRUSTED_HEADER_AUTH_NAME(
+        "server.authentication.trusted-header.name", "X-Forwarded-Email", NOOP_VALIDATOR),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
@@ -233,6 +237,32 @@ public class ServerProperties {
 
     Property(String key) {
       this(key, null, NOOP_VALIDATOR);
+    }
+  }
+
+  /** Mechanism used to authenticate requests. See {@link #getAuthenticationMode()}. */
+  public enum AuthenticationMode {
+    JWT("jwt"),
+    TRUSTED_HEADER("trusted-header");
+
+    private final String value;
+
+    AuthenticationMode(String value) {
+      this.value = value;
+    }
+
+    public String getValue() {
+      return value;
+    }
+
+    public static AuthenticationMode fromValue(String value) {
+      for (AuthenticationMode mode : values()) {
+        if (mode.value.equalsIgnoreCase(value)) {
+          return mode;
+        }
+      }
+      throw new BaseException(
+          ErrorCode.INTERNAL, "Unknown " + Property.AUTHENTICATION_MODE.key + ": " + value);
     }
   }
 
@@ -439,6 +469,25 @@ public class ServerProperties {
 
   public boolean isAuthorizationEnabled() {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
+  }
+
+  /**
+   * The mechanism used to authenticate requests and establish the caller's identity. Only consulted
+   * when authorization is enabled.
+   *
+   * <ul>
+   *   <li>{@code JWT} (default): validate a bearer JWT issued by the internal issuer.
+   *   <li>{@code TRUSTED_HEADER}: trust the principal email injected by a fronting proxy (e.g.
+   *       Envoy) in a configured header.
+   * </ul>
+   */
+  public AuthenticationMode getAuthenticationMode() {
+    return AuthenticationMode.fromValue(get(Property.AUTHENTICATION_MODE));
+  }
+
+  /** Name of the trusted header carrying the principal's email (trusted-header mode). */
+  public String getTrustedHeaderName() {
+    return get(Property.TRUSTED_HEADER_AUTH_NAME);
   }
 
   public boolean isIncludeStackTraceInError() {

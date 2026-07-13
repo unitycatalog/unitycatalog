@@ -199,6 +199,33 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testAuthenticationMode() {
+    // JWT by default, with a sensible default header name.
+    ServerProperties defaults = new ServerProperties();
+    assertThat(defaults.getAuthenticationMode()).isEqualTo(ServerProperties.AuthenticationMode.JWT);
+    assertThat(defaults.getTrustedHeaderName()).isEqualTo("X-Forwarded-Email");
+
+    // Mode is an enum: jwt | trusted-header.
+    testValidProperty(Property.AUTHENTICATION_MODE, "jwt");
+    testValidProperty(Property.AUTHENTICATION_MODE, "trusted-header");
+    testInvalidProperty(
+        Property.AUTHENTICATION_MODE,
+        "saml",
+        "Invalid value 'saml'",
+        "server.authentication.mode",
+        "Allowed values: [jwt, trusted-header]");
+
+    // Custom mode/name are read back via the accessors.
+    Properties props = new Properties();
+    props.setProperty(Property.AUTHENTICATION_MODE.getKey(), "trusted-header");
+    props.setProperty(Property.TRUSTED_HEADER_AUTH_NAME.getKey(), "X-Auth-Request-Email");
+    ServerProperties configured = new ServerProperties(props);
+    assertThat(configured.getAuthenticationMode())
+        .isEqualTo(ServerProperties.AuthenticationMode.TRUSTED_HEADER);
+    assertThat(configured.getTrustedHeaderName()).isEqualTo("X-Auth-Request-Email");
+  }
+
+  @Test
   public void testDefaultPropertyValues() {
     // Test that all default values are valid and correctly set. If any of them are invalid, the
     // constructor would throw exception.
