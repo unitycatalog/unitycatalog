@@ -152,6 +152,13 @@ class UCSingleCatalog
       columns: Array[Column],
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
+    delegate.createTable(
+      ident, columns, partitions, createPropertiesForDelegate(ident, properties))
+  }
+
+  private def createPropertiesForDelegate(
+      ident: Identifier,
+      properties: util.Map[String, String]): util.Map[String, String] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
@@ -162,21 +169,19 @@ class UCSingleCatalog
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
       if (UCSingleCatalog.hasDeltaProvider(properties)) {
         // Managed Delta table
-        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
-        delegate.createTable(ident, columns, partitions, newProps)
+        managedDeltaCreatePropsForDelegate(ident, properties)
       } else {
         // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
         // tables. Surface the same friendly error the legacy staging path used to produce.
         throw new ApiException("Unity Catalog does not support non-Delta managed table.")
       }
     } else if (hasLocationClause) {
-      val newProps = prepareExternalTableProperties(properties)
-      delegate.createTable(ident, columns, partitions, newProps)
+      prepareExternalTableProperties(properties)
     } else {
       // Path-based identifiers (e.g. `delta`.`/tmp/foo`) fall through to the delegate.
       // TODO: for path-based tables, Spark should generate a location property using the qualified
       //       path string.
-      delegate.createTable(ident, columns, partitions, properties)
+      properties
     }
   }
 
