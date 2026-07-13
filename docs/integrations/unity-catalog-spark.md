@@ -123,13 +123,14 @@ You can run the code below to work with data stored in a Unity Catalog server.
     --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog"
     ```
 
-Notice the following packages (`--packages`) and configurations (`--conf`)
+Notice the following packages (`--packages`) vs. jars (`--jars`) and configurations (`--conf`)
 
 - `--packages` points to the delta-spark and unitycatalog-spark packages; update the version numbers to your current versions.
+- `--jars` can be used instead to provide a file (or s3) location for Spark to obtain the connector which is useful in air-gapped environments.
 - `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance
 - `spark.sql.catalog.<catalog_name>.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
 - `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog.
-
+the
 ??? note "Three-part and two-part naming conventions"
 
     ![](https://cdn.prod.website-files.com/66954b344e907bd91f1c8027/66e2bafe16edde34db6395f2_AD_4nXdgqGKSeR2abf7zutk0fiALAs6vejg6EgUDgD_Ud9Xjy7nNkapMePCNH0zJw9Wv0uh6LYn7vlGYrRn4H74G9d0CouV0PWKsUTGkjfBKM5y4Br64B2P5Eapv97bCw0swV4pddsemaWU2zyYYlkKT6Ymxu2YO.png)
