@@ -1,7 +1,5 @@
 package io.unitycatalog.hadoop.internal.util;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -26,41 +24,31 @@ public final class MapIdGenerator {
    */
   public static String generateId(Map<String, String> map) {
     Objects.requireNonNull(map, "map cannot be null");
-    return hashCanonical(canonicalBytes(map));
-  }
-
-  private static byte[] canonicalBytes(Map<String, String> map) {
     List<Entry<String, String>> entries = new ArrayList<>(map.entrySet());
     entries.sort(Entry.comparingByKey());
-    ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+    MessageDigest digest = sha256();
     for (Entry<String, String> entry : entries) {
-      writeUtf8(out, Objects.requireNonNull(entry.getKey(), "map key cannot be null"));
-      writeUtf8(out, Objects.requireNonNull(entry.getValue(), "map value cannot be null"));
+      update(digest, Objects.requireNonNull(entry.getKey(), "map key cannot be null"));
+      update(digest, Objects.requireNonNull(entry.getValue(), "map value cannot be null"));
     }
-    return out.toByteArray();
+    return toHex(digest.digest());
   }
 
-  private static void writeUtf8(ByteArrayOutputStream out, String value) {
+  /** Feeds a length-prefixed UTF-8 encoding of {@code value} into the digest. */
+  private static void update(MessageDigest digest, String value) {
     byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-    writeInt(out, bytes.length);
-    try {
-      out.write(bytes);
-    } catch (IOException e) {
-      throw new IllegalStateException("failed to write canonical map bytes", e);
-    }
+    int length = bytes.length;
+    digest.update((byte) (length >>> 24));
+    digest.update((byte) (length >>> 16));
+    digest.update((byte) (length >>> 8));
+    digest.update((byte) length);
+    digest.update(bytes);
   }
 
-  private static void writeInt(ByteArrayOutputStream out, int value) {
-    out.write((value >>> 24) & 0xFF);
-    out.write((value >>> 16) & 0xFF);
-    out.write((value >>> 8) & 0xFF);
-    out.write(value & 0xFF);
-  }
-
-  private static String hashCanonical(byte[] canonical) {
+  private static MessageDigest sha256() {
     try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      return toHex(digest.digest(canonical));
+      return MessageDigest.getInstance("SHA-256");
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("SHA-256 not available", e);
     }
