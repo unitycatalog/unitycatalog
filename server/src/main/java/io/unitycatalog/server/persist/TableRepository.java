@@ -790,10 +790,6 @@ public class TableRepository {
     return tableType == TableType.METRIC_VIEW || tableType == TableType.VIEW;
   }
 
-  private static boolean isViewLike(String tableTypeValue) {
-    return RepositoryUtils.isViewLike(tableTypeValue);
-  }
-
   private void validateDependenciesExist(Session session, List<DependencyDAO> depDAOs) {
     for (DependencyDAO dep : depDAOs) {
       String fullName =
@@ -949,7 +945,7 @@ public class TableRepository {
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
     }
-    if (isViewLike(tableInfoDAO.getType())) {
+    if (RepositoryUtils.isViewLike(tableInfoDAO.getType())) {
       repositories
           .getDependencyRepository()
           .deleteDependencies(session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);
