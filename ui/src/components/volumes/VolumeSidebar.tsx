@@ -11,6 +11,11 @@ interface VolumeSidebarProps {
 
 const VOLUME_METADATA: MetadataListType<VolumeInterface> = [
   {
+    key: 'owner',
+    label: 'Owner',
+    dataIndex: 'owner',
+  },
+  {
     key: 'created_at',
     dataIndex: 'created_at',
     label: 'Created at',
