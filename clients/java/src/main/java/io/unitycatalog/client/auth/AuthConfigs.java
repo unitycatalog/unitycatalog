@@ -19,4 +19,6 @@ class AuthConfigs {
   static final String OAUTH_URI = "oauth.uri";
   static final String OAUTH_CLIENT_ID = "oauth.clientId";
   static final String OAUTH_CLIENT_SECRET = "oauth.clientSecret";
+  static final String OAUTH_SCOPE = "oauth.scope";
+  static final String DEFAULT_OAUTH_SCOPE = "all-apis";
 }

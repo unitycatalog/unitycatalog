@@ -67,6 +67,38 @@ server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline
 server.audiences=your-google-client-id,your-azure-client-id
 ```
 
+### OAuth Client Scope
+
+Java clients that use the OAuth token provider request the `all-apis` scope by default. If your
+Identity Provider expects a resource-specific scope, configure it with `oauth.scope`. Unity Catalog
+does not restrict this value; follow the scope format required by your Identity Provider and resource
+server.
+
+For example, Microsoft Entra ID Java client configuration can include:
+
+```java
+Map<String, String> configs = Map.of(
+    "type", "oauth",
+    "oauth.uri", "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
+    "oauth.clientId", "<client ID>",
+    "oauth.clientSecret", "<client secret>",
+    "oauth.scope", "<resource-application-id-uri>/.default");
+```
+
+Spark catalog configuration uses the same key with the catalog auth prefix:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope=<resource-application-id-uri>/.default"
+```
+
+Scope values can be provider-specific strings such as `all-apis`, resource scopes such as
+`<resource-application-id-uri>/.default`, fine-grained scopes such as `catalog.tables:read`, or
+multiple space-separated scopes.
+
 ### Restart the UC Server
 
 Now that the Google Authentication is configured, restart the UC Server with the following command.
@@ -290,9 +322,9 @@ step.
 ```sh
 bin/spark-sql --name "local-uc-test" \
     --master "local[*]" \
-    --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+    --packages "org.apache.hadoop:hadoop-aws:3.4.0,io.delta:delta-spark_4.0_2.13:4.3.0,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0" \
     --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-    --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
+    --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
     --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
     --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
     --conf "spark.sql.catalog.unity.token=$token" \
