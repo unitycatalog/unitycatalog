@@ -69,7 +69,7 @@ Your output should look something like this:
 │                    │nullable\":false,\"metadata\":{}}","type_name":"DOUBLE","type_precision":0,"type_scale":0,"type_inte│
 │                    │rval_type":null,"position":1,"comment":"Double column","nullable":false,"partition_index":null}     │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│STORAGE_LOCATION    │file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/nu│
+│STORAGE_LOCATION    │file:///path/to/unitycatalog/etc/data/external/unity/default/tables/nu│
 │                    │mbers/                                                                                              │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │COMMENT             │External table                                                                                      │
@@ -120,17 +120,22 @@ This command has multiple parameters:
 | `storage_location` | The storage location associated with the table. It is a mandatory field for EXTERNAL tables. |
 | `properties` | [Optional] The properties of the entity in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(") inside the properties string or just use single quotes(`''`) around the same. |
 
-Run the command below with the correct `path/to/storage` to create a new DELTA table with 2 columns: `some_numbers` and `some_letters`.
+Run the command below to create a new DELTA table with 2 columns: `some_numbers` and `some_letters`.
 You can get the storage location from the `STORAGE_LOCATION` field of your `bin/uc table get ...` call above.
 
 ```sh
-bin/uc table create --full_name unity.default.test --columns "some_numbers INT, some_letters STRING, some_times TIMESTAMP" --storage_location file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/test
+bin/uc table create --full_name unity.default.test \
+  --columns "some_numbers INT, some_letters STRING" \
+  --storage_location /tmp/uc/test
 ```
+
+If you are re-running this tutorial, remove any existing files at the storage location first (for example,
+`rm -rf /tmp/uc/test`) so the on-disk Delta schema matches the catalog metadata.
 
 This should output:
 
 ```console
-Table created successfully at: file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/test
+Table created successfully at: /tmp/uc/test
 
 ┌────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │        KEY         │                                               VALUE                                                │
@@ -152,8 +157,7 @@ Table created successfully at: file:///Users/avriiil/Documents/git/my-forks/unit
 │                    │g\",\"nullable\":true,\"metadata\":{}}","type_name":"STRING","type_precision":0,"type_scale":0,"type│
 │                    │_interval_type":null,"position":1,"comment":null,"nullable":true,"partition_index":null}            │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│STORAGE_LOCATION    │file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/te │
-│                    │st2                                                                                                 │
+│STORAGE_LOCATION    │file:///tmp/uc/test                                                                                 │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │COMMENT             │null                                                                                                │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -169,7 +173,7 @@ Table created successfully at: file:///Users/avriiil/Documents/git/my-forks/unit
 
 ## How to Write to Delta Tables
 
-Use the `bin/uc write ...` command to write data to a Delta table.
+Use the `bin/uc table write ...` command to write data to a Delta table.
 
 Let's use our new `test` table as an example. This table should be empty. Let's confirm:
 
@@ -191,7 +195,8 @@ Now use the following command to write some sample data to this table.
 bin/uc table write --full_name <catalog>.<schema>.<table>
 ```
 
-This is an experimental feature. Currently, this will only write sample data and supports only some primitive data types.
+This is an experimental feature. Currently, this will only write sample data and supports a limited set of
+primitive data types (for example, `INT`, `STRING`, and `DOUBLE`). Types such as `TIMESTAMP` are not supported yet.
 
 ## How to Delete a Delta Table
 
