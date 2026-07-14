@@ -183,9 +183,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         // This code block is not called immediately. It is called later as part of delegate.serve()
         LOGGER.debug("Authorization peekData invoked.");
 
-        peekDataHandler.processPeekData(data);
-        Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
-        evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
+        if (peekDataHandler.processPeekData(data)) {
+          Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
+          evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
+        }
       });
     }
 
@@ -426,7 +427,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         // Unfortunately we don't appear to get a signal that we've got all the data, so we have to
         // resort to attempting to parse the data whenever it _looks_ complete.
         // TODO: try to optimize this using Jackson streaming or something else.
-        if (data.array()[data.array().length - 1] == '}') {
+        byte[] accumulated = dataStream.toByteArray();
+        if (accumulated.length > 0 && accumulated[accumulated.length - 1] == '}') {
           try {
             Map<String, Object> payload = MAPPER.readValue(
                 dataStream.toByteArray(),
