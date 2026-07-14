@@ -1,51 +1,44 @@
 package io.unitycatalog.spark;
 
+import static io.unitycatalog.spark.UCProxyTestFixture.CATALOG_NAME;
+import static io.unitycatalog.spark.UCProxyTestFixture.NAMESPACE;
+import static io.unitycatalog.spark.UCProxyTestFixture.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
-import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.ListSchemasResponse;
 import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.TableInfo;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Parameter;
-import java.net.URI;
+import io.unitycatalog.client.model.TableType;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
-import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Unit tests for UCProxy pagination using mocked API responses.
- *
- * <p>UCProxy is a private Scala class, so Java cannot instantiate it directly. We use reflection
- * with dynamic arg resolution to handle constructor changes across branches.
+ * Version-agnostic unit tests for {@code UCProxy} (the table/namespace surface that exists on every
+ * supported Spark version). Lives under {@code src/test/java/}, so it compiles and runs against
+ * Spark 4.0, 4.1, and 4.2. It composes {@link UCProxyTestFixture} (rather than inheriting it) and
+ * references no Spark-4.2-only type. The view-side tests live in {@code UCViewProxySuite} under
+ * {@code src/test/scala-shims/spark-4.2/}; the pre-view-API (4.0/4.1) unsupported-path tests live
+ * in {@code UCViewUnsupportedSuite} under {@code src/test/scala-shims/spark-4.0-4.1/}.
  *
  * <p>End-to-end integration tests that exercise pagination through UCSingleCatalog and a real UC
  * server are in {@link BaseTableReadWriteTest#testListTablesPagination} and {@link
  * SchemaOperationsTest#testListSchemasPagination}.
  */
 public class UCProxySuite {
-
-  private static final String CATALOG_NAME = "test_catalog";
-  private static final String SCHEMA_NAME = "test_schema";
-  private static final String[] NAMESPACE = new String[] {SCHEMA_NAME};
 
   private TablesApi mockTablesApi;
   private SchemasApi mockSchemasApi;
@@ -54,50 +47,11 @@ public class UCProxySuite {
 
   @BeforeEach
   public void setUp() throws Exception {
-    mockTablesApi = mock(TablesApi.class);
-    mockSchemasApi = mock(SchemasApi.class);
-    ApiClient mockApiClient = mock(ApiClient.class);
-    TokenProvider mockTokenProvider = mock(TokenProvider.class);
-    TemporaryCredentialsApi mockTempCredApi = mock(TemporaryCredentialsApi.class);
-
-    // UCProxy is a private Scala class — Java cannot call `new UCProxy(...)` directly.
-    // We use reflection with dynamic arg resolution so the test adapts when the
-    // constructor gains or loses boolean flags across branches.
-    Map<Class<?>, Object> argsByType = new HashMap<>();
-    argsByType.put(URI.class, new URI("http://localhost:8080"));
-    argsByType.put(TokenProvider.class, mockTokenProvider);
-    argsByType.put(ApiClient.class, mockApiClient);
-    argsByType.put(TablesApi.class, mockTablesApi);
-    argsByType.put(TemporaryCredentialsApi.class, mockTempCredApi);
-
-    Class<?> proxyClass = Class.forName("io.unitycatalog.spark.UCProxy");
-    Constructor<?> ctor = proxyClass.getDeclaredConstructors()[0];
-    ctor.setAccessible(true);
-
-    Parameter[] params = ctor.getParameters();
-    Object[] args = new Object[params.length];
-    for (int i = 0; i < params.length; i++) {
-      Class<?> type = params[i].getType();
-      if (argsByType.containsKey(type)) {
-        args[i] = argsByType.get(type);
-      } else if (type == boolean.class) {
-        args[i] = false;
-      } else {
-        args[i] = null;
-      }
-    }
-
-    Object proxyObj = ctor.newInstance(args);
-
-    proxy = (TableCatalog) proxyObj;
-    proxy.initialize(CATALOG_NAME, new CaseInsensitiveStringMap(Collections.emptyMap()));
-
-    // Inject mock schemasApi (initialize() creates a real one from apiClient)
-    Field schemasField = proxyClass.getDeclaredField("schemasApi");
-    schemasField.setAccessible(true);
-    schemasField.set(proxyObj, mockSchemasApi);
-
-    proxyNs = (SupportsNamespaces) proxyObj;
+    UCProxyTestFixture fixture = new UCProxyTestFixture().build();
+    mockTablesApi = fixture.mockTablesApi;
+    mockSchemasApi = fixture.mockSchemasApi;
+    proxy = fixture.proxy;
+    proxyNs = fixture.proxyNs;
   }
 
   // -- listTables tests --
@@ -168,6 +122,92 @@ public class UCProxySuite {
 
     assertThat(result).hasSize(1);
     assertThat(result[0]).isEqualTo(Identifier.of(NAMESPACE, "table1"));
+  }
+
+  @Test
+  public void testListTablesFiltersMetricViews() throws Exception {
+    ListTablesResponse response =
+        new ListTablesResponse()
+            .tables(
+                List.of(
+                    new TableInfo().name("table1").tableType(TableType.EXTERNAL),
+                    new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
+            .nextPageToken(null);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    Identifier[] result = proxy.listTables(NAMESPACE);
+
+    assertThat(result).containsExactly(Identifier.of(NAMESPACE, "table1"));
+  }
+
+  // -- loadTable (table surface) tests --
+
+  @Test
+  public void testLoadTableTriggersExactlyOneGetTableRpc() throws Exception {
+    // Regression guard for the double-RPC bug fixed in
+    // https://github.com/unitycatalog/unitycatalog/pull/1513 review feedback. Before the
+    // flip, `UCSingleCatalog.loadTableOrView` would call `getUCTableLike` for view
+    // classification, then re-fetch via `delegate.loadTable -> UCProxy.loadTableOrView ->
+    // getUCTableLike`, producing two `tablesApi.getTable` RPCs per identifier resolution. After
+    // the flip, `UCProxy.loadTable` is the single primitive and is called exactly once per
+    // resolution.
+    TableInfo ucTable =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("t1")
+            .tableId("test-table-id")
+            .tableType(TableType.EXTERNAL)
+            .storageLocation("file:///tmp/t1")
+            .dataSourceFormat(io.unitycatalog.client.model.DataSourceFormat.PARQUET)
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("id")
+                        .typeName(ColumnTypeName.INT)
+                        .typeText("int")
+                        .typeJson(
+                            "{\"name\":\"id\",\"type\":\"integer\","
+                                + "\"nullable\":true,\"metadata\":{}}")
+                        .nullable(true)
+                        .position(0)));
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+        .thenReturn(ucTable);
+
+    // `loadTable` issues the single `getTable` RPC first (via `getUCTableLike`), then proceeds to
+    // `loadV1Table`, which vends credentials through the mock `apiClient` and may throw. The
+    // regression guard is purely about the RPC count, so swallow any downstream failure and
+    // assert the count -- this keeps the test hermetic and identical across Spark versions.
+    try {
+      proxy.loadTable(Identifier.of(NAMESPACE, "t1"));
+    } catch (RuntimeException credentialVendingFailure) {
+      // Expected in the mock context: credential vending has no real UC endpoint.
+    }
+    verify(mockTablesApi, org.mockito.Mockito.times(1))
+        .getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true));
+  }
+
+  // -- dropTable (table surface) tests --
+
+  @Test
+  public void testDropTableReturnsFalseForMetricViewAndDoesNotDelete() throws Exception {
+    TableInfo ucMetricView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW);
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+        .thenReturn(ucMetricView);
+
+    boolean dropped = proxy.dropTable(Identifier.of(NAMESPACE, "mv1"));
+
+    assertThat(dropped).isFalse();
+    // Crucial: deleteTable must not be called, otherwise DROP TABLE on a metric view would
+    // silently delete it.
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .deleteTable(org.mockito.ArgumentMatchers.anyString());
   }
 
   // -- listNamespaces tests --

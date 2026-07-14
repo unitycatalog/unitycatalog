@@ -647,7 +647,14 @@ lazy val spark = (project in file("connectors/spark"))
         .files
         .filter(_.getName.contains("lombok"))
         .mkString(File.pathSeparator)
-      javacRelease11 ++ Seq(
+      // Spark 4.2+ connector tests reference Java records (e.g. Dependency.table); require --release 17.
+      val testRelease =
+        if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2)) {
+          javacRelease17
+        } else {
+          javacRelease11
+        }
+      testRelease ++ Seq(
         "-processor",
         "lombok.launch.AnnotationProcessorHider$AnnotationProcessor",
         "-processorpath",

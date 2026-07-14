@@ -6,7 +6,7 @@ package org.apache.spark.sql.connector.catalog
  * real interface does not exist on the classpath, so the connector's
  * `with TableViewCatalog` mixin would fail to verify at class-loading time. This stub
  * lets the connector compile against all three Spark versions while leaving the
- * actual view-side implementation to per-version `ViewSupport` shims.
+ * actual view-side implementation to per-version `UCSingleCatalogViewSupport` shims.
  *
  * On Spark 4.2 the real Spark interface is on the classpath, so this stub file is
  * absent under `scala-shims/spark-4.2/`. The Delta connector uses the same
