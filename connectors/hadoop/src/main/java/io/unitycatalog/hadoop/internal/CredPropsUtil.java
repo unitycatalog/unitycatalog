@@ -516,9 +516,8 @@ public class CredPropsUtil {
   /**
    * Derives a stable id for the credential context so caches only reuse a vended credential across
    * requests that would receive the same one. A vended credential is a function of the catalog
-   * endpoint, storage scheme, and auth identity, so all three are folded into the hash. The {@code
-   * TokenProvider} config keys ({@code type}, {@code token}, {@code oauth.*}, ...) never overlap
-   * with the catalog and scheme keys.
+   * endpoint, storage scheme, and auth identity, so all three are folded into the hash alongside
+   * the auth configs from {@code tokenProvider}.
    */
   static String credContextId(String catalogUri, String scheme, TokenProvider tokenProvider) {
     Objects.requireNonNull(catalogUri, "catalogUri is required");
