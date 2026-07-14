@@ -11,7 +11,8 @@ import scala.util.parsing.json.JSON
  * Mirrors the pattern from Delta Lake's CrossSparkVersions.scala, trimmed to UC's needs.
  *
  * Key concepts:
- *   - SparkVersionSpec: version metadata (full version, shim source dir, source-build defaults)
+ *   - SparkVersionSpec: version metadata (full version, shim source dirs, source-build defaults);
+ *     a version can list several shim dirs, incl. ones shared across versions (e.g. spark-4.0-4.1)
  *   - DEFAULT: latest stable Spark version (used when -DsparkVersion is not set)
  *   - sparkVersionedModuleName: appends _X.Y suffix to artifact names
  *   - sparkSourceDirSettings: wires per-version shim source dirs
@@ -22,13 +23,29 @@ import scala.util.parsing.json.JSON
 
 case class SparkVersionSpec(
   fullVersion: String,
-  additionalSourceDir: String,
+  // Shim source-dir suffixes compiled for this Spark version (e.g. "scala-shims/spark-4.0-4.1").
+  // A file in a dir shared by several versions is compiled for every version that lists it, so
+  // identical shims are written once instead of copied per version. sbt ignores non-existent
+  // dirs, so listing a dir a module doesn't use is harmless.
+  additionalSourceDirs: Seq[String],
   requiresSparkCommit: Boolean = false,
   sourceBuildArtifactBaseVersion: Option[String] = None,
   sourceBuildDefaultRef: Option[String] = None
 ) {
   def shortVersion: String = fullVersion.split("\\.").take(2).mkString(".")
   def isSnapshot: Boolean = fullVersion.contains("SNAPSHOT")
+
+  // Numeric major/minor parsed from `fullVersion` (e.g. "4.2.0-SNAPSHOT" -> (4, 2)), for
+  // version comparisons that must not rely on lexicographic string ordering (e.g. "4.10" vs "4.2").
+  private def majorMinor: (Int, Int) = {
+    val parts = fullVersion.split("[.-]")
+    (parts(0).toInt, parts(1).toInt)
+  }
+
+  /** True iff this Spark version is >= the given major.minor. */
+  def isAtLeast(major: Int, minor: Int): Boolean = majorMinor match {
+    case (maj, min) => maj > major || (maj == major && min >= minor)
+  }
   /** Base version used when deriving a local, commit-qualified artifact version for source-built Spark. */
   def artifactBaseVersion: String =
     sourceBuildArtifactBaseVersion.getOrElse(fullVersion.stripSuffix("-SNAPSHOT"))
@@ -44,9 +61,14 @@ object SparkVersionSpec {
         case Some(map: Map[String, Any] @unchecked) =>
           val default = map("default").asInstanceOf[String]
           val versions = map("versions").asInstanceOf[List[Map[String, Any]]].map { v =>
+            // `sourceDirs` is a JSON array of shim-dir suffixes; also accept a bare string.
+            val sourceDirs = v("sourceDirs") match {
+              case s: String => Seq(s)
+              case l: List[_] => l.map(_.asInstanceOf[String])
+            }
             SparkVersionSpec(
               v("version").asInstanceOf[String],
-              v("sourceDir").asInstanceOf[String],
+              sourceDirs,
               v.get("requiresSparkCommit").exists(_.asInstanceOf[Boolean]),
               v.get("sourceBuildArtifactBaseVersion").map(_.asInstanceOf[String]),
               v.get("sourceBuildDefaultRef").map(_.asInstanceOf[String])
@@ -159,10 +181,10 @@ object CrossSparkVersions extends AutoPlugin {
     val spec = getSparkVersionSpec()
     Seq(
       autoImport.sparkVersion := spec.fullVersion,
-      Compile / unmanagedSourceDirectories +=
-        (Compile / baseDirectory).value / "src" / "main" / spec.additionalSourceDir,
-      Test / unmanagedSourceDirectories +=
-        (Test / baseDirectory).value / "src" / "test" / spec.additionalSourceDir
+      Compile / unmanagedSourceDirectories ++=
+        spec.additionalSourceDirs.map((Compile / baseDirectory).value / "src" / "main" / _),
+      Test / unmanagedSourceDirectories ++=
+        spec.additionalSourceDirs.map((Test / baseDirectory).value / "src" / "test" / _)
     )
   }
 
