@@ -32,11 +32,11 @@ import org.apache.hadoop.conf.Configuration;
  * <p>Two requests sharing the same {@code CredId} target the same credential scope and can reuse a
  * vended credential, while requests with different ids are isolated.
  *
- * <p>There are five implementations:
- *
  * <p>The credential context is the {@code catalogUri}, storage {@code scheme}, and {@code
  * TokenProvider.configs()} a credential is vended from, hashed into a single id (see {@link
  * UCHadoopConfConstants#UC_CRED_CONTEXT_ID_KEY}).
+ *
+ * <p>There are five implementations:
  *
  * <ul>
  *   <li>{@link TableCredId} — keyed by credential context, table ID, and operation; used for

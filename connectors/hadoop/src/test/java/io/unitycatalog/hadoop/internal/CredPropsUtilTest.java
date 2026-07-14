@@ -16,9 +16,7 @@ import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
-import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -838,7 +836,7 @@ class CredPropsUtilTest {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     TokenProvider provider = TokenProvider.create(Map.of("type", "static", "token", "tenant-a"));
-    String expectedContextId = expectedCredContextId("http://uc", "s3", provider);
+    String expectedContextId = CredPropsUtil.credContextId("http://uc", "s3", provider);
 
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
@@ -855,6 +853,20 @@ class CredPropsUtilTest {
 
     assertThat(props)
         .containsEntry(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, expectedContextId);
+  }
+
+  @Test
+  void credContextIdVariesByCatalogUriSchemeAndAuth() {
+    TokenProvider auth = tokenProvider();
+    String base = CredPropsUtil.credContextId("http://uc", "s3", auth);
+
+    assertThat(CredPropsUtil.credContextId("http://uc", "s3", auth)).isEqualTo(base);
+    assertThat(CredPropsUtil.credContextId("http://uc-2", "s3", auth)).isNotEqualTo(base);
+    assertThat(CredPropsUtil.credContextId("http://uc", "gs", auth)).isNotEqualTo(base);
+    assertThat(
+            CredPropsUtil.credContextId(
+                "http://uc", "s3", TokenProvider.create(Map.of("type", "static", "token", "x"))))
+        .isNotEqualTo(base);
   }
 
   @Test
@@ -1020,7 +1032,7 @@ class CredPropsUtilTest {
             Map.of());
 
     assertThat(captured.get().props().get(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY))
-        .isEqualTo(expectedCredContextId("http://uc", "s3", tokenProvider()));
+        .isEqualTo(CredPropsUtil.credContextId("http://uc", "s3", tokenProvider()));
     assertThat(captured.get().props().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
         .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
     assertThat(captured.get().props().get(UCHadoopConfConstants.UC_TABLE_ID_KEY)).isEqualTo("tid");
@@ -1266,15 +1278,6 @@ class CredPropsUtilTest {
 
   private static TokenProvider tokenProvider() {
     return TokenProvider.create(Map.of("type", "static", "token", "tok"));
-  }
-
-  /** Mirrors {@code CredPropsUtil#credContextId} so tests can assert the derived id. */
-  private static String expectedCredContextId(
-      String catalogUri, String scheme, TokenProvider provider) {
-    Map<String, String> context = new HashMap<>(provider.configs());
-    context.put("catalogUri", catalogUri);
-    context.put("scheme", scheme);
-    return MapIdGenerator.generateId(context);
   }
 
   private static TemporaryCredentials s3Creds() {
