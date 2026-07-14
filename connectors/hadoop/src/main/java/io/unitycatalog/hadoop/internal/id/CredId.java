@@ -1,9 +1,9 @@
 package io.unitycatalog.hadoop.internal.id;
 
-import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE;
+import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_DELTA_CATALOG_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_DEFAULT_VALUE;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY;
@@ -34,23 +34,28 @@ import org.apache.hadoop.conf.Configuration;
  *
  * <p>There are five implementations:
  *
+ * <p>The credential context is the {@code catalogUri}, storage {@code scheme}, and {@code
+ * TokenProvider.configs()} a credential is vended from, hashed into a single id (see {@link
+ * UCHadoopConfConstants#UC_CRED_CONTEXT_ID_KEY}).
+ *
  * <ul>
- *   <li>{@link TableCredId} — keyed by auth config, table ID, and operation; used for table-level
- *       temporary credentials via the UC credentials API.
- *   <li>{@link PathCredId} — keyed by auth config, path, and operation; used for path-level
+ *   <li>{@link TableCredId} — keyed by credential context, table ID, and operation; used for
+ *       table-level temporary credentials via the UC credentials API.
+ *   <li>{@link PathCredId} — keyed by credential context, path, and operation; used for path-level
  *       temporary credentials.
- *   <li>{@link DeltaTableCredId} — keyed by auth config, table identity, operation, and location;
- *       used for table-level temporary credentials via the UC Delta credentials API.
- *   <li>{@link DeltaStagingTableCredId} — keyed by auth config, staging table ID, and location;
- *       used for staging-table-level temporary credentials via the UC Delta credentials API.
+ *   <li>{@link DeltaTableCredId} — keyed by credential context, table identity, operation, and
+ *       location; used for table-level temporary credentials via the UC Delta credentials API.
+ *   <li>{@link DeltaStagingTableCredId} — keyed by credential context, staging table ID, and
+ *       location; used for staging-table-level temporary credentials via the UC Delta credentials
+ *       API.
  *   <li>{@link DefaultCredId} — keyed by URI scheme and authority; used as a fallback when no Unity
  *       Catalog credential type is present in the configuration.
  * </ul>
  */
 public interface CredId {
 
-  /** Stable id used when {@link UCHadoopConfConstants#UC_AUTH_UNIQUE_ID_KEY} is absent. */
-  String EMPTY_AUTH_UNIQUE_ID = MapIdGenerator.generateId(Collections.emptyMap());
+  /** Stable id used when {@link UCHadoopConfConstants#UC_CRED_CONTEXT_ID_KEY} is absent. */
+  String EMPTY_CRED_CONTEXT_ID = MapIdGenerator.generateId(Collections.emptyMap());
 
   static CredId create(Configuration conf) {
     return create(
@@ -77,26 +82,26 @@ public interface CredId {
     boolean hasUcDeltaStagingTableId = stagingTableId != null && !stagingTableId.isEmpty();
 
     if (UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type) && !isDeltaApi && !hasUcDeltaStagingTableId) {
-      // Case 1: UC table (legacy API) — keyed by auth config + table ID + operation.
-      String authUniqueId = readAuthUniqueId(conf);
+      // Case 1: UC table (legacy API) — keyed by cred context + table ID + operation.
+      String credContextId = readCredContextId(conf);
       String tableOp = conf.get(UC_TABLE_OPERATION_KEY);
       String tableId = conf.get(UC_TABLE_ID_KEY);
-      return new TableCredId(authUniqueId, tableId, tableOp);
+      return new TableCredId(credContextId, tableId, tableOp);
 
     } else if (UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)
         && !isDeltaApi
         && !hasUcDeltaStagingTableId) {
-      // Case 2: Path-based credentials (legacy UC API) — keyed by auth config + path + operation.
-      String authUniqueId = readAuthUniqueId(conf);
+      // Case 2: Path-based credentials (legacy UC API) — keyed by cred context + path + operation.
+      String credContextId = readCredContextId(conf);
       String path = conf.get(UC_PATH_KEY);
       String pathOp = conf.get(UC_PATH_OPERATION_KEY);
-      return new PathCredId(authUniqueId, path, pathOp);
+      return new PathCredId(credContextId, path, pathOp);
 
     } else if (UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)
         && isDeltaApi
         && !hasUcDeltaStagingTableId) {
-      // Case 3: Delta table — keyed by auth config + catalog.schema.table + operation + location.
-      String authUniqueId = readAuthUniqueId(conf);
+      // Case 3: Delta table — keyed by cred context + catalog.schema.table + operation + location.
+      String credContextId = readCredContextId(conf);
       String tableOp = conf.get(UC_TABLE_OPERATION_KEY);
       UCDeltaTableIdentifier identifier =
           UCDeltaTableIdentifier.of(
@@ -104,13 +109,13 @@ public interface CredId {
               conf.get(UC_DELTA_SCHEMA_KEY),
               conf.get(UC_DELTA_TABLE_NAME_KEY));
       String location = conf.get(UC_DELTA_LOCATION_KEY);
-      return new DeltaTableCredId(authUniqueId, identifier, tableOp, location);
+      return new DeltaTableCredId(credContextId, identifier, tableOp, location);
 
     } else if (hasUcDeltaStagingTableId) {
-      // Case 4: Delta staging table — keyed by auth config + staging table UUID + location.
-      String authUniqueId = readAuthUniqueId(conf);
+      // Case 4: Delta staging table — keyed by cred context + staging table UUID + location.
+      String credContextId = readCredContextId(conf);
       String location = conf.get(UC_DELTA_STAGING_TABLE_LOCATION_KEY);
-      return new DeltaStagingTableCredId(authUniqueId, stagingTableId, location);
+      return new DeltaStagingTableCredId(credContextId, stagingTableId, location);
 
     } else {
       // Case 5: No recognized credential type — delegate to the caller-provided fallback.
@@ -127,8 +132,8 @@ public interface CredId {
    */
   Map<String, String> props();
 
-  static String readAuthUniqueId(Configuration conf) {
-    String authUniqueId = conf.get(UC_AUTH_UNIQUE_ID_KEY);
-    return authUniqueId != null ? authUniqueId : EMPTY_AUTH_UNIQUE_ID;
+  static String readCredContextId(Configuration conf) {
+    String credContextId = conf.get(UC_CRED_CONTEXT_ID_KEY);
+    return credContextId != null ? credContextId : EMPTY_CRED_CONTEXT_ID;
   }
 }

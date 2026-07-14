@@ -1,6 +1,6 @@
 package io.unitycatalog.hadoop.internal.id;
 
-import static io.unitycatalog.hadoop.internal.id.CredId.EMPTY_AUTH_UNIQUE_ID;
+import static io.unitycatalog.hadoop.internal.id.CredId.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
@@ -15,53 +15,53 @@ import org.junit.jupiter.api.Test;
 
 class CredIdTest {
 
-  private static final String AUTH_A =
+  private static final String CONTEXT_A =
       MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
-  private static final String AUTH_B =
+  private static final String CONTEXT_B =
       MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-b"));
 
   @Test
-  void pathKeyEqualWhenSameAuthPathAndOp() {
-    assertThat(new PathCredId(AUTH_A, "s3://b/p", "READ"))
-        .isEqualTo(new PathCredId(AUTH_A, "s3://b/p", "READ"))
-        .hasSameHashCodeAs(new PathCredId(AUTH_A, "s3://b/p", "READ"));
+  void pathKeyEqualWhenSameContextPathAndOp() {
+    assertThat(new PathCredId(CONTEXT_A, "s3://b/p", "READ"))
+        .isEqualTo(new PathCredId(CONTEXT_A, "s3://b/p", "READ"))
+        .hasSameHashCodeAs(new PathCredId(CONTEXT_A, "s3://b/p", "READ"));
   }
 
   @Test
-  void pathKeyNotEqualWhenDifferentAuth() {
-    assertThat(new PathCredId(AUTH_A, "s3://b/p", "READ"))
-        .isNotEqualTo(new PathCredId(AUTH_B, "s3://b/p", "READ"));
+  void pathKeyNotEqualWhenDifferentContext() {
+    assertThat(new PathCredId(CONTEXT_A, "s3://b/p", "READ"))
+        .isNotEqualTo(new PathCredId(CONTEXT_B, "s3://b/p", "READ"));
   }
 
   @Test
   void pathKeyNotEqualWhenDifferentOp() {
-    assertThat(new PathCredId(AUTH_A, "s3://b/p", "READ"))
-        .isNotEqualTo(new PathCredId(AUTH_A, "s3://b/p", "WRITE"));
+    assertThat(new PathCredId(CONTEXT_A, "s3://b/p", "READ"))
+        .isNotEqualTo(new PathCredId(CONTEXT_A, "s3://b/p", "WRITE"));
   }
 
   @Test
   void pathKeyNotEqualWhenDifferentPath() {
-    assertThat(new PathCredId(AUTH_A, "s3://b/a", "READ"))
-        .isNotEqualTo(new PathCredId(AUTH_A, "s3://b/b", "READ"));
+    assertThat(new PathCredId(CONTEXT_A, "s3://b/a", "READ"))
+        .isNotEqualTo(new PathCredId(CONTEXT_A, "s3://b/b", "READ"));
   }
 
   @Test
-  void tableKeyEqualWhenSameAuthIdAndOp() {
-    assertThat(new TableCredId(AUTH_A, "tid-1", "READ_WRITE"))
-        .isEqualTo(new TableCredId(AUTH_A, "tid-1", "READ_WRITE"))
-        .hasSameHashCodeAs(new TableCredId(AUTH_A, "tid-1", "READ_WRITE"));
+  void tableKeyEqualWhenSameContextIdAndOp() {
+    assertThat(new TableCredId(CONTEXT_A, "tid-1", "READ_WRITE"))
+        .isEqualTo(new TableCredId(CONTEXT_A, "tid-1", "READ_WRITE"))
+        .hasSameHashCodeAs(new TableCredId(CONTEXT_A, "tid-1", "READ_WRITE"));
   }
 
   @Test
-  void tableKeyNotEqualWhenDifferentAuth() {
-    assertThat(new TableCredId(AUTH_A, "tid-1", "READ_WRITE"))
-        .isNotEqualTo(new TableCredId(AUTH_B, "tid-1", "READ_WRITE"));
+  void tableKeyNotEqualWhenDifferentContext() {
+    assertThat(new TableCredId(CONTEXT_A, "tid-1", "READ_WRITE"))
+        .isNotEqualTo(new TableCredId(CONTEXT_B, "tid-1", "READ_WRITE"));
   }
 
   @Test
   void tableKeyNotEqualWhenDifferentId() {
-    assertThat(new TableCredId(AUTH_A, "tid-1", "READ_WRITE"))
-        .isNotEqualTo(new TableCredId(AUTH_A, "tid-2", "READ_WRITE"));
+    assertThat(new TableCredId(CONTEXT_A, "tid-1", "READ_WRITE"))
+        .isNotEqualTo(new TableCredId(CONTEXT_A, "tid-2", "READ_WRITE"));
   }
 
   @Test
@@ -89,20 +89,20 @@ class CredIdTest {
 
     assertThat(CredId.create(conf))
         .isInstanceOf(TableCredId.class)
-        .isEqualTo(new TableCredId(EMPTY_AUTH_UNIQUE_ID, "tid", "READ"));
+        .isEqualTo(new TableCredId(EMPTY_CRED_CONTEXT_ID, "tid", "READ"));
   }
 
   @Test
-  void createReturnsTableKeyWithAuthUniqueId() {
+  void createReturnsTableKeyWithCredContextId() {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, AUTH_A);
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CONTEXT_A);
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
     conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid");
     conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ");
 
-    assertThat(CredId.create(conf)).isEqualTo(new TableCredId(AUTH_A, "tid", "READ"));
+    assertThat(CredId.create(conf)).isEqualTo(new TableCredId(CONTEXT_A, "tid", "READ"));
   }
 
   @Test
@@ -116,7 +116,7 @@ class CredIdTest {
 
     assertThat(CredId.create(conf))
         .isInstanceOf(PathCredId.class)
-        .isEqualTo(new PathCredId(EMPTY_AUTH_UNIQUE_ID, "s3://b/p", "WRITE"));
+        .isEqualTo(new PathCredId(EMPTY_CRED_CONTEXT_ID, "s3://b/p", "WRITE"));
   }
 
   @Test
@@ -135,40 +135,40 @@ class CredIdTest {
   @Test
   void deltaTableKeyEqualWhenSameFields() {
     UCDeltaTableIdentifier id = UCDeltaTableIdentifier.of("cat", "sch", "tbl");
-    assertThat(new DeltaTableCredId(AUTH_A, id, "READ_WRITE", "s3://b/t"))
-        .isEqualTo(new DeltaTableCredId(AUTH_A, id, "READ_WRITE", "s3://b/t"))
-        .hasSameHashCodeAs(new DeltaTableCredId(AUTH_A, id, "READ_WRITE", "s3://b/t"));
+    assertThat(new DeltaTableCredId(CONTEXT_A, id, "READ_WRITE", "s3://b/t"))
+        .isEqualTo(new DeltaTableCredId(CONTEXT_A, id, "READ_WRITE", "s3://b/t"))
+        .hasSameHashCodeAs(new DeltaTableCredId(CONTEXT_A, id, "READ_WRITE", "s3://b/t"));
   }
 
   @Test
-  void deltaTableKeyNotEqualWhenDifferentAuth() {
+  void deltaTableKeyNotEqualWhenDifferentContext() {
     UCDeltaTableIdentifier id = UCDeltaTableIdentifier.of("cat", "sch", "tbl");
-    assertThat(new DeltaTableCredId(AUTH_A, id, "READ", "s3://b/t"))
-        .isNotEqualTo(new DeltaTableCredId(AUTH_B, id, "READ", "s3://b/t"));
+    assertThat(new DeltaTableCredId(CONTEXT_A, id, "READ", "s3://b/t"))
+        .isNotEqualTo(new DeltaTableCredId(CONTEXT_B, id, "READ", "s3://b/t"));
   }
 
   @Test
   void deltaTableKeyNotEqualWhenDifferentCatalog() {
     assertThat(
             new DeltaTableCredId(
-                AUTH_A, UCDeltaTableIdentifier.of("cat1", "sch", "tbl"), "READ", "s3://b/t"))
+                CONTEXT_A, UCDeltaTableIdentifier.of("cat1", "sch", "tbl"), "READ", "s3://b/t"))
         .isNotEqualTo(
             new DeltaTableCredId(
-                AUTH_A, UCDeltaTableIdentifier.of("cat2", "sch", "tbl"), "READ", "s3://b/t"));
+                CONTEXT_A, UCDeltaTableIdentifier.of("cat2", "sch", "tbl"), "READ", "s3://b/t"));
   }
 
   @Test
   void deltaTableKeyNotEqualWhenDifferentOperation() {
     UCDeltaTableIdentifier id = UCDeltaTableIdentifier.of("cat", "sch", "tbl");
-    assertThat(new DeltaTableCredId(AUTH_A, id, "READ", "s3://b/t"))
-        .isNotEqualTo(new DeltaTableCredId(AUTH_A, id, "READ_WRITE", "s3://b/t"));
+    assertThat(new DeltaTableCredId(CONTEXT_A, id, "READ", "s3://b/t"))
+        .isNotEqualTo(new DeltaTableCredId(CONTEXT_A, id, "READ_WRITE", "s3://b/t"));
   }
 
   @Test
   void deltaTableKeyNotEqualWhenDifferentLocation() {
     UCDeltaTableIdentifier id = UCDeltaTableIdentifier.of("cat", "sch", "tbl");
-    assertThat(new DeltaTableCredId(AUTH_A, id, "READ", "s3://b/t1"))
-        .isNotEqualTo(new DeltaTableCredId(AUTH_A, id, "READ", "s3://b/t2"));
+    assertThat(new DeltaTableCredId(CONTEXT_A, id, "READ", "s3://b/t1"))
+        .isNotEqualTo(new DeltaTableCredId(CONTEXT_A, id, "READ", "s3://b/t2"));
   }
 
   @Test
@@ -187,7 +187,7 @@ class CredIdTest {
     UCDeltaTableIdentifier id = UCDeltaTableIdentifier.of("cat", "sch", "tbl");
     assertThat(CredId.create(conf))
         .isInstanceOf(DeltaTableCredId.class)
-        .isEqualTo(new DeltaTableCredId(EMPTY_AUTH_UNIQUE_ID, id, "READ_WRITE", "s3://b/tbl"));
+        .isEqualTo(new DeltaTableCredId(EMPTY_CRED_CONTEXT_ID, id, "READ_WRITE", "s3://b/tbl"));
   }
 
   @Test
@@ -201,32 +201,32 @@ class CredIdTest {
 
     assertThat(CredId.create(conf))
         .isInstanceOf(TableCredId.class)
-        .isEqualTo(new TableCredId(EMPTY_AUTH_UNIQUE_ID, "tid", "READ"));
+        .isEqualTo(new TableCredId(EMPTY_CRED_CONTEXT_ID, "tid", "READ"));
   }
 
   @Test
   void deltaStagingTableKeyEqualWhenSameFields() {
-    assertThat(new DeltaStagingTableCredId(AUTH_A, "stid-1", "s3://b/staging"))
-        .isEqualTo(new DeltaStagingTableCredId(AUTH_A, "stid-1", "s3://b/staging"))
-        .hasSameHashCodeAs(new DeltaStagingTableCredId(AUTH_A, "stid-1", "s3://b/staging"));
+    assertThat(new DeltaStagingTableCredId(CONTEXT_A, "stid-1", "s3://b/staging"))
+        .isEqualTo(new DeltaStagingTableCredId(CONTEXT_A, "stid-1", "s3://b/staging"))
+        .hasSameHashCodeAs(new DeltaStagingTableCredId(CONTEXT_A, "stid-1", "s3://b/staging"));
   }
 
   @Test
-  void deltaStagingTableKeyNotEqualWhenDifferentAuth() {
-    assertThat(new DeltaStagingTableCredId(AUTH_A, "stid-1", "s3://b/staging"))
-        .isNotEqualTo(new DeltaStagingTableCredId(AUTH_B, "stid-1", "s3://b/staging"));
+  void deltaStagingTableKeyNotEqualWhenDifferentContext() {
+    assertThat(new DeltaStagingTableCredId(CONTEXT_A, "stid-1", "s3://b/staging"))
+        .isNotEqualTo(new DeltaStagingTableCredId(CONTEXT_B, "stid-1", "s3://b/staging"));
   }
 
   @Test
   void deltaStagingTableKeyNotEqualWhenDifferentId() {
-    assertThat(new DeltaStagingTableCredId(AUTH_A, "stid-1", "s3://b/staging"))
-        .isNotEqualTo(new DeltaStagingTableCredId(AUTH_A, "stid-2", "s3://b/staging"));
+    assertThat(new DeltaStagingTableCredId(CONTEXT_A, "stid-1", "s3://b/staging"))
+        .isNotEqualTo(new DeltaStagingTableCredId(CONTEXT_A, "stid-2", "s3://b/staging"));
   }
 
   @Test
   void deltaStagingTableKeyNotEqualWhenDifferentLocation() {
-    assertThat(new DeltaStagingTableCredId(AUTH_A, "stid-1", "s3://b/loc1"))
-        .isNotEqualTo(new DeltaStagingTableCredId(AUTH_A, "stid-1", "s3://b/loc2"));
+    assertThat(new DeltaStagingTableCredId(CONTEXT_A, "stid-1", "s3://b/loc1"))
+        .isNotEqualTo(new DeltaStagingTableCredId(CONTEXT_A, "stid-1", "s3://b/loc2"));
   }
 
   @Test
@@ -237,7 +237,7 @@ class CredIdTest {
 
     assertThat(CredId.create(conf))
         .isInstanceOf(DeltaStagingTableCredId.class)
-        .isEqualTo(new DeltaStagingTableCredId(EMPTY_AUTH_UNIQUE_ID, "stid-1", "s3://b/staging"));
+        .isEqualTo(new DeltaStagingTableCredId(EMPTY_CRED_CONTEXT_ID, "stid-1", "s3://b/staging"));
   }
 
   @Test
@@ -256,10 +256,10 @@ class CredIdTest {
 
   @Test
   void pathKeyProps() {
-    CredId key = new PathCredId(AUTH_A, "s3://b/p", "WRITE");
+    CredId key = new PathCredId(CONTEXT_A, "s3://b/p", "WRITE");
     assertThat(key.props())
         .containsOnly(
-            entry(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, AUTH_A),
+            entry(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CONTEXT_A),
             entry(
                 UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
                 UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE),
@@ -270,10 +270,10 @@ class CredIdTest {
 
   @Test
   void tableKeyProps() {
-    CredId key = new TableCredId(AUTH_A, "tid", "READ");
+    CredId key = new TableCredId(CONTEXT_A, "tid", "READ");
     assertThat(key.props())
         .containsOnly(
-            entry(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, AUTH_A),
+            entry(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CONTEXT_A),
             entry(
                 UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
                 UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE),
@@ -286,10 +286,10 @@ class CredIdTest {
   void deltaTableKeyProps() {
     CredId key =
         new DeltaTableCredId(
-            AUTH_A, UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "READ_WRITE", "s3://b/tbl");
+            CONTEXT_A, UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "READ_WRITE", "s3://b/tbl");
     assertThat(key.props())
         .containsOnly(
-            entry(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, AUTH_A),
+            entry(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CONTEXT_A),
             entry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true"),
             entry(
                 UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
@@ -304,10 +304,10 @@ class CredIdTest {
 
   @Test
   void deltaStagingTableKeyProps() {
-    CredId key = new DeltaStagingTableCredId(AUTH_A, "stid-1", "s3://b/staging");
+    CredId key = new DeltaStagingTableCredId(CONTEXT_A, "stid-1", "s3://b/staging");
     assertThat(key.props())
         .containsOnly(
-            entry(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, AUTH_A),
+            entry(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CONTEXT_A),
             entry(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true"),
             entry(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "stid-1"),
             entry(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://b/staging"));
@@ -321,7 +321,7 @@ class CredIdTest {
 
   @Test
   void propsAreUnmodifiable() {
-    Map<String, String> props = new TableCredId(AUTH_A, "tid", "READ").props();
+    Map<String, String> props = new TableCredId(CONTEXT_A, "tid", "READ").props();
     assertThatThrownBy(() -> props.put("k", "v")).isInstanceOf(UnsupportedOperationException.class);
   }
 
@@ -329,11 +329,11 @@ class CredIdTest {
   void tableKeyRejectsNullFields() {
     assertThatThrownBy(() -> new TableCredId(null, "tid", "READ"))
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("authUniqueId");
-    assertThatThrownBy(() -> new TableCredId(AUTH_A, null, "READ"))
+        .hasMessageContaining("credContextId");
+    assertThatThrownBy(() -> new TableCredId(CONTEXT_A, null, "READ"))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("tableId");
-    assertThatThrownBy(() -> new TableCredId(AUTH_A, "tid", null))
+    assertThatThrownBy(() -> new TableCredId(CONTEXT_A, "tid", null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("tableOperation");
   }
@@ -342,11 +342,11 @@ class CredIdTest {
   void pathKeyRejectsNullFields() {
     assertThatThrownBy(() -> new PathCredId(null, "s3://b/p", "READ"))
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("authUniqueId");
-    assertThatThrownBy(() -> new PathCredId(AUTH_A, null, "READ"))
+        .hasMessageContaining("credContextId");
+    assertThatThrownBy(() -> new PathCredId(CONTEXT_A, null, "READ"))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("path");
-    assertThatThrownBy(() -> new PathCredId(AUTH_A, "s3://b/p", null))
+    assertThatThrownBy(() -> new PathCredId(CONTEXT_A, "s3://b/p", null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("pathOperation");
   }
@@ -356,14 +356,14 @@ class CredIdTest {
     UCDeltaTableIdentifier id = UCDeltaTableIdentifier.of("cat", "sch", "tbl");
     assertThatThrownBy(() -> new DeltaTableCredId(null, id, "READ", "s3://b/t"))
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("authUniqueId");
-    assertThatThrownBy(() -> new DeltaTableCredId(AUTH_A, null, "READ", "s3://b/t"))
+        .hasMessageContaining("credContextId");
+    assertThatThrownBy(() -> new DeltaTableCredId(CONTEXT_A, null, "READ", "s3://b/t"))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("identifier");
-    assertThatThrownBy(() -> new DeltaTableCredId(AUTH_A, id, null, "s3://b/t"))
+    assertThatThrownBy(() -> new DeltaTableCredId(CONTEXT_A, id, null, "s3://b/t"))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("tableOperation");
-    assertThatThrownBy(() -> new DeltaTableCredId(AUTH_A, id, "READ", null))
+    assertThatThrownBy(() -> new DeltaTableCredId(CONTEXT_A, id, "READ", null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("location");
   }
@@ -372,11 +372,11 @@ class CredIdTest {
   void deltaStagingTableKeyRejectsNullFields() {
     assertThatThrownBy(() -> new DeltaStagingTableCredId(null, "stid-1", "s3://b/staging"))
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("authUniqueId");
-    assertThatThrownBy(() -> new DeltaStagingTableCredId(AUTH_A, null, "s3://b/staging"))
+        .hasMessageContaining("credContextId");
+    assertThatThrownBy(() -> new DeltaStagingTableCredId(CONTEXT_A, null, "s3://b/staging"))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("stagingTableId");
-    assertThatThrownBy(() -> new DeltaStagingTableCredId(AUTH_A, "stid-1", null))
+    assertThatThrownBy(() -> new DeltaStagingTableCredId(CONTEXT_A, "stid-1", null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("location");
   }

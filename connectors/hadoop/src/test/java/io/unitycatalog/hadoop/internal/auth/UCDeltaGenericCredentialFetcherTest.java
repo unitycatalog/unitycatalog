@@ -23,7 +23,7 @@ class UCDeltaGenericCredentialFetcherTest {
   void createCredentialCallsDeltaApiWithCredIdFieldsAndReturnsCredential() throws Exception {
     DeltaTableCredId credId =
         new DeltaTableCredId(
-            CredId.EMPTY_AUTH_UNIQUE_ID,
+            CredId.EMPTY_CRED_CONTEXT_ID,
             UCDeltaTableIdentifier.of("main", "default", "events"),
             "READ_WRITE",
             "s3://bucket/events");
@@ -61,7 +61,7 @@ class UCDeltaGenericCredentialFetcherTest {
   void createCredentialRejectsMissingDeltaCredentialsResponse() throws Exception {
     DeltaTableCredId credId =
         new DeltaTableCredId(
-            CredId.EMPTY_AUTH_UNIQUE_ID,
+            CredId.EMPTY_CRED_CONTEXT_ID,
             UCDeltaTableIdentifier.of("main", "default", "events"),
             "READ_WRITE",
             "s3://bucket/events");
@@ -79,7 +79,7 @@ class UCDeltaGenericCredentialFetcherTest {
   void factoryRejectsUnsupportedTableOperation() {
     DeltaTableCredId credId =
         new DeltaTableCredId(
-            CredId.EMPTY_AUTH_UNIQUE_ID,
+            CredId.EMPTY_CRED_CONTEXT_ID,
             UCDeltaTableIdentifier.of("c", "s", "n"),
             "UNKNOWN",
             "s3://b/p");

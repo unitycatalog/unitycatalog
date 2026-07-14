@@ -68,6 +68,10 @@ public class CredPropsUtil {
   private static final String GCS_CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
   private static final String ABFS_FIXED_SAS_TOKEN_KEY = "fs.azure.sas.fixed.token";
 
+  // Keys used to build the credential-context id (see #credContextId).
+  private static final String CRED_CONTEXT_CATALOG_URI_KEY = "catalogUri";
+  private static final String CRED_CONTEXT_SCHEME_KEY = "scheme";
+
   private abstract static class PropsBuilder<T extends PropsBuilder<T>> {
     private final HashMap<String, String> builder = new HashMap<>();
 
@@ -362,7 +366,8 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new TableCredId(authUniqueId(tokenProvider), tableId, tableOp.value()));
+        new TableCredId(
+            credContextId(catalogUri, scheme, tokenProvider), tableId, tableOp.value()));
   }
 
   /**
@@ -391,7 +396,11 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new DeltaTableCredId(authUniqueId(tokenProvider), identifier, tableOp.value(), location));
+        new DeltaTableCredId(
+            credContextId(catalogUri, scheme, tokenProvider),
+            identifier,
+            tableOp.value(),
+            location));
   }
 
   /**
@@ -419,7 +428,8 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new DeltaStagingTableCredId(authUniqueId(tokenProvider), stagingTableId, location));
+        new DeltaStagingTableCredId(
+            credContextId(catalogUri, scheme, tokenProvider), stagingTableId, location));
   }
 
   /** Fetches path credentials from the UC REST API and builds Hadoop configuration properties. */
@@ -444,7 +454,7 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new PathCredId(authUniqueId(tokenProvider), path, pathOp.value()));
+        new PathCredId(credContextId(catalogUri, scheme, tokenProvider), path, pathOp.value()));
   }
 
   /**
@@ -503,9 +513,22 @@ public class CredPropsUtil {
     }
   }
 
-  private static String authUniqueId(TokenProvider tokenProvider) {
+  /**
+   * Derives a stable id for the credential context so caches only reuse a vended credential across
+   * requests that would receive the same one. A vended credential is a function of the catalog
+   * endpoint, storage scheme, and auth identity, so all three are folded into the hash. The auth
+   * configs are namespaced under {@code auth.} to avoid colliding with the other two keys.
+   */
+  private static String credContextId(
+      String catalogUri, String scheme, TokenProvider tokenProvider) {
+    Objects.requireNonNull(catalogUri, "catalogUri is required");
+    Objects.requireNonNull(scheme, "scheme is required");
     Objects.requireNonNull(tokenProvider, "tokenProvider is required");
-    return MapIdGenerator.generateId(tokenProvider.configs());
+
+    Map<String, String> context = new HashMap<>(tokenProvider.configs());
+    context.put(CRED_CONTEXT_CATALOG_URI_KEY, catalogUri);
+    context.put(CRED_CONTEXT_SCHEME_KEY, scheme);
+    return MapIdGenerator.generateId(context);
   }
 
   private static GenericCredential fetchGenericCredential(

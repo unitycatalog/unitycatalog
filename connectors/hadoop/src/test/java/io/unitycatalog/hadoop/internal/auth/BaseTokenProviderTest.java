@@ -322,17 +322,17 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   }
 
   @Test
-  public void sameTableDifferentAuthUsesSeparateGlobalCacheEntries() throws Exception {
-    String authA = MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
-    String authB = MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-b"));
+  public void sameTableDifferentCredContextUsesSeparateGlobalCacheEntries() throws Exception {
+    String contextA = MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
+    String contextB = MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-b"));
 
     Configuration confA = newTableBasedConf("shared-table");
-    confA.set(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, authA);
+    confA.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, contextA);
     confA.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
     confA.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     Configuration confB = newTableBasedConf("shared-table");
-    confB.set(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, authB);
+    confB.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, contextB);
     confB.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
     confB.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 

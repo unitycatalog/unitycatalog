@@ -23,9 +23,9 @@ import org.junit.jupiter.api.Test;
  */
 class CredScopedFileSystemCacheTest {
 
-  private static final String AUTH_A =
+  private static final String CONTEXT_A =
       MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
-  private static final String AUTH_B =
+  private static final String CONTEXT_B =
       MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-b"));
 
   @AfterEach
@@ -40,12 +40,12 @@ class CredScopedFileSystemCacheTest {
   }
 
   private static Configuration tableConf(String tableId, String op) {
-    return tableConf(tableId, op, CredId.EMPTY_AUTH_UNIQUE_ID);
+    return tableConf(tableId, op, CredId.EMPTY_CRED_CONTEXT_ID);
   }
 
-  private static Configuration tableConf(String tableId, String op, String authUniqueId) {
+  private static Configuration tableConf(String tableId, String op, String credContextId) {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConfConstants.UC_AUTH_UNIQUE_ID_KEY, authUniqueId);
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, credContextId);
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
@@ -77,11 +77,11 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
-  void sameTableDifferentAuthGetsDifferentDelegate() throws Exception {
+  void sameTableDifferentCredContextGetsDifferentDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
 
-    CredScopedFileSystem fsTenantA = init(uri, tableConf("tid-1", "READ", AUTH_A));
-    CredScopedFileSystem fsTenantB = init(uri, tableConf("tid-1", "READ", AUTH_B));
+    CredScopedFileSystem fsTenantA = init(uri, tableConf("tid-1", "READ", CONTEXT_A));
+    CredScopedFileSystem fsTenantB = init(uri, tableConf("tid-1", "READ", CONTEXT_B));
 
     assertThat(fsTenantA.getDelegate()).isNotSameAs(fsTenantB.getDelegate());
   }
@@ -89,7 +89,7 @@ class CredScopedFileSystemCacheTest {
   @Test
   void evictedEntryClosesCachedDelegate() throws Exception {
     FileSystem mockFs = mock(FileSystem.class);
-    CredId key = new TableCredId(CredId.EMPTY_AUTH_UNIQUE_ID, "tid-evict", "READ");
+    CredId key = new TableCredId(CredId.EMPTY_CRED_CONTEXT_ID, "tid-evict", "READ");
     CredScopedFileSystem.CACHE.put(key, mockFs);
 
     CredScopedFileSystem.clearCacheForTesting();

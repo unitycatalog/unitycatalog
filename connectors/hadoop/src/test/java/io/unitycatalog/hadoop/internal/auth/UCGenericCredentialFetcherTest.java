@@ -53,7 +53,7 @@ class UCGenericCredentialFetcherTest {
     GenericCredentialFetcher credentialFetcher =
         GenericCredentialFetcher.forUc(
             new TableCredId(
-                CredId.EMPTY_AUTH_UNIQUE_ID, "original-table-id", TableOperation.READ.getValue()),
+                CredId.EMPTY_CRED_CONTEXT_ID, "original-table-id", TableOperation.READ.getValue()),
             api);
 
     credentialFetcher.createCredential();
@@ -74,7 +74,7 @@ class UCGenericCredentialFetcherTest {
     GenericCredentialFetcher credentialFetcher =
         GenericCredentialFetcher.forUc(
             new PathCredId(
-                CredId.EMPTY_AUTH_UNIQUE_ID,
+                CredId.EMPTY_CRED_CONTEXT_ID,
                 "s3://bucket/original-path",
                 PathOperation.PATH_READ.getValue()),
             api);
