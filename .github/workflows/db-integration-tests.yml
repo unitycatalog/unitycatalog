@@ -1,0 +1,39 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Database Integration Tests
+
+on:
+  push:
+    branches: [ "main", "branch-*" ]
+  pull_request:
+    branches: [ "main", "branch-*" ]
+
+permissions:
+  contents: read
+
+# Runs every server test tagged @Tag("database") against real database engines.
+#
+# These suites are @Testcontainers(disabledWithoutDocker = true): GitHub-hosted ubuntu
+# runners ship with Docker, so they execute here instead of skipping. Selection is by
+# JUnit tag, not by class name — any new test annotated @Tag("database") is picked up
+# automatically, so this job does not need editing when DB coverage grows.
+#
+# Why a real engine and not an in-memory substitute: the fix under test is dialect SQL.
+# H2 and PostgreSQL accept the flattened DELETE IN(...) subquery, but MySQL rejects it
+# (errors 1235/1093), so only a real MySQL engine guards the derived-table wrapper.
+jobs:
+  db-integration-tests:
+    name: Server @Tag("database") suites (Testcontainers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Run @Tag("database") server tests against real engines
+        run: build/sbt -J-Xmx2G "server/testOnly * -- --include-tags=database"
