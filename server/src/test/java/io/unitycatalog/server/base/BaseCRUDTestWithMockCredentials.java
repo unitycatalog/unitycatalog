@@ -214,7 +214,10 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     };
   }
 
-  protected void assertTemporaryCredentials(TemporaryCredentials tempCredentials, String scheme) {
+  protected void assertTemporaryCredentials(
+      TemporaryCredentials tempCredentials, String scheme, String requestedLocation) {
+    // requestedLocation must be passed in already-normalized form
+    assertThat(tempCredentials.getUrl()).isEqualTo(requestedLocation);
     switch (scheme) {
       case "s3":
         AwsCredentials awsCredentials = tempCredentials.getAwsTempCredentials();

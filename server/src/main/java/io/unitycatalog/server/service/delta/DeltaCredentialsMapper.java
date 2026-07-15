@@ -22,16 +22,17 @@ public final class DeltaCredentialsMapper {
 
   /**
    * Build a {@link DeltaCredentialsResponse} from UC {@link TemporaryCredentials} for a given
-   * storage prefix and operation.
+   * operation. The storage prefix is taken from the credential's own {@code url}, which the
+   * credential vendor scopes to the requested location.
    */
   public static DeltaCredentialsResponse toCredentialsResponse(
-      String prefix, TemporaryCredentials credentials, DeltaCredentialOperation operation) {
+      TemporaryCredentials credentials, DeltaCredentialOperation operation) {
     return new DeltaCredentialsResponse()
-        .storageCredentials(List.of(toStorageCredential(prefix, credentials, operation)));
+        .storageCredentials(List.of(toStorageCredential(credentials, operation)));
   }
 
   private static DeltaStorageCredential toStorageCredential(
-      String prefix, TemporaryCredentials credentials, DeltaCredentialOperation operation) {
+      TemporaryCredentials credentials, DeltaCredentialOperation operation) {
     DeltaStorageCredentialConfig config = new DeltaStorageCredentialConfig();
     var aws = credentials.getAwsTempCredentials();
     if (aws != null) {
@@ -49,7 +50,7 @@ public final class DeltaCredentialsMapper {
     }
 
     return new DeltaStorageCredential()
-        .prefix(prefix)
+        .prefix(credentials.getUrl())
         .operation(operation)
         .config(config)
         .expirationTimeMs(credentials.getExpirationTime());

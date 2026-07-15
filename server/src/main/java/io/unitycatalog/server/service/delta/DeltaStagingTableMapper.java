@@ -30,7 +30,7 @@ public final class DeltaStagingTableMapper {
       StagingTableInfo info, TemporaryCredentials credentials) {
     var creds =
         DeltaCredentialsMapper.toCredentialsResponse(
-            info.getStagingLocation(), credentials, DeltaCredentialOperation.READ_WRITE);
+            credentials, DeltaCredentialOperation.READ_WRITE);
 
     Map<String, String> requiredProperties =
         new HashMap<>(UcManagedDeltaContract.REQUIRED_FIXED_PROPERTIES);

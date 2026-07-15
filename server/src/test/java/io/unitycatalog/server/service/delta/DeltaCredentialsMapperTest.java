@@ -19,6 +19,7 @@ public class DeltaCredentialsMapperTest {
   public void testAwsCredentials() {
     TemporaryCredentials uc =
         new TemporaryCredentials()
+            .url("s3://bucket/path")
             .awsTempCredentials(
                 new AwsCredentials()
                     .accessKeyId("AKIA123")
@@ -27,8 +28,7 @@ public class DeltaCredentialsMapperTest {
             .expirationTime(1700000000000L);
 
     DeltaCredentialsResponse resp =
-        DeltaCredentialsMapper.toCredentialsResponse(
-            "s3://bucket/path", uc, DeltaCredentialOperation.READ);
+        DeltaCredentialsMapper.toCredentialsResponse(uc, DeltaCredentialOperation.READ);
 
     assertThat(resp.getStorageCredentials()).hasSize(1);
     DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
@@ -47,14 +47,12 @@ public class DeltaCredentialsMapperTest {
   public void testAzureCredentials() {
     TemporaryCredentials uc =
         new TemporaryCredentials()
+            .url("abfss://container@acct.dfs.core.windows.net/path")
             .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sv=..."))
             .expirationTime(1700000000000L);
 
     DeltaCredentialsResponse resp =
-        DeltaCredentialsMapper.toCredentialsResponse(
-            "abfss://container@acct.dfs.core.windows.net/path",
-            uc,
-            DeltaCredentialOperation.READ_WRITE);
+        DeltaCredentialsMapper.toCredentialsResponse(uc, DeltaCredentialOperation.READ_WRITE);
 
     DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
     assertThat(sc.getOperation()).isEqualTo(DeltaCredentialOperation.READ_WRITE);
@@ -66,12 +64,12 @@ public class DeltaCredentialsMapperTest {
   public void testGcpCredentials() {
     TemporaryCredentials uc =
         new TemporaryCredentials()
+            .url("gs://bucket/path")
             .gcpOauthToken(new GcpOauthToken().oauthToken("ya29..."))
             .expirationTime(1700000000000L);
 
     DeltaCredentialsResponse resp =
-        DeltaCredentialsMapper.toCredentialsResponse(
-            "gs://bucket/path", uc, DeltaCredentialOperation.READ);
+        DeltaCredentialsMapper.toCredentialsResponse(uc, DeltaCredentialOperation.READ);
 
     DeltaStorageCredential sc = resp.getStorageCredentials().get(0);
     assertThat(sc.getConfig().getGcsOauthToken()).isEqualTo("ya29...");
@@ -83,13 +81,13 @@ public class DeltaCredentialsMapperTest {
     // Only access key + secret, no session token (permanent credentials case)
     TemporaryCredentials uc =
         new TemporaryCredentials()
+            .url("s3://bucket/path")
             .awsTempCredentials(
                 new AwsCredentials().accessKeyId("AKIA123").secretAccessKey("secret"))
             .expirationTime(1700000000000L);
 
     DeltaStorageCredential sc =
-        DeltaCredentialsMapper.toCredentialsResponse(
-                "s3://bucket/path", uc, DeltaCredentialOperation.READ)
+        DeltaCredentialsMapper.toCredentialsResponse(uc, DeltaCredentialOperation.READ)
             .getStorageCredentials()
             .get(0);
 
@@ -100,15 +98,16 @@ public class DeltaCredentialsMapperTest {
 
   @Test
   public void testNullProviderCredentials() {
-    // No provider creds at all (shouldn't happen in prod but guards against NPE)
+    // No provider creds or url at all (shouldn't happen in prod but guards against NPE)
     TemporaryCredentials uc = new TemporaryCredentials().expirationTime(1700000000000L);
 
     DeltaStorageCredential sc =
-        DeltaCredentialsMapper.toCredentialsResponse(
-                "s3://bucket/path", uc, DeltaCredentialOperation.READ)
+        DeltaCredentialsMapper.toCredentialsResponse(uc, DeltaCredentialOperation.READ)
             .getStorageCredentials()
             .get(0);
 
+    // A null url maps straight through to a null prefix.
+    assertThat(sc.getPrefix()).isNull();
     DeltaStorageCredentialConfig config = sc.getConfig();
     assertThat(config.getS3AccessKeyId()).isNull();
     assertThat(config.getS3SecretAccessKey()).isNull();
@@ -129,6 +128,7 @@ public class DeltaCredentialsMapperTest {
   public void testSparseJsonOmitsUnpopulatedKeys() throws Exception {
     TemporaryCredentials uc =
         new TemporaryCredentials()
+            .url("s3://bucket/path")
             .awsTempCredentials(
                 new AwsCredentials()
                     .accessKeyId("AKIA123")
@@ -136,8 +136,7 @@ public class DeltaCredentialsMapperTest {
                     .sessionToken("token"))
             .expirationTime(1700000000000L);
     DeltaStorageCredentialConfig config =
-        DeltaCredentialsMapper.toCredentialsResponse(
-                "s3://bucket/path", uc, DeltaCredentialOperation.READ)
+        DeltaCredentialsMapper.toCredentialsResponse(uc, DeltaCredentialOperation.READ)
             .getStorageCredentials()
             .get(0)
             .getConfig();
