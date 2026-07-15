@@ -19,10 +19,12 @@ import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import io.unitycatalog.hadoop.internal.util.ClockUtil;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -65,6 +67,10 @@ public class CredPropsUtil {
       "fs.gs.auth.access.token.expiration";
   private static final String GCS_CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
   private static final String ABFS_FIXED_SAS_TOKEN_KEY = "fs.azure.sas.fixed.token";
+
+  // Keys used to build the credential-context id (see #credContextId).
+  private static final String CRED_CONTEXT_CATALOG_URI_KEY = "catalogUri";
+  private static final String CRED_CONTEXT_SCHEME_KEY = "scheme";
 
   private abstract static class PropsBuilder<T extends PropsBuilder<T>> {
     private final HashMap<String, String> builder = new HashMap<>();
@@ -360,7 +366,8 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new TableCredId(tableId, tableOp.value()));
+        new TableCredId(
+            credContextId(catalogUri, scheme, tokenProvider), tableId, tableOp.value()));
   }
 
   /**
@@ -389,7 +396,11 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new DeltaTableCredId(identifier, tableOp.value(), location));
+        new DeltaTableCredId(
+            credContextId(catalogUri, scheme, tokenProvider),
+            identifier,
+            tableOp.value(),
+            location));
   }
 
   /**
@@ -417,7 +428,8 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new DeltaStagingTableCredId(stagingTableId, location));
+        new DeltaStagingTableCredId(
+            credContextId(catalogUri, scheme, tokenProvider), stagingTableId, location));
   }
 
   /** Fetches path credentials from the UC REST API and builds Hadoop configuration properties. */
@@ -442,7 +454,7 @@ public class CredPropsUtil {
         catalogUri,
         tokenProvider,
         appVersions,
-        new PathCredId(path, pathOp.value()));
+        new PathCredId(credContextId(catalogUri, scheme, tokenProvider), path, pathOp.value()));
   }
 
   /**
@@ -499,6 +511,23 @@ public class CredPropsUtil {
       default:
         return Collections.emptyMap();
     }
+  }
+
+  /**
+   * Derives a stable id for the credential context so caches only reuse a vended credential across
+   * requests that would receive the same one. A vended credential is a function of the catalog
+   * endpoint, storage scheme, and auth identity, so all three are folded into the hash alongside
+   * the auth configs from {@code tokenProvider}.
+   */
+  static String credContextId(String catalogUri, String scheme, TokenProvider tokenProvider) {
+    Objects.requireNonNull(catalogUri, "catalogUri is required");
+    Objects.requireNonNull(scheme, "scheme is required");
+    Objects.requireNonNull(tokenProvider, "tokenProvider is required");
+
+    Map<String, String> context = new HashMap<>(tokenProvider.configs());
+    context.put(CRED_CONTEXT_CATALOG_URI_KEY, catalogUri);
+    context.put(CRED_CONTEXT_SCHEME_KEY, scheme);
+    return MapIdGenerator.generateId(context);
   }
 
   private static GenericCredential fetchGenericCredential(
