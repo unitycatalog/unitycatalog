@@ -17,6 +17,7 @@ import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_PATH_OPER
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_ID_KEY;
 import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_OPERATION_KEY;
 
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
@@ -134,6 +135,11 @@ public interface CredId {
 
   static String readCredContextId(Configuration conf) {
     String credContextId = conf.get(UC_CRED_CONTEXT_ID_KEY);
-    return credContextId != null ? credContextId : EMPTY_CRED_CONTEXT_ID;
+    // Every CredId variant persists the context id via props(), so its absence means the config was
+    // built incorrectly. Fail fast instead of falling back to a shared default id, which would
+    // silently let unrelated sessions reuse each other's credentials.
+    Preconditions.checkNotNull(
+        credContextId, "Missing required config '%s'", UC_CRED_CONTEXT_ID_KEY);
+    return credContextId;
   }
 }

@@ -28,10 +28,6 @@ public class TableCredId implements CredId {
     this.tableOperation = tableOperation;
   }
 
-  public String credContextId() {
-    return credContextId;
-  }
-
   public String tableId() {
     return tableId;
   }

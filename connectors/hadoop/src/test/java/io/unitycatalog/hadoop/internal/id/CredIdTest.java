@@ -81,6 +81,7 @@ class CredIdTest {
   @Test
   void createReturnsTableKey() {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
@@ -90,6 +91,20 @@ class CredIdTest {
     assertThat(CredId.create(conf))
         .isInstanceOf(TableCredId.class)
         .isEqualTo(new TableCredId(EMPTY_CRED_CONTEXT_ID, "tid", "READ"));
+  }
+
+  @Test
+  void createThrowsWhenCredContextIdMissing() {
+    Configuration conf = new Configuration();
+    conf.set(
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    conf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid");
+    conf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ");
+
+    assertThatThrownBy(() -> CredId.create(conf))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY);
   }
 
   @Test
@@ -108,6 +123,7 @@ class CredIdTest {
   @Test
   void createReturnsPathKey() {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
@@ -174,6 +190,7 @@ class CredIdTest {
   @Test
   void createReturnsDeltaTableKeyWhenDeltaApiEnabled() {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
@@ -193,6 +210,7 @@ class CredIdTest {
   @Test
   void createReturnsTableKeyWhenDeltaApiNotEnabled() {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
@@ -232,6 +250,7 @@ class CredIdTest {
   @Test
   void createReturnsDeltaStagingTableKey() {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, "stid-1");
     conf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, "s3://b/staging");
 
@@ -243,6 +262,7 @@ class CredIdTest {
   @Test
   void stagingTableKeyTakesPriorityOverTableType() {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
         UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);

@@ -40,10 +40,6 @@ public class DeltaTableCredId implements CredId {
     this.location = location;
   }
 
-  public String credContextId() {
-    return credContextId;
-  }
-
   public UCDeltaTableIdentifier identifier() {
     return identifier;
   }

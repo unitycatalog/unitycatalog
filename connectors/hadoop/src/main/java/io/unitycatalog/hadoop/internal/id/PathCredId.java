@@ -28,10 +28,6 @@ public class PathCredId implements CredId {
     this.pathOperation = pathOperation;
   }
 
-  public String credContextId() {
-    return credContextId;
-  }
-
   public String path() {
     return path;
   }

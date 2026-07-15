@@ -365,6 +365,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   public static Configuration newTableBasedConf(String tableId) {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CredId.EMPTY_CRED_CONTEXT_ID);
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
@@ -385,6 +386,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   public static Configuration newPathBasedConf(String path) {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CredId.EMPTY_CRED_CONTEXT_ID);
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");

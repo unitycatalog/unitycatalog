@@ -27,10 +27,6 @@ public class DeltaStagingTableCredId implements CredId {
     this.location = location;
   }
 
-  public String credContextId() {
-    return credContextId;
-  }
-
   public String stagingTableId() {
     return stagingTableId;
   }
