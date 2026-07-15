@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
+import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -12,7 +13,6 @@ import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -25,7 +25,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
   @Test
   void createCredentialCallsDeltaStagingApiAndReturnsCredential() throws Exception {
     DeltaStagingTableCredId credId =
-        new DeltaStagingTableCredId(CredId.EMPTY_CRED_CONTEXT_ID, STAGING_ID.toString(), LOCATION);
+        new DeltaStagingTableCredId(EMPTY_CRED_CONTEXT_ID, STAGING_ID.toString(), LOCATION);
     DeltaCredentialsResponse response = s3StagingResponse();
 
     DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
@@ -46,7 +46,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
   @Test
   void createCredentialRejectsNullResponse() throws Exception {
     DeltaStagingTableCredId credId =
-        new DeltaStagingTableCredId(CredId.EMPTY_CRED_CONTEXT_ID, STAGING_ID.toString(), LOCATION);
+        new DeltaStagingTableCredId(EMPTY_CRED_CONTEXT_ID, STAGING_ID.toString(), LOCATION);
 
     DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(null);

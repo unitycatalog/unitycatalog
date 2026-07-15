@@ -1,6 +1,5 @@
 package io.unitycatalog.hadoop.internal.id;
 
-import static io.unitycatalog.hadoop.internal.id.CredId.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
@@ -13,7 +12,10 @@ import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
 
-class CredIdTest {
+public class CredIdTest {
+
+  /** Placeholder context id for tests that don't exercise credential-context isolation. */
+  public static final String EMPTY_CRED_CONTEXT_ID = MapIdGenerator.generateId(Map.of());
 
   private static final String CONTEXT_A =
       MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));

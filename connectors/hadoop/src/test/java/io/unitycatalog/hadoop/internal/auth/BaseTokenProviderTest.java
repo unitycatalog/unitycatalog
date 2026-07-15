@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
+import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -365,7 +366,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   public static Configuration newTableBasedConf(String tableId) {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CredId.EMPTY_CRED_CONTEXT_ID);
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
@@ -386,7 +387,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   public static Configuration newPathBasedConf(String path) {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CredId.EMPTY_CRED_CONTEXT_ID);
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");

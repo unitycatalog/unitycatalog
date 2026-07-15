@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.fs;
 
+import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -40,7 +41,7 @@ class CredScopedFileSystemCacheTest {
   }
 
   private static Configuration tableConf(String tableId, String op) {
-    return tableConf(tableId, op, CredId.EMPTY_CRED_CONTEXT_ID);
+    return tableConf(tableId, op, EMPTY_CRED_CONTEXT_ID);
   }
 
   private static Configuration tableConf(String tableId, String op, String credContextId) {
@@ -89,7 +90,7 @@ class CredScopedFileSystemCacheTest {
   @Test
   void evictedEntryClosesCachedDelegate() throws Exception {
     FileSystem mockFs = mock(FileSystem.class);
-    CredId key = new TableCredId(CredId.EMPTY_CRED_CONTEXT_ID, "tid-evict", "READ");
+    CredId key = new TableCredId(EMPTY_CRED_CONTEXT_ID, "tid-evict", "READ");
     CredScopedFileSystem.CACHE.put(key, mockFs);
 
     CredScopedFileSystem.clearCacheForTesting();

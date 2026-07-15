@@ -20,8 +20,6 @@ import static io.unitycatalog.hadoop.internal.UCHadoopConfConstants.UC_TABLE_OPE
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
-import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -54,9 +52,6 @@ import org.apache.hadoop.conf.Configuration;
  * </ul>
  */
 public interface CredId {
-
-  /** Stable id used when {@link UCHadoopConfConstants#UC_CRED_CONTEXT_ID_KEY} is absent. */
-  String EMPTY_CRED_CONTEXT_ID = MapIdGenerator.generateId(Collections.emptyMap());
 
   static CredId create(Configuration conf) {
     return create(
