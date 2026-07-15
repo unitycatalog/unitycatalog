@@ -60,11 +60,6 @@ public class UCHadoopConfConstants {
   // Key for specifying the manual clock, for testing purpose.
   public static final String UC_TEST_CLOCK_NAME = "fs.unitycatalog.test.clock.name";
 
-  // Key representing a unique credential ID. It identifies a job-level credential for a specific
-  // table, meaning that the same job–table combination shares the same credential. Cached
-  // credentials are indexed by this key and are not reused across different jobs.
-  public static final String UC_CREDENTIALS_UID_KEY = "fs.unitycatalog.credentials.uid";
-
   // Enables the UC Delta temporary credentials API. false uses the standard UC API.
   public static final String UC_DELTA_CREDENTIALS_API_ENABLED_KEY =
       "fs.unitycatalog.delta.credentials.api.enabled";
