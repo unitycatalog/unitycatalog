@@ -199,14 +199,19 @@ class CrossSparkPublishTest:
         return result.stdout.strip()
 
     def test_source_build_metadata(self) -> bool:
-        """Source-build defaults should be configured but excluded from publish loops."""
+        """When source-build specs are configured, they must be complete and excluded from
+        publish loops. Having *no* source-build spec is a valid state: it means every Spark
+        version publishes from released Maven artifacts (the source-build machinery in
+        `get_spark_version_info.py` / `build_spark.sh` stays available for future Spark
+        previews, but nothing exercises it right now)."""
         source_build_versions = [
             version for version, spec in SPARK_VERSIONS.items()
             if spec.source_build_default_ref
         ]
         if not source_build_versions:
-            print("FAIL: Expected at least one Spark spec with source-build defaults")
-            return False
+            print("PASS: No source-build specs configured (all Spark versions publish from "
+                  "released Maven artifacts)")
+            return True
 
         all_passed = True
         for version in source_build_versions:
@@ -216,9 +221,6 @@ class CrossSparkPublishTest:
                 all_passed = False
             if not spec.source_build_artifact_base_version:
                 print(f"FAIL: {version} is missing sourceBuildArtifactBaseVersion")
-                all_passed = False
-            if version == "4.2.0-SNAPSHOT" and spec.source_build_artifact_base_version != "4.2.0":
-                print("FAIL: 4.2.0-SNAPSHOT should publish Spark artifacts under base 4.2.0")
                 all_passed = False
 
         release_like_versions = [
@@ -235,10 +237,23 @@ class CrossSparkPublishTest:
         return all_passed
 
     def test_resolve_source_build_cache_key(self) -> bool:
-        """Source-build resolution should emit a stable Maven cache key."""
+        """Source-build resolution should emit a stable Maven cache key. Skipped (passes) when
+        no source-build spec is configured -- there is nothing to resolve. Runs against the
+        first configured source-build version so it stays correct if one is added back."""
         print("\n" + "=" * 70)
         print("TEST: --resolve-source-build cache_key")
         print("=" * 70)
+
+        source_build_versions = [
+            version for version, spec in SPARK_VERSIONS.items()
+            if spec.source_build_default_ref
+        ]
+        if not source_build_versions:
+            print("SKIP: No source-build specs configured; nothing to resolve")
+            return True
+
+        sb_version = source_build_versions[0]
+        sb_base = SPARK_VERSIONS[sb_version].source_build_artifact_base_version
 
         script_path = self.uc_root / "project" / "scripts" / "get_spark_version_info.py"
         fake_sha = "b6bd005ac7549411ec4e7dc944d7a0e19fd56561"
@@ -257,7 +272,7 @@ class CrossSparkPublishTest:
                     str(script_path),
                     "--resolve-source-build",
                     "--spark-version",
-                    "4.2.0-SNAPSHOT",
+                    sb_version,
                 ]
                 with contextlib.redirect_stdout(output):
                     module.main()
@@ -275,7 +290,10 @@ class CrossSparkPublishTest:
                 return False
 
             cache_key = values["cache_key"]
-            if not cache_key.startswith("spark-m2-ubuntu-latest-scala-2.13-4.2.0-SNAPSHOT-4.2.0-"):
+            expected_prefix = "spark-m2-ubuntu-latest-scala-2.13-{}-{}-".format(
+                sb_version, sb_base
+            )
+            if not cache_key.startswith(expected_prefix):
                 print("FAIL: Unexpected cache_key prefix: {}".format(cache_key))
                 return False
             if fake_sha not in cache_key:
@@ -285,8 +303,8 @@ class CrossSparkPublishTest:
             build_script = self.uc_root / "project" / "scripts" / "build_spark.sh"
             expected_key = module.compute_spark_m2_cache_key(
                 "ubuntu-latest",
-                "4.2.0-SNAPSHOT",
-                "4.2.0",
+                sb_version,
+                sb_base,
                 fake_sha,
                 build_script,
             )
@@ -298,8 +316,8 @@ class CrossSparkPublishTest:
 
             other_sha_key = module.compute_spark_m2_cache_key(
                 "ubuntu-latest",
-                "4.2.0-SNAPSHOT",
-                "4.2.0",
+                sb_version,
+                sb_base,
                 "deadbeef" * 5,
                 build_script,
             )
