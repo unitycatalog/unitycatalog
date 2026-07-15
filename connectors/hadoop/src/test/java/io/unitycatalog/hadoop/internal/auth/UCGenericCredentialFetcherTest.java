@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
+import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -51,7 +52,9 @@ class UCGenericCredentialFetcherTest {
 
     GenericCredentialFetcher credentialFetcher =
         GenericCredentialFetcher.forUc(
-            new TableCredId("original-table-id", TableOperation.READ.getValue()), api);
+            new TableCredId(
+                EMPTY_CRED_CONTEXT_ID, "original-table-id", TableOperation.READ.getValue()),
+            api);
 
     credentialFetcher.createCredential();
 
@@ -70,7 +73,11 @@ class UCGenericCredentialFetcherTest {
 
     GenericCredentialFetcher credentialFetcher =
         GenericCredentialFetcher.forUc(
-            new PathCredId("s3://bucket/original-path", PathOperation.PATH_READ.getValue()), api);
+            new PathCredId(
+                EMPTY_CRED_CONTEXT_ID,
+                "s3://bucket/original-path",
+                PathOperation.PATH_READ.getValue()),
+            api);
 
     credentialFetcher.createCredential();
 
