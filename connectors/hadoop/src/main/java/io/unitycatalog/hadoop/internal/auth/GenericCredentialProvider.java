@@ -3,8 +3,9 @@ package io.unitycatalog.hadoop.internal.auth;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
 import io.unitycatalog.hadoop.internal.id.CredId;
-import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
+import io.unitycatalog.hadoop.internal.util.ClockUtil;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -14,18 +15,7 @@ import org.apache.hadoop.conf.Configuration;
  * cache lookup.
  */
 public abstract class GenericCredentialProvider {
-  // The credential cache, for saving QPS to unity catalog server. Keyed by the credential scope
-  // ({@link CredId}) so that requests targeting the same scope can share a vended credential.
-  static final BoundedKeyedCache<CredId, GenericCredential> globalCache;
-  private static final String UC_CREDENTIAL_CACHE_MAX_SIZE =
-      "unitycatalog.credential.cache.maxSize";
-  private static final int UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
-
-  static {
-    int maxSize =
-        Integer.getInteger(UC_CREDENTIAL_CACHE_MAX_SIZE, UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
-    globalCache = new BoundedKeyedCache<>(maxSize, ignored -> {});
-  }
+  static final CredentialCache globalCache = CredentialCache.createGlobalCache();
 
   private Configuration conf;
   private Clock clock;
@@ -38,10 +28,7 @@ public abstract class GenericCredentialProvider {
 
   protected void initialize(Configuration conf) {
     this.conf = conf;
-
-    // Use the test clock if one is intentionally configured for testing.
-    String clockName = conf.get(UCHadoopConfConstants.UC_TEST_CLOCK_NAME);
-    this.clock = clockName != null ? Clock.getManualClock(clockName) : Clock.systemClock();
+    this.clock = ClockUtil.resolveClock(conf);
 
     this.renewalLeadTimeMillis =
         conf.getLong(
@@ -92,16 +79,11 @@ public abstract class GenericCredentialProvider {
 
   private GenericCredential renewCredential() throws ApiException {
     if (credCacheEnabled) {
-      synchronized (globalCache) {
-        GenericCredential cached = globalCache.getIfPresent(cacheKey);
-        // Use the cached one if existing and valid.
-        if (cached != null && !cached.readyToRenew(clock, renewalLeadTimeMillis)) {
-          return cached;
-        }
-        GenericCredential created = genericCredentialFetcher().createCredential();
-        globalCache.put(cacheKey, created);
-        return created;
-      }
+      return globalCache.access(
+          cacheKey,
+          () ->
+              new RenewableCredential(
+                  renewalLeadTimeMillis, clock, genericCredentialFetcher().createCredential()));
     } else {
       return genericCredentialFetcher().createCredential();
     }
