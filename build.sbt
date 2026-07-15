@@ -699,7 +699,8 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      // jackson-core >= 2.18 required by Spark 4.2's jackson-dataformat-yaml (YAMLParser._updateToken).
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.19.2",
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
