@@ -416,8 +416,8 @@ public class UnityCatalogServer {
     /**
      * Uses the given {@link HibernateConfigurator} instead of creating one from the server
      * properties. Lets tests share the server's session factory and customize the hibernate
-     * properties (e.g. run against PostgreSQL via Testcontainers). The caller keeps ownership:
-     * stopping the server does not close the injected configurator's session factory.
+     * properties (e.g. run against PostgreSQL via Testcontainers). The server never closes this
+     * factory, so the caller owns its lifecycle.
      */
     public UnityCatalogServer.Builder hibernateConfigurator(
         HibernateConfigurator hibernateConfigurator) {
