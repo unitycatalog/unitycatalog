@@ -31,6 +31,7 @@ import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, 
 import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.sparkproject.guava.base.Preconditions
@@ -146,7 +147,18 @@ class UCSingleCatalog
   private def managedDeltaCreatePropsForDelegate(
       ident: Identifier,
       properties: util.Map[String, String]): util.Map[String, String] = {
-    val validated = validateAndDefaultManagedDeltaCreateProperties(properties)
+    // `hasDeltaProvider` may resolve to Delta via `spark.sql.sources.default` when no `USING`
+    // clause was given, in which case the map has no `provider` key. Materialize it so the Delta
+    // delegate -- and `UCProxy.createTable`'s `requireProviderSpecified` check -- see an explicit
+    // provider, exactly as an explicit `USING delta` would produce.
+    val withProvider = if (properties.containsKey(TableCatalog.PROP_PROVIDER)) {
+      properties
+    } else {
+      val augmented = new util.HashMap[String, String](properties)
+      augmented.put(TableCatalog.PROP_PROVIDER, "delta")
+      augmented
+    }
+    val validated = validateAndDefaultManagedDeltaCreateProperties(withProvider)
     if (shouldUseDeltaAPI) validated
     else stageManagedDeltaTableAndGetProps(ident, validated)
   }
@@ -595,10 +607,16 @@ object UCSingleCatalog {
     !hasExternalClause && !hasLocationClause && !isPathTable
   }
 
-  /** Returns true when `USING <format>` is `delta`. */
+  /**
+   * Returns true when the effective provider is `delta` -- i.e. `USING delta`, or no `USING`
+   * clause while `spark.sql.sources.default` resolves to delta. Unlike Spark's built-in
+   * `V2SessionCatalog`, a named V2 catalog receives no `provider` property when `USING` is
+   * omitted, so we apply the same default-source fallback Spark itself uses.
+   */
   def hasDeltaProvider(properties: util.Map[String, String]): Boolean =
     Option(properties.get(TableCatalog.PROP_PROVIDER))
-      .exists(_.equalsIgnoreCase("delta"))
+      .getOrElse(SQLConf.get.defaultDataSourceName)
+      .equalsIgnoreCase("delta")
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
     if (namespace.length > 1) {
