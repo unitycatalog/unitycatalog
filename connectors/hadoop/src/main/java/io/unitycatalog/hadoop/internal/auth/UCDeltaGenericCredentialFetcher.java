@@ -29,7 +29,7 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
   }
 
   @Override
-  public GenericCredential createCredential() throws ApiException {
+  public CredentialBundle fetch() throws ApiException {
     UCDeltaTableIdentifier id = credId.identifier();
     DeltaCredentialsResponse response =
         api.getTableCredentials(operation, id.catalog(), id.schema(), id.table());
@@ -39,9 +39,6 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
         id.catalog(),
         id.schema(),
         id.table());
-    return new GenericCredential(
-        DeltaStorageCredentialUtil.toTemporaryCredentials(
-            DeltaStorageCredentialUtil.selectForLocation(
-                credId.location(), response.getStorageCredentials())));
+    return DeltaStorageCredentialUtil.toCredentialBundle(response.getStorageCredentials());
   }
 }

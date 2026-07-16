@@ -31,6 +31,7 @@ public class DeltaStagingTableCredId implements CredId {
     return stagingTableId;
   }
 
+  @Override
   public String location() {
     return location;
   }

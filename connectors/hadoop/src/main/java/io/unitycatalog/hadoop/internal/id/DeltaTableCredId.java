@@ -48,6 +48,7 @@ public class DeltaTableCredId implements CredId {
     return tableOperation;
   }
 
+  @Override
   public String location() {
     return location;
   }

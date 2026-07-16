@@ -24,7 +24,7 @@ import org.apache.hadoop.conf.Configuration;
  * <p><b>Internal API — not for external use. May change without notice.</b>
  */
 public interface GenericCredentialFetcher {
-  GenericCredential createCredential() throws ApiException;
+  CredentialBundle fetch() throws ApiException;
 
   /** Creates a fetcher backed by the standard UC temporary credentials API for a table. */
   static GenericCredentialFetcher forUc(TableCredId credId, TemporaryCredentialsApi api) {

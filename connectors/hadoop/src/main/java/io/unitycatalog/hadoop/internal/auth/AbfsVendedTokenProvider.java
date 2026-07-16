@@ -1,6 +1,5 @@
 package io.unitycatalog.hadoop.internal.auth;
 
-import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
@@ -46,9 +45,9 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
   public String getSASToken(String account, String fileSystem, String path, String operation) {
     GenericCredential generic = accessCredentials();
 
-    AzureUserDelegationSAS azureSAS = generic.temporaryCredentials().getAzureUserDelegationSas();
-    Preconditions.checkNotNull(azureSAS, "Azure SAS of generic credential cannot be null");
+    String sasToken = generic.azureSasToken();
+    Preconditions.checkNotNull(sasToken, "Azure SAS of generic credential cannot be null");
 
-    return azureSAS.getSasToken();
+    return sasToken;
   }
 }

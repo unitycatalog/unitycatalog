@@ -137,4 +137,13 @@ public interface CredId {
         credContextId, "Missing required config '%s'", UC_CRED_CONTEXT_ID_KEY);
     return credContextId;
   }
+
+  /**
+   * The storage location this credential scope targets.
+   *
+   * @return the target storage location, or null when this scope carries no location.
+   */
+  default String location() {
+    return null;
+  }
 }

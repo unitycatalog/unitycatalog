@@ -13,7 +13,6 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
 
   private final DeltaTemporaryCredentialsApi api;
   private final UUID stagingTableId;
-  private final String stagingTableLocation;
 
   UCDeltaStagingTableCredentialFetcher(
       DeltaStagingTableCredId credId, DeltaTemporaryCredentialsApi api) {
@@ -22,20 +21,16 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
 
     this.api = api;
     this.stagingTableId = UUID.fromString(credId.stagingTableId());
-    this.stagingTableLocation = credId.location();
   }
 
   @Override
-  public GenericCredential createCredential() throws ApiException {
+  public CredentialBundle fetch() throws ApiException {
     DeltaCredentialsResponse response = api.getStagingTableCredentials(stagingTableId);
     Preconditions.checkNotNull(
         response,
         "UC Delta API returned no credentials response for staging table '%s'.",
         stagingTableId);
 
-    return new GenericCredential(
-        DeltaStorageCredentialUtil.toTemporaryCredentials(
-            DeltaStorageCredentialUtil.selectForLocation(
-                stagingTableLocation, response.getStorageCredentials())));
+    return DeltaStorageCredentialUtil.toCredentialBundle(response.getStorageCredentials());
   }
 }

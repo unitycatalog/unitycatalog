@@ -20,11 +20,11 @@ public abstract class GenericCredentialProvider {
   private Configuration conf;
   private Clock clock;
   private long renewalLeadTimeMillis;
-  private CredId cacheKey;
+  private CredId credId;
   private boolean credCacheEnabled;
 
   private volatile GenericCredential credential;
-  private volatile GenericCredentialFetcher credentialFetcher;
+  private volatile CredentialResolver credentialResolver;
 
   protected void initialize(Configuration conf) {
     this.conf = conf;
@@ -37,7 +37,7 @@ public abstract class GenericCredentialProvider {
 
     // Identify the credential scope; used as the global cache key so that requests targeting the
     // same scope can share a vended credential.
-    this.cacheKey = CredId.create(conf);
+    this.credId = CredId.create(conf);
 
     this.credCacheEnabled =
         conf.getBoolean(
@@ -66,26 +66,26 @@ public abstract class GenericCredentialProvider {
     return credential;
   }
 
-  GenericCredentialFetcher genericCredentialFetcher() {
-    if (credentialFetcher == null) {
+  CredentialResolver credentialResolver() {
+    if (credentialResolver == null) {
       synchronized (this) {
-        if (credentialFetcher == null) {
-          credentialFetcher = GenericCredentialFetcher.create(conf);
+        if (credentialResolver == null) {
+          credentialResolver = CredentialResolver.create(conf);
         }
       }
     }
-    return credentialFetcher;
+    return credentialResolver;
   }
 
   private GenericCredential renewCredential() throws ApiException {
     if (credCacheEnabled) {
       return globalCache.access(
-          cacheKey,
+          credId,
           () ->
               new RenewableCredential(
-                  renewalLeadTimeMillis, clock, genericCredentialFetcher().createCredential()));
+                  renewalLeadTimeMillis, clock, credentialResolver().select(credId)));
     } else {
-      return genericCredentialFetcher().createCredential();
+      return credentialResolver().select(credId);
     }
   }
 }
