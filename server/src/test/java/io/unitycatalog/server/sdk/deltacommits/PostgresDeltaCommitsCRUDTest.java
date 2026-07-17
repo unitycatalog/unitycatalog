@@ -1,7 +1,6 @@
 package io.unitycatalog.server.sdk.deltacommits;
 
 import java.util.Properties;
-import org.junit.jupiter.api.Tag;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -13,7 +12,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * are injected per-fixture through {@link #setUpHibernateProperties(Properties)} so they never leak
  * to other test classes.
  */
-@Tag("database")
 @Testcontainers(disabledWithoutDocker = true)
 public class PostgresDeltaCommitsCRUDTest extends SdkDeltaCommitsCRUDTest {
 
