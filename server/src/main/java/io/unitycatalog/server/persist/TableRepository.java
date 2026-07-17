@@ -733,7 +733,7 @@ public class TableRepository {
           // entity is still transient so they're folded into the single INSERT below.
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           session.persist(tableInfoDAO);
-          if (isViewLike(tableType)) {
+          if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
             List<DependencyDAO> depDAOs =
                 createTable.getViewDependencies().getDependencies().stream()
@@ -784,10 +784,6 @@ public class TableRepository {
             .map(dep -> DependencyDAO.from(dep, null, DependencyDAO.DependentType.TABLE))
             .collect(Collectors.toList());
     validateDependenciesExist(session, depDAOs);
-  }
-
-  private static boolean isViewLike(TableType tableType) {
-    return tableType == TableType.METRIC_VIEW || tableType == TableType.VIEW;
   }
 
   private void validateDependenciesExist(Session session, List<DependencyDAO> depDAOs) {

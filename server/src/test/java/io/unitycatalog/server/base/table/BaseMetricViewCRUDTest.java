@@ -199,7 +199,7 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
             ErrorCode.INVALID_ARGUMENT,
             "view_dependencies must contain at least one entry for metric view"),
         Arguments.of(
-            "non-existent dependency",
+            "non-existent table dependency",
             (UnaryOperator<CreateTable>)
                 request ->
                     request.viewDependencies(
@@ -207,6 +207,24 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
                             TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".missing")),
             ErrorCode.NOT_FOUND,
             "View dependency table does not exist"),
+        Arguments.of(
+            "non-existent function dependency",
+            (UnaryOperator<CreateTable>)
+                request ->
+                    request.viewDependencies(
+                        new DependencyList()
+                            .dependencies(
+                                List.of(
+                                    new Dependency()
+                                        .function(
+                                            new FunctionDependency()
+                                                .functionFullName(
+                                                    TestUtils.CATALOG_NAME
+                                                        + "."
+                                                        + TestUtils.SCHEMA_NAME
+                                                        + ".missing_fn"))))),
+            ErrorCode.NOT_FOUND,
+            "View dependency function does not exist"),
         Arguments.of(
             "dependency entry with neither table nor function set",
             (UnaryOperator<CreateTable>)
