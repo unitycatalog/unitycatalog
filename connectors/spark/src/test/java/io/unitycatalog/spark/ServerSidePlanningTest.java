@@ -113,12 +113,16 @@ public class ServerSidePlanningTest extends BaseSparkIntegrationTest {
       }
     } else {
       // SSP enabled: loadTable() succeeds with empty credentials (no ApiException)
-      assertThat(caughtException).isNull();
-      assertThat(loadedTable).isNotNull();
-
       // Verify that the Delta SSP Spark config was set by the connector
       assertThat(session.conf().get("spark.databricks.delta.catalog.enableServerSidePlanning"))
           .isEqualTo("true");
+
+      if (DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API)) {
+        assertThat(caughtException).isNotNull();
+      } else {
+        assertThat(caughtException).isNull();
+        assertThat(loadedTable).isNotNull();
+      }
     }
   }
 }

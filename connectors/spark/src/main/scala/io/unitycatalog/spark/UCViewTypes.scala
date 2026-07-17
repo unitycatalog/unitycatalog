@@ -29,8 +29,8 @@ import org.apache.spark.sql.catalyst.catalog.CatalogTable
  * view-like and how they map to Spark's `TableSummary` view-type strings, plus the small predicates
  * derived from it that the view dispatch / load / create paths share.
  *
- * Uses only types available on all supported Spark versions (no Spark-4.2-only `ViewInfo` /
- * `MetadataTable`), so it lives in the shared source tree and compiles on Spark 4.0/4.1/4.2.
+ * Uses only types available on all supported Spark versions (no Spark-4.2-only `View` /
+ * `RelationCatalog`), so it lives in the shared source tree and compiles on Spark 4.0/4.1/4.2.
  */
 private[spark] object UCViewTypes {
 
@@ -38,8 +38,8 @@ private[spark] object UCViewTypes {
    * Single source of truth for which UC `TableType` values the connector treats as
    * view-like, and how each maps onto Spark's `TableSummary` view-type strings:
    *
-   *   - `Some(s)` means: appears in `listViews`, `loadTableOrView` builds a `ViewInfo`
-   *     wrapped in `MetadataTable(... s)`, and `createView` accepts `s` as the requested
+   *   - `Some(s)` means: appears in `listViews`, `loadRelation` builds a `View`, and
+   *     `createView` accepts `s` as the requested
    *     `TableSummary` table-type string.
    *   - `None` means: appears in `listViews` (and is filtered out of `listTables`) so the
    *     UC server-managed lifecycle is not mis-classified as a table, but Spark has no
@@ -57,13 +57,13 @@ private[spark] object UCViewTypes {
   /**
    * Surface routing: is this UC type view-like at all (a key in `viewLikeUcTypes`)? Includes
    * listed-but-unmapped kinds like `MATERIALIZED_VIEW` (`None`). Used by `listTables` / `listViews`
-   * / `loadTableOrView` / `dropTable` to decide which surface a row belongs to. Contrast with
+   * / `loadRelation` / `dropTable` to decide which surface a row belongs to. Contrast with
    * [[isViewCommandsSupportedTableType]], which additionally requires a Spark mapping.
    */
   def isViewLikeTableType(tableType: TableType): Boolean = viewLikeUcTypes.contains(tableType)
 
   /**
-   * Used by `toViewInfo` to label the wrapped `MetadataTable` with the right Spark
+   * Used by `toView` to label the direct `View` relation with the right Spark
    * `TableSummary` table-type. Throws for view-like UC types we list but cannot yet load
    * (e.g. `MATERIALIZED_VIEW` until Spark adds a `TableSummary.MATERIALIZED_VIEW_TABLE_TYPE`).
    */
@@ -74,7 +74,7 @@ private[spark] object UCViewTypes {
 
   /**
    * Reverse lookup: given a Spark `TableSummary` view-type string supplied by the caller
-   * via `ViewInfo.properties().get(PROP_TABLE_TYPE)`, return the corresponding UC
+   * via `View.properties().get(PROP_TABLE_TYPE)`, return the corresponding UC
    * `TableType` to stamp on `CreateTable.tableType`. Computed once from `viewLikeUcTypes`.
    */
   private lazy val sparkViewTypeToUcType: Map[String, TableType] =
@@ -88,7 +88,7 @@ private[spark] object UCViewTypes {
    * Spark mapping)? Stricter than [[isViewLikeTableType]] -- the gap is exactly the listed-but-
    * unmapped kinds (`None`, e.g. `MATERIALIZED_VIEW`), which appear in `listViews` for surface
    * correctness but are rejected from view CRUD commands. Used by view-side commands (`loadView`,
-   * `dropView`, `wrapAsView`, ...); the caller has a UC `TableType` (e.g. from `getUCTableLike(...)`).
+   * `dropView`, ...); the caller has a UC `TableType` (e.g. from `getUCTableLike(...)`).
    * (The create path gates differently, via `sparkViewTypeToUcTableType` on the `PROP_TABLE_TYPE`
    * string.)
    */
@@ -97,8 +97,8 @@ private[spark] object UCViewTypes {
 
   /**
    * Splits the `VIEW_SQL_CONFIG_PREFIX`-prefixed entries out of a UC properties map and returns
-   * them un-prefixed, as Spark's `ViewInfo.sqlConfigs()` expects. Shared by the view-load path
-   * (`UCProxyViewSupport.toViewInfo` on Spark 4.2); kept here so it stays free of any
+   * them un-prefixed, as Spark's `View.sqlConfigs()` expects. Shared by the view-load path
+   * (`UCProxyViewSupport.toView` on Spark 4.2); kept here so it stays free of any
    * Spark-4.2-only types and compiles on all three Spark versions.
    */
   def extractSqlConfigs(properties: util.Map[String, String]): util.Map[String, String] = {

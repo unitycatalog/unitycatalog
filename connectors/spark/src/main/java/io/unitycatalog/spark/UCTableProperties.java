@@ -24,7 +24,7 @@ public class UCTableProperties {
   // double-persisted and would not round-trip cleanly on `loadTable`.
   //
   // View-specific fields such as query text and current catalog/namespace are typed fields on
-  // Spark's `ViewInfo`, not TableCatalog properties.
+  // Spark's `View`, not TableCatalog properties.
   public static final Set<String> V2_TABLE_PROPERTIES =
       Set.of(
           TableCatalog.PROP_COMMENT,

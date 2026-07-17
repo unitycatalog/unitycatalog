@@ -36,7 +36,7 @@ jobs:
 
     # Build a human-readable job name from the matrix entry, e.g.:
     #   "All tests (Spark 4.0.0, Delta 4.2.0)"
-    #   "[Non Blocking] Spark tests (Spark 4.2.0-SNAPSHOT, Delta master-SNAPSHOT)"
+    #   "[Non Blocking] Spark tests (Spark 4.2.0, Delta master-SNAPSHOT)"
     name: >-
       ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
       ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
@@ -65,13 +65,11 @@ jobs:
             validation-mode: "spark-tests"
             non-blocking: true
             source-build: false
-          - spark-version: "4.2.0-SNAPSHOT"
+          - spark-version: "4.2.0"
             delta-version: "master-SNAPSHOT"
-            # Source-built Spark line: Spark is built from the ref in spark-versions.json
-            # and cached. Non-blocking since it tracks unreleased Spark APIs.
             validation-mode: "spark-tests"
             non-blocking: true
-            source-build: true
+            source-build: false
 
     steps:
       # Local composite actions require checkout before uses: ./.github/actions/...

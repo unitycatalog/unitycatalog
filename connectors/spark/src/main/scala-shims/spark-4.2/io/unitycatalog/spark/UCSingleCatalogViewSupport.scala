@@ -1,17 +1,16 @@
 package io.unitycatalog.spark
 
-import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
+import org.apache.spark.sql.catalyst.analysis.{NoSuchTableException, NoSuchViewException}
 import org.apache.spark.sql.connector.catalog.{
   Identifier,
-  MetadataTable,
-  Table,
-  TableViewCatalog,
-  ViewInfo
+  Relation,
+  RelationCatalog,
+  View
 }
 
 /**
- * Spark-4.2-only mixin providing the view-side overrides that
- * [[org.apache.spark.sql.connector.catalog.TableViewCatalog]] adds. Mixed into
+ * Spark-4.2-only mixin providing the relation and view overrides that
+ * [[org.apache.spark.sql.connector.catalog.RelationCatalog]] adds. Mixed into
  * `UCSingleCatalog` and resolved per Spark version via the `scala-shims/spark-X.Y/`
  * directory mechanism (see `project/CrossSparkVersions.scala`):
  *
@@ -20,34 +19,19 @@ import org.apache.spark.sql.connector.catalog.{
  *
  * The trait is self-typed against [[UCSingleCatalog]] so it can read the catalog's
  * `delegate` and `ucProxy` state (declared `protected[spark]` for that purpose).
- *
- * The companion `rejectIfShimmedView` hook is the Spark-4.2-only half of the catalog's
- * `loadTable` orthogonality check: when Delta's `case o => o` fallthrough returns a
- * `MetadataTable + ViewInfo` for a view-like row, this hook converts it to the
- * `NoSuchTableException` the Spark resolver expects from a strict table-side load.
  */
-trait UCSingleCatalogViewSupport extends TableViewCatalog { self: UCSingleCatalog =>
-
-  /**
-   * Spark 4.2 implementation of the view-rejection hook called by
-   * [[UCSingleCatalog.loadTable]]. On 4.0/4.1 this is a no-op (no view types exist).
-   */
-  protected def rejectIfShimmedView(t: Table, ident: Identifier): Unit = t match {
-    case mot: MetadataTable if mot.getTableInfo.isInstanceOf[ViewInfo] =>
-      throw new NoSuchTableException(ident)
-    case _ => ()
-  }
+trait UCSingleCatalogViewSupport extends RelationCatalog { self: UCSingleCatalog =>
 
   override def listViews(namespace: Array[String]): Array[Identifier] =
     ucProxy.listViews(namespace)
 
-  override def loadView(ident: Identifier): ViewInfo =
+  override def loadView(ident: Identifier): View =
     ucProxy.loadView(ident)
 
-  override def createView(ident: Identifier, info: ViewInfo): ViewInfo =
-    ucProxy.createView(ident, info)
+  override def createView(ident: Identifier, view: View): View =
+    ucProxy.createView(ident, view)
 
-  override def replaceView(ident: Identifier, info: ViewInfo): ViewInfo =
+  override def replaceView(ident: Identifier, view: View): View =
     throw new UnsupportedOperationException("Replacing a view is not supported yet")
 
   override def dropView(ident: Identifier): Boolean =
@@ -57,13 +41,19 @@ trait UCSingleCatalogViewSupport extends TableViewCatalog { self: UCSingleCatalo
     ucProxy.renameView(oldIdent, newIdent)
 
   /**
-   * Single-RPC entry for `TableViewCatalog`. Forwards to `delegate.loadTable(ident)`,
-   * which (when `delegate` is Delta wrapping `UCProxy`) chains
-   * `Delta.loadTable -> super.loadTable (DelegatingCatalogExtension) -> UCProxy.loadTable`.
-   * `UCProxy.loadTable` issues exactly one UC `getTable` and returns either a `V1Table`
-   * for normal tables or a `MetadataTable + ViewInfo` for views; Delta's `case o => o`
-   * fallthrough returns the `MetadataTable` unchanged. Spark's resolver then
-   * discriminates on the returned type to route through the table or view path.
+   * Keep normal table loading on the delegate path. If the delegate rejects the identifier as
+   * a table, try the UC view path.
    */
-  override def loadTableOrView(ident: Identifier): Table = delegate.loadTable(ident)
+  override def loadRelation(ident: Identifier): Relation = {
+    try {
+      delegate.loadTable(ident)
+    } catch {
+      case tableNotFound: NoSuchTableException =>
+        try {
+          ucProxy.loadView(ident)
+        } catch {
+          case _: NoSuchViewException => throw tableNotFound
+        }
+    }
+  }
 }
