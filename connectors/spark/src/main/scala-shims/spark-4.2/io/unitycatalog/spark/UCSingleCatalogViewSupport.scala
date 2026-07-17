@@ -42,18 +42,23 @@ trait UCSingleCatalogViewSupport extends RelationCatalog { self: UCSingleCatalog
 
   /**
    * Keep normal table loading on the delegate path. If the delegate rejects the identifier as
-   * a table, try the UC view path.
+   * a table, try the UC view path with any view row from that load memoized.
    */
   override def loadRelation(ident: Identifier): Relation = {
+    ucProxy.memoizeViewOnLoadTable(ident)
     try {
-      delegate.loadTable(ident)
-    } catch {
-      case tableNotFound: NoSuchTableException =>
-        try {
-          ucProxy.loadView(ident)
-        } catch {
-          case _: NoSuchViewException => throw tableNotFound
-        }
+      try {
+        delegate.loadTable(ident)
+      } catch {
+        case tableNotFound: NoSuchTableException =>
+          try {
+            ucProxy.loadView(ident)
+          } catch {
+            case _: NoSuchViewException => throw tableNotFound
+          }
+      }
+    } finally {
+      ucProxy.clearViewMemo()
     }
   }
 }

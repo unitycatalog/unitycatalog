@@ -635,6 +635,17 @@ private[spark] class UCProxy(
   with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
+  private[this] val viewMemo: ThreadLocal[(String, UCTableInfo)] =
+    new ThreadLocal[(String, UCTableInfo)]()
+  private[this] val memoizeView: ThreadLocal[String] = new ThreadLocal[String]()
+
+  private[spark] def memoizeViewOnLoadTable(ident: Identifier): Unit =
+    memoizeView.set(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+
+  private[spark] def clearViewMemo(): Unit = {
+    memoizeView.remove()
+    viewMemo.remove()
+  }
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
@@ -675,6 +686,11 @@ private[spark] class UCProxy(
   // own not-found result.
   private[spark] def getUCTableLike(ident: Identifier): Option[UCTableInfo] = {
     val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
+    val memoized = viewMemo.get()
+    if (memoized != null && memoized._1 == fullName) {
+      viewMemo.remove()
+      return Some(memoized._2)
+    }
     try {
       Some(tablesApi.getTable(
         fullName,
@@ -686,10 +702,15 @@ private[spark] class UCProxy(
   }
 
   // Single-RPC table path. Calls UC `getTable` once and rejects view-like rows from the
-  // table-only surface by throwing `NoSuchTableException`.
+  // table-only surface by throwing `NoSuchTableException`. On Spark 4.2+, `loadRelation`
+  // catches that exception and falls back to `loadView` using the memoized view row.
   override def loadTable(ident: Identifier): Table = {
     val t = getUCTableLike(ident).getOrElse(throw new NoSuchTableException(ident))
     if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
+      val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
+      if (memoizeView.get() == fullName) {
+        viewMemo.set((fullName, t))
+      }
       throw new NoSuchTableException(ident)
     } else {
       loadV1Table(t)

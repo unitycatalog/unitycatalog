@@ -337,6 +337,34 @@ public class UCViewProxySuite {
   }
 
   @Test
+  public void testUCSingleCatalogLoadRelationReusesViewFromDelegateLoadTable() throws Exception {
+    TableInfo ucMetricView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("mv1")
+            .tableType(TableType.METRIC_VIEW)
+            .viewDefinition("version: \"0.1\"");
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
+        .thenReturn(ucMetricView);
+
+    Identifier ident = Identifier.of(NAMESPACE, "mv1");
+    TableCatalog delegate = org.mockito.Mockito.mock(TableCatalog.class);
+    when(delegate.loadTable(eq(ident))).thenAnswer(invocation -> proxy.loadTable(ident));
+
+    UCSingleCatalog catalog = new UCSingleCatalog();
+    setCatalogField(catalog, "delegate", delegate);
+    setCatalogField(catalog, "ucProxy", proxyRelations);
+
+    Relation relation = ((RelationCatalog) catalog).loadRelation(ident);
+
+    assertThat(relation).isInstanceOf(View.class);
+    verify(delegate).loadTable(eq(ident));
+    verify(mockTablesApi, org.mockito.Mockito.times(1))
+        .getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true));
+  }
+
+  @Test
   public void testLoadViewThrowsNoSuchViewForRegularTable() throws Exception {
     TableInfo ucTable =
         new TableInfo()
