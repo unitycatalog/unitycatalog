@@ -26,6 +26,7 @@ import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.server.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.server.delta.model.DeltaReportMetricsRequest;
 import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
@@ -263,6 +264,42 @@ public class DeltaApiService extends AuthorizedService {
       @Param("table") @AuthorizeResourceKey(TABLE) String table,
       DeltaUpdateTableRequest request) {
     return tableRepository.updateTableForDelta(catalog, schema, table, request);
+  }
+
+  // ==================== Report Metrics API ====================
+
+  /**
+   * Accept commit metrics (telemetry) reported by Delta clients after a commit (e.g. Delta Spark's
+   * UpdateMetricsHook). Per {@code delta.yaml}, the body's {@code table-id} must identify the same
+   * table as the path; mismatches are rejected. The metrics themselves are currently acknowledged
+   * and discarded -- the endpoint exists so post-commit metrics reporting succeeds instead of
+   * failing writes with 404.
+   */
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics")
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  public HttpResponse reportMetrics(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
+      DeltaReportMetricsRequest request) {
+    if (request == null || request.getTableId() == null) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Must supply table-id in the request body.");
+    }
+    TableInfoDAO tableInfo = tableRepository.findTableOrThrow(catalog, schema, table);
+    if (!tableInfo.getId().equals(request.getTableId())) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "table-id "
+              + request.getTableId()
+              + " does not match table "
+              + catalog
+              + "."
+              + schema
+              + "."
+              + table);
+    }
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   // ==================== Table Credentials API ====================
