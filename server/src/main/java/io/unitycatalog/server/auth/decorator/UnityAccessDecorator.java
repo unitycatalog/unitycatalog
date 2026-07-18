@@ -65,7 +65,7 @@ import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.S
  *
  * <p>For PAYLOAD-source locators (body-read), {@code peekData} only observes complete JSON chunks;
  * anything else (no body, non-JSON content-type, malformed JSON, trailing whitespace) silently
- * skips {@link #checkAuthorization}. The {@link #AUTH_PENDING} flag and {@link
+ * skips the authorization evaluation. The {@link #AUTH_PENDING} flag and {@link
  * AuthorizationGateConverter} close that gap: the decorator marks the request auth-pending on
  * entry to the PAYLOAD path, clears it only after authorization succeeds, and the gate converter
  * denies any body-binding where the flag is still set.
@@ -77,7 +77,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   /**
    * Per-request flag: {@code true} once the decorator enters the PAYLOAD path, flipped to
-   * {@code false} when {@link #checkAuthorization} completes inside the peekData callback. Read by
+   * {@code false} when the authorization evaluation completes inside the peekData callback. Read by
    * {@link AuthorizationGateConverter} at body-binding time: if still {@code true}, authorization
    * never ran (no body chunk arrived, content-type wasn't JSON, or JSON didn't complete) and the
    * request must be denied.
@@ -197,8 +197,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       // peekData's lambda only fires when a body chunk arrives AND processPeekData returns true
       // (JSON content-type + chunk ending in '}'). Any other path (no body, non-JSON, malformed
       // JSON, trailing whitespace) silently skips authorization. Mark the request auth-pending
-      // here and clear it only after checkAuthorization runs; AuthorizationGateConverter denies
-      // any body-binding attempt where this flag is still set.
+      // here and clear it only after the authorization evaluation runs; AuthorizationGateConverter
+      // denies any body-binding attempt where this flag is still set.
       ctx.setAttr(AUTH_PENDING, true);
 
       req = req.peekData(data -> {

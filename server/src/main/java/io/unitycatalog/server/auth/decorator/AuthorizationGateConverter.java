@@ -11,10 +11,10 @@ import java.util.Objects;
 /**
  * Fail-closed wrapper that enforces {@link UnityAccessDecorator}'s PAYLOAD-source authorization
  * before delegating to an inner body converter (e.g. Jackson). The decorator sets {@link
- * UnityAccessDecorator#AUTH_PENDING} on entry to the PAYLOAD path and clears it only after {@code
- * checkAuthorization} succeeds; if the flag is still {@code true} when a parameter is being bound,
- * {@code peekData}'s callback never fired (no body, non-JSON content-type, malformed JSON, trailing
- * whitespace) and the request must be denied.
+ * UnityAccessDecorator#AUTH_PENDING} on entry to the PAYLOAD path and clears it only after the
+ * authorization evaluation succeeds; if the flag is still {@code true} when a parameter is being
+ * bound, {@code peekData}'s callback never fired (no body, non-JSON content-type, malformed JSON,
+ * trailing whitespace) and the request must be denied.
  *
  * <p>Wrapping Jackson (rather than sitting in front of it as a separate chain element) means
  * services register a single converter and the gate is impossible to forget when a new annotated
@@ -29,7 +29,7 @@ public final class AuthorizationGateConverter implements RequestConverterFunctio
   private final RequestConverterFunction delegate;
 
   public AuthorizationGateConverter(RequestConverterFunction delegate) {
-    this.delegate = Objects.requireNonNull(delegate, "delegate");
+    this.delegate = Objects.requireNonNull(delegate);
   }
 
   @Override
