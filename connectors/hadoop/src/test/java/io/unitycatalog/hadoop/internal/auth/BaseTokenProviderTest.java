@@ -84,20 +84,18 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   }
 
   /**
-   * Stubs the {@code api} method matching {@code type} to vend {@code cred1} then {@code cred2}.
+   * Returns a mocked api whose method matching {@code type} vends {@code cred1} then {@code cred2}.
    * Only that method is stubbed, so an unexpected call to the other would return null.
    */
-  private static void whenGenerate(
-      RequestType type,
-      TemporaryCredentialsApi api,
-      TemporaryCredentials cred1,
-      TemporaryCredentials cred2)
-      throws Exception {
+  private static TemporaryCredentialsApi mockApiVending(
+      RequestType type, TemporaryCredentials cred1, TemporaryCredentials cred2) throws Exception {
+    TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
     if (type == RequestType.TABLE) {
       when(api.generateTemporaryTableCredentials(any())).thenReturn(cred1, cred2);
     } else {
       when(api.generateTemporaryPathCredentials(any())).thenReturn(cred1, cred2);
     }
+    return api;
   }
 
   @ParameterizedTest
@@ -108,8 +106,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 2000L);
     TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 3000L);
 
-    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    whenGenerate(type, tempCredApi, cred1, cred2);
+    TemporaryCredentialsApi tempCredApi = mockApiVending(type, cred1, cred2);
 
     T provider = createTestProvider(conf, tempCredApi);
 
@@ -138,10 +135,9 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     TemporaryCredentials cred0 = newTempCred("0", clock.now().toEpochMilli() + 2000L);
     setInitialCred(conf, cred0);
 
-    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 3000L);
     TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 4000L);
-    whenGenerate(type, tempCredApi, cred1, cred2);
+    TemporaryCredentialsApi tempCredApi = mockApiVending(type, cred1, cred2);
 
     // Initialize the credential provider.
     T provider = createTestProvider(conf, tempCredApi);
