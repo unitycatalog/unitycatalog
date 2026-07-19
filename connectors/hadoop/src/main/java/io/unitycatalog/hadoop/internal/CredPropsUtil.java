@@ -457,6 +457,9 @@ public class CredPropsUtil {
       Map<String, String> appVersions,
       CredId credId)
       throws ApiException {
+    if (!isCloudScheme(scheme)) {
+      return Collections.emptyMap();
+    }
     GenericCredential cred =
         fetchGenericCredential(
             hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
@@ -494,6 +497,18 @@ public class CredPropsUtil {
         }
       default:
         return Collections.emptyMap();
+    }
+  }
+
+  private static boolean isCloudScheme(String scheme) {
+    switch (scheme) {
+      case "s3":
+      case "gs":
+      case "abfs":
+      case "abfss":
+        return true;
+      default:
+        return false;
     }
   }
 
