@@ -2,7 +2,6 @@ package io.unitycatalog.hadoop.internal;
 
 import io.unitycatalog.client.internal.Preconditions;
 
-/** Utilities for UC Delta storage credential fields. */
 public final class CredentialUtil {
   private CredentialUtil() {}
 
