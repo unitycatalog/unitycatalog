@@ -457,7 +457,7 @@ public class CredPropsUtil {
       Map<String, String> appVersions,
       CredId credId)
       throws ApiException {
-    if (!isCloudScheme(scheme)) {
+    if (!CloudType.isSupportedScheme(scheme)) {
       return Collections.emptyMap();
     }
     GenericCredential cred =
@@ -497,18 +497,6 @@ public class CredPropsUtil {
         }
       default:
         return Collections.emptyMap();
-    }
-  }
-
-  private static boolean isCloudScheme(String scheme) {
-    switch (scheme) {
-      case "s3":
-      case "gs":
-      case "abfs":
-      case "abfss":
-        return true;
-      default:
-        return false;
     }
   }
 
