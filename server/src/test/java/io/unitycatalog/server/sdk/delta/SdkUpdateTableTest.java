@@ -422,7 +422,7 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "assert-table-uuid requirement is required");
 
-      // assert-table-uuid mismatch: rejected during checkRequirements.
+      // assert-table-uuid mismatch: rejected during checkTableUuidRequirement.
       TestUtils.assertDeltaApiException(
           () -> updateTable(h.name(), requestWith(UUID.randomUUID(), setKv)),
           DeltaErrorType.UPDATE_REQUIREMENT_CONFLICT_EXCEPTION,
@@ -605,9 +605,31 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r1.getMetadata().getUpdatedTime()).isEqualTo(t0);
       assertThat(r1.getMetadata().getEtag()).isEqualTo(h.etag());
 
-      // Replaying v1 should surface as a CommitVersionConflict (409). Pin assert-etag against
-      // the post-r1 etag so the conflict comes from the version check, not from assert-etag.
       Handle h1 = h.withEtag(r1.getMetadata().getEtag());
+
+      // UUID-based idempotency: replaying the identical v1 add-commit (same file name / UUID)
+      // must succeed as a no-op rather than conflict, so a client that lost the original response
+      // is not misled into rebasing and duplicating the commit. The table state is unchanged.
+      DeltaLoadTableResponse rReplay =
+          updateTable(
+              h1,
+              new DeltaAddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(1L)
+                          .timestamp(1700000001L)
+                          .fileName("00000001.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000001L)));
+      assertThat(rReplay.getCommits()).hasSize(1);
+      assertThat(rReplay.getCommits().get(0).getVersion()).isEqualTo(1L);
+      assertThat(rReplay.getCommits().get(0).getFileName()).isEqualTo("00000001.json");
+      assertThat(rReplay.getLatestTableVersion()).isEqualTo(1L);
+      assertThat(rReplay.getMetadata().getEtag()).isEqualTo(r1.getMetadata().getEtag());
+
+      // Replaying v1 with a DIFFERENT file name means another writer won that version: this must
+      // surface as a CommitVersionConflict (409). Pin assert-etag against the post-r1 etag so the
+      // conflict comes from the version check, not from assert-etag.
       TestUtils.assertDeltaApiException(
           () ->
               updateTable(
@@ -638,6 +660,201 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
                               .fileModificationTimestamp(1700000003L))),
           DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
           "next version");
+    }
+
+    // -------- idempotent replay of non-newest tracked versions (first-DAO + DB-lookup branches) --
+    {
+      Handle h = createDeltaManaged("tbl_commit_idempotent_multi", Map.of());
+      Handle cur = h;
+      // Build up three tracked, unbackfilled commits: v1, v2, v3.
+      for (long v = 1; v <= 3; v++) {
+        DeltaLoadTableResponse r =
+            updateTable(
+                cur,
+                new DeltaAddCommitUpdate()
+                    .commit(
+                        new DeltaCommit()
+                            .version(v)
+                            .timestamp(1700000000L + v)
+                            .fileName(String.format("%08d.json", v))
+                            .fileSize(1024L)
+                            .fileModificationTimestamp(1700000000L + v)));
+        cur = cur.withEtag(r.getMetadata().getEtag());
+      }
+      final Handle h3 = cur;
+
+      // Replay the OLDEST tracked version (v1) with its original file name -> idempotent 200.
+      DeltaLoadTableResponse replayFirst =
+          updateTable(
+              h3,
+              new DeltaAddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(1L)
+                          .timestamp(1700000001L)
+                          .fileName("00000001.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000001L)));
+      assertThat(replayFirst.getLatestTableVersion()).isEqualTo(3L);
+      assertThat(replayFirst.getCommits()).hasSize(3);
+
+      // Replay a MIDDLE tracked version (v2) with its original file name -> idempotent 200. This
+      // is the branch that resolves the existing commit via a DB lookup rather than a boundary DAO.
+      DeltaLoadTableResponse replayMiddle =
+          updateTable(
+              h3,
+              new DeltaAddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(2L)
+                          .timestamp(1700000002L)
+                          .fileName("00000002.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000002L)));
+      assertThat(replayMiddle.getLatestTableVersion()).isEqualTo(3L);
+      assertThat(replayMiddle.getCommits()).hasSize(3);
+
+      // A middle version with a DIFFERENT file name is still a genuine conflict.
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  h3,
+                  new DeltaAddCommitUpdate()
+                      .commit(
+                          new DeltaCommit()
+                              .version(2L)
+                              .timestamp(1700000002L)
+                              .fileName("00000002_other.json")
+                              .fileSize(1024L)
+                              .fileModificationTimestamp(1700000002L))),
+          DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
+          "already accepted");
+    }
+
+    // -------- assert-etag is skipped for a verified commit replay, enforced otherwise --------
+    {
+      Handle h = createDeltaManaged("tbl_commit_idempotent_meta", Map.of());
+      DeltaLoadTableResponse r1 =
+          updateTable(
+              h,
+              new DeltaAddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(1L)
+                          .timestamp(1700000001L)
+                          .fileName("00000001.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000001L)),
+              new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")));
+      // The metadata change rolled the etag, so h.etag() is now stale.
+      assertThat(r1.getMetadata().getEtag()).isNotEqualTo(h.etag());
+      Handle hStale = h; // pins the stale (pre-commit) etag
+
+      // Verified replay with the STALE etag pinned: recognized as an already-accepted commit, so
+      // the whole request is a 200 no-op (the stale etag does not conflict) and the table is
+      // unchanged.
+      DeltaLoadTableResponse replayStaleEtag =
+          updateTable(
+              hStale,
+              new DeltaAddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(1L)
+                          .timestamp(1700000001L)
+                          .fileName("00000001.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000001L)),
+              new DeltaSetPropertiesUpdate().updates(Map.of("k", "v")));
+      assertThat(replayStaleEtag.getLatestTableVersion()).isEqualTo(1L);
+      assertThat(replayStaleEtag.getCommits()).hasSize(1);
+      assertThat(replayStaleEtag.getMetadata().getProperties()).containsEntry("k", "v");
+
+      // A genuine NEW commit (v2) with the STALE etag is NOT a replay, so assert-etag is enforced
+      // and the stale etag correctly fails -- optimistic concurrency still protects real writes.
+      TestUtils.assertDeltaApiException(
+          () ->
+              updateTable(
+                  hStale,
+                  new DeltaAddCommitUpdate()
+                      .commit(
+                          new DeltaCommit()
+                              .version(2L)
+                              .timestamp(1700000002L)
+                              .fileName("00000002.json")
+                              .fileSize(1024L)
+                              .fileModificationTimestamp(1700000002L))),
+          DeltaErrorType.UPDATE_REQUIREMENT_CONFLICT_EXCEPTION,
+          "assert-etag failed");
+
+      // The same NEW v2 commit with the CURRENT etag proceeds normally (table still at v1). The
+      // replay above was a no-op, so the etag is unchanged from r1.
+      Handle hFresh = h.withEtag(replayStaleEtag.getMetadata().getEtag());
+      DeltaLoadTableResponse rNext =
+          updateTable(
+              hFresh,
+              new DeltaAddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(2L)
+                          .timestamp(1700000002L)
+                          .fileName("00000002.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000002L)));
+      assertThat(rNext.getLatestTableVersion()).isEqualTo(2L);
+    }
+
+    // -------- a commit replay is a whole-request no-op, even with a stale etag and extra actions
+    // --
+    // The client's original v2 attempt (commit-only) landed but the response was lost. The retry
+    // resends the identical v2 commit, pins the now-stale (pre-v2) etag, and folds in a new
+    // backfill
+    // of v1. Because the commit is a recognized replay, the whole request is a no-op success: the
+    // stale etag does not conflict, and the extra backfill is NOT applied (v1 is retained). To
+    // report backfill after a lost response, the client sends a standalone
+    // set-latest-backfilled-version.
+    {
+      Handle h = createDeltaManaged("tbl_replay_whole_request_noop", Map.of());
+      DeltaLoadTableResponse r1 =
+          updateTable(
+              h,
+              new DeltaAddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(1L)
+                          .timestamp(1700000001L)
+                          .fileName("00000001.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000001L)));
+      // Data-only commit does not roll the etag.
+      Handle afterV1 = h.withEtag(r1.getMetadata().getEtag());
+      updateTable(
+          afterV1,
+          new DeltaAddCommitUpdate()
+              .commit(
+                  new DeltaCommit()
+                      .version(2L)
+                      .timestamp(1700000002L)
+                      .fileName("00000002.json")
+                      .fileSize(1024L)
+                      .fileModificationTimestamp(1700000002L)));
+
+      // Replay v2 (same file name) + report backfill of v1, pinning the now-stale afterV1 etag.
+      DeltaLoadTableResponse replay =
+          updateTable(
+              afterV1,
+              new DeltaAddCommitUpdate()
+                  .commit(
+                      new DeltaCommit()
+                          .version(2L)
+                          .timestamp(1700000002L)
+                          .fileName("00000002.json")
+                          .fileSize(1024L)
+                          .fileModificationTimestamp(1700000002L)),
+              new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(1L));
+      // Whole-request no-op: no conflict from the stale etag, and the backfill did NOT run, so both
+      // v1 and v2 remain unbackfilled.
+      assertThat(replay.getLatestTableVersion()).isEqualTo(2L);
+      assertThat(replay.getCommits()).hasSize(2);
     }
 
     // -------- add-commit + set-latest-backfilled-version in one request --------
@@ -811,11 +1028,10 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     }
 
     // -------- set-latest-backfilled-version alone on a table with prior commits --------
-    // Exercises the standalone backfill branch (handleBackfillOnlyCommit) that the combined
-    // add-commit + backfill test doesn't reach (that one goes through handleNormalCommit). The
-    // post-backfill commits list isn't asserted: markCommitAsLatestBackfilled issues a native
-    // SQL UPDATE that the session cache doesn't reflect in the same-transaction read used to
-    // build the response.
+    // Exercises the standalone backfill-only branch that the combined add-commit + backfill test
+    // doesn't reach (that one goes through handleNormalCommit). The post-backfill commits list
+    // isn't asserted: markCommitAsLatestBackfilled issues a native SQL UPDATE that the session
+    // cache doesn't reflect in the same-transaction read used to build the response.
     {
       Handle h = createDeltaManaged("tbl_backfill_only", Map.of());
       DeltaLoadTableResponse r1 =

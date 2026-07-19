@@ -4,6 +4,7 @@ import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.model.ColumnInfos;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.DeltaCommit;
@@ -25,6 +26,7 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import jakarta.persistence.PessimisticLockException;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -34,6 +36,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
@@ -65,6 +68,20 @@ import org.slf4j.LoggerFactory;
  * </ol>
  */
 public class DeltaCommitRepository {
+
+  /**
+   * Thrown when a commit request is recognized as an idempotent replay of an already-accepted
+   * commit, to roll the whole transaction back so nothing the request applied (the commit, and on
+   * the Delta path any sibling metadata) is persisted; the commit entry point then catches it and
+   * reports a no-op success.
+   *
+   * <p>Not a client-facing error, so it deliberately does not extend {@link BaseException}. As a
+   * {@link TransactionRollbackException}, {@code TransactionManager} rolls back and rethrows it
+   * as-is instead of wrapping it into an {@code INTERNAL} error; it is always caught within {@link
+   * #postCommit} / {@link io.unitycatalog.server.persist.TableRepository#updateTableForDelta} and
+   * never reaches the HTTP layer.
+   */
+  static class CommitAlreadyAcceptedException extends TransactionRollbackException {}
 
   private static final Logger LOGGER = LoggerFactory.getLogger(DeltaCommitRepository.class);
 
@@ -231,11 +248,23 @@ public class DeltaCommitRepository {
    * <p>The method validates the commit, ensures the table is a managed Delta table, and performs
    * the appropriate commit operation within a transaction.
    *
+   * <p>Replaying a commit already accepted for this table is an idempotent no-op success (not a
+   * conflict), so a client that lost the response can safely resend. See {@link
+   * #isAcceptedCommitReplay}.
+   *
    * @param commit the commit request containing version info, metadata, and backfill information
    * @throws BaseException if the commit is invalid, table is not found, or commit limits are
    *     exceeded
    */
   public void postCommit(DeltaCommit commit) {
+    try {
+      postCommitInTransaction(commit);
+    } catch (CommitAlreadyAcceptedException e) {
+      // Idempotent replay: the transaction rolled back to a no-op. Report success.
+    }
+  }
+
+  private void postCommitInTransaction(DeltaCommit commit) {
     serverProperties.checkManagedTableEnabled();
     validateCommit(commit);
     // Extract + shape-validate uniform fields outside the transaction. The subpath check (which
@@ -252,6 +281,10 @@ public class DeltaCommitRepository {
             throw new BaseException(
                 ErrorCode.TABLE_NOT_FOUND, "Table not found: " + commit.getTableId());
           }
+          // Serialize all commit/backfill mutations on this table by write-locking its uc_tables
+          // row, matching the Delta update path. This makes the commit-log reads and writes below
+          // atomic against a concurrent commit or backfill.
+          lockTableForCommit(session, tableInfoDAO, tableId);
           validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
           postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields);
           return null;
@@ -261,11 +294,36 @@ public class DeltaCommitRepository {
   }
 
   /**
+   * Acquire a {@code PESSIMISTIC_WRITE} lock on the table's {@code uc_tables} row so concurrent
+   * CCv2 commit/backfill transactions on the same table serialize. Shared by both commit entry
+   * points: UC REST {@code postCommit} and the Delta update path.
+   *
+   * <p>Call this before reading or mutating commit-log state (and, on the Delta path, before
+   * snapshotting the etag): {@code session.refresh} reloads the row, so calling it after in-memory
+   * DAO mutations would discard them.
+   *
+   * <p>A lock-wait timeout or deadlock surfaces as {@code UPDATE_REQUIREMENT_CONFLICT} (409) so the
+   * client retries, rather than as a generic 500.
+   */
+  public static void lockTableForCommit(Session session, TableInfoDAO dao, UUID tableId) {
+    try {
+      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
+    } catch (PessimisticLockException e) {
+      throw new BaseException(
+          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
+          "Concurrent commit in progress on table " + tableId + "; retry the request.");
+    }
+  }
+
+  /**
    * Shared core of {@link #postCommit} and {@link #applyCommitAndBackfillInSession}: read the
    * first/last commits and route to {@link #handleOnboardingCommit} (no prior commits + commit info
    * present), {@link #handleBackfillOnlyCommit} (prior commits + commit info absent), or {@link
    * #handleNormalCommit} (prior commits + commit info present). A backfill-only request against an
    * empty commit log is rejected here directly with a caller-aware message.
+   *
+   * <p>An idempotent replay is detected within {@link #handleNormalCommit}, which throws {@link
+   * CommitAlreadyAcceptedException}.
    */
   private void postCommitCore(
       Session session,
@@ -455,12 +513,17 @@ public class DeltaCommitRepository {
    *   <li>Adding the new commit won't exceed the maximum commits per table limit
    * </ul>
    *
+   * <p>A resend of an already-accepted commit is detected here (see {@link
+   * CommitAlreadyAcceptedException}); a non-matching commit at an already-taken version is a
+   * genuine conflict.
+   *
    * @param session the Hibernate session for database operations
    * @param tableId the unique identifier of the table
    * @param tableInfoDAO the table information data access object
    * @param commit the commit request containing version info, optional backfill, and metadata
    * @param firstCommitDAO the first commit already in the database
    * @param lastCommitDAO the last commit already in the database
+   * @throws CommitAlreadyAcceptedException if this is an idempotent replay of an accepted commit
    * @throws BaseException if the commit version is invalid, already exists, or violates constraints
    */
   private static void handleNormalCommit(
@@ -476,6 +539,17 @@ public class DeltaCommitRepository {
     long lastCommitVersion = lastCommitDAO.getCommitVersion();
     long newCommitVersion = commitInfo.getVersion();
     if (newCommitVersion <= lastCommitVersion) {
+      if (isAcceptedCommitReplay(
+          session,
+          tableId,
+          newCommitVersion,
+          commitInfo.getFileName(),
+          firstCommitDAO,
+          lastCommitDAO)) {
+        // A replay of an already-accepted commit.
+        throw new CommitAlreadyAcceptedException();
+      }
+      // A non-matching commit at an already-taken version is a genuine conflict.
       throw new BaseException(
           ErrorCode.COMMIT_VERSION_CONFLICT,
           "Commit version already accepted. Current table version is " + lastCommitVersion);
@@ -679,6 +753,78 @@ public class DeltaCommitRepository {
   private static void saveCommit(Session session, UUID tableId, DeltaCommitInfo commitInfo) {
     DeltaCommitDAO deltaCommitDAO = DeltaCommitDAO.from(tableId, commitInfo);
     session.persist(deltaCommitDAO);
+  }
+
+  /**
+   * Whether this {@code add-commit} at {@code version} is a replay of a commit already accepted for
+   * this table, rather than a fresh commit or a genuine conflict at an already-taken version. A
+   * client that lost the response to an accepted commit may safely resend the whole request;
+   * recognizing the replay lets the server report success instead of a spurious conflict.
+   *
+   * <p>Covers only versions still tracked in the DB; a replay of a backfilled-and-purged version is
+   * conservatively reported as not-a-replay. The caller must hold the table lock (see {@link
+   * #lockTableForCommit}).
+   *
+   * @return {@code true} only if this matches an already-accepted commit; {@code false} for a fresh
+   *     version, a genuine conflict, or a purged version
+   */
+  private static boolean isAcceptedCommitReplay(
+      Session session,
+      UUID tableId,
+      long version,
+      String fileName,
+      DeltaCommitDAO firstCommitDAO,
+      DeltaCommitDAO lastCommitDAO) {
+    // Resolve the commit tracked at `version` against the caller's already-read boundary commits,
+    // querying the DB only for a version strictly between them (never re-reading the whole log).
+    DeltaCommitDAO existing;
+    if (version == lastCommitDAO.getCommitVersion()) {
+      existing = lastCommitDAO;
+    } else if (version == firstCommitDAO.getCommitVersion()) {
+      existing = firstCommitDAO;
+    } else if (version > firstCommitDAO.getCommitVersion()
+        && version < lastCommitDAO.getCommitVersion()) {
+      // Tracked commit versions are contiguous between the boundaries. The caller holds the table
+      // write lock, so no concurrent backfill can purge this version between reading the boundaries
+      // and this lookup; an in-range version must therefore have a row. A missing row means the
+      // uc_delta_commits table is internally inconsistent (a gap in the tracked range).
+      existing =
+          findCommitByVersion(session, tableId, version)
+              .orElseThrow(
+                  () ->
+                      new BaseException(
+                          ErrorCode.INTERNAL,
+                          "Inconsistent uc_delta_commits table for table "
+                              + tableId
+                              + ": no row tracked at in-range commit version "
+                              + version));
+    } else {
+      // Below the oldest tracked version, i.e. backfilled and purged. This could be a genuine
+      // replay, but the file name is no longer stored, so we can't confirm it. Conservatively
+      // treat it as a conflict.
+      // TODO: close this gap by comparing the incoming staged file against the published
+      // _delta_log/<v>.json.
+      return false;
+    }
+    // The file name embeds a client-generated, per-commit-unique UUID, used as the dedup handle: a
+    // match means the same commit replayed; a difference means another writer won that version.
+    return existing.getCommitFilename().equals(fileName);
+  }
+
+  /**
+   * Looks up the commit tracked at a specific version of a table, or empty if none. At most one row
+   * can match, per the {@code (table_id, commit_version)} unique constraint on {@link
+   * DeltaCommitDAO}.
+   */
+  private static Optional<DeltaCommitDAO> findCommitByVersion(
+      Session session, UUID tableId, long commitVersion) {
+    Query<DeltaCommitDAO> query =
+        session.createQuery(
+            "FROM DeltaCommitDAO WHERE tableId = :tableId AND commitVersion = :commitVersion",
+            DeltaCommitDAO.class);
+    query.setParameter("tableId", tableId);
+    query.setParameter("commitVersion", commitVersion);
+    return query.uniqueResultOptional();
   }
 
   /**

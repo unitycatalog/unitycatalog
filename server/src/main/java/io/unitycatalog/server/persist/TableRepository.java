@@ -40,7 +40,6 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
-import jakarta.persistence.PessimisticLockException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -52,7 +51,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
-import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -292,13 +290,31 @@ public class TableRepository {
    * <p>The transaction makes exactly one {@code uc_properties} read (via {@link
    * MutablePropertyMap#load}): all property-touching actions mutate the in-memory map, and a single
    * diff-flush at the end applies only the keys that actually changed. Request classification runs
-   * before opening the transaction (see {@link DeltaUpdateTableMapper#collectRequest}); inside,
-   * requirement checks run first so a stale-snapshot conflict short-circuits before any write is
-   * persisted. The DAO's {@code updatedAt}/{@code updatedBy} advance at the end only when the
-   * request changes catalog-visible metadata; data-only commits and backfill notifications leave
-   * them untouched.
+   * before opening the transaction (see {@link DeltaUpdateTableMapper#collectRequest}).
+   *
+   * <p>Requirement checks straddle the apply: {@code assert-table-uuid} up front, then the request
+   * is applied, then {@code assert-etag} (against the pre-apply etag). A resend of an
+   * already-accepted commit throws {@link DeltaCommitRepository.CommitAlreadyAcceptedException}
+   * from within the apply, which rolls the transaction back to a no-op; it is caught here and the
+   * current table state is returned as success. Because the throw unwinds before the {@code
+   * assert-etag} check, a replay carrying a now-stale etag still succeeds.
+   *
+   * <p>The DAO's {@code updatedAt}/{@code updatedBy} advance at the end only when the request
+   * changes catalog-visible metadata; data-only commits and backfill notifications leave them
+   * untouched.
    */
   public DeltaLoadTableResponse updateTableForDelta(
+      String catalog, String schema, String table, DeltaUpdateTableRequest request) {
+    try {
+      return updateTableForDeltaInTransaction(catalog, schema, table, request);
+    } catch (DeltaCommitRepository.CommitAlreadyAcceptedException e) {
+      // Idempotent replay: the transaction rolled back to a no-op. Return the current table state
+      // (a fresh read, since the rolled-back transaction produced no response).
+      return loadTableForDelta(catalog, schema, table);
+    }
+  }
+
+  private DeltaLoadTableResponse updateTableForDeltaInTransaction(
       String catalog, String schema, String table, DeltaUpdateTableRequest request) {
     DeltaUpdateTableMapper.CollectedRequest collected =
         DeltaUpdateTableMapper.collectRequest(request);
@@ -308,9 +324,16 @@ public class TableRepository {
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
           requireDeltaTable(dao, catalog, schema, table);
-          lockTableForDeltaUpdate(session, dao, catalog, schema, table);
-          DeltaUpdateTableMapper.checkRequirements(dao, collected);
+          DeltaCommitRepository.lockTableForCommit(session, dao, dao.getId());
+          // assert-table-uuid is stable identity, so check it up front. assert-etag is deferred to
+          // after the apply, captured here against pre-apply state: a commit advances the etag, and
+          // an idempotent replay must bypass the etag entirely (it throws mid-apply and rolls back
+          // before the deferred check runs).
+          DeltaUpdateTableMapper.checkTableUuidRequirement(dao, collected);
+          String preApplyEtag = DeltaUpdateTableMapper.computeEtag(dao);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          // The commit path throws CommitAlreadyAcceptedException on an idempotent replay (caught
+          // in updateTableForDelta); everything applied above is rolled back with it.
           DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected, serverProperties)
               .ifPresent(
                   d ->
@@ -322,6 +345,9 @@ public class TableRepository {
                               d.commit(),
                               d.uniformFields(),
                               d.latestBackfilledVersion()));
+          // Non-replay only (a replay already threw out): enforce assert-etag against pre-apply
+          // state, rolling back the applied changes on mismatch.
+          DeltaUpdateTableMapper.checkEtagRequirement(preApplyEtag, collected);
           properties.flush(session, dao.getId());
           // updatedAt/updatedBy track the last change to the table's catalog-visible metadata.
           // Data-only add-commit and backfill-only requests change no metadata, so they must
@@ -352,28 +378,6 @@ public class TableRepository {
       throw new BaseException(
           ErrorCode.UNSUPPORTED_TABLE_FORMAT,
           "Table is not a Delta table: " + catalog + "." + schema + "." + table);
-    }
-  }
-
-  /**
-   * Acquire {@code SELECT ... FOR UPDATE} on the table row and refresh in-memory state, so two
-   * concurrent {@link #updateTableForDelta} calls serialize. Lock-wait timeouts and deadlock
-   * victims surface as {@code UPDATE_REQUIREMENT_CONFLICT} (409) instead of a generic 500.
-   */
-  private static void lockTableForDeltaUpdate(
-      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
-    try {
-      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
-    } catch (PessimisticLockException e) {
-      throw new BaseException(
-          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
-          "Concurrent update in progress on "
-              + catalog
-              + "."
-              + schema
-              + "."
-              + table
-              + "; retry the request.");
     }
   }
 
