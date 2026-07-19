@@ -1,64 +1,81 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.internal.Clock;
-import io.unitycatalog.client.model.AwsCredentials;
-import io.unitycatalog.client.model.AzureUserDelegationSAS;
-import io.unitycatalog.client.model.GcpOauthToken;
-import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.client.internal.Preconditions;
 import java.util.Objects;
 
 /**
- * Internal credential wrapper used by Hadoop token providers.
+ * Internal credential model used by Hadoop token providers.
  *
- * <p>This class normalizes UC SDK temporary credentials into cloud-specific credential values.
+ * <p>A plain, cloud-agnostic value type holding one cloud family's normalized credential values
+ * (AWS, Azure, or GCS) plus an optional expiration. Constructed via the {@link #forAws}, {@link
+ * #forAzure}, and {@link #forGcs} factories, each of which sets exactly one cloud family.
  */
-public class GenericCredential {
-  private final TemporaryCredentials tempCred;
+public final class GenericCredential {
+  private final String awsAccessKeyId;
+  private final String awsSecretAccessKey;
+  private final String awsSessionToken;
+  private final String azureSasToken;
+  private final String gcsOauthToken;
+  private final Long expirationTimeMillis;
 
-  public GenericCredential(TemporaryCredentials tempCred) {
-    this.tempCred = tempCred;
+  private GenericCredential(
+      String awsAccessKeyId,
+      String awsSecretAccessKey,
+      String awsSessionToken,
+      String azureSasToken,
+      String gcsOauthToken,
+      Long expirationTimeMillis) {
+    boolean isAws = awsAccessKeyId != null || awsSecretAccessKey != null || awsSessionToken != null;
+    boolean isAzure = azureSasToken != null;
+    boolean isGcs = gcsOauthToken != null;
+    Preconditions.checkArgument(
+        (isAws ? 1 : 0) + (isAzure ? 1 : 0) + (isGcs ? 1 : 0) == 1,
+        "GenericCredential must hold exactly one cloud family's credential values.");
+
+    this.awsAccessKeyId = awsAccessKeyId;
+    this.awsSecretAccessKey = awsSecretAccessKey;
+    this.awsSessionToken = awsSessionToken;
+    this.azureSasToken = azureSasToken;
+    this.gcsOauthToken = gcsOauthToken;
+    this.expirationTimeMillis = expirationTimeMillis;
   }
 
   public static GenericCredential forAws(
-      String accessKey, String secretKey, String sessionToken, long expiredTimeMillis) {
-    // Initialize the aws credentials.
-    AwsCredentials awsCredentials = new AwsCredentials();
-    awsCredentials.setAccessKeyId(accessKey);
-    awsCredentials.setSecretAccessKey(secretKey);
-    awsCredentials.setSessionToken(sessionToken);
-
-    // Initialize the unity catalog's temporary credentials.
-    TemporaryCredentials tempCred = new TemporaryCredentials();
-    tempCred.setAwsTempCredentials(awsCredentials);
-    tempCred.setExpirationTime(expiredTimeMillis);
-
-    return new GenericCredential(tempCred);
+      String accessKey, String secretKey, String sessionToken, Long expiredTimeMillis) {
+    return new GenericCredential(accessKey, secretKey, sessionToken, null, null, expiredTimeMillis);
   }
 
-  public static GenericCredential forAzure(String sasToken, long expiredTimeMillis) {
-    AzureUserDelegationSAS azureSAS = new AzureUserDelegationSAS();
-    azureSAS.setSasToken(sasToken);
-
-    TemporaryCredentials tempCred = new TemporaryCredentials();
-    tempCred.setAzureUserDelegationSas(azureSAS);
-    tempCred.setExpirationTime(expiredTimeMillis);
-
-    return new GenericCredential(tempCred);
+  public static GenericCredential forAzure(String sasToken, Long expiredTimeMillis) {
+    return new GenericCredential(null, null, null, sasToken, null, expiredTimeMillis);
   }
 
-  public static GenericCredential forGcs(String oauthToken, long expiredTimeMillis) {
-    GcpOauthToken gcpOauthToken = new GcpOauthToken();
-    gcpOauthToken.setOauthToken(oauthToken);
-
-    TemporaryCredentials tempCred = new TemporaryCredentials();
-    tempCred.setGcpOauthToken(gcpOauthToken);
-    tempCred.setExpirationTime(expiredTimeMillis);
-
-    return new GenericCredential(tempCred);
+  public static GenericCredential forGcs(String oauthToken, Long expiredTimeMillis) {
+    return new GenericCredential(null, null, null, null, oauthToken, expiredTimeMillis);
   }
 
-  public TemporaryCredentials temporaryCredentials() {
-    return tempCred;
+  public String awsAccessKeyId() {
+    return awsAccessKeyId;
+  }
+
+  public String awsSecretAccessKey() {
+    return awsSecretAccessKey;
+  }
+
+  public String awsSessionToken() {
+    return awsSessionToken;
+  }
+
+  public String azureSasToken() {
+    return azureSasToken;
+  }
+
+  public String gcsOauthToken() {
+    return gcsOauthToken;
+  }
+
+  public Long expirationTimeMillis() {
+    return expirationTimeMillis;
   }
 
   /**
@@ -70,13 +87,19 @@ public class GenericCredential {
    * @return true if it's ready to renew.
    */
   public boolean readyToRenew(Clock clock, long renewalLeadTimeMillis) {
-    return tempCred.getExpirationTime() != null
-        && tempCred.getExpirationTime() <= clock.now().toEpochMilli() + renewalLeadTimeMillis;
+    return expirationTimeMillis != null
+        && expirationTimeMillis <= clock.now().toEpochMilli() + renewalLeadTimeMillis;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(tempCred);
+    return Objects.hash(
+        awsAccessKeyId,
+        awsSecretAccessKey,
+        awsSessionToken,
+        azureSasToken,
+        gcsOauthToken,
+        expirationTimeMillis);
   }
 
   @Override
@@ -90,6 +113,11 @@ public class GenericCredential {
     }
 
     GenericCredential that = (GenericCredential) o;
-    return Objects.equals(tempCred, that.tempCred);
+    return Objects.equals(awsAccessKeyId, that.awsAccessKeyId)
+        && Objects.equals(awsSecretAccessKey, that.awsSecretAccessKey)
+        && Objects.equals(awsSessionToken, that.awsSessionToken)
+        && Objects.equals(azureSasToken, that.azureSasToken)
+        && Objects.equals(gcsOauthToken, that.gcsOauthToken)
+        && Objects.equals(expirationTimeMillis, that.expirationTimeMillis);
   }
 }

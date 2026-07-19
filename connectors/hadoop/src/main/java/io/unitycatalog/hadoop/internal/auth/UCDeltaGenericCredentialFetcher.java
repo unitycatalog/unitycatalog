@@ -39,9 +39,8 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
         id.catalog(),
         id.schema(),
         id.table());
-    return new GenericCredential(
-        DeltaStorageCredentialUtil.toTemporaryCredentials(
-            DeltaStorageCredentialUtil.selectForLocation(
-                credId.location(), response.getStorageCredentials())));
+    return DeltaStorageCredentialUtil.toGenericCredential(
+        DeltaStorageCredentialUtil.selectForLocation(
+            credId.location(), response.getStorageCredentials()));
   }
 }

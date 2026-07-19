@@ -12,7 +12,6 @@ import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
-import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import org.junit.jupiter.api.Test;
@@ -48,11 +47,10 @@ class UCDeltaGenericCredentialFetcherTest {
     GenericCredential cred = GenericCredentialFetcher.forUcDelta(credId, api).createCredential();
 
     assertThat(cred).isNotNull();
-    TemporaryCredentials out = cred.temporaryCredentials();
-    assertThat(out.getAwsTempCredentials().getAccessKeyId()).isEqualTo("ak");
-    assertThat(out.getAwsTempCredentials().getSecretAccessKey()).isEqualTo("sk");
-    assertThat(out.getAwsTempCredentials().getSessionToken()).isEqualTo("st");
-    assertThat(out.getExpirationTime()).isEqualTo(789L);
+    assertThat(cred.awsAccessKeyId()).isEqualTo("ak");
+    assertThat(cred.awsSecretAccessKey()).isEqualTo("sk");
+    assertThat(cred.awsSessionToken()).isEqualTo("st");
+    assertThat(cred.expirationTimeMillis()).isEqualTo(789L);
     verify(api)
         .getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events");
   }

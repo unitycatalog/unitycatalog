@@ -7,11 +7,7 @@ import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Clock;
-import io.unitycatalog.client.model.AwsCredentials;
-import io.unitycatalog.client.model.AzureUserDelegationSAS;
-import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TableOperation;
-import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
@@ -891,8 +887,8 @@ class CredPropsUtilTest {
     String clockName = UUID.randomUUID().toString();
     Clock clock = Clock.getManualClock(clockName);
     try {
-      TemporaryCredentials cred1 = s3CredsExpiringAt("1", clock.now().toEpochMilli() + 2000L);
-      TemporaryCredentials cred2 = s3CredsExpiringAt("2", clock.now().toEpochMilli() + 20000L);
+      GenericCredential cred1 = s3CredsExpiringAt("1", clock.now().toEpochMilli() + 2000L);
+      GenericCredential cred2 = s3CredsExpiringAt("2", clock.now().toEpochMilli() + 20000L);
       AtomicInteger fetches = new AtomicInteger();
       CredPropsUtil.genericCredFetcherFactory =
           (apiClient, credId) ->
@@ -1266,10 +1262,10 @@ class CredPropsUtilTest {
     assertThat(deltaProps).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
   }
 
-  private static GenericCredentialFetcher mockGenericCredentialFetcher(TemporaryCredentials creds) {
+  private static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential creds) {
     GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {
-      when(api.createCredential()).thenReturn(new GenericCredential(creds));
+      when(api.createCredential()).thenReturn(creds);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -1280,30 +1276,19 @@ class CredPropsUtilTest {
     return TokenProvider.create(Map.of("type", "static", "token", "tok"));
   }
 
-  private static TemporaryCredentials s3Creds() {
-    return new TemporaryCredentials()
-        .awsTempCredentials(
-            new AwsCredentials().accessKeyId("ak").secretAccessKey("sk").sessionToken("st"));
+  private static GenericCredential s3Creds() {
+    return GenericCredential.forAws("ak", "sk", "st", null);
   }
 
-  private static TemporaryCredentials s3CredsExpiringAt(String id, long expirationMillis) {
-    return new TemporaryCredentials()
-        .awsTempCredentials(
-            new AwsCredentials()
-                .accessKeyId("ak" + id)
-                .secretAccessKey("sk" + id)
-                .sessionToken("st" + id))
-        .expirationTime(expirationMillis);
+  private static GenericCredential s3CredsExpiringAt(String id, long expirationMillis) {
+    return GenericCredential.forAws("ak" + id, "sk" + id, "st" + id, expirationMillis);
   }
 
-  private static TemporaryCredentials gcsCreds() {
-    return new TemporaryCredentials()
-        .gcpOauthToken(new GcpOauthToken().oauthToken("token"))
-        .expirationTime(Long.MAX_VALUE);
+  private static GenericCredential gcsCreds() {
+    return GenericCredential.forGcs("token", Long.MAX_VALUE);
   }
 
-  private static TemporaryCredentials abfsCreds() {
-    return new TemporaryCredentials()
-        .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas"));
+  private static GenericCredential abfsCreds() {
+    return GenericCredential.forAzure("sas", null);
   }
 }

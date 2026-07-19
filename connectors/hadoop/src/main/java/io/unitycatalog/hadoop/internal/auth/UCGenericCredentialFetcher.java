@@ -39,7 +39,7 @@ final class UCGenericCredentialFetcher implements GenericCredentialFetcher {
 
   @Override
   public GenericCredential createCredential() throws ApiException {
-    return new GenericCredential(credentialCaller.get());
+    return UCTemporaryCredentialUtil.toGenericCredential(credentialCaller.get());
   }
 
   /** Supplies temporary credentials from a pre-built request, bound at construction time. */

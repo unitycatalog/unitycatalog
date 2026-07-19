@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
@@ -48,7 +49,7 @@ class UCGenericCredentialFetcherTest {
   @Test
   void tableRequestBuiltFromCredId() throws Exception {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
-    when(api.generateTemporaryTableCredentials(any())).thenReturn(new TemporaryCredentials());
+    when(api.generateTemporaryTableCredentials(any())).thenReturn(awsTempCredentials());
 
     GenericCredentialFetcher credentialFetcher =
         GenericCredentialFetcher.forUc(
@@ -69,7 +70,7 @@ class UCGenericCredentialFetcherTest {
   @Test
   void pathRequestBuiltFromCredId() throws Exception {
     TemporaryCredentialsApi api = mock(TemporaryCredentialsApi.class);
-    when(api.generateTemporaryPathCredentials(any())).thenReturn(new TemporaryCredentials());
+    when(api.generateTemporaryPathCredentials(any())).thenReturn(awsTempCredentials());
 
     GenericCredentialFetcher credentialFetcher =
         GenericCredentialFetcher.forUc(
@@ -87,5 +88,11 @@ class UCGenericCredentialFetcherTest {
     verify(api, never()).generateTemporaryTableCredentials(any());
     assertThat(request.getValue().getUrl()).isEqualTo("s3://bucket/original-path");
     assertThat(request.getValue().getOperation()).isEqualTo(PathOperation.PATH_READ);
+  }
+
+  private static TemporaryCredentials awsTempCredentials() {
+    return new TemporaryCredentials()
+        .awsTempCredentials(
+            new AwsCredentials().accessKeyId("ak").secretAccessKey("sk").sessionToken("st"));
   }
 }

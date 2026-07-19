@@ -14,11 +14,9 @@ import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.CreateStagingTable;
 import io.unitycatalog.client.model.DataSourceFormat;
-import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
-import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
@@ -82,7 +80,7 @@ public class UCSingleCatalogStagingTableTest {
         catalog, "tokenProvider", TokenProvider.create(Map.of("type", "static", "token", "tok")));
     GenericCredentialFetcher mockFetcher = mock(GenericCredentialFetcher.class);
     when(mockFetcher.createCredential())
-        .thenReturn(new GenericCredential(new TemporaryCredentials()));
+        .thenReturn(GenericCredential.forGcs("token", Long.MAX_VALUE));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockFetcher;
   }
 
@@ -165,11 +163,7 @@ public class UCSingleCatalogStagingTableTest {
     // short-circuit before any fetch, making the verify() below vacuously true.
     GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
     when(mockCredApi.createCredential())
-        .thenReturn(
-            new GenericCredential(
-                new TemporaryCredentials()
-                    .gcpOauthToken(new GcpOauthToken().oauthToken("token"))
-                    .expirationTime(Long.MAX_VALUE)));
+        .thenReturn(GenericCredential.forGcs("token", Long.MAX_VALUE));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
@@ -201,11 +195,7 @@ public class UCSingleCatalogStagingTableTest {
       throws Exception {
     GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
     when(mockCredApi.createCredential())
-        .thenReturn(
-            new GenericCredential(
-                new TemporaryCredentials()
-                    .gcpOauthToken(new GcpOauthToken().oauthToken("token"))
-                    .expirationTime(Long.MAX_VALUE)));
+        .thenReturn(GenericCredential.forGcs("token", Long.MAX_VALUE));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
@@ -264,11 +254,7 @@ public class UCSingleCatalogStagingTableTest {
       throws Exception {
     GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
     when(mockCredApi.createCredential())
-        .thenReturn(
-            new GenericCredential(
-                new TemporaryCredentials()
-                    .gcpOauthToken(new GcpOauthToken().oauthToken("token"))
-                    .expirationTime(Long.MAX_VALUE)));
+        .thenReturn(GenericCredential.forGcs("token", Long.MAX_VALUE));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();

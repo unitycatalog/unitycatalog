@@ -20,4 +20,9 @@ public class Preconditions {
       throw new IllegalStateException(String.format(message, args));
     }
   }
+
+  public static <T> T requireArgument(boolean expression, T value, String message, Object... args) {
+    checkArgument(expression, message, args);
+    return value;
+  }
 }

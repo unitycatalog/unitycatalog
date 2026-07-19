@@ -33,9 +33,8 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
         "UC Delta API returned no credentials response for staging table '%s'.",
         stagingTableId);
 
-    return new GenericCredential(
-        DeltaStorageCredentialUtil.toTemporaryCredentials(
-            DeltaStorageCredentialUtil.selectForLocation(
-                stagingTableLocation, response.getStorageCredentials())));
+    return DeltaStorageCredentialUtil.toGenericCredential(
+        DeltaStorageCredentialUtil.selectForLocation(
+            stagingTableLocation, response.getStorageCredentials()));
   }
 }

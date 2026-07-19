@@ -46,16 +46,13 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
   public AwsCredentials resolveCredentials() {
     GenericCredential generic = accessCredentials();
 
-    // Wrap the GenericCredential as an AwsCredentials.
-    io.unitycatalog.client.model.AwsCredentials awsTempCred =
-        generic.temporaryCredentials().getAwsTempCredentials();
     Preconditions.checkNotNull(
-        awsTempCred, "AWS temp credential of generic credentials cannot be null");
+        generic.awsAccessKeyId(), "AWS access key of generic credential cannot be null");
 
     return AwsSessionCredentials.builder()
-        .accessKeyId(awsTempCred.getAccessKeyId())
-        .secretAccessKey(awsTempCred.getSecretAccessKey())
-        .sessionToken(awsTempCred.getSessionToken())
+        .accessKeyId(generic.awsAccessKeyId())
+        .secretAccessKey(generic.awsSecretAccessKey())
+        .sessionToken(generic.awsSessionToken())
         .build();
   }
 }
