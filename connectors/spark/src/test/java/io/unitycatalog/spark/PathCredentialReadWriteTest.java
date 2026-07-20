@@ -29,9 +29,6 @@ import org.junit.jupiter.params.provider.CsvSource;
  */
 public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
-  private static final String VEND_ENABLED_CONF =
-      "spark.sql.unitycatalog.vendPathCredentials.enabled";
-
   @TempDir protected File dataDir;
 
   /**
@@ -41,7 +38,10 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    * extension. The catalogs are expected to already exist (created in {@code setUp}).
    */
   private SparkSession createUcSparkSession(
-      boolean renewCred, boolean credScopedFsEnabled, String... catalogs) {
+      boolean renewCred,
+      boolean credScopedFsEnabled,
+      boolean vendPathCredentialsEnabled,
+      String... catalogs) {
     SparkSession.Builder builder =
         SparkSession.builder()
             .appName("test")
@@ -60,7 +60,10 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
               .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
               .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
               .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred)
-              .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFsEnabled);
+              .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFsEnabled)
+              .config(
+                  catalogConf + "." + OptionsUtil.VEND_PATH_CREDENTIALS_ENABLED,
+                  vendPathCredentialsEnabled);
     }
     // Use fake file system for cloud storage so that we can assert vended credentials.
     builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
@@ -91,7 +94,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
       session.close();
       session = null;
     }
-    session = createUcSparkSession(renewCred, credScopedFsEnabled, SPARK_CATALOG);
+    session = createUcSparkSession(renewCred, credScopedFsEnabled, true, SPARK_CATALOG);
     String location =
         bucketPath("write_" + writeMode + "_" + renewCred + "_" + credScopedFsEnabled);
 
@@ -116,12 +119,14 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    */
   @Test
   public void testDisabledByFlag() throws IOException {
-    session = createUcSparkSession(false, false, SPARK_CATALOG);
+    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
     String location = bucketPath("import_disabled");
     // Write with the feature on so the data exists.
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
 
-    session.conf().set(VEND_ENABLED_CONF, "false");
+    session.close();
+    session = null;
+    session = createUcSparkSession(false, false, false, SPARK_CATALOG);
     Exception thrown =
         assertThrows(Exception.class, () -> sql("SELECT * FROM parquet.`%s`", location));
     assertThat(Throwables.getStackTrace(thrown)).contains("accessKey0");
