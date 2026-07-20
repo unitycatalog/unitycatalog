@@ -41,7 +41,6 @@ import org.sparkproject.guava.base.Preconditions
 class UCSingleCatalog
   extends StagingTableCatalog
   with SupportsNamespaces
-  with TableViewCatalog
   with UCSingleCatalogViewSupport
   with Logging {
 
@@ -71,7 +70,7 @@ class UCSingleCatalog
   //     create / load paths and add Delta-specific behavior. When DeltaCatalog is not on the
   //     classpath, `delegate` is set to `ucProxy` itself so non-Delta table paths still work.
   //
-  //   - `ucProxy` is the underlying UC REST client wrapped as a Spark `TableViewCatalog`. It
+  //   - `ucProxy` is the underlying UC REST client wrapped as a Spark `RelationCatalog`. It
   //     is always the real `UCProxy` instance so we can route view operations directly. Delta
   //     has no role in view handling, so view-side methods (`createView` / `loadView` /
   //     `dropView` / `listViews`) bypass `delegate` and call `ucProxy` directly, avoiding the
@@ -155,18 +154,7 @@ class UCSingleCatalog
 
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
-  // The view-rejection check (`MetadataTable + ViewInfo` flowing back through Delta's
-  // `case o => o` fallthrough on top of `UCProxy.loadTable`) lives in the per-Spark-
-  // version `UCSingleCatalogViewSupport.rejectIfShimmedView` hook -- a no-op on Spark 4.0/4.1
-  // (no view types exist there) and the real check on Spark 4.2. The hook stays shimmed
-  // rather than inlined here because the 4.2 body pattern-matches on `MetadataTable`/`ViewInfo`,
-  // which don't exist pre-4.2 -- inlining would break the 4.0/4.1 compile. (On 4.0/4.1 a view
-  // can never come back as `MetadataTable + ViewInfo` anyway, so the no-op is correct there.)
-  override def loadTable(ident: Identifier): Table = {
-    val t = delegate.loadTable(ident)
-    rejectIfShimmedView(t, ident)
-    t
-  }
+  override def loadTable(ident: Identifier): Table = delegate.loadTable(ident)
 
   override def loadTable(ident: Identifier, version:  String): Table = delegate.loadTable(ident, version)
 
@@ -660,7 +648,7 @@ private[spark] class UCProxy(
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
-    // Per the TableViewCatalog contract, listTables must return tables only -- view-like UC
+    // Per the RelationCatalog contract, listTables must return tables only -- view-like UC
     // table types (metric views, materialized views) belong on listViews.
     listUCTableLikes(namespace)
       .filterNot(t => UCViewTypes.isViewLikeTableType(t.getTableType))
@@ -686,9 +674,10 @@ private[spark] class UCProxy(
   // that); the passive-filter paths (`dropTable`, `dropView`) and `loadView` map `None` to their
   // own not-found result.
   private[spark] def getUCTableLike(ident: Identifier): Option[UCTableInfo] = {
+    val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
     try {
       Some(tablesApi.getTable(
-        UCSingleCatalog.fullTableNameForApi(this.name, ident),
+        fullName,
         /* readStreamingTableAsManaged = */ true,
         /* readMaterializedViewAsManaged = */ true))
     } catch {
@@ -696,20 +685,18 @@ private[spark] class UCProxy(
     }
   }
 
-  // Single-RPC perf path. Calls UC `getTable` once and dispatches by `TableType`: a
-  // view-like row is handed to the per-Spark-version `wrapAsView` hook (real on Spark
-  // 4.2 -- wraps as `MetadataTable + ViewInfo`; on 4.0/4.1 throws `NoSuchTableException`
-  // because no view types exist there). Everything else goes through `loadV1Table`.
+  // Single-RPC table path. Calls UC `getTable` once and rejects view-like rows from the
+  // table-only surface by throwing `NoSuchTableException`.
   override def loadTable(ident: Identifier): Table = {
     val t = getUCTableLike(ident).getOrElse(throw new NoSuchTableException(ident))
     if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
-      wrapAsView(t, ident)
+      throw new NoSuchTableException(ident)
     } else {
       loadV1Table(t)
     }
   }
 
-  private def loadV1Table(t: UCTableInfo): Table = {
+  private[spark] def loadV1Table(t: UCTableInfo): Table = {
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
     val partitionCols = scala.collection.mutable.ArrayBuffer.empty[(String, Int)]
     val fields = t.getColumns.asScala.map { col =>
@@ -787,10 +774,10 @@ private[spark] class UCProxy(
   }
 
   /**
-   * Spark 4.2's `TableViewCatalog` made `createTable(ident, TableInfo)` the canonical entry
+   * Spark 4.2's `TableCatalog` made `createTable(ident, TableInfo)` the canonical entry
    * point; this legacy 4-arg method carries all the create-table logic, which keeps the diff
    * vs. main scoped to "add the new overload + 409 -> TableAlreadyExistsException catch required
-   * by TableViewCatalog's active-rejection contract".
+   * by the relation catalog's active-rejection contract".
    */
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
@@ -846,7 +833,7 @@ private[spark] class UCProxy(
     try {
       tablesApi.createTable(createTable)
     } catch {
-      // TableViewCatalog's active-rejection contract: createTable must throw
+      // RelationCatalog's active-rejection contract: createTable must throw
       // TableAlreadyExistsException when a view (or another table, race) already sits at
       // `ident`. UC returns 409 in both cases.
       case e: ApiException if e.getCode == 409 =>
@@ -925,7 +912,7 @@ private[spark] class UCProxy(
 
   override def dropTable(ident: Identifier): Boolean = {
     // Spark's `DROP TABLE` always lands in `TableCatalog.dropTable`, regardless of what kind
-    // of object actually sits at `ident`. `TableViewCatalog` puts tables and views in a
+    // of object actually sits at `ident`. `RelationCatalog` puts tables and views in a
     // shared identifier namespace, and the spec requires `dropTable` to passive-filter
     // view-like rows -- a `DROP TABLE <view>` must look like "nothing here" and return false
     // rather than delete the view. (`dropView` is symmetric: returns false for a table.)
@@ -1016,4 +1003,3 @@ private[spark] class UCProxy(
     true
   }
 }
-

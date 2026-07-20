@@ -31,10 +31,8 @@ import org.junit.jupiter.api.Test;
 /**
  * Spark-4.0/4.1 view-unsupported tests -- the pre-view-API counterpart to the Spark-4.2
  * {@code UCViewProxySuite} (resolved per Spark version via the {@code scala-shims/} test dirs).
- * Spark 4.0/4.1 have no view-catalog APIs ({@code TableViewCatalog}, {@code ViewInfo},
- * {@code MetadataTable}) -- the connector's {@code UCProxyViewSupport} shim is a no-op whose
- * {@code wrapAsView} hook throws, and the {@code with TableViewCatalog} mixin resolves to a bare
- * stub with no view CRUD surface.
+ * Spark 4.0/4.1 have no view-catalog APIs ({@code RelationCatalog}, {@code ViewCatalog},
+ * {@code View}) -- the connector's {@code UCProxyViewSupport} shim is a no-op.
  *
  * <p>So on Spark 4.0/4.1 there is nothing like {@code createView}/{@code loadView} to call; this
  * suite pins that view-like UC rows ({@code METRIC_VIEW} and {@code MATERIALIZED_VIEW}) are inert

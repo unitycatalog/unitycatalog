@@ -22,7 +22,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap;
  * Shared, version-agnostic test fixture that builds a mock-backed {@code UCProxy} for the {@code
  * UCProxy*} unit suites. Lives under {@code src/test/java/} so it compiles on Spark 4.0, 4.1, and
  * 4.2, and references no Spark-4.2-only type (the constructed proxy is exposed as a bare {@code
- * Object} so view suites can cast it to {@code TableViewCatalog}/{@code ViewCatalog} themselves on
+ * Object} so view suites can cast it to {@code RelationCatalog}/{@code ViewCatalog} themselves on
  * the 4.2 build).
  *
  * <p>This is a plain helper, NOT a test class, and is composed (not inherited) by each suite's
@@ -43,7 +43,7 @@ final class UCProxyTestFixture {
   final SchemasApi mockSchemasApi = mock(SchemasApi.class);
 
   // Held as a bare Object so this fixture never names a Spark-4.2-only catalog type; the 4.2 view
-  // suite casts it to TableViewCatalog / ViewCatalog itself.
+  // suite casts it to RelationCatalog / ViewCatalog itself.
   Object proxyObj;
   TableCatalog proxy;
   SupportsNamespaces proxyNs;
