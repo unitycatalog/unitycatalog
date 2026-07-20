@@ -411,6 +411,22 @@ class UCSingleCatalog
       .buildForPath(location, operation)
   }
 
+  /**
+   * Vends path credentials when read vs write is unknown at parse time (e.g. bare
+   * `parquet.`s3://...`` in SELECT or INSERT INTO). Tries PATH_READ_WRITE first,
+   * falls back to PATH_READ — same ambiguity handling as loadTable.
+   */
+  private[spark] def vendPathCredentialConfWithFallback(location: String): util.Map[String, String] = {
+    try {
+      vendPathCredentialConf(location, PathOperation.PATH_READ_WRITE)
+    } catch {
+      case e: ApiException =>
+        logWarning(
+          s"PATH_READ_WRITE credential generation failed for path $location: ${e.getMessage}")
+        vendPathCredentialConf(location, PathOperation.PATH_READ)
+    }
+  }
+
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     throw new AssertionError("deprecated `createTable` should not be called")
   }

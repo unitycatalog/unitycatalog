@@ -1,7 +1,5 @@
 package io.unitycatalog.spark;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
 import java.io.IOException;
@@ -21,7 +19,7 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
   }
 
   @Override
-  protected void checkCredentials(Path f) {
+  protected void checkCredentials(Path f) throws IOException {
     Configuration conf = getConf();
     String host = f.toUri().getHost();
 
@@ -29,30 +27,43 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
       if ("test-bucket0".equals(host)) {
         provider = accessProvider(conf);
         if (provider == null) {
-          assertThat(conf.get("fs.s3a.access.key")).isEqualTo("accessKey0");
-          assertThat(conf.get("fs.s3a.secret.key")).isEqualTo("secretKey0");
-          assertThat(conf.get("fs.s3a.session.token")).isEqualTo("sessionToken0");
+          requireConfValue(conf, "fs.s3a.access.key", "accessKey0");
+          requireConfValue(conf, "fs.s3a.secret.key", "secretKey0");
+          requireConfValue(conf, "fs.s3a.session.token", "sessionToken0");
         } else {
           AwsSessionCredentials credentials = (AwsSessionCredentials) provider.resolveCredentials();
-          assertThat(credentials.accessKeyId()).isEqualTo("accessKey0");
-          assertThat(credentials.secretAccessKey()).isEqualTo("secretKey0");
-          assertThat(credentials.sessionToken()).isEqualTo("sessionToken0");
+          requireValue("accessKeyId", credentials.accessKeyId(), "accessKey0");
+          requireValue("secretAccessKey", credentials.secretAccessKey(), "secretKey0");
+          requireValue("sessionToken", credentials.sessionToken(), "sessionToken0");
         }
       } else if ("test-bucket1".equals(host)) {
         provider = accessProvider(conf);
         if (provider == null) {
-          assertThat(conf.get("fs.s3a.access.key")).isEqualTo("accessKey1");
-          assertThat(conf.get("fs.s3a.secret.key")).isEqualTo("secretKey1");
-          assertThat(conf.get("fs.s3a.session.token")).isEqualTo("sessionToken1");
+          requireConfValue(conf, "fs.s3a.access.key", "accessKey1");
+          requireConfValue(conf, "fs.s3a.secret.key", "secretKey1");
+          requireConfValue(conf, "fs.s3a.session.token", "sessionToken1");
         } else {
           AwsSessionCredentials credentials = (AwsSessionCredentials) provider.resolveCredentials();
-          assertThat(credentials.accessKeyId()).isEqualTo("accessKey1");
-          assertThat(credentials.secretAccessKey()).isEqualTo("secretKey1");
-          assertThat(credentials.sessionToken()).isEqualTo("sessionToken1");
+          requireValue("accessKeyId", credentials.accessKeyId(), "accessKey1");
+          requireValue("secretAccessKey", credentials.secretAccessKey(), "secretKey1");
+          requireValue("sessionToken", credentials.sessionToken(), "sessionToken1");
         }
       } else {
         throw new RuntimeException("invalid path: " + f);
       }
+    }
+  }
+
+  private static void requireConfValue(Configuration conf, String key, String expected)
+      throws IOException {
+    requireValue(key, conf.get(key), expected);
+  }
+
+  private static void requireValue(String name, String actual, String expected) throws IOException {
+    if (!Objects.equals(expected, actual)) {
+      throw new IOException(
+          String.format(
+              "missing vended credential %s: expected %s but was %s", name, expected, actual));
     }
   }
 
