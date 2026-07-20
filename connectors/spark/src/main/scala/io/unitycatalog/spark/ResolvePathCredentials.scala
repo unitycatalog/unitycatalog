@@ -42,9 +42,11 @@ import scala.collection.JavaConverters._
  *
  * This rule closes that gap. For each bare cloud path it finds, it asks the active
  * [[UCSingleCatalog]] to vend credentials via [[UCSingleCatalog.vendPathCredentialConf]] and
- * attaches the resulting `fs.*` Hadoop options to the relation (reads) or write target
- * (`INSERT OVERWRITE DIRECTORY`). Reads request [[PathOperation.PATH_READ]] (read-only STS/IAM
- * scope); writes request [[PathOperation.PATH_READ_WRITE]]. Spark folds these per-relation options into the Hadoop
+ * attaches the resulting `fs.*` Hadoop options to the relation or write target. For bare
+ * `format.`path`` relations, read vs write is ambiguous at parse time, so credentials use
+ * [[UCSingleCatalog.vendPathCredentialConfWithFallback]] (PATH_READ_WRITE with PATH_READ fallback,
+ * mirroring loadTable). `INSERT OVERWRITE DIRECTORY` always requests [[PathOperation.PATH_READ_WRITE]].
+ * Spark folds these per-relation options into the Hadoop
  * configuration used to open the filesystem, so the credential-scoped filesystem + vended-token
  * provider pick them up — the same mechanism catalog tables use via
  * [[UCSingleCatalog.setCredentialProps]].
@@ -67,11 +69,11 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
       case None => plan
       case Some(uc) =>
         plan.resolveOperators {
-          // Read: a two-part `format`.`<cloud path>` identifier, still unresolved.
+          // Bare `format`.`<cloud path>` — used for reads and writes (e.g. INSERT INTO parquet.`s3://...`).
           case u: UnresolvedRelation
               if u.multipartIdentifier.length == 2 && isCloudPath(u.multipartIdentifier.last) =>
             val path = u.multipartIdentifier.last
-            val conf = uc.vendPathCredentialConf(path, PathOperation.PATH_READ)
+            val conf = uc.vendPathCredentialConfWithFallback(path)
             if (conf.isEmpty) u else u.copy(options = mergeOptions(u.options, conf))
 
           // Write: INSERT OVERWRITE DIRECTORY '<cloud path>' USING <format> ...
