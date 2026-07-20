@@ -146,6 +146,32 @@ class CredentialUtilTest {
   }
 
   @Test
+  void selectorMatchesAcrossSchemeAliases() {
+    DeltaStorageCredential s3Prefix = credAt("s3://bucket/t");
+    assertThat(
+            CredentialUtil.selectForLocation("s3a://bucket/t/file", List.of(s3Prefix)))
+        .isSameAs(s3Prefix);
+  }
+
+  @Test
+  void prefixCoversNormalizesSchemeAliasesAndCase() {
+    assertThat(CredentialUtil.prefixCovers("s3a://bucket/t", "s3://bucket/t")).isTrue();
+    assertThat(CredentialUtil.prefixCovers("S3://bucket/t", "s3://bucket/t")).isTrue();
+    assertThat(CredentialUtil.prefixCovers("abfss://c@a/t", "abfs://c@a/t")).isTrue();
+  }
+
+  @Test
+  void prefixCoversDoesNotMatchAcrossClouds() {
+    assertThat(CredentialUtil.prefixCovers("gs://bucket/t", "s3://bucket/t")).isFalse();
+  }
+
+  @Test
+  void prefixCoversLeavesUnknownSchemesUnnormalized() {
+    assertThat(CredentialUtil.prefixCovers("hdfs://nn/t", "hdfs://nn/t")).isTrue();
+    assertThat(CredentialUtil.prefixCovers("HDFS://nn/t", "hdfs://nn/t")).isFalse();
+  }
+
+  @Test
   void selectorIgnoresNullAndPrefixlessInMultiResponse() {
     List<DeltaStorageCredential> creds =
         Arrays.asList(null, new DeltaStorageCredential(), credAt("s3://bucket/t"));
