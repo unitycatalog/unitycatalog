@@ -627,6 +627,45 @@ class CredPropsUtilTest {
   }
 
   @Test
+  void s3TableRenewalCredScopedFsHasExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true,
+            true,
+            new Configuration(false),
+            "s3",
+            null,
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+            Map.of());
+
+    Map<String, String> expected = renewableTableContext("s3", "READ_WRITE");
+    expected.putAll(
+        props(
+            "fs.s3a.path.style.access", "true",
+            "fs.s3.impl.disable.cache", "true",
+            "fs.s3a.impl.disable.cache", "true",
+            "fs.s3a.aws.credentials.provider",
+                "io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider",
+            "fs.s3a.init.access.key", "ak",
+            "fs.s3a.init.secret.key", "sk",
+            "fs.s3a.init.session.token", "st",
+            "fs.s3.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem",
+            "fs.s3.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem",
+            "fs.s3a.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem",
+            "fs.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem",
+            "fs.AbstractFileSystem.s3.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFs",
+            "fs.AbstractFileSystem.s3.impl.original", "org.apache.hadoop.fs.s3a.S3A",
+            "fs.AbstractFileSystem.s3a.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFs",
+            "fs.AbstractFileSystem.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3A"));
+    assertThat(props).containsExactlyInAnyOrderEntriesOf(expected);
+  }
+
+  @Test
   void s3TableStaticCredsHaveExpectedKeys() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
