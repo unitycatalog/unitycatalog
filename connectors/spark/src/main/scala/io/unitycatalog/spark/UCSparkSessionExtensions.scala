@@ -26,6 +26,8 @@ import org.apache.spark.sql.catalyst.parser.extensions.UCSparkSqlExtensionsParse
 class UCSparkSessionExtensions extends (SparkSessionExtensions => Unit) {
 
   override def apply(extensions: SparkSessionExtensions): Unit = {
-    extensions.injectParser { case (_, parser) => new UCSparkSqlExtensionsParser(parser) }
+    extensions.injectParser { case (spark, parser) =>
+      new UCSparkSqlExtensionsParser(spark, parser)
+    }
   }
 }

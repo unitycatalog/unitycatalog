@@ -28,7 +28,8 @@ import org.apache.spark.sql.catalyst.parser.ParserInterface
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.types.{DataType, StructType}
 
-class UCSparkSqlExtensionsParser(delegate: ParserInterface) extends ParserInterface {
+class UCSparkSqlExtensionsParser(spark: SparkSession, delegate: ParserInterface)
+    extends ParserInterface {
 
   override def parseDataType(sqlText: String): DataType = delegate.parseDataType(sqlText)
 
@@ -49,7 +50,6 @@ class UCSparkSqlExtensionsParser(delegate: ParserInterface) extends ParserInterf
     delegate.parseRoutineParam(sqlText)
 
   override def parsePlan(sqlText: String): LogicalPlan = {
-    val spark = SparkSession.active
     val plan = delegate.parsePlan(sqlText)
     // Vend credentials for bare cloud paths before the analyzer resolves (and lists) them.
     ResolvePathCredentials(spark).apply(plan)
