@@ -2474,6 +2474,7 @@ export enum TableType {
   MANAGED = 'MANAGED',
   EXTERNAL = 'EXTERNAL',
   METRIC_VIEW = 'METRIC_VIEW',
+  VIEW = 'VIEW',
 }
 export enum DataSourceFormat {
   DELTA = 'DELTA',
