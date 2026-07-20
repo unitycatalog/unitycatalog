@@ -16,4 +16,7 @@ public class OptionsUtil {
   public static final boolean DEFAULT_SERVER_SIDE_PLANNING_ENABLED = false;
   public static final String DELTA_API_ENABLED = "deltaRestApi.enabled";
   public static final boolean DEFAULT_DELTA_API_ENABLED = true;
+
+  public static final String VEND_PATH_CREDENTIALS_ENABLED = "vendPathCredentials.enabled";
+  public static final boolean DEFAULT_VEND_PATH_CREDENTIALS_ENABLED = true;
 }

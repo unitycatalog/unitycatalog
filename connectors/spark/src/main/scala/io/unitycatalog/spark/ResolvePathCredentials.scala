@@ -57,16 +57,16 @@ import scala.collection.JavaConverters._
  * parsed plan via [[UCSparkSessionExtensions]].
  *
  * The rule is a no-op unless the session's current catalog is a [[UCSingleCatalog]]. It can be
- * disabled with `spark.sql.unitycatalog.vendPathCredentials.enabled=false`.
+ * disabled with `spark.sql.catalog.<catalog>.vendPathCredentials.enabled=false`.
  */
 case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan] {
 
   import ResolvePathCredentials._
 
   override def apply(plan: LogicalPlan): LogicalPlan = {
-    if (!isEnabled) return plan
     currentUcCatalog match {
       case None => plan
+      case Some(uc) if !uc.vendPathCredentialsEnabled => plan
       case Some(uc) =>
         plan.resolveOperators {
           // Bare `format`.`<cloud path>` — used for reads and writes (e.g. INSERT INTO parquet.`s3://...`).
@@ -90,9 +90,6 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
     }
   }
 
-  private def isEnabled: Boolean =
-    spark.conf.get(VEND_PATH_CREDENTIALS_ENABLED, "true").toBoolean
-
   private def currentUcCatalog: Option[UCSingleCatalog] =
     spark.sessionState.catalogManager.currentCatalog match {
       case uc: UCSingleCatalog => Some(uc)
@@ -101,9 +98,6 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
 }
 
 object ResolvePathCredentials {
-
-  /** Session flag to disable direct-path credential vending. */
-  val VEND_PATH_CREDENTIALS_ENABLED = "spark.sql.unitycatalog.vendPathCredentials.enabled"
 
   /**
    * URI schemes for which UC can vend credentials. These match the schemes UC external locations
