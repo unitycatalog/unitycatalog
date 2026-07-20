@@ -283,6 +283,60 @@ public class UCViewProxySuite {
   }
 
   @Test
+  public void testUCSingleCatalogLoadRelationRethrowsDelegateErrorForRegularTable()
+      throws Exception {
+    // Safety property (the negative half of the loadRelation try/catch): when the delegate (e.g.
+    // Delta) rejects the identifier as a table and the UC row is a *regular* table -- not a view --
+    // loadRelation must rethrow the delegate's own NoSuchTableException. It must NOT swallow that
+    // error and return the raw UC table, which would silently bypass Delta for a real table.
+    TableInfo ucTable =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("t1")
+            .tableType(TableType.EXTERNAL);
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true)))
+        .thenReturn(ucTable);
+
+    Identifier ident = Identifier.of(NAMESPACE, "t1");
+    NoSuchTableException delegateError = new NoSuchTableException(ident);
+    TableCatalog delegate = org.mockito.Mockito.mock(TableCatalog.class);
+    when(delegate.loadTable(eq(ident))).thenThrow(delegateError);
+
+    UCSingleCatalog catalog = new UCSingleCatalog();
+    setCatalogField(catalog, "delegate", delegate);
+    setCatalogField(catalog, "ucProxy", proxyRelations);
+
+    // isSameAs pins that the delegate's exact exception propagates -- not a freshly constructed
+    // NoSuchTableException, and not a table returned in its place.
+    assertThatThrownBy(() -> ((RelationCatalog) catalog).loadRelation(ident))
+        .isSameAs(delegateError);
+    verify(delegate).loadTable(eq(ident));
+  }
+
+  @Test
+  public void testUCSingleCatalogLoadRelationThrowsNoSuchTableWhenIdentifierMissing()
+      throws Exception {
+    // When neither the delegate nor UC knows the identifier, loadRelation surfaces the delegate's
+    // NoSuchTableException -- not the NoSuchViewException raised internally by the UC fallback.
+    Identifier ident = Identifier.of(NAMESPACE, "missing");
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.missing"), eq(true), eq(true)))
+        .thenThrow(new ApiException(404, "not found"));
+
+    NoSuchTableException delegateError = new NoSuchTableException(ident);
+    TableCatalog delegate = org.mockito.Mockito.mock(TableCatalog.class);
+    when(delegate.loadTable(eq(ident))).thenThrow(delegateError);
+
+    UCSingleCatalog catalog = new UCSingleCatalog();
+    setCatalogField(catalog, "delegate", delegate);
+    setCatalogField(catalog, "ucProxy", proxyRelations);
+
+    assertThatThrownBy(() -> ((RelationCatalog) catalog).loadRelation(ident))
+        .isSameAs(delegateError);
+    verify(delegate).loadTable(eq(ident));
+  }
+
+  @Test
   public void testLoadViewThrowsNoSuchViewForRegularTable() throws Exception {
     TableInfo ucTable =
         new TableInfo()
