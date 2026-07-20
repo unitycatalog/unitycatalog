@@ -45,7 +45,8 @@ class UCSparkSqlExtensionsParser(delegate: ParserInterface) extends ParserInterf
 
   override def parseTableSchema(sqlText: String): StructType = delegate.parseTableSchema(sqlText)
 
-  override def parseRoutineParam(sqlText: String): StructType = delegate.parseTableSchema(sqlText)
+  override def parseRoutineParam(sqlText: String): StructType =
+    delegate.parseRoutineParam(sqlText)
 
   override def parsePlan(sqlText: String): LogicalPlan = {
     val spark = SparkSession.active
