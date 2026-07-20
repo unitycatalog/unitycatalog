@@ -1,7 +1,7 @@
 package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.io.File;
@@ -9,8 +9,11 @@ import java.io.IOException;
 import java.util.List;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.assertj.core.util.Throwables;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * Tests for {@link ResolvePathCredentials}: Unity Catalog credentials are vended for cloud paths
@@ -76,31 +79,35 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
-   * Writes to a bare cloud path with `INSERT OVERWRITE DIRECTORY` (exercises the write branch) and
-   * reads it back with `parquet.`<path>`` (exercises the read branch). Both previously failed
-   * because path-based relations bypass the UC catalog and never got credentials.
+   * Writes to a bare cloud path and reads it back. Exercises {@code INSERT OVERWRITE DIRECTORY}
+   * ({@code InsertIntoDir}) and {@code INSERT INTO parquet.`path`} ({@code UnresolvedRelation}
+   * write target), plus {@code parquet.`path`} reads.
    */
-  @Test
-  public void testWriteAndReadBareS3PathStaticCreds() throws IOException {
-    session = createUcSparkSession(false, false, SPARK_CATALOG);
-    String location = bucketPath("import_static");
+  @ParameterizedTest
+  @CsvSource({"false, false, overwrite", "true, true, overwrite", "false, false, insert_into"})
+  public void testWriteAndReadBareS3Path(
+      boolean renewCred, boolean credScopedFsEnabled, String writeMode) throws IOException {
+    if (session != null) {
+      session.close();
+      session = null;
+    }
+    session = createUcSparkSession(renewCred, credScopedFsEnabled, SPARK_CATALOG);
+    String location =
+        bucketPath("write_" + writeMode + "_" + renewCred + "_" + credScopedFsEnabled);
 
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
-    assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
-  }
 
-  /**
-   * Same as above but with credential renewal + credential-scoped filesystem enabled, so the vended
-   * credentials flow through {@code AwsVendedTokenProvider} + {@code CredScopedFileSystem} rather
-   * than static keys.
-   */
-  @Test
-  public void testWriteAndReadBareS3PathVendedProvider() throws IOException {
-    session = createUcSparkSession(true, true, SPARK_CATALOG);
-    String location = bucketPath("import_vended");
-
-    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
-    assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
+    if ("insert_into".equals(writeMode)) {
+      sql("INSERT INTO parquet.`%s` SELECT 2 AS i, 'b' AS s", location);
+      List<Row> rows = sql("SELECT * FROM parquet.`%s` ORDER BY i", location);
+      assertThat(rows).hasSize(2);
+      assertThat(rows.get(0).getInt(0)).isEqualTo(1);
+      assertThat(rows.get(0).getString(1)).isEqualTo("a");
+      assertThat(rows.get(1).getInt(0)).isEqualTo(2);
+      assertThat(rows.get(1).getString(1)).isEqualTo("b");
+    } else {
+      assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
+    }
   }
 
   /**
@@ -115,6 +122,8 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
 
     session.conf().set(VEND_ENABLED_CONF, "false");
-    assertThatThrownBy(() -> sql("SELECT * FROM parquet.`%s`", location));
+    Exception thrown =
+        assertThrows(Exception.class, () -> sql("SELECT * FROM parquet.`%s`", location));
+    assertThat(Throwables.getStackTrace(thrown)).contains("accessKey0");
   }
 }
