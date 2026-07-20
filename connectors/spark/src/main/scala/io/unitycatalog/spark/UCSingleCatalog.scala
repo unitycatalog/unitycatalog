@@ -48,6 +48,7 @@ class UCSingleCatalog
   private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
   private[this] var credScopedFsEnabled: Boolean = true
+  private[spark] var vendPathCredentialsEnabled: Boolean = OptionsUtil.DEFAULT_VEND_PATH_CREDENTIALS_ENABLED
   private[this] var apiClient: ApiClient = null;
   private[this] var tablesApi: TablesApi = null
 
@@ -89,6 +90,8 @@ class UCSingleCatalog
       OptionsUtil.RENEW_CREDENTIAL_ENABLED, OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
     credScopedFsEnabled = options.getBoolean(
       OptionsUtil.CRED_SCOPED_FS_ENABLED, OptionsUtil.DEFAULT_CRED_SCOPED_FS_ENABLED)
+    vendPathCredentialsEnabled = options.getBoolean(
+      OptionsUtil.VEND_PATH_CREDENTIALS_ENABLED, OptionsUtil.DEFAULT_VEND_PATH_CREDENTIALS_ENABLED)
     val serverSidePlanningEnabled = options.getBoolean(
       OptionsUtil.SERVER_SIDE_PLANNING_ENABLED, OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
     deltaRestApiEnabled = options.getBoolean(
