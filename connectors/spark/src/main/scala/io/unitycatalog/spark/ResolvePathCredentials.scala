@@ -24,7 +24,7 @@ import io.unitycatalog.hadoop.UCCredentialHadoopConfs.PathOperation
 import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation
-import org.apache.spark.sql.catalyst.plans.logical.{InsertIntoDir, LogicalPlan}
+import org.apache.spark.sql.catalyst.plans.logical.{InsertIntoDir, InsertIntoStatement, LogicalPlan}
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
@@ -69,12 +69,21 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
       case Some(uc) if !uc.vendPathCredentialsEnabled => plan
       case Some(uc) =>
         plan.resolveOperators {
-          // Bare `format`.`<cloud path>` — used for reads and writes (e.g. INSERT INTO parquet.`s3://...`).
+          // Bare `format`.`<cloud path>` — used for reads and in query FROM clauses.
           case u: UnresolvedRelation
               if u.multipartIdentifier.length == 2 && isCloudPath(u.multipartIdentifier.last) =>
-            val path = u.multipartIdentifier.last
-            val conf = uc.vendPathCredentialConfWithFallback(path)
-            if (conf.isEmpty) u else u.copy(options = mergeOptions(u.options, conf))
+            injectUnresolvedRelationCredentials(u, uc)
+
+          // `InsertIntoStatement.table` is not a tree child (only `query` is), so the case above
+          // never sees bare-path insert targets such as INSERT INTO parquet.`s3://...`.
+          case i: InsertIntoStatement =>
+            i.table match {
+              case u: UnresolvedRelation
+                  if u.multipartIdentifier.length == 2 &&
+                    isCloudPath(u.multipartIdentifier.last) =>
+                i.copy(table = injectUnresolvedRelationCredentials(u, uc))
+              case _ => i
+            }
 
           // Write: INSERT OVERWRITE DIRECTORY '<cloud path>' USING <format> ...
           case i: InsertIntoDir if i.storage.locationUri.exists(u => isCloudPath(u.toString)) =>
@@ -88,6 +97,14 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
             }
         }
     }
+  }
+
+  private def injectUnresolvedRelationCredentials(
+      relation: UnresolvedRelation,
+      uc: UCSingleCatalog): UnresolvedRelation = {
+    val path = relation.multipartIdentifier.last
+    val conf = uc.vendPathCredentialConfWithFallback(path)
+    if (conf.isEmpty) relation else relation.copy(options = mergeOptions(relation.options, conf))
   }
 
   private def currentUcCatalog: Option[UCSingleCatalog] =

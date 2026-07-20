@@ -9,7 +9,10 @@ import java.io.IOException;
 import java.util.List;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
-import org.assertj.core.util.Throwables;
+import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation;
+import org.apache.spark.sql.catalyst.parser.ParseException;
+import org.apache.spark.sql.catalyst.plans.logical.InsertIntoStatement;
+import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -75,6 +78,13 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     return "s3://test-bucket0" + new File(dataDir, name).getCanonicalPath();
   }
 
+  private void stopSession() {
+    if (session != null) {
+      session.stop();
+      session = null;
+    }
+  }
+
   private void assertSingleRow(List<Row> rows) {
     assertThat(rows).hasSize(1);
     assertThat(rows.get(0).getInt(0)).isEqualTo(1);
@@ -83,34 +93,46 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
   /**
    * Writes to a bare cloud path and reads it back. Exercises {@code INSERT OVERWRITE DIRECTORY}
-   * ({@code InsertIntoDir}) and {@code INSERT INTO parquet.`path`} ({@code UnresolvedRelation}
-   * write target), plus {@code parquet.`path`} reads.
+   * ({@code InsertIntoDir}) and {@code parquet.`path`} reads ({@code UnresolvedRelation}).
+   * Bare-path {@code INSERT INTO} write targets are covered at parse time in {@link
+   * #testInsertIntoBarePathInjectsCredentialsAtParseTime()} because Spark 4.1 rejects them at
+   * analysis ({@code TABLE_OR_VIEW_NOT_FOUND}).
    */
   @ParameterizedTest
-  @CsvSource({"false, false, overwrite", "true, true, overwrite", "false, false, insert_into"})
-  public void testWriteAndReadBareS3Path(
-      boolean renewCred, boolean credScopedFsEnabled, String writeMode) throws IOException {
-    if (session != null) {
-      session.close();
-      session = null;
-    }
+  @CsvSource({"false, false", "true, true"})
+  public void testWriteAndReadBareS3Path(boolean renewCred, boolean credScopedFsEnabled)
+      throws IOException {
+    stopSession();
     session = createUcSparkSession(renewCred, credScopedFsEnabled, true, SPARK_CATALOG);
-    String location =
-        bucketPath("write_" + writeMode + "_" + renewCred + "_" + credScopedFsEnabled);
+    String location = bucketPath("write_directory_" + renewCred + "_" + credScopedFsEnabled);
 
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
+    assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
+  }
 
-    if ("insert_into".equals(writeMode)) {
-      sql("INSERT INTO parquet.`%s` SELECT 2 AS i, 'b' AS s", location);
-      List<Row> rows = sql("SELECT * FROM parquet.`%s` ORDER BY i", location);
-      assertThat(rows).hasSize(2);
-      assertThat(rows.get(0).getInt(0)).isEqualTo(1);
-      assertThat(rows.get(0).getString(1)).isEqualTo("a");
-      assertThat(rows.get(1).getInt(0)).isEqualTo(2);
-      assertThat(rows.get(1).getString(1)).isEqualTo("b");
-    } else {
-      assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
-    }
+  /**
+   * Spark 4.1 rejects {@code INSERT INTO parquet.`s3://...`} at analysis ({@code
+   * TABLE_OR_VIEW_NOT_FOUND}) because {@code INSERT} DML requires a registered {@code
+   * table_identifier} (see Spark 4.1 INSERT TABLE docs). Parsing still builds an {@code
+   * InsertIntoStatement} whose target is an {@code UnresolvedRelation}, so {@link
+   * ResolvePathCredentials} must inject credentials before analysis — this test pins that behavior
+   * without executing the statement.
+   */
+  @Test
+  public void testInsertIntoBarePathInjectsCredentialsAtParseTime()
+      throws IOException, ParseException {
+    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
+    String location = bucketPath("insert_into_parse");
+    String insertSql = String.format("INSERT INTO parquet.`%s` SELECT 2 AS i, 'b' AS s", location);
+
+    LogicalPlan plan = session.sessionState().sqlParser().parsePlan(insertSql);
+    assertThat(plan).isInstanceOf(InsertIntoStatement.class);
+    LogicalPlan table = ((InsertIntoStatement) plan).table();
+    assertThat(table).isInstanceOf(UnresolvedRelation.class);
+    UnresolvedRelation target = (UnresolvedRelation) table;
+    assertThat(target.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+
+    assertThrows(Exception.class, () -> session.sql(insertSql).collectAsList());
   }
 
   /**
@@ -124,11 +146,17 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     // Write with the feature on so the data exists.
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
 
-    session.close();
-    session = null;
+    stopSession();
     session = createUcSparkSession(false, false, false, SPARK_CATALOG);
     Exception thrown =
         assertThrows(Exception.class, () -> sql("SELECT * FROM parquet.`%s`", location));
-    assertThat(Throwables.getStackTrace(thrown)).contains("accessKey0");
+    Throwable credentialError = thrown;
+    while (credentialError != null
+        && (credentialError.getMessage() == null
+            || !credentialError.getMessage().contains("accessKey0"))) {
+      credentialError = credentialError.getCause();
+    }
+    assertThat(credentialError).isNotNull();
+    assertThat(credentialError.getMessage()).contains("accessKey0");
   }
 }
