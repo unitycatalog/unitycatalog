@@ -63,7 +63,6 @@ public class TableRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
-  private final FileOperations fileOperations;
   private final ServerProperties serverProperties;
   private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(TableInfoDAO.class);
@@ -72,7 +71,6 @@ public class TableRepository {
       Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositories.getFileOperations();
     this.serverProperties = serverProperties;
   }
 

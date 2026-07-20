@@ -7,6 +7,9 @@ import static org.mockito.Mockito.when;
 
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.amazonaws.util.IOUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Objects;
 import lombok.SneakyThrows;
 import org.apache.iceberg.TableMetadata;
@@ -28,7 +31,7 @@ public class MetadataServiceTest {
   public static final String TEST_SIMPLE_ICEBERG_V1_METADATA_FILE_NAME =
       "simple-v1-iceberg.metadata.json";
 
-  private final FileIOFactory mockFileIOFactory = mock();
+  private final FileOperations mockFileOperations = mock();
   private final S3Client mockS3Client = S3_MOCK.createS3ClientV2();
 
   private MetadataService metadataService;
@@ -36,13 +39,13 @@ public class MetadataServiceTest {
   @SneakyThrows
   @BeforeEach
   public void setUp() {
-    metadataService = new MetadataService(mockFileIOFactory);
+    metadataService = new MetadataService(mockFileOperations);
   }
 
   @SneakyThrows
   @Test
   public void testGetTableMetadataFromS3() {
-    when(mockFileIOFactory.getFileIO(any())).thenReturn(new S3FileIO(() -> mockS3Client));
+    when(mockFileOperations.getFileIO(any())).thenReturn(new S3FileIO(() -> mockS3Client));
     mockS3Client.createBucket(builder -> builder.bucket(TEST_BUCKET).build());
     String simpleMetadataJson =
         IOUtils.toString(
@@ -64,19 +67,21 @@ public class MetadataServiceTest {
             + TEST_LOCATION
             + "/"
             + TEST_SIMPLE_ICEBERG_V1_METADATA_FILE_NAME;
-    TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
+    TableMetadata tableMetadata =
+        metadataService.readTableMetadata(NormalizedURL.from(metadataLocation));
     assertThat(tableMetadata.uuid()).isEqualTo("11111111-2222-3333-4444-555555555555");
   }
 
   @SneakyThrows
   @Test
   public void testGetTableMetadataFromLocalFS() {
-    when(mockFileIOFactory.getFileIO(any())).thenReturn(new SimpleLocalFileIO());
+    when(mockFileOperations.getFileIO(any())).thenReturn(new SimpleLocalFileIO());
     String metadataLocation =
         Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
             .toURI()
             .toString();
-    TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
+    TableMetadata tableMetadata =
+        metadataService.readTableMetadata(NormalizedURL.from(metadataLocation));
     assertThat(tableMetadata.uuid()).isEqualTo("55d4dc69-5b14-4483-bfc8-f33b80f99f99");
   }
 }
