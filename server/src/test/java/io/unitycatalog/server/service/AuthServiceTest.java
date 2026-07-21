@@ -1,10 +1,12 @@
 package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.client.WebClient;
@@ -23,6 +25,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -130,8 +133,16 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(body.get("issued_token_type").asText())
         .isEqualTo("urn:ietf:params:oauth:token-type:access_token");
     assertThat(body.get("token_type").asText()).isEqualTo("Bearer");
-    assertThat(body.get("expires_in").asLong()).isEqualTo(Duration.parse("PT24H").getSeconds());
-    assertThat(JWT.decode(body.get("access_token").asText()).getExpiresAt()).isNotNull();
+
+    Duration expectedTtl = Duration.parse("PT24H");
+    assertThat(body.get("expires_in").asLong()).isEqualTo(expectedTtl.getSeconds());
+
+    DecodedJWT accessJwt = JWT.decode(body.get("access_token").asText());
+    assertThat(accessJwt.getIssuedAt()).isNotNull();
+    assertThat(accessJwt.getExpiresAt()).isNotNull();
+    assertThat(accessJwt.getExpiresAt().toInstant())
+        .isCloseTo(
+            accessJwt.getIssuedAt().toInstant().plus(expectedTtl), within(2, ChronoUnit.SECONDS));
   }
 
   @Test
