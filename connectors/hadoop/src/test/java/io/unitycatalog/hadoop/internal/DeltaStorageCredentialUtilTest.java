@@ -167,7 +167,7 @@ class DeltaStorageCredentialUtilTest {
             .config(new DeltaStorageCredentialConfig().s3SessionToken("st"));
     assertThatThrownBy(() -> DeltaStorageCredentialUtil.toGenericCredential(c))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("missing S3 access key");
+        .hasMessageContaining("AWS access key is missing");
   }
 
   private static DeltaStorageCredential credAt(String prefix) {

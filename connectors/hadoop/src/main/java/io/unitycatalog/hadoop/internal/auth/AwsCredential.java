@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import java.util.Objects;
 
 public final class AwsCredential extends GenericCredential {
@@ -10,9 +11,9 @@ public final class AwsCredential extends GenericCredential {
   public AwsCredential(
       String accessKeyId, String secretAccessKey, String sessionToken, Long expirationTimeMillis) {
     super(expirationTimeMillis);
-    this.accessKeyId = accessKeyId;
-    this.secretAccessKey = secretAccessKey;
-    this.sessionToken = sessionToken;
+    this.accessKeyId = CredentialUtil.field(accessKeyId, "AWS access key is missing");
+    this.secretAccessKey = CredentialUtil.field(secretAccessKey, "AWS secret key is missing");
+    this.sessionToken = CredentialUtil.field(sessionToken, "AWS session token is missing");
   }
 
   public String accessKeyId() {
@@ -32,18 +33,17 @@ public final class AwsCredential extends GenericCredential {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof AwsCredential)) {
+    if (!(o instanceof AwsCredential) || !super.equals(o)) {
       return false;
     }
     AwsCredential that = (AwsCredential) o;
     return Objects.equals(accessKeyId, that.accessKeyId)
         && Objects.equals(secretAccessKey, that.secretAccessKey)
-        && Objects.equals(sessionToken, that.sessionToken)
-        && Objects.equals(expirationTimeMillis(), that.expirationTimeMillis());
+        && Objects.equals(sessionToken, that.sessionToken);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(accessKeyId, secretAccessKey, sessionToken, expirationTimeMillis());
+    return Objects.hash(super.hashCode(), accessKeyId, secretAccessKey, sessionToken);
   }
 }

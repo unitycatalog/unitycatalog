@@ -44,10 +44,6 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
   @Override
   public String getSASToken(String account, String fileSystem, String path, String operation) {
     AzureCredential azure = (AzureCredential) accessCredentials();
-
-    String sasToken = azure.sasToken();
-    Preconditions.checkNotNull(sasToken, "Azure SAS of generic credential cannot be null");
-
-    return sasToken;
+    return azure.sasToken();
   }
 }

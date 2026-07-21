@@ -66,15 +66,19 @@ class UCTemporaryCredentialUtilTest {
                     new AwsCredentials()
                         .secretAccessKey("secret-key")
                         .sessionToken("session-token")),
-            "UC temporary credentials missing AWS access key"),
+            "AWS access key is missing"),
         Arguments.of(
             "Azure",
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("")),
-            "UC temporary credentials missing Azure SAS token"),
+            "Azure SAS token is missing"),
         Arguments.of(
             "GCS",
             new TemporaryCredentials().gcpOauthToken(new GcpOauthToken()),
-            "UC temporary credentials missing GCS OAuth token"));
+            "GCS OAuth token is missing"),
+        Arguments.of(
+            "no credential",
+            new TemporaryCredentials(),
+            "UC temporary credentials contained no cloud credential"));
   }
 }

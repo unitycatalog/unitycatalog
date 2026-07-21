@@ -44,13 +44,10 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
   public AccessToken getAccessToken() {
     GcsCredential gcs = (GcsCredential) accessCredentials();
 
-    String tokenValue = gcs.oauthToken();
-    Preconditions.checkNotNull(tokenValue, "GCS OAuth token value cannot be null");
-
     Long expirationMillis = gcs.expirationTimeMillis();
     Instant expirationInstant =
         expirationMillis == null ? null : Instant.ofEpochMilli(expirationMillis);
-    return new AccessToken(tokenValue, expirationInstant);
+    return new AccessToken(gcs.oauthToken(), expirationInstant);
   }
 
   @Override

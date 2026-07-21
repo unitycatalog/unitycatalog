@@ -17,37 +17,17 @@ public final class DeltaStorageCredentialUtil {
   public static GenericCredential toGenericCredential(DeltaStorageCredential cred) {
     DeltaStorageCredentialConfig config = requireSingleCloudConfig(cred);
     long expiry = cred.getExpirationTimeMs() == null ? Long.MAX_VALUE : cred.getExpirationTimeMs();
-    String prefix = cred.getPrefix();
 
     if (isS3Config(config)) {
       return new AwsCredential(
-          CredentialUtil.field(
-              config.getS3AccessKeyId(),
-              "UC Delta credential for '%s' is missing S3 access key.",
-              prefix),
-          CredentialUtil.field(
-              config.getS3SecretAccessKey(),
-              "UC Delta credential for '%s' is missing S3 secret key.",
-              prefix),
-          CredentialUtil.field(
-              config.getS3SessionToken(),
-              "UC Delta credential for '%s' is missing S3 session token.",
-              prefix),
+          config.getS3AccessKeyId(),
+          config.getS3SecretAccessKey(),
+          config.getS3SessionToken(),
           expiry);
     } else if (isAzureConfig(config)) {
-      return new AzureCredential(
-          CredentialUtil.field(
-              config.getAzureSasToken(),
-              "UC Delta credential for '%s' is missing Azure SAS token.",
-              prefix),
-          expiry);
+      return new AzureCredential(config.getAzureSasToken(), expiry);
     } else {
-      return new GcsCredential(
-          CredentialUtil.field(
-              config.getGcsOauthToken(),
-              "UC Delta credential for '%s' is missing GCS OAuth token.",
-              prefix),
-          expiry);
+      return new GcsCredential(config.getGcsOauthToken(), expiry);
     }
   }
 

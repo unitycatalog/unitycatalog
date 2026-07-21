@@ -46,9 +46,6 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
   public AwsCredentials resolveCredentials() {
     AwsCredential aws = (AwsCredential) accessCredentials();
 
-    Preconditions.checkNotNull(
-        aws.accessKeyId(), "AWS access key of generic credential cannot be null");
-
     return AwsSessionCredentials.builder()
         .accessKeyId(aws.accessKeyId())
         .secretAccessKey(aws.secretAccessKey())
