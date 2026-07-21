@@ -1,12 +1,13 @@
 package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -92,6 +93,25 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(rows.get(0).getString(1)).isEqualTo("a");
   }
 
+  private static List<Throwable> causalChain(Throwable t) {
+    List<Throwable> chain = new ArrayList<>();
+    while (t != null) {
+      chain.add(t);
+      t = t.getCause();
+    }
+    return chain;
+  }
+
+  private static void assertNoCauseOfType(Throwable thrown, Class<?> type) {
+    assertThat(causalChain(thrown)).noneMatch(type::isInstance);
+  }
+
+  private static void assertCauseChainContainsMessage(Throwable thrown, String substring) {
+    assertThat(causalChain(thrown))
+        .extracting(Throwable::getMessage)
+        .anyMatch(msg -> msg != null && msg.contains(substring));
+  }
+
   /**
    * Writes to a bare cloud path and reads it back. Exercises {@code INSERT OVERWRITE DIRECTORY}
    * ({@code InsertIntoDir}) and {@code parquet.`path`} reads ({@code UnresolvedRelation}).
@@ -144,26 +164,13 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     session = createUcSparkSession(false, false, true, SPARK_CATALOG);
     String location = "s3://" + NO_CREDS_BUCKET + new File(dataDir, "unmanaged").getCanonicalPath();
 
-    Exception thrown =
-        assertThrows(
-            Exception.class,
+    assertThatThrownBy(
             () ->
                 sql(
                     "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s",
-                    location));
-
-    Throwable t = thrown;
-    while (t != null) {
-      assertThat(t).isNotInstanceOf(ApiException.class);
-      t = t.getCause();
-    }
-    Throwable fsError = thrown;
-    while (fsError != null
-        && (fsError.getMessage() == null || !fsError.getMessage().contains("invalid path"))) {
-      fsError = fsError.getCause();
-    }
-    assertThat(fsError).isNotNull();
-    assertThat(fsError.getMessage()).contains("invalid path");
+                    location))
+        .satisfies(e -> assertNoCauseOfType(e, ApiException.class))
+        .satisfies(e -> assertCauseChainContainsMessage(e, "invalid path"));
   }
 
   /**
@@ -179,15 +186,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
     stopSession();
     session = createUcSparkSession(false, false, false, SPARK_CATALOG);
-    Exception thrown =
-        assertThrows(Exception.class, () -> sql("SELECT * FROM parquet.`%s`", location));
-    Throwable credentialError = thrown;
-    while (credentialError != null
-        && (credentialError.getMessage() == null
-            || !credentialError.getMessage().contains("accessKey0"))) {
-      credentialError = credentialError.getCause();
-    }
-    assertThat(credentialError).isNotNull();
-    assertThat(credentialError.getMessage()).contains("accessKey0");
+    assertThatThrownBy(() -> sql("SELECT * FROM parquet.`%s`", location))
+        .satisfies(e -> assertCauseChainContainsMessage(e, "accessKey0"));
   }
 }
