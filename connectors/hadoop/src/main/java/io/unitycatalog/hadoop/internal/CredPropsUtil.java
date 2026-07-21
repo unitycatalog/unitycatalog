@@ -48,7 +48,8 @@ public class CredPropsUtil {
   public static volatile GenericCredentialFetcherFactory genericCredFetcherFactory =
       GenericCredentialFetcher::create;
 
-  static final CredentialCache initialCredCache = CredentialCache.createInitialCredentialCache();
+  static final CredentialCache<CredId> initialCredCache =
+      CredentialCache.createInitialCredentialCache();
 
   // Keys used to build the credential-context id (see #credContextId).
   private static final String CRED_CONTEXT_CATALOG_URI_KEY = "catalogUri";
