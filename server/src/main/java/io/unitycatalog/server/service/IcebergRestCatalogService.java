@@ -425,10 +425,14 @@ public class IcebergRestCatalogService {
     try {
       tableRepository.setIcebergMetadataLocation(
           catalog, namespace, table, metadataLocation, newMetadataLocation);
-    } catch (BaseException e) {
+    } catch (RuntimeException e) {
+      // The metadata file was written before the swap, so any failure (a lost commit race or an
+      // unexpected error) leaves it orphaned unless we clean it up.
       metadataService.deleteTableMetadata(newMetadataLocation);
-      if (e.getErrorCode() == ErrorCode.UPDATE_REQUIREMENT_CONFLICT) {
-        throw new CommitFailedException("Commit conflict on %s: %s", fullName, e.getErrorMessage());
+      if (e instanceof BaseException
+          && ((BaseException) e).getErrorCode() == ErrorCode.UPDATE_REQUIREMENT_CONFLICT) {
+        throw new CommitFailedException(
+            "Commit conflict on %s: %s", fullName, ((BaseException) e).getErrorMessage());
       }
       throw e;
     }
