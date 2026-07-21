@@ -357,8 +357,10 @@ public class TableRepository {
 
   /**
    * Acquire {@code SELECT ... FOR UPDATE} on the table row and refresh in-memory state, so two
-   * concurrent {@link #updateTableForDelta} calls serialize. Lock-wait timeouts and deadlock
-   * victims surface as {@code UPDATE_REQUIREMENT_CONFLICT} (409) instead of a generic 500.
+   * concurrent commits on the same table serialize. Shared by the Delta ({@link
+   * #updateTableForDelta}) and Iceberg REST ({@link #setIcebergMetadataLocation}) commit paths.
+   * Lock-wait timeouts and deadlock victims surface as {@code UPDATE_REQUIREMENT_CONFLICT} (409)
+   * instead of a generic 500.
    */
   private static void lockTableForUpdate(
       Session session, TableInfoDAO dao, String catalog, String schema, String table) {
