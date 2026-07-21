@@ -51,8 +51,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.PessimisticLockException;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -382,6 +384,28 @@ public class TableRepository {
   }
 
   /**
+   * Acquire {@code SELECT ... FOR UPDATE} on the table row and refresh in-memory state, so two
+   * concurrent Iceberg REST commits serialize. Lock-wait timeouts and deadlock
+   * victims surface as {@code UPDATE_REQUIREMENT_CONFLICT} (409) instead of a generic 500.
+   */
+  private static void lockTableForUpdate(
+      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
+    try {
+      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
+    } catch (PessimisticLockException e) {
+      throw new BaseException(
+          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
+          "Concurrent update in progress on "
+              + catalog
+              + "."
+              + schema
+              + "."
+              + table
+              + "; retry the request.");
+    }
+  }
+
+  /**
    * Build a {@link DeltaLoadTableResponse} from an already-loaded {@link TableInfoDAO}. Shared by
    * {@link #loadTableForDelta}, {@link #createTableForDelta}, and {@link #updateTableForDelta} so
    * the post-mutation DAO → response assembly stays in one place.
@@ -562,6 +586,59 @@ public class TableRepository {
       Session session, String catalogName, String schemaName, String tableName) {
     TableInfoDAO dao = findTableOrThrow(session, catalogName, schemaName, tableName);
     return dao.getUniformIcebergMetadataLocation();
+  }
+
+  /**
+   * Compare-and-swap the Iceberg metadata location of a native Iceberg table (created through the
+   * Iceberg REST catalog). This is the linearization point of an Iceberg REST commit: the metadata
+   * file for {@code newMetadataLocation} is written by the caller before this method runs, and the
+   * swap only succeeds when the stored location still matches {@code expectedMetadataLocation}
+   * ({@code null} for a freshly created table). A mismatch means a concurrent commit won and
+   * surfaces as {@link ErrorCode#UPDATE_REQUIREMENT_CONFLICT} so the caller can translate it into
+   * an Iceberg {@code CommitFailedException}.
+   *
+   * <p>Only tables with {@link DataSourceFormat#ICEBERG} can be committed to: UniForm-enabled Delta
+   * tables also carry a uniform metadata location, but their Iceberg metadata is derived from the
+   * Delta log and stays read-only through this API.
+   */
+  public void setIcebergMetadataLocation(
+      String catalogName,
+      String schemaName,
+      String tableName,
+      String expectedMetadataLocation,
+      String newMetadataLocation) {
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    String fullName = catalogName + "." + schemaName + "." + tableName;
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO dao = findTableOrThrow(session, catalogName, schemaName, tableName);
+          if (!DataSourceFormat.ICEBERG.toString().equals(dao.getDataSourceFormat())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT,
+                "Table is not a native Iceberg table and cannot be committed to via the Iceberg"
+                    + " REST catalog: "
+                    + fullName);
+          }
+          lockTableForUpdate(session, dao, catalogName, schemaName, tableName);
+          if (!Objects.equals(dao.getUniformIcebergMetadataLocation(), expectedMetadataLocation)) {
+            throw new BaseException(
+                ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
+                "Metadata location for "
+                    + fullName
+                    + " changed concurrently: expected "
+                    + expectedMetadataLocation
+                    + " but found "
+                    + dao.getUniformIcebergMetadataLocation());
+          }
+          dao.setUniformIcebergMetadataLocation(newMetadataLocation);
+          dao.setUpdatedAt(new Date());
+          dao.setUpdatedBy(callerId);
+          session.merge(dao);
+          return null;
+        },
+        "Failed to update Iceberg metadata location for " + fullName,
+        /* readOnly = */ false);
   }
 
   private TableInfoDAO findTableOrThrow(
