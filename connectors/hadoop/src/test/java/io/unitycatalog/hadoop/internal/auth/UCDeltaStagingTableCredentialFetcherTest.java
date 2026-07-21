@@ -30,13 +30,13 @@ class UCDeltaStagingTableCredentialFetcherTest {
     DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(response);
 
-    GenericCredential cred =
-        GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredential();
+    AwsCredential cred =
+        (AwsCredential)
+            GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredential();
 
-    assertThat(cred).isNotNull();
-    assertThat(cred.awsAccessKeyId()).isEqualTo("ak");
-    assertThat(cred.awsSecretAccessKey()).isEqualTo("sk");
-    assertThat(cred.awsSessionToken()).isEqualTo("st");
+    assertThat(cred.accessKeyId()).isEqualTo("ak");
+    assertThat(cred.secretAccessKey()).isEqualTo("sk");
+    assertThat(cred.sessionToken()).isEqualTo("st");
     assertThat(cred.expirationTimeMillis()).isEqualTo(1234L);
     verify(api).getStagingTableCredentials(STAGING_ID);
   }

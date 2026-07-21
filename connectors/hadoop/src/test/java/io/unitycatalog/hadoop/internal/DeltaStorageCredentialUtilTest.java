@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
-import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import io.unitycatalog.hadoop.internal.auth.AwsCredential;
+import io.unitycatalog.hadoop.internal.auth.AzureCredential;
+import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -103,11 +105,11 @@ class DeltaStorageCredentialUtilTest {
                     .s3AccessKeyId("ak")
                     .s3SecretAccessKey("sk")
                     .s3SessionToken("st"));
-    GenericCredential gc = DeltaStorageCredentialUtil.toGenericCredential(c);
+    AwsCredential gc = (AwsCredential) DeltaStorageCredentialUtil.toGenericCredential(c);
     assertThat(gc.expirationTimeMillis()).isEqualTo(123L);
-    assertThat(gc.awsAccessKeyId()).isEqualTo("ak");
-    assertThat(gc.awsSecretAccessKey()).isEqualTo("sk");
-    assertThat(gc.awsSessionToken()).isEqualTo("st");
+    assertThat(gc.accessKeyId()).isEqualTo("ak");
+    assertThat(gc.secretAccessKey()).isEqualTo("sk");
+    assertThat(gc.sessionToken()).isEqualTo("st");
   }
 
   @Test
@@ -138,8 +140,8 @@ class DeltaStorageCredentialUtilTest {
             .prefix("abfss://container@account.dfs.core.windows.net/")
             .operation(DeltaCredentialOperation.READ_WRITE)
             .config(new DeltaStorageCredentialConfig().azureSasToken("sas-token"));
-    GenericCredential gc = DeltaStorageCredentialUtil.toGenericCredential(c);
-    assertThat(gc.azureSasToken()).isEqualTo("sas-token");
+    AzureCredential gc = (AzureCredential) DeltaStorageCredentialUtil.toGenericCredential(c);
+    assertThat(gc.sasToken()).isEqualTo("sas-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(Long.MAX_VALUE);
   }
 
@@ -151,8 +153,8 @@ class DeltaStorageCredentialUtilTest {
             .operation(DeltaCredentialOperation.READ)
             .expirationTimeMs(456L)
             .config(new DeltaStorageCredentialConfig().gcsOauthToken("gcs-oauth-token"));
-    GenericCredential gc = DeltaStorageCredentialUtil.toGenericCredential(c);
-    assertThat(gc.gcsOauthToken()).isEqualTo("gcs-oauth-token");
+    GcsCredential gc = (GcsCredential) DeltaStorageCredentialUtil.toGenericCredential(c);
+    assertThat(gc.oauthToken()).isEqualTo("gcs-oauth-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(456L);
   }
 

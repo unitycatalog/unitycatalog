@@ -3,6 +3,9 @@ package io.unitycatalog.hadoop.internal;
 import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.client.internal.Preconditions;
+import io.unitycatalog.hadoop.internal.auth.AwsCredential;
+import io.unitycatalog.hadoop.internal.auth.AzureCredential;
+import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.util.List;
 
@@ -17,7 +20,7 @@ public final class DeltaStorageCredentialUtil {
     String prefix = cred.getPrefix();
 
     if (isS3Config(config)) {
-      return GenericCredential.forAws(
+      return new AwsCredential(
           CredentialUtil.field(
               config.getS3AccessKeyId(),
               "UC Delta credential for '%s' is missing S3 access key.",
@@ -32,14 +35,14 @@ public final class DeltaStorageCredentialUtil {
               prefix),
           expiry);
     } else if (isAzureConfig(config)) {
-      return GenericCredential.forAzure(
+      return new AzureCredential(
           CredentialUtil.field(
               config.getAzureSasToken(),
               "UC Delta credential for '%s' is missing Azure SAS token.",
               prefix),
           expiry);
     } else {
-      return GenericCredential.forGcs(
+      return new GcsCredential(
           CredentialUtil.field(
               config.getGcsOauthToken(),
               "UC Delta credential for '%s' is missing GCS OAuth token.",

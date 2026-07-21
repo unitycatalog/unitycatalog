@@ -9,6 +9,9 @@ import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
+import io.unitycatalog.hadoop.internal.auth.AwsCredential;
+import io.unitycatalog.hadoop.internal.auth.AzureCredential;
+import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
@@ -1277,18 +1280,18 @@ class CredPropsUtilTest {
   }
 
   private static GenericCredential s3Creds() {
-    return GenericCredential.forAws("ak", "sk", "st", null);
+    return new AwsCredential("ak", "sk", "st", null);
   }
 
   private static GenericCredential s3CredsExpiringAt(String id, long expirationMillis) {
-    return GenericCredential.forAws("ak" + id, "sk" + id, "st" + id, expirationMillis);
+    return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis);
   }
 
   private static GenericCredential gcsCreds() {
-    return GenericCredential.forGcs("token", Long.MAX_VALUE);
+    return new GcsCredential("token", Long.MAX_VALUE);
   }
 
   private static GenericCredential abfsCreds() {
-    return GenericCredential.forAzure("sas", null);
+    return new AzureCredential("sas", null);
   }
 }

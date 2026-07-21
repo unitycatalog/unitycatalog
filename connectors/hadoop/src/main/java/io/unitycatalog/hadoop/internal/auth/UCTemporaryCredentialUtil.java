@@ -14,7 +14,7 @@ final class UCTemporaryCredentialUtil {
     Long expiration = tempCred.getExpirationTime();
     if (tempCred.getAwsTempCredentials() != null) {
       AwsCredentials aws = tempCred.getAwsTempCredentials();
-      return GenericCredential.forAws(
+      return new AwsCredential(
           CredentialUtil.field(
               aws.getAccessKeyId(), "UC temporary credentials missing AWS access key"),
           CredentialUtil.field(
@@ -23,7 +23,7 @@ final class UCTemporaryCredentialUtil {
               aws.getSessionToken(), "UC temporary credentials missing AWS session token"),
           expiration);
     } else if (tempCred.getAzureUserDelegationSas() != null) {
-      return GenericCredential.forAzure(
+      return new AzureCredential(
           CredentialUtil.field(
               tempCred.getAzureUserDelegationSas().getSasToken(),
               "UC temporary credentials missing Azure SAS token"),
@@ -31,7 +31,7 @@ final class UCTemporaryCredentialUtil {
     } else {
       Preconditions.checkArgument(
           tempCred.getGcpOauthToken() != null, "UC temporary credentials missing GCP OAuth token");
-      return GenericCredential.forGcs(
+      return new GcsCredential(
           CredentialUtil.field(
               tempCred.getGcpOauthToken().getOauthToken(),
               "UC temporary credentials missing GCS OAuth token"),

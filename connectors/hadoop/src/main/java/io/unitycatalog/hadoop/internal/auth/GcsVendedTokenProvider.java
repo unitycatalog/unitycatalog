@@ -34,7 +34,7 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
           expiredTimeMillis,
           UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME);
 
-      return GenericCredential.forGcs(oauthToken, expiredTimeMillis);
+      return new GcsCredential(oauthToken, expiredTimeMillis);
     } else {
       return null;
     }
@@ -42,12 +42,12 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
 
   @Override
   public AccessToken getAccessToken() {
-    GenericCredential generic = accessCredentials();
+    GcsCredential gcs = (GcsCredential) accessCredentials();
 
-    String tokenValue = generic.gcsOauthToken();
+    String tokenValue = gcs.oauthToken();
     Preconditions.checkNotNull(tokenValue, "GCS OAuth token value cannot be null");
 
-    Long expirationMillis = generic.expirationTimeMillis();
+    Long expirationMillis = gcs.expirationTimeMillis();
     Instant expirationInstant =
         expirationMillis == null ? null : Instant.ofEpochMilli(expirationMillis);
     return new AccessToken(tokenValue, expirationInstant);

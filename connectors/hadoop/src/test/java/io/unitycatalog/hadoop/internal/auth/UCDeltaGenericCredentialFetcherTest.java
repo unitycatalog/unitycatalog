@@ -44,12 +44,12 @@ class UCDeltaGenericCredentialFetcherTest {
     when(api.getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events"))
         .thenReturn(response);
 
-    GenericCredential cred = GenericCredentialFetcher.forUcDelta(credId, api).createCredential();
+    AwsCredential cred =
+        (AwsCredential) GenericCredentialFetcher.forUcDelta(credId, api).createCredential();
 
-    assertThat(cred).isNotNull();
-    assertThat(cred.awsAccessKeyId()).isEqualTo("ak");
-    assertThat(cred.awsSecretAccessKey()).isEqualTo("sk");
-    assertThat(cred.awsSessionToken()).isEqualTo("st");
+    assertThat(cred.accessKeyId()).isEqualTo("ak");
+    assertThat(cred.secretAccessKey()).isEqualTo("sk");
+    assertThat(cred.sessionToken()).isEqualTo("st");
     assertThat(cred.expirationTimeMillis()).isEqualTo(789L);
     verify(api)
         .getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events");

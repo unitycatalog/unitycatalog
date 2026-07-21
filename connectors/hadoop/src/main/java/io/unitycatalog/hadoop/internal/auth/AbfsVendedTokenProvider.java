@@ -35,7 +35,7 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
               + "configuration",
           UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME);
 
-      return GenericCredential.forAzure(sasToken, expiredTimeMillis);
+      return new AzureCredential(sasToken, expiredTimeMillis);
     } else {
       return null;
     }
@@ -43,9 +43,9 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
 
   @Override
   public String getSASToken(String account, String fileSystem, String path, String operation) {
-    GenericCredential generic = accessCredentials();
+    AzureCredential azure = (AzureCredential) accessCredentials();
 
-    String sasToken = generic.azureSasToken();
+    String sasToken = azure.sasToken();
     Preconditions.checkNotNull(sasToken, "Azure SAS of generic credential cannot be null");
 
     return sasToken;
