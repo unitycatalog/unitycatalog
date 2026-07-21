@@ -446,7 +446,7 @@ public class ServerProperties {
     return isTrueOrEnable(get(Property.INCLUDE_STACK_TRACE_IN_ERROR));
   }
 
-  /** Lifetime of UC access tokens issued by token exchange. */
+  /** Lifetime of UC access tokens issued by token exchange. Defaults to 24 hours. */
   public Duration getAccessTokenTimeout() {
     return Duration.parse(get(Property.ACCESS_TOKEN_TIMEOUT));
   }
