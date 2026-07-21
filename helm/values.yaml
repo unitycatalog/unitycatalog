@@ -154,7 +154,6 @@ auth:
   # @default -- PT24H
   # @raw
   #
-  # Previously, UC access tokens had no exp claim. Default is 24 hours.
   # Example: `PT24H` (24 hours), `P7D` (7 days)
   #
   accessTokenTimeout: PT24H

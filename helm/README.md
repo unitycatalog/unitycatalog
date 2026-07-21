@@ -126,8 +126,6 @@ Example: `P5D` (5 days)
 </td>
 			<td>UC access token lifetime for token exchange
 
-Previously, UC access tokens had no exp claim. Default is 24 hours.
-
 Example: `PT24H` (24 hours), `P7D` (7 days)
 </td>
 		</tr>
