@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,6 +20,8 @@ import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
+import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.security.JwtTokenType;
 import java.io.IOException;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -62,6 +65,15 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertEquals(HttpStatus.UNAUTHORIZED, response.status());
   }
 
+  @Test
+  public void testExpiredAccessTokenIsRejected() {
+    // Request with expired access token should return 401
+    RequestHeaders headers = buildLogoutRequestHeaderWithToken(createExpiredAccessToken());
+
+    AggregatedHttpResponse response = client.execute(headers).aggregate().join();
+    assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+  }
+
   private RequestHeaders buildLogoutRequestHeader(boolean includeCookie) {
     RequestHeadersBuilder builder =
         RequestHeaders.builder()
@@ -74,6 +86,31 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     }
 
     return builder.build();
+  }
+
+  private RequestHeaders buildLogoutRequestHeaderWithToken(String token) {
+    return RequestHeaders.builder()
+        .method(HttpMethod.POST)
+        .path(LOGOUT_ENDPOINT)
+        .contentType(MediaType.JSON)
+        .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + token)
+        .build();
+  }
+
+  private String createExpiredAccessToken() {
+    Date issuedAt = new Date(System.currentTimeMillis() - Duration.ofHours(2).toMillis());
+    Date expiresAt = new Date(System.currentTimeMillis() - Duration.ofHours(1).toMillis());
+
+    return JWT.create()
+        .withSubject(securityContext.getServiceName())
+        .withIssuer(INTERNAL)
+        .withIssuedAt(issuedAt)
+        .withExpiresAt(expiresAt)
+        .withKeyId(securityContext.getKeyId())
+        .withJWTId(UUID.randomUUID().toString())
+        .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
+        .withClaim(JwtClaim.SUBJECT.key(), "admin")
+        .sign(securityContext.getAlgorithm());
   }
 
   /**
