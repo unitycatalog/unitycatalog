@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.time.Duration;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
@@ -203,6 +204,18 @@ public class ServerPropertiesTest {
         "24 hours",
         "Invalid value '24 hours'",
         "server.access-token-timeout");
+  }
+
+  @Test
+  public void testEffectiveCookieTimeout() {
+    ServerProperties serverProperties = new ServerProperties();
+    assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));
+
+    serverProperties.set(Property.COOKIE_TIMEOUT, "PT1H");
+    assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT1H"));
+
+    serverProperties.set(Property.ACCESS_TOKEN_TIMEOUT, "PT48H");
+    assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT1H"));
   }
 
   @Test

@@ -452,6 +452,16 @@ public class ServerProperties {
   }
 
   /**
+   * Cookie max-age for UC access tokens, capped by {@link #getAccessTokenTimeout()} so the cookie
+   * does not outlive the JWT it contains.
+   */
+  public Duration getEffectiveCookieTimeout() {
+    Duration cookieTimeout = Duration.parse(get(Property.COOKIE_TIMEOUT));
+    Duration accessTokenTimeout = getAccessTokenTimeout();
+    return cookieTimeout.compareTo(accessTokenTimeout) > 0 ? accessTokenTimeout : cookieTimeout;
+  }
+
+  /**
    * Check if experimental MANAGED table feature is enabled. This method throws BaseException with
    * ErrorCode.INVALID_ARGUMENT if it's disabled.
    */
