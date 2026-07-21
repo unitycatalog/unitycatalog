@@ -5,8 +5,8 @@ import io.unitycatalog.client.internal.Preconditions;
 public final class CredentialUtil {
   private CredentialUtil() {}
 
-  public static String field(String value, String description, String label) {
-    return Preconditions.requireArgument(
-        value != null && !value.isEmpty(), value, "%s is missing %s.", description, label);
+  public static String field(String value, String message, Object... args) {
+    Preconditions.checkArgument(value != null && !value.isEmpty(), message, args);
+    return value;
   }
 }

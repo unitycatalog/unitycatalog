@@ -14,21 +14,36 @@ public final class DeltaStorageCredentialUtil {
   public static GenericCredential toGenericCredential(DeltaStorageCredential cred) {
     DeltaStorageCredentialConfig config = requireSingleCloudConfig(cred);
     long expiry = cred.getExpirationTimeMs() == null ? Long.MAX_VALUE : cred.getExpirationTimeMs();
-    String credDescription = credDescription(cred);
+    String prefix = cred.getPrefix();
 
     if (isS3Config(config)) {
       return GenericCredential.forAws(
-          CredentialUtil.field(config.getS3AccessKeyId(), credDescription, "S3 access key"),
-          CredentialUtil.field(config.getS3SecretAccessKey(), credDescription, "S3 secret key"),
-          CredentialUtil.field(config.getS3SessionToken(), credDescription, "S3 session token"),
+          CredentialUtil.field(
+              config.getS3AccessKeyId(),
+              "UC Delta credential for '%s' is missing S3 access key.",
+              prefix),
+          CredentialUtil.field(
+              config.getS3SecretAccessKey(),
+              "UC Delta credential for '%s' is missing S3 secret key.",
+              prefix),
+          CredentialUtil.field(
+              config.getS3SessionToken(),
+              "UC Delta credential for '%s' is missing S3 session token.",
+              prefix),
           expiry);
     } else if (isAzureConfig(config)) {
       return GenericCredential.forAzure(
-          CredentialUtil.field(config.getAzureSasToken(), credDescription, "Azure SAS token"),
+          CredentialUtil.field(
+              config.getAzureSasToken(),
+              "UC Delta credential for '%s' is missing Azure SAS token.",
+              prefix),
           expiry);
     } else {
       return GenericCredential.forGcs(
-          CredentialUtil.field(config.getGcsOauthToken(), credDescription, "GCS OAuth token"),
+          CredentialUtil.field(
+              config.getGcsOauthToken(),
+              "UC Delta credential for '%s' is missing GCS OAuth token.",
+              prefix),
           expiry);
     }
   }
@@ -36,11 +51,13 @@ public final class DeltaStorageCredentialUtil {
   /** Selects the credential whose prefix covers the requested location. */
   public static DeltaStorageCredential selectForLocation(
       String location, List<DeltaStorageCredential> creds) {
-    String responseDescription = "UC Delta API response for '" + location + "'";
     Preconditions.checkArgument(
-        creds != null && !creds.isEmpty(), "%s has no storage credentials.", responseDescription);
+        creds != null && !creds.isEmpty(),
+        "UC Delta API response for '%s' has no storage credentials.",
+        location);
     if (creds.size() == 1) {
-      Preconditions.checkNotNull(creds.get(0), "%s contains null.", responseDescription);
+      Preconditions.checkNotNull(
+          creds.get(0), "UC Delta API response for '%s' contains null.", location);
     }
     DeltaStorageCredential best = null;
     int bestLen = -1;
@@ -79,13 +96,16 @@ public final class DeltaStorageCredentialUtil {
       DeltaStorageCredential cred) {
     Preconditions.checkNotNull(cred, "storageCredential cannot be null");
     DeltaStorageCredentialConfig c = cred.getConfig();
-    Preconditions.checkArgument(c != null, "%s is missing config.", credDescription(cred));
+    Preconditions.checkArgument(
+        c != null, "UC Delta credential for '%s' is missing config.", cred.getPrefix());
     int clouds =
         (isS3Config(c) ? 1 : 0)
             + (c.getAzureSasToken() != null ? 1 : 0)
             + (c.getGcsOauthToken() != null ? 1 : 0);
     Preconditions.checkArgument(
-        clouds == 1, "%s must contain exactly one cloud credential config.", credDescription(cred));
+        clouds == 1,
+        "UC Delta credential for '%s' must contain exactly one cloud credential config.",
+        cred.getPrefix());
     return c;
   }
 
@@ -97,9 +117,5 @@ public final class DeltaStorageCredentialUtil {
 
   private static boolean isAzureConfig(DeltaStorageCredentialConfig c) {
     return c.getAzureSasToken() != null;
-  }
-
-  private static String credDescription(DeltaStorageCredential cred) {
-    return "UC Delta credential for '" + cred.getPrefix() + "'";
   }
 }

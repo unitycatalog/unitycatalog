@@ -1,12 +1,12 @@
 package io.unitycatalog.hadoop.internal.auth;
 
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 
 /** Converts a UC SDK {@link TemporaryCredentials} into an internal {@link GenericCredential}. */
 final class UCTemporaryCredentialUtil {
-  private static final String DESCRIPTION = "UC temporary credentials";
 
   private UCTemporaryCredentialUtil() {}
 
@@ -15,20 +15,27 @@ final class UCTemporaryCredentialUtil {
     if (tempCred.getAwsTempCredentials() != null) {
       AwsCredentials aws = tempCred.getAwsTempCredentials();
       return GenericCredential.forAws(
-          CredentialUtil.field(aws.getAccessKeyId(), DESCRIPTION, "AWS access key"),
-          CredentialUtil.field(aws.getSecretAccessKey(), DESCRIPTION, "AWS secret key"),
-          CredentialUtil.field(aws.getSessionToken(), DESCRIPTION, "AWS session token"),
+          CredentialUtil.field(
+              aws.getAccessKeyId(), "UC temporary credentials missing AWS access key"),
+          CredentialUtil.field(
+              aws.getSecretAccessKey(), "UC temporary credentials missing AWS secret key"),
+          CredentialUtil.field(
+              aws.getSessionToken(), "UC temporary credentials missing AWS session token"),
           expiration);
     } else if (tempCred.getAzureUserDelegationSas() != null) {
       return GenericCredential.forAzure(
           CredentialUtil.field(
-              tempCred.getAzureUserDelegationSas().getSasToken(), DESCRIPTION, "Azure SAS token"),
+              tempCred.getAzureUserDelegationSas().getSasToken(),
+              "UC temporary credentials missing Azure SAS token"),
           expiration);
     } else {
-      var gcp = tempCred.getGcpOauthToken();
-      String oauthToken = gcp != null ? gcp.getOauthToken() : null;
+      Preconditions.checkArgument(
+          tempCred.getGcpOauthToken() != null, "UC temporary credentials missing GCP OAuth token");
       return GenericCredential.forGcs(
-          CredentialUtil.field(oauthToken, DESCRIPTION, "GCS OAuth token"), expiration);
+          CredentialUtil.field(
+              tempCred.getGcpOauthToken().getOauthToken(),
+              "UC temporary credentials missing GCS OAuth token"),
+          expiration);
     }
   }
 }
