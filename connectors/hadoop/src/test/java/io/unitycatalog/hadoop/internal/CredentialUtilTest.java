@@ -44,19 +44,19 @@ class CredentialUtilTest {
                         .secretAccessKey("secret-key")
                         .sessionToken("session-token"))
                 .expirationTime(EXPIRATION),
-            new AwsCredential("access-key", "secret-key", "session-token", EXPIRATION)),
+            new AwsCredential("access-key", "secret-key", "session-token", EXPIRATION, null)),
         Arguments.of(
             "Azure",
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token"))
                 .expirationTime(EXPIRATION),
-            new AzureCredential("sas-token", EXPIRATION)),
+            new AzureCredential("sas-token", EXPIRATION, null)),
         Arguments.of(
             "GCS",
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("oauth-token"))
                 .expirationTime(EXPIRATION),
-            new GcsCredential("oauth-token", EXPIRATION)));
+            new GcsCredential("oauth-token", EXPIRATION, null)));
   }
 
   @ParameterizedTest(name = "{0}")
@@ -205,6 +205,7 @@ class CredentialUtilTest {
     assertThat(gc.accessKeyId()).isEqualTo("ak");
     assertThat(gc.secretAccessKey()).isEqualTo("sk");
     assertThat(gc.sessionToken()).isEqualTo("st");
+    assertThat(gc.location()).isEqualTo("s3://bucket");
   }
 
   @Test
@@ -238,6 +239,7 @@ class CredentialUtilTest {
     AzureCredential gc = (AzureCredential) CredentialUtil.toGenericCredential(c);
     assertThat(gc.sasToken()).isEqualTo("sas-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(Long.MAX_VALUE);
+    assertThat(gc.location()).isEqualTo("abfss://container@account.dfs.core.windows.net/");
   }
 
   @Test
@@ -251,6 +253,7 @@ class CredentialUtilTest {
     GcsCredential gc = (GcsCredential) CredentialUtil.toGenericCredential(c);
     assertThat(gc.oauthToken()).isEqualTo("gcs-oauth-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(456L);
+    assertThat(gc.location()).isEqualTo("gs://bucket/");
   }
 
   @Test

@@ -22,11 +22,12 @@ public final class CredentialUtil {
     if (tempCred.getAwsTempCredentials() != null) {
       AwsCredentials aws = tempCred.getAwsTempCredentials();
       return new AwsCredential(
-          aws.getAccessKeyId(), aws.getSecretAccessKey(), aws.getSessionToken(), expiration);
+          aws.getAccessKeyId(), aws.getSecretAccessKey(), aws.getSessionToken(), expiration, null);
     } else if (tempCred.getAzureUserDelegationSas() != null) {
-      return new AzureCredential(tempCred.getAzureUserDelegationSas().getSasToken(), expiration);
+      return new AzureCredential(
+          tempCred.getAzureUserDelegationSas().getSasToken(), expiration, null);
     } else if (tempCred.getGcpOauthToken() != null) {
-      return new GcsCredential(tempCred.getGcpOauthToken().getOauthToken(), expiration);
+      return new GcsCredential(tempCred.getGcpOauthToken().getOauthToken(), expiration, null);
     }
     throw new IllegalArgumentException("UC temporary credentials contained no cloud credential");
   }
@@ -41,11 +42,12 @@ public final class CredentialUtil {
           config.getS3AccessKeyId(),
           config.getS3SecretAccessKey(),
           config.getS3SessionToken(),
-          expiry);
+          expiry,
+          cred.getPrefix());
     } else if (isAzureConfig(config)) {
-      return new AzureCredential(config.getAzureSasToken(), expiry);
+      return new AzureCredential(config.getAzureSasToken(), expiry, cred.getPrefix());
     } else {
-      return new GcsCredential(config.getGcsOauthToken(), expiry);
+      return new GcsCredential(config.getGcsOauthToken(), expiry, cred.getPrefix());
     }
   }
 

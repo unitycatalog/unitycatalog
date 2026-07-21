@@ -597,7 +597,7 @@ class CredPropsUtilTest {
   void s3TableRenewalCredsHaveExpectedKeys() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) ->
-            mockGenericCredentialFetcher(new AwsCredential("ak", "sk", "st", 12345L));
+            mockGenericCredentialFetcher(new AwsCredential("ak", "sk", "st", 12345L, null));
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             true,
@@ -1401,18 +1401,18 @@ class CredPropsUtilTest {
   }
 
   private static GenericCredential s3Creds() {
-    return new AwsCredential("ak", "sk", "st", null);
+    return new AwsCredential("ak", "sk", "st", null, null);
   }
 
   private static GenericCredential s3CredsExpiringAt(String id, long expirationMillis) {
-    return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis);
+    return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis, null);
   }
 
   private static GenericCredential gcsCreds() {
-    return new GcsCredential("token", Long.MAX_VALUE);
+    return new GcsCredential("token", Long.MAX_VALUE, null);
   }
 
   private static GenericCredential abfsCreds() {
-    return new AzureCredential("sas", null);
+    return new AzureCredential("sas", null, null);
   }
 }
