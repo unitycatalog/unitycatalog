@@ -256,7 +256,7 @@ public class UCViewProxySuite {
   }
 
   @Test
-  public void testUCSingleCatalogLoadRelationFallsBackToLoadView() throws Exception {
+  public void testUCSingleCatalogLoadRelationReusesViewFromDelegate() throws Exception {
     TableInfo ucMetricView =
         new TableInfo()
             .catalogName(CATALOG_NAME)
@@ -269,7 +269,7 @@ public class UCViewProxySuite {
 
     Identifier ident = Identifier.of(NAMESPACE, "mv1");
     TableCatalog delegate = org.mockito.Mockito.mock(TableCatalog.class);
-    when(delegate.loadTable(eq(ident))).thenThrow(new NoSuchTableException(ident));
+    when(delegate.loadTable(eq(ident))).thenAnswer(invocation -> proxy.loadTable(ident));
 
     UCSingleCatalog catalog = new UCSingleCatalog();
     setCatalogField(catalog, "delegate", delegate);
@@ -279,7 +279,8 @@ public class UCViewProxySuite {
 
     assertThat(relation).isInstanceOf(View.class);
     verify(delegate).loadTable(eq(ident));
-    verify(mockTablesApi).getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true));
+    verify(mockTablesApi, org.mockito.Mockito.times(1))
+        .getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true));
   }
 
   @Test
@@ -312,6 +313,8 @@ public class UCViewProxySuite {
     assertThatThrownBy(() -> ((RelationCatalog) catalog).loadRelation(ident))
         .isSameAs(delegateError);
     verify(delegate).loadTable(eq(ident));
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true));
   }
 
   @Test
@@ -334,34 +337,6 @@ public class UCViewProxySuite {
     assertThatThrownBy(() -> ((RelationCatalog) catalog).loadRelation(ident))
         .isSameAs(delegateError);
     verify(delegate).loadTable(eq(ident));
-  }
-
-  @Test
-  public void testUCSingleCatalogLoadRelationReusesViewFromDelegateLoadTable() throws Exception {
-    TableInfo ucMetricView =
-        new TableInfo()
-            .catalogName(CATALOG_NAME)
-            .schemaName(SCHEMA_NAME)
-            .name("mv1")
-            .tableType(TableType.METRIC_VIEW)
-            .viewDefinition("version: \"0.1\"");
-    when(mockTablesApi.getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true)))
-        .thenReturn(ucMetricView);
-
-    Identifier ident = Identifier.of(NAMESPACE, "mv1");
-    TableCatalog delegate = org.mockito.Mockito.mock(TableCatalog.class);
-    when(delegate.loadTable(eq(ident))).thenAnswer(invocation -> proxy.loadTable(ident));
-
-    UCSingleCatalog catalog = new UCSingleCatalog();
-    setCatalogField(catalog, "delegate", delegate);
-    setCatalogField(catalog, "ucProxy", proxyRelations);
-
-    Relation relation = ((RelationCatalog) catalog).loadRelation(ident);
-
-    assertThat(relation).isInstanceOf(View.class);
-    verify(delegate).loadTable(eq(ident));
-    verify(mockTablesApi, org.mockito.Mockito.times(1))
-        .getTable(eq("test_catalog.test_schema.mv1"), eq(true), eq(true));
   }
 
   @Test
