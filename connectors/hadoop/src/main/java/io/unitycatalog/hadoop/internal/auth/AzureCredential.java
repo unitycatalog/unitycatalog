@@ -6,8 +6,8 @@ import java.util.Objects;
 public final class AzureCredential extends GenericCredential {
   private final String sasToken;
 
-  public AzureCredential(String sasToken, Long expirationTimeMillis) {
-    super(expirationTimeMillis);
+  public AzureCredential(String sasToken, Long expirationTimeMillis, String location) {
+    super(expirationTimeMillis, location);
     Preconditions.checkArgument(
         sasToken != null && !sasToken.isEmpty(), "Azure SAS token is missing");
     this.sasToken = sasToken;

@@ -34,7 +34,10 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
           expiredTimeMillis,
           UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME);
 
-      return new GcsCredential(oauthToken, expiredTimeMillis);
+      return new GcsCredential(
+          oauthToken,
+          expiredTimeMillis,
+          conf.get(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY));
     } else {
       return null;
     }

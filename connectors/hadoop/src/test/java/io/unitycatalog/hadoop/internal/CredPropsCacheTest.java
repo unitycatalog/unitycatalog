@@ -263,11 +263,11 @@ class CredPropsCacheTest {
   }
 
   private static GenericCredential s3Creds() {
-    return new AwsCredential("ak", "sk", "st", null);
+    return new AwsCredential("ak", "sk", "st", null, null);
   }
 
   private static GenericCredential s3CredsExpiringAt(String id, long expirationMillis) {
-    return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis);
+    return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis, null);
   }
 
   private static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential creds) {
