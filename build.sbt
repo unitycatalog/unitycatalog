@@ -435,6 +435,14 @@ lazy val server = (project in file("server"))
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
+      // Integration testing
+      "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
+      "org.testcontainers" % "postgresql" % "1.19.8" % Test,
+      "org.testcontainers" % "mysql" % "1.19.8" % Test,
+      "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
+      "org.postgresql" % "postgresql" % "42.7.12" % Test,
+      "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
+
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
@@ -647,7 +655,14 @@ lazy val spark = (project in file("connectors/spark"))
         .files
         .filter(_.getName.contains("lombok"))
         .mkString(File.pathSeparator)
-      javacRelease11 ++ Seq(
+      // Spark 4.2+ connector tests reference Java records (e.g. Dependency.table); require --release 17.
+      val testRelease =
+        if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2)) {
+          javacRelease17
+        } else {
+          javacRelease11
+        }
+      testRelease ++ Seq(
         "-processor",
         "lombok.launch.AnnotationProcessorHider$AnnotationProcessor",
         "-processorpath",

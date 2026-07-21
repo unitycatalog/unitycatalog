@@ -696,7 +696,7 @@ public class DeltaCommitRepository {
   private static int deleteCommitsUpTo(Session session, UUID tableId, long upToCommitVersion) {
     NativeQuery<?> query =
         session.createNativeQuery(
-            "DELETE FROM uc_delta_commits WHERE table_id = :tableId AND commit_version <= :upToCommitVersion LIMIT :numCommitsPerBatch");
+            buildBatchDeleteQuery("table_id = :tableId AND commit_version <= :upToCommitVersion"));
     query.setParameter("tableId", tableId);
     query.setParameter("upToCommitVersion", upToCommitVersion);
     query.setParameter("numCommitsPerBatch", NUM_COMMITS_PER_BATCH);
@@ -715,12 +715,29 @@ public class DeltaCommitRepository {
    * @return the number of commits actually deleted in this batch
    */
   private static int deleteCommits(Session session, UUID tableId) {
-    NativeQuery<?> query =
-        session.createNativeQuery(
-            "DELETE FROM uc_delta_commits WHERE table_id = :tableId LIMIT :numCommitsPerBatch");
+    NativeQuery<?> query = session.createNativeQuery(buildBatchDeleteQuery("table_id = :tableId"));
     query.setParameter("tableId", tableId);
     query.setParameter("numCommitsPerBatch", NUM_COMMITS_PER_BATCH);
     return query.executeUpdate();
+  }
+
+  /**
+   * Builds a batch DELETE that avoids DELETE...LIMIT, which PostgreSQL does not support: an inner
+   * SELECT picks up to :numCommitsPerBatch matching ids and the DELETE removes those ids.
+   *
+   * <p>The inner SELECT is wrapped in a derived table ({@code batch_to_delete}) purely for MySQL:
+   * MySQL rejects both LIMIT directly inside an IN(...) subquery (error 1235) and a subquery that
+   * selects from the table being deleted from (error 1093). The wrapper materializes the ids into a
+   * temp table first, which sidesteps both. Do not flatten it to a single subquery — the H2 and
+   * PostgreSQL tests will still pass, but MySQL will fail at runtime.
+   */
+  private static String buildBatchDeleteQuery(String whereClause) {
+    return "DELETE FROM uc_delta_commits WHERE id IN ("
+        + "SELECT id FROM (SELECT id FROM uc_delta_commits "
+        + "WHERE "
+        + whereClause
+        + " "
+        + "LIMIT :numCommitsPerBatch) AS batch_to_delete)";
   }
 
   /**

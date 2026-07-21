@@ -681,7 +681,11 @@ public class TableRepository {
                 createTable.getProperties(), tableUUID.toString());
           } else if (tableType == TableType.METRIC_VIEW) {
             storageLocation = null;
-            validateMetricView(createTable);
+            validateMetricView(session, createTable);
+            tableUUID = UUID.randomUUID();
+          } else if (tableType == TableType.VIEW) {
+            storageLocation = null;
+            validateView(session, createTable);
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
@@ -729,7 +733,7 @@ public class TableRepository {
           // entity is still transient so they're folded into the single INSERT below.
           DeltaUniformUtils.applyToDao(tableInfoDAO, uniformFields);
           session.persist(tableInfoDAO);
-          if (tableType == TableType.METRIC_VIEW) {
+          if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
             List<DependencyDAO> depDAOs =
                 createTable.getViewDependencies().getDependencies().stream()
@@ -738,6 +742,8 @@ public class TableRepository {
             repositories
                 .getDependencyRepository()
                 .createDependencies(session, tableUUID, dependentType, depDAOs);
+            tableInfo.setViewDependencies(
+                new DependencyList().dependencies(DependencyDAO.toDependencyList(depDAOs)));
           }
           return mapper.apply(session, tableInfoDAO, tableInfo);
         },
@@ -750,20 +756,69 @@ public class TableRepository {
     T apply(Session session, TableInfoDAO dao, TableInfo tableInfo);
   }
 
-  private static void validateMetricView(CreateTable createTable) {
+  private void validateMetricView(Session session, CreateTable createTable) {
+    validateViewLike(session, createTable, "metric view");
+    if (createTable.getViewDependencies().getDependencies().isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "view_dependencies must contain at least one entry for metric view");
+    }
+  }
+
+  private void validateView(Session session, CreateTable createTable) {
+    validateViewLike(session, createTable, "view");
+  }
+
+  private void validateViewLike(Session session, CreateTable createTable, String entityLabel) {
     if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
       throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "view_definition is required for metric view");
+          ErrorCode.INVALID_ARGUMENT, "view_definition is required for " + entityLabel);
     }
     DependencyList viewDeps = createTable.getViewDependencies();
     if (viewDeps == null || viewDeps.getDependencies() == null) {
       throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for metric view");
+          ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for " + entityLabel);
     }
-    if (viewDeps.getDependencies().isEmpty()) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "view_dependencies must contain at least one entry for metric view");
+    List<DependencyDAO> depDAOs =
+        viewDeps.getDependencies().stream()
+            .map(dep -> DependencyDAO.from(dep, null, DependencyDAO.DependentType.TABLE))
+            .collect(Collectors.toList());
+    validateDependenciesExist(session, depDAOs);
+  }
+
+  private void validateDependenciesExist(Session session, List<DependencyDAO> depDAOs) {
+    for (DependencyDAO dep : depDAOs) {
+      String fullName =
+          dep.getDependencyCatalog()
+              + "."
+              + dep.getDependencySchema()
+              + "."
+              + dep.getDependencyName();
+      UUID schemaId =
+          repositories
+              .getSchemaRepository()
+              .getSchemaIdOrThrow(session, dep.getDependencyCatalog(), dep.getDependencySchema());
+      switch (dep.getDependencyType()) {
+        case TABLE:
+          if (findBySchemaIdAndName(session, schemaId, dep.getDependencyName()) == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "View dependency table does not exist: " + fullName);
+          }
+          break;
+        case FUNCTION:
+          if (repositories
+                  .getFunctionRepository()
+                  .getFunctionDAO(session, schemaId, dep.getDependencyName())
+              == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "View dependency function does not exist: " + fullName);
+          }
+          break;
+        default:
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "View dependency type " + dep.getDependencyType() + " not supported: " + fullName);
+      }
     }
   }
 
@@ -892,7 +947,7 @@ public class TableRepository {
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
     }
-    if (TableType.METRIC_VIEW.getValue().equals(tableInfoDAO.getType())) {
+    if (RepositoryUtils.isViewLike(tableInfoDAO.getType())) {
       repositories
           .getDependencyRepository()
           .deleteDependencies(session, tableInfoDAO.getId(), DependencyDAO.DependentType.TABLE);

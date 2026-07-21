@@ -5,10 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.internal.Preconditions;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.expressions.NamedReference;
 import org.apache.spark.sql.connector.expressions.Transform;
+import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.StructField;
 
 /**
@@ -23,6 +26,13 @@ public final class UCColumnConversions {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
+  // Field names of the canonical "StructField-shape" JSON stored in ColumnInfo.type_json.
+  private static final String FIELD_NAME = "name";
+  private static final String FIELD_TYPE = "type";
+  private static final String FIELD_NULLABLE = "nullable";
+  private static final String FIELD_METADATA = "metadata";
+  private static final String FIELD_COMMENT = "comment";
+
   /**
    * Serialize a Spark {@link StructField} to the canonical "StructField-shape" JSON that Unity
    * Catalog stores in {@code ColumnInfo.type_json}: {@code {name, type, nullable, metadata}}.
@@ -32,13 +42,82 @@ public final class UCColumnConversions {
    */
   public static String toStructFieldJson(StructField field) {
     ObjectNode node = MAPPER.createObjectNode();
-    node.put("name", field.name());
+    node.put(FIELD_NAME, field.name());
     // dataType().json() / metadata().json() are already JSON documents; embed them as parsed nodes
     // so they are not re-escaped as strings.
-    node.set("type", readTree(field.dataType().json()));
-    node.put("nullable", field.nullable());
-    node.set("metadata", readTree(field.metadata().json()));
+    node.set(FIELD_TYPE, readTree(field.dataType().json()));
+    node.put(FIELD_NULLABLE, field.nullable());
+    node.set(FIELD_METADATA, readTree(field.metadata().json()));
     return writeValueAsString(node);
+  }
+
+  /**
+   * Spark V2 {@link Column} -&gt; wire: build the same {@code {name, type, nullable, metadata}}
+   * JSON as {@link #toStructFieldJson} but from a V2 catalog {@code Column}. Unlike a {@code
+   * StructField} (whose {@code metadata} already contains any comment), a V2 {@code Column} exposes
+   * its comment via the dedicated {@code Column.comment()} accessor, so the comment is merged back
+   * under the {@code "comment"} metadata key here to keep the wire shape identical.
+   */
+  public static String buildColumnJson(Column col) {
+    // metadataInJSON() is nullable for fields without analyzer-attached metadata.
+    String metaJson = col.metadataInJSON();
+    ObjectNode metadataNode =
+        (metaJson == null) ? MAPPER.createObjectNode() : (ObjectNode) readTree(metaJson);
+    // Column.comment() is nullable; when present, merge it under "comment".
+    if (col.comment() != null) {
+      metadataNode.put(FIELD_COMMENT, col.comment());
+    }
+    ObjectNode node = MAPPER.createObjectNode();
+    node.put(FIELD_NAME, col.name());
+    node.set(FIELD_TYPE, readTree(col.dataType().json()));
+    node.put(FIELD_NULLABLE, col.nullable());
+    node.set(FIELD_METADATA, metadataNode);
+    return writeValueAsString(node);
+  }
+
+  /**
+   * Wire -&gt; Spark V2 {@link Column}: parse a {@code StructField}-shape JSON string back into a
+   * {@code Column}. The {@code "comment"} key (if present in the wire metadata) is lifted out and
+   * passed to {@code Column.create} as the dedicated {@code comment} arg, NOT left in {@code
+   * metadataInJSON} -- matches what {@code CatalogV2Util.structFieldToV2Column} does on the v1
+   * path.
+   */
+  public static Column parseColumnJson(String jsonStr) {
+    // `ColumnInfo.type_json` is nullable on the wire (e.g. a view-like row created by an older
+    // writer or a non-Spark client that did not round-trip the field). Fail with a clear,
+    // actionable message rather than an opaque NPE deeper in the view-load path.
+    Preconditions.checkNotNull(
+        jsonStr, "Column type_json is missing; cannot reconstruct the Spark column for this view");
+    JsonNode parsed = readTree(jsonStr);
+    JsonNode nameNode = parsed.get(FIELD_NAME);
+    Preconditions.checkArgument(
+        nameNode != null && nameNode.isTextual(),
+        "Expected string `name` in StructField JSON, got: %s",
+        nameNode);
+    String name = nameNode.asText();
+
+    // Re-serialize the type sub-node to a compact string for DataType.fromJson.
+    DataType dataType = DataType.fromJson(writeValueAsString(parsed.get(FIELD_TYPE)));
+
+    JsonNode nullableNode = parsed.get(FIELD_NULLABLE);
+    Preconditions.checkArgument(
+        nullableNode != null && nullableNode.isBoolean(),
+        "Expected boolean `nullable` in StructField JSON, got: %s",
+        nullableNode);
+    boolean nullable = nullableNode.asBoolean();
+
+    JsonNode metadataNode = parsed.get(FIELD_METADATA);
+    ObjectNode metadataObj =
+        (metadataNode != null && metadataNode.isObject())
+            ? (ObjectNode) metadataNode.deepCopy()
+            : MAPPER.createObjectNode();
+    // Lift "comment" out of metadata and pass it as the dedicated Column.create arg.
+    JsonNode commentNode = metadataObj.remove(FIELD_COMMENT);
+    String comment = (commentNode != null && commentNode.isTextual()) ? commentNode.asText() : null;
+    // Empty leftover metadata maps back to null (not "{}"), matching the StructField wire form.
+    String metadataInJSON = metadataObj.isEmpty() ? null : writeValueAsString(metadataObj);
+
+    return Column.create(name, dataType, nullable, comment, metadataInJSON);
   }
 
   /**

@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
+import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -22,6 +23,7 @@ class UCDeltaGenericCredentialFetcherTest {
   void createCredentialCallsDeltaApiWithCredIdFieldsAndReturnsCredential() throws Exception {
     DeltaTableCredId credId =
         new DeltaTableCredId(
+            EMPTY_CRED_CONTEXT_ID,
             UCDeltaTableIdentifier.of("main", "default", "events"),
             "READ_WRITE",
             "s3://bucket/events");
@@ -59,6 +61,7 @@ class UCDeltaGenericCredentialFetcherTest {
   void createCredentialRejectsMissingDeltaCredentialsResponse() throws Exception {
     DeltaTableCredId credId =
         new DeltaTableCredId(
+            EMPTY_CRED_CONTEXT_ID,
             UCDeltaTableIdentifier.of("main", "default", "events"),
             "READ_WRITE",
             "s3://bucket/events");
@@ -75,7 +78,8 @@ class UCDeltaGenericCredentialFetcherTest {
   @Test
   void factoryRejectsUnsupportedTableOperation() {
     DeltaTableCredId credId =
-        new DeltaTableCredId(UCDeltaTableIdentifier.of("c", "s", "n"), "UNKNOWN", "s3://b/p");
+        new DeltaTableCredId(
+            EMPTY_CRED_CONTEXT_ID, UCDeltaTableIdentifier.of("c", "s", "n"), "UNKNOWN", "s3://b/p");
 
     DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(credId, api))

@@ -63,6 +63,13 @@ public abstract class BaseServerTest {
 
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
+  /**
+   * Subclasses can override this to customize the hibernate properties before the session factory
+   * is created, e.g. to point the server at an external database such as PostgreSQL via
+   * Testcontainers. Defaults to the H2 in-memory test configuration.
+   */
+  protected void setUpHibernateProperties(Properties hibernateProperties) {}
+
   @SneakyThrows
   @BeforeEach
   public void setUp() {
@@ -84,11 +91,15 @@ public abstract class BaseServerTest {
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       setUpCredentialOperations(initServerProperties);
-      hibernateConfigurator = new HibernateConfigurator(initServerProperties);
+      Properties hibernateProperties =
+          HibernateConfigurator.setupHibernateProperties(initServerProperties);
+      setUpHibernateProperties(hibernateProperties);
+      hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
       unityCatalogServer =
           UnityCatalogServer.builder()
               .port(port)
               .serverProperties(initServerProperties)
+              .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
               .build();
       unityCatalogServer.start();
