@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 public final class BoundedKeyedCache<K, V> {
   private final int maxSize;
@@ -32,13 +33,27 @@ public final class BoundedKeyedCache<K, V> {
   }
 
   public <E extends Exception> V getOrLoad(K key, CheckedSupplier<V, E> loader) throws E {
+    return getOrLoad(key, value -> true, loader);
+  }
+
+  /**
+   * Returns the cached value for {@code key} when present and accepted by {@code isValid},
+   * otherwise loads a fresh value and caches it. A cached-but-rejected value (e.g. an expiring
+   * credential) is treated as a miss. Loads are single-flight per key: the thread holding the key
+   * lock loads while same-key waiters block for the duration of the load and reuse its result;
+   * threads on different keys never block each other. A freshly loaded value is cached and returned
+   * even if {@code isValid} would reject it -- the loader's output is trusted. Loaders must not
+   * call back into this cache: a loader that loads other keys can form a lock cycle and deadlock.
+   */
+  public <E extends Exception> V getOrLoad(
+      K key, Predicate<V> isValid, CheckedSupplier<V, E> loader) throws E {
     V cached = getIfPresent(key);
-    if (cached != null) {
+    if (cached != null && isValid.test(cached)) {
       return cached;
     }
     try (IdLockMap<K>.IdLock ignored = keyLocks.acquire(key)) {
       V lockedCached = getIfPresent(key);
-      if (lockedCached != null) {
+      if (lockedCached != null && isValid.test(lockedCached)) {
         return lockedCached;
       }
       V loaded = Objects.requireNonNull(loader.get(), "loader returned null");
