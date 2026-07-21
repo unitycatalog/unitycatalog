@@ -415,18 +415,36 @@ class UCSingleCatalog
   }
 
   /**
-   * Vends path credentials when read vs write is unknown at parse time (e.g. bare
-   * `parquet.`s3://...`` in SELECT or INSERT INTO). Tries PATH_READ_WRITE first,
-   * falls back to PATH_READ — same ambiguity handling as loadTable.
+   * Vends path credentials for a path and operation, returning an empty map when UC cannot vend
+   * (path not managed, insufficient permission, etc.) so callers can fall back to ambient Hadoop
+   * credentials already configured on the Spark session.
    */
-  private[spark] def vendPathCredentialConfWithFallback(location: String): util.Map[String, String] = {
+  private[spark] def vendPathCredentialConfOrEmpty(
+      location: String,
+      operation: PathOperation): util.Map[String, String] = {
     try {
-      vendPathCredentialConf(location, PathOperation.PATH_READ_WRITE)
+      vendPathCredentialConf(location, operation)
     } catch {
       case e: ApiException =>
-        logWarning(
-          s"PATH_READ_WRITE credential generation failed for path $location: ${e.getMessage}")
-        vendPathCredentialConf(location, PathOperation.PATH_READ)
+        logDebug(
+          s"Path credential vending failed for $location ($operation): ${e.getMessage}")
+        util.Collections.emptyMap[String, String]()
+    }
+  }
+
+  /**
+   * Vends path credentials when read vs write is unknown at parse time (e.g. bare
+   * `parquet.`s3://...`` in SELECT or INSERT INTO). Tries PATH_READ_WRITE first,
+   * falls back to PATH_READ, then to an empty map for ambient credentials — same ambiguity
+   * handling as loadTable.
+   */
+  private[spark] def vendPathCredentialConfWithFallback(location: String): util.Map[String, String] = {
+    val readWrite = vendPathCredentialConfOrEmpty(location, PathOperation.PATH_READ_WRITE)
+    if (!readWrite.isEmpty) {
+      readWrite
+    } else {
+      logDebug(s"PATH_READ_WRITE unavailable for $location, trying PATH_READ")
+      vendPathCredentialConfOrEmpty(location, PathOperation.PATH_READ)
     }
   }
 

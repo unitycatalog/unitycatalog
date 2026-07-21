@@ -58,6 +58,10 @@ import scala.collection.JavaConverters._
  *
  * The rule is a no-op unless the session's current catalog is a [[UCSingleCatalog]]. It can be
  * disabled with `spark.sql.catalog.<catalog>.vendPathCredentials.enabled=false`.
+ *
+ * When UC cannot vend credentials for a path (not managed by UC, no permission, etc.), the plan
+ * node is left unchanged so Spark can use ambient storage credentials (e.g.
+ * `spark.hadoop.fs.s3a.*`, instance profile) configured on the session.
  */
 case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan] {
 
@@ -88,7 +92,8 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
           // Write: INSERT OVERWRITE DIRECTORY '<cloud path>' USING <format> ...
           case i: InsertIntoDir if i.storage.locationUri.exists(u => isCloudPath(u.toString)) =>
             val location = i.storage.locationUri.get.toString
-            val conf = uc.vendPathCredentialConf(location, PathOperation.PATH_READ_WRITE)
+            val conf =
+              uc.vendPathCredentialConfOrEmpty(location, PathOperation.PATH_READ_WRITE)
             if (conf.isEmpty) {
               i
             } else {

@@ -3,6 +3,7 @@ package io.unitycatalog.spark;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.io.File;
 import java.io.IOException;
@@ -131,8 +132,38 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(table).isInstanceOf(UnresolvedRelation.class);
     UnresolvedRelation target = (UnresolvedRelation) table;
     assertThat(target.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+  }
 
-    assertThrows(Exception.class, () -> session.sql(insertSql).collectAsList());
+  /**
+   * When UC cannot vend credentials for a path (not managed by UC), execution continues and Spark
+   * falls back to ambient storage credentials. With none configured for this bucket, the write
+   * fails at the filesystem layer — not with a UC {@link ApiException}.
+   */
+  @Test
+  public void testFallsBackToAmbientWhenPathNotManagedByUc() throws IOException {
+    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
+    String location = "s3://" + NO_CREDS_BUCKET + new File(dataDir, "unmanaged").getCanonicalPath();
+
+    Exception thrown =
+        assertThrows(
+            Exception.class,
+            () ->
+                sql(
+                    "INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s",
+                    location));
+
+    Throwable t = thrown;
+    while (t != null) {
+      assertThat(t).isNotInstanceOf(ApiException.class);
+      t = t.getCause();
+    }
+    Throwable fsError = thrown;
+    while (fsError != null
+        && (fsError.getMessage() == null || !fsError.getMessage().contains("invalid path"))) {
+      fsError = fsError.getCause();
+    }
+    assertThat(fsError).isNotNull();
+    assertThat(fsError.getMessage()).contains("invalid path");
   }
 
   /**
