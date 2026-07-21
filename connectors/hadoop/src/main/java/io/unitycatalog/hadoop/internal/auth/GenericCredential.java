@@ -3,8 +3,8 @@ package io.unitycatalog.hadoop.internal.auth;
 import io.unitycatalog.client.internal.Clock;
 
 /**
- * Internal credential model used by Hadoop token providers. Each instance contains only
- * one set of credentials for a single cloud family.
+ * Internal credential model used by Hadoop token providers. Each instance contains only one set of
+ * credentials for a single cloud family.
  */
 public abstract class GenericCredential {
   private final Long expirationTimeMillis;
