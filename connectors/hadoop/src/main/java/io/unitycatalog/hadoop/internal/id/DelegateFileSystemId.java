@@ -7,9 +7,9 @@ import java.util.Objects;
 import org.apache.hadoop.conf.Configuration;
 
 /**
- * Uniquely identifies the scope of a credential-scoped delegate filesystem, so the correct delegate
- * can be selected and reused from the cache. A delegate covers exactly one credential and storage
- * prefix, and this key pairs the two dimensions that pin it down:
+ * Uniquely identifies a credential-scoped delegate filesystem, so the correct delegate can be
+ * selected and reused from the cache. A delegate covers exactly one credential and storage prefix,
+ * and this id pairs the two dimensions that pin it down:
  *
  * <ul>
  *   <li>{@link CredId} — the credential scope, used to retrieve the vended credential.
@@ -21,11 +21,11 @@ import org.apache.hadoop.conf.Configuration;
  *
  * <p><b>Internal API — not for external use. May change without notice.</b>
  */
-public final class DelegateFileSystemCacheKey {
+public final class DelegateFileSystemId {
   private final CredId credId;
   private final String location;
 
-  private DelegateFileSystemCacheKey(CredId credId, String location) {
+  private DelegateFileSystemId(CredId credId, String location) {
     Preconditions.checkNotNull(credId, "credId is required");
     this.credId = credId;
     this.location = location;
@@ -35,15 +35,15 @@ public final class DelegateFileSystemCacheKey {
    * Pairs {@code credId} with the {@code location} being accessed ({@code null} keys by CredId
    * only).
    */
-  public static DelegateFileSystemCacheKey of(CredId credId, String location) {
-    return new DelegateFileSystemCacheKey(credId, location);
+  public static DelegateFileSystemId of(CredId credId, String location) {
+    return new DelegateFileSystemId(credId, location);
   }
 
   /**
-   * Derives the cache key from {@code conf}: the {@link CredId} for the credential scope plus the
-   * {@link UCHadoopConfConstants#UC_CREDENTIAL_LOCATION_KEY location} being served.
+   * Derives the id from {@code conf}: the {@link CredId} for the credential scope plus the {@link
+   * UCHadoopConfConstants#UC_CREDENTIAL_LOCATION_KEY location} being served.
    */
-  public static DelegateFileSystemCacheKey create(Configuration conf) {
+  public static DelegateFileSystemId create(Configuration conf) {
     return of(CredId.create(conf), location(conf));
   }
 
@@ -52,7 +52,7 @@ public final class DelegateFileSystemCacheKey {
    * the configuration carries no Unity Catalog credential type, falls back to a {@link
    * DefaultCredId} derived from the URI's scheme and authority.
    */
-  public static DelegateFileSystemCacheKey create(Configuration conf, URI uri) {
+  public static DelegateFileSystemId create(Configuration conf, URI uri) {
     return of(CredId.create(conf, () -> new DefaultCredId(uri, conf)), location(conf));
   }
 
@@ -65,10 +65,10 @@ public final class DelegateFileSystemCacheKey {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof DelegateFileSystemCacheKey)) {
+    if (!(o instanceof DelegateFileSystemId)) {
       return false;
     }
-    DelegateFileSystemCacheKey that = (DelegateFileSystemCacheKey) o;
+    DelegateFileSystemId that = (DelegateFileSystemId) o;
     return Objects.equals(credId, that.credId) && Objects.equals(location, that.location);
   }
 
@@ -79,6 +79,6 @@ public final class DelegateFileSystemCacheKey {
 
   @Override
   public String toString() {
-    return "DelegateFileSystemCacheKey{credId=" + credId + ", location=" + location + "}";
+    return "DelegateFileSystemId{credId=" + credId + ", location=" + location + "}";
   }
 }
