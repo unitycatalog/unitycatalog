@@ -13,15 +13,22 @@ import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.service.iceberg.ViewMetadataService;
 import io.unitycatalog.server.utils.JsonUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -61,19 +68,31 @@ public class IcebergRestCatalogService {
   private final SchemaService schemaService;
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
+  private final ViewMetadataService viewMetadataService;
   private final TableRepository tableRepository;
   private final SessionFactory sessionFactory;
+  private final String viewStorageRoot;
 
   public IcebergRestCatalogService(
       SchemaService schemaService,
       TableConfigService tableConfigService,
       MetadataService metadataService,
-      Repositories repositories) {
+      Repositories repositories,
+      ServerProperties serverProperties) {
     this.schemaService = schemaService;
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
+    this.viewMetadataService = new ViewMetadataService();
     this.tableRepository = repositories.getTableRepository();
     this.sessionFactory = repositories.getSessionFactory();
+    this.viewStorageRoot =
+        Optional.ofNullable(serverProperties.get(ServerProperties.Property.TABLE_STORAGE_ROOT))
+            .map(NormalizedURL::from)
+            .map(NormalizedURL::toString)
+            .orElseThrow(
+                () ->
+                    new BadRequestException(
+                        "storage-root.tables must be configured to load Iceberg views"));
   }
 
   // Config APIs
@@ -196,12 +215,30 @@ public class IcebergRestCatalogService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public LoadViewResponse loadView(
-      @Param("namespace") String namespace, @Param("view") String view) {
-    // this is not supported yet, but Iceberg REST client tries to load
-    // a table with given path name and then tries to load a view with that
-    // name if it didn't find a table, so for now, let's just return a 404
-    // as that should be expected since it didn't find a table with the name
-    throw new NoSuchViewException("View does not exist: %s", namespace + "." + view);
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("view") String view) {
+    TableInfo tableInfo = getTableForViewEndpoint(catalog, namespace, view);
+    if (tableInfo.getTableType() != TableType.VIEW) {
+      throw noSuchView(namespace, view);
+    }
+
+    return viewMetadataService.loadView(tableInfo, viewStorageRoot, metadataService);
+  }
+
+  private TableInfo getTableForViewEndpoint(String catalog, String namespace, String view) {
+    try {
+      return tableRepository.getTable(catalog + "." + namespace + "." + view);
+    } catch (BaseException e) {
+      if (e.getErrorCode() == ErrorCode.TABLE_NOT_FOUND) {
+        throw noSuchView(namespace, view);
+      }
+      throw e;
+    }
+  }
+
+  private static NoSuchViewException noSuchView(String namespace, String view) {
+    return new NoSuchViewException("View does not exist: %s", namespace + "." + view);
   }
 
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics")

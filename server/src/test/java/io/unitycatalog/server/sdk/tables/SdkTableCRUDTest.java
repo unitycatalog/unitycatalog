@@ -126,6 +126,101 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         "{\"name\":\"bad_column\",\"type\":\"integer\",\"nullable\":true}");
   }
 
+  @Test
+  public void testCreateSqlView() throws Exception {
+    String viewName = "test_sql_view";
+    String viewFullName = TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + viewName;
+    String viewDefinition = "SELECT test_column FROM source_table";
+    CreateTable createViewRequest =
+        new CreateTable()
+            .name(viewName)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(columns)
+            .tableType(TableType.fromValue("VIEW"))
+            .viewDefinition(viewDefinition)
+            .comment("SQL view");
+
+    TableInfo viewInfo = localTablesApi.createTable(createViewRequest);
+
+    assertThat(viewInfo.getName()).isEqualTo(viewName);
+    assertThat(viewInfo.getTableType()).isEqualTo(TableType.fromValue("VIEW"));
+    assertThat(viewInfo.getViewDefinition()).isEqualTo(viewDefinition);
+    assertThat(viewInfo.getStorageLocation()).isNull();
+    assertThat(viewInfo.getTableId()).isNotNull();
+
+    TableInfo fetched = tableOperations.getTable(viewFullName);
+    assertThat(fetched.getTableType()).isEqualTo(TableType.fromValue("VIEW"));
+    assertThat(fetched.getViewDefinition()).isEqualTo(viewDefinition);
+
+    tableOperations.deleteTable(viewFullName);
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> tableOperations.getTable(viewFullName))
+        .satisfies(
+            ex ->
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.TABLE_NOT_FOUND.getHttpStatus().code()));
+  }
+
+  @Test
+  public void testCreateSqlViewRequiresViewDefinition() throws Exception {
+    CreateTable createViewRequest =
+        new CreateTable()
+            .name("test_sql_view_missing_definition")
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(columns)
+            .tableType(TableType.fromValue("VIEW"));
+
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> localTablesApi.createTable(createViewRequest))
+        .satisfies(
+            ex ->
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
+        .withMessageContaining("view_definition is required for view");
+  }
+
+  @Test
+  public void testCreateSqlViewRequiresColumns() throws Exception {
+    CreateTable createViewRequest =
+        new CreateTable()
+            .name("test_sql_view_missing_columns")
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .tableType(TableType.fromValue("VIEW"))
+            .viewDefinition("SELECT test_column FROM source_table");
+
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> localTablesApi.createTable(createViewRequest))
+        .satisfies(
+            ex ->
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
+        .withMessageContaining("columns are required for view");
+  }
+
+  @Test
+  public void testCreateSqlViewRejectsStorageLocation() throws Exception {
+    CreateTable createViewRequest =
+        new CreateTable()
+            .name("test_sql_view_with_storage")
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(columns)
+            .tableType(TableType.fromValue("VIEW"))
+            .viewDefinition("SELECT test_column FROM source_table")
+            .storageLocation("/tmp/view");
+
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> localTablesApi.createTable(createViewRequest))
+        .satisfies(
+            ex ->
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
+        .withMessageContaining("storage_location must not be provided for view");
+  }
+
   private void assertCreateTableWithInvalidTypeJson(String tableName, String typeJson)
       throws Exception {
     CreateTable createTableRequest =

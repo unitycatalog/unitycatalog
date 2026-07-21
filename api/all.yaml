@@ -1677,6 +1677,7 @@ components:
       enum:
         - MANAGED
         - EXTERNAL
+        - VIEW
         - STREAMING_TABLE # Not yet fully implemented
         - MATERIALIZED_VIEW # Not yet fully implemented
         - METRIC_VIEW

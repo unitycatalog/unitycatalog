@@ -25,10 +25,12 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
+import io.unitycatalog.server.service.iceberg.SimpleLocalFileIO;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,12 +38,18 @@ import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
+import org.apache.iceberg.rest.responses.LoadViewResponse;
+import org.apache.iceberg.types.Types;
+import org.apache.iceberg.view.SQLViewRepresentation;
+import org.apache.iceberg.view.ViewMetadata;
+import org.apache.iceberg.view.ViewMetadataParser;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
@@ -329,5 +337,177 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .join();
       assertThat(resp.status().code()).isEqualTo(404);
     }
+  }
+
+  @Test
+  public void testLoadViewReturnsIcebergMetadata() throws ApiException, IOException {
+    String viewName = "event_agg";
+    String viewSql = "SELECT as_int, as_string FROM source_events";
+    CreateCatalog createCatalog =
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    catalogOperations.createCatalog(createCatalog);
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    ColumnInfo columnInfo1 =
+        new ColumnInfo()
+            .name("as_int")
+            .typeText("INTEGER")
+            .typeJson(
+                "{\"name\":\"as_int\",\"type\":\"integer\","
+                    + "\"nullable\":true,\"metadata\":{\"comment\":\"Integer column\"}}")
+            .typeName(ColumnTypeName.INT)
+            .position(0)
+            .comment("Integer column")
+            .nullable(true);
+    ColumnInfo columnInfo2 =
+        new ColumnInfo()
+            .name("as_string")
+            .typeText("STRING")
+            .typeJson(
+                "{\"name\":\"as_string\",\"type\":\"string\","
+                    + "\"nullable\":true,\"metadata\":{}}")
+            .typeName(ColumnTypeName.STRING)
+            .position(1)
+            .nullable(true);
+    ColumnInfo columnInfo3 =
+        new ColumnInfo()
+            .name("as_struct")
+            .typeText("STRUCT<nested_int: INT>")
+            .typeJson(
+                "{\"name\":\"as_struct\","
+                    + "\"type\":{\"type\":\"struct\","
+                    + "\"fields\":[{\"name\":\"nested_int\",\"type\":\"integer\","
+                    + "\"nullable\":false,\"metadata\":{}}]},"
+                    + "\"nullable\":true,\"metadata\":{}}")
+            .typeName(ColumnTypeName.STRUCT)
+            .position(2)
+            .nullable(true);
+    TableInfo viewInfo =
+        tableOperations.createTable(
+            new CreateTable()
+                .name(viewName)
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME)
+                .columns(List.of(columnInfo1, columnInfo2, columnInfo3))
+                .tableType(TableType.fromValue("VIEW"))
+                .viewDefinition(viewSql)
+                .comment("Daily event counts")
+                .properties(Map.of("team", "analytics")));
+
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/views/" + viewName)
+            .aggregate()
+            .join();
+
+    assertThat(resp.status().code()).as(resp.contentUtf8()).isEqualTo(200);
+    LoadViewResponse loadViewResponse =
+        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadViewResponse.class);
+    assertThat(loadViewResponse.metadataLocation())
+        .startsWith(tableStorageRoot + "/views/" + viewInfo.getTableId() + "/metadata/");
+    ViewMetadata persistedMetadata =
+        ViewMetadataParser.read(
+            new SimpleLocalFileIO().newInputFile(loadViewResponse.metadataLocation()));
+    assertThat(persistedMetadata.uuid()).isEqualTo(viewInfo.getTableId());
+    assertThat(loadViewResponse.metadata().uuid()).isEqualTo(viewInfo.getTableId());
+    assertThat(loadViewResponse.metadata().formatVersion()).isEqualTo(1);
+    assertThat(loadViewResponse.metadata().location())
+        .isEqualTo(tableStorageRoot + "/views/" + viewInfo.getTableId());
+    assertThat(loadViewResponse.metadata().currentVersionId()).isEqualTo(1);
+    assertThat(loadViewResponse.metadata().history()).hasSize(1);
+    assertThat(loadViewResponse.metadata().properties())
+        .containsEntry("comment", "Daily event counts")
+        .containsEntry("team", "analytics");
+    assertThat(loadViewResponse.metadata().schema().schemaId()).isEqualTo(0);
+    assertThat(loadViewResponse.metadata().schema().columns()).hasSize(3);
+    assertThat(loadViewResponse.metadata().schema().findField("as_int").fieldId()).isEqualTo(1);
+    assertThat(loadViewResponse.metadata().schema().findField("as_int").type())
+        .isEqualTo(Types.IntegerType.get());
+    assertThat(loadViewResponse.metadata().schema().findField("as_int").doc())
+        .isEqualTo("Integer column");
+    assertThat(loadViewResponse.metadata().schema().findField("as_string").fieldId()).isEqualTo(2);
+    assertThat(loadViewResponse.metadata().schema().findField("as_string").type())
+        .isEqualTo(Types.StringType.get());
+    assertThat(loadViewResponse.metadata().schema().findField("as_struct").fieldId()).isEqualTo(3);
+    assertThat(
+            loadViewResponse
+                .metadata()
+                .schema()
+                .findField("as_struct")
+                .type()
+                .asStructType()
+                .field("nested_int")
+                .fieldId())
+        .isEqualTo(4);
+    assertThat(loadViewResponse.metadata().currentVersion().defaultCatalog())
+        .isEqualTo(TestUtils.CATALOG_NAME);
+    assertThat(loadViewResponse.metadata().currentVersion().defaultNamespace())
+        .isEqualTo(Namespace.of(TestUtils.SCHEMA_NAME));
+    SQLViewRepresentation representation =
+        (SQLViewRepresentation)
+            loadViewResponse.metadata().currentVersion().representations().get(0);
+    assertThat(representation.sql()).isEqualTo(viewSql);
+    assertThat(representation.dialect()).isEqualTo("spark");
+  }
+
+  @Test
+  public void testLoadMissingViewReturnsNoSuchView() throws ApiException, IOException {
+    CreateCatalog createCatalog =
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    catalogOperations.createCatalog(createCatalog);
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/views/missing_view")
+            .aggregate()
+            .join();
+
+    assertThat(resp.status().code()).isEqualTo(404);
+    ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(errorResponse.type()).isEqualTo(NoSuchViewException.class.getSimpleName());
+  }
+
+  @Test
+  public void testLoadViewRejectsTableObjectAsNoSuchView() throws ApiException, IOException {
+    CreateCatalog createCatalog =
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    catalogOperations.createCatalog(createCatalog);
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    ColumnInfo columnInfo =
+        new ColumnInfo()
+            .name("as_int")
+            .typeText("INTEGER")
+            .typeJson(
+                "{\"name\":\"as_int\",\"type\":\"integer\"," + "\"nullable\":true,\"metadata\":{}}")
+            .typeName(ColumnTypeName.INT)
+            .position(0)
+            .nullable(true);
+    tableOperations.createTable(
+        new CreateTable()
+            .name(TestUtils.TABLE_NAME)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(List.of(columnInfo))
+            .storageLocation("/tmp/stagingLocation")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA));
+
+    AggregatedHttpResponse resp =
+        client
+            .get(
+                TEST_BASE_PREFIX
+                    + "/namespaces/"
+                    + TestUtils.SCHEMA_NAME
+                    + "/views/"
+                    + TestUtils.TABLE_NAME)
+            .aggregate()
+            .join();
+
+    assertThat(resp.status().code()).isEqualTo(404);
+    ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(errorResponse.type()).isEqualTo(NoSuchViewException.class.getSimpleName());
   }
 }
