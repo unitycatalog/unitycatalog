@@ -597,7 +597,7 @@ class CredPropsUtilTest {
   void s3TableRenewalCredsHaveExpectedKeys() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) ->
-            mockGenericCredentialFetcher(GenericCredential.forAws("ak", "sk", "st", 12345L));
+            mockGenericCredentialFetcher(new AwsCredential("ak", "sk", "st", 12345L));
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             true,
