@@ -22,6 +22,7 @@ import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
 import com.linecorp.armeria.common.HttpResponse;
@@ -141,22 +142,11 @@ public class TableService extends AuthorizedService {
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG) &&
-          #authorize(#principal, #table, OWNER))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
   public HttpResponse deleteTable(
       @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName) {
-    TableInfo tableInfo = tableRepository.getTable(fullName);
-    tableRepository.deleteTable(fullName);
-
-    SchemaInfo schemaInfo =
-        schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
-    removeHierarchicalAuthorizations(tableInfo.getTableId(), schemaInfo.getSchemaId());
-
+    TableInfoDAO deleted = tableRepository.deleteTable(fullName);
+    removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.OK);
   }
 }

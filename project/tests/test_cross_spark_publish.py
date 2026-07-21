@@ -455,8 +455,16 @@ def main():
 
         test = CrossSparkPublishTest(uc_root)
 
-        t0 = test.test_source_build_metadata()
-        t1 = test.test_resolve_source_build_cache_key()
+        has_source_build_profiles = any(
+            spec.source_build_default_ref for spec in SPARK_VERSIONS.values()
+        )
+        if has_source_build_profiles:
+            t0 = test.test_source_build_metadata()
+            t1 = test.test_resolve_source_build_cache_key()
+        else:
+            print("Skipping source-build tests: no source-build Spark profiles configured")
+            t0 = True
+            t1 = True
         t2 = test.test_default_publish()
         t3 = test.test_backward_compat_publish()
         t4 = test.test_per_version_publish()

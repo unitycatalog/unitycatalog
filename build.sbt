@@ -40,6 +40,7 @@ def deltaSparkTestDeps: Seq[ModuleID] =
 lazy val hadoopVersion = sys.props.getOrElse("hadoopVersion", "3.4.2")
 
 // Library versions
+lazy val icebergVersion = "1.11.0"
 lazy val jacksonVersion = "2.17.0"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
 lazy val log4jVersion = "2.25.3"
@@ -398,12 +399,14 @@ lazy val server = (project in file("server"))
       "org.apache.httpcomponents" % "httpclient" % "4.5.14",
 
       // Iceberg REST Catalog dependencies
-      "org.apache.iceberg" % "iceberg-core" % "1.9.2",
-      "org.apache.iceberg" % "iceberg-aws" % "1.9.2",
-      "org.apache.iceberg" % "iceberg-azure" % "1.9.2",
-      "org.apache.iceberg" % "iceberg-gcp" % "1.9.2",
+      "org.apache.iceberg" % "iceberg-core" % icebergVersion,
+      "org.apache.iceberg" % "iceberg-aws" % icebergVersion,
+      "org.apache.iceberg" % "iceberg-azure" % icebergVersion,
+      "org.apache.iceberg" % "iceberg-gcp" % icebergVersion,
       "software.amazon.awssdk" % "s3" % "2.24.0",
       "software.amazon.awssdk" % "sts" % "2.24.0",
+      // iceberg-aws transitively requires this dependency for table encryption support
+      "software.amazon.awssdk" % "kms" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
@@ -432,8 +435,25 @@ lazy val server = (project in file("server"))
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
 
+      // Integration testing
+      "org.testcontainers" % "testcontainers" % "1.19.8" % Test,
+      "org.testcontainers" % "postgresql" % "1.19.8" % Test,
+      "org.testcontainers" % "mysql" % "1.19.8" % Test,
+      "org.testcontainers" % "junit-jupiter" % "1.19.8" % Test,
+      "org.postgresql" % "postgresql" % "42.7.12" % Test,
+      "com.mysql" % "mysql-connector-j" % "8.4.0" % Test,
+
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
+    ),
+    // Iceberg 1.11.0 brings its own Jackson version that conflicts with the project's pinned jackson version
+    dependencyOverrides ++= Seq(
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
+      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
     ),
 
     Compile / sourceGenerators += Def.task {
@@ -635,7 +655,14 @@ lazy val spark = (project in file("connectors/spark"))
         .files
         .filter(_.getName.contains("lombok"))
         .mkString(File.pathSeparator)
-      javacRelease11 ++ Seq(
+      // Spark 4.2+ connector tests reference Java records (e.g. Dependency.table); require --release 17.
+      val testRelease =
+        if (CrossSparkVersions.getSparkVersionSpec().isAtLeast(4, 2)) {
+          javacRelease17
+        } else {
+          javacRelease11
+        }
+      testRelease ++ Seq(
         "-processor",
         "lombok.launch.AnnotationProcessorHider$AnnotationProcessor",
         "-processorpath",

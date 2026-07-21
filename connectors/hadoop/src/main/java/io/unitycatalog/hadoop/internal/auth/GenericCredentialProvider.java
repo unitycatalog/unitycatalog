@@ -2,9 +2,10 @@ package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
-import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
-import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
+import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
+import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.util.ClockUtil;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -14,22 +15,12 @@ import org.apache.hadoop.conf.Configuration;
  * cache lookup.
  */
 public abstract class GenericCredentialProvider {
-  // The credential cache, for saving QPS to unity catalog server.
-  static final BoundedKeyedCache<String, GenericCredential> globalCache;
-  private static final String UC_CREDENTIAL_CACHE_MAX_SIZE =
-      "unitycatalog.credential.cache.maxSize";
-  private static final int UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
-
-  static {
-    int maxSize =
-        Integer.getInteger(UC_CREDENTIAL_CACHE_MAX_SIZE, UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
-    globalCache = new BoundedKeyedCache<>(maxSize, ignored -> {});
-  }
+  static final CredentialCache globalCache = CredentialCache.createGlobalCache();
 
   private Configuration conf;
   private Clock clock;
   private long renewalLeadTimeMillis;
-  private String credUid;
+  private CredId cacheKey;
   private boolean credCacheEnabled;
 
   private volatile GenericCredential credential;
@@ -37,21 +28,16 @@ public abstract class GenericCredentialProvider {
 
   protected void initialize(Configuration conf) {
     this.conf = conf;
-
-    // Use the test clock if one is intentionally configured for testing.
-    String clockName = conf.get(UCHadoopConfConstants.UC_TEST_CLOCK_NAME);
-    this.clock = clockName != null ? Clock.getManualClock(clockName) : Clock.systemClock();
+    this.clock = ClockUtil.resolveClock(conf);
 
     this.renewalLeadTimeMillis =
         conf.getLong(
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
 
-    this.credUid = conf.get(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
-    Preconditions.checkState(
-        credUid != null && !credUid.isEmpty(),
-        "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
-        UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY);
+    // Identify the credential scope; used as the global cache key so that requests targeting the
+    // same scope can share a vended credential.
+    this.cacheKey = CredId.create(conf);
 
     this.credCacheEnabled =
         conf.getBoolean(
@@ -93,16 +79,11 @@ public abstract class GenericCredentialProvider {
 
   private GenericCredential renewCredential() throws ApiException {
     if (credCacheEnabled) {
-      synchronized (globalCache) {
-        GenericCredential cached = globalCache.getIfPresent(credUid);
-        // Use the cached one if existing and valid.
-        if (cached != null && !cached.readyToRenew(clock, renewalLeadTimeMillis)) {
-          return cached;
-        }
-        GenericCredential created = genericCredentialFetcher().createCredential();
-        globalCache.put(credUid, created);
-        return created;
-      }
+      return globalCache.access(
+          cacheKey,
+          () ->
+              new RenewableCredential(
+                  renewalLeadTimeMillis, clock, genericCredentialFetcher().createCredential()));
     } else {
       return genericCredentialFetcher().createCredential();
     }

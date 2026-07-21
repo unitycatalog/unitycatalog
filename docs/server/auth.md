@@ -288,15 +288,19 @@ To solve this issue, ensure that the configuration spark.sql.catalog.unity.token
 step.
 
 ```sh
+export CATALOG_NAME=unity
+export UC_URI=http://localhost:8080
+export UC_TOKEN=$token
+
 bin/spark-sql --name "local-uc-test" \
     --master "local[*]" \
-    --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+    --packages "io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0" \
     --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-    --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-    --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-    --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-    --conf "spark.sql.catalog.unity.token=$token" \
-    --conf "spark.sql.defaultCatalog=unity"
+    --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+    --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+    --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+    --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+    --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
 ```
 
 With this set, now you can continue your [Using Spark SQL to query Unity Catalog schemas and tables](../integrations/unity-catalog-spark.md#using-spark-sql-to-query-unity-catalog-schemas-and-tables)

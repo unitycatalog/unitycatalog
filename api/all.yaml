@@ -1680,6 +1680,7 @@ components:
         - STREAMING_TABLE # Not yet fully implemented
         - MATERIALIZED_VIEW # Not yet fully implemented
         - METRIC_VIEW
+        - VIEW
     DataSourceFormat:
       description: Data source format
       type: string

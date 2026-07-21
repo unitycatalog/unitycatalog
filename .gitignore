@@ -1,5 +1,6 @@
 etc/db/h2db.mv.db
 etc/db/h2db.trace.db
+mlflow.db
 target/
 
 # Intellij IDEA files
@@ -35,6 +36,11 @@ integration-tests/etc/conf/*.der
 # test
 .pytest_cache/
 mlruns/
+mlartifacts/
+
+# Local server / demo artifacts
+**/derby.log
+**/metastore_db/
 
 # Byte-compiled files
 __pycache__

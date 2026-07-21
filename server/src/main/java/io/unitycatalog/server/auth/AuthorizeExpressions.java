@@ -89,6 +89,20 @@ public final class AuthorizeExpressions {
       """;
 
   /**
+   * Authorization policy for deleting a table, shared by the UC REST and Delta REST Catalog
+   * delete endpoints. Metastore admin alone is intentionally not sufficient -- the caller must
+   * hold {@code OWNER} somewhere in the catalog / schema / table hierarchy.
+   */
+  public static final String DELETE_TABLE =
+      """
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+      (#authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #table, OWNER))
+      """;
+
+  /**
    * Authorization policy for vending table credentials. Admin-above-the-table privileges on
    * their own are not sufficient; the caller must have an explicit table-level privilege
    * matching the requested operation. {@code READ} needs OWNER or SELECT; {@code READ_WRITE}
@@ -103,4 +117,11 @@ public final class AuthorizeExpressions {
           : (#authorize(#principal, #table, OWNER) ||
               #authorizeAll(#principal, #table, SELECT, MODIFY)))
       """;
+
+  /**
+   * Authorization policy for the {@code get*Authorization} (permission read) endpoints. These
+   * endpoints check authorization themselves and tailor the response based on whether the principal
+   * is an owner, so the only requirement here is that the caller is authenticated.
+   */
+  public static final String GET_RESOURCE_AUTHORIZATION = "#principal != null";
 }

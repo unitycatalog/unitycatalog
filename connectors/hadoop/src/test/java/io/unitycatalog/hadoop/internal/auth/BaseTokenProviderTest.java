@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
+import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -11,7 +12,12 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.PathCredId;
+import io.unitycatalog.hadoop.internal.id.TableCredId;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +27,18 @@ import org.junit.jupiter.api.Test;
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
   private String clockName;
   private Clock clock;
+
+  /**
+   * Builds a standard UC fetcher from a (table- or path-based) conf, dispatching to the concrete
+   * {@link CredId} subtype expected by {@link GenericCredentialFetcher#forUc}.
+   */
+  static GenericCredentialFetcher ucFetcher(Configuration conf, TemporaryCredentialsApi api) {
+    CredId credId = CredId.create(conf);
+    if (credId instanceof PathCredId) {
+      return GenericCredentialFetcher.forUc((PathCredId) credId, api);
+    }
+    return GenericCredentialFetcher.forUc((TableCredId) credId, api);
+  }
 
   /** Use the {@link Configuration} and the mocked api to create a new provider. */
   protected abstract T createTestProvider(Configuration conf, TemporaryCredentialsApi mockApi);
@@ -304,21 +322,54 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertGlobalCache(4, tableACred2, tableBCred2, pathACred2, pathBCred2);
   }
 
+  @Test
+  public void sameTableDifferentCredContextUsesSeparateGlobalCacheEntries() throws Exception {
+    String contextA = MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-a"));
+    String contextB = MapIdGenerator.generateId(Map.of("type", "static", "token", "tenant-b"));
+
+    Configuration confA = newTableBasedConf("shared-table");
+    confA.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, contextA);
+    confA.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    confA.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+
+    Configuration confB = newTableBasedConf("shared-table");
+    confB.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, contextB);
+    confB.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    confB.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+
+    TemporaryCredentials credA = newTempCred("tenantA", clock.now().toEpochMilli() + 2000L);
+    TemporaryCredentials credB = newTempCred("tenantB", clock.now().toEpochMilli() + 2000L);
+
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(credA).thenReturn(credB);
+
+    T providerA = createTestProvider(confA, tempCredApi);
+    T providerB = createTestProvider(confB, tempCredApi);
+
+    assertCred(providerA, credA);
+    assertCred(providerB, credB);
+    assertGlobalCache(2, credA, credB);
+
+    assertCred(providerA, credA);
+    assertCred(providerB, credB);
+    assertGlobalCache(2, credA, credB);
+  }
+
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {
     assertThat(expectedSize).isEqualTo(creds.length);
     assertThat(GenericCredentialProvider.globalCache.size()).isEqualTo(expectedSize);
     for (TemporaryCredentials cred : creds) {
-      assertThat(GenericCredentialProvider.globalCache.values())
+      assertThat(GenericCredentialProvider.globalCache.credentials())
           .contains(new GenericCredential(cred));
     }
   }
 
   public static Configuration newTableBasedConf(String tableId) {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For table-based temporary requests.
     conf.set(
@@ -336,10 +387,10 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   public static Configuration newPathBasedConf(String path) {
     Configuration conf = new Configuration();
+    conf.set(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, EMPTY_CRED_CONTEXT_ID);
     conf.set(UCHadoopConfConstants.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConfConstants.UC_AUTH_TYPE, "static");
     conf.set(UCHadoopConfConstants.UC_AUTH_TOKEN_KEY, "unity-catalog-token");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For path-based temporary requests.
     conf.set(

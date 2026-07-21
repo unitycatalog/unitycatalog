@@ -47,7 +47,15 @@ public class HibernateConfigurator {
   private final Properties hibernateProperties;
 
   public HibernateConfigurator(ServerProperties serverProperties) {
-    this.hibernateProperties = setupHibernateProperties(serverProperties);
+    this(setupHibernateProperties(serverProperties));
+  }
+
+  /**
+   * Builds a session factory from explicit hibernate properties. Lets tests customize the
+   * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
+   */
+  public HibernateConfigurator(Properties hibernateProperties) {
+    this.hibernateProperties = hibernateProperties;
     this.sessionFactory = createSessionFactory(hibernateProperties);
   }
 
@@ -93,16 +101,13 @@ public class HibernateConfigurator {
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
       hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
     } else {
-      InputStream input;
-      try {
-        input = Files.newInputStream(hibernatePropertiesPath);
+      try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
         hibernateProperties.load(input);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
     }
 
-    // TODO: use dependency injection for test hibernate properties
     if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(

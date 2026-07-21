@@ -3,22 +3,28 @@ package io.unitycatalog.hadoop.internal;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.internal.ApiClientUtils;
-import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
-import io.unitycatalog.client.model.PathOperation;
-import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
+import io.unitycatalog.hadoop.internal.auth.CredentialCache;
+import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
+import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
+import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
+import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
+import io.unitycatalog.hadoop.internal.id.PathCredId;
+import io.unitycatalog.hadoop.internal.id.TableCredId;
+import io.unitycatalog.hadoop.internal.util.ClockUtil;
+import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Objects;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -32,17 +38,19 @@ public class CredPropsUtil {
   private CredPropsUtil() {}
 
   /**
-   * Factory seam for {@link GenericCredentialFetcher#create(ApiClient, Configuration)}, swappable
-   * from tests so the fetch methods can be exercised without a real UC server. Test-only;
-   * production code must not depend on the swap behavior.
+   * Factory seam for {@link GenericCredentialFetcher#create(ApiClient, CredId)}, swappable from
+   * tests so the fetch methods can be exercised without a real UC server. Test-only; production
+   * code must not depend on the swap behavior.
    */
   @FunctionalInterface
   public interface GenericCredentialFetcherFactory {
-    GenericCredentialFetcher create(ApiClient apiClient, Configuration conf);
+    GenericCredentialFetcher create(ApiClient apiClient, CredId credId);
   }
 
   public static volatile GenericCredentialFetcherFactory genericCredFetcherFactory =
       GenericCredentialFetcher::create;
+
+  static final CredentialCache initialCredCache = CredentialCache.createInitialCredentialCache();
 
   private static final String CRED_SCOPED_FS_CLASS =
       "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem";
@@ -59,6 +67,10 @@ public class CredPropsUtil {
       "fs.gs.auth.access.token.expiration";
   private static final String GCS_CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";
   private static final String ABFS_FIXED_SAS_TOKEN_KEY = "fs.azure.sas.fixed.token";
+
+  // Keys used to build the credential-context id (see #credContextId).
+  private static final String CRED_CONTEXT_CATALOG_URI_KEY = "catalogUri";
+  private static final String CRED_CONTEXT_SCHEME_KEY = "scheme";
 
   private abstract static class PropsBuilder<T extends PropsBuilder<T>> {
     private final HashMap<String, String> builder = new HashMap<>();
@@ -82,79 +94,9 @@ public class CredPropsUtil {
       return self();
     }
 
-    public T uid(String uid) {
-      builder.put(UCHadoopConfConstants.UC_CREDENTIALS_UID_KEY, uid);
-      return self();
-    }
-
-    public T credentialType(String credType) {
-      Preconditions.checkArgument(
-          UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(credType)
-              || UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(credType),
-          "Invalid credential type '%s', must be either 'path' or 'table'.",
-          credType);
-      builder.put(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY, credType);
-      return self();
-    }
-
-    public T tableId(String tableId) {
-      Preconditions.checkState(
-          !builder.containsKey(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY)
-              && !builder.containsKey(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY),
-          "tableId cannot be set with UC Delta table or staging table identifier");
-      builder.put(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
-      return self();
-    }
-
-    public T ucDeltaTableIdentifier(UCDeltaTableIdentifier identifier, String location) {
-      Preconditions.checkState(
-          !builder.containsKey(UCHadoopConfConstants.UC_TABLE_ID_KEY)
-              && !builder.containsKey(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY),
-          "UC Delta table identifier cannot be set with tableId or staging table identifier");
-      builder.put(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
-      builder.put(
-          UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-          UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-      builder.put(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY, identifier.catalog());
-      builder.put(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY, identifier.schema());
-      builder.put(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, identifier.table());
-      builder.put(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
-      return self();
-    }
-
-    public T ucDeltaStagingTableId(String stagingTableId, String location) {
-      Preconditions.checkState(
-          !builder.containsKey(UCHadoopConfConstants.UC_TABLE_ID_KEY)
-              && !builder.containsKey(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY),
-          "deltaStagingTableId cannot be set with tableId or UC Delta table identifier");
-      builder.put(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
-      builder.put(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId);
-      builder.put(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, location);
-      return self();
-    }
-
-    public T tableOperation(TableOperation tableOp) {
-      builder.put(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.getValue());
-      return self();
-    }
-
-    public T credentialOperation(DeltaCredentialOperation credentialOp) {
-      Preconditions.checkArgument(
-          credentialOp == DeltaCredentialOperation.READ
-              || credentialOp == DeltaCredentialOperation.READ_WRITE,
-          "UC Delta supports READ and READ_WRITE credential operations, got: %s",
-          credentialOp);
-      builder.put(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, credentialOp.getValue());
-      return self();
-    }
-
-    public T path(String path) {
-      builder.put(UCHadoopConfConstants.UC_PATH_KEY, path);
-      return self();
-    }
-
-    public T pathOperation(PathOperation pathOp) {
-      builder.put(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, pathOp.getValue());
+    /** Applies the credential-scope identity properties carried by {@code credId}. */
+    public T credId(CredId credId) {
+      credId.props().forEach(this::set);
       return self();
     }
 
@@ -291,7 +233,8 @@ public class CredPropsUtil {
   }
 
   private static Map<String, String> s3FixedCredProps(
-      boolean credScopedFsEnabled, Configuration hadoopConf, TemporaryCredentials tempCreds) {
+      boolean credScopedFsEnabled, Configuration hadoopConf, GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     return new S3PropsBuilder(credScopedFsEnabled, hadoopConf)
         .set("fs.s3a.access.key", awsCred.getAccessKeyId())
@@ -305,14 +248,14 @@ public class CredPropsUtil {
       Configuration hadoopConf,
       String uri,
       TokenProvider tokenProvider,
-      TemporaryCredentials tempCreds) {
+      GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     S3PropsBuilder builder =
         new S3PropsBuilder(credScopedFsEnabled, hadoopConf)
             .set(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER, AWS_VENDED_TOKEN_PROVIDER_CLASS)
             .uri(uri)
             .tokenProvider(tokenProvider)
-            .uid(UUID.randomUUID().toString())
             .set(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
             .set(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
             .set(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
@@ -327,42 +270,9 @@ public class CredPropsUtil {
     return builder;
   }
 
-  private static Map<String, String> s3TableTempCredProps(
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String uri,
-      TokenProvider tokenProvider,
-      String tableId,
-      TableOperation tableOp,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    return s3TempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .tableId(tableId)
-        .tableOperation(tableOp)
-        .appVersions(appVersions)
-        .build();
-  }
-
-  private static Map<String, String> s3PathTempCredProps(
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String uri,
-      TokenProvider tokenProvider,
-      String path,
-      PathOperation pathOp,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    return s3TempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
-        .path(path)
-        .pathOperation(pathOp)
-        .appVersions(appVersions)
-        .build();
-  }
-
   private static Map<String, String> gsFixedCredProps(
-      boolean credScopedFsEnabled, Configuration hadoopConf, TemporaryCredentials tempCreds) {
+      boolean credScopedFsEnabled, Configuration hadoopConf, GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     GcpOauthToken gcpOauthToken = tempCreds.getGcpOauthToken();
     Long expirationTime =
         tempCreds.getExpirationTime() == null ? Long.MAX_VALUE : tempCreds.getExpirationTime();
@@ -377,7 +287,8 @@ public class CredPropsUtil {
       Configuration hadoopConf,
       String uri,
       TokenProvider tokenProvider,
-      TemporaryCredentials tempCreds) {
+      GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     GcpOauthToken gcpToken = tempCreds.getGcpOauthToken();
     GcsPropsBuilder builder =
         new GcsPropsBuilder(credScopedFsEnabled, hadoopConf)
@@ -385,7 +296,6 @@ public class CredPropsUtil {
             .set("fs.gs.auth.access.token.provider", GCS_VENDED_TOKEN_PROVIDER_CLASS)
             .uri(uri)
             .tokenProvider(tokenProvider)
-            .uid(UUID.randomUUID().toString())
             .set(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, gcpToken.getOauthToken());
 
     // For the static credential case, nullable expiration time is possible.
@@ -398,42 +308,9 @@ public class CredPropsUtil {
     return builder;
   }
 
-  private static Map<String, String> gsTableTempCredProps(
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String uri,
-      TokenProvider tokenProvider,
-      String tableId,
-      TableOperation tableOp,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    return gcsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .tableId(tableId)
-        .tableOperation(tableOp)
-        .appVersions(appVersions)
-        .build();
-  }
-
-  private static Map<String, String> gsPathTempCredProps(
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String uri,
-      TokenProvider tokenProvider,
-      String path,
-      PathOperation pathOp,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    return gcsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
-        .path(path)
-        .pathOperation(pathOp)
-        .appVersions(appVersions)
-        .build();
-  }
-
   private static Map<String, String> abfsFixedCredProps(
-      boolean credScopedFsEnabled, Configuration hadoopConf, TemporaryCredentials tempCreds) {
+      boolean credScopedFsEnabled, Configuration hadoopConf, GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     return new AbfsPropsBuilder(credScopedFsEnabled, hadoopConf)
         .set(ABFS_FIXED_SAS_TOKEN_KEY, azureSas.getSasToken())
@@ -445,7 +322,8 @@ public class CredPropsUtil {
       Configuration hadoopConf,
       String uri,
       TokenProvider tokenProvider,
-      TemporaryCredentials tempCreds) {
+      GenericCredential cred) {
+    TemporaryCredentials tempCreds = cred.temporaryCredentials();
     AzureUserDelegationSAS azureSas = tempCreds.getAzureUserDelegationSas();
     AbfsPropsBuilder builder =
         new AbfsPropsBuilder(credScopedFsEnabled, hadoopConf)
@@ -454,7 +332,6 @@ public class CredPropsUtil {
                 ABFS_VENDED_TOKEN_PROVIDER_CLASS)
             .uri(uri)
             .tokenProvider(tokenProvider)
-            .uid(UUID.randomUUID().toString())
             .set(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, azureSas.getSasToken());
 
     // For the static credential case, nullable expiration time is possible.
@@ -467,314 +344,8 @@ public class CredPropsUtil {
     return builder;
   }
 
-  private static Map<String, String> abfsTableTempCredProps(
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String uri,
-      TokenProvider tokenProvider,
-      String tableId,
-      TableOperation tableOp,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    return abfsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .tableId(tableId)
-        .tableOperation(tableOp)
-        .appVersions(appVersions)
-        .build();
-  }
-
-  private static Map<String, String> abfsPathTempCredProps(
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String uri,
-      TokenProvider tokenProvider,
-      String path,
-      PathOperation pathOp,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    return abfsTempCredPropsBuilder(credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-        .credentialType(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
-        .path(path)
-        .pathOperation(pathOp)
-        .appVersions(appVersions)
-        .build();
-  }
-
-  /**
-   * Builds the Hadoop configuration properties needed to access a UC Delta table's storage.
-   *
-   * @param renewCredEnabled when {@code true}, configures a vended-token provider that
-   *     automatically refreshes credentials before expiry; when {@code false}, embeds the initial
-   *     credentials as static keys.
-   * @param credScopedFsEnabled when {@code true}, overrides {@code fs.<scheme>.impl} with
-   *     CredScopedFileSystem so that filesystem instances are reused per credential scope rather
-   *     than created anew for every file access.
-   * @param hadoopConf the engine's existing Hadoop configuration, used to read any previously
-   *     configured {@code fs.<scheme>.impl} values before they are overridden by
-   *     CredScopedFileSystem.
-   */
-  public static Map<String, String> createDeltaTableCredProps(
-      boolean renewCredEnabled,
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String scheme,
-      String uri,
-      TokenProvider tokenProvider,
-      UCDeltaTableIdentifier identifier,
-      String location,
-      DeltaCredentialOperation credentialOp,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    switch (scheme) {
-      case "s3":
-        if (renewCredEnabled) {
-          return s3TempCredPropsBuilder(
-                  credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-              .ucDeltaTableIdentifier(identifier, location)
-              .credentialOperation(credentialOp)
-              .appVersions(appVersions)
-              .build();
-        } else {
-          return s3FixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      case "gs":
-        if (renewCredEnabled) {
-          return gcsTempCredPropsBuilder(
-                  credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-              .ucDeltaTableIdentifier(identifier, location)
-              .credentialOperation(credentialOp)
-              .appVersions(appVersions)
-              .build();
-        } else {
-          return gsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      case "abfss":
-      case "abfs":
-        if (renewCredEnabled) {
-          return abfsTempCredPropsBuilder(
-                  credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-              .ucDeltaTableIdentifier(identifier, location)
-              .credentialOperation(credentialOp)
-              .appVersions(appVersions)
-              .build();
-        } else {
-          return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      default:
-        return Collections.emptyMap();
-    }
-  }
-
-  /**
-   * Builds the Hadoop configuration properties needed to access a Delta staging table's storage.
-   *
-   * @param renewCredEnabled when {@code true}, configures a vended-token provider that
-   *     automatically refreshes credentials before expiry; when {@code false}, embeds the initial
-   *     credentials as static keys.
-   * @param credScopedFsEnabled when {@code true}, overrides {@code fs.<scheme>.impl} with
-   *     CredScopedFileSystem so that filesystem instances are reused per credential scope rather
-   *     than created anew for every file access.
-   * @param hadoopConf the engine's existing Hadoop configuration, used to read any previously
-   *     configured {@code fs.<scheme>.impl} values before they are overridden by
-   *     CredScopedFileSystem.
-   */
-  public static Map<String, String> createDeltaStagingTableCredProps(
-      boolean renewCredEnabled,
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String scheme,
-      String uri,
-      TokenProvider tokenProvider,
-      String stagingTableId,
-      String location,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    switch (scheme) {
-      case "s3":
-        if (renewCredEnabled) {
-          return s3TempCredPropsBuilder(
-                  credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-              .ucDeltaStagingTableId(stagingTableId, location)
-              .appVersions(appVersions)
-              .build();
-        } else {
-          return s3FixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      case "gs":
-        if (renewCredEnabled) {
-          return gcsTempCredPropsBuilder(
-                  credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-              .ucDeltaStagingTableId(stagingTableId, location)
-              .appVersions(appVersions)
-              .build();
-        } else {
-          return gsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      case "abfss":
-      case "abfs":
-        if (renewCredEnabled) {
-          return abfsTempCredPropsBuilder(
-                  credScopedFsEnabled, hadoopConf, uri, tokenProvider, tempCreds)
-              .ucDeltaStagingTableId(stagingTableId, location)
-              .appVersions(appVersions)
-              .build();
-        } else {
-          return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      default:
-        return Collections.emptyMap();
-    }
-  }
-
-  /**
-   * Builds the Hadoop configuration properties needed to access a table's storage location.
-   *
-   * @param renewCredEnabled when {@code true}, configures a vended-token provider that
-   *     automatically refreshes credentials before expiry; when {@code false}, embeds the initial
-   *     credentials as static keys.
-   * @param credScopedFsEnabled when {@code true}, overrides {@code fs.<scheme>.impl} with
-   *     CredScopedFileSystem so that filesystem instances are reused per credential scope rather
-   *     than created anew for every file access.
-   * @param hadoopConf the engine's existing Hadoop configuration, used to read any previously
-   *     configured {@code fs.<scheme>.impl} values before they are overridden by
-   *     CredScopedFileSystem.
-   */
-  public static Map<String, String> createTableCredProps(
-      boolean renewCredEnabled,
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String scheme,
-      String uri,
-      TokenProvider tokenProvider,
-      String tableId,
-      TableOperation tableOp,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    switch (scheme) {
-      case "s3":
-        if (renewCredEnabled) {
-          return s3TableTempCredProps(
-              credScopedFsEnabled,
-              hadoopConf,
-              uri,
-              tokenProvider,
-              tableId,
-              tableOp,
-              tempCreds,
-              appVersions);
-        } else {
-          return s3FixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      case "gs":
-        if (renewCredEnabled) {
-          return gsTableTempCredProps(
-              credScopedFsEnabled,
-              hadoopConf,
-              uri,
-              tokenProvider,
-              tableId,
-              tableOp,
-              tempCreds,
-              appVersions);
-        } else {
-          return gsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      case "abfss":
-      case "abfs":
-        if (renewCredEnabled) {
-          return abfsTableTempCredProps(
-              credScopedFsEnabled,
-              hadoopConf,
-              uri,
-              tokenProvider,
-              tableId,
-              tableOp,
-              tempCreds,
-              appVersions);
-        } else {
-          return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      default:
-        return Collections.emptyMap();
-    }
-  }
-
-  /**
-   * Builds the Hadoop configuration properties needed to access an external storage path.
-   *
-   * @param renewCredEnabled when {@code true}, configures a vended-token provider that
-   *     automatically refreshes credentials before expiry; when {@code false}, embeds the initial
-   *     credentials as static keys.
-   * @param credScopedFsEnabled when {@code true}, overrides {@code fs.<scheme>.impl} with
-   *     CredScopedFileSystem so that filesystem instances are reused per credential scope rather
-   *     than created anew for every file access.
-   * @param hadoopConf the engine's existing Hadoop configuration, used to read any previously
-   *     configured {@code fs.<scheme>.impl} values before they are overridden by
-   *     CredScopedFileSystem.
-   */
-  public static Map<String, String> createPathCredProps(
-      boolean renewCredEnabled,
-      boolean credScopedFsEnabled,
-      Configuration hadoopConf,
-      String scheme,
-      String uri,
-      TokenProvider tokenProvider,
-      String path,
-      PathOperation pathOp,
-      TemporaryCredentials tempCreds,
-      Map<String, String> appVersions) {
-    switch (scheme) {
-      case "s3":
-        if (renewCredEnabled) {
-          return s3PathTempCredProps(
-              credScopedFsEnabled,
-              hadoopConf,
-              uri,
-              tokenProvider,
-              path,
-              pathOp,
-              tempCreds,
-              appVersions);
-        } else {
-          return s3FixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      case "gs":
-        if (renewCredEnabled) {
-          return gsPathTempCredProps(
-              credScopedFsEnabled,
-              hadoopConf,
-              uri,
-              tokenProvider,
-              path,
-              pathOp,
-              tempCreds,
-              appVersions);
-        } else {
-          return gsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      case "abfss":
-      case "abfs":
-        if (renewCredEnabled) {
-          return abfsPathTempCredProps(
-              credScopedFsEnabled,
-              hadoopConf,
-              uri,
-              tokenProvider,
-              path,
-              pathOp,
-              tempCreds,
-              appVersions);
-        } else {
-          return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, tempCreds);
-        }
-      default:
-        return Collections.emptyMap();
-    }
-  }
-
   /** Fetches table credentials from the UC REST API and builds Hadoop configuration properties. */
-  public static Map<String, String> fetchTableCredProps(
+  public static Map<String, String> createTableCredProps(
       boolean renewCredEnabled,
       boolean credScopedFsEnabled,
       Configuration hadoopConf,
@@ -786,32 +357,24 @@ public class CredPropsUtil {
       UCCredentialHadoopConfs.TableOperation tableOp,
       Map<String, String> appVersions)
       throws ApiException {
-    Configuration reqConf = new Configuration(false);
-    reqConf.set(
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    reqConf.set(UCHadoopConfConstants.UC_TABLE_ID_KEY, tableId);
-    reqConf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.value());
-    TemporaryCredentials creds =
-        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, reqConf);
-    return createTableCredProps(
+    return createCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
         hadoopConf,
         scheme,
+        apiClient,
         catalogUri,
         tokenProvider,
-        tableId,
-        TableOperation.fromValue(tableOp.value()),
-        creds,
-        appVersions);
+        appVersions,
+        new TableCredId(
+            credContextId(catalogUri, scheme, tokenProvider), tableId, tableOp.value()));
   }
 
   /**
    * Fetches Delta table credentials from the UC Delta API and builds Hadoop configuration
    * properties.
    */
-  public static Map<String, String> fetchDeltaTableCredProps(
+  public static Map<String, String> createDeltaTableCredProps(
       boolean renewCredEnabled,
       boolean credScopedFsEnabled,
       Configuration hadoopConf,
@@ -824,34 +387,27 @@ public class CredPropsUtil {
       UCCredentialHadoopConfs.TableOperation tableOp,
       Map<String, String> appVersions)
       throws ApiException {
-    Configuration reqConf = new Configuration(false);
-    reqConf.set(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
-    reqConf.set(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, tableOp.value());
-    reqConf.set(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY, identifier.catalog());
-    reqConf.set(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY, identifier.schema());
-    reqConf.set(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, identifier.table());
-    reqConf.set(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location);
-    TemporaryCredentials creds =
-        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, reqConf);
-    return createDeltaTableCredProps(
+    return createCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
         hadoopConf,
         scheme,
+        apiClient,
         catalogUri,
         tokenProvider,
-        identifier,
-        location,
-        DeltaCredentialOperation.fromValue(tableOp.value()),
-        creds,
-        appVersions);
+        appVersions,
+        new DeltaTableCredId(
+            credContextId(catalogUri, scheme, tokenProvider),
+            identifier,
+            tableOp.value(),
+            location));
   }
 
   /**
    * Fetches Delta staging table credentials from the UC Delta API and builds Hadoop configuration
    * properties.
    */
-  public static Map<String, String> fetchDeltaStagingTableCredProps(
+  public static Map<String, String> createDeltaStagingTableCredProps(
       boolean renewCredEnabled,
       boolean credScopedFsEnabled,
       Configuration hadoopConf,
@@ -863,27 +419,21 @@ public class CredPropsUtil {
       String location,
       Map<String, String> appVersions)
       throws ApiException {
-    Configuration reqConf = new Configuration(false);
-    reqConf.set(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
-    reqConf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, stagingTableId);
-    reqConf.set(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, location);
-    TemporaryCredentials creds =
-        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, reqConf);
-    return createDeltaStagingTableCredProps(
+    return createCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
         hadoopConf,
         scheme,
+        apiClient,
         catalogUri,
         tokenProvider,
-        stagingTableId,
-        location,
-        creds,
-        appVersions);
+        appVersions,
+        new DeltaStagingTableCredId(
+            credContextId(catalogUri, scheme, tokenProvider), stagingTableId, location));
   }
 
   /** Fetches path credentials from the UC REST API and builds Hadoop configuration properties. */
-  public static Map<String, String> fetchPathCredProps(
+  public static Map<String, String> createPathCredProps(
       boolean renewCredEnabled,
       boolean credScopedFsEnabled,
       Configuration hadoopConf,
@@ -895,40 +445,131 @@ public class CredPropsUtil {
       UCCredentialHadoopConfs.PathOperation pathOp,
       Map<String, String> appVersions)
       throws ApiException {
-    Configuration reqConf = new Configuration(false);
-    reqConf.set(
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    reqConf.set(UCHadoopConfConstants.UC_PATH_KEY, path);
-    reqConf.set(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, pathOp.value());
-    TemporaryCredentials creds =
-        fetchTemporaryCredentials(apiClient, catalogUri, tokenProvider, appVersions, reqConf);
-    return createPathCredProps(
+    return createCredProps(
         renewCredEnabled,
         credScopedFsEnabled,
         hadoopConf,
         scheme,
+        apiClient,
         catalogUri,
         tokenProvider,
-        path,
-        PathOperation.fromValue(pathOp.value()),
-        creds,
-        appVersions);
+        appVersions,
+        new PathCredId(credContextId(catalogUri, scheme, tokenProvider), path, pathOp.value()));
   }
 
-  private static TemporaryCredentials fetchTemporaryCredentials(
+  /**
+   * Fetches temporary credentials for {@code credId} and builds the cloud-provider specific Hadoop
+   * configuration properties for {@code scheme}. Shared by all {@code create*CredProps} entry
+   * points, which differ only in how they construct the {@link CredId}.
+   */
+  private static Map<String, String> createCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Configuration hadoopConf,
+      String scheme,
       ApiClient apiClient,
       String catalogUri,
       TokenProvider tokenProvider,
       Map<String, String> appVersions,
-      Configuration reqConf)
+      CredId credId)
+      throws ApiException {
+    GenericCredential cred =
+        fetchGenericCredential(
+            hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
+    switch (scheme) {
+      case "s3":
+        if (renewCredEnabled) {
+          return s3TempCredPropsBuilder(
+                  credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, cred)
+              .credId(credId)
+              .appVersions(appVersions)
+              .build();
+        } else {
+          return s3FixedCredProps(credScopedFsEnabled, hadoopConf, cred);
+        }
+      case "gs":
+        if (renewCredEnabled) {
+          return gcsTempCredPropsBuilder(
+                  credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, cred)
+              .credId(credId)
+              .appVersions(appVersions)
+              .build();
+        } else {
+          return gsFixedCredProps(credScopedFsEnabled, hadoopConf, cred);
+        }
+      case "abfss":
+      case "abfs":
+        if (renewCredEnabled) {
+          return abfsTempCredPropsBuilder(
+                  credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, cred)
+              .credId(credId)
+              .appVersions(appVersions)
+              .build();
+        } else {
+          return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, cred);
+        }
+      default:
+        return Collections.emptyMap();
+    }
+  }
+
+  /**
+   * Derives a stable id for the credential context so caches only reuse a vended credential across
+   * requests that would receive the same one. A vended credential is a function of the catalog
+   * endpoint, storage scheme, and auth identity, so all three are folded into the hash alongside
+   * the auth configs from {@code tokenProvider}.
+   */
+  static String credContextId(String catalogUri, String scheme, TokenProvider tokenProvider) {
+    Objects.requireNonNull(catalogUri, "catalogUri is required");
+    Objects.requireNonNull(scheme, "scheme is required");
+    Objects.requireNonNull(tokenProvider, "tokenProvider is required");
+
+    Map<String, String> context = new HashMap<>(tokenProvider.configs());
+    context.put(CRED_CONTEXT_CATALOG_URI_KEY, catalogUri);
+    context.put(CRED_CONTEXT_SCHEME_KEY, scheme);
+    return MapIdGenerator.generateId(context);
+  }
+
+  private static GenericCredential fetchGenericCredential(
+      Configuration hadoopConf,
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      Map<String, String> appVersions,
+      CredId credId)
+      throws ApiException {
+    boolean credCacheEnabled =
+        hadoopConf.getBoolean(
+            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY,
+            UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE);
+    if (!credCacheEnabled) {
+      return createCredential(apiClient, catalogUri, tokenProvider, appVersions, credId);
+    }
+
+    long renewalLeadTimeMillis =
+        hadoopConf.getLong(
+            UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
+            UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
+
+    return initialCredCache.access(
+        credId,
+        () ->
+            new RenewableCredential(
+                renewalLeadTimeMillis,
+                ClockUtil.resolveClock(hadoopConf),
+                createCredential(apiClient, catalogUri, tokenProvider, appVersions, credId)));
+  }
+
+  private static GenericCredential createCredential(
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      Map<String, String> appVersions,
+      CredId credId)
       throws ApiException {
     ApiClient client =
         apiClient != null ? apiClient : createApiClient(catalogUri, tokenProvider, appVersions);
-    return genericCredFetcherFactory
-        .create(client, reqConf)
-        .createCredential()
-        .temporaryCredentials();
+    return genericCredFetcherFactory.create(client, credId).createCredential();
   }
 
   private static ApiClient createApiClient(

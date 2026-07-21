@@ -46,6 +46,14 @@ public class UCHadoopConfConstants {
   public static final String UC_AUTH_PREFIX = "fs.unitycatalog.auth.";
   public static final String UC_AUTH_TYPE = "fs.unitycatalog.auth.type";
   public static final String UC_AUTH_TOKEN_KEY = "fs.unitycatalog.auth.token";
+  /**
+   * Stable id derived from the credential context ({@code catalogUri}, storage {@code scheme}, and
+   * {@code TokenProvider.configs()}) to isolate caches per credential context.
+   *
+   * <p>The key is intentionally all lowercase: these props flow through Spark's case-insensitive
+   * table option handling, which lowercases option keys, so a mixed-case key would not round-trip.
+   */
+  public static final String UC_CRED_CONTEXT_ID_KEY = "fs.unitycatalog.cred.context.id";
 
   // Prefix for engine version metadata (e.g. fs.unitycatalog.engine.version.Spark=4.0.0). Values
   // stored under this prefix are propagated to the User-Agent header on UC API calls so the
@@ -59,11 +67,6 @@ public class UCHadoopConfConstants {
 
   // Key for specifying the manual clock, for testing purpose.
   public static final String UC_TEST_CLOCK_NAME = "fs.unitycatalog.test.clock.name";
-
-  // Key representing a unique credential ID. It identifies a job-level credential for a specific
-  // table, meaning that the same job–table combination shares the same credential. Cached
-  // credentials are indexed by this key and are not reused across different jobs.
-  public static final String UC_CREDENTIALS_UID_KEY = "fs.unitycatalog.credentials.uid";
 
   // Enables the UC Delta temporary credentials API. false uses the standard UC API.
   public static final String UC_DELTA_CREDENTIALS_API_ENABLED_KEY =
