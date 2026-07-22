@@ -4,6 +4,8 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.ApiClientUtils;
+import io.unitycatalog.client.internal.Clock;
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
@@ -20,6 +22,7 @@ import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -48,7 +51,7 @@ public class CredPropsUtil {
   public static volatile GenericCredentialFetcherFactory genericCredFetcherFactory =
       GenericCredentialFetcher::create;
 
-  static final CredentialCache<CredId> initialCredCache =
+  static final CredentialCache<CredId, List<GenericCredential>> initialCredCache =
       CredentialCache.createInitialCredentialCache();
 
   // Keys used to build the credential-context id (see #credContextId).
@@ -189,9 +192,14 @@ public class CredPropsUtil {
       // Unsupported scheme: skip the credential fetch entirely and return no props.
       return Collections.emptyMap();
     }
-    GenericCredential cred =
-        fetchGenericCredential(
+    List<GenericCredential> credentials =
+        fetchGenericCredentials(
             hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
+    Preconditions.checkState(
+        credentials.size() == 1,
+        "Expected exactly one vended credential, got %s",
+        credentials.size());
+    GenericCredential cred = credentials.get(0);
     return CredPropsBuilder.forCloud(cloudType.get())
         .applyBaseConf(hadoopConf)
         .applyImplOverrides(credScopedFsEnabled, hadoopConf)
@@ -217,7 +225,7 @@ public class CredPropsUtil {
     return MapIdGenerator.generateId(context);
   }
 
-  private static GenericCredential fetchGenericCredential(
+  private static List<GenericCredential> fetchGenericCredentials(
       Configuration hadoopConf,
       ApiClient apiClient,
       String catalogUri,
@@ -230,7 +238,7 @@ public class CredPropsUtil {
             UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY,
             UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE);
     if (!credCacheEnabled) {
-      return createCredential(apiClient, catalogUri, tokenProvider, appVersions, credId);
+      return createCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
     }
 
     long renewalLeadTimeMillis =
@@ -241,13 +249,20 @@ public class CredPropsUtil {
     return initialCredCache.access(
         credId,
         () ->
-            new RenewableCredential(
+            new RenewableCredential<>(
                 renewalLeadTimeMillis,
                 ClockUtil.resolveClock(hadoopConf),
-                createCredential(apiClient, catalogUri, tokenProvider, appVersions, credId)));
+                createCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId),
+                CredPropsUtil::credentialsReadyToRenew));
   }
 
-  private static GenericCredential createCredential(
+  /** Renew as soon as any credential is ready to renew. */
+  private static boolean credentialsReadyToRenew(
+      List<GenericCredential> creds, Clock clock, long renewalLeadTimeMillis) {
+    return creds.stream().anyMatch(c -> c.readyToRenew(clock, renewalLeadTimeMillis));
+  }
+
+  private static List<GenericCredential> createCredentials(
       ApiClient apiClient,
       String catalogUri,
       TokenProvider tokenProvider,
@@ -256,7 +271,7 @@ public class CredPropsUtil {
       throws ApiException {
     ApiClient client =
         apiClient != null ? apiClient : createApiClient(catalogUri, tokenProvider, appVersions);
-    return genericCredFetcherFactory.create(client, credId).createCredential();
+    return genericCredFetcherFactory.create(client, credId).createCredentials();
   }
 
   private static ApiClient createApiClient(

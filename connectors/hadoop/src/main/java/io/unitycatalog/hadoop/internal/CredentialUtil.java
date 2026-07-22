@@ -11,6 +11,7 @@ import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
 
 /** Internal utilities for building and selecting {@link GenericCredential}s. */
 public final class CredentialUtil {
@@ -51,34 +52,41 @@ public final class CredentialUtil {
     }
   }
 
-  /** Selects the credential whose prefix covers the requested location. */
-  public static DeltaStorageCredential selectForLocation(
-      String location, List<DeltaStorageCredential> creds) {
-    Preconditions.checkArgument(
-        creds != null && !creds.isEmpty(),
-        "UC Delta API response for '%s' has no storage credentials.",
-        location);
-    if (creds.size() == 1) {
-      Preconditions.checkNotNull(
-          creds.get(0), "UC Delta API response for '%s' contains null.", location);
-    }
-    DeltaStorageCredential best = null;
+  /** Selects the credential whose location covers {@code location} (longest match wins). */
+  public static GenericCredential selectForLocation(
+      String location, List<GenericCredential> creds) {
+    int index = longestCoveringIndex(location, creds, GenericCredential::location);
+    Preconditions.checkArgument(index >= 0, "No vended credential covers location '%s'.", location);
+    return creds.get(index);
+  }
+
+  /**
+   * Returns the index of the item whose prefix (via {@code prefixOf}) covers {@code location} by
+   * the longest match, or {@code -1} if none does. Items with a null prefix are skipped.
+   */
+  private static <T> int longestCoveringIndex(
+      String location, List<T> items, Function<T, String> prefixOf) {
+    int best = -1;
     int bestLen = -1;
-    for (DeltaStorageCredential c : creds) {
-      if (c == null || c.getPrefix() == null || !prefixCovers(location, c.getPrefix())) {
+    for (int i = 0; i < items.size(); i++) {
+      String prefix = prefixOf.apply(items.get(i));
+      if (prefix == null || !prefixCovers(location, prefix)) {
         continue;
       }
-      int len = canonicalLocation(c.getPrefix()).length();
+      int len = canonicalLocation(prefix).length();
       if (len > bestLen) {
-        best = c;
+        best = i;
         bestLen = len;
       }
     }
-    Preconditions.checkArgument(
-        best != null, "No UC Delta credential matched location '%s'.", location);
     return best;
   }
 
+  /**
+   * Whether {@code prefix} covers {@code location}: they denote the same storage location or {@code
+   * prefix} is an ancestor path of it. Both sides are reduced to a canonical form (canonical
+   * scheme, no trailing slashes) first, so scheme aliases like {@code s3a} and {@code s3} match.
+   */
   static boolean prefixCovers(String location, String prefix) {
     String l = canonicalLocation(location);
     String p = canonicalLocation(prefix);

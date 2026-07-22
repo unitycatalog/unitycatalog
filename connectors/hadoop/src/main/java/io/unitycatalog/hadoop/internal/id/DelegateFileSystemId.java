@@ -60,6 +60,11 @@ public final class DelegateFileSystemId {
     return conf.get(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY);
   }
 
+  /** The storage location being accessed, or {@code null} when the key is scoped by CredId only. */
+  public String location() {
+    return location;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {

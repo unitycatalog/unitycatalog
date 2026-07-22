@@ -16,6 +16,8 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -977,6 +979,19 @@ class CredPropsUtilTest {
   }
 
   @Test
+  void multipleVendedCredentialsAreRejectedOnDriver() {
+    // Right now, multiple credentials are not supported. Delete this test once supported.
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) ->
+            mockGenericCredentialFetcher(
+                s3CredsExpiringAt("1", Long.MAX_VALUE), s3CredsExpiringAt("2", Long.MAX_VALUE));
+
+    assertThatThrownBy(() -> createTableCredProps(new Configuration(false)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Expected exactly one vended credential, got 2");
+  }
+
+  @Test
   void expiredCachedCredentialIsRefetched() throws Exception {
     String clockName = UUID.randomUUID().toString();
     Clock clock = Clock.getManualClock(clockName);
@@ -1389,7 +1404,17 @@ class CredPropsUtilTest {
   private static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential creds) {
     GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {
-      when(api.createCredential()).thenReturn(creds);
+      when(api.createCredentials()).thenReturn(Collections.singletonList(creds));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+    return api;
+  }
+
+  private static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential... creds) {
+    GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
+    try {
+      when(api.createCredentials()).thenReturn(Arrays.asList(creds));
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
