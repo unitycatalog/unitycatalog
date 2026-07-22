@@ -1,24 +1,19 @@
 package io.unitycatalog.spark;
 
-import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.internal.ApiClientUtils;
-import io.unitycatalog.client.retry.RetryPolicy;
-import java.net.URI;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public class ApiClientFactory {
+/**
+ * Detects the engine's Spark / Delta / Java / Scala versions, reported in the User-Agent header via
+ * {@code ApiClientFactory}. Lives in the connector because it references Spark and Delta classes
+ * the client module does not depend on.
+ */
+public final class EngineVersions {
 
-  private ApiClientFactory() {}
+  private EngineVersions() {}
 
-  public static ApiClient createApiClient(
-      RetryPolicy retryPolicy, URI uri, TokenProvider tokenProvider) {
-    return ApiClientUtils.create(uri, tokenProvider, retryPolicy, appEngineVersions());
-  }
-
-  static Map<String, String> appEngineVersions() {
+  public static Map<String, String> appEngineVersions() {
     Map<String, String> versions = new LinkedHashMap<>();
     putIfNotNull(versions, "Spark", getSparkVersion());
     putIfNotNull(versions, "Delta", DeltaVersionUtils.getDeltaVersion());

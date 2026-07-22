@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiClientFactory;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.client.retry.RetryPolicy;
@@ -16,13 +17,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * Test class for ApiClientFactory to verify Spark-specific functionality.
- *
- * <p>This test class focuses on Spark/Delta/Java/Scala version metadata injection into the
- * User-Agent. For general ApiClient configuration tests, see {@link
+ * Verifies Spark/Delta/Java/Scala version metadata injection into the User-Agent via {@link
+ * EngineVersions}. For general ApiClient configuration tests, see {@link
  * io.unitycatalog.client.ApiClientBuilderTest}.
  */
-public class ApiClientFactoryTest {
+public class EngineVersionsTest {
   private static final TokenProvider UC_TOKEN_PROVIDER = createStaticTokenProvider("token");
   private static final RetryPolicy RETRY_POLICY = JitterDelayRetryPolicy.builder().build();
   private static final URI TEST_URI = URI.create("http://localhost:8080");
@@ -49,7 +48,9 @@ public class ApiClientFactoryTest {
 
   @Test
   public void testAllVersionsInUserAgent() {
-    ApiClient client = ApiClientFactory.createApiClient(RETRY_POLICY, TEST_URI, UC_TOKEN_PROVIDER);
+    ApiClient client =
+        ApiClientFactory.createApiClient(
+            TEST_URI, UC_TOKEN_PROVIDER, RETRY_POLICY, EngineVersions.appEngineVersions());
     String userAgent = extractUserAgent(client);
 
     // Verify the base Unity Catalog client is present
@@ -79,7 +80,9 @@ public class ApiClientFactoryTest {
   public void testTokenNotLeakedInUserAgent() {
     String sensitiveToken = "test-token-12345";
     TokenProvider tokenProvider = createStaticTokenProvider(sensitiveToken);
-    ApiClient client = ApiClientFactory.createApiClient(RETRY_POLICY, TEST_URI, tokenProvider);
+    ApiClient client =
+        ApiClientFactory.createApiClient(
+            TEST_URI, tokenProvider, RETRY_POLICY, EngineVersions.appEngineVersions());
 
     String userAgent = extractUserAgent(client);
 
@@ -96,7 +99,9 @@ public class ApiClientFactoryTest {
 
   @Test
   public void testUserAgentFormat() {
-    ApiClient client = ApiClientFactory.createApiClient(RETRY_POLICY, TEST_URI, UC_TOKEN_PROVIDER);
+    ApiClient client =
+        ApiClientFactory.createApiClient(
+            TEST_URI, UC_TOKEN_PROVIDER, RETRY_POLICY, EngineVersions.appEngineVersions());
     String userAgent = extractUserAgent(client);
 
     // Verify format: project/version,[project/version,...]
@@ -133,7 +138,7 @@ public class ApiClientFactoryTest {
 
   @Test
   public void testAppEngineVersionsContainsExpectedKeys() {
-    Map<String, String> versions = ApiClientFactory.appEngineVersions();
+    Map<String, String> versions = EngineVersions.appEngineVersions();
     assertThat(versions).containsKeys("Spark", "Delta", "Java", "Scala");
   }
 

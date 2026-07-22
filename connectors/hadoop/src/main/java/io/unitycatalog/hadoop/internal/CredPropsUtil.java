@@ -1,9 +1,9 @@
 package io.unitycatalog.hadoop.internal;
 
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiClientFactory;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
-import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
@@ -574,7 +574,7 @@ public class CredPropsUtil {
 
   private static ApiClient createApiClient(
       String catalogUri, TokenProvider tokenProvider, Map<String, String> appVersions) {
-    return ApiClientUtils.create(
+    return ApiClientFactory.createApiClient(
         URI.create(catalogUri),
         tokenProvider,
         UCHadoopConfConstants.createRequestRetryPolicy(null),
