@@ -84,6 +84,14 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     return session.sql(String.format(statement, args)).collectAsList();
   }
 
+  /** True when the running Spark is at least {@code major.minor} (e.g. for version-gated tests). */
+  protected static boolean isSparkAtLeast(int major, int minor) {
+    String[] parts = org.apache.spark.package$.MODULE$.SPARK_VERSION().split("\\.");
+    int runMajor = Integer.parseInt(parts[0]);
+    int runMinor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+    return runMajor > major || (runMajor == major && runMinor >= minor);
+  }
+
   @BeforeEach
   @Override
   public void setUp() {
