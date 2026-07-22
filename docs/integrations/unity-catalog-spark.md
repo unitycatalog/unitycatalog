@@ -28,6 +28,11 @@ data stored in Unity Catalog through a controlled mechanism.
     | Apache Spark 4.0.x | `io.unitycatalog:unitycatalog-spark_4.0_2.13` | `io.delta:delta-spark_4.0_2.13` |
     | Apache Spark 4.1.x | `io.unitycatalog:unitycatalog-spark_4.1_2.13` | `io.delta:delta-spark_4.1_2.13` |
 
+!!! tip "Metric views"
+    On Apache Spark 4.2 and later, the connector also supports Unity Catalog **metric views** —
+    reusable dimensions and measures defined over a source table. See
+    [Metric Views](../usage/views.md).
+
 ## Download and Configure Unity Catalog for Apache Spark
 
 The following steps are required to download and configure Unity Catalog for Apache Spark.

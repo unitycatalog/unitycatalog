@@ -30,6 +30,7 @@ nav:
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Models: usage/models.md
+      - Metric Views: usage/views.md
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
