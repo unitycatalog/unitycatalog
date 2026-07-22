@@ -93,6 +93,12 @@ public class CloudCredentialVendorTest {
                 .accessKeyId(ACCESS_KEY)
                 .secretAccessKey(SECRET_KEY)
                 .sessionToken(SESSION_TOKEN));
+    // The vended url is the normalized path, not the raw request: a trailing slash is stripped.
+    // This fails if the vendor ever echoes the caller-supplied string verbatim.
+    assertThat(
+            vendCredential("s3://storageBase/abc/", Set.of(CredentialContext.Privilege.SELECT))
+                .getUrl())
+        .isEqualTo("s3://storageBase/abc");
 
     // Test when sts client is called
     when(serverProperties.getS3Configurations())

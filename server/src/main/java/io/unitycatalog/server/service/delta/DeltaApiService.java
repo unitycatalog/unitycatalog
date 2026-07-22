@@ -284,8 +284,7 @@ public class DeltaApiService extends AuthorizedService {
     NormalizedURL storageLocation = tableRepository.getTableStorageLocation(catalog, schema, table);
     TemporaryCredentials credentials =
         storageCredentialVendor.vendCredential(storageLocation, toPrivileges(operation));
-    return DeltaCredentialsMapper.toCredentialsResponse(
-        storageLocation.toString(), credentials, operation);
+    return DeltaCredentialsMapper.toCredentialsResponse(credentials, operation);
   }
 
   /**
@@ -305,7 +304,7 @@ public class DeltaApiService extends AuthorizedService {
             storageLocation,
             Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
     return DeltaCredentialsMapper.toCredentialsResponse(
-        storageLocation.toString(), credentials, DeltaCredentialOperation.READ_WRITE);
+        credentials, DeltaCredentialOperation.READ_WRITE);
   }
 
   private static Set<CredentialContext.Privilege> toPrivileges(DeltaCredentialOperation operation) {

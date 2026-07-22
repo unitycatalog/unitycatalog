@@ -2658,6 +2658,9 @@ components:
             The API client is advised to cache the credential given this expiration time.
           type: integer
           format: int64
+        url:
+          description: The normalized URL of the storage path the temporary credential was generated for.
+          type: string
     PathOperation:
       enum:
         - UNKNOWN_PATH_OPERATION

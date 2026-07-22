@@ -1315,6 +1315,8 @@ export interface components {
        *
        */
       expiration_time?: number;
+      /** @description The normalized URL of the storage path the temporary credential was generated for. */
+      url?: string;
     };
     /** @enum {string} */
     PathOperation: PathOperation;

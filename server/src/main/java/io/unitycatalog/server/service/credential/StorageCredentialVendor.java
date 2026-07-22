@@ -52,6 +52,6 @@ public class StorageCredentialVendor {
     Optional<CredentialDAO> credentialDAO =
         externalLocationUtils.getExternalLocationCredentialDaoForPath(path);
     CredentialContext credentialContext = CredentialContext.create(path, privileges, credentialDAO);
-    return cloudCredentialVendor.vendCredential(credentialContext);
+    return cloudCredentialVendor.vendCredential(credentialContext).url(path.toString());
   }
 }
