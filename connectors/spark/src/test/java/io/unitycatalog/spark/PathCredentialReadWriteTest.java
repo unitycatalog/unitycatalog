@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation;
@@ -129,6 +130,50 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
+  }
+
+  /** UC extension only — enough for parameterized SQL parser tests (no Delta needed). */
+  private SparkSession createUcExtensionOnlySparkSession(String... catalogs) {
+    SparkSession.Builder builder =
+        SparkSession.builder()
+            .appName("test")
+            .master("local[*]")
+            .config("spark.sql.shuffle.partitions", "4")
+            .config("spark.sql.extensions", "io.unitycatalog.spark.UCSparkSessionExtensions");
+    for (String catalog : catalogs) {
+      String catalogConf = "spark.sql.catalog." + catalog;
+      builder =
+          builder
+              .config(catalogConf, UCSingleCatalog.class.getName())
+              .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
+              .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
+              .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog);
+    }
+    return builder.getOrCreate();
+  }
+
+  /**
+   * {@code SparkSession.sql(text, args)} routes through {@code parsePlanWithParameters}. The UC
+   * parser extension must delegate parameter binding to the underlying parser before applying path
+   * credential injection. Uses a UC-only session (no Delta extension) so the delegate is {@code
+   * SparkSqlParser} directly.
+   */
+  @Test
+  public void testPositionalSqlParameters() {
+    stopSession();
+    session = createUcExtensionOnlySparkSession(SPARK_CATALOG);
+    List<Row> rows = session.sql("SELECT ? AS c", new Object[] {42}).collectAsList();
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getInt(0)).isEqualTo(42);
+  }
+
+  @Test
+  public void testNamedSqlParameters() {
+    stopSession();
+    session = createUcExtensionOnlySparkSession(SPARK_CATALOG);
+    List<Row> rows = session.sql("SELECT :x AS c", Map.of("x", 42)).collectAsList();
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getInt(0)).isEqualTo(42);
   }
 
   /**
