@@ -118,6 +118,16 @@ class UCSingleCatalog
     }
   }
 
+  /**
+   * The catalog to route `SupportsNamespaces` operations to.
+   *
+   * Both possible values of `delegate` are a `SupportsNamespaces`: when DeltaCatalog is on the
+   * classpath `delegate` is a `DelegatingCatalogExtension` (a `SupportsNamespaces` via
+   * `CatalogExtension`), and when it is absent `delegate` is `ucProxy` itself (a plain
+   * `TableCatalog with SupportsNamespaces`). So we can cast unconditionally.
+   */
+  private def namespaceCatalog: SupportsNamespaces = delegate.asInstanceOf[SupportsNamespaces]
+
   /** See [[DeltaVersionUtils.isDeltaRestApiReady]] for the predicate. */
   private def shouldUseDeltaAPI: Boolean =
     DeltaVersionUtils.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
@@ -395,27 +405,27 @@ class UCSingleCatalog
   }
 
   override def listNamespaces(): Array[Array[String]] = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
+    namespaceCatalog.listNamespaces()
   }
 
   override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].listNamespaces(namespace)
+    namespaceCatalog.listNamespaces(namespace)
   }
 
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].loadNamespaceMetadata(namespace)
+    namespaceCatalog.loadNamespaceMetadata(namespace)
   }
 
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].createNamespace(namespace, metadata)
+    namespaceCatalog.createNamespace(namespace, metadata)
   }
 
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].alterNamespace(namespace, changes: _*)
+    namespaceCatalog.alterNamespace(namespace, changes: _*)
   }
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
+    namespaceCatalog.dropNamespace(namespace, cascade)
   }
 
   /** Only called for REPLACE TABLE and RTAS */
