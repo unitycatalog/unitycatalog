@@ -123,6 +123,7 @@ auth:
   # @raw
   #
   # When authorization is enabled, tokens will only be accepted from issuers in this list.
+  # Supports exact match or wildcard patterns with * (single DNS label per wildcard).
   #
   # Example for Google: `https://accounts.google.com`
   # Example for Microsoft Entra ID: `https://login.microsoftonline.com/{tenant-id}/v2.0`
