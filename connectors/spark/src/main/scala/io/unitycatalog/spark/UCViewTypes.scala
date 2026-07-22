@@ -50,6 +50,7 @@ private[spark] object UCViewTypes {
    * from this map, so listing / dispatch / createView reject all stay in sync.
    */
   private val viewLikeUcTypes: Map[TableType, Option[String]] = Map(
+    TableType.VIEW -> Some("VIEW" /* TableSummary.VIEW_TABLE_TYPE on Spark 4.2 */),
     TableType.METRIC_VIEW -> Some("METRIC_VIEW" /* TableSummary.METRIC_VIEW_TABLE_TYPE on Spark 4.2 */),
     TableType.MATERIALIZED_VIEW -> None
   )
