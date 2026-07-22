@@ -1,17 +1,23 @@
-package io.unitycatalog.client.internal;
+package io.unitycatalog.client;
 
-import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.client.retry.RetryPolicy;
 import java.net.URI;
+import java.util.Collections;
 import java.util.Map;
 
-public final class ApiClientUtils {
+/** The canonical entry point for constructing an {@link ApiClient}. */
+public final class ApiClientFactory {
 
-  private ApiClientUtils() {}
+  private ApiClientFactory() {}
 
-  public static ApiClient create(
+  public static ApiClient createApiClient(
+      URI uri, TokenProvider tokenProvider, RetryPolicy retryPolicy) {
+    return createApiClient(uri, tokenProvider, retryPolicy, Collections.emptyMap());
+  }
+
+  public static ApiClient createApiClient(
       URI uri,
       TokenProvider tokenProvider,
       RetryPolicy retryPolicy,

@@ -16,7 +16,7 @@ import io.unitycatalog.client.model.{
   _
 }
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
-import io.unitycatalog.client.{ApiClient, ApiException}
+import io.unitycatalog.client.{ApiClient, ApiClientFactory, ApiException}
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs.{PathOperation, TableOperation}
 import io.unitycatalog.spark.auth.AuthConfigUtils
@@ -95,7 +95,8 @@ class UCSingleCatalog
       OptionsUtil.DELTA_API_ENABLED, OptionsUtil.DEFAULT_DELTA_API_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(
-      JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
+      uri, tokenProvider, JitterDelayRetryPolicy.builder().build(),
+      EngineVersions.appEngineVersions())
     tablesApi = new TablesApi(apiClient)
     ucProxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
       serverSidePlanningEnabled, apiClient, tablesApi)
@@ -223,7 +224,7 @@ class UCSingleCatalog
 
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, CatalogUtils.stringToURI(stagingLocation).getScheme)
-      .addAppVersions(ApiClientFactory.appEngineVersions())
+      .addAppVersions(EngineVersions.appEngineVersions())
       .tokenProvider(tokenProvider)
       .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
@@ -327,7 +328,7 @@ class UCSingleCatalog
     val tableUriScheme = new Path(tableLocation).toUri.getScheme
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, tableUriScheme)
-      .addAppVersions(ApiClientFactory.appEngineVersions())
+      .addAppVersions(EngineVersions.appEngineVersions())
       .tokenProvider(tokenProvider)
       .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
@@ -363,7 +364,7 @@ class UCSingleCatalog
 
     val credentialProps = UCCredentialHadoopConfs
       .builder(uri.toString, CatalogUtils.stringToURI(location).getScheme)
-      .addAppVersions(ApiClientFactory.appEngineVersions())
+      .addAppVersions(EngineVersions.appEngineVersions())
       .tokenProvider(tokenProvider)
       .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
@@ -718,7 +719,7 @@ private[spark] class UCProxy(
     val credBuilder =
       UCCredentialHadoopConfs
         .builder(uri.toString, locationUri.getScheme)
-        .addAppVersions(ApiClientFactory.appEngineVersions())
+        .addAppVersions(EngineVersions.appEngineVersions())
         .tokenProvider(tokenProvider)
         .apiClient(apiClient)
         .enableCredentialRenewal(renewCredEnabled)

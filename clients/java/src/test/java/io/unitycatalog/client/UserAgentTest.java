@@ -8,7 +8,6 @@ import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.auth.TokenProviderUtils;
-import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import java.net.URI;
 import java.net.http.HttpRequest;
@@ -94,9 +93,9 @@ public class UserAgentTest {
   }
 
   @Test
-  public void testApiClientUtilsCreateAddsAppVersions() {
+  public void testCreateApiClientAddsAppVersions() {
     ApiClient client =
-        ApiClientUtils.create(
+        ApiClientFactory.createApiClient(
             URI.create(TEST_URI),
             TOKEN_PROVIDER,
             JitterDelayRetryPolicy.builder().build(),

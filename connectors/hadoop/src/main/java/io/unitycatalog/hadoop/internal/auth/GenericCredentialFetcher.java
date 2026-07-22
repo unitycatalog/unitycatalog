@@ -1,11 +1,11 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiClientFactory;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
-import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.CredId;
@@ -76,7 +76,7 @@ public interface GenericCredentialFetcher {
         "Failed to create GenericCredentialFetcher, the '%s' is not set in hadoop configuration",
         UCHadoopConfConstants.UC_URI_KEY);
     ApiClient apiClient =
-        ApiClientUtils.create(
+        ApiClientFactory.createApiClient(
             URI.create(ucUriStr),
             TokenProvider.create(conf.getPropsWithPrefix(UCHadoopConfConstants.UC_AUTH_PREFIX)),
             UCHadoopConfConstants.createRequestRetryPolicy(conf),
