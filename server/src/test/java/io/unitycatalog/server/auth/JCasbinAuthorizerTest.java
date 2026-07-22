@@ -27,6 +27,28 @@ public class JCasbinAuthorizerTest {
   }
 
   @Test
+  void resolvesUsernameFromStandardHibernateProperty() {
+    Properties properties = new Properties();
+    properties.setProperty("hibernate.connection.username", "alice");
+    assertThat(JCasbinAuthorizer.resolveConnectionUsername(properties)).isEqualTo("alice");
+  }
+
+  @Test
+  void fallsBackToLegacyUserProperty() {
+    Properties properties = new Properties();
+    properties.setProperty("hibernate.connection.user", "bob");
+    assertThat(JCasbinAuthorizer.resolveConnectionUsername(properties)).isEqualTo("bob");
+  }
+
+  @Test
+  void prefersStandardUsernameWhenBothPresent() {
+    Properties properties = new Properties();
+    properties.setProperty("hibernate.connection.username", "alice");
+    properties.setProperty("hibernate.connection.user", "bob");
+    assertThat(JCasbinAuthorizer.resolveConnectionUsername(properties)).isEqualTo("alice");
+  }
+
+  @Test
   void testGrantAuthorization() {
     UUID principal = UUID.randomUUID();
     UUID resource = UUID.randomUUID();

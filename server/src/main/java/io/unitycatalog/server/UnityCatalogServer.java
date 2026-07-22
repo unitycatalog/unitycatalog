@@ -149,7 +149,7 @@ public class UnityCatalogServer {
         new UnityAccessUtil(repositories).initializeAdmin(authorizer);
         return authorizer;
       } catch (Exception e) {
-        throw new BaseException(ErrorCode.INTERNAL, "Problem initializing authorizer.");
+        throw new BaseException(ErrorCode.INTERNAL, "Problem initializing authorizer.", e);
       }
     } else {
       LOGGER.info("Authorization disabled. Using AllowingAuthorizer.");
