@@ -1,6 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
-import io.unitycatalog.hadoop.internal.CredentialUtil;
+import io.unitycatalog.client.internal.Preconditions;
 import java.util.Objects;
 
 public final class AzureCredential extends GenericCredential {
@@ -8,7 +8,9 @@ public final class AzureCredential extends GenericCredential {
 
   public AzureCredential(String sasToken, Long expirationTimeMillis) {
     super(expirationTimeMillis);
-    this.sasToken = CredentialUtil.field(sasToken, "Azure SAS token is missing");
+    Preconditions.checkArgument(
+        sasToken != null && !sasToken.isEmpty(), "Azure SAS token is missing");
+    this.sasToken = sasToken;
   }
 
   public String sasToken() {

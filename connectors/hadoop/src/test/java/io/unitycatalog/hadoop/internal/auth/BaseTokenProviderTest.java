@@ -11,6 +11,7 @@ import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
@@ -360,7 +361,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertThat(GenericCredentialProvider.globalCache.size()).isEqualTo(expectedSize);
     for (TemporaryCredentials cred : creds) {
       assertThat(GenericCredentialProvider.globalCache.credentials())
-          .contains(UCTemporaryCredentialUtil.toGenericCredential(cred));
+          .contains(CredentialUtil.toGenericCredential(cred));
     }
   }
 

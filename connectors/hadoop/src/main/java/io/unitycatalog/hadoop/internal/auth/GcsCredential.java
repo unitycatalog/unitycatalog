@@ -1,6 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
-import io.unitycatalog.hadoop.internal.CredentialUtil;
+import io.unitycatalog.client.internal.Preconditions;
 import java.util.Objects;
 
 public final class GcsCredential extends GenericCredential {
@@ -8,7 +8,9 @@ public final class GcsCredential extends GenericCredential {
 
   public GcsCredential(String oauthToken, Long expirationTimeMillis) {
     super(expirationTimeMillis);
-    this.oauthToken = CredentialUtil.field(oauthToken, "GCS OAuth token is missing");
+    Preconditions.checkArgument(
+        oauthToken != null && !oauthToken.isEmpty(), "GCS OAuth token is missing");
+    this.oauthToken = oauthToken;
   }
 
   public String oauthToken() {

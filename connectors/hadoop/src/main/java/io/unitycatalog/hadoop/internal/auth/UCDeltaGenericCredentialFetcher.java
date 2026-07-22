@@ -5,7 +5,7 @@ import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.internal.Preconditions;
-import io.unitycatalog.hadoop.internal.DeltaStorageCredentialUtil;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 
@@ -39,8 +39,7 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
         id.catalog(),
         id.schema(),
         id.table());
-    return DeltaStorageCredentialUtil.toGenericCredential(
-        DeltaStorageCredentialUtil.selectForLocation(
-            credId.location(), response.getStorageCredentials()));
+    return CredentialUtil.toGenericCredential(
+        CredentialUtil.selectForLocation(credId.location(), response.getStorageCredentials()));
   }
 }

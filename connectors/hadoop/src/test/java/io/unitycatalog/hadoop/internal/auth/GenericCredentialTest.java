@@ -2,42 +2,80 @@ package io.unitycatalog.hadoop.internal.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.jupiter.api.Test;
+import java.util.stream.Stream;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class GenericCredentialTest {
-
-  @Test
-  void awsCredentialExposesItsFields() {
-    AwsCredential aws = new AwsCredential("ak", "sk", "st", 123L);
-    assertThat(aws.accessKeyId()).isEqualTo("ak");
-    assertThat(aws.secretAccessKey()).isEqualTo("sk");
-    assertThat(aws.sessionToken()).isEqualTo("st");
-    assertThat(aws.expirationTimeMillis()).isEqualTo(123L);
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("equalCredentials")
+  void equalCredentialsHaveSameHashCode(
+      String description, GenericCredential left, GenericCredential right) {
+    assertThat(left).isEqualTo(right);
+    assertThat(left.hashCode()).isEqualTo(right.hashCode());
   }
 
-  @Test
-  void azureCredentialExposesItsFields() {
-    AzureCredential azure = new AzureCredential("sas", 456L);
-    assertThat(azure.sasToken()).isEqualTo("sas");
-    assertThat(azure.expirationTimeMillis()).isEqualTo(456L);
+  private static Stream<Arguments> equalCredentials() {
+    return Stream.of(
+        Arguments.of(
+            "AWS credentials",
+            new AwsCredential("ak", "sk", "st", 1L),
+            new AwsCredential("ak", "sk", "st", 1L)),
+        Arguments.of(
+            "Azure credentials", new AzureCredential("sas", 1L), new AzureCredential("sas", 1L)),
+        Arguments.of(
+            "GCS credentials with null expiration",
+            new GcsCredential("oauth", null),
+            new GcsCredential("oauth", null)));
   }
 
-  @Test
-  void gcsCredentialExposesItsFieldsAndAllowsNullExpiration() {
-    GcsCredential gcs = new GcsCredential("oauth", null);
-    assertThat(gcs.oauthToken()).isEqualTo("oauth");
-    assertThat(gcs.expirationTimeMillis()).isNull();
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("unequalCredentials")
+  void unequalCredentialsHaveDifferentHashCodes(
+      String description, GenericCredential left, GenericCredential right) {
+    assertThat(left).isNotEqualTo(right);
+    assertThat(right).isNotEqualTo(left);
+    assertThat(left.hashCode()).isNotEqualTo(right.hashCode());
   }
 
-  @Test
-  void equalsAndHashCodeUseAllFields() {
-    AwsCredential cred = new AwsCredential("ak", "sk", "st", 1L);
-    AwsCredential same = new AwsCredential("ak", "sk", "st", 1L);
-    AwsCredential differentToken = new AwsCredential("ak", "sk", "st2", 1L);
-    AwsCredential differentExpiry = new AwsCredential("ak", "sk", "st", 2L);
-
-    assertThat(cred).isEqualTo(same).hasSameHashCodeAs(same);
-    assertThat(cred).isNotEqualTo(differentToken).isNotEqualTo(differentExpiry);
-    assertThat((GenericCredential) cred).isNotEqualTo(new GcsCredential("ak", 1L));
+  private static Stream<Arguments> unequalCredentials() {
+    return Stream.of(
+        Arguments.of(
+            "different AWS access key",
+            new AwsCredential("ak", "sk", "st", 1L),
+            new AwsCredential("ak2", "sk", "st", 1L)),
+        Arguments.of(
+            "different AWS secret key",
+            new AwsCredential("ak", "sk", "st", 1L),
+            new AwsCredential("ak", "sk2", "st", 1L)),
+        Arguments.of(
+            "different AWS session token",
+            new AwsCredential("ak", "sk", "st", 1L),
+            new AwsCredential("ak", "sk", "st2", 1L)),
+        Arguments.of(
+            "different AWS expiration",
+            new AwsCredential("ak", "sk", "st", 1L),
+            new AwsCredential("ak", "sk", "st", 2L)),
+        Arguments.of(
+            "different Azure SAS token",
+            new AzureCredential("sas", 1L),
+            new AzureCredential("sas2", 1L)),
+        Arguments.of(
+            "different Azure expiration",
+            new AzureCredential("sas", 1L),
+            new AzureCredential("sas", 2L)),
+        Arguments.of(
+            "different GCS OAuth token",
+            new GcsCredential("oauth", 1L),
+            new GcsCredential("oauth2", 1L)),
+        Arguments.of(
+            "different GCS expiration",
+            new GcsCredential("oauth", 1L),
+            new GcsCredential("oauth", null)),
+        Arguments.of(
+            "different credential subtypes",
+            new AzureCredential("azure", 1L),
+            new GcsCredential("gcs", 1L)));
   }
 }

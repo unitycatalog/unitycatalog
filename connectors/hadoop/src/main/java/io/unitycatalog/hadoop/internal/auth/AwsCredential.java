@@ -1,6 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
-import io.unitycatalog.hadoop.internal.CredentialUtil;
+import io.unitycatalog.client.internal.Preconditions;
 import java.util.Objects;
 
 public final class AwsCredential extends GenericCredential {
@@ -11,9 +11,15 @@ public final class AwsCredential extends GenericCredential {
   public AwsCredential(
       String accessKeyId, String secretAccessKey, String sessionToken, Long expirationTimeMillis) {
     super(expirationTimeMillis);
-    this.accessKeyId = CredentialUtil.field(accessKeyId, "AWS access key is missing");
-    this.secretAccessKey = CredentialUtil.field(secretAccessKey, "AWS secret key is missing");
-    this.sessionToken = CredentialUtil.field(sessionToken, "AWS session token is missing");
+    Preconditions.checkArgument(
+        accessKeyId != null && !accessKeyId.isEmpty(), "AWS access key is missing");
+    Preconditions.checkArgument(
+        secretAccessKey != null && !secretAccessKey.isEmpty(), "AWS secret key is missing");
+    Preconditions.checkArgument(
+        sessionToken != null && !sessionToken.isEmpty(), "AWS session token is missing");
+    this.accessKeyId = accessKeyId;
+    this.secretAccessKey = secretAccessKey;
+    this.sessionToken = sessionToken;
   }
 
   public String accessKeyId() {

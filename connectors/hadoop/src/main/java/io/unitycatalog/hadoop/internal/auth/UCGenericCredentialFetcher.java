@@ -8,6 +8,7 @@ import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 
@@ -39,7 +40,7 @@ final class UCGenericCredentialFetcher implements GenericCredentialFetcher {
 
   @Override
   public GenericCredential createCredential() throws ApiException {
-    return UCTemporaryCredentialUtil.toGenericCredential(credentialCaller.get());
+    return CredentialUtil.toGenericCredential(credentialCaller.get());
   }
 
   /** Supplies temporary credentials from a pre-built request, bound at construction time. */
