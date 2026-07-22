@@ -14,22 +14,57 @@ import org.apache.spark.sql.catalyst.analysis.NamespaceAlreadyExistsException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class SchemaOperationsTest extends BaseSparkIntegrationTest {
-  @Test
-  public void testCreateSchema() {
-    session = createSparkSessionWithCatalogs(CATALOG_NAME, SPARK_CATALOG);
-    session.catalog().setCurrentCatalog(CATALOG_NAME);
-    sql("CREATE DATABASE my_test_database;");
-    assertThat(session.catalog().databaseExists("my_test_database")).isTrue();
-    sql("DROP DATABASE %s.my_test_database;", CATALOG_NAME);
-    assertThat(session.catalog().databaseExists("my_test_database")).isFalse();
+  @AfterEach
+  public void restoreLoadDeltaCatalog() {
+    // Restore the default in case testNamespaceOps flipped it (and even if it failed mid-way), so
+    // other tests still load the Delta catalog.
+    UCSingleCatalog.LOAD_DELTA_CATALOG().set(true);
+  }
 
-    session.catalog().setCurrentCatalog(SPARK_CATALOG);
-    sql("CREATE DATABASE my_test_database;");
-    assertThat(session.catalog().databaseExists("my_test_database")).isTrue();
-    sql("DROP DATABASE %s.my_test_database;", SPARK_CATALOG);
-    assertThat(session.catalog().databaseExists("my_test_database")).isFalse();
+  // Exercises the full namespace lifecycle (create/list/desc/drop) for both delegate paths:
+  // Delta catalog loaded (DelegatingCatalogExtension) vs not (UCProxy). Within each round we run
+  // the lifecycle against both the UC catalog (CATALOG_NAME) and the session catalog
+  // (spark_catalog) in the same session.
+  //
+  // The Delta flags must be set before the session is created because the delegate is chosen at
+  // catalog-init time. DELTA_CATALOG_LOADED is expected to end up equal to loadDeltaCatalog: it is
+  // flipped to true only when the flag is on and DeltaCatalog is on the classpath, so asserting it
+  // also confirms the delegate really was UCProxy in the Delta-disabled case.
+  @ParameterizedTest(name = "loadDeltaCatalog={0}")
+  @ValueSource(booleans = {true, false})
+  public void testNamespaceOps(boolean loadDeltaCatalog) {
+    UCSingleCatalog.LOAD_DELTA_CATALOG().set(loadDeltaCatalog);
+    UCSingleCatalog.DELTA_CATALOG_LOADED().set(false);
+    session = createSparkSessionWithCatalogs(CATALOG_NAME, SPARK_CATALOG);
+
+    for (String catalog : List.of(CATALOG_NAME, SPARK_CATALOG)) {
+      session.catalog().setCurrentCatalog(catalog);
+
+      // createNamespace
+      sql("CREATE DATABASE my_test_database");
+      assertThat(session.catalog().databaseExists("my_test_database")).isTrue();
+
+      // listNamespaces (SHOW SCHEMAS) -- includes the default schema plus the one we created.
+      List<String> schemaNames =
+          sql("SHOW SCHEMAS").stream().map(row -> row.getString(0)).collect(Collectors.toList());
+      assertThat(schemaNames).contains("my_test_database", SCHEMA_NAME);
+
+      // loadNamespaceMetadata (DESC SCHEMA)
+      List<Row> desc = sql("DESC SCHEMA my_test_database");
+      assertThat(desc.get(0).getString(0)).isEqualTo("Catalog Name");
+      assertThat(desc.get(0).getString(1)).isEqualTo(catalog);
+
+      // dropNamespace
+      sql("DROP DATABASE %s.my_test_database", catalog);
+      assertThat(session.catalog().databaseExists("my_test_database")).isFalse();
+    }
+
+    // See method comment: when Delta is disabled the delegate must be UCProxy (flag stays false).
+    assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(loadDeltaCatalog);
   }
 
   // On Spark 4.2+ (SPARK-55250), this exercises the UCProxy.createNamespace catch
@@ -94,42 +129,6 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
 
     assertThatThrownBy(() -> sql("DESC NAMESPACE NonExist"))
         .isInstanceOf(NoSuchNamespaceException.class);
-  }
-
-  @Test
-  public void testNamespaceOpsWithoutDeltaCatalog() {
-    UCSingleCatalog.LOAD_DELTA_CATALOG().set(false);
-    UCSingleCatalog.DELTA_CATALOG_LOADED().set(false);
-    session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    session.catalog().setCurrentCatalog(CATALOG_NAME);
-
-    // createNamespace
-    sql("CREATE DATABASE no_delta_ns");
-    assertThat(session.catalog().databaseExists("no_delta_ns")).isTrue();
-
-    // listNamespaces (SHOW SCHEMAS) -- includes the default schema plus the one we created.
-    List<String> schemaNames =
-        sql("SHOW SCHEMAS").stream().map(row -> row.getString(0)).collect(Collectors.toList());
-    assertThat(schemaNames).contains("no_delta_ns", SCHEMA_NAME);
-
-    // loadNamespaceMetadata (DESC SCHEMA)
-    List<Row> desc = sql("DESC SCHEMA no_delta_ns");
-    assertThat(desc.get(0).getString(0)).isEqualTo("Catalog Name");
-    assertThat(desc.get(0).getString(1)).isEqualTo(CATALOG_NAME);
-
-    // dropNamespace
-    sql("DROP DATABASE %s.no_delta_ns", CATALOG_NAME);
-    assertThat(session.catalog().databaseExists("no_delta_ns")).isFalse();
-
-    // Sanity check: the delegate really was UCProxy, not a DelegatingCatalogExtension.
-    assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(false);
-  }
-
-  @AfterEach
-  public void restoreLoadDeltaCatalog() {
-    // Restore the default in case testNamespaceOpsWithoutDeltaCatalog flipped it (and even if it
-    // failed mid-way), so other tests still load the Delta catalog.
-    UCSingleCatalog.LOAD_DELTA_CATALOG().set(true);
   }
 
   @Test
