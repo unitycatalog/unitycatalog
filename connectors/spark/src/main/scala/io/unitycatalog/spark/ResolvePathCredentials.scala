@@ -26,6 +26,8 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation
 import org.apache.spark.sql.catalyst.plans.logical.{InsertIntoDir, InsertIntoStatement, LogicalPlan}
 import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.connector.catalog.CatalogNotFoundException
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import scala.collection.JavaConverters._
@@ -93,7 +95,8 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
           case i: InsertIntoDir if i.storage.locationUri.exists(u => isCloudPath(u.toString)) =>
             val location = i.storage.locationUri.get.toString
             val conf =
-              uc.vendPathCredentialConfOrEmpty(location, PathOperation.PATH_READ_WRITE)
+              uc.vendPathCredentialConfOrEmpty(
+                spark, location, PathOperation.PATH_READ_WRITE)
             if (conf.isEmpty) {
               i
             } else {
@@ -108,15 +111,22 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
       relation: UnresolvedRelation,
       uc: UCSingleCatalog): UnresolvedRelation = {
     val path = relation.multipartIdentifier.last
-    val conf = uc.vendPathCredentialConfWithFallback(path)
+    val conf = uc.vendPathCredentialConfWithFallback(spark, path)
     if (conf.isEmpty) relation else relation.copy(options = mergeOptions(relation.options, conf))
   }
 
-  private def currentUcCatalog: Option[UCSingleCatalog] =
-    spark.sessionState.catalogManager.currentCatalog match {
-      case uc: UCSingleCatalog => Some(uc)
-      case _ => None
+  private def currentUcCatalog: Option[UCSingleCatalog] = {
+    val manager = spark.sessionState.catalogManager
+    val catalogName = spark.sessionState.conf.getConf(SQLConf.DEFAULT_CATALOG)
+    try {
+      manager.catalog(catalogName) match {
+        case uc: UCSingleCatalog => Some(uc)
+        case _ => None
+      }
+    } catch {
+      case _: CatalogNotFoundException => None
     }
+  }
 }
 
 object ResolvePathCredentials {

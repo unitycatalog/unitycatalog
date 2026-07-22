@@ -401,7 +401,9 @@ class UCSingleCatalog
    * credential builder does not recognize (e.g. local paths), so callers can no-op safely.
    */
   private[spark] def vendPathCredentialConf(
-      location: String, operation: PathOperation): util.Map[String, String] = {
+      spark: SparkSession,
+      location: String,
+      operation: PathOperation): util.Map[String, String] = {
     val scheme = new Path(location).toUri.getScheme
     if (scheme == null) return util.Collections.emptyMap[String, String]()
     UCCredentialHadoopConfs
@@ -411,7 +413,7 @@ class UCSingleCatalog
       .apiClient(apiClient)
       .enableCredentialRenewal(renewCredEnabled)
       .enableCredentialScopedFs(credScopedFsEnabled)
-      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+      .hadoopConf(UCSingleCatalog.sessionHadoopConf(spark))
       .buildForPath(location, operation)
   }
 
@@ -421,10 +423,11 @@ class UCSingleCatalog
    * credentials already configured on the Spark session.
    */
   private[spark] def vendPathCredentialConfOrEmpty(
+      spark: SparkSession,
       location: String,
       operation: PathOperation): util.Map[String, String] = {
     try {
-      vendPathCredentialConf(location, operation)
+      vendPathCredentialConf(spark, location, operation)
     } catch {
       case e: ApiException =>
         logDebug(
@@ -439,13 +442,15 @@ class UCSingleCatalog
    * falls back to PATH_READ, then to an empty map for ambient credentials — same ambiguity
    * handling as loadTable.
    */
-  private[spark] def vendPathCredentialConfWithFallback(location: String): util.Map[String, String] = {
-    val readWrite = vendPathCredentialConfOrEmpty(location, PathOperation.PATH_READ_WRITE)
+  private[spark] def vendPathCredentialConfWithFallback(
+      spark: SparkSession,
+      location: String): util.Map[String, String] = {
+    val readWrite = vendPathCredentialConfOrEmpty(spark, location, PathOperation.PATH_READ_WRITE)
     if (!readWrite.isEmpty) {
       readWrite
     } else {
       logDebug(s"PATH_READ_WRITE unavailable for $location, trying PATH_READ")
-      vendPathCredentialConfOrEmpty(location, PathOperation.PATH_READ)
+      vendPathCredentialConfOrEmpty(spark, location, PathOperation.PATH_READ)
     }
   }
 
@@ -650,9 +655,12 @@ object UCSingleCatalog {
    * directly via {@code SparkSession.Builder.config("fs.<scheme>.impl", ...)} or {@code SET}
    * commands, not only those prefixed with {@code spark.hadoop.}.
    */
+  def sessionHadoopConf(spark: SparkSession): Configuration =
+    spark.sessionState.newHadoopConf()
+
   def sessionHadoopConf(): Configuration = {
     SparkSession.getActiveSession
-      .map(_.sessionState.newHadoopConf())
+      .map(sessionHadoopConf(_))
       .getOrElse(new Configuration())
   }
 
