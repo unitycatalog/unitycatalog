@@ -257,4 +257,34 @@ public class ServerPropertiesTest {
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("cannot combine '*' with other values");
   }
+
+  @Test
+  public void testAllowlistCaching() {
+    Properties props = new Properties();
+    props.setProperty("server.allowed-issuers", "https://a.example.com");
+    ServerProperties serverProperties = new ServerProperties(props);
+
+    WildcardAllowlist first = serverProperties.getIssuerAllowlist();
+    WildcardAllowlist second = serverProperties.getIssuerAllowlist();
+    assertThat(first).isSameAs(second);
+    assertThat(first.isAllowed("https://a.example.com")).isTrue();
+  }
+
+  @Test
+  public void testAllowlistRebuildsWhenPropertyChanges() {
+    Properties props = new Properties();
+    props.setProperty("server.allowed-issuers", "https://a.example.com");
+    ServerProperties serverProperties = new ServerProperties(props);
+    WildcardAllowlist original = serverProperties.getIssuerAllowlist();
+
+    System.setProperty("server.allowed-issuers", "https://b.example.com");
+    try {
+      WildcardAllowlist rebuilt = serverProperties.getIssuerAllowlist();
+      assertThat(rebuilt).isNotSameAs(original);
+      assertThat(rebuilt.isAllowed("https://b.example.com")).isTrue();
+      assertThat(rebuilt.isAllowed("https://a.example.com")).isFalse();
+    } finally {
+      System.clearProperty("server.allowed-issuers");
+    }
+  }
 }

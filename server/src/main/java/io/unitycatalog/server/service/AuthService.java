@@ -39,7 +39,6 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
-import io.unitycatalog.server.utils.AudienceAllowlist;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -99,7 +98,8 @@ public class AuthService {
    * (server.allowed-issuers) and the token must contain a valid audience claim matching the
    * configured audiences (server.audiences). Audience entries support exact match or wildcard
    * patterns with {@code *} (same rules as server.allowed-issuers). A single value of {@code *}
-   * disables audience validation. Both configurations are required when authorization is enabled.
+   * disables audience validation. Both configurations are required when token exchange runs with
+   * authorization enabled.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
@@ -139,22 +139,6 @@ public class AuthService {
           ErrorCode.INVALID_ARGUMENT, "Authorization is disabled");
     }
 
-    List<String> allowedIssuers = serverProperties.getAllowedIssuers();
-    if (allowedIssuers.isEmpty()) {
-      LOGGER.error("No allowed issuers configured");
-      throw new OAuthInvalidRequestException(
-          ErrorCode.INVALID_ARGUMENT,
-          "No allowed issuers configured. Set server.allowed-issuers in server.properties");
-    }
-
-    List<String> audiences = serverProperties.getAudiences();
-    if (audiences.isEmpty()) {
-      LOGGER.error("No audiences configured");
-      throw new OAuthInvalidRequestException(
-          ErrorCode.INVALID_ARGUMENT,
-          "No audiences configured. Set server.audiences in server.properties");
-    }
-
     DecodedJWT decodedJWT;
     try {
       decodedJWT = JWT.decode(form.getSubjectToken());
@@ -167,7 +151,7 @@ public class AuthService {
     String issuer = decodedJWT.getIssuer();
 
     // Validate issuer is in allowlist BEFORE fetching JWKS
-    if (!allowedIssuers.contains(issuer)) {
+    if (!serverProperties.getIssuerAllowlist().isAllowed(issuer)) {
       LOGGER.debug("Token rejected: invalid issuer '{}'", issuer);
       throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid issuer");
     }
@@ -188,7 +172,7 @@ public class AuthService {
     }
 
     if (!serverProperties.isAudienceValidationDisabled()
-        && !AudienceAllowlist.isAllowed(decodedJWT.getAudience(), audiences)) {
+        && !serverProperties.getAudienceAllowlist().isAnyAllowed(decodedJWT.getAudience())) {
       LOGGER.debug("Token rejected: audience not in allowlist");
       throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
     }

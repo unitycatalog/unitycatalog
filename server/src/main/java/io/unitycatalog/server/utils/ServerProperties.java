@@ -522,6 +522,39 @@ public class ServerProperties {
     }
   }
 
+  private volatile WildcardAllowlist cachedIssuerAllowlist;
+  private volatile WildcardAllowlist cachedAudienceAllowlist;
+
+  /**
+   * Returns a compiled allowlist for {@code server.allowed-issuers}, rebuilding when the raw
+   * property value changes.
+   */
+  public WildcardAllowlist getIssuerAllowlist() {
+    String current = getProperty(WildcardAllowlist.ALLOWED_ISSUERS_PROPERTY);
+    String normalized = current == null ? "" : current;
+    WildcardAllowlist cached = cachedIssuerAllowlist;
+    if (cached == null || !cached.source().equals(normalized)) {
+      cached = WildcardAllowlist.forAllowedIssuers(normalized);
+      cachedIssuerAllowlist = cached;
+    }
+    return cached;
+  }
+
+  /**
+   * Returns a compiled allowlist for {@code server.audiences}, rebuilding when the raw property
+   * value changes.
+   */
+  public WildcardAllowlist getAudienceAllowlist() {
+    String current = getProperty(WildcardAllowlist.AUDIENCES_PROPERTY);
+    String normalized = current == null ? "" : current;
+    WildcardAllowlist cached = cachedAudienceAllowlist;
+    if (cached == null || !cached.source().equals(normalized)) {
+      cached = WildcardAllowlist.forAudiences(normalized);
+      cachedAudienceAllowlist = cached;
+    }
+    return cached;
+  }
+
   /**
    * Get the list of allowed token issuers.
    *
@@ -531,7 +564,7 @@ public class ServerProperties {
    * @return List of allowed issuer URLs (exact match or wildcard with {@code *})
    */
   public List<String> getAllowedIssuers() {
-    return getCommaSeparatedList("server.allowed-issuers");
+    return getCommaSeparatedList(WildcardAllowlist.ALLOWED_ISSUERS_PROPERTY);
   }
 
   /**
@@ -547,7 +580,7 @@ public class ServerProperties {
    * @return List of expected audience values
    */
   public List<String> getAudiences() {
-    return getCommaSeparatedList("server.audiences");
+    return getCommaSeparatedList(WildcardAllowlist.AUDIENCES_PROPERTY);
   }
 
   /**

@@ -55,7 +55,7 @@ server.audiences=<Client ID provided earlier>
 
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
 
-- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
+- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
 - **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values.
 
 #### Multiple Identity Providers
@@ -67,7 +67,13 @@ server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline
 server.audiences=your-google-client-id,your-azure-client-id
 ```
 
-Wildcard audience patterns match a single DNS label per `*`. For example, `https://*.dev.example.com`
+Wildcard issuers match a single DNS label per `*`:
+
+```properties
+server.allowed-issuers=https://*.dev.example.com
+```
+
+Wildcard audience patterns use the same `*` rules. For example, `https://*.dev.example.com`
 accepts tokens whose `aud` includes `https://dev.dev.example.com` or
 `https://backend.dev.example.com`:
 
