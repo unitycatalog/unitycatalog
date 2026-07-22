@@ -19,6 +19,7 @@ import io.unitycatalog.client.api.TablesApi
 import org.apache.spark.sql.catalyst.analysis.{
   NoSuchTableException,
   NoSuchViewException,
+  SchemaCompensation,
   ViewAlreadyExistsException
 }
 import org.apache.spark.sql.catalyst.catalog.CatalogTable
@@ -28,8 +29,10 @@ import org.apache.spark.sql.connector.catalog.{
   Identifier,
   Relation,
   RelationCatalog,
+  Table,
   TableCatalog,
   TableDependency,
+  TableSummary,
   View
 }
 import org.apache.spark.sql.types.DataType
@@ -52,6 +55,15 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       .map(table => Identifier.of(namespace, table.getName))
       .toArray
   }
+
+  // View-like rows are served through the RelationCatalog/ViewCatalog surface, so reject them from
+  // the table surface. Carry the fetched row in the exception so `UCSingleCatalog.loadRelation`'s
+  // fallback can build the view without a second `getTable`.
+  protected[spark] def loadViewLikeFromTableSurface(t: UCTableInfo, ident: Identifier): Table =
+    throw new ViewFoundDuringTableLoadException(ident, t)
+
+  protected[spark] def hideFromTableListing(tableType: TableType): Boolean =
+    UCViewTypes.isViewLikeTableType(tableType)
 
   override def loadRelation(ident: Identifier): Relation = {
     val t = getUCTableLike(ident).getOrElse(throw new NoSuchTableException(ident))
@@ -86,7 +98,9 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
   override def createView(ident: Identifier, view: View): View = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val properties: util.Map[String, String] = view.properties()
-    val sparkTableType = properties.get(TableCatalog.PROP_TABLE_TYPE)
+    // A plain `CREATE VIEW` may omit PROP_TABLE_TYPE; treat that as a regular VIEW.
+    val sparkTableType =
+      Option(properties.get(TableCatalog.PROP_TABLE_TYPE)).getOrElse(TableSummary.VIEW_TABLE_TYPE)
     val ucTableType = UCViewTypes.sparkViewTypeToUcTableType(sparkTableType).getOrElse {
       throw new ApiException(
         s"Unity Catalog does not support creating $sparkTableType via ViewCatalog.createView")
@@ -100,9 +114,11 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       .viewDefinition(view.queryText())
 
     Option(properties.get(TableCatalog.PROP_COMMENT)).foreach(ct.setComment)
-    Option(view.viewDependencies()).foreach { deps =>
-      ct.setViewDependencies(toUcDependencyList(deps))
-    }
+    // The server requires a non-null dependency list; a plain view often has none.
+    val ucDeps = Option(view.viewDependencies())
+      .map(toUcDependencyList)
+      .getOrElse(new UCDependencyList().dependencies(new util.ArrayList[UCDependency]()))
+    ct.setViewDependencies(ucDeps)
     ct.setColumns(buildColumnInfos(view, convertDataTypeToTypeName).asJava)
 
     val propertiesToServer = new util.HashMap[String, String]()
@@ -183,7 +199,7 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       .withCurrentCatalog(t.getCatalogName)
       .withCurrentNamespace(Array(t.getSchemaName))
       .withSqlConfigs(sqlConfigs)
-      .withSchemaMode("UNSUPPORTED")
+      .withSchemaMode(SchemaCompensation.toString)
       .withQueryColumnNames(columns.map(_.name()))
     Option(t.getComment).foreach(builder.withComment)
     Option(t.getViewDependencies).foreach { ucDeps =>
