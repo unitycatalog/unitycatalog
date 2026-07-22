@@ -1,6 +1,5 @@
 package io.unitycatalog.spark
 
-import org.apache.spark.sql.catalyst.analysis.{NoSuchTableException, NoSuchViewException}
 import org.apache.spark.sql.connector.catalog.{
   Identifier,
   Relation,
@@ -41,18 +40,20 @@ trait UCSingleCatalogViewSupport extends RelationCatalog { self: UCSingleCatalog
     ucProxy.renameView(oldIdent, newIdent)
 
   /**
-   * Keep normal table loading on the delegate path. If the delegate rejects the identifier as
-   * a table, try the UC view path.
+   * Keep normal table loading on the delegate path. If the UC table-only path finds a view, reuse
+   * the view metadata carried by its `NoSuchTableException` instead of issuing another UC lookup.
    */
   override def loadRelation(ident: Identifier): Relation = {
     try {
       delegate.loadTable(ident)
     } catch {
-      case tableNotFound: NoSuchTableException =>
-        try {
-          ucProxy.loadView(ident)
-        } catch {
-          case _: NoSuchViewException => throw tableNotFound
+      case viewFound: ViewFoundDuringTableLoadException =>
+        val t = viewFound.tableInfo
+        if (UCViewTypes.isViewCommandsSupportedTableType(t.getTableType)) {
+          ucProxy.toView(t)
+        } else {
+          throw new UnsupportedOperationException(
+            s"Loading a ${t.getTableType} view is not supported yet")
         }
     }
   }

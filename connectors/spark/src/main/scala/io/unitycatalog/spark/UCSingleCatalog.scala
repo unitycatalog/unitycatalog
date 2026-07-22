@@ -620,6 +620,12 @@ object UCSingleCatalog {
 
 }
 
+/** Internal signal that preserves a view row rejected by the table-only catalog surface. */
+private[spark] final class ViewFoundDuringTableLoadException(
+    ident: Identifier,
+    val tableInfo: UCTableInfo)
+  extends NoSuchTableException(ident)
+
 // An internal proxy to talk to the UC client.
 private[spark] class UCProxy(
     uri: URI,
@@ -690,7 +696,7 @@ private[spark] class UCProxy(
   override def loadTable(ident: Identifier): Table = {
     val t = getUCTableLike(ident).getOrElse(throw new NoSuchTableException(ident))
     if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
-      throw new NoSuchTableException(ident)
+      throw new ViewFoundDuringTableLoadException(ident, t)
     } else {
       loadV1Table(t)
     }
