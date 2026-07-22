@@ -155,6 +155,28 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
+   * Path credential vending must use the explicit {@code SparkSession} passed from the parser, not
+   * {@code SparkSession.getActiveSession}. {@code
+   * session.sessionState().sqlParser().parsePlan(...)} does not guarantee an active session on the
+   * calling thread.
+   */
+  @Test
+  public void testVendPathCredentialsWithoutActiveSession() throws IOException {
+    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
+    String location = bucketPath("no_active_session");
+    UCSingleCatalog catalog =
+        (UCSingleCatalog) session.sessionState().catalogManager().catalog(SPARK_CATALOG);
+
+    SparkSession.clearActiveSession();
+    try {
+      assertThat(catalog.vendPathCredentialConfWithFallback(session, location))
+          .containsEntry("fs.s3a.access.key", "accessKey0");
+    } finally {
+      SparkSession.setActiveSession(session);
+    }
+  }
+
+  /**
    * When UC cannot vend credentials for a path (not managed by UC), execution continues and Spark
    * falls back to ambient storage credentials. With none configured for this bucket, the write
    * fails at the filesystem layer — not with a UC {@link ApiException}.
