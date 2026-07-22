@@ -4,21 +4,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiClient;
-import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.delta.DeltaApiException;
 import io.unitycatalog.client.delta.model.DeltaErrorType;
+import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.function.Executable;
 
-public class TestUtils {
+public final class TestUtils {
+
+  private TestUtils() {}
+
   public static final String CATALOG_NAME = "uc_testcatalog";
   public static final String SCHEMA_NAME = "uc_testschema";
   public static final String CATALOG_NAME2 = "uc_testcatalog2";
@@ -59,20 +62,19 @@ public class TestUtils {
   public static final String TEST_AWS_MASTER_ROLE_SECRET_KEY = "masterRoleSecretKey";
   public static final String TEST_AWS_REGION = "us-west-2";
 
-  public static final Map<String, String> PROPERTIES =
-      new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));
+  public static final Map<String, String> PROPERTIES = Map.of("prop1", "value1", "prop2", "value2");
   public static final Map<String, String> NEW_PROPERTIES =
-      new HashMap<>(Map.of("prop2", "value22", "prop3", "value33"));
+      Map.of("prop2", "value22", "prop3", "value33");
   public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
 
   public static ApiClient createApiClient(ServerConfig serverConfig) {
     URI uri = URI.create(serverConfig.getServerUrl());
     String token = serverConfig.getAuthToken() != null ? serverConfig.getAuthToken() : "";
-    return ApiClientBuilder.create()
-        .uri(uri)
-        .tokenProvider(TokenProvider.create(Map.of("type", "static", "token", token)))
-        .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(1).build())
-        .build();
+    return ApiClientUtils.create(
+        uri,
+        TokenProvider.create(Map.of("type", "static", "token", token)),
+        JitterDelayRetryPolicy.builder().maxAttempts(1).build(),
+        Collections.emptyMap());
   }
 
   public static void assertApiException(
