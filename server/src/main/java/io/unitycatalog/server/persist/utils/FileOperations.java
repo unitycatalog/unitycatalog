@@ -132,8 +132,12 @@ public class FileOperations {
     } else if (cred.getAwsTempCredentials() != null) {
       return getS3Config(path, cred.getAwsTempCredentials());
     } else {
-      // Cloud vend returned no recognized credential type; nothing to configure.
-      return Map.of();
+      // Cloud vend returned no recognized credential type. This should not happen for a cloud
+      // scheme, so fail loudly rather than silently returning an empty (credential-less) config
+      // that would later surface as an opaque access-denied error.
+      throw new BaseException(
+          ErrorCode.INTERNAL,
+          "No recognized storage credential was vended for location: " + path);
     }
   }
 
@@ -161,6 +165,14 @@ public class FileOperations {
   private Map<String, String> getS3Config(NormalizedURL path, AwsCredentials awsCredentials) {
     // TODO: if region isn't configured, use HEAD bucket to figure out
     String s3Region = s3BucketRegionMap.get(path.getStorageBase());
+    if (s3Region == null) {
+      // s3BucketRegionMap has no entry for this bucket (Map.get returns null on a miss). Guard
+      // here with a clear message rather than letting Map.of throw an opaque NullPointerException
+      // below.
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "No S3 region configured for bucket: " + path.getStorageBase());
+    }
     return Map.of(
         S3FileIOProperties.ACCESS_KEY_ID, awsCredentials.getAccessKeyId(),
         S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey(),
