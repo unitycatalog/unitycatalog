@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -466,14 +467,16 @@ public class CredPropsUtil {
       Map<String, String> appVersions,
       CredId credId)
       throws ApiException {
-    if (!CloudType.isSupportedScheme(scheme)) {
+    Optional<CloudType> cloudType = CloudType.fromScheme(scheme);
+    if (cloudType.isEmpty()) {
+      // Unsupported scheme: skip the credential fetch entirely and return no props.
       return Collections.emptyMap();
     }
     GenericCredential cred =
         fetchGenericCredential(
             hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
-    switch (scheme) {
-      case "s3":
+    switch (cloudType.get()) {
+      case S3:
         if (renewCredEnabled) {
           return s3TempCredPropsBuilder(
                   credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, cred)
@@ -483,7 +486,7 @@ public class CredPropsUtil {
         } else {
           return s3FixedCredProps(credScopedFsEnabled, hadoopConf, cred);
         }
-      case "gs":
+      case GCS:
         if (renewCredEnabled) {
           return gcsTempCredPropsBuilder(
                   credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, cred)
@@ -493,8 +496,7 @@ public class CredPropsUtil {
         } else {
           return gsFixedCredProps(credScopedFsEnabled, hadoopConf, cred);
         }
-      case "abfss":
-      case "abfs":
+      case ABFS:
         if (renewCredEnabled) {
           return abfsTempCredPropsBuilder(
                   credScopedFsEnabled, hadoopConf, catalogUri, tokenProvider, cred)
@@ -504,9 +506,8 @@ public class CredPropsUtil {
         } else {
           return abfsFixedCredProps(credScopedFsEnabled, hadoopConf, cred);
         }
-      default:
-        return Collections.emptyMap();
     }
+    throw new IllegalStateException("Unhandled cloud type: " + cloudType.get());
   }
 
   /**
