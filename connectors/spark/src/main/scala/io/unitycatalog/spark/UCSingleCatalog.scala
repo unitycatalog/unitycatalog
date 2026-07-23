@@ -793,7 +793,8 @@ private[spark] class UCProxy(
       schema = StructType(fields),
       viewText = Option(t.getViewDefinition),
       comment = Option(t.getComment),
-      properties = t.getProperties.asScala.toMap ++ viewNamespaceProps,
+      properties = Option(t.getProperties).map(_.asScala.toMap).getOrElse(Map.empty) ++
+        viewNamespaceProps,
       createTime = t.getCreatedAt,
       tracksPartitionsInCatalog = false
     )

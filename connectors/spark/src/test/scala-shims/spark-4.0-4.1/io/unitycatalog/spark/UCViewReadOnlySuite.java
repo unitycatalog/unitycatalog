@@ -68,10 +68,8 @@ public class UCViewReadOnlySuite {
         .thenReturn(row);
   }
 
-  // -- loadTable: plain views resolve as V1 VIEW tables; other view kinds cannot --
-
-  @Test
-  public void testLoadTableResolvesPlainViewAsV1View() throws Exception {
+  /** Stubs {@code getTable} to return a plain {@code VIEW} row {@code v1} with the given props. */
+  private void stubPlainView(Map<String, String> properties) throws Exception {
     TableInfo row =
         new TableInfo()
             .catalogName(CATALOG_NAME)
@@ -79,6 +77,7 @@ public class UCViewReadOnlySuite {
             .name("v1")
             .tableType(TableType.VIEW)
             .viewDefinition("SELECT 1 AS c")
+            .properties(properties)
             .columns(
                 List.of(
                     new ColumnInfo()
@@ -89,6 +88,13 @@ public class UCViewReadOnlySuite {
                         .position(0)));
     when(mockTablesApi.getTable(eq("test_catalog.test_schema.v1"), eq(true), eq(true)))
         .thenReturn(row);
+  }
+
+  // -- loadTable: plain views resolve as V1 VIEW tables; other view kinds cannot --
+
+  @Test
+  public void testLoadTableResolvesPlainViewAsV1View() throws Exception {
+    stubPlainView(Map.of());
 
     Table table = proxy.loadTable(Identifier.of(NAMESPACE, "v1"));
 
@@ -96,6 +102,15 @@ public class UCViewReadOnlySuite {
     CatalogTable catalogTable = ((V1Table) table).v1Table();
     assertThat(catalogTable.tableType().name()).isEqualTo("VIEW");
     assertThat(catalogTable.viewText().get()).isEqualTo("SELECT 1 AS c");
+  }
+
+  @Test
+  public void testLoadTableResolvesPlainViewWithNullProperties() throws Exception {
+    // Server-created views commonly have no properties, and the wire model leaves the map null.
+    // loadTable must still resolve the view -- regression for an NPE in buildV1ViewTable.
+    stubPlainView(null);
+
+    assertThat(proxy.loadTable(Identifier.of(NAMESPACE, "v1"))).isInstanceOf(V1Table.class);
   }
 
   @Test

@@ -15,7 +15,6 @@ import io.unitycatalog.client.model.{
   TableInfo => UCTableInfo,
   TableType
 }
-import io.unitycatalog.client.api.TablesApi
 import org.apache.spark.sql.catalyst.analysis.{
   NoSuchTableException,
   NoSuchViewException,
@@ -114,10 +113,15 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       .viewDefinition(view.queryText())
 
     Option(properties.get(TableCatalog.PROP_COMMENT)).foreach(ct.setComment)
-    // The server requires a non-null dependency list; a plain view often has none.
-    val ucDeps = Option(view.viewDependencies())
-      .map(toUcDependencyList)
-      .getOrElse(new UCDependencyList().dependencies(new util.ArrayList[UCDependency]()))
+    // The server requires a non-null dependency list. Spark only fills `viewDependencies()` for
+    // metric views; for a plain view it is null, so derive the base tables from the query text.
+    val ucDeps = Option(view.viewDependencies()) match {
+      case Some(deps) => toUcDependencyList(deps)
+      case None =>
+        ucDependencyListFromNames(
+          UCViewDependencies.derive(
+            view.queryText(), view.currentCatalog(), view.currentNamespace().toSeq))
+    }
     ct.setViewDependencies(ucDeps)
     ct.setColumns(buildColumnInfos(view, convertDataTypeToTypeName).asJava)
 
@@ -223,6 +227,15 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
             .tableFullName(td.nameParts().mkString("."))))
       case _ =>
       // UC OSS does not currently persist function dependencies; drop.
+    }
+    new UCDependencyList().dependencies(ucDeps)
+  }
+
+  /** Builds a wire-format UC `DependencyList` from derived `catalog.schema.table` names. */
+  private def ucDependencyListFromNames(fullNames: Seq[String]): UCDependencyList = {
+    val ucDeps = new java.util.ArrayList[UCDependency]()
+    fullNames.foreach { fullName =>
+      ucDeps.add(new UCDependency().table(new UCTableDependency().tableFullName(fullName)))
     }
     new UCDependencyList().dependencies(ucDeps)
   }
