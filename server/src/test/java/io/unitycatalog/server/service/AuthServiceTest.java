@@ -184,7 +184,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     // Second create triggers Scim2RuntimeException wrapping ResourceConflictException
     AggregatedHttpResponse second =
         client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
-    assertThat(second.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    assertThat(second.status()).isEqualTo(HttpStatus.CONFLICT);
 
     // Verify the SCIM error response is a valid JSON object (not double-serialized)
     // with the expected SCIM error fields
