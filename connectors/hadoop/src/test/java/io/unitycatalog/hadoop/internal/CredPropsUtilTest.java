@@ -16,6 +16,7 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -73,7 +74,7 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void s3DefaultOriginalImplWhenNotInExistingProps() throws Exception {
+  void s3DefaultOriginalImplFixedCredScopedFsHasExpectedKeys() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
     Map<String, String> props =
@@ -89,10 +90,23 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
-    assertThat(props.get("fs.s3.impl.original"))
-        .isEqualTo("org.apache.hadoop.fs.s3a.S3AFileSystem");
-    assertThat(props.get("fs.s3a.impl.original"))
-        .isEqualTo("org.apache.hadoop.fs.s3a.S3AFileSystem");
+    assertThat(props)
+        .containsExactlyInAnyOrderEntriesOf(
+            props(
+                "fs.s3a.path.style.access", "true",
+                "fs.s3.impl.disable.cache", "true",
+                "fs.s3a.impl.disable.cache", "true",
+                "fs.s3a.access.key", "ak",
+                "fs.s3a.secret.key", "sk",
+                "fs.s3a.session.token", "st",
+                "fs.s3.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem",
+                "fs.s3.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem",
+                "fs.s3a.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem",
+                "fs.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem",
+                "fs.AbstractFileSystem.s3.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFs",
+                "fs.AbstractFileSystem.s3.impl.original", "org.apache.hadoop.fs.s3a.S3A",
+                "fs.AbstractFileSystem.s3a.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFs",
+                "fs.AbstractFileSystem.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3A"));
   }
 
   @Test
@@ -144,7 +158,7 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void gsDefaultOriginalImplWhenNotInExistingProps() throws Exception {
+  void gsDefaultOriginalImplFixedCredScopedFsHasExpectedKeys() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> mockGenericCredentialFetcher(gcsCreds());
     Map<String, String> props =
@@ -160,12 +174,22 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
-    assertThat(props.get("fs.gs.impl.original"))
-        .isEqualTo("com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
+    assertThat(props)
+        .containsExactlyInAnyOrderEntriesOf(
+            props(
+                "fs.gs.impl.disable.cache", "true",
+                "fs.gs.create.items.conflict.check.enable", "false",
+                "fs.gs.auth.access.token.credential", "token",
+                "fs.gs.auth.access.token.expiration", String.valueOf(Long.MAX_VALUE),
+                "fs.gs.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem",
+                "fs.gs.impl.original", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem",
+                "fs.AbstractFileSystem.gs.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFs",
+                "fs.AbstractFileSystem.gs.impl.original",
+                    "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS"));
   }
 
   @Test
-  void abfsDefaultOriginalImplWhenNotInExistingProps() throws Exception {
+  void abfsDefaultOriginalImplFixedCredScopedFsHasExpectedKeys() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> mockGenericCredentialFetcher(abfsCreds());
     Map<String, String> props =
@@ -181,10 +205,25 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
-    assertThat(props.get("fs.abfs.impl.original"))
-        .isEqualTo("org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem");
-    assertThat(props.get("fs.abfss.impl.original"))
-        .isEqualTo("org.apache.hadoop.fs.azurebfs.SecureAzureBlobFileSystem");
+    assertThat(props)
+        .containsExactlyInAnyOrderEntriesOf(
+            props(
+                "fs.abfs.impl.disable.cache", "true",
+                "fs.abfss.impl.disable.cache", "true",
+                "fs.azure.account.auth.type", "SAS",
+                "fs.azure.account.hns.enabled", "true",
+                "fs.azure.sas.fixed.token", "sas",
+                "fs.abfs.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem",
+                "fs.abfs.impl.original", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem",
+                "fs.abfss.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem",
+                "fs.abfss.impl.original", "org.apache.hadoop.fs.azurebfs.SecureAzureBlobFileSystem",
+                "fs.AbstractFileSystem.abfs.impl",
+                    "io.unitycatalog.hadoop.internal.fs.CredScopedFs",
+                "fs.AbstractFileSystem.abfs.impl.original", "org.apache.hadoop.fs.azurebfs.Abfs",
+                "fs.AbstractFileSystem.abfss.impl",
+                    "io.unitycatalog.hadoop.internal.fs.CredScopedFs",
+                "fs.AbstractFileSystem.abfss.impl.original",
+                    "org.apache.hadoop.fs.azurebfs.Abfss"));
   }
 
   @Test
@@ -557,7 +596,8 @@ class CredPropsUtilTest {
   @Test
   void s3TableRenewalCredsHaveExpectedKeys() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
-        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
+        (apiClient, credId) ->
+            mockGenericCredentialFetcher(new AwsCredential("ak", "sk", "st", 12345L, null));
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             true,
@@ -571,18 +611,58 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
-    assertThat(props)
-        .containsEntry(UCHadoopConfConstants.UC_URI_KEY, "http://uc")
-        .containsEntry(UCHadoopConfConstants.UC_AUTH_TYPE, "static")
-        .containsEntry(
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .containsEntry(UCHadoopConfConstants.UC_TABLE_ID_KEY, "tid")
-        .containsEntry(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ_WRITE")
-        .containsEntry(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak")
-        .containsEntry(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, "sk")
-        .containsEntry(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st")
-        .doesNotContainKey("fs.s3a.access.key");
+    Map<String, String> expected = renewableTableContext("s3", "READ_WRITE");
+    expected.putAll(
+        props(
+            "fs.s3a.path.style.access", "true",
+            "fs.s3.impl.disable.cache", "true",
+            "fs.s3a.impl.disable.cache", "true",
+            "fs.s3a.aws.credentials.provider",
+                "io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider",
+            "fs.s3a.init.access.key", "ak",
+            "fs.s3a.init.secret.key", "sk",
+            "fs.s3a.init.session.token", "st",
+            "fs.s3a.init.credential.expired.time", "12345")); // Assert non-null expiration.
+    assertThat(props).containsExactlyInAnyOrderEntriesOf(expected);
+  }
+
+  @Test
+  void s3TableRenewalCredScopedFsHasExpectedKeys() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3Creds());
+    Map<String, String> props =
+        CredPropsUtil.createTableCredProps(
+            true,
+            true,
+            new Configuration(false),
+            "s3",
+            null,
+            "http://uc",
+            tokenProvider(),
+            "tid",
+            UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+            Map.of());
+
+    Map<String, String> expected = renewableTableContext("s3", "READ_WRITE");
+    expected.putAll(
+        props(
+            "fs.s3a.path.style.access", "true",
+            "fs.s3.impl.disable.cache", "true",
+            "fs.s3a.impl.disable.cache", "true",
+            "fs.s3a.aws.credentials.provider",
+                "io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider",
+            "fs.s3a.init.access.key", "ak",
+            "fs.s3a.init.secret.key", "sk",
+            "fs.s3a.init.session.token", "st",
+            "fs.s3.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem",
+            "fs.s3.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem",
+            "fs.s3a.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem",
+            "fs.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3AFileSystem",
+            "fs.AbstractFileSystem.s3.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFs",
+            "fs.AbstractFileSystem.s3.impl.original", "org.apache.hadoop.fs.s3a.S3A",
+            "fs.AbstractFileSystem.s3a.impl", "io.unitycatalog.hadoop.internal.fs.CredScopedFs",
+            "fs.AbstractFileSystem.s3a.impl.original", "org.apache.hadoop.fs.s3a.S3A"));
+    assertThat(props).containsExactlyInAnyOrderEntriesOf(expected);
   }
 
   @Test
@@ -603,10 +683,14 @@ class CredPropsUtilTest {
             Map.of());
 
     assertThat(props)
-        .containsEntry("fs.s3a.access.key", "ak")
-        .containsEntry("fs.s3a.secret.key", "sk")
-        .containsEntry("fs.s3a.session.token", "st")
-        .doesNotContainKey(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY);
+        .containsExactlyInAnyOrderEntriesOf(
+            props(
+                "fs.s3a.path.style.access", "true",
+                "fs.s3.impl.disable.cache", "true",
+                "fs.s3a.impl.disable.cache", "true",
+                "fs.s3a.access.key", "ak",
+                "fs.s3a.secret.key", "sk",
+                "fs.s3a.session.token", "st"));
   }
 
   @Test
@@ -626,15 +710,17 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.TableOperation.READ,
             Map.of());
 
-    assertThat(props)
-        .containsEntry(
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .containsEntry(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, "token")
-        .containsEntry(
-            UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
-            String.valueOf(Long.MAX_VALUE))
-        .doesNotContainKey("fs.gs.auth.access.token.credential");
+    Map<String, String> expected = renewableTableContext("gs", "READ");
+    expected.putAll(
+        props(
+            "fs.gs.impl.disable.cache", "true",
+            "fs.gs.create.items.conflict.check.enable", "false",
+            "fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER",
+            "fs.gs.auth.access.token.provider",
+                "io.unitycatalog.hadoop.internal.auth.GcsVendedTokenProvider",
+            "fs.gs.init.oauth.token", "token",
+            "fs.gs.init.oauth.token.expiration.time", String.valueOf(Long.MAX_VALUE)));
+    assertThat(props).containsExactlyInAnyOrderEntriesOf(expected);
   }
 
   @Test
@@ -654,12 +740,17 @@ class CredPropsUtilTest {
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
-    assertThat(props)
-        .containsEntry(
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .containsEntry(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, "sas")
-        .doesNotContainKey("fs.azure.sas.fixed.token");
+    Map<String, String> expected = renewableTableContext("abfs", "READ_WRITE");
+    expected.putAll(
+        props(
+            "fs.abfs.impl.disable.cache", "true",
+            "fs.abfss.impl.disable.cache", "true",
+            "fs.azure.account.auth.type", "SAS",
+            "fs.azure.account.hns.enabled", "true",
+            "fs.azure.sas.token.provider.type",
+                "io.unitycatalog.hadoop.internal.auth.AbfsVendedTokenProvider",
+            "fs.azure.init.sas.token", "sas"));
+    assertThat(props).containsExactlyInAnyOrderEntriesOf(expected);
   }
 
   @Test
@@ -1265,6 +1356,36 @@ class CredPropsUtilTest {
     assertThat(deltaProps).containsEntry("fs.gs.create.items.conflict.check.enable", "false");
   }
 
+  /** Builds a props map from alternating key/value pairs. */
+  private static Map<String, String> props(String... kv) {
+    Map<String, String> m = new HashMap<>();
+    for (int i = 0; i < kv.length; i += 2) {
+      m.put(kv[i], kv[i + 1]);
+    }
+    return m;
+  }
+
+  /**
+   * The shared context keys the renewable path always emits for a table request against {@code
+   * scheme}: catalog uri, the auth configs, the cred-context id, and the table {@link CredId}
+   * identity. The cloud-specific value/impl keys are merged on top per test.
+   *
+   * <p>The auth entries are derived from {@link TokenProvider#configs()} rather than hardcoded.
+   * This ensures that tests don't break when the SDK's config shape changes.
+   */
+  private static Map<String, String> renewableTableContext(String scheme, String tableOp) {
+    Map<String, String> context =
+        props(
+            "fs.unitycatalog.uri", "http://uc",
+            "fs.unitycatalog.cred.context.id",
+                CredPropsUtil.credContextId("http://uc", scheme, tokenProvider()),
+            "fs.unitycatalog.credentials.type", "table",
+            "fs.unitycatalog.table.id", "tid",
+            "fs.unitycatalog.table.operation", tableOp);
+    tokenProvider().configs().forEach((k, v) -> context.put("fs.unitycatalog.auth." + k, v));
+    return context;
+  }
+
   private static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential creds) {
     GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {
@@ -1280,18 +1401,18 @@ class CredPropsUtilTest {
   }
 
   private static GenericCredential s3Creds() {
-    return new AwsCredential("ak", "sk", "st", null);
+    return new AwsCredential("ak", "sk", "st", null, null);
   }
 
   private static GenericCredential s3CredsExpiringAt(String id, long expirationMillis) {
-    return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis);
+    return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis, null);
   }
 
   private static GenericCredential gcsCreds() {
-    return new GcsCredential("token", Long.MAX_VALUE);
+    return new GcsCredential("token", Long.MAX_VALUE, null);
   }
 
   private static GenericCredential abfsCreds() {
-    return new AzureCredential("sas", null);
+    return new AzureCredential("sas", null, null);
   }
 }

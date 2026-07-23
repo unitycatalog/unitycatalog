@@ -356,6 +356,32 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertGlobalCache(2, credA, credB);
   }
 
+  @Test
+  public void sameScopeDifferentLocationUsesSeparateGlobalCacheEntries() throws Exception {
+    Configuration confA = newTableBasedConf("shared-table");
+    confA.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    confA.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/a");
+
+    Configuration confB = newTableBasedConf("shared-table");
+    confB.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    confB.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/b");
+
+    TemporaryCredentials credA = newTempCred("locationA", clock.now().toEpochMilli() + 2000L);
+    TemporaryCredentials credB = newTempCred("locationB", clock.now().toEpochMilli() + 2000L);
+
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(credA).thenReturn(credB);
+
+    T providerA = createTestProvider(confA, tempCredApi);
+    T providerB = createTestProvider(confB, tempCredApi);
+
+    assertCred(providerA, credA);
+    assertCred(providerB, credB);
+    assertGlobalCache(2, credA, credB);
+  }
+
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {
     assertThat(expectedSize).isEqualTo(creds.length);
     assertThat(GenericCredentialProvider.globalCache.size()).isEqualTo(expectedSize);

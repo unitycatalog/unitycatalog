@@ -79,7 +79,8 @@ public class UCSingleCatalogStagingTableTest {
     setField(
         catalog, "tokenProvider", TokenProvider.create(Map.of("type", "static", "token", "tok")));
     GenericCredentialFetcher mockFetcher = mock(GenericCredentialFetcher.class);
-    when(mockFetcher.createCredential()).thenReturn(new GcsCredential("token", Long.MAX_VALUE));
+    when(mockFetcher.createCredential())
+        .thenReturn(new GcsCredential("token", Long.MAX_VALUE, null));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockFetcher;
   }
 
@@ -161,7 +162,8 @@ public class UCSingleCatalogStagingTableTest {
     // GenericCredentialFetcher factory so the test runs without a real UC server. file:// would
     // short-circuit before any fetch, making the verify() below vacuously true.
     GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
-    when(mockCredApi.createCredential()).thenReturn(new GcsCredential("token", Long.MAX_VALUE));
+    when(mockCredApi.createCredential())
+        .thenReturn(new GcsCredential("token", Long.MAX_VALUE, null));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
@@ -192,7 +194,8 @@ public class UCSingleCatalogStagingTableTest {
   public void testStageCreateOrReplaceMissingManagedTableAutoDefaultsCatalogManagedFeature()
       throws Exception {
     GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
-    when(mockCredApi.createCredential()).thenReturn(new GcsCredential("token", Long.MAX_VALUE));
+    when(mockCredApi.createCredential())
+        .thenReturn(new GcsCredential("token", Long.MAX_VALUE, null));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
@@ -250,7 +253,8 @@ public class UCSingleCatalogStagingTableTest {
   public void testStageCreateMissingManagedTableAutoDefaultsCatalogManagedFeature()
       throws Exception {
     GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
-    when(mockCredApi.createCredential()).thenReturn(new GcsCredential("token", Long.MAX_VALUE));
+    when(mockCredApi.createCredential())
+        .thenReturn(new GcsCredential("token", Long.MAX_VALUE, null));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.DelegateFileSystemId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
@@ -88,9 +89,36 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
+  void sameScopeDifferentLocationGetsDifferentDelegate() throws Exception {
+    URI uri = new URI("file:///tmp");
+    Configuration confA = tableConf("tid-1", "READ");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a");
+    Configuration confB = tableConf("tid-1", "READ");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/b");
+
+    CredScopedFileSystem fsA = init(uri, confA);
+    CredScopedFileSystem fsB = init(uri, confB);
+
+    assertThat(fsA.getDelegate()).isNotSameAs(fsB.getDelegate());
+  }
+
+  @Test
+  void sameScopeSameLocationReusesSameDelegate() throws Exception {
+    URI uri = new URI("file:///tmp");
+    Configuration conf = tableConf("tid-1", "READ");
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a");
+
+    CredScopedFileSystem fs1 = init(uri, conf);
+    CredScopedFileSystem fs2 = init(uri, conf);
+
+    assertThat(fs1.getDelegate()).isSameAs(fs2.getDelegate());
+  }
+
+  @Test
   void evictedEntryClosesCachedDelegate() throws Exception {
     FileSystem mockFs = mock(FileSystem.class);
-    CredId key = new TableCredId(EMPTY_CRED_CONTEXT_ID, "tid-evict", "READ");
+    CredId credId = new TableCredId(EMPTY_CRED_CONTEXT_ID, "tid-evict", "READ");
+    DelegateFileSystemId key = DelegateFileSystemId.of(credId, null);
     CredScopedFileSystem.CACHE.put(key, mockFs);
 
     CredScopedFileSystem.clearCacheForTesting();

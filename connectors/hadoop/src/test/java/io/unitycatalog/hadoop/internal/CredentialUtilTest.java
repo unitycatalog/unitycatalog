@@ -44,19 +44,19 @@ class CredentialUtilTest {
                         .secretAccessKey("secret-key")
                         .sessionToken("session-token"))
                 .expirationTime(EXPIRATION),
-            new AwsCredential("access-key", "secret-key", "session-token", EXPIRATION)),
+            new AwsCredential("access-key", "secret-key", "session-token", EXPIRATION, null)),
         Arguments.of(
             "Azure",
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token"))
                 .expirationTime(EXPIRATION),
-            new AzureCredential("sas-token", EXPIRATION)),
+            new AzureCredential("sas-token", EXPIRATION, null)),
         Arguments.of(
             "GCS",
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("oauth-token"))
                 .expirationTime(EXPIRATION),
-            new GcsCredential("oauth-token", EXPIRATION)));
+            new GcsCredential("oauth-token", EXPIRATION, null)));
   }
 
   @ParameterizedTest(name = "{0}")
@@ -146,6 +146,32 @@ class CredentialUtilTest {
   }
 
   @Test
+  void selectorMatchesAcrossSchemeAliases() {
+    DeltaStorageCredential s3Prefix = credAt("s3://bucket/t");
+    assertThat(
+            CredentialUtil.selectForLocation("s3a://bucket/t/file", List.of(s3Prefix)))
+        .isSameAs(s3Prefix);
+  }
+
+  @Test
+  void prefixCoversNormalizesSchemeAliasesAndCase() {
+    assertThat(CredentialUtil.prefixCovers("s3a://bucket/t", "s3://bucket/t")).isTrue();
+    assertThat(CredentialUtil.prefixCovers("S3://bucket/t", "s3://bucket/t")).isTrue();
+    assertThat(CredentialUtil.prefixCovers("abfss://c@a/t", "abfs://c@a/t")).isTrue();
+  }
+
+  @Test
+  void prefixCoversDoesNotMatchAcrossClouds() {
+    assertThat(CredentialUtil.prefixCovers("gs://bucket/t", "s3://bucket/t")).isFalse();
+  }
+
+  @Test
+  void prefixCoversLeavesUnknownSchemesUnnormalized() {
+    assertThat(CredentialUtil.prefixCovers("hdfs://nn/t", "hdfs://nn/t")).isTrue();
+    assertThat(CredentialUtil.prefixCovers("HDFS://nn/t", "hdfs://nn/t")).isFalse();
+  }
+
+  @Test
   void selectorIgnoresNullAndPrefixlessInMultiResponse() {
     List<DeltaStorageCredential> creds =
         Arrays.asList(null, new DeltaStorageCredential(), credAt("s3://bucket/t"));
@@ -179,6 +205,7 @@ class CredentialUtilTest {
     assertThat(gc.accessKeyId()).isEqualTo("ak");
     assertThat(gc.secretAccessKey()).isEqualTo("sk");
     assertThat(gc.sessionToken()).isEqualTo("st");
+    assertThat(gc.location()).isEqualTo("s3://bucket");
   }
 
   @Test
@@ -212,6 +239,7 @@ class CredentialUtilTest {
     AzureCredential gc = (AzureCredential) CredentialUtil.toGenericCredential(c);
     assertThat(gc.sasToken()).isEqualTo("sas-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(Long.MAX_VALUE);
+    assertThat(gc.location()).isEqualTo("abfss://container@account.dfs.core.windows.net/");
   }
 
   @Test
@@ -225,6 +253,7 @@ class CredentialUtilTest {
     GcsCredential gc = (GcsCredential) CredentialUtil.toGenericCredential(c);
     assertThat(gc.oauthToken()).isEqualTo("gcs-oauth-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(456L);
+    assertThat(gc.location()).isEqualTo("gs://bucket/");
   }
 
   @Test

@@ -9,13 +9,20 @@ import java.util.Objects;
  */
 public abstract class GenericCredential {
   private final Long expirationTimeMillis;
+  private final String location;
 
-  protected GenericCredential(Long expirationTimeMillis) {
+  protected GenericCredential(Long expirationTimeMillis, String location) {
     this.expirationTimeMillis = expirationTimeMillis;
+    this.location = location;
   }
 
   public final Long expirationTimeMillis() {
     return expirationTimeMillis;
+  }
+
+  /** The storage prefix this credential is scoped to, or {@code null} when not provided. */
+  public final String location() {
+    return location;
   }
 
   public final boolean readyToRenew(Clock clock, long renewalLeadTimeMillis) {
@@ -23,17 +30,18 @@ public abstract class GenericCredential {
         && expirationTimeMillis <= clock.now().toEpochMilli() + renewalLeadTimeMillis;
   }
 
-  /** Subclasses chain via {@code super.equals} to compare the shared expiration. */
   @Override
   public boolean equals(Object o) {
     if (!(o instanceof GenericCredential)) {
       return false;
     }
-    return Objects.equals(expirationTimeMillis, ((GenericCredential) o).expirationTimeMillis);
+    GenericCredential that = (GenericCredential) o;
+    return Objects.equals(expirationTimeMillis, that.expirationTimeMillis)
+        && Objects.equals(location, that.location);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(expirationTimeMillis);
+    return Objects.hash(expirationTimeMillis, location);
   }
 }

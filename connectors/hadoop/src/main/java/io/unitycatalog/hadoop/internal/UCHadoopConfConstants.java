@@ -55,6 +55,13 @@ public class UCHadoopConfConstants {
    */
   public static final String UC_CRED_CONTEXT_ID_KEY = "fs.unitycatalog.cred.context.id";
 
+  /**
+   * The storage location the credential covers, and therefore the prefix the delegate filesystem
+   * serves. Used to select the correct credential for the delegate filesystem when there is a
+   * multi-credential response; otherwise not required and is {@code null}.
+   */
+  public static final String UC_CREDENTIAL_LOCATION_KEY = "fs.unitycatalog.credential.location";
+
   // Prefix for engine version metadata (e.g. fs.unitycatalog.engine.version.Spark=4.0.0). Values
   // stored under this prefix are propagated to the User-Agent header on UC API calls so the
   // server can trace which engine versions are calling.
