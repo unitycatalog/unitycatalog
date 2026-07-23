@@ -13,6 +13,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 
 class BoundedKeyedCacheTest {
@@ -233,6 +234,83 @@ class BoundedKeyedCacheTest {
       assertThat(slowKey.get(5, TimeUnit.SECONDS)).isEqualTo("slow-value");
     } finally {
       releaseSlowLoader.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void getOrLoadReloadsWhenCachedValueIsRejected() throws Exception {
+    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    AtomicInteger loadCount = new AtomicInteger();
+    cache.put("k", "stale");
+
+    String reloaded =
+        cache.getOrLoad(
+            "k",
+            value -> !value.equals("stale"),
+            () -> {
+              loadCount.incrementAndGet();
+              return "fresh";
+            });
+
+    assertThat(reloaded).isEqualTo("fresh");
+    assertThat(cache.getIfPresent("k")).isEqualTo("fresh");
+    assertThat(loadCount).hasValue(1);
+  }
+
+  @Test
+  void getOrLoadSkipsLoaderWhenCachedValueIsAccepted() throws Exception {
+    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    cache.put("k", "valid");
+
+    String value = cache.getOrLoad("k", accepted -> true, () -> "other");
+
+    assertThat(value).isEqualTo("valid");
+    assertThat(cache.getIfPresent("k")).isEqualTo("valid");
+  }
+
+  @Test
+  void rejectedValueReloadedOnlyOnceAcrossThreads() throws Exception {
+    BoundedKeyedCache<String, String> cache = new BoundedKeyedCache<>(2);
+    cache.put("key", "stale");
+    CountDownLatch reloadStarted = new CountDownLatch(1);
+    CountDownLatch releaseReload = new CountDownLatch(1);
+    AtomicInteger loadCount = new AtomicInteger();
+    Predicate<String> isFresh = value -> value.equals("fresh");
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<String> first =
+          executor.submit(
+              () ->
+                  cache.getOrLoad(
+                      "key",
+                      isFresh,
+                      () -> {
+                        loadCount.incrementAndGet();
+                        reloadStarted.countDown();
+                        assertThat(releaseReload.await(5, TimeUnit.SECONDS)).isTrue();
+                        return "fresh";
+                      }));
+      assertThat(reloadStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+      Future<String> second =
+          executor.submit(
+              () ->
+                  cache.getOrLoad(
+                      "key",
+                      isFresh,
+                      () -> {
+                        loadCount.incrementAndGet();
+                        return "fresh";
+                      }));
+
+      releaseReload.countDown();
+      assertThat(first.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+      assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+      assertThat(loadCount).hasValue(1);
+    } finally {
+      releaseReload.countDown();
       executor.shutdownNow();
     }
   }
