@@ -6,6 +6,14 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 TARBALL_JAR_DIR="$ROOT_DIR/jars"
 CLI_CLASS_FILE="$ROOT_DIR/examples/cli/src/main/java/io/unitycatalog/cli/UnityCatalogCli.java"
 
+# Use DEBUG env var to turn remote Java debugging (JDWP) on
+# DEBUG is the port that the JDWP agent listens to
+DEBUG_CMD=""
+if [[ -n "$DEBUG" ]]; then
+  echo "Remote Java debugging enabled on port $DEBUG"
+  DEBUG_CMD="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:$DEBUG"
+fi
+
 # This function generates the unity catalog jars using sbt
 generate_jar() {
   GENERATE_JAR_COMMAND="$ROOT_DIR/build/sbt -info clean package"
@@ -15,7 +23,7 @@ generate_jar() {
 
 # This function runs the java command to run the CLI
 run_cli_java_command() {
-  CLI_JAVA_COMMAND="java -cp $(cat "$1") io.unitycatalog.cli.UnityCatalogCli"
+  CLI_JAVA_COMMAND="java $DEBUG_CMD -cp $(cat "$1") io.unitycatalog.cli.UnityCatalogCli"
   shift
 
   # Print the quoted arguments for debugging
