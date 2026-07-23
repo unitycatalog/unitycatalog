@@ -431,6 +431,19 @@ class UCSingleCatalog
   /** Only called for REPLACE TABLE and RTAS */
   override def stageReplace(
       ident: Identifier,
+      columns: Array[Column],
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    if (shouldDelegateReplaceToDeltaApi(properties)) {
+      requireStagingCatalog("REPLACE TABLE").stageReplace(
+        ident, columns, partitions, properties)
+    } else {
+      super.stageReplace(ident, columns, partitions, properties)
+    }
+  }
+
+  override def stageReplace(
+      ident: Identifier,
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
@@ -453,6 +466,19 @@ class UCSingleCatalog
   }
 
   /** Only called for CREATE OR REPLACE TABLE ... [AS SELECT] */
+  override def stageCreateOrReplace(
+      ident: Identifier,
+      columns: Array[Column],
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    if (shouldDelegateReplaceToDeltaApi(properties)) {
+      requireStagingCatalog("CREATE OR REPLACE TABLE").stageCreateOrReplace(
+        ident, columns, partitions, properties)
+    } else {
+      super.stageCreateOrReplace(ident, columns, partitions, properties)
+    }
+  }
+
   override def stageCreateOrReplace(
       ident: Identifier,
       schema: StructType,
@@ -508,6 +534,23 @@ class UCSingleCatalog
   }
 
   /** Only called for CTAS */
+  override def stageCreate(
+      ident: Identifier,
+      columns: Array[Column],
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    if (shouldUseDeltaAPI &&
+        UCSingleCatalog.isManagedTable(properties, ident) &&
+        UCSingleCatalog.hasDeltaProvider(properties)) {
+      UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+      val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
+      requireStagingCatalog("CREATE TABLE AS SELECT (CTAS)").stageCreate(
+        ident, columns, partitions, newProps)
+    } else {
+      super.stageCreate(ident, columns, partitions, properties)
+    }
+  }
+
   override def stageCreate(
       ident: Identifier,
       schema: StructType,

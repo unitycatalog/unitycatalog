@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,6 +24,7 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.Map;
+import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.StagedTable;
 import org.apache.spark.sql.connector.catalog.StagingTableCatalog;
@@ -37,6 +39,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 
 /** Tests that stageCreate delegates to the underlying StagingTableCatalog. */
 public class UCSingleCatalogStagingTableTest {
@@ -97,6 +100,30 @@ public class UCSingleCatalogStagingTableTest {
 
     verify(mockDelegate).stageCreate(eq(IDENT), eq(SCHEMA), any(), any());
     assertThat(result).isSameAs(staged);
+  }
+
+  @Test
+  public void testDeltaApiStagingOperationsPreserveV2Columns() throws Exception {
+    setField(catalog, "deltaCatalogLoaded", true);
+    setField(catalog, "deltaRestApiEnabled", true);
+    Column[] columns =
+        new Column[] {
+          Column.create("base", DataTypes.IntegerType),
+          Column.create("generated", DataTypes.IntegerType, true, null, "base + 1", null)
+        };
+
+    try (MockedStatic<DeltaVersionUtils> deltaVersionUtils = mockStatic(DeltaVersionUtils.class)) {
+      deltaVersionUtils
+          .when(() -> DeltaVersionUtils.isDeltaRestApiReady(true, true))
+          .thenReturn(true);
+      catalog.stageCreate(IDENT, columns, PARTITIONS, MANAGED_DELTA_PROPS);
+      catalog.stageReplace(IDENT, columns, PARTITIONS, REPLACE_DELTA_PROPS);
+      catalog.stageCreateOrReplace(IDENT, columns, PARTITIONS, REPLACE_DELTA_PROPS);
+    }
+
+    verify(mockDelegate).stageCreate(eq(IDENT), eq(columns), any(), any());
+    verify(mockDelegate).stageReplace(eq(IDENT), eq(columns), any(), any());
+    verify(mockDelegate).stageCreateOrReplace(eq(IDENT), eq(columns), any(), any());
   }
 
   @Test
