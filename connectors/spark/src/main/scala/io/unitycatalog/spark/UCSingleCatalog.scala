@@ -181,18 +181,7 @@ class UCSingleCatalog
       columns: Array[Column],
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
-    createTable(
-      ident,
-      CatalogV2UtilShim.v2ColumnsToStructType(columns),
-      partitions,
-      properties)
-  }
-
-  override def createTable(
-      ident: Identifier,
-      schema: StructType,
-      partitions: Array[Transform],
-      properties: util.Map[String, String]): Table = {
+    val schema = CatalogV2UtilShim.v2ColumnsToStructType(columns)
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
@@ -395,6 +384,10 @@ class UCSingleCatalog
 
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     newProps
+  }
+
+  override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
+    throw new AssertionError("deprecated `createTable` should not be called")
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
