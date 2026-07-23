@@ -150,6 +150,14 @@ auth:
   #
   cookieTimeout: P5D
 
+  # -- (string) UC access token lifetime for token exchange
+  # @default -- PT24H
+  # @raw
+  #
+  # Example: `PT24H` (24 hours), `P7D` (7 days)
+  #
+  accessTokenTimeout: PT24H
+
 server:
   # -- (bool) Enable the server deployment
   enabled: true
