@@ -765,6 +765,9 @@ public class DeltaCommitRepository {
    * conservatively reported as not-a-replay. The caller must hold the table lock (see {@link
    * #lockTableForCommit}).
    *
+   * <p>Filename with the client-generated, per-commit-unique UUID (or file content, if filename is
+   * no longer tracked in DB) is used for dedup.
+   *
    * @return {@code true} only if this matches an already-accepted commit; {@code false} for a fresh
    *     version, a genuine conflict, or a purged version
    */
