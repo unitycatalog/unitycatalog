@@ -1,5 +1,6 @@
 import json
 import os
+import typing
 
 
 class _EnvironmentVariable:
@@ -12,6 +13,17 @@ class _EnvironmentVariable:
         element_type: type = str,
     ):
         self.name = name
+        # Support parameterized generics such as ``list[str]``: normalize to the
+        # origin type (``list``) so the ``is list`` checks below work, and infer
+        # the element type from the type arguments when present. Without this,
+        # ``list[str] is list`` is False and a list-valued variable falls through
+        # to ``list[str](raw_value)``, splitting the string into single characters.
+        origin = typing.get_origin(type_)
+        if origin is not None:
+            args = typing.get_args(type_)
+            if args:
+                element_type = args[0]
+            type_ = origin
         self.type = type_
         self.description = description
         self.element_type = element_type
