@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.DelegateFileSystemId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
@@ -56,6 +57,13 @@ class CredScopedFileSystemCacheTest {
     return conf;
   }
 
+  /** Encodes a scoped credential's location and a placeholder credential key at {@code index}. */
+  private static void setScopedLocation(Configuration conf, int index, String location) {
+    String namespace = UCHadoopConfConstants.UC_SCOPED_CRED_PREFIX + index + ".";
+    conf.set(namespace + UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, location);
+    conf.set(namespace + "fs.unitycatalog.test.credential", "credential-" + index);
+  }
+
   @Test
   void sameScopeReusesSameDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
@@ -88,9 +96,52 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
+  void sameScopeDifferentLocationGetsDifferentDelegate() throws Exception {
+    URI uri = new URI("file:///tmp");
+    Configuration confA = tableConf("tid-1", "READ");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a");
+    Configuration confB = tableConf("tid-1", "READ");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/b");
+
+    CredScopedFileSystem fsA = init(uri, confA);
+    CredScopedFileSystem fsB = init(uri, confB);
+
+    assertThat(fsA.getDelegate()).isNotSameAs(fsB.getDelegate());
+  }
+
+  @Test
+  void sameScopeSameLocationReusesSameDelegate() throws Exception {
+    URI uri = new URI("file:///tmp");
+    Configuration conf = tableConf("tid-1", "READ");
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a");
+
+    CredScopedFileSystem fs1 = init(uri, conf);
+    CredScopedFileSystem fs2 = init(uri, conf);
+
+    assertThat(fs1.getDelegate()).isSameAs(fs2.getDelegate());
+  }
+
+  @Test
+  void namespacedSelectedPrefixDeterminesDelegateIdentity() throws Exception {
+    Configuration conf = tableConf("tid-1", "READ");
+    conf.setInt(UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY, 2);
+    setScopedLocation(conf, 0, "file:///tmp/a");
+    setScopedLocation(conf, 1, "file:///tmp/b");
+
+    // URIs covered by the same credential resolve to one delegate; different ones do not.
+    CredScopedFileSystem fsA1 = init(new URI("file:///tmp/a/one"), conf);
+    CredScopedFileSystem fsA2 = init(new URI("file:///tmp/a/two"), conf);
+    CredScopedFileSystem fsB = init(new URI("file:///tmp/b/one"), conf);
+
+    assertThat(fsA1.getDelegate()).isSameAs(fsA2.getDelegate());
+    assertThat(fsA1.getDelegate()).isNotSameAs(fsB.getDelegate());
+  }
+
+  @Test
   void evictedEntryClosesCachedDelegate() throws Exception {
     FileSystem mockFs = mock(FileSystem.class);
-    CredId key = new TableCredId(EMPTY_CRED_CONTEXT_ID, "tid-evict", "READ");
+    CredId credId = new TableCredId(EMPTY_CRED_CONTEXT_ID, "tid-evict", "READ");
+    DelegateFileSystemId key = DelegateFileSystemId.of(credId, null);
     CredScopedFileSystem.CACHE.put(key, mockFs);
 
     CredScopedFileSystem.clearCacheForTesting();

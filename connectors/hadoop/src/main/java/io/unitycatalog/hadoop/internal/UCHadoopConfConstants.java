@@ -55,6 +55,26 @@ public class UCHadoopConfConstants {
    */
   public static final String UC_CRED_CONTEXT_ID_KEY = "fs.unitycatalog.cred.context.id";
 
+  /**
+   * The storage location the credential covers, and therefore the prefix the delegate filesystem
+   * serves. Used to select the correct credential for the delegate filesystem when there is a
+   * multi-credential response; otherwise not required and is {@code null}.
+   */
+  public static final String UC_CREDENTIAL_LOCATION_KEY = "fs.unitycatalog.credential.location";
+
+  /**
+   * Number of credential namespaces encoded in the Hadoop configuration. A missing or zero value
+   * indicates the legacy top-level credential layout.
+   */
+  public static final String UC_SCOPED_CRED_COUNT_KEY = "fs.unitycatalog.scoped.cred.count";
+
+  /**
+   * Prefix for indexed credential namespaces. Credential-specific keys are encoded as {@code
+   * fs.unitycatalog.scoped.cred.<index>.<key>}; stripping the namespace yields the existing
+   * top-level key consumed by downstream providers.
+   */
+  public static final String UC_SCOPED_CRED_PREFIX = "fs.unitycatalog.scoped.cred.";
+
   // Prefix for engine version metadata (e.g. fs.unitycatalog.engine.version.Spark=4.0.0). Values
   // stored under this prefix are propagated to the User-Agent header on UC API calls so the
   // server can trace which engine versions are calling.
