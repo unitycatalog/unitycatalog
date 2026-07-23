@@ -26,6 +26,7 @@ import io.unitycatalog.server.delta.model.DeltaCreateTableRequest;
 import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.server.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.server.delta.model.DeltaRenameTableRequest;
 import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
@@ -263,6 +264,27 @@ public class DeltaApiService extends AuthorizedService {
       @Param("table") @AuthorizeResourceKey(TABLE) String table,
       DeltaUpdateTableRequest request) {
     return tableRepository.updateTableForDelta(catalog, schema, table, request);
+  }
+
+  // ==================== Rename Table API ====================
+
+  /**
+   * Rename a table by three-part name, within the same catalog and schema. Cross-catalog and
+   * cross-schema moves are not supported per {@code delta.yaml}.
+   *
+   */
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename")
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  public HttpResponse renameTable(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
+      DeltaRenameTableRequest request) {
+    if (request == null || request.getNewName() == null || request.getNewName().isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "New table name is required.");
+    }
+    tableRepository.renameTable(catalog, schema, table, request.getNewName());
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   // ==================== Table Credentials API ====================
