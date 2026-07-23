@@ -973,25 +973,21 @@ public class TableRepository {
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          renameTable(session, schemaId, table, newName, callerId);
+          TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
+          }
+          if (findBySchemaIdAndName(session, schemaId, newName) != null) {
+            throw new BaseException(
+                ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + newName);
+          }
+          tableInfoDAO.setName(newName);
+          tableInfoDAO.setUpdatedAt(new Date());
+          tableInfoDAO.setUpdatedBy(callerId);
+          session.merge(tableInfoDAO);
           return null;
         },
         "Failed to rename table " + catalog + "." + schema + "." + table,
         /* readOnly = */ false);
-  }
-
-  private void renameTable(
-      Session session, UUID schemaId, String tableName, String newName, String callerId) {
-    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
-    if (tableInfoDAO == null) {
-      throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
-    }
-    if (findBySchemaIdAndName(session, schemaId, newName) != null) {
-      throw new BaseException(ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + newName);
-    }
-    tableInfoDAO.setName(newName);
-    tableInfoDAO.setUpdatedAt(new Date());
-    tableInfoDAO.setUpdatedBy(callerId);
-    session.merge(tableInfoDAO);
   }
 }
