@@ -1,5 +1,6 @@
 package io.unitycatalog.spark;
 
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -197,6 +198,30 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(table).isInstanceOf(UnresolvedRelation.class);
     UnresolvedRelation target = (UnresolvedRelation) table;
     assertThat(target.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+  }
+
+  /**
+   * After {@code USE CATALOG}, bare-path credential injection must follow the session's current
+   * catalog, not {@code SQLConf.DEFAULT_CATALOG}. Default remains the built-in {@code spark_catalog}
+   * while the UC catalog is selected explicitly.
+   */
+  @Test
+  public void testBarePathUsesCurrentCatalogAfterUseCatalog() throws IOException, ParseException {
+    stopSession();
+    session = createUcSparkSession(false, false, true, CATALOG_NAME);
+    String location = bucketPath("use_catalog");
+    sql("USE CATALOG %s", CATALOG_NAME);
+    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
+
+    LogicalPlan plan =
+        session
+            .sessionState()
+            .sqlParser()
+            .parsePlan(String.format("SELECT * FROM parquet.`%s`", location));
+    assertThat(plan).isInstanceOf(UnresolvedRelation.class);
+    UnresolvedRelation relation = (UnresolvedRelation) plan;
+    assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+    assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
   }
 
   /**
