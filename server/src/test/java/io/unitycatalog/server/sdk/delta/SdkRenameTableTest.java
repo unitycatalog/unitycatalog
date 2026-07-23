@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sdk.delta;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.ApiResponse;
@@ -23,6 +24,9 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * E2E tests for the Delta REST Catalog {@code POST .../rename} endpoint (204 on success, 404 when
@@ -132,5 +136,24 @@ public class SdkRenameTableTest extends BaseServerTest {
                 new DeltaRenameTableRequest().newName(target)),
         DeltaErrorType.ALREADY_EXISTS_EXCEPTION,
         "already exists");
+  }
+
+  @ParameterizedTest
+  @NullSource
+  @ValueSource(strings = {"", " ", "\t"})
+  public void testRenameTableRejectsMissingNewName(String newName) {
+    assertThatThrownBy(
+            () ->
+                deltaTablesApi.renameTable(
+                    TestUtils.CATALOG_NAME,
+                    TestUtils.SCHEMA_NAME,
+                    "tbl_rename_src",
+                    new DeltaRenameTableRequest().newName(newName)))
+        .isInstanceOfSatisfying(
+            ApiException.class,
+            e -> {
+              assertThat(e.getCode()).isEqualTo(400);
+              assertThat(e.getMessage()).contains("New table name is required");
+            });
   }
 }
