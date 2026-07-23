@@ -181,6 +181,18 @@ class UCSingleCatalog
       columns: Array[Column],
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
+    createTable(
+      ident,
+      CatalogV2UtilShim.v2ColumnsToStructType(columns),
+      partitions,
+      properties)
+  }
+
+  override def createTable(
+      ident: Identifier,
+      schema: StructType,
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
@@ -192,7 +204,7 @@ class UCSingleCatalog
       if (UCSingleCatalog.hasDeltaProvider(properties)) {
         // Managed Delta table
         val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
-        delegate.createTable(ident, columns, partitions, newProps)
+        delegate.createTable(ident, schema, partitions, newProps)
       } else {
         // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
         // tables. Surface the same friendly error the legacy staging path used to produce.
@@ -200,12 +212,12 @@ class UCSingleCatalog
       }
     } else if (hasLocationClause) {
       val newProps = prepareExternalTableProperties(properties)
-      delegate.createTable(ident, columns, partitions, newProps)
+      delegate.createTable(ident, schema, partitions, newProps)
     } else {
       // Path-based identifiers (e.g. `delta`.`/tmp/foo`) fall through to the delegate.
       // TODO: for path-based tables, Spark should generate a location property using the qualified
       //       path string.
-      delegate.createTable(ident, columns, partitions, properties)
+      delegate.createTable(ident, schema, partitions, properties)
     }
   }
 
@@ -385,10 +397,6 @@ class UCSingleCatalog
     newProps
   }
 
-  override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
-    throw new AssertionError("deprecated `createTable` should not be called")
-  }
-
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
     // Spark represents ALTER TABLE ... RENAME COLUMN as a structured TableChange here.
     if (changes.exists(_.isInstanceOf[TableChange.RenameColumn])) {
@@ -431,6 +439,18 @@ class UCSingleCatalog
   /** Only called for REPLACE TABLE and RTAS */
   override def stageReplace(
       ident: Identifier,
+      columns: Array[Column],
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    stageReplace(
+      ident,
+      CatalogV2UtilShim.v2ColumnsToStructType(columns),
+      partitions,
+      properties)
+  }
+
+  override def stageReplace(
+      ident: Identifier,
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
@@ -453,6 +473,18 @@ class UCSingleCatalog
   }
 
   /** Only called for CREATE OR REPLACE TABLE ... [AS SELECT] */
+  override def stageCreateOrReplace(
+      ident: Identifier,
+      columns: Array[Column],
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    stageCreateOrReplace(
+      ident,
+      CatalogV2UtilShim.v2ColumnsToStructType(columns),
+      partitions,
+      properties)
+  }
+
   override def stageCreateOrReplace(
       ident: Identifier,
       schema: StructType,
@@ -508,6 +540,18 @@ class UCSingleCatalog
   }
 
   /** Only called for CTAS */
+  override def stageCreate(
+      ident: Identifier,
+      columns: Array[Column],
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    stageCreate(
+      ident,
+      CatalogV2UtilShim.v2ColumnsToStructType(columns),
+      partitions,
+      properties)
+  }
+
   override def stageCreate(
       ident: Identifier,
       schema: StructType,
