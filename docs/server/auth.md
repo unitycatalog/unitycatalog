@@ -55,8 +55,19 @@ server.audiences=<Client ID provided earlier>
 
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
 
-- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
-- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain one of these audience values. This is typically your application's client ID.
+- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
+- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must match the allowlist unless the signed subject token carries an OAuth client id in `azp` or a non-URL `aud` value (used for programmatic `externalId` resolution).
+
+#### Programmatic exchange (service principals)
+
+Service integrations exchange an upstream OAuth access token on `POST /auth/tokens` without client credentials on the UC request. UC resolves the principal in two steps:
+
+1. **Email mode** — look up the user by the token `email` claim (or `sub` fallback for `id_token`).
+2. **External id mode** — look up the user by OAuth client id from the subject token (`azp`, or the first non-URL `aud` value) mapped to `externalId`. For `access_token` subjects without an `email` claim, this is tried before `sub`.
+
+Create UC users with a human-readable `email` for grants and set `externalId` to the OAuth client id for programmatic exchange. The issued UC access token always uses the resolved user's `email`.
+
+CLI and browser login flows use email mode only.
 
 #### Multiple Identity Providers
 
@@ -66,6 +77,32 @@ You can configure multiple issuers and audiences by separating them with commas:
 server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline.com/{tenant-id}/v2.0
 server.audiences=your-google-client-id,your-azure-client-id
 ```
+
+Wildcard issuers match a single DNS label per `*`:
+
+```properties
+server.allowed-issuers=https://*.dev.example.com
+```
+
+Wildcard audience patterns use the same `*` rules. For example, `https://*.dev.example.com`
+accepts tokens whose `aud` includes `https://dev.dev.example.com` or
+`https://backend.dev.example.com`:
+
+```properties
+server.audiences=unity-catalog-local,https://*.dev.example.com
+```
+
+When email-based exchange cannot list dynamic OAuth client UUID audiences, tokens whose `azp` or
+non-URL `aud` matches a registered UC user's `externalId` are accepted even when the client UUID is
+not listed in `server.audiences`. As a fallback for human login only, `*` alone skips audience
+allowlist validation:
+
+```properties
+server.audiences=*
+server.allowed-issuers=https://*.dev.example.com
+```
+
+Prefer the subject-token `externalId` flow for per-tenant service principals instead of `audiences=*`.
 
 ### Restart the UC Server
 
