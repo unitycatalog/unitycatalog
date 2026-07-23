@@ -50,10 +50,18 @@ public final class DelegateFileSystemId {
   /**
    * Like {@link #create(Configuration)} but for a filesystem being initialized on {@code uri}: when
    * the configuration carries no Unity Catalog credential type, falls back to a {@link
-   * DefaultCredId} derived from the URI's scheme and authority.
+   * DefaultCredId} derived from the URI's scheme and authority. Reads the location from a
+   * namespaced key when the selected credential's config is prefixed with {@code namespace}
+   * (multi-credential layout); a {@code null} namespace reads the top-level {@link
+   * UCHadoopConfConstants#UC_CREDENTIAL_LOCATION_KEY location} key.
    */
-  public static DelegateFileSystemId create(Configuration conf, URI uri) {
-    return of(CredId.create(conf, () -> new DefaultCredId(uri, conf)), location(conf));
+  public static DelegateFileSystemId create(Configuration conf, URI uri, String namespace) {
+    CredId credId = CredId.create(conf, () -> new DefaultCredId(uri, conf));
+    String locationKey =
+        namespace == null
+            ? UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY
+            : namespace + UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY;
+    return of(credId, conf.get(locationKey));
   }
 
   private static String location(Configuration conf) {

@@ -61,6 +61,14 @@ public final class CredentialUtil {
   }
 
   /**
+   * Returns the index of the prefix that covers {@code location} by the longest match, or {@code
+   * -1} if none does. Null prefixes are skipped.
+   */
+  public static int longestCoveringIndex(String location, List<String> prefixes) {
+    return longestCoveringIndex(location, prefixes, Function.identity());
+  }
+
+  /**
    * Returns the index of the item whose prefix (via {@code prefixOf}) covers {@code location} by
    * the longest match, or {@code -1} if none does. Items with a null prefix are skipped.
    */
