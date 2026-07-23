@@ -15,6 +15,7 @@ import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
+import io.unitycatalog.client.delta.model.DeltaRenameTableRequest;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
@@ -312,6 +313,39 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     assertThat(
             principal1DeltaApi
                 .deleteTableWithHttpInfo("cat_pr1", "sch_rg2", "tab_rg2_delta")
+                .getStatusCode())
+        .isEqualTo(204);
+
+    // Delta REST rename shares DELETE_TABLE (rename requires table ownership), so it uses the
+    // same allowed/denied matrix as delete.
+    CreateTable createTableRg2Rename =
+        new CreateTable()
+            .name("tab_rg2_rename")
+            .catalogName("cat_pr1")
+            .schemaName("sch_rg2")
+            .columns(TEST_COLUMNS)
+            .storageLocation("/tmp/tab_rg2_rename")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA);
+    regular2TablesApi.createTable(createTableRg2Rename);
+
+    // Delta rename (regular-1) -> -- -> denied
+    assertPermissionDenied(
+        () ->
+            regular1DeltaApi.renameTable(
+                "cat_pr1",
+                "sch_rg2",
+                "tab_rg2_rename",
+                new DeltaRenameTableRequest().newName("tab_rg2_renamed")));
+
+    // Delta rename (principal-1) -> owner [catalog] -> allowed
+    assertThat(
+            principal1DeltaApi
+                .renameTableWithHttpInfo(
+                    "cat_pr1",
+                    "sch_rg2",
+                    "tab_rg2_rename",
+                    new DeltaRenameTableRequest().newName("tab_rg2_renamed"))
                 .getStatusCode())
         .isEqualTo(204);
   }
