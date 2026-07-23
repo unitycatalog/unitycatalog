@@ -979,16 +979,63 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void multipleVendedCredentialsAreRejectedOnDriver() {
-    // Right now, multiple credentials are not supported. Delete this test once supported.
+  void noVendedCredentialsIsRejected() {
+    CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> mockGenericCredentialFetcher();
+
+    assertThatThrownBy(() -> createScopedTableCredProps(new Configuration(false), true))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("No credentials were vended.");
+  }
+
+  @Test
+  void multipleVendedCredentialsRequireCredScopedFs() {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) ->
             mockGenericCredentialFetcher(
-                s3CredsExpiringAt("1", Long.MAX_VALUE), s3CredsExpiringAt("2", Long.MAX_VALUE));
+                s3CredAt("1", "s3://bucket/a"), s3CredAt("2", "s3://bucket/b"));
 
-    assertThatThrownBy(() -> createTableCredProps(new Configuration(false)))
+    // credScopedFsEnabled = false: no filesystem to select/lift a namespace, so multi-cred fails.
+    assertThatThrownBy(() -> createScopedTableCredProps(new Configuration(false), false))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Expected exactly one vended credential, got 2");
+        .hasMessageContaining("2 credentials were vended but the credential-scoped filesystem");
+  }
+
+  @Test
+  void multipleVendedCredentialsAreEncodedUnderNamespaces() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) ->
+            mockGenericCredentialFetcher(
+                s3CredAt("1", "s3://bucket/a"), s3CredAt("2", "s3://bucket/b"));
+
+    Map<String, String> props = createScopedTableCredProps(new Configuration(false), true);
+
+    // Count plus each credential's location and secrets under its own namespace prefix.
+    assertThat(props)
+        .containsEntry("fs.unitycatalog.scoped.cred.count", "2")
+        .containsEntry(
+            "fs.unitycatalog.scoped.cred.0.fs.unitycatalog.credential.location", "s3://bucket/a")
+        .containsEntry("fs.unitycatalog.scoped.cred.0.fs.s3a.access.key", "ak1")
+        .containsEntry("fs.unitycatalog.scoped.cred.0.fs.s3a.secret.key", "sk1")
+        .containsEntry("fs.unitycatalog.scoped.cred.0.fs.s3a.session.token", "st1")
+        .containsEntry(
+            "fs.unitycatalog.scoped.cred.1.fs.unitycatalog.credential.location", "s3://bucket/b")
+        .containsEntry("fs.unitycatalog.scoped.cred.1.fs.s3a.access.key", "ak2")
+        .containsEntry("fs.unitycatalog.scoped.cred.1.fs.s3a.session.token", "st2");
+    // No credential secrets leak to the top level under the namespaced layout.
+    assertThat(props).doesNotContainKey("fs.s3a.access.key");
+  }
+
+  @Test
+  void singleVendedCredentialStaysTopLevel() throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(s3CredAt("1", "s3://bucket/a"));
+
+    Map<String, String> props = createScopedTableCredProps(new Configuration(false), true);
+
+    // A single credential keeps the legacy top-level layout: no count, no namespace prefixes.
+    assertThat(props)
+        .containsEntry("fs.s3a.access.key", "ak1")
+        .doesNotContainKey("fs.unitycatalog.scoped.cred.count");
   }
 
   @Test
@@ -1048,6 +1095,22 @@ class CredPropsUtilTest {
         catalogUri,
         tokenProvider,
         tableId,
+        UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+        Map.of());
+  }
+
+  /** Fetches table cred props with {@code credScopedFsEnabled} explicit (non-renewable path). */
+  private static Map<String, String> createScopedTableCredProps(
+      Configuration conf, boolean credScopedFsEnabled) throws Exception {
+    return CredPropsUtil.createTableCredProps(
+        false,
+        credScopedFsEnabled,
+        conf,
+        "s3",
+        null,
+        "http://uc",
+        tokenProvider(),
+        "tid",
         UCCredentialHadoopConfs.TableOperation.READ_WRITE,
         Map.of());
   }
@@ -1431,6 +1494,10 @@ class CredPropsUtilTest {
 
   private static GenericCredential s3CredsExpiringAt(String id, long expirationMillis) {
     return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis, null);
+  }
+
+  private static GenericCredential s3CredAt(String id, String location) {
+    return new AwsCredential("ak" + id, "sk" + id, "st" + id, null, location);
   }
 
   private static GenericCredential gcsCreds() {

@@ -7,6 +7,7 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 
@@ -36,6 +37,12 @@ public abstract class CredPropsBuilder {
 
   protected CredPropsBuilder set(String key, String value) {
     props.put(key, value);
+    return this;
+  }
+
+  /** Writes {@code key} under {@code prefix}; an empty prefix writes the top-level key. */
+  protected CredPropsBuilder set(String prefix, String key, String value) {
+    props.put(prefix + key, value);
     return this;
   }
 
@@ -105,8 +112,31 @@ public abstract class CredPropsBuilder {
   /** Cloud-specific keys naming the vended token provider (renewable path only). */
   protected abstract void applyVendedProviderKeys();
 
-  /** Writes a single credential's secrets for this cloud. */
-  public abstract CredPropsBuilder writeCredKeys(boolean renewable, GenericCredential cred);
+  /** Writes a single credential's secrets for this cloud at the top level. */
+  public final CredPropsBuilder writeCredKeys(boolean renewable, GenericCredential cred) {
+    return writeCredKeys("", renewable, cred);
+  }
+
+  /** Writes a single credential's secrets for this cloud, each key under {@code prefix}. */
+  public abstract CredPropsBuilder writeCredKeys(
+      String prefix, boolean renewable, GenericCredential cred);
+
+  /**
+   * Writes {@code creds} in the namespaced layout consumed by {@code CredScopedFileSystem}: a
+   * top-level count, and each credential's location plus secrets under its own prefix. The
+   * filesystem selects the covering namespace by location and lifts its keys back to the top level
+   * before initializing the delegate.
+   */
+  public final CredPropsBuilder writeScopedCredentials(
+      boolean renewable, List<GenericCredential> creds) {
+    set(UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY, String.valueOf(creds.size()));
+    for (int i = 0; i < creds.size(); i++) {
+      String prefix = UCHadoopConfConstants.UC_SCOPED_CRED_PREFIX + i + ".";
+      set(prefix, UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, creds.get(i).location());
+      writeCredKeys(prefix, renewable, creds.get(i));
+    }
+    return this;
+  }
 
   public Map<String, String> build() {
     return Collections.unmodifiableMap(new HashMap<>(props));

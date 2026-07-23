@@ -48,21 +48,22 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  public CredPropsBuilder writeCredKeys(boolean renewable, GenericCredential cred) {
+  public CredPropsBuilder writeCredKeys(String prefix, boolean renewable, GenericCredential cred) {
     GcsCredential gcs = (GcsCredential) cred;
     if (renewable) {
-      set(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, gcs.oauthToken());
+      set(prefix, UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, gcs.oauthToken());
       // Expiration may be absent (e.g. a static token provider), so write the key only when set.
       if (gcs.expirationTimeMillis() != null) {
         set(
+            prefix,
             UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
             String.valueOf(gcs.expirationTimeMillis()));
       }
     } else {
       Long expirationTime =
           gcs.expirationTimeMillis() == null ? Long.MAX_VALUE : gcs.expirationTimeMillis();
-      set(GCS_ACCESS_TOKEN_KEY, gcs.oauthToken());
-      set(GCS_ACCESS_TOKEN_EXPIRATION_KEY, String.valueOf(expirationTime));
+      set(prefix, GCS_ACCESS_TOKEN_KEY, gcs.oauthToken());
+      set(prefix, GCS_ACCESS_TOKEN_EXPIRATION_KEY, String.valueOf(expirationTime));
     }
     return this;
   }

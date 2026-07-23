@@ -40,22 +40,23 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  public CredPropsBuilder writeCredKeys(boolean renewable, GenericCredential cred) {
+  public CredPropsBuilder writeCredKeys(String prefix, boolean renewable, GenericCredential cred) {
     AwsCredential aws = (AwsCredential) cred;
     if (renewable) {
-      set(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, aws.accessKeyId());
-      set(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, aws.secretAccessKey());
-      set(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, aws.sessionToken());
+      set(prefix, UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, aws.accessKeyId());
+      set(prefix, UCHadoopConfConstants.S3A_INIT_SECRET_KEY, aws.secretAccessKey());
+      set(prefix, UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, aws.sessionToken());
       // Expiration may be absent (e.g. a static token provider), so write the key only when set.
       if (aws.expirationTimeMillis() != null) {
         set(
+            prefix,
             UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME,
             String.valueOf(aws.expirationTimeMillis()));
       }
     } else {
-      set("fs.s3a.access.key", aws.accessKeyId());
-      set("fs.s3a.secret.key", aws.secretAccessKey());
-      set("fs.s3a.session.token", aws.sessionToken());
+      set(prefix, "fs.s3a.access.key", aws.accessKeyId());
+      set(prefix, "fs.s3a.secret.key", aws.secretAccessKey());
+      set(prefix, "fs.s3a.session.token", aws.sessionToken());
     }
     return this;
   }

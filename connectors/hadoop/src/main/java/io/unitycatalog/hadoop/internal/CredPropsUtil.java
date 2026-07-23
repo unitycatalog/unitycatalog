@@ -195,17 +195,23 @@ public class CredPropsUtil {
     List<GenericCredential> credentials =
         fetchGenericCredentials(
             hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
-    Preconditions.checkState(
-        credentials.size() == 1,
-        "Expected exactly one vended credential, got %s",
-        credentials.size());
-    GenericCredential cred = credentials.get(0);
-    return CredPropsBuilder.forCloud(cloudType.get())
-        .applyBaseConf(hadoopConf)
-        .applyImplOverrides(credScopedFsEnabled, hadoopConf)
-        .applyRenewalContext(renewCredEnabled, catalogUri, tokenProvider, credId, appVersions)
-        .writeCredKeys(renewCredEnabled, cred)
-        .build();
+    Preconditions.checkState(!credentials.isEmpty(), "No credentials were vended.");
+    CredPropsBuilder builder =
+        CredPropsBuilder.forCloud(cloudType.get())
+            .applyBaseConf(hadoopConf)
+            .applyImplOverrides(credScopedFsEnabled, hadoopConf)
+            .applyRenewalContext(renewCredEnabled, catalogUri, tokenProvider, credId, appVersions);
+    if (credentials.size() == 1) {
+      builder.writeCredKeys(renewCredEnabled, credentials.get(0));
+    } else {
+      // Multiple credentials require CredScopedFileSystem to select the correct one.
+      Preconditions.checkState(
+          credScopedFsEnabled,
+          "%s credentials were vended but the credential-scoped filesystem is disabled.",
+          credentials.size());
+      builder.writeScopedCredentials(renewCredEnabled, credentials);
+    }
+    return builder.build();
   }
 
   /**

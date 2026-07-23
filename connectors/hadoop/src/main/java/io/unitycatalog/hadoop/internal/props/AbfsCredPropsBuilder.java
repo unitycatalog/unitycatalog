@@ -48,18 +48,19 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  public CredPropsBuilder writeCredKeys(boolean renewable, GenericCredential cred) {
+  public CredPropsBuilder writeCredKeys(String prefix, boolean renewable, GenericCredential cred) {
     AzureCredential azure = (AzureCredential) cred;
     if (renewable) {
-      set(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, azure.sasToken());
+      set(prefix, UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, azure.sasToken());
       // Expiration may be absent (e.g. a static token provider), so write the key only when set.
       if (azure.expirationTimeMillis() != null) {
         set(
+            prefix,
             UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME,
             String.valueOf(azure.expirationTimeMillis()));
       }
     } else {
-      set(ABFS_FIXED_SAS_TOKEN_KEY, azure.sasToken());
+      set(prefix, ABFS_FIXED_SAS_TOKEN_KEY, azure.sasToken());
     }
     return this;
   }
