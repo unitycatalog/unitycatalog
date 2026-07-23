@@ -117,14 +117,15 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
 
   private def currentUcCatalog: Option[UCSingleCatalog] = {
     val manager = spark.sessionState.catalogManager
-    val catalogName = spark.sessionState.conf.getConf(SQLConf.DEFAULT_CATALOG)
-    try {
-      manager.catalog(catalogName) match {
-        case uc: UCSingleCatalog => Some(uc)
-        case _ => None
+    val catalog =
+      try SQLConf.withExistingConf(spark.sessionState.conf) {
+        manager.currentCatalog
+      } catch {
+        case _: CatalogNotFoundException => null
       }
-    } catch {
-      case _: CatalogNotFoundException => None
+    catalog match {
+      case uc: UCSingleCatalog => Some(uc)
+      case _ => None
     }
   }
 }
