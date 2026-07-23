@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
@@ -33,7 +34,10 @@ import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.io.BulkDeletionFailureException;
 import org.apache.iceberg.io.CloseableIterable;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.FileInfo;
+import org.apache.iceberg.io.InputFile;
+import org.apache.iceberg.io.ResolvingFileIO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -255,5 +259,89 @@ public class FileOperationsTest {
     assertThat(config)
         .containsEntry(
             AzureProperties.ADLS_SAS_TOKEN_PREFIX + "myaccount.dfs.core.windows.net", "sas-token");
+  }
+
+  @Test
+  public void testGetFileIOConfigCloudWithUnrecognizedCredentialThrows() {
+    // A cloud scheme that vends no recognized credential type must fail loudly rather than
+    // silently returning a credential-less config.
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any())).thenReturn(new TemporaryCredentials());
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("gs://my-bucket/table")))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("No recognized storage credential");
+  }
+
+  @Test
+  public void testGetFileIOConfigS3WithoutConfiguredRegionThrows() {
+    // No region configured for the bucket: guard with a clear error instead of an opaque NPE.
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    assertThatThrownBy(() -> fileOps.getFileIOConfig(NormalizedURL.from("s3://my-bucket/table")))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("No S3 region configured");
+  }
+
+  @Test
+  public void testGetFileIOForLocalPathReturnsSimpleLocalFileIO() {
+    // Local paths must not be vended and must resolve to SimpleLocalFileIO (no ResolvingFileIO,
+    // which would require hadoop-client-runtime for the file:// scheme).
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("file:///tmp/some/table"))) {
+      assertThat(fileIO).isInstanceOf(SimpleLocalFileIO.class);
+    }
+    verify(vendor, never()).vendCredential(any(), any());
+  }
+
+  @SneakyThrows
+  @Test
+  public void testGetFileIOForLocalPathReadsThroughReturnedFileIO() {
+    // End-to-end: getFileIO returns a working local FileIO that can read a real file.
+    Path file = rootBase.resolve("data-" + UUID.randomUUID() + ".txt");
+    Files.writeString(file, "hello world");
+
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from(file.toUri().toString()))) {
+      InputFile input = fileIO.newInputFile(file.toUri().toString());
+      assertThat(input.getLength()).isEqualTo("hello world".length());
+    }
+  }
+
+  @Test
+  public void testGetFileIOForCloudPathReturnsResolvingFileIO() {
+    // Cloud paths route through a credential-vended ResolvingFileIO.
+    Properties props = new Properties();
+    props.setProperty("s3.bucketPath.0", "s3://my-bucket");
+    props.setProperty("s3.region.0", "us-west-2");
+    props.setProperty("s3.awsRoleArn.0", "arn:aws:iam::123456789012:role/test");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    when(vendor.vendCredential(any(), any()))
+        .thenReturn(
+            new TemporaryCredentials()
+                .awsTempCredentials(
+                    new AwsCredentials()
+                        .accessKeyId("AKIA")
+                        .secretAccessKey("secret")
+                        .sessionToken("token")));
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(props));
+
+    try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from("s3://my-bucket/table"))) {
+      assertThat(fileIO).isInstanceOf(ResolvingFileIO.class);
+    }
   }
 }

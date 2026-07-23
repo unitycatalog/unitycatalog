@@ -23,7 +23,8 @@ public class MetadataService {
    */
   public TableMetadata readTableMetadata(NormalizedURL metadataLocation) {
     // TODO: cache fileIO
-    FileIO fileIO = fileOperations.getFileIO(metadataLocation);
-    return TableMetadataParser.read(fileIO, metadataLocation.toString());
+    try (FileIO fileIO = fileOperations.getFileIO(metadataLocation)) {
+      return TableMetadataParser.read(fileIO, metadataLocation.toString());
+    }
   }
 }
