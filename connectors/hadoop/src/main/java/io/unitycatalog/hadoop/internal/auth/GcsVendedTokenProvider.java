@@ -1,7 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import com.google.cloud.hadoop.util.AccessTokenProvider;
-import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.io.IOException;
 import java.time.Instant;
@@ -35,7 +34,7 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
           expiredTimeMillis,
           UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME);
 
-      return GenericCredential.forGcs(oauthToken, expiredTimeMillis);
+      return new GcsCredential(oauthToken, expiredTimeMillis);
     } else {
       return null;
     }
@@ -43,18 +42,12 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
 
   @Override
   public AccessToken getAccessToken() {
-    GenericCredential generic = accessCredentials();
+    GcsCredential gcs = (GcsCredential) accessCredentials();
 
-    GcpOauthToken gcpToken = generic.temporaryCredentials().getGcpOauthToken();
-    Preconditions.checkNotNull(gcpToken, "GCS OAuth token of generic credential cannot be null");
-
-    String tokenValue = gcpToken.getOauthToken();
-    Preconditions.checkNotNull(tokenValue, "GCS OAuth token value cannot be null");
-
-    Long expirationMillis = generic.temporaryCredentials().getExpirationTime();
+    Long expirationMillis = gcs.expirationTimeMillis();
     Instant expirationInstant =
         expirationMillis == null ? null : Instant.ofEpochMilli(expirationMillis);
-    return new AccessToken(tokenValue, expirationInstant);
+    return new AccessToken(gcs.oauthToken(), expirationInstant);
   }
 
   @Override

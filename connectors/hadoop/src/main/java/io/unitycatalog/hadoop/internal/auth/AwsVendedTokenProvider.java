@@ -36,7 +36,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
           expiredTimeMillis,
           UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME);
 
-      return GenericCredential.forAws(accessKey, secretKey, sessionToken, expiredTimeMillis);
+      return new AwsCredential(accessKey, secretKey, sessionToken, expiredTimeMillis);
     } else {
       return null;
     }
@@ -44,18 +44,12 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
 
   @Override
   public AwsCredentials resolveCredentials() {
-    GenericCredential generic = accessCredentials();
-
-    // Wrap the GenericCredential as an AwsCredentials.
-    io.unitycatalog.client.model.AwsCredentials awsTempCred =
-        generic.temporaryCredentials().getAwsTempCredentials();
-    Preconditions.checkNotNull(
-        awsTempCred, "AWS temp credential of generic credentials cannot be null");
+    AwsCredential aws = (AwsCredential) accessCredentials();
 
     return AwsSessionCredentials.builder()
-        .accessKeyId(awsTempCred.getAccessKeyId())
-        .secretAccessKey(awsTempCred.getSecretAccessKey())
-        .sessionToken(awsTempCred.getSessionToken())
+        .accessKeyId(aws.accessKeyId())
+        .secretAccessKey(aws.secretAccessKey())
+        .sessionToken(aws.sessionToken())
         .build();
   }
 }

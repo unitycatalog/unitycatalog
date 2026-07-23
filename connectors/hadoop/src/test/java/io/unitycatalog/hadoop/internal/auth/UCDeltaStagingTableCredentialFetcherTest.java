@@ -12,7 +12,6 @@ import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
-import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -31,15 +30,14 @@ class UCDeltaStagingTableCredentialFetcherTest {
     DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(response);
 
-    GenericCredential cred =
-        GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredential();
+    AwsCredential cred =
+        (AwsCredential)
+            GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredential();
 
-    assertThat(cred).isNotNull();
-    TemporaryCredentials out = cred.temporaryCredentials();
-    assertThat(out.getAwsTempCredentials().getAccessKeyId()).isEqualTo("ak");
-    assertThat(out.getAwsTempCredentials().getSecretAccessKey()).isEqualTo("sk");
-    assertThat(out.getAwsTempCredentials().getSessionToken()).isEqualTo("st");
-    assertThat(out.getExpirationTime()).isEqualTo(1234L);
+    assertThat(cred.accessKeyId()).isEqualTo("ak");
+    assertThat(cred.secretAccessKey()).isEqualTo("sk");
+    assertThat(cred.sessionToken()).isEqualTo("st");
+    assertThat(cred.expirationTimeMillis()).isEqualTo(1234L);
     verify(api).getStagingTableCredentials(STAGING_ID);
   }
 
