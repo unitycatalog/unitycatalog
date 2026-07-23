@@ -26,9 +26,9 @@ The sbt generation process for this SDK will:
 
 1. Copy over the ignore rules for the OpenAPI Generator to the `target` directory from the [build location](build/).
 2. Exclude the creation of the root `__init__.py` file from the shared namespace root (`unitycatalog`).
-3. Exclude the creation of package building files (`pyproject.toml` and `setup.py`) in favor of the distribution versions of these files.
+3. Exclude the creation of package building files (`pyproject.toml`) in favor of the distribution versions of these files.
 4. Remove additional irrelevant files (for details, see the definitions within the [.openapi-generator-ignore](build/.openapi-generator-ignore) file).
-5. Copy over the release versions of `pyproject.toml`, `setup.py`, and the release package `README.md` file to the correct locations within
+5. Copy over the release versions of `pyproject.toml` and the release package `README.md` file to the correct locations within
 the generated code directories.
 6. Place the generated source code into a hatch-compatible `src` directory for packaging of a shared namespace package.
 
@@ -79,12 +79,11 @@ If you are updating requirements, modifying the release version, or are providin
 README.md, ensure that you make updates to:
 
 1. The [pyproject.toml](build/pyproject.toml) file. If you are releasing a new version of the SDK, the `version` field is updated properly to the appropriate version of Unity Catalog's release when generating the distributable package code (it will match the release version specified within the [version.sbt](../../version.sbt) file). This does not need to be manually updated.
-2. The `setup.py` file. This file's version is updated automatically during the build process with the version specified in the [version.sbt](../../version.sbt).
-3. The [README.md](build/README.md) file. This file is not updated with releases, but is the source of the landing page at [PyPI](https://pypi.org/project/unitycatalog-client/).
+2. The [README.md](build/README.md) file. This file is not updated with releases, but is the source of the landing page at [PyPI](https://pypi.org/project/unitycatalog-client/).
 
 ### Build definition updates
 
-To modify the packaging definition, ensure that changes are made to [the pyproject file](build/pyproject.toml) and [the setup.py file](build/setup.py). If making changes to this file other than simple version updates, ensure that the namespace package behavior still functions by installing `unitycatalog-ai` in the same python environment and that the results of running the following code shows **both** the `unitycatalog-client` **and** the `unitycatalog-ai` namespaces listed in the result.
+To modify the packaging definition, ensure that changes are made to [the pyproject file](build/pyproject.toml). If making changes to this file other than simple version updates, ensure that the namespace package behavior still functions by installing `unitycatalog-ai` in the same python environment and that the results of running the following code shows **both** the `unitycatalog-client` **and** the `unitycatalog-ai` namespaces listed in the result.
 
 ```python
 import unitycatalog
