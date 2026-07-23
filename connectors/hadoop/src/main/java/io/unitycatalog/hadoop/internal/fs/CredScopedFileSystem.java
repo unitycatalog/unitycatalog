@@ -1,11 +1,15 @@
 package io.unitycatalog.hadoop.internal.fs;
 
-import io.unitycatalog.hadoop.internal.id.CredId;
-import io.unitycatalog.hadoop.internal.id.DefaultCredId;
+import io.unitycatalog.client.internal.Preconditions;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.id.DelegateFileSystemId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FilterFileSystem;
@@ -37,10 +41,12 @@ import org.apache.hadoop.fs.FilterFileSystem;
  *       CredScopedFileSystem} for each file access. Because {@code CredScopedFileSystem} is a thin,
  *       stateless wrapper, this is cheap.
  *   <li><b>Global credential-scoped cache for the real delegate.</b> {@code CredScopedFileSystem}
- *       maintains a static {@link #CACHE} keyed by {@link CredId}, which encodes the credential
- *       scope (table ID + operation, or path + operation). On each {@link #initialize(URI,
- *       Configuration)} call the key is derived from the Hadoop {@link Configuration} injected by
- *       {@link io.unitycatalog.hadoop.internal.CredPropsUtil}, and the corresponding real {@link
+ *       maintains a static {@link #CACHE} keyed by {@link DelegateFileSystemId}, which encodes the
+ *       credential scope (table ID + operation, or path + operation) and the accessed location.
+ *       Since a delegate covers exactly one prefix and credential, keying by both keeps each
+ *       prefix's delegate distinct. On each {@link #initialize(URI, Configuration)} call the key is
+ *       derived from the Hadoop {@link Configuration} injected by {@link
+ *       io.unitycatalog.hadoop.internal.CredPropsUtil}, and the corresponding real {@link
  *       FileSystem} (e.g. {@code S3AFileSystem}) is looked up or created. Requests that share the
  *       same credential scope therefore reuse the same underlying connection pool, while requests
  *       with different credentials transparently receive their own isolated instance.
@@ -56,6 +62,12 @@ public class CredScopedFileSystem extends FilterFileSystem {
       "unitycatalog.credScopedFs.cache.maxSize";
   private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
 
+  // Hard ceiling to the number of scoped credentials to read from the configuration to prevent OOM.
+  private static final String MAX_SCOPED_CRED_COUNT_PROPERTY = "unitycatalog.scoped.cred.maxCount";
+  private static final int MAX_SCOPED_CRED_COUNT_DEFAULT = 10;
+  private static final int MAX_SCOPED_CRED_COUNT =
+      Integer.getInteger(MAX_SCOPED_CRED_COUNT_PROPERTY, MAX_SCOPED_CRED_COUNT_DEFAULT);
+
   /**
    * LRU cache of real {@link FileSystem} instances keyed by credential scope. Evicted entries are
    * closed to release connection pools and SDK thread pools (e.g. AWS sdk-ScheduledExecutor
@@ -64,7 +76,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * {@code unitycatalog.credScopedFs.cache.maxSize}.
    */
   /** Visible for testing. */
-  static final BoundedKeyedCache<CredId, FileSystem> CACHE;
+  static final BoundedKeyedCache<DelegateFileSystemId, FileSystem> CACHE;
 
   static {
     int maxSize =
@@ -84,8 +96,53 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    CredId key = CredId.create(conf, () -> new DefaultCredId(uri, conf));
-    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
+    String namespace = selectNamespace(uri, conf);
+    DelegateFileSystemId key = DelegateFileSystemId.create(conf, uri, namespace);
+    // Deriving the namespace and key does not copy the conf, delaying expensive copy
+    // operation until it is needed in newFileSystem.
+    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf, namespace));
+  }
+
+  /**
+   * Returns the namespace key for the credential that covers the given URI, or null if no namespace
+   * is needed. When there are multiple credentials, each credential's details are prefixed with the
+   * namespace key to avoid key collisions. These namespaced keys cannot be picked up downstream;
+   * they must be extracted and restored to top-level keys prior to delegate file system
+   * initialization.
+   */
+  private static String selectNamespace(URI uri, Configuration conf) {
+    int count = conf.getInt(UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY, 0);
+    if (count == 0) {
+      return null; // legacy top-level credential layout, no namespace keys
+    }
+    // A single credential uses the legacy layout, so a namespaced layout always encodes more than
+    // one credential to select among.
+    Preconditions.checkArgument(
+        count > 1 && count <= MAX_SCOPED_CRED_COUNT,
+        "%s must be greater than 1 and at most %s: %s",
+        UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY,
+        MAX_SCOPED_CRED_COUNT,
+        count);
+
+    List<String> prefixes = new ArrayList<>(count);
+    for (int i = 0; i < count; i++) {
+      String prefix =
+          conf.get(namespaceAtIndex(i) + UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY);
+      // With multiple credentials each one must carry a location to be selectable.
+      Preconditions.checkArgument(
+          prefix != null,
+          "Scoped credential %s is missing its location for storage location %s",
+          i,
+          uri);
+      prefixes.add(prefix);
+    }
+    int selected = CredentialUtil.longestCoveringIndex(uri.toString(), prefixes);
+    Preconditions.checkArgument(selected >= 0, "No credential covers storage location %s", uri);
+    return namespaceAtIndex(selected);
+  }
+
+  private static String namespaceAtIndex(int index) {
+    return UCHadoopConfConstants.UC_SCOPED_CRED_PREFIX + index + ".";
   }
 
   /**
@@ -97,9 +154,13 @@ public class CredScopedFileSystem extends FilterFileSystem {
     fsConf.set(key, fsConf.get(key + ".original", defaultImpl));
   }
 
-  private static FileSystem newFileSystem(URI uri, Configuration conf) {
+  private static FileSystem newFileSystem(URI uri, Configuration conf, String namespace) {
     try {
       Configuration fsConf = new Configuration(conf);
+      if (namespace != null) {
+        // Set the namespaced keys to top-level so downstream readers can pick them up.
+        conf.getPropsWithPrefix(namespace).forEach(fsConf::set);
+      }
 
       // S3: restore impl using the side-channel key saved by CredPropsUtil before it overrode
       // fs.<scheme>.impl with CredScopedFileSystem. Falls back to S3AFileSystem if not set.
