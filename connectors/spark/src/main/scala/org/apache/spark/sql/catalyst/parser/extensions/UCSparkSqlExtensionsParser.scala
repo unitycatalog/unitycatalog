@@ -24,14 +24,16 @@ import io.unitycatalog.spark.ResolvePathCredentials
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
 import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.catalyst.parser.{ParameterContext, ParserInterface}
+import org.apache.spark.sql.catalyst.parser.ParserInterface
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.types.{DataType, StructType}
 
 class UCSparkSqlExtensionsParser(spark: SparkSession, delegate: ParserInterface)
-    extends ParserInterface {
+    extends ParserInterfaceShim {
 
-  private def applyPathCredentials(plan: LogicalPlan): LogicalPlan =
+  protected def delegateParser: ParserInterface = delegate
+
+  protected def applyPathCredentials(plan: LogicalPlan): LogicalPlan =
     ResolvePathCredentials(spark).apply(plan)
 
   override def parseDataType(sqlText: String): DataType = delegate.parseDataType(sqlText)
@@ -54,11 +56,6 @@ class UCSparkSqlExtensionsParser(spark: SparkSession, delegate: ParserInterface)
 
   override def parsePlan(sqlText: String): LogicalPlan =
     applyPathCredentials(delegate.parsePlan(sqlText))
-
-  override def parsePlanWithParameters(
-      sqlText: String,
-      parameterContext: ParameterContext): LogicalPlan =
-    applyPathCredentials(delegate.parsePlanWithParameters(sqlText, parameterContext))
 
   override def parseQuery(sqlText: String): LogicalPlan =
     applyPathCredentials(delegate.parseQuery(sqlText))
