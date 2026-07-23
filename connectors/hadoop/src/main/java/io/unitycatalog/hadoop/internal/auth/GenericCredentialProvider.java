@@ -2,10 +2,13 @@ package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
+import io.unitycatalog.client.internal.Preconditions;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
-import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.DelegateFileSystemId;
 import io.unitycatalog.hadoop.internal.util.ClockUtil;
+import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -15,12 +18,13 @@ import org.apache.hadoop.conf.Configuration;
  * cache lookup.
  */
 public abstract class GenericCredentialProvider {
-  static final CredentialCache globalCache = CredentialCache.createGlobalCache();
+  static final CredentialCache<DelegateFileSystemId, GenericCredential> globalCache =
+      CredentialCache.createGlobalCache();
 
   private Configuration conf;
   private Clock clock;
   private long renewalLeadTimeMillis;
-  private CredId cacheKey;
+  private DelegateFileSystemId cacheKey;
   private boolean credCacheEnabled;
 
   private volatile GenericCredential credential;
@@ -37,7 +41,7 @@ public abstract class GenericCredentialProvider {
 
     // Identify the credential scope; used as the global cache key so that requests targeting the
     // same scope can share a vended credential.
-    this.cacheKey = CredId.create(conf);
+    this.cacheKey = DelegateFileSystemId.create(conf);
 
     this.credCacheEnabled =
         conf.getBoolean(
@@ -82,10 +86,25 @@ public abstract class GenericCredentialProvider {
       return globalCache.access(
           cacheKey,
           () ->
-              new RenewableCredential(
-                  renewalLeadTimeMillis, clock, genericCredentialFetcher().createCredential()));
+              new RenewableCredential<>(
+                  renewalLeadTimeMillis,
+                  clock,
+                  fetchAndSelectCredential(),
+                  GenericCredential::readyToRenew));
     } else {
-      return genericCredentialFetcher().createCredential();
+      return fetchAndSelectCredential();
     }
+  }
+
+  private GenericCredential fetchAndSelectCredential() throws ApiException {
+    List<GenericCredential> credentials = genericCredentialFetcher().createCredentials();
+    Preconditions.checkState(!credentials.isEmpty(), "No vended credential was returned.");
+    if (credentials.size() == 1) {
+      return credentials.get(0);
+    }
+    Preconditions.checkState(
+        cacheKey.location() != null,
+        "Multiple credentials were vended but no location is set to select one.");
+    return CredentialUtil.selectForLocation(cacheKey.location(), credentials);
   }
 }

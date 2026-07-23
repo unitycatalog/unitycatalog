@@ -16,6 +16,13 @@ class CloudTypeTest {
   }
 
   @Test
+  void canonicalSchemeIsTheFamilyDefault() {
+    assertThat(CloudType.S3.canonicalScheme()).isEqualTo("s3");
+    assertThat(CloudType.GCS.canonicalScheme()).isEqualTo("gs");
+    assertThat(CloudType.ABFS.canonicalScheme()).isEqualTo("abfs");
+  }
+
+  @Test
   void fromSchemeReturnsEmptyForUnsupportedScheme() {
     assertThat(CloudType.fromScheme("s3n")).isEmpty(); // unsupported alias
     assertThat(CloudType.fromScheme("S3")).isEmpty(); // case-sensitive
