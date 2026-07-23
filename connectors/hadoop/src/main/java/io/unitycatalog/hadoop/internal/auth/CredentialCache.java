@@ -2,23 +2,22 @@ package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
-import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Caches vended {@link GenericCredential}s keyed by their scope ({@link CredId}). A cached
- * credential is reused while it is still valid and re-fetched via the supplied factory only once it
- * is about to expire.
+ * Caches vended {@link GenericCredential}s keyed by their scope ({@code K}). A cached credential is
+ * reused while it is still valid and re-fetched via the supplied factory only once it is about to
+ * expire.
  */
-public class CredentialCache {
+public class CredentialCache<K> {
   private static final int DEFAULT_MAX_SIZE = 1024;
   private static final String GLOBAL_CACHE_MAX_SIZE_KEY = "unitycatalog.credential.cache.maxSize";
   private static final String INITIAL_CACHE_MAX_SIZE_KEY =
       "unitycatalog.initial.credential.cache.maxSize";
 
-  private final BoundedKeyedCache<CredId, RenewableCredential> cache;
+  private final BoundedKeyedCache<K, RenewableCredential> cache;
 
   public CredentialCache(int maxSize) {
     this.cache = new BoundedKeyedCache<>(maxSize);
@@ -28,8 +27,8 @@ public class CredentialCache {
    * Creates the JVM-wide cache used by the Hadoop token providers to renew and share vended
    * credentials across requests targeting the same scope, saving QPS to the Unity Catalog server.
    */
-  public static CredentialCache createGlobalCache() {
-    return new CredentialCache(Integer.getInteger(GLOBAL_CACHE_MAX_SIZE_KEY, DEFAULT_MAX_SIZE));
+  public static <K> CredentialCache<K> createGlobalCache() {
+    return new CredentialCache<>(Integer.getInteger(GLOBAL_CACHE_MAX_SIZE_KEY, DEFAULT_MAX_SIZE));
   }
 
   /**
@@ -37,12 +36,12 @@ public class CredentialCache {
    * driver) so that different queries targeting the same scope reuse the same vended credential
    * instead of re-fetching from the Unity Catalog server.
    */
-  public static CredentialCache createInitialCredentialCache() {
-    return new CredentialCache(Integer.getInteger(INITIAL_CACHE_MAX_SIZE_KEY, DEFAULT_MAX_SIZE));
+  public static <K> CredentialCache<K> createInitialCredentialCache() {
+    return new CredentialCache<>(Integer.getInteger(INITIAL_CACHE_MAX_SIZE_KEY, DEFAULT_MAX_SIZE));
   }
 
   /**
-   * Returns the credential for {@code credId}, handling three cases:
+   * Returns the credential for {@code key}, handling three cases:
    *
    * <ul>
    *   <li>Cached and still valid: return it as is.
@@ -50,17 +49,16 @@ public class CredentialCache {
    *   <li>Not cached: create it via {@code factory}, cache it, return it.
    * </ul>
    */
-  public GenericCredential access(CredId credId, RenewableCredentialFactory factory)
-      throws ApiException {
+  public GenericCredential access(K key, RenewableCredentialFactory factory) throws ApiException {
     synchronized (cache) {
-      RenewableCredential cached = cache.getIfPresent(credId);
+      RenewableCredential cached = cache.getIfPresent(key);
       // Reuse the cached credential while it's still valid; otherwise fetch and cache a fresh one.
       if (cached != null && !cached.readyToRenew()) {
         return cached.credential();
       }
 
       RenewableCredential created = factory.create();
-      cache.put(credId, created);
+      cache.put(key, created);
       return created.credential();
     }
   }
