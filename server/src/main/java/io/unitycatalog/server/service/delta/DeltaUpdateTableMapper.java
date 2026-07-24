@@ -55,7 +55,8 @@ import org.hibernate.Session;
  *
  * <ol>
  *   <li>{@link #collectRequest} -- pre-transaction shape checks; classify by subtype.
- *   <li>{@link #checkRequirements} -- {@code assert-*} requirements against the loaded DAO.
+ *   <li>{@link #checkTableUuidRequirement} / {@link #checkEtagRequirement} -- {@code assert-*}
+ *       requirements against the loaded DAO.
  *   <li>{@link #applyUpdates} -- dispatch each action onto the DAO and property map.
  * </ol>
  *
@@ -287,27 +288,34 @@ public final class DeltaUpdateTableMapper {
 
   // ---------------------------------------------------------------------- requirements check
 
-  /** Failures raise {@link ErrorCode#UPDATE_REQUIREMENT_CONFLICT} so the client retries. */
-  public static void checkRequirements(TableInfoDAO dao, CollectedRequest collected) {
-    CollectedRequirements r = collected.requirements();
-    r.assertTableUuid.ifPresent(u -> checkAssertTableUuid(dao, u));
-    r.assertEtag.ifPresent(e -> checkAssertEtag(dao, e));
-  }
-
-  private static void checkAssertTableUuid(TableInfoDAO dao, DeltaAssertTableUUID u) {
-    if (!Objects.equals(u.getUuid(), dao.getId())) {
+  /**
+   * Checks the {@code assert-table-uuid} requirement, if present, raising {@link
+   * ErrorCode#UPDATE_REQUIREMENT_CONFLICT} on mismatch.
+   */
+  public static void checkTableUuidRequirement(TableInfoDAO dao, CollectedRequest collected) {
+    Optional<UUID> assertUuid =
+        collected.requirements().assertTableUuid.map(DeltaAssertTableUUID::getUuid);
+    UUID tableUuid = dao.getId();
+    if (assertUuid.isPresent() && !Objects.equals(assertUuid.get(), tableUuid)) {
       throw new BaseException(
           ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
-          "assert-table-uuid failed: expected " + u.getUuid() + " but table has " + dao.getId());
+          "assert-table-uuid failed: expected " + assertUuid.get() + " but table has " + tableUuid);
     }
   }
 
-  private static void checkAssertEtag(TableInfoDAO dao, DeltaAssertEtag e) {
-    String currentEtag = computeEtag(dao);
-    if (!Objects.equals(currentEtag, e.getEtag())) {
+  /**
+   * Checks the {@code assert-etag} requirement, if present, against {@code preApplyEtag}, raising
+   * {@link ErrorCode#UPDATE_REQUIREMENT_CONFLICT} on mismatch. The caller passes the pre-apply etag
+   * because applying a commit can advance {@code updatedAt} (and the etag), so recomputing here
+   * would compare against post-mutation state.
+   */
+  public static void checkEtagRequirement(String preApplyEtag, CollectedRequest collected) {
+    Optional<String> assertEtag =
+        collected.requirements().assertEtag.map(DeltaAssertEtag::getEtag);
+    if (assertEtag.isPresent() && !Objects.equals(preApplyEtag, assertEtag.get())) {
       throw new BaseException(
           ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
-          "assert-etag failed: expected " + e.getEtag() + " but table has " + currentEtag);
+          "assert-etag failed: expected " + assertEtag.get() + " but table has " + preApplyEtag);
     }
   }
 

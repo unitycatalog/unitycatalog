@@ -201,7 +201,7 @@ public class DeltaUpdateTableMapperTest {
 
     assertThatCode(
             () ->
-                DeltaUpdateTableMapper.checkRequirements(
+                DeltaUpdateTableMapper.checkTableUuidRequirement(
                     dao,
                     collectRequestFor(
                         new DeltaAssertTableUUID().uuid(id).type("assert-table-uuid"))))
@@ -216,7 +216,7 @@ public class DeltaUpdateTableMapperTest {
 
     assertThatThrownBy(
             () ->
-                DeltaUpdateTableMapper.checkRequirements(
+                DeltaUpdateTableMapper.checkTableUuidRequirement(
                     dao,
                     collectRequestFor(
                         new DeltaAssertTableUUID()
@@ -228,34 +228,30 @@ public class DeltaUpdateTableMapperTest {
 
   @Test
   public void assertEtagHappyPath() {
-    TableInfoDAO dao = new TableInfoDAO();
-    dao.setId(UUID.randomUUID());
-    Date updatedAt = new Date();
-    dao.setUpdatedAt(updatedAt);
-
-    String expectedEtag = "etag-" + updatedAt.getTime();
+    // The client's assert-etag matches the pre-apply etag, so the check passes.
+    String preApplyEtag = "etag-1700000000000";
     assertThatCode(
             () ->
-                DeltaUpdateTableMapper.checkRequirements(
-                    dao,
+                DeltaUpdateTableMapper.checkEtagRequirement(
+                    preApplyEtag,
                     collectRequestFor(
-                        new DeltaAssertTableUUID().uuid(dao.getId()).type("assert-table-uuid"),
-                        new DeltaAssertEtag().etag(expectedEtag).type("assert-etag"))))
+                        new DeltaAssertTableUUID()
+                            .uuid(UUID.randomUUID())
+                            .type("assert-table-uuid"),
+                        new DeltaAssertEtag().etag(preApplyEtag).type("assert-etag"))))
         .doesNotThrowAnyException();
   }
 
   @Test
   public void assertEtagMismatchSurfacesUpdateRequirementConflict() {
-    TableInfoDAO dao = new TableInfoDAO();
-    dao.setId(UUID.randomUUID());
-    dao.setUpdatedAt(new Date());
-
     assertThatThrownBy(
             () ->
-                DeltaUpdateTableMapper.checkRequirements(
-                    dao,
+                DeltaUpdateTableMapper.checkEtagRequirement(
+                    "etag-current",
                     collectRequestFor(
-                        new DeltaAssertTableUUID().uuid(dao.getId()).type("assert-table-uuid"),
+                        new DeltaAssertTableUUID()
+                            .uuid(UUID.randomUUID())
+                            .type("assert-table-uuid"),
                         new DeltaAssertEtag().etag("etag-stale").type("assert-etag"))))
         .isInstanceOf(BaseException.class)
         .hasMessageContaining("assert-etag failed");
