@@ -4,7 +4,7 @@ import org.apache.spark.sql.catalyst.util.{GeneratedColumn, IdentityColumn}
 import org.apache.spark.sql.types.{MetadataBuilder, StructType}
 
 /** Converts V2 columns to a schema while preserving generated and identity column metadata. */
-object CatalogV2UtilShim {
+object CatalogV2UtilWithColumnMetadata {
 
   def v2ColumnsToStructType(columns: Array[Column]): StructType = {
     val schema = CatalogV2Util.v2ColumnsToStructType(columns)

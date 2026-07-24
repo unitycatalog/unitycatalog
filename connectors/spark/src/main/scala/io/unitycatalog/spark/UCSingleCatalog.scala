@@ -181,7 +181,7 @@ class UCSingleCatalog
       columns: Array[Column],
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
-    val schema = CatalogV2UtilShim.v2ColumnsToStructType(columns)
+    val schema = CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns)
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
@@ -437,7 +437,7 @@ class UCSingleCatalog
       properties: util.Map[String, String]): StagedTable = {
     stageReplace(
       ident,
-      CatalogV2UtilShim.v2ColumnsToStructType(columns),
+      CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns),
       partitions,
       properties)
   }
@@ -473,7 +473,7 @@ class UCSingleCatalog
       properties: util.Map[String, String]): StagedTable = {
     stageCreateOrReplace(
       ident,
-      CatalogV2UtilShim.v2ColumnsToStructType(columns),
+      CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns),
       partitions,
       properties)
   }
@@ -540,7 +540,7 @@ class UCSingleCatalog
       properties: util.Map[String, String]): StagedTable = {
     stageCreate(
       ident,
-      CatalogV2UtilShim.v2ColumnsToStructType(columns),
+      CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns),
       partitions,
       properties)
   }

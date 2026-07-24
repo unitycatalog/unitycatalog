@@ -4,7 +4,7 @@ import java.net.URI
 import java.util
 
 import org.apache.spark.sql.catalyst.util.{GeneratedColumn, IdentityColumn}
-import org.apache.spark.sql.connector.catalog.{CatalogV2UtilShim, Column, ColumnDefaultValue, IdentityColumnSpec}
+import org.apache.spark.sql.connector.catalog.{CatalogV2UtilWithColumnMetadata, Column, ColumnDefaultValue, IdentityColumnSpec}
 import org.apache.spark.sql.connector.expressions.Expressions
 import org.apache.spark.sql.types.DataTypes
 import org.junit.jupiter.api.Assertions.{assertEquals, assertNotNull, assertTrue}
@@ -26,7 +26,7 @@ class SparkCatalogCompatibilitySuite {
       Column.create(
         "generated", DataTypes.IntegerType, true, "derived value", "base + 1", null))
 
-    val schema = CatalogV2UtilShim.v2ColumnsToStructType(columns)
+    val schema = CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns)
     val generated = schema("generated")
 
     assertEquals(Some("derived value"), generated.getComment)
@@ -49,7 +49,7 @@ class SparkCatalogCompatibilitySuite {
         identitySpec,
         """{"customMetadata":"preserved"}"""))
 
-    val identity = CatalogV2UtilShim.v2ColumnsToStructType(columns)("id")
+    val identity = CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns)("id")
 
     assertEquals(Some("identity value"), identity.getComment)
     assertEquals("preserved", identity.metadata.getString("customMetadata"))
