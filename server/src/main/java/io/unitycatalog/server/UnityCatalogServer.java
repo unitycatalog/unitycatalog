@@ -24,6 +24,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
@@ -52,7 +53,6 @@ import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.delta.DeltaApiMappers;
 import io.unitycatalog.server.service.delta.DeltaApiService;
-import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
@@ -197,6 +197,7 @@ public class UnityCatalogServer implements AutoCloseable {
             : new CloudCredentialVendor(serverProperties);
     StorageCredentialVendor storageCredentialVendor =
         new StorageCredentialVendor(cloudCredentialVendor, repositories.getExternalLocationUtils());
+    FileOperations fileOperations = new FileOperations(storageCredentialVendor, serverProperties);
 
     // Add support for Unity Catalog APIs
     AuthService authService = new AuthService(securityContext, serverProperties, repositories);
@@ -287,24 +288,22 @@ public class UnityCatalogServer implements AutoCloseable {
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
-        serverProperties,
-        storageCredentialVendor,
         catalogService,
         schemaService,
         tableService,
-        repositories);
+        repositories,
+        fileOperations);
     addDeltaApiServices(
         armeriaServerBuilder, authorizer, repositories, serverProperties, storageCredentialVendor);
   }
 
   private void addIcebergApiServices(
       ServerBuilder armeriaServerBuilder,
-      ServerProperties serverProperties,
-      StorageCredentialVendor storageCredentialVendor,
       CatalogService catalogService,
       SchemaService schemaService,
       TableService tableService,
-      Repositories repositories) {
+      Repositories repositories,
+      FileOperations fileOperations) {
     LOGGER.info("Adding Iceberg services...");
 
     // Add support for Iceberg REST APIs
@@ -313,10 +312,8 @@ public class UnityCatalogServer implements AutoCloseable {
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
-    MetadataService metadataService =
-        new MetadataService(new FileIOFactory(storageCredentialVendor, serverProperties));
-    TableConfigService tableConfigService =
-        new TableConfigService(storageCredentialVendor, serverProperties);
+    MetadataService metadataService = new MetadataService(fileOperations);
+    TableConfigService tableConfigService = new TableConfigService(fileOperations);
 
     armeriaServerBuilder.annotatedService(
         BASE_PATH + "iceberg",

@@ -32,14 +32,12 @@ public class VolumeRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(VolumeRepository.class);
   private final Repositories repositories;
   private final SessionFactory sessionFactory;
-  private final FileOperations fileOperations;
   private static final PagedListingHelper<VolumeInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(VolumeInfoDAO.class);
 
   public VolumeRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositories.getFileOperations();
   }
 
   public VolumeInfo createVolume(CreateVolumeRequestContent createVolumeRequest) {
