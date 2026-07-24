@@ -92,7 +92,7 @@ object PythonClientPostBuild {
       log.info("Version update script executed successfully")
     }
 
-    Seq("setup.py", "README.md", "pyproject.toml").foreach { fileName =>
+    Seq("README.md", "pyproject.toml").foreach { fileName =>
       val sourcePath = buildDir.resolve(fileName)
       val targetPath = Paths.get(openApiOutputDir, fileName)
 
