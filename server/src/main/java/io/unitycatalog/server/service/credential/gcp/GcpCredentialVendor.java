@@ -85,6 +85,18 @@ public class GcpCredentialVendor {
     return new ServiceAccountCredentialGenerator(jsonKeyFilePath);
   }
 
+  /**
+   * Renders {@code value} as a single-quoted CEL string literal. Without escaping, a storage
+   * location containing a quote could close the literal and inject CEL operators into the
+   * credential access boundary condition, widening the downscoped token's access.
+   */
+  private static String celStringLiteral(String value) {
+    // Backslashes are escaped first so they cannot consume the escapes added afterwards.
+    return "'"
+        + value.replace("\\", "\\\\").replace("'", "\\'").replace("\r", "\\r").replace("\n", "\\n")
+        + "'";
+  }
+
   OAuth2Credentials downscopeGcpCreds(GoogleCredentials credentials, CredentialContext context) {
     CredentialAccessBoundary.Builder boundaryBuilder = CredentialAccessBoundary.newBuilder();
     List<String> roles = resolvePrivilegesToRoles(context.getPrivileges());
@@ -102,14 +114,15 @@ public class GcpCredentialVendor {
               // for reading/writing objects
               String resourceNameStartsWithExpr =
                   format(
-                      "resource.name.startsWith('projects/_/buckets/%s/objects/%s')",
-                      locationUri.getHost(), path);
+                      "resource.name.startsWith(%s)",
+                      celStringLiteral(
+                          format("projects/_/buckets/%s/objects/%s", locationUri.getHost(), path)));
 
               // for listing objects
               String objectListPrefixStartsWithExpr =
                   format(
-                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith('%s')",
-                      path);
+                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith(%s)",
+                      celStringLiteral(path));
 
               String combinedExpr =
                   resourceNameStartsWithExpr + " || " + objectListPrefixStartsWithExpr;
