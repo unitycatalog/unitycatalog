@@ -28,7 +28,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, NoSuchNamespaceException, NoSuchTableException, TableAlreadyExistsException, ViewAlreadyExistsException}
-import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
+import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types._
@@ -701,10 +701,11 @@ private[spark] class UCProxy(
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
-    // Per the RelationCatalog contract, listTables must return tables only -- view-like UC
-    // table types (metric views, materialized views) belong on listViews.
+    // Which view-like rows to hide from the table surface is version-specific: on Spark 4.2 all
+    // view-like types are served via listViews, while on 4.0/4.1 plain views remain here so they
+    // stay readable without a v2 view catalog.
     listUCTableLikes(namespace)
-      .filterNot(t => UCViewTypes.isViewLikeTableType(t.getTableType))
+      .filterNot(t => hideFromTableListing(t.getTableType))
       .map(table => Identifier.of(namespace, table.getName))
       .toArray
   }
@@ -738,12 +739,13 @@ private[spark] class UCProxy(
     }
   }
 
-  // Single-RPC table path. Calls UC `getTable` once and rejects view-like rows from the
-  // table-only surface by throwing `NoSuchTableException`.
+  // Single-RPC table path. Calls UC `getTable` once and routes view-like rows through a
+  // version-specific hook (rejected from the table surface on 4.2; plain views resolved as
+  // read-only V1 views on 4.0/4.1).
   override def loadTable(ident: Identifier): Table = {
     val t = getUCTableLike(ident).getOrElse(throw new NoSuchTableException(ident))
     if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
-      throw new ViewFoundDuringTableLoadException(ident, t)
+      loadViewLikeFromTableSurface(t, ident)
     } else {
       loadV1Table(t)
     }
@@ -756,8 +758,7 @@ private[spark] class UCProxy(
       Option(col.getPartitionIndex).foreach { index =>
         partitionCols += col.getName -> index
       }
-      StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
-        .withComment(col.getComment)
+      toStructField(col)
     }.toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
@@ -820,9 +821,41 @@ private[spark] class UCProxy(
     // Spark separates table lookup and data source resolution. To support Spark native data
     // sources, here we return the `V1Table` which only contains the table metadata. Spark will
     // resolve the data source and create scan node later.
+    asV1Table(sparkTable)
+  }
+
+  // A UC view has no storage or data source format; Spark resolves it from its SQL text. Returning
+  // a VIEW `CatalogTable` routes resolution through Spark's relation resolver, which parses
+  // `viewText` against the view's default catalog/namespace. Used only where no v2 view catalog is
+  // available (Spark 4.0/4.1); on Spark 4.2 views are served through the `RelationCatalog` surface.
+  private[spark] def buildV1ViewTable(t: UCTableInfo): Table = {
+    val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
+    val fields = t.getColumns.asScala.map(toStructField).toArray
+    val viewNamespaceProps =
+      CatalogTable.catalogAndNamespaceToProps(this.name, Seq(t.getSchemaName))
+    val viewTable = CatalogTable(
+      identifier = identifier,
+      tableType = CatalogTableType.VIEW,
+      storage = CatalogStorageFormat.empty,
+      schema = StructType(fields),
+      viewText = Option(t.getViewDefinition),
+      comment = Option(t.getComment),
+      properties = Option(t.getProperties).map(_.asScala.toMap).getOrElse(Map.empty) ++
+        viewNamespaceProps,
+      createTime = t.getCreatedAt,
+      tracksPartitionsInCatalog = false
+    )
+    asV1Table(viewTable)
+  }
+
+  private def toStructField(col: ColumnInfo): StructField =
+    StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
+      .withComment(col.getComment)
+
+  private def asV1Table(catalogTable: CatalogTable): Table = {
     Class.forName("org.apache.spark.sql.connector.catalog.V1Table")
       .getDeclaredConstructor(classOf[CatalogTable])
-      .newInstance(sparkTable)
+      .newInstance(catalogTable)
       .asInstanceOf[Table]
   }
 

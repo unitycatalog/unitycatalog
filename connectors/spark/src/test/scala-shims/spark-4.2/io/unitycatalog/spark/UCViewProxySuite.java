@@ -544,6 +544,115 @@ public class UCViewProxySuite {
         .isInstanceOf(TableAlreadyExistsException.class);
   }
 
+  // -- Plain SQL views (TableType.VIEW) --
+
+  @Test
+  public void testListViewsIncludesPlainViews() throws Exception {
+    ListTablesResponse response =
+        new ListTablesResponse()
+            .tables(
+                List.of(
+                    new TableInfo().name("t1").tableType(TableType.EXTERNAL),
+                    new TableInfo().name("v1").tableType(TableType.VIEW),
+                    new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
+            .nextPageToken(null);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    assertThat(proxyViews.listViews(NAMESPACE))
+        .containsExactly(Identifier.of(NAMESPACE, "v1"), Identifier.of(NAMESPACE, "mv1"));
+    // The same rows: plain view is view-like, so listTables must exclude it.
+    assertThat(proxy.listTables(NAMESPACE)).containsExactly(Identifier.of(NAMESPACE, "t1"));
+  }
+
+  @Test
+  public void testCreatePlainViewSendsViewPayloadWithNonNullDependencies() throws Exception {
+    // A plain CREATE VIEW carries no dependencies; the connector must still send a non-null
+    // (empty) dependency list so the server's view validation accepts it.
+    View view =
+        new View.Builder()
+            .withColumns(new Column[] {Column.create("c", DataTypes.IntegerType, true)})
+            .withProperties(Map.of(TableCatalog.PROP_TABLE_TYPE, TableSummary.VIEW_TABLE_TYPE))
+            .withQueryText(PLAIN_VIEW_QUERY)
+            .withCurrentCatalog(CATALOG_NAME)
+            .withCurrentNamespace(NAMESPACE)
+            .build();
+
+    TableInfo ucView =
+        stubPlainView().viewDependencies(new DependencyList().dependencies(List.of()));
+    when(mockTablesApi.createTable(any(CreateTable.class))).thenReturn(ucView);
+
+    View loaded = proxyViews.createView(Identifier.of(NAMESPACE, "v1"), view);
+
+    ArgumentCaptor<CreateTable> captor = ArgumentCaptor.forClass(CreateTable.class);
+    verify(mockTablesApi).createTable(captor.capture());
+    CreateTable request = captor.getValue();
+    assertThat(request.getTableType()).isEqualTo(TableType.VIEW);
+    assertThat(request.getViewDefinition()).isEqualTo(PLAIN_VIEW_QUERY);
+    assertThat(request.getViewDependencies()).isNotNull();
+    assertThat(request.getViewDependencies().getDependencies()).isEmpty();
+    assertThat(loaded.queryText()).isEqualTo(PLAIN_VIEW_QUERY);
+    assertThat(loaded.properties().get(TableCatalog.PROP_TABLE_TYPE))
+        .isEqualTo(TableSummary.VIEW_TABLE_TYPE);
+  }
+
+  @Test
+  public void testLoadRelationForPlainViewReturnsView() throws Exception {
+    stubPlainView();
+
+    Relation relation = proxyRelations.loadRelation(Identifier.of(NAMESPACE, "v1"));
+
+    assertThat(relation).isInstanceOf(View.class);
+    View view = (View) relation;
+    assertThat(view.queryText()).isEqualTo(PLAIN_VIEW_QUERY);
+    assertThat(view.properties().get(TableCatalog.PROP_TABLE_TYPE))
+        .isEqualTo(TableSummary.VIEW_TABLE_TYPE);
+  }
+
+  @Test
+  public void testLoadTableRejectsPlainView() throws Exception {
+    stubPlainView();
+
+    assertThatThrownBy(() -> proxy.loadTable(Identifier.of(NAMESPACE, "v1")))
+        .isInstanceOf(NoSuchTableException.class);
+  }
+
+  @Test
+  public void testDropViewDeletesPlainView() throws Exception {
+    stubPlainView();
+
+    boolean dropped = proxyViews.dropView(Identifier.of(NAMESPACE, "v1"));
+
+    assertThat(dropped).isTrue();
+    verify(mockTablesApi).deleteTable(eq("test_catalog.test_schema.v1"));
+  }
+
+  private static final String PLAIN_VIEW_QUERY = "SELECT 1 AS c";
+
+  /** Builds a UC {@code VIEW} row named {@code v1} and stubs {@code getTable} to return it. */
+  private TableInfo stubPlainView() throws Exception {
+    TableInfo ucView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("v1")
+            .tableType(TableType.VIEW)
+            .viewDefinition(PLAIN_VIEW_QUERY)
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("c")
+                        .typeName(ColumnTypeName.INT)
+                        .typeText("int")
+                        .typeJson("{\"name\":\"c\",\"type\":\"integer\",\"nullable\":true,"
+                            + "\"metadata\":{}}")
+                        .nullable(true)
+                        .position(0)));
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.v1"), eq(true), eq(true)))
+        .thenReturn(ucView);
+    return ucView;
+  }
+
   private static void setCatalogField(UCSingleCatalog catalog, String fieldName, Object value) {
     try {
       Field field = UCSingleCatalog.class.getDeclaredField(fieldName);
