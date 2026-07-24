@@ -196,6 +196,8 @@ public class ServerProperties {
     CLIENT_ID("server.client-id"),
     CLIENT_SECRET("server.client-secret"),
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
+    ALLOWED_ISSUERS("server.allowed-issuers"),
+    AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     MANAGED_TABLE_USE_DELTA_API_ONLY(
@@ -530,7 +532,7 @@ public class ServerProperties {
    * property value changes.
    */
   public WildcardAllowlist getIssuerAllowlist() {
-    String current = getProperty(WildcardAllowlist.ALLOWED_ISSUERS_PROPERTY);
+    String current = getProperty(Property.ALLOWED_ISSUERS.key);
     String normalized = current == null ? "" : current;
     WildcardAllowlist cached = cachedIssuerAllowlist;
     if (cached == null || !cached.source().equals(normalized)) {
@@ -545,7 +547,7 @@ public class ServerProperties {
    * value changes.
    */
   public WildcardAllowlist getAudienceAllowlist() {
-    String current = getProperty(WildcardAllowlist.AUDIENCES_PROPERTY);
+    String current = getProperty(Property.AUDIENCES.key);
     String normalized = current == null ? "" : current;
     WildcardAllowlist cached = cachedAudienceAllowlist;
     if (cached == null || !cached.source().equals(normalized)) {
@@ -564,7 +566,7 @@ public class ServerProperties {
    * @return List of allowed issuer URLs (exact match or wildcard with {@code *})
    */
   public List<String> getAllowedIssuers() {
-    return getCommaSeparatedList(WildcardAllowlist.ALLOWED_ISSUERS_PROPERTY);
+    return getCommaSeparatedList(Property.ALLOWED_ISSUERS.key);
   }
 
   /**
@@ -580,7 +582,7 @@ public class ServerProperties {
    * @return List of expected audience values
    */
   public List<String> getAudiences() {
-    return getCommaSeparatedList(WildcardAllowlist.AUDIENCES_PROPERTY);
+    return getCommaSeparatedList(Property.AUDIENCES.key);
   }
 
   /**

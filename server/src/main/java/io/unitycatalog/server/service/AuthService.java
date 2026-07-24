@@ -173,7 +173,7 @@ public class AuthService {
 
     if (!serverProperties.isAudienceValidationDisabled()
         && !serverProperties.getAudienceAllowlist().isAnyAllowed(decodedJWT.getAudience())) {
-      LOGGER.debug("Token rejected: audience not in allowlist");
+      LOGGER.debug("Token rejected: audience {} not in allowlist", decodedJWT.getAudience());
       throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
     }
 
