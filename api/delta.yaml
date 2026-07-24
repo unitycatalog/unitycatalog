@@ -544,6 +544,7 @@ components:
       enum:
         - MANAGED
         - EXTERNAL
+        - MANAGED_SHALLOW_CLONE # Not yet fully implemented
 
     DeltaCredentialOperation:
       type: string
