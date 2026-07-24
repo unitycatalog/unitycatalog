@@ -85,6 +85,13 @@ public class GcpCredentialVendor {
     return new ServiceAccountCredentialGenerator(jsonKeyFilePath);
   }
 
+  private static String toCelStringLiteral(String value) {
+    // Escape existing backslashes first so they cannot consume escapes added below.
+    String escaped =
+        value.replace("\\", "\\\\").replace("'", "\\'").replace("\r", "\\r").replace("\n", "\\n");
+    return "'" + escaped + "'";
+  }
+
   OAuth2Credentials downscopeGcpCreds(GoogleCredentials credentials, CredentialContext context) {
     CredentialAccessBoundary.Builder boundaryBuilder = CredentialAccessBoundary.newBuilder();
     List<String> roles = resolvePrivilegesToRoles(context.getPrivileges());
@@ -100,16 +107,16 @@ public class GcpCredentialVendor {
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
 
               // for reading/writing objects
+              String resourceName =
+                  format("projects/_/buckets/%s/objects/%s", locationUri.getHost(), path);
               String resourceNameStartsWithExpr =
-                  format(
-                      "resource.name.startsWith('projects/_/buckets/%s/objects/%s')",
-                      locationUri.getHost(), path);
+                  format("resource.name.startsWith(%s)", toCelStringLiteral(resourceName));
 
               // for listing objects
               String objectListPrefixStartsWithExpr =
                   format(
-                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith('%s')",
-                      path);
+                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith(%s)",
+                      toCelStringLiteral(path));
 
               String combinedExpr =
                   resourceNameStartsWithExpr + " || " + objectListPrefixStartsWithExpr;
