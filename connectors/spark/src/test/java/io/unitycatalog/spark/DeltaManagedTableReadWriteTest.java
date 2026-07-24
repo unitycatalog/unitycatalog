@@ -111,6 +111,53 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     sql("DROP TABLE IF EXISTS %s", fullTableName);
   }
 
+  /**
+   * A managed CREATE TABLE with no USING clause honors `spark.sql.sources.default`: when it
+   * resolves to delta, UC treats the table as a managed Delta table (mirroring Spark's built-in
+   * session catalog) instead of rejecting it as non-Delta. Unlike Spark's `V2SessionCatalog`, a
+   * named V2 catalog receives no `provider` property when USING is omitted, so this relies on the
+   * default-source fallback in {@code UCSingleCatalog.hasDeltaProvider}.
+   */
+  @Test
+  public void testCreateManagedTableDefaultsToDeltaWhenDefaultSourceIsDelta() {
+    // SPARK_CATALOG must also be a UC/Delta catalog for DeltaLog.checkRequiredConfigurations to
+    // pass on the create-success path; the table itself is created in CATALOG_NAME (the named V2
+    // catalog), the deterministic path this change targets.
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE + "_defaultsrc";
+    String originalDefault = session.conf().get("spark.sql.sources.default", "parquet");
+    session.conf().set("spark.sql.sources.default", "delta");
+    try {
+      sql("CREATE TABLE %s(name STRING)", fullTableName); // no USING clause
+      sql("INSERT INTO %s VALUES ('a')", fullTableName);
+      assertThat(sql("SELECT name FROM %s", fullTableName)).hasSize(1);
+    } finally {
+      sql("DROP TABLE IF EXISTS %s", fullTableName);
+      session.conf().set("spark.sql.sources.default", originalDefault);
+    }
+  }
+
+  /**
+   * With the default source left as a non-Delta format, a provider-less managed CREATE TABLE is
+   * still rejected -- confirming no regression to Spark's out-of-the-box behavior
+   * (`spark.sql.sources.default` defaults to `parquet`).
+   */
+  @Test
+  public void testCreateManagedTableWithNonDeltaDefaultSourceRejected() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE + "_parquetdefault";
+    String originalDefault = session.conf().get("spark.sql.sources.default", "parquet");
+    session.conf().set("spark.sql.sources.default", "parquet");
+    try {
+      assertThatThrownBy(() -> sql("CREATE TABLE %s(name STRING)", fullTableName))
+          .hasMessageContaining("not support non-Delta managed table");
+    } finally {
+      session.conf().set("spark.sql.sources.default", originalDefault);
+    }
+  }
+
   @ParameterizedTest
   @MethodSource("cloudParameters")
   public void testCreateManagedDeltaTable(
