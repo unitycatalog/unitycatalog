@@ -1,5 +1,6 @@
 package io.unitycatalog.server.sdk.access;
 
+import static io.unitycatalog.server.utils.TestUtils.assertHttpApiException;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -12,6 +13,7 @@ import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
@@ -196,5 +198,20 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
             .name("catalog_with_location2")
             .storageRoot("file:///tmp/external_location/ext_table");
     assertPermissionDenied(() -> principal1CatalogsApi.createCatalog(catalogWithLoc2));
+  }
+
+  /**
+   * POST /catalogs has a PAYLOAD-source authorization locator (@AuthorizeResourceKey on the
+   * CreateCatalog body). A body-less request never triggers UnityAccessDecorator's peekData
+   * callback, so checkAuthorization is silently skipped. AuthorizationGateConverter catches this at
+   * body-binding time and denies the request before the handler sees it.
+   */
+  @Test
+  @SneakyThrows
+  public void bodylessPostDeniedByAuthorizationGate() {
+    assertHttpApiException(
+        TestUtils.sendRawEmptyPost(adminConfig, "/api/2.1/unity-catalog/catalogs"),
+        ErrorCode.PERMISSION_DENIED,
+        "Authorization could not be verified for this request");
   }
 }
