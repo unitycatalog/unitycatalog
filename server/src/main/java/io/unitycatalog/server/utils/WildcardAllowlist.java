@@ -13,9 +13,7 @@ import java.util.regex.Pattern;
 public final class WildcardAllowlist {
 
   public static final String ALLOWED_ISSUERS_NAME = "allowed issuers";
-  public static final String ALLOWED_ISSUERS_PROPERTY = "server.allowed-issuers";
   public static final String AUDIENCES_NAME = "audiences";
-  public static final String AUDIENCES_PROPERTY = "server.audiences";
 
   private final String source;
   private final Set<String> exact;
@@ -24,7 +22,7 @@ public final class WildcardAllowlist {
   /**
    * @param allowlistName human-readable name used in configuration error messages (e.g. {@link
    *     #ALLOWED_ISSUERS_NAME})
-   * @param propertyKey server property key (e.g. {@link #ALLOWED_ISSUERS_PROPERTY})
+   * @param propertyKey server property key (e.g. {@link ServerProperties.Property#ALLOWED_ISSUERS})
    * @param source raw comma-separated property value from {@code server.properties}
    */
   WildcardAllowlist(String allowlistName, String propertyKey, String source) {
@@ -41,7 +39,7 @@ public final class WildcardAllowlist {
     if (exactEntries.isEmpty() && wildcardEntries.isEmpty()) {
       throw misconfigured(allowlistName, propertyKey);
     }
-    this.exact = exactEntries;
+    this.exact = Set.copyOf(exactEntries);
     this.wildcards = List.copyOf(wildcardEntries);
   }
 
@@ -51,11 +49,12 @@ public final class WildcardAllowlist {
   }
 
   public static WildcardAllowlist forAllowedIssuers(String source) {
-    return new WildcardAllowlist(ALLOWED_ISSUERS_NAME, ALLOWED_ISSUERS_PROPERTY, source);
+    return new WildcardAllowlist(
+        ALLOWED_ISSUERS_NAME, ServerProperties.Property.ALLOWED_ISSUERS.key, source);
   }
 
   public static WildcardAllowlist forAudiences(String source) {
-    return new WildcardAllowlist(AUDIENCES_NAME, AUDIENCES_PROPERTY, source);
+    return new WildcardAllowlist(AUDIENCES_NAME, ServerProperties.Property.AUDIENCES.key, source);
   }
 
   /**
