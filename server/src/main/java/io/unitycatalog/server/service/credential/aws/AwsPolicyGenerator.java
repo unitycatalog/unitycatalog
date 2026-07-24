@@ -82,9 +82,8 @@ public class AwsPolicyGenerator {
 
       ArrayNode conditionalPrefixes = (ArrayNode) listStatement.findPath("s3:prefix");
       paths.forEach(path -> {
-        // remove any preceding forward slashes
-        // TODO: potentially sanitize/encode the whole path to deal with problematic chars
-        String sanitizedPath = path.replaceAll("^/+", "");
+        // remove any preceding forward slashes, then make the path match literally
+        String sanitizedPath = escapeIamSpecialChars(path.replaceAll("^/+", ""));
 
         if (sanitizedPath.isEmpty()) {
           conditionalPrefixes.add("*");
@@ -101,6 +100,17 @@ public class AwsPolicyGenerator {
     });
 
     return JSON_MAPPER.writeValueAsString(policyRoot);
+  }
+
+  /**
+   * Escapes the characters IAM treats specially in resource ARNs and string conditions, so that a
+   * storage location path is matched literally. {@code *} and {@code ?} are legal S3 key characters
+   * but IAM wildcards, so a path like {@code /*} would otherwise widen the generated policy to the
+   * whole bucket. IAM expresses these literals as the policy variables {@code ${*}}, {@code ${?}}
+   * and {@code ${$}}; {@code $} is escaped first so it doesn't mangle the escapes added after it.
+   */
+  private static String escapeIamSpecialChars(String path) {
+    return path.replace("$", "${$}").replace("*", "${*}").replace("?", "${?}");
   }
 
   private static Map<String, List<String>> getBucketToPathsMap(List<NormalizedURL> locations) {

@@ -81,4 +81,55 @@ public class AwsPolicyGeneratorTest {
         .doesNotContain("s3:DeleteO*")
         .contains("s3:GetO*");
   }
+
+  @Test
+  public void testWildcardsInPathAreEscapedToLiterals() {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT, UPDATE), List.of(NormalizedURL.from("s3://victim-bucket/*")));
+
+    // The path must match the literal key "*", not every object in the bucket.
+    assertThat(policy)
+        .contains("arn:aws:s3:::victim-bucket/${*}")
+        .doesNotContain("arn:aws:s3:::victim-bucket/*");
+  }
+
+  @Test
+  public void testSingleCharWildcardInPathIsEscapedToLiteral() {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            // "%3F" is the percent-encoding of "?", which IAM treats as a single-char wildcard.
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path%3Fx/table")));
+
+    assertThat(policy)
+        .contains("arn:aws:s3:::my-bucket/path${?}x/table")
+        .doesNotContain("arn:aws:s3:::my-bucket/path?x/table");
+  }
+
+  @Test
+  public void testDollarSignCannotForgeAnEscapeSequence() {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            // A path that already spells out an IAM escape sequence must stay literal text.
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/$%7B*%7D")));
+
+    assertThat(policy).contains("arn:aws:s3:::my-bucket/${$}{${*}}");
+  }
+
+  @SneakyThrows
+  @Test
+  public void testOrdinaryPathIsNotEscaped() {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode node = JSON_MAPPER.readTree(policy);
+    assertThat(node.get("Statement").get(0).get("Resource"))
+        .map(JsonNode::asText)
+        .containsExactly(
+            "arn:aws:s3:::my-bucket/path1/table1/*", "arn:aws:s3:::my-bucket/path1/table1");
+    assertThat(node.findPath("s3:prefix"))
+        .map(JsonNode::asText)
+        .containsExactly("path1/table1", "path1/table1/", "path1/table1/*");
+  }
 }
