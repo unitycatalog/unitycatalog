@@ -1,60 +1,67 @@
-# syntax=docker.io/docker/dockerfile:1.7-labs@sha256:b99fecfe00268a8b556fad7d9c37ee25d716ae08a5d7320e6d51c4dd83246894
-ARG HOME="/home/unitycatalog"
+# syntax=docker/dockerfile:1.7
 
-# Build stage, using Amazon Corretto jdk 17 on alpine with arm64 support
-FROM amazoncorretto:17-alpine3.20-jdk@sha256:c045f0537bc890f9e61924f33f35e9667f696b4f372dad4a73861a9396b5d0b5 as base
+# ---------------------------------------------------------------------------
+# Build stage: full JDK (glibc) + sbt. The Coursier/ivy/sbt caches live only in
+# BuildKit cache mounts and are never written into an image layer.
+# ---------------------------------------------------------------------------
+FROM eclipse-temurin:17-jdk-jammy@sha256:beabb759e6f9653c843958d1d1f5cecb881dfb85aa6081e2bef099ab1260344e AS build
 
-# Dependencies are installed in $HOME/.cache by sbt
-ARG HOME
-ENV HOME=$HOME
+WORKDIR /workspace
+
+# Copy only what sbt needs to resolve dependencies and compile the server + CLI.
+# Each directory keeps its name under /workspace (so build.sbt's module paths resolve).
+COPY version.sbt build.sbt ./
+COPY dev/ ./dev/
+COPY build/ ./build/
+COPY project/ ./project/
+COPY examples/ ./examples/
+COPY server/ ./server/
+COPY api/ ./api/
+COPY clients/ ./clients/
+COPY bin/ ./bin/
+COPY etc/ ./etc/
+
+# Stage the relocatable distribution tree (jars/ bin/ etc/) into target/dist.
+# The dependency caches are mounted, so they accelerate the build without being
+# baked into any layer. `sharing=locked` serialises concurrent (multi-arch) builds
+# that share the cache to avoid corruption.
+RUN --mount=type=cache,target=/root/.cache/coursier,sharing=locked \
+    --mount=type=cache,target=/root/.sbt,sharing=locked \
+    --mount=type=cache,target=/root/.ivy2,sharing=locked \
+    bash ./build/sbt -info clean stageDist
+
+# ---------------------------------------------------------------------------
+# Runtime stage (default): JRE (glibc, has a shell so the bash launchers work).
+# Ships only the relocatable dist tree -- no JDK, no sbt, no dependency cache.
+# ---------------------------------------------------------------------------
+FROM eclipse-temurin:17-jre-jammy@sha256:47c73dc23524b031bed0a5030410c722af6a8b49d4b25898ea8f4615895065f0 AS runtime
+
+ARG USER=unitycatalog
+ARG HOME=/home/unitycatalog
+
+LABEL org.opencontainers.image.title="Unity Catalog Server" \
+      org.opencontainers.image.description="Unity Catalog server" \
+      org.opencontainers.image.source="https://github.com/unitycatalog/unitycatalog" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+# Service account: numeric-friendly system user, no login shell.
+RUN groupadd -r "$USER" \
+ && useradd -r -g "$USER" -d "$HOME" -s /usr/sbin/nologin "$USER"
 
 WORKDIR $HOME
 
-COPY --parents dev/ build/ project/ examples/ server/ api/ clients/ version.sbt build.sbt ./
-
-RUN apk add --no-cache bash && ./build/sbt -info clean package
-
-# Small runtime image
-FROM alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805 as runtime
-
-# Specific JAVA_HOME from Amazon Corretto
-ARG JAVA_HOME="/usr/lib/jvm/default-jvm"
-ARG USER="unitycatalog"
-ARG HOME
-
-# Copy Java from base
-COPY --from=base $JAVA_HOME $JAVA_HOME
-
-ENV HOME=$HOME \
-    JAVA_HOME=$JAVA_HOME \
-    PATH="${JAVA_HOME}/bin:${PATH}"
-
-# Copy build artifacts from base stage
-COPY --from=base --parents \
-    $HOME/examples/ \
-    $HOME/server/ \
-    $HOME/api/ \
-    $HOME/clients/ \
-    $HOME/target/ \
-    $HOME/.cache/ \
-    /
-
-# Create a service user with read and execute permissions and write permissions of the ./etc directory
-RUN <<EOF
-apk add --no-cache bash
-addgroup -S $USER
-adduser -S -G $USER $USER
-chmod -R 550 $HOME
-mkdir -p $HOME/etc/
-chmod -R 770 $HOME/etc/
-chown -R $USER:$USER $HOME
-EOF
+# Copy only the relocatable distribution: flat jars + launchers + config.
+COPY --from=build --chown=$USER:$USER /workspace/target/dist/jars ./jars
+COPY --from=build --chown=$USER:$USER /workspace/target/dist/bin  ./bin
+COPY --from=build --chown=$USER:$USER /workspace/target/dist/etc  ./etc
 
 USER $USER
 
-# Copy remaining directories here for caching optimization
-COPY --chown=$USER:$USER --parents bin/ etc/ $HOME/
+EXPOSE 8080
 
-WORKDIR $HOME
+# No dedicated health endpoint exists; check that the server is accepting TCP
+# connections on 8080. The JRE base ships bash, so /dev/tcp is available.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1
 
-CMD ["./bin/start-uc-server"]
+ENTRYPOINT ["./bin/start-uc-server"]
