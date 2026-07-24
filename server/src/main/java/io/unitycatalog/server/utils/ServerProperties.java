@@ -196,6 +196,8 @@ public class ServerProperties {
     CLIENT_ID("server.client-id"),
     CLIENT_SECRET("server.client-secret"),
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
+    ALLOWED_ISSUERS("server.allowed-issuers"),
+    AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     MANAGED_TABLE_USE_DELTA_API_ONLY(
@@ -267,6 +269,17 @@ public class ServerProperties {
         continue;
       }
       property.validator.validate(property.key, value);
+    }
+    validateAudienceConfiguration();
+  }
+
+  private void validateAudienceConfiguration() {
+    List<String> audiences = getAudiences();
+    if (audiences.contains("*") && audiences.size() > 1) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.audiences cannot combine '*' with other values; use '*' alone to disable"
+              + " audience validation");
     }
   }
 
@@ -511,28 +524,74 @@ public class ServerProperties {
     }
   }
 
+  private volatile WildcardAllowlist cachedIssuerAllowlist;
+  private volatile WildcardAllowlist cachedAudienceAllowlist;
+
+  /**
+   * Returns a compiled allowlist for {@code server.allowed-issuers}, rebuilding when the raw
+   * property value changes.
+   */
+  public WildcardAllowlist getIssuerAllowlist() {
+    String current = getProperty(Property.ALLOWED_ISSUERS.key);
+    String normalized = current == null ? "" : current;
+    WildcardAllowlist cached = cachedIssuerAllowlist;
+    if (cached == null || !cached.source().equals(normalized)) {
+      cached = WildcardAllowlist.forAllowedIssuers(normalized);
+      cachedIssuerAllowlist = cached;
+    }
+    return cached;
+  }
+
+  /**
+   * Returns a compiled allowlist for {@code server.audiences}, rebuilding when the raw property
+   * value changes.
+   */
+  public WildcardAllowlist getAudienceAllowlist() {
+    String current = getProperty(Property.AUDIENCES.key);
+    String normalized = current == null ? "" : current;
+    WildcardAllowlist cached = cachedAudienceAllowlist;
+    if (cached == null || !cached.source().equals(normalized)) {
+      cached = WildcardAllowlist.forAudiences(normalized);
+      cachedAudienceAllowlist = cached;
+    }
+    return cached;
+  }
+
   /**
    * Get the list of allowed token issuers.
    *
    * <p>When authorization is enabled, tokens will only be accepted from issuers in this list. This
    * prevents attackers from using their own identity provider to forge tokens.
    *
-   * @return List of allowed issuer URLs (exact match required)
+   * @return List of allowed issuer URLs (exact match or wildcard with {@code *})
    */
   public List<String> getAllowedIssuers() {
-    return getCommaSeparatedList("server.allowed-issuers");
+    return getCommaSeparatedList(Property.ALLOWED_ISSUERS.key);
   }
 
   /**
    * Get the list of expected JWT audience values.
    *
-   * <p>When authorization is enabled, tokens must contain one of these audience values. This
-   * ensures tokens are intended for this Unity Catalog instance.
+   * <p>When authorization is enabled, tokens must contain an {@code aud} value matching one of
+   * these entries (exact match or wildcard with {@code *}, same rules as {@link
+   * #getAllowedIssuers()}).
+   *
+   * <p>A single entry of {@code *} disables audience validation (issuer and user checks still
+   * apply). That sentinel cannot be combined with other values.
    *
    * @return List of expected audience values
    */
   public List<String> getAudiences() {
-    return getCommaSeparatedList("server.audiences");
+    return getCommaSeparatedList(Property.AUDIENCES.key);
+  }
+
+  /**
+   * Returns true when {@code server.audiences} is exactly {@code *}, disabling JWT audience checks
+   * during token exchange.
+   */
+  public boolean isAudienceValidationDisabled() {
+    List<String> audiences = getAudiences();
+    return audiences.size() == 1 && "*".equals(audiences.get(0));
   }
 
   /**
