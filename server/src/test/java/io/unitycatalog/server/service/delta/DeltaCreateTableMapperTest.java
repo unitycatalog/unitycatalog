@@ -12,6 +12,7 @@ import io.unitycatalog.server.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
@@ -71,6 +72,19 @@ public class DeltaCreateTableMapperTest {
         DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties())
             .createTable();
     assertThat(created.getTableType()).isEqualTo(io.unitycatalog.server.model.TableType.EXTERNAL);
+  }
+
+  @Test
+  public void managedShallowCloneCreateIsRejected() {
+    DeltaCreateTableRequest req =
+        baseManagedRequest().tableType(DeltaTableType.MANAGED_SHALLOW_CLONE);
+
+    assertThatThrownBy(
+            () -> DeltaCreateTableMapper.toCreateTable("cat", "sch", req, new ServerProperties()))
+        .isInstanceOfSatisfying(
+            BaseException.class,
+            error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT))
+        .hasMessage("MANAGED_SHALLOW_CLONE table creation is not supported.");
   }
 
   // ---------- allowMissingDvForUniformV2 flag ----------

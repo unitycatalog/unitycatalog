@@ -106,6 +106,10 @@ public final class DeltaCreateTableMapper {
     return switch (type) {
       case MANAGED -> TableType.MANAGED;
       case EXTERNAL -> TableType.EXTERNAL;
+      case MANAGED_SHALLOW_CLONE ->
+          throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "MANAGED_SHALLOW_CLONE table creation is not supported.");
     };
   }
 }
