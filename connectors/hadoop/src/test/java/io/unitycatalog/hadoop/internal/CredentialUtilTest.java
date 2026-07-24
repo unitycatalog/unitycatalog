@@ -148,8 +148,7 @@ class CredentialUtilTest {
   @Test
   void selectorMatchesAcrossSchemeAliases() {
     DeltaStorageCredential s3Prefix = credAt("s3://bucket/t");
-    assertThat(
-            CredentialUtil.selectForLocation("s3a://bucket/t/file", List.of(s3Prefix)))
+    assertThat(CredentialUtil.selectForLocation("s3a://bucket/t/file", List.of(s3Prefix)))
         .isSameAs(s3Prefix);
   }
 
