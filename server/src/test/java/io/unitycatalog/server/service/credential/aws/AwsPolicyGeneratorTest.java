@@ -7,10 +7,13 @@ import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.O
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.POLICY_STATEMENT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.List;
 import java.util.Set;
@@ -18,6 +21,8 @@ import java.util.UUID;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class AwsPolicyGeneratorTest {
 
@@ -80,5 +85,24 @@ public class AwsPolicyGeneratorTest {
         .doesNotContain("s3:PutO*")
         .doesNotContain("s3:DeleteO*")
         .contains("s3:GetO*");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "s3://my-bucket/*",
+        "s3://my-bucket/path*",
+        "s3://my-bucket/%2A",
+        "s3://my-bucket/%3F",
+        "s3://my-bucket/path?query"
+      })
+  public void testRejectsIamWildcardsInStorageLocations(String url) {
+    assertThatThrownBy(
+            () ->
+                AwsPolicyGenerator.generatePolicy(Set.of(SELECT), List.of(NormalizedURL.from(url))))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("IAM wildcard")
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
   }
 }

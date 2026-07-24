@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import lombok.SneakyThrows;
@@ -108,11 +110,22 @@ public class AwsPolicyGenerator {
         .map(NormalizedURL::toUri)
         .collect(Collectors.toMap(
             URI::getHost,
-            uri -> new LinkedList<>(List.of(uri.getPath())),
+            uri -> new LinkedList<>(List.of(getValidatedPath(uri))),
             (map, newPaths) -> {
               map.addAll(newPaths);
               return map;
             }));
+  }
+
+  private static String getValidatedPath(URI uri) {
+    String path = uri.getPath();
+    if (uri.getRawQuery() != null
+        || (path != null && (path.contains("*") || path.contains("?")))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "S3 storage locations cannot contain IAM wildcard characters '*' or '?'");
+    }
+    return path;
   }
 
   @SneakyThrows
