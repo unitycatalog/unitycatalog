@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import java.util.HashMap;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,6 @@ class GcsCredPropsTest extends CredPropsBaseTest {
   private static final String GHFS_AFS = "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS";
   private static final String VENDED_PROVIDER =
       "io.unitycatalog.hadoop.internal.auth.GcsVendedTokenProvider";
-  private static final String MAX = String.valueOf(Long.MAX_VALUE);
 
   @Override
   String scheme() {
@@ -39,64 +39,55 @@ class GcsCredPropsTest extends CredPropsBaseTest {
   }
 
   @Override
-  String initExpirationKey() {
-    return UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME;
-  }
-
-  /**
-   * GCS is the sole cloud whose static path emits an expiration: {@code
-   * fs.gs.auth.access.token.expiration} is always set, defaulting to {@code Long.MAX_VALUE} when
-   * the credential has none. The renewable path follows the shared rule (init-expiration key iff
-   * the credential carries an expiration).
-   */
-  @Override
-  Map<String, String> expirationKeys(boolean renew, Long expirationMillis) {
-    if (renew) {
-      return super.expirationKeys(renew, expirationMillis);
-    }
-    return Map.of(
-        STATIC_EXPIRATION_KEY, expirationMillis == null ? MAX : String.valueOf(expirationMillis));
-  }
-
-  @Override
-  Map<String, String> constructorKeys() {
+  Map<String, String> defaultKeys() {
     return props(CONFLICT_CHECK_KEY, "false", "fs.gs.impl.disable.cache", "true");
   }
 
+  /**
+   * GCS is the sole cloud whose static path emits an expiration: {@link #STATIC_EXPIRATION_KEY} is
+   * always set, defaulting to {@code Long.MAX_VALUE} when the credential has none.
+   */
   @Override
-  Map<String, String> implOverrideKeys() {
-    return props(
-        "fs.gs.impl", CRED_SCOPED_FS,
-        "fs.gs.impl.original", GHFS,
-        "fs.AbstractFileSystem.gs.impl", CRED_SCOPED_AFS,
-        "fs.AbstractFileSystem.gs.impl.original", GHFS_AFS);
+  Map<String, String> staticCredKeys(Long expiration) {
+    Map<String, String> keys = new HashMap<>();
+    keys.put("fs.gs.auth.access.token.credential", "token");
+    keys.put(
+        STATIC_EXPIRATION_KEY, String.valueOf(expiration == null ? Long.MAX_VALUE : expiration));
+    return keys;
   }
 
-  // Expiration keys are supplied by expirationKeys(), not baked in here.
   @Override
-  Map<String, String> staticCredKeys() {
-    return props("fs.gs.auth.access.token.credential", "token");
+  Map<String, String> initialCredKeys(Long expiration) {
+    Map<String, String> keys = props(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, "token");
+    if (expiration != null) {
+      keys.put(
+          UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME, String.valueOf(expiration));
+    }
+    return keys;
   }
 
   @Override
-  Map<String, String> renewableCredKeys() {
+  Map<String, String> renewableProviderKeys() {
     return props(
         "fs.gs.auth.type",
         "ACCESS_TOKEN_PROVIDER",
         "fs.gs.auth.access.token.provider",
-        VENDED_PROVIDER,
-        UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN,
-        "token");
+        VENDED_PROVIDER);
+  }
+
+  @Override
+  Map<String, String> fileSystemImplKeys() {
+    return props("fs.gs.impl", GHFS);
+  }
+
+  @Override
+  Map<String, String> abstractFileSystemImplKeys() {
+    return props("fs.AbstractFileSystem.gs.impl", GHFS_AFS);
   }
 
   @Override
   Map<String, String> customImplSeed() {
     return props("fs.gs.impl", CUSTOM_IMPL);
-  }
-
-  @Override
-  Map<String, String> customImplOriginals() {
-    return props("fs.gs.impl.original", CUSTOM_IMPL);
   }
 
   // ---- GCS-only tests ------

@@ -29,12 +29,7 @@ class S3CredPropsTest extends CredPropsBaseTest {
   }
 
   @Override
-  String initExpirationKey() {
-    return UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME;
-  }
-
-  @Override
-  Map<String, String> constructorKeys() {
+  Map<String, String> defaultKeys() {
     return props(
         "fs.s3a.path.style.access", "true",
         "fs.s3.impl.disable.cache", "true",
@@ -42,20 +37,8 @@ class S3CredPropsTest extends CredPropsBaseTest {
   }
 
   @Override
-  Map<String, String> implOverrideKeys() {
-    return props(
-        "fs.s3.impl", CRED_SCOPED_FS,
-        "fs.s3.impl.original", S3A_FS,
-        "fs.s3a.impl", CRED_SCOPED_FS,
-        "fs.s3a.impl.original", S3A_FS,
-        "fs.AbstractFileSystem.s3.impl", CRED_SCOPED_AFS,
-        "fs.AbstractFileSystem.s3.impl.original", S3A_AFS,
-        "fs.AbstractFileSystem.s3a.impl", CRED_SCOPED_AFS,
-        "fs.AbstractFileSystem.s3a.impl.original", S3A_AFS);
-  }
-
-  @Override
-  Map<String, String> staticCredKeys() {
+  Map<String, String> staticCredKeys(Long expiration) {
+    // S3's static path carries no expiration key.
     return props(
         "fs.s3a.access.key", "ak",
         "fs.s3a.secret.key", "sk",
@@ -63,21 +46,39 @@ class S3CredPropsTest extends CredPropsBaseTest {
   }
 
   @Override
-  Map<String, String> renewableCredKeys() {
+  Map<String, String> initialCredKeys(Long expiration) {
+    Map<String, String> keys =
+        props(
+            UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak",
+            UCHadoopConfConstants.S3A_INIT_SECRET_KEY, "sk",
+            UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st");
+    if (expiration != null) {
+      keys.put(UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, String.valueOf(expiration));
+    }
+    return keys;
+  }
+
+  @Override
+  Map<String, String> renewableProviderKeys() {
+    return props(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER, VENDED_PROVIDER);
+  }
+
+  @Override
+  Map<String, String> fileSystemImplKeys() {
     return props(
-        UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER, VENDED_PROVIDER,
-        UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak",
-        UCHadoopConfConstants.S3A_INIT_SECRET_KEY, "sk",
-        UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st");
+        "fs.s3.impl", S3A_FS,
+        "fs.s3a.impl", S3A_FS);
+  }
+
+  @Override
+  Map<String, String> abstractFileSystemImplKeys() {
+    return props(
+        "fs.AbstractFileSystem.s3.impl", S3A_AFS,
+        "fs.AbstractFileSystem.s3a.impl", S3A_AFS);
   }
 
   @Override
   Map<String, String> customImplSeed() {
     return props("fs.s3.impl", CUSTOM_IMPL, "fs.s3a.impl", CUSTOM_IMPL);
-  }
-
-  @Override
-  Map<String, String> customImplOriginals() {
-    return props("fs.s3.impl.original", CUSTOM_IMPL, "fs.s3a.impl.original", CUSTOM_IMPL);
   }
 }

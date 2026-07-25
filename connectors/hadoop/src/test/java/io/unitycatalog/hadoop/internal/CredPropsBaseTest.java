@@ -10,7 +10,12 @@ import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
+import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
+import io.unitycatalog.hadoop.internal.id.PathCredId;
+import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -36,6 +41,9 @@ abstract class CredPropsBaseTest {
 
   static final Map<String, String> APP_VERSIONS = Map.of("Spark", "4.0.0", "Delta", "3.3.0");
 
+  private static final List<Map<String, String>> APP_VERSION_CASES =
+      List.of(Map.of(), APP_VERSIONS);
+
   static final long EXPIRATION_MILLIS = 999L;
 
   private static final boolean[] BOOLS = {false, true};
@@ -48,7 +56,7 @@ abstract class CredPropsBaseTest {
     PATH
   }
 
-  // ---- cloud seams filled in by the subclass -------------------------------------------------
+  // ---- per cloud details ---------------------------------------------
 
   /** Storage scheme handed to {@code create*CredProps} (e.g. {@code "s3"}). */
   abstract String scheme();
@@ -62,38 +70,31 @@ abstract class CredPropsBaseTest {
    */
   abstract GenericCredential vendedCred(Long expirationMillis);
 
-  /** The renewable-path key that carries the credential expiration for this cloud. */
-  abstract String initExpirationKey();
+  // ---- per cloud configuration keys ---------------------------------------------
 
-  /** Keys the props builder always emits for this cloud. */
-  abstract Map<String, String> constructorKeys();
+  /** Keys emitted on every path. */
+  abstract Map<String, String> defaultKeys();
 
-  /** Keys added only when {@code credScoped} is enabled (impl overrides + saved originals). */
-  abstract Map<String, String> implOverrideKeys();
+  /** Non-renewable credentials keys. */
+  abstract Map<String, String> staticCredKeys(Long expiration);
 
-  /** Cloud value keys for the static ({@code renew=false}) path, excluding expiration. */
-  abstract Map<String, String> staticCredKeys();
+  /**
+   * The initial keys for renewable credentials, including the credential's expiration key when
+   * {@code expiration} is non-null.
+   */
+  abstract Map<String, String> initialCredKeys(Long expiration);
 
-  /** Cloud value keys for the renewable ({@code renew=true}) path, excluding expiration. */
-  abstract Map<String, String> renewableCredKeys();
+  /** The renewable vended-provider registration. */
+  abstract Map<String, String> renewableProviderKeys();
+
+  /** Concrete FileSystem override implementation keys. */
+  abstract Map<String, String> fileSystemImplKeys();
+
+  /** Abstract FileSystem override implementation keys. */
+  abstract Map<String, String> abstractFileSystemImplKeys();
 
   /** {@code fs.<scheme>.impl} entries to pre-seed the conf with, to test original preservation. */
   abstract Map<String, String> customImplSeed();
-
-  /** The {@code .original} entries expected after {@link #customImplSeed()} is preserved. */
-  abstract Map<String, String> customImplOriginals();
-
-  /**
-   * The expiration key(s) emitted for the given path and credential expiration. The default matches
-   * S3/ABFS: an expiration key appears only on the renewable path, only when the credential carries
-   * one. GCS overrides this because its static path always emits an expiration.
-   */
-  Map<String, String> expirationKeys(boolean renew, Long expirationMillis) {
-    if (renew && expirationMillis != null) {
-      return Map.of(initExpirationKey(), String.valueOf(expirationMillis));
-    }
-    return Map.of();
-  }
 
   // ---- fixtures ------------------------------------------------------------------------------
 
@@ -121,19 +122,18 @@ abstract class CredPropsBaseTest {
       boolean credScoped,
       boolean customImpl,
       boolean expiring,
-      boolean appVersions)
+      Map<String, String> appVersions)
       throws Exception {
     Long expiration = expiring ? EXPIRATION_MILLIS : null;
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> mockGenericCredentialFetcher(vendedCred(expiration));
 
     Configuration conf = createConf(customImpl);
-    Map<String, String> props =
-        createCredPropsFor(kind, renew, credScoped, conf, appVersions ? APP_VERSIONS : Map.of());
+    Map<String, String> props = createCredPropsFor(kind, renew, credScoped, conf, appVersions);
 
     assertThat(props)
         .containsExactlyInAnyOrderEntriesOf(
-            expected(kind, renew, credScoped, customImpl, expiring, appVersions));
+            expected(kind, renew, credScoped, conf, expiration, appVersions));
   }
 
   static Stream<Arguments> testCaseMatrix() {
@@ -143,7 +143,7 @@ abstract class CredPropsBaseTest {
         for (boolean credScoped : BOOLS) {
           for (boolean customImpl : BOOLS) {
             for (boolean expiring : BOOLS) {
-              for (boolean appVersions : BOOLS) {
+              for (Map<String, String> appVersions : APP_VERSION_CASES) {
                 cases.add(Arguments.of(kind, renew, credScoped, customImpl, expiring, appVersions));
               }
             }
@@ -159,7 +159,8 @@ abstract class CredPropsBaseTest {
   @ParameterizedTest(name = "{0}")
   @EnumSource(CredKind.class)
   void unknownSchemeReturnsEmptyMap(CredKind kind) throws Exception {
-    Map<String, String> props = createCredPropsForScheme(kind, "hdfs", false, false);
+    Map<String, String> props =
+        createCredProps(kind, "hdfs", false, false, new Configuration(false), Map.of());
     assertThat(props).isEmpty();
   }
 
@@ -201,7 +202,8 @@ abstract class CredPropsBaseTest {
             op,
             Map.of());
 
-    Map<String, String> expected = expected(CredKind.TABLE, true, false, false, false, false);
+    Map<String, String> expected =
+        expected(CredKind.TABLE, true, false, new Configuration(false), null, Map.of());
     expected.put(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, op.value());
     assertThat(props).containsExactlyInAnyOrderEntriesOf(expected);
   }
@@ -228,7 +230,8 @@ abstract class CredPropsBaseTest {
             op,
             Map.of());
 
-    Map<String, String> expected = expected(CredKind.DELTA_TABLE, true, false, false, false, false);
+    Map<String, String> expected =
+        expected(CredKind.DELTA_TABLE, true, false, new Configuration(false), null, Map.of());
     expected.put(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, op.value());
     assertThat(props).containsExactlyInAnyOrderEntriesOf(expected);
   }
@@ -249,7 +252,8 @@ abstract class CredPropsBaseTest {
             op,
             Map.of());
 
-    Map<String, String> expected = expected(CredKind.PATH, true, false, false, false, false);
+    Map<String, String> expected =
+        expected(CredKind.PATH, true, false, new Configuration(false), null, Map.of());
     expected.put(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, op.value());
     assertThat(props).containsExactlyInAnyOrderEntriesOf(expected);
   }
@@ -260,82 +264,77 @@ abstract class CredPropsBaseTest {
       CredKind kind,
       boolean renew,
       boolean credScoped,
-      boolean customImpl,
-      boolean expiring,
-      boolean appVersions) {
-    Map<String, String> expected = new HashMap<>(constructorKeys());
-    if (credScoped) {
-      expected.putAll(implOverrideKeys());
-      if (customImpl) {
-        // A pre-seeded fs.<scheme>.impl is recorded as the .original in place of the default.
-        expected.putAll(customImplOriginals());
-      }
-    }
+      Configuration conf,
+      Long expiration,
+      Map<String, String> appVersions) {
+    Map<String, String> expected = new HashMap<>(defaultKeys());
     if (renew) {
-      expected.putAll(renewableCredKeys());
-      expected.putAll(renewableContextKeys(kind));
-      if (appVersions) {
-        APP_VERSIONS.forEach(
-            (engine, version) ->
-                expected.put(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + engine, version));
-      }
+      expected.putAll(initialCredKeys(expiration));
+      expected.putAll(renewableProviderKeys());
+      expected.putAll(requestContext(kind, appVersions));
     } else {
-      expected.putAll(staticCredKeys());
+      expected.putAll(staticCredKeys(expiration));
     }
-    expected.putAll(expirationKeys(renew, expiring ? EXPIRATION_MILLIS : null));
+    if (credScoped) {
+      expected.putAll(customImplKeys(conf));
+    }
     return expected;
   }
 
-  /** The UC request context lifted onto renewable props: credential identity + uri + auth. */
-  private Map<String, String> renewableContextKeys(CredKind kind) {
+  /** Verify the credScopedFS impl overrides are applied, and the original values are preserved. */
+  private Map<String, String> customImplKeys(Configuration conf) {
+    Map<String, String> keys = new HashMap<>();
+    addImplOverrides(keys, fileSystemImplKeys(), CRED_SCOPED_FS, conf);
+    addImplOverrides(keys, abstractFileSystemImplKeys(), CRED_SCOPED_AFS, conf);
+    return keys;
+  }
+
+  private static void addImplOverrides(
+      Map<String, String> keys,
+      Map<String, String> defaults,
+      String credScopedWrapper,
+      Configuration conf) {
+    defaults.forEach(
+        (implKey, defaultImpl) -> {
+          keys.put(implKey, credScopedWrapper);
+          keys.put(implKey + ".original", conf.get(implKey, defaultImpl));
+        });
+  }
+
+  /** The cloud-agnostic API request context is included in the conf. */
+  private Map<String, String> requestContext(CredKind kind, Map<String, String> appVersions) {
     Map<String, String> keys = new HashMap<>(credIdKeys(kind));
     keys.put(UCHadoopConfConstants.UC_URI_KEY, CATALOG_URI);
     tokenProvider()
         .configs()
         .forEach((k, v) -> keys.put(UCHadoopConfConstants.UC_AUTH_PREFIX + k, v));
+    appVersions.forEach(
+        (engine, version) ->
+            keys.put(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + engine, version));
     return keys;
   }
 
-  /** The credential-identity props for {@code kind}; mirrors the corresponding {@code CredId}. */
+  /**
+   * The credential-identity props for {@code kind}. Built from the corresponding {@code CredId} so
+   * the concrete prop keys stay encapsulated in the {@code CredId} subclasses rather than being
+   * duplicated here.
+   */
   private Map<String, String> credIdKeys(CredKind kind) {
     String contextId = CredPropsUtil.credContextId(CATALOG_URI, scheme(), tokenProvider());
-    Map<String, String> keys = new HashMap<>();
-    keys.put(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, contextId);
     switch (kind) {
       case TABLE:
-        keys.put(
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-        keys.put(UCHadoopConfConstants.UC_TABLE_ID_KEY, TABLE_ID);
-        keys.put(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ_WRITE");
-        break;
+        return new TableCredId(contextId, TABLE_ID, "READ_WRITE").props();
       case DELTA_TABLE:
-        keys.put(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
-        keys.put(
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-        keys.put(UCHadoopConfConstants.UC_DELTA_CATALOG_KEY, "cat");
-        keys.put(UCHadoopConfConstants.UC_DELTA_SCHEMA_KEY, "sch");
-        keys.put(UCHadoopConfConstants.UC_DELTA_TABLE_NAME_KEY, "tbl");
-        keys.put(UCHadoopConfConstants.UC_DELTA_LOCATION_KEY, location());
-        keys.put(UCHadoopConfConstants.UC_TABLE_OPERATION_KEY, "READ_WRITE");
-        break;
+        return new DeltaTableCredId(
+                contextId, UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "READ_WRITE", location())
+            .props();
       case DELTA_STAGING:
-        keys.put(UCHadoopConfConstants.UC_DELTA_CREDENTIALS_API_ENABLED_KEY, "true");
-        keys.put(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_ID_KEY, STAGING_TABLE_ID);
-        keys.put(UCHadoopConfConstants.UC_DELTA_STAGING_TABLE_LOCATION_KEY, location());
-        break;
+        return new DeltaStagingTableCredId(contextId, STAGING_TABLE_ID, location()).props();
       case PATH:
-        keys.put(
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
-        keys.put(UCHadoopConfConstants.UC_PATH_KEY, location());
-        keys.put(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, "PATH_READ_WRITE");
-        break;
+        return new PathCredId(contextId, location(), "PATH_READ_WRITE").props();
       default:
         throw new IllegalArgumentException("Unhandled kind: " + kind);
     }
-    return keys;
   }
 
   // ---- entry-point dispatch ------------------------------------------------------------------
@@ -362,11 +361,6 @@ abstract class CredPropsBaseTest {
       Map<String, String> appVersions)
       throws Exception {
     return createCredProps(kind, scheme(), renew, credScoped, conf, appVersions);
-  }
-
-  private Map<String, String> createCredPropsForScheme(
-      CredKind kind, String scheme, boolean renew, boolean credScoped) throws Exception {
-    return createCredProps(kind, scheme, renew, credScoped, new Configuration(false), Map.of());
   }
 
   private Map<String, String> createCredProps(

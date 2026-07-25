@@ -32,12 +32,7 @@ class AzureCredPropsTest extends CredPropsBaseTest {
   }
 
   @Override
-  String initExpirationKey() {
-    return UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME;
-  }
-
-  @Override
-  Map<String, String> constructorKeys() {
+  Map<String, String> defaultKeys() {
     return props(
         UCHadoopConfConstants.FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME,
         "SAS",
@@ -50,40 +45,41 @@ class AzureCredPropsTest extends CredPropsBaseTest {
   }
 
   @Override
-  Map<String, String> implOverrideKeys() {
-    return props(
-        "fs.abfs.impl", CRED_SCOPED_FS,
-        "fs.abfs.impl.original", ABFS_FS,
-        "fs.abfss.impl", CRED_SCOPED_FS,
-        "fs.abfss.impl.original", ABFSS_FS,
-        "fs.AbstractFileSystem.abfs.impl", CRED_SCOPED_AFS,
-        "fs.AbstractFileSystem.abfs.impl.original", ABFS_AFS,
-        "fs.AbstractFileSystem.abfss.impl", CRED_SCOPED_AFS,
-        "fs.AbstractFileSystem.abfss.impl.original", ABFSS_AFS);
-  }
-
-  @Override
-  Map<String, String> staticCredKeys() {
+  Map<String, String> staticCredKeys(Long expiration) {
+    // ABFS's static path carries no expiration key.
     return props("fs.azure.sas.fixed.token", "sas");
   }
 
   @Override
-  Map<String, String> renewableCredKeys() {
+  Map<String, String> initialCredKeys(Long expiration) {
+    Map<String, String> keys = props(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, "sas");
+    if (expiration != null) {
+      keys.put(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, String.valueOf(expiration));
+    }
+    return keys;
+  }
+
+  @Override
+  Map<String, String> renewableProviderKeys() {
+    return props(UCHadoopConfConstants.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, VENDED_PROVIDER);
+  }
+
+  @Override
+  Map<String, String> fileSystemImplKeys() {
     return props(
-        UCHadoopConfConstants.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE,
-        VENDED_PROVIDER,
-        UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN,
-        "sas");
+        "fs.abfs.impl", ABFS_FS,
+        "fs.abfss.impl", ABFSS_FS);
+  }
+
+  @Override
+  Map<String, String> abstractFileSystemImplKeys() {
+    return props(
+        "fs.AbstractFileSystem.abfs.impl", ABFS_AFS,
+        "fs.AbstractFileSystem.abfss.impl", ABFSS_AFS);
   }
 
   @Override
   Map<String, String> customImplSeed() {
     return props("fs.abfs.impl", CUSTOM_ABFS_IMPL, "fs.abfss.impl", CUSTOM_ABFSS_IMPL);
-  }
-
-  @Override
-  Map<String, String> customImplOriginals() {
-    return props(
-        "fs.abfs.impl.original", CUSTOM_ABFS_IMPL, "fs.abfss.impl.original", CUSTOM_ABFSS_IMPL);
   }
 }
