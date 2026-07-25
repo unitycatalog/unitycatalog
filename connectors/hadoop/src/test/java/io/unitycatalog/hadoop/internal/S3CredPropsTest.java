@@ -4,7 +4,6 @@ import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.util.Map;
 
-/** S3 realization of the {@link CredPropsBaseTest} matrix. */
 class S3CredPropsTest extends CredPropsBaseTest {
 
   private static final String CUSTOM_IMPL = "com.example.CustomS3FileSystem";

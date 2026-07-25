@@ -10,9 +10,6 @@ import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
 
-/**
- * GCS realization of the {@link CredPropsBaseTest} matrix, plus the GCS-only conflict-check knob.
- */
 class GcsCredPropsTest extends CredPropsBaseTest {
 
   private static final String CONFLICT_CHECK_KEY = "fs.gs.create.items.conflict.check.enable";

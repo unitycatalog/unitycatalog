@@ -4,7 +4,6 @@ import io.unitycatalog.hadoop.internal.auth.AzureCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.util.Map;
 
-/** ABFS realization of the {@link CredPropsBaseTest} matrix. */
 class AzureCredPropsTest extends CredPropsBaseTest {
 
   private static final String CUSTOM_ABFS_IMPL = "com.example.CustomAbfsFileSystem";

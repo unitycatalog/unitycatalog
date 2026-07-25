@@ -24,10 +24,10 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * Covers the {@link CredPropsUtil} driver-side credential cache: reuse across queries with the same
- * credential identity, separation by credential identity, cache-disable, and clock-driven expiry.
- * The cache is cloud-agnostic, so these run once against S3; the per-cloud property matrix lives in
- * {@link CredPropsBaseTest} and its subclasses.
+ * Covers the {@link CredPropsUtil} encoder side credential cache: reuse across queries with the
+ * same credential identity, separation by credential identity, cache-disable, and clock-driven
+ * expiry. The cache is cloud-agnostic, so these run once against S3; the per-cloud property matrix
+ * lives in {@link CredPropsBaseTest} and its subclasses.
  */
 class CredPropsCacheTest {
 

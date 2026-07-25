@@ -36,6 +36,7 @@ abstract class CredPropsBaseTest {
   static final String CATALOG_URI = "http://uc";
   static final String TABLE_ID = "tid";
   static final String STAGING_TABLE_ID = "staging-uuid";
+  static final UCDeltaTableIdentifier DELTA_TABLE = UCDeltaTableIdentifier.of("cat", "sch", "tbl");
   static final String CRED_SCOPED_FS = "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem";
   static final String CRED_SCOPED_AFS = "io.unitycatalog.hadoop.internal.fs.CredScopedFs";
 
@@ -78,10 +79,7 @@ abstract class CredPropsBaseTest {
   /** Non-renewable credentials keys. */
   abstract Map<String, String> staticCredKeys(Long expiration);
 
-  /**
-   * The initial keys for renewable credentials, including the credential's expiration key when
-   * {@code expiration} is non-null.
-   */
+  /** The initial keys for renewable credentials. */
   abstract Map<String, String> initialCredKeys(Long expiration);
 
   /** The renewable vended-provider registration. */
@@ -111,7 +109,7 @@ abstract class CredPropsBaseTest {
     CredPropsUtil.initialCredCache.clear();
   }
 
-  // ---- the cred props matrix: kind x renew x credScoped x customImpl x expiring x appVersions ---
+  // ---- assert exact credential configurations across the full test matrix ----------------
 
   @ParameterizedTest(
       name = "{0} renew={1} credScoped={2} customImpl={3} expiring={4} appVersions={5}")
@@ -225,7 +223,7 @@ abstract class CredPropsBaseTest {
             null,
             CATALOG_URI,
             tokenProvider(),
-            UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
+            DELTA_TABLE,
             location(),
             op,
             Map.of());
@@ -325,9 +323,7 @@ abstract class CredPropsBaseTest {
       case TABLE:
         return new TableCredId(contextId, TABLE_ID, "READ_WRITE").props();
       case DELTA_TABLE:
-        return new DeltaTableCredId(
-                contextId, UCDeltaTableIdentifier.of("cat", "sch", "tbl"), "READ_WRITE", location())
-            .props();
+        return new DeltaTableCredId(contextId, DELTA_TABLE, "READ_WRITE", location()).props();
       case DELTA_STAGING:
         return new DeltaStagingTableCredId(contextId, STAGING_TABLE_ID, location()).props();
       case PATH:
@@ -393,7 +389,7 @@ abstract class CredPropsBaseTest {
             null,
             CATALOG_URI,
             tokenProvider(),
-            UCDeltaTableIdentifier.of("cat", "sch", "tbl"),
+            DELTA_TABLE,
             location(),
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             appVersions);
