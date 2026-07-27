@@ -28,7 +28,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void applyVendedProviderKeys() {
+  protected void writeVendedProviderKeys() {
     set(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER, AWS_VENDED_TOKEN_PROVIDER_CLASS);
   }
 

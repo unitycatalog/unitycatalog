@@ -37,7 +37,7 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void applyVendedProviderKeys() {
+  protected void writeVendedProviderKeys() {
     set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
     set("fs.gs.auth.access.token.provider", GCS_VENDED_TOKEN_PROVIDER_CLASS);
   }

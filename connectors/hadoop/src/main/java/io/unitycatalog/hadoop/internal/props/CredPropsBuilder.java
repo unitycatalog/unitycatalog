@@ -57,7 +57,7 @@ public abstract class CredPropsBuilder {
       Map<String, String> appVersions) {
     this.renewCredEnabled = renewCredEnabled;
     if (renewCredEnabled) {
-      applyVendedProviderKeys();
+      writeVendedProviderKeys();
       set(UCHadoopConfConstants.UC_URI_KEY, catalogUri);
       // Only 'fs.*' properties propagate to the FileSystem, so prefix the auth configs.
       tokenProvider
@@ -115,7 +115,7 @@ public abstract class CredPropsBuilder {
   protected abstract void writeImplOverrides();
 
   /** Cloud-specific key naming the vended token provider (renewable path only). */
-  protected abstract void applyVendedProviderKeys();
+  protected abstract void writeVendedProviderKeys();
 
   /** Writes the renewable-path credential secrets (the {@code init.*} keys) for this cloud. */
   protected abstract void writeRenewableCredKeys(GenericCredential cred);

@@ -38,7 +38,7 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void applyVendedProviderKeys() {
+  protected void writeVendedProviderKeys() {
     set(UCHadoopConfConstants.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, ABFS_VENDED_TOKEN_PROVIDER_CLASS);
   }
 
