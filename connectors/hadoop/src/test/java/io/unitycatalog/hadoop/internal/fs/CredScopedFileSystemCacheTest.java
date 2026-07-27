@@ -6,9 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
-import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.DelegateFileSystemId;
-import io.unitycatalog.hadoop.internal.id.TableCredId;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
 import java.util.Map;
@@ -117,8 +115,7 @@ class CredScopedFileSystemCacheTest {
   @Test
   void evictedEntryClosesCachedDelegate() throws Exception {
     FileSystem mockFs = mock(FileSystem.class);
-    CredId credId = new TableCredId(EMPTY_CRED_CONTEXT_ID, "tid-evict", "READ");
-    DelegateFileSystemId key = DelegateFileSystemId.of(credId, null);
+    DelegateFileSystemId key = DelegateFileSystemId.create(tableConf("tid-evict", "READ"));
     CredScopedFileSystem.CACHE.put(key, mockFs);
 
     CredScopedFileSystem.clearCacheForTesting();

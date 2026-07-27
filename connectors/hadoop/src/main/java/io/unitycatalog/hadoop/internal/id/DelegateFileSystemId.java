@@ -32,19 +32,11 @@ public final class DelegateFileSystemId {
   }
 
   /**
-   * Pairs {@code credId} with the {@code location} being accessed ({@code null} keys by CredId
-   * only).
-   */
-  public static DelegateFileSystemId of(CredId credId, String location) {
-    return new DelegateFileSystemId(credId, location);
-  }
-
-  /**
    * Derives the id from {@code conf}: the {@link CredId} for the credential scope plus the {@link
    * UCHadoopConfConstants#UC_CREDENTIAL_LOCATION_KEY location} being served.
    */
   public static DelegateFileSystemId create(Configuration conf) {
-    return of(CredId.create(conf), location(conf));
+    return new DelegateFileSystemId(CredId.create(conf), location(conf));
   }
 
   /**
@@ -53,7 +45,8 @@ public final class DelegateFileSystemId {
    * DefaultCredId} derived from the URI's scheme and authority.
    */
   public static DelegateFileSystemId create(Configuration conf, URI uri) {
-    return of(CredId.create(conf, () -> new DefaultCredId(uri, conf)), location(conf));
+    return new DelegateFileSystemId(
+        CredId.create(conf, () -> new DefaultCredId(uri, conf)), location(conf));
   }
 
   private static String location(Configuration conf) {
