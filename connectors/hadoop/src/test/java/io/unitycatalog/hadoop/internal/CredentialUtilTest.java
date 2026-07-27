@@ -152,22 +152,32 @@ class CredentialUtilTest {
         .isSameAs(s3Prefix);
   }
 
-  @Test
-  void prefixCoversNormalizesSchemeAliasesAndCase() {
-    assertThat(CredentialUtil.prefixCovers("s3a://bucket/t", "s3://bucket/t")).isTrue();
-    assertThat(CredentialUtil.prefixCovers("S3://bucket/t", "s3://bucket/t")).isTrue();
-    assertThat(CredentialUtil.prefixCovers("abfss://c@a/t", "abfs://c@a/t")).isTrue();
+  @ParameterizedTest
+  @MethodSource("coveringPrefixes")
+  void prefixShouldCover(String location, String prefix) {
+    assertThat(CredentialUtil.prefixCovers(location, prefix)).isTrue();
   }
 
-  @Test
-  void prefixCoversDoesNotMatchAcrossClouds() {
-    assertThat(CredentialUtil.prefixCovers("gs://bucket/t", "s3://bucket/t")).isFalse();
+  private static Stream<Arguments> coveringPrefixes() {
+    return Stream.of(
+        Arguments.of("s3a://bucket/t", "s3://bucket/t"),
+        Arguments.of("S3://bucket/t", "s3://bucket/t"),
+        Arguments.of("abfss://c@a/t", "abfs://c@a/t"),
+        Arguments.of("hdfs://nn/t", "hdfs://nn/t"),
+        Arguments.of("gs://bucket/A/B/c", "gs://bucket/A/B"));
   }
 
-  @Test
-  void prefixCoversLeavesUnknownSchemesUnnormalized() {
-    assertThat(CredentialUtil.prefixCovers("hdfs://nn/t", "hdfs://nn/t")).isTrue();
-    assertThat(CredentialUtil.prefixCovers("HDFS://nn/t", "hdfs://nn/t")).isFalse();
+  @ParameterizedTest
+  @MethodSource("nonCoveringPrefixes")
+  void prefixDoesNotCover(String location, String prefix) {
+    assertThat(CredentialUtil.prefixCovers(location, prefix)).isFalse();
+  }
+
+  private static Stream<Arguments> nonCoveringPrefixes() {
+    return Stream.of(
+        Arguments.of("gs://bucket/t", "s3://bucket/t"),
+        Arguments.of("HDFS://nn/t", "hdfs://nn/t"),
+        Arguments.of("gs://bucket/A/B/c", "gs://bucket/A/b"));
   }
 
   @Test
