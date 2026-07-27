@@ -1,6 +1,6 @@
 package io.unitycatalog.hadoop.internal.id;
 
-import io.unitycatalog.client.internal.Preconditions;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import java.util.Objects;
@@ -26,7 +26,6 @@ public final class DelegateFileSystemId {
   private final String location;
 
   private DelegateFileSystemId(CredId credId, String location) {
-    Preconditions.checkNotNull(credId, "credId is required");
     this.credId = credId;
     this.location = location;
   }
@@ -50,7 +49,8 @@ public final class DelegateFileSystemId {
   }
 
   private static String location(Configuration conf) {
-    return conf.get(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY);
+    String location = conf.get(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY);
+    return location == null ? null : CredentialUtil.normalizeUri(location);
   }
 
   @Override
