@@ -377,17 +377,13 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void sameScopeDifferentLocationUsesSeparateGlobalCacheEntries() throws Exception {
     Configuration confA = newTableBasedConf("shared-table");
-    confA.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
-    confA.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
     confA.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/a");
 
     Configuration confB = newTableBasedConf("shared-table");
-    confB.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
-    confB.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
     confB.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/b");
 
-    TemporaryCredentials credA = newTempCred("locationA", clock.now().toEpochMilli() + 2000L);
-    TemporaryCredentials credB = newTempCred("locationB", clock.now().toEpochMilli() + 2000L);
+    TemporaryCredentials credA = newTempCred("locationA", Long.MAX_VALUE);
+    TemporaryCredentials credB = newTempCred("locationB", Long.MAX_VALUE);
 
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(credA).thenReturn(credB);
@@ -403,11 +399,9 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void sameScopeSameLocationReusesGlobalCacheEntry() throws Exception {
     Configuration conf = newTableBasedConf("shared-table");
-    conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
-    conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
     conf.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/a");
 
-    TemporaryCredentials cred = newTempCred("locationA", clock.now().toEpochMilli() + 2000L);
+    TemporaryCredentials cred = newTempCred("locationA", Long.MAX_VALUE);
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred);
 
@@ -423,17 +417,13 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void differentScopeSameLocationUsesSeparateGlobalCacheEntries() throws Exception {
     Configuration confA = newTableBasedConf("table-a");
-    confA.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
-    confA.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
     confA.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/shared");
 
     Configuration confB = newTableBasedConf("table-b");
-    confB.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
-    confB.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
     confB.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/shared");
 
-    TemporaryCredentials credA = newTempCred("tableA", clock.now().toEpochMilli() + 2000L);
-    TemporaryCredentials credB = newTempCred("tableB", clock.now().toEpochMilli() + 2000L);
+    TemporaryCredentials credA = newTempCred("tableA", Long.MAX_VALUE);
+    TemporaryCredentials credB = newTempCred("tableB", Long.MAX_VALUE);
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(credA).thenReturn(credB);
 
