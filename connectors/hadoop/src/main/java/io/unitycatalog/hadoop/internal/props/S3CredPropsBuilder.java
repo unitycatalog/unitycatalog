@@ -9,6 +9,9 @@ import org.apache.hadoop.conf.Configuration;
 final class S3CredPropsBuilder extends CredPropsBuilder {
   private static final String AWS_VENDED_TOKEN_PROVIDER_CLASS =
       "io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider";
+  private static final String S3A_ACCESS_KEY = "fs.s3a.access.key";
+  private static final String S3A_SECRET_KEY = "fs.s3a.secret.key";
+  private static final String S3A_SESSION_TOKEN = "fs.s3a.session.token";
 
   S3CredPropsBuilder(Configuration hadoopConf) {
     super(hadoopConf);
@@ -49,8 +52,8 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   @Override
   protected void writeFixedCredKeys(GenericCredential cred) {
     AwsCredential aws = (AwsCredential) cred;
-    set("fs.s3a.access.key", aws.accessKeyId());
-    set("fs.s3a.secret.key", aws.secretAccessKey());
-    set("fs.s3a.session.token", aws.sessionToken());
+    set(S3A_ACCESS_KEY, aws.accessKeyId());
+    set(S3A_SECRET_KEY, aws.secretAccessKey());
+    set(S3A_SESSION_TOKEN, aws.sessionToken());
   }
 }
