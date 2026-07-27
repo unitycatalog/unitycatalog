@@ -319,12 +319,14 @@ public class TableRepository {
     DeltaUpdateTableMapper.CollectedRequest collected =
         DeltaUpdateTableMapper.collectRequest(request);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
+    String tableFullName = catalog + "." + schema + "." + table;
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
           requireDeltaTable(dao, catalog, schema, table);
-          DeltaCommitRepository.lockTableForCommit(session, dao, dao.getId());
+          DeltaCommitRepository.lockTableForCommit(
+              session, dao, dao.getId(), Optional.of(tableFullName));
           // assert-table-uuid is stable identity, so check it up front. assert-etag is deferred to
           // after the apply, captured here against pre-apply state: a commit advances the etag, and
           // an idempotent replay must bypass the etag entirely (it throws mid-apply and rolls back
@@ -361,7 +363,7 @@ public class TableRepository {
           return buildLoadTableResponse(
               session, dao, Optional.of(properties.asMap()), catalog, schema, table);
         },
-        "Failed to update table " + catalog + "." + schema + "." + table,
+        "Failed to update table " + tableFullName,
         /* readOnly = */ false);
   }
 

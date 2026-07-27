@@ -284,7 +284,7 @@ public class DeltaCommitRepository {
           // Serialize all commit/backfill mutations on this table by write-locking its uc_tables
           // row, matching the Delta update path. This makes the commit-log reads and writes below
           // atomic against a concurrent commit or backfill.
-          lockTableForCommit(session, tableInfoDAO, tableId);
+          lockTableForCommit(session, tableInfoDAO, tableId, Optional.empty());
           validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
           postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields);
           return null;
@@ -305,13 +305,16 @@ public class DeltaCommitRepository {
    * <p>A lock-wait timeout or deadlock surfaces as {@code UPDATE_REQUIREMENT_CONFLICT} (409) so the
    * client retries, rather than as a generic 500.
    */
-  public static void lockTableForCommit(Session session, TableInfoDAO dao, UUID tableId) {
+  public static void lockTableForCommit(
+      Session session, TableInfoDAO dao, UUID tableId, Optional<String> tableFullNameForLogging) {
     try {
       session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
     } catch (PessimisticLockException e) {
       throw new BaseException(
           ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
-          "Concurrent commit in progress on table " + tableId + "; retry the request.");
+          "Concurrent commit in progress on table "
+              + tableFullNameForLogging.orElseGet(tableId::toString)
+              + "; retry the request.");
     }
   }
 

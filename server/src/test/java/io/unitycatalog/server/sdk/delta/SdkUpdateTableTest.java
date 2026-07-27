@@ -803,15 +803,13 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(rNext.getLatestTableVersion()).isEqualTo(2L);
     }
 
-    // -------- a commit replay is a whole-request no-op, even with a stale etag and extra actions
-    // --
+    // ------- a commit replay is a whole-request no-op, even with a stale etag and extra actions --
     // The client's original v2 attempt (commit-only) landed but the response was lost. The retry
     // resends the identical v2 commit, pins the now-stale (pre-v2) etag, and folds in a new
-    // backfill
-    // of v1. Because the commit is a recognized replay, the whole request is a no-op success: the
-    // stale etag does not conflict, and the extra backfill is NOT applied (v1 is retained). To
-    // report backfill after a lost response, the client sends a standalone
-    // set-latest-backfilled-version.
+    // backfill of v1.
+    // Because the commit is a recognized replay, the whole request is a no-op success: the stale
+    // etag does not conflict, and the extra backfill is NOT applied (v1 is retained). To report
+    // backfill after a lost response, the client sends a standalone set-latest-backfilled-version.
     {
       Handle h = createDeltaManaged("tbl_replay_whole_request_noop", Map.of());
       DeltaLoadTableResponse r1 =
