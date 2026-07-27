@@ -83,8 +83,7 @@ public class AwsPolicyGenerator {
       ArrayNode conditionalPrefixes = (ArrayNode) listStatement.findPath("s3:prefix");
       paths.forEach(path -> {
         // remove any preceding forward slashes
-        // TODO: potentially sanitize/encode the whole path to deal with problematic chars
-        String sanitizedPath = path.replaceAll("^/+", "");
+        String sanitizedPath = escapeIamSpecialCharacters(path.replaceAll("^/+", ""));
 
         if (sanitizedPath.isEmpty()) {
           conditionalPrefixes.add("*");
@@ -101,6 +100,36 @@ public class AwsPolicyGenerator {
     });
 
     return JSON_MAPPER.writeValueAsString(policyRoot);
+  }
+
+  /**
+   * Makes an S3 path safe to include in an IAM policy.
+   *
+   * <p>S3 treats {@code *}, {@code ?}, and {@code $} as ordinary characters in object
+   * names. IAM gives them special meanings:
+   *
+   * <ul>
+   *   <li>{@code *} matches any number of characters. For example, {@code reports/*}
+   *       matches every object under {@code reports/}.
+   *   <li>{@code ?} matches exactly one character. For example, {@code file?.txt}
+   *       matches {@code file1.txt}.
+   *   <li>{@code ${...}} is a policy variable whose value IAM fills in when it evaluates
+   *       the policy. For example, {@code ${aws:username}} is replaced with the caller's
+   *       IAM username.
+   * </ul>
+   *
+   * <p>Therefore, copying an S3 path directly into a policy could grant access to more
+   * objects than the path names. AWS provides {@code ${*}}, {@code ${?}}, and {@code ${$}}
+   * to make IAM match the literal {@code *}, {@code ?}, and {@code $} characters instead.
+   *
+   * <p>We replace {@code $} first because the replacements for {@code *} and {@code ?}
+   * also contain a dollar sign.
+   *
+   * @see <a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_variables.html">
+   *     AWS documentation for IAM policy variables</a>
+   */
+  private static String escapeIamSpecialCharacters(String keyPrefix) {
+    return keyPrefix.replace("$", "${$}").replace("*", "${*}").replace("?", "${?}");
   }
 
   private static Map<String, List<String>> getBucketToPathsMap(List<NormalizedURL> locations) {
