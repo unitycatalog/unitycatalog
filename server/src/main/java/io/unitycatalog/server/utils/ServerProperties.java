@@ -197,6 +197,7 @@ public class ServerProperties {
     CLIENT_SECRET("server.client-secret"),
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
+    ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     MANAGED_TABLE_USE_DELTA_API_ONLY(
         "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
@@ -443,6 +444,21 @@ public class ServerProperties {
 
   public boolean isIncludeStackTraceInError() {
     return isTrueOrEnable(get(Property.INCLUDE_STACK_TRACE_IN_ERROR));
+  }
+
+  /** Lifetime of UC access tokens issued by token exchange. Defaults to 24 hours. */
+  public Duration getAccessTokenTimeout() {
+    return Duration.parse(get(Property.ACCESS_TOKEN_TIMEOUT));
+  }
+
+  /**
+   * Cookie max-age for UC access tokens, capped by {@link #getAccessTokenTimeout()} so the cookie
+   * does not outlive the JWT it contains.
+   */
+  public Duration getEffectiveCookieTimeout() {
+    Duration cookieTimeout = Duration.parse(get(Property.COOKIE_TIMEOUT));
+    Duration accessTokenTimeout = getAccessTokenTimeout();
+    return cookieTimeout.compareTo(accessTokenTimeout) > 0 ? accessTokenTimeout : cookieTimeout;
   }
 
   /**

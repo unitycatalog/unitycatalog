@@ -41,7 +41,6 @@ import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
-import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -189,21 +188,22 @@ public class AuthService {
 
     LOGGER.debug("Validated. Creating access token.");
 
-    String accessToken = securityContext.createAccessToken(decodedJWT);
+    Duration accessTokenTimeout = serverProperties.getAccessTokenTimeout();
+    String accessToken = securityContext.createAccessToken(decodedJWT, accessTokenTimeout);
 
     OAuthTokenExchangeInfo tokenExchangeInfo =
         new OAuthTokenExchangeInfo()
             .accessToken(accessToken)
             .issuedTokenType(TokenType.ACCESS_TOKEN)
-            .tokenType(AccessTokenType.BEARER);
+            .tokenType(AccessTokenType.BEARER)
+            .expiresIn(accessTokenTimeout.getSeconds());
 
     // Set token as cookie if ext param is set to cookie
     ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
     ext.ifPresent(
         e -> {
           if (e.equals(TokenEndpointExtensionType.COOKIE)) {
-            // Set cookie timeout to 5 days by default if not present in server.properties
-            String cookieTimeout = this.serverProperties.get(Property.COOKIE_TIMEOUT);
+            Duration cookieTimeout = serverProperties.getEffectiveCookieTimeout();
             Cookie cookie =
                 createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
             responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
@@ -262,11 +262,12 @@ public class AuthService {
         ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
   }
 
+  private Cookie createCookie(String key, String value, String path, Duration maxAge) {
+    return Cookie.secureBuilder(key, value).path(path).maxAge(maxAge.getSeconds()).build();
+  }
+
   private Cookie createCookie(String key, String value, String path, String maxAge) {
-    return Cookie.secureBuilder(key, value)
-        .path(path)
-        .maxAge(Duration.parse(maxAge).getSeconds())
-        .build();
+    return createCookie(key, value, path, Duration.parse(maxAge));
   }
 
   // NOTE:
