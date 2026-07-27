@@ -101,14 +101,20 @@ private[spark] object UCViewTypes {
    * (not `TableSummary.*` constants) so this stays free of Spark-4.2-only types and compiles on
    * all supported Spark versions, mirroring the `"METRIC_VIEW"` literal in `viewLikeUcTypes`.
    *
-   * The mapping deliberately reproduces the semantics of Spark's default
-   * `TableCatalog.listTableSummaries`, which reads each table's `PROP_TABLE_TYPE` and falls back to
-   * `FOREIGN` when it is absent -- except it derives the type from the list-RPC row's
-   * `getTableType()` instead of a per-table `loadTable`, so no storage credentials are vended:
+   * The mapping stays consistent with what the credential-vending load path
+   * (`getUCTableLike` -> `loadV1Table`) would produce, so a table's summary type matches the type
+   * it would resolve to under the default `listTableSummaries` (which reads `PROP_TABLE_TYPE` off
+   * the loaded table and falls back to `FOREIGN` when absent) -- except it derives the type from
+   * the list-RPC row's `getTableType()` instead of a per-table `loadTable`, so no storage
+   * credentials are vended:
    *
    *   - `MANAGED`          -> `"MANAGED"`   (`TableSummary.MANAGED_TABLE_TYPE`)
+   *   - `STREAMING_TABLE`  -> `"MANAGED"`   -- `getUCTableLike` fetches with
+   *                                            `readStreamingTableAsManaged = true`, so the load
+   *                                            path sees UC `MANAGED` and `loadV1Table` builds a
+   *                                            `CatalogTableType.MANAGED` V1 table (see #1017);
+   *                                            classify it the same way here
    *   - `EXTERNAL`         -> `"EXTERNAL"`  (`TableSummary.EXTERNAL_TABLE_TYPE`)
-   *   - `STREAMING_TABLE`  -> `"EXTERNAL"`  (loaded as an EXTERNAL V1 table by `loadV1Table`)
    *   - anything else      -> `"FOREIGN"`  (`TableSummary.FOREIGN_TABLE_TYPE`), matching the
    *                                         default's absent-property fallback
    *
@@ -117,8 +123,8 @@ private[spark] object UCViewTypes {
    */
   def ucTableTypeToSparkTableSummaryType(tableType: TableType): String = tableType match {
     case TableType.MANAGED => "MANAGED"
+    case TableType.STREAMING_TABLE => "MANAGED"
     case TableType.EXTERNAL => "EXTERNAL"
-    case TableType.STREAMING_TABLE => "EXTERNAL"
     case _ => "FOREIGN"
   }
 

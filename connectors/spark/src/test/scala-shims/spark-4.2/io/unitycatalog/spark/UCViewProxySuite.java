@@ -580,9 +580,11 @@ public class UCViewProxySuite {
   }
 
   @Test
-  public void testListTableSummariesMapsStreamingTableToExternalAndUnknownToForeign()
+  public void testListTableSummariesMapsStreamingTableToManagedAndUnknownToForeign()
       throws Exception {
-    // STREAMING_TABLE is loaded as an EXTERNAL V1 table, so it summarizes as EXTERNAL; any other
+    // STREAMING_TABLE summarizes as MANAGED: the load path fetches it with
+    // readStreamingTableAsManaged=true, so getUCTableLike -> loadV1Table classifies it as
+    // CatalogTableType.MANAGED (see #1017); the summary stays consistent with that. Any other
     // non-view kind falls back to FOREIGN, mirroring Spark's default absent-PROP_TABLE_TYPE path.
     ListTablesResponse response =
         new ListTablesResponse()
@@ -598,7 +600,7 @@ public class UCViewProxySuite {
 
     assertThat(result).hasSize(2);
     assertThat(result[0].identifier()).isEqualTo(Identifier.of(NAMESPACE, "st1"));
-    assertThat(result[0].tableType()).isEqualTo(TableSummary.EXTERNAL_TABLE_TYPE);
+    assertThat(result[0].tableType()).isEqualTo(TableSummary.MANAGED_TABLE_TYPE);
     assertThat(result[1].identifier()).isEqualTo(Identifier.of(NAMESPACE, "unknown1"));
     assertThat(result[1].tableType()).isEqualTo(TableSummary.FOREIGN_TABLE_TYPE);
   }
