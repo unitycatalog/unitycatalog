@@ -92,6 +92,10 @@ public class GcpCredentialVendor {
    * uses as part of its syntax. Escaping each character while building the literal keeps the object
    * name inside the string instead of letting it change the credential access boundary condition.
    *
+   * <p>The literal uses double quotes because this method escapes double quotes. Changing the
+   * delimiter to single quotes without also changing the escape rules would make apostrophes
+   * unsafe.
+   *
    * @see <a
    *     href="https://github.com/cel-expr/cel-spec/blob/master/doc/langdef.md#string-and-bytes-values">
    *     CEL string and bytes values</a>
