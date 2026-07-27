@@ -50,11 +50,12 @@ public final class WildcardAllowlist {
 
   public static WildcardAllowlist forAllowedIssuers(String source) {
     return new WildcardAllowlist(
-        ALLOWED_ISSUERS_NAME, ServerProperties.Property.ALLOWED_ISSUERS.key, source);
+        ALLOWED_ISSUERS_NAME, ServerProperties.Property.ALLOWED_ISSUERS.getKey(), source);
   }
 
   public static WildcardAllowlist forAudiences(String source) {
-    return new WildcardAllowlist(AUDIENCES_NAME, ServerProperties.Property.AUDIENCES.key, source);
+    return new WildcardAllowlist(
+        AUDIENCES_NAME, ServerProperties.Property.AUDIENCES.getKey(), source);
   }
 
   /**

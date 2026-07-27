@@ -86,7 +86,7 @@ public class AuthServiceAllowlistTest {
     protected void setUpProperties() {
       super.setUpProperties();
       serverProperties.setProperty(
-          ServerProperties.Property.ALLOWED_ISSUERS.key, "http://localhost:*");
+          ServerProperties.Property.ALLOWED_ISSUERS.getKey(), "http://localhost:*");
     }
 
     @Test
@@ -114,7 +114,8 @@ public class AuthServiceAllowlistTest {
     protected void setUpProperties() {
       super.setUpProperties();
       serverProperties.setProperty(
-          ServerProperties.Property.AUDIENCES.key, "unity-catalog-local,https://*.dev.example.com");
+          ServerProperties.Property.AUDIENCES.getKey(),
+          "unity-catalog-local,https://*.dev.example.com");
     }
 
     @Test
@@ -148,7 +149,7 @@ public class AuthServiceAllowlistTest {
     @Override
     protected void setUpProperties() {
       super.setUpProperties();
-      serverProperties.setProperty(ServerProperties.Property.AUDIENCES.key, "*");
+      serverProperties.setProperty(ServerProperties.Property.AUDIENCES.getKey(), "*");
     }
 
     @Test
@@ -181,7 +182,7 @@ public class AuthServiceAllowlistTest {
     @Override
     protected void setUpProperties() {
       super.setUpProperties();
-      serverProperties.setProperty(ServerProperties.Property.ALLOWED_ISSUERS.key, "");
+      serverProperties.setProperty(ServerProperties.Property.ALLOWED_ISSUERS.getKey(), "");
     }
 
     @Test
@@ -197,7 +198,7 @@ public class AuthServiceAllowlistTest {
               "No "
                   + WildcardAllowlist.ALLOWED_ISSUERS_NAME
                   + " configured. Set "
-                  + ServerProperties.Property.ALLOWED_ISSUERS.key
+                  + ServerProperties.Property.ALLOWED_ISSUERS.getKey()
                   + " in server.properties");
     }
   }
@@ -208,7 +209,7 @@ public class AuthServiceAllowlistTest {
     @Override
     protected void setUpProperties() {
       super.setUpProperties();
-      serverProperties.setProperty(ServerProperties.Property.AUDIENCES.key, "");
+      serverProperties.setProperty(ServerProperties.Property.AUDIENCES.getKey(), "");
     }
 
     @Test
@@ -224,7 +225,7 @@ public class AuthServiceAllowlistTest {
               "No "
                   + WildcardAllowlist.AUDIENCES_NAME
                   + " configured. Set "
-                  + ServerProperties.Property.AUDIENCES.key
+                  + ServerProperties.Property.AUDIENCES.getKey()
                   + " in server.properties");
     }
   }
