@@ -544,6 +544,127 @@ public class UCViewProxySuite {
         .isInstanceOf(TableAlreadyExistsException.class);
   }
 
+  // -- listTableSummaries tests (SHOW TABLES metadata-only path; LC-15627) --
+
+  @Test
+  public void testListTableSummariesReturnsTablesOnlyWithoutLoadingAnyTable() throws Exception {
+    // SHOW TABLES must stay metadata-only: build each summary from the single listTables RPC row
+    // (using its tableType), excluding view-like rows, and never call getTable/loadTable -- which
+    // is what vends per-table storage credentials and 400s on a non-externalizable managed table.
+    ListTablesResponse response =
+        new ListTablesResponse()
+            .tables(
+                List.of(
+                    new TableInfo().name("managed1").tableType(TableType.MANAGED),
+                    new TableInfo().name("external1").tableType(TableType.EXTERNAL),
+                    new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
+            .nextPageToken(null);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    TableSummary[] result = proxyRelations.listTableSummaries(NAMESPACE);
+
+    // Only the two real tables, view-like rows excluded (they are contributed by listViews).
+    assertThat(result).hasSize(2);
+    assertThat(result[0].identifier()).isEqualTo(Identifier.of(NAMESPACE, "managed1"));
+    assertThat(result[0].tableType()).isEqualTo(TableSummary.MANAGED_TABLE_TYPE);
+    assertThat(result[1].identifier()).isEqualTo(Identifier.of(NAMESPACE, "external1"));
+    assertThat(result[1].tableType()).isEqualTo(TableSummary.EXTERNAL_TABLE_TYPE);
+
+    // The regression guard: no per-table load, so no credential vend can 400 the listing.
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .getTable(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any());
+  }
+
+  @Test
+  public void testListTableSummariesMapsStreamingTableToExternalAndUnknownToForeign()
+      throws Exception {
+    // STREAMING_TABLE is loaded as an EXTERNAL V1 table, so it summarizes as EXTERNAL; any other
+    // non-view kind falls back to FOREIGN, mirroring Spark's default absent-PROP_TABLE_TYPE path.
+    ListTablesResponse response =
+        new ListTablesResponse()
+            .tables(
+                List.of(
+                    new TableInfo().name("st1").tableType(TableType.STREAMING_TABLE),
+                    new TableInfo().name("unknown1").tableType(TableType.UNKNOWN_DEFAULT_OPEN_API)))
+            .nextPageToken(null);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    TableSummary[] result = proxyRelations.listTableSummaries(NAMESPACE);
+
+    assertThat(result).hasSize(2);
+    assertThat(result[0].identifier()).isEqualTo(Identifier.of(NAMESPACE, "st1"));
+    assertThat(result[0].tableType()).isEqualTo(TableSummary.EXTERNAL_TABLE_TYPE);
+    assertThat(result[1].identifier()).isEqualTo(Identifier.of(NAMESPACE, "unknown1"));
+    assertThat(result[1].tableType()).isEqualTo(TableSummary.FOREIGN_TABLE_TYPE);
+  }
+
+  @Test
+  public void testListRelationSummariesUnionsTablesAndViewsMetadataOnly() throws Exception {
+    // Full SHOW TABLES path: Spark's default listRelationSummaries unions listTableSummaries
+    // (tables) with listViews (views). Both are served from the list RPC, no getTable/loadTable.
+    ListTablesResponse response =
+        new ListTablesResponse()
+            .tables(
+                List.of(
+                    new TableInfo().name("managed1").tableType(TableType.MANAGED),
+                    new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
+            .nextPageToken(null);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    TableSummary[] result = proxyRelations.listRelationSummaries(NAMESPACE);
+
+    // Tables first (from listTableSummaries), then views (from listViews) per the default's order.
+    assertThat(result).hasSize(2);
+    assertThat(result[0].identifier()).isEqualTo(Identifier.of(NAMESPACE, "managed1"));
+    assertThat(result[0].tableType()).isEqualTo(TableSummary.MANAGED_TABLE_TYPE);
+    assertThat(result[1].identifier()).isEqualTo(Identifier.of(NAMESPACE, "mv1"));
+    assertThat(result[1].tableType()).isEqualTo(TableSummary.VIEW_TABLE_TYPE);
+
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .getTable(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any());
+  }
+
+  @Test
+  public void testUCSingleCatalogListTableSummariesDelegatesToUcProxy() throws Exception {
+    // UCSingleCatalog routes summaries straight to ucProxy (bypassing the delegate/Delta chain),
+    // like the listViews delegate -- so the credential-free override is used even with Delta wired.
+    ListTablesResponse response =
+        new ListTablesResponse()
+            .tables(List.of(new TableInfo().name("managed1").tableType(TableType.MANAGED)))
+            .nextPageToken(null);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    // A delegate that would fail if consulted for the listing -- proves ucProxy is used instead.
+    TableCatalog delegate = org.mockito.Mockito.mock(TableCatalog.class);
+    when(delegate.listTableSummaries(org.mockito.ArgumentMatchers.any()))
+        .thenThrow(new AssertionError("delegate.listTableSummaries must not be called"));
+
+    UCSingleCatalog catalog = new UCSingleCatalog();
+    setCatalogField(catalog, "delegate", delegate);
+    setCatalogField(catalog, "ucProxy", proxyRelations);
+
+    TableSummary[] result = ((RelationCatalog) catalog).listTableSummaries(NAMESPACE);
+
+    assertThat(result).hasSize(1);
+    assertThat(result[0].identifier()).isEqualTo(Identifier.of(NAMESPACE, "managed1"));
+    assertThat(result[0].tableType()).isEqualTo(TableSummary.MANAGED_TABLE_TYPE);
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .getTable(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any());
+  }
+
   private static void setCatalogField(UCSingleCatalog catalog, String fieldName, Object value) {
     try {
       Field field = UCSingleCatalog.class.getDeclaredField(fieldName);
