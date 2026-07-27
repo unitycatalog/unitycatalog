@@ -26,7 +26,7 @@ The sbt generation process for this SDK will:
 
 1. Copy over the ignore rules for the OpenAPI Generator to the `target` directory from the [build location](build/).
 2. Exclude the creation of the root `__init__.py` file from the shared namespace root (`unitycatalog`).
-3. Exclude the creation of package building files (`pyproject.toml`) in favor of the distribution versions of these files.
+3. Exclude the creation of package building files (`pyproject.toml` and `setup.py`) in favor of the distribution versions of these files.
 4. Remove additional irrelevant files (for details, see the definitions within the [.openapi-generator-ignore](build/.openapi-generator-ignore) file).
 5. Copy over the release versions of `pyproject.toml` and the release package `README.md` file to the correct locations within
 the generated code directories.

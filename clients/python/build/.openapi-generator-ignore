@@ -4,12 +4,15 @@
 
 README.md
 pyproject.toml
-setup.py
 
 ## Do not generate the root __init__.py file for shared namespace packages
 
 unitycatalog/__init__.py
 
 ## Do not generate files that have no purpose
+## NOTE: setup.py is emitted by the OpenAPI "python" generator by default. The
+## package is built with hatchling via pyproject.toml, so this line must stay to
+## suppress the generator's setup.py -- removing it will reintroduce an unused file.
 
+setup.py
 git_push.sh
