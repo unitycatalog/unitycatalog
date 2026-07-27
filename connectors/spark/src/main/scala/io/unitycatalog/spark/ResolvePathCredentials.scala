@@ -80,8 +80,11 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
               if u.multipartIdentifier.length == 2 && isCloudPath(u.multipartIdentifier.last) =>
             injectUnresolvedRelationCredentials(u, uc)
 
-          // `InsertIntoStatement.table` is not a tree child (only `query` is), so the case above
-          // never sees bare-path insert targets such as INSERT INTO parquet.`s3://...`.
+          // `InsertIntoStatement.table` is not a tree child (only `query` is), so the generic
+          // `UnresolvedRelation` case above never visits bare-path INSERT targets such as
+          // INSERT INTO parquet.`s3://...`. On Spark 4.0–4.2, executed INSERT INTO on a bare path
+          // still fails at analysis (TABLE_OR_VIEW_NOT_FOUND); this branch is exercised at parse
+          // time and kept for future Spark versions.
           case i: InsertIntoStatement =>
             i.table match {
               case u: UnresolvedRelation
