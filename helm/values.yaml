@@ -124,6 +124,8 @@ auth:
   #
   # When authorization is enabled, tokens will only be accepted from issuers in this list.
   # Supports exact match or wildcard patterns with * (single DNS label per wildcard).
+  # Cannot be "*" alone. Wildcard issuers are evaluated before signature verification;
+  # see docs/server/auth.md.
   #
   # Example for Google: `https://accounts.google.com`
   # Example for Microsoft Entra ID: `https://login.microsoftonline.com/{tenant-id}/v2.0`

@@ -271,16 +271,24 @@ public class ServerProperties {
       }
       property.validator.validate(property.key, value);
     }
-    validateAudienceConfiguration();
+    validateAuthAllowlistConfiguration();
   }
 
-  private void validateAudienceConfiguration() {
+  private void validateAuthAllowlistConfiguration() {
     List<String> audiences = getAudiences();
     if (audiences.contains("*") && audiences.size() > 1) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "server.audiences cannot combine '*' with other values; use '*' alone to disable"
               + " audience validation");
+    }
+
+    List<String> allowedIssuers = getAllowedIssuers();
+    if (allowedIssuers.contains("*")) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.allowed-issuers cannot be '*'; use explicit issuers or wildcard patterns such"
+              + " as https://*.dev.example.com");
     }
   }
 

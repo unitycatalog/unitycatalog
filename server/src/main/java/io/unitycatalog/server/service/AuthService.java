@@ -44,7 +44,6 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -161,8 +160,7 @@ public class AuthService {
     LOGGER.debug("Validating token for issuer: {} and keyId: {}", issuer, keyId);
 
     try {
-      JWTVerifier jwtVerifier =
-          jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg, List.of());
+      JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
       decodedJWT = jwtVerifier.verify(decodedJWT);
     } catch (JWTVerificationException e) {
       LOGGER.debug("Token rejected: verification failed", e);

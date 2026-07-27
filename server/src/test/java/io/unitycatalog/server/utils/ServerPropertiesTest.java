@@ -279,6 +279,15 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testRejectsLoneWildcardAllowedIssuers() {
+    Properties props = new Properties();
+    props.setProperty("server.allowed-issuers", "*");
+    assertThatThrownBy(() -> new ServerProperties(props))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server.allowed-issuers cannot be '*'");
+  }
+
+  @Test
   public void testAllowlistCaching() {
     Properties props = new Properties();
     props.setProperty("server.allowed-issuers", "https://a.example.com");

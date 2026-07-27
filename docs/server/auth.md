@@ -90,6 +90,17 @@ server.audiences=*
 server.allowed-issuers=https://*.dev.example.com
 ```
 
+#### Wildcard issuer security
+
+With exact-match issuers, the server only fetches JWKS from a fixed set of identity providers.
+Wildcard issuer patterns such as `https://*.dev.example.com` are evaluated **before** signature
+verification: a token whose `iss` matches the pattern determines which host the server contacts
+for OIDC discovery and JWKS. An unauthenticated caller who can mint tokens with arbitrary `iss`
+values under that pattern can steer JWKS fetches (an SSRF-style surface).
+
+Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
+cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
+
 ### Restart the UC Server
 
 Now that the Google Authentication is configured, restart the UC Server with the following command.
