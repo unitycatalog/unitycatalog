@@ -118,8 +118,8 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    * Writes to a bare cloud path and reads it back. Exercises {@code INSERT OVERWRITE DIRECTORY}
    * ({@code InsertIntoDir}) and {@code parquet.`path`} reads ({@code UnresolvedRelation}).
    * Bare-path {@code INSERT INTO} write targets are covered at parse time in {@link
-   * #testInsertIntoBarePathInjectsCredentialsAtParseTime()} because Spark 4.1 rejects them at
-   * analysis ({@code TABLE_OR_VIEW_NOT_FOUND}).
+   * #testInsertIntoBarePathInjectsCredentialsAtParseTime()} because Spark 4.x rejects them at
+   * analysis ({@code TABLE_OR_VIEW_NOT_FOUND}) on all supported versions (4.0–4.2).
    */
   @ParameterizedTest
   @CsvSource({"false, false", "true, true"})
@@ -178,12 +178,11 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
-   * Spark 4.1 rejects {@code INSERT INTO parquet.`s3://...`} at analysis ({@code
+   * Spark 4.x rejects {@code INSERT INTO parquet.`s3://...`} at analysis ({@code
    * TABLE_OR_VIEW_NOT_FOUND}) because {@code INSERT} DML requires a registered {@code
-   * table_identifier} (see Spark 4.1 INSERT TABLE docs). Parsing still builds an {@code
-   * InsertIntoStatement} whose target is an {@code UnresolvedRelation}, so {@link
-   * ResolvePathCredentials} must inject credentials before analysis — this test pins that behavior
-   * without executing the statement.
+   * table_identifier}. Parsing still builds an {@code InsertIntoStatement} whose target is an
+   * {@code UnresolvedRelation}, so {@link ResolvePathCredentials} must inject credentials before
+   * analysis — this test pins parse-time credential injection only; it does not execute the DML.
    */
   @Test
   public void testInsertIntoBarePathInjectsCredentialsAtParseTime()
@@ -201,16 +200,16 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
-   * After {@code USE CATALOG}, bare-path credential injection must follow the session's current
+   * After {@code SET CATALOG}, bare-path credential injection must follow the session's current
    * catalog, not {@code SQLConf.DEFAULT_CATALOG}. Default remains the built-in {@code spark_catalog}
    * while the UC catalog is selected explicitly.
    */
   @Test
-  public void testBarePathUsesCurrentCatalogAfterUseCatalog() throws IOException, ParseException {
+  public void testBarePathUsesCurrentCatalogAfterSetCatalog() throws IOException, ParseException {
     stopSession();
     session = createUcSparkSession(false, false, true, CATALOG_NAME);
     String location = bucketPath("use_catalog");
-    sql("USE CATALOG %s", CATALOG_NAME);
+    sql("SET CATALOG %s", CATALOG_NAME);
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
 
     LogicalPlan plan =
