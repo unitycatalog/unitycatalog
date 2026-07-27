@@ -118,6 +118,18 @@ Example: `P5D` (5 days)
 </td>
 		</tr>
 		<tr>
+			<td>auth.accessTokenTimeout</td>
+			<td>string</td>
+			<td><pre lang="json">
+"PT24H"
+</pre>
+</td>
+			<td>UC access token lifetime for token exchange
+
+Example: `PT24H` (24 hours), `P7D` (7 days)
+</td>
+		</tr>
+		<tr>
 			<td>auth.enabled</td>
 			<td>bool</td>
 			<td><pre lang="json">

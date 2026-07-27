@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.time.Duration;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
@@ -190,12 +191,31 @@ public class ServerPropertiesTest {
     testValidProperty(Property.COOKIE_TIMEOUT, "P5D");
     testValidProperty(Property.COOKIE_TIMEOUT, "PT2H");
     testValidProperty(Property.COOKIE_TIMEOUT, "P1DT12H30M");
+    testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT24H");
+    testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT1H");
 
     // Invalid values
     testInvalidProperty(
         Property.COOKIE_TIMEOUT, "5 days", "Invalid value '5 days'", "server.cookie-timeout");
     testInvalidProperty(
         Property.COOKIE_TIMEOUT, "P5X", "Invalid value 'P5X'", "server.cookie-timeout");
+    testInvalidProperty(
+        Property.ACCESS_TOKEN_TIMEOUT,
+        "24 hours",
+        "Invalid value '24 hours'",
+        "server.access-token-timeout");
+  }
+
+  @Test
+  public void testEffectiveCookieTimeout() {
+    ServerProperties serverProperties = new ServerProperties();
+    assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));
+
+    serverProperties.set(Property.COOKIE_TIMEOUT, "PT1H");
+    assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT1H"));
+
+    serverProperties.set(Property.ACCESS_TOKEN_TIMEOUT, "PT48H");
+    assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT1H"));
   }
 
   @Test
