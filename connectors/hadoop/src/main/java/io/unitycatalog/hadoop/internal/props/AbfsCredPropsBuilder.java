@@ -21,7 +21,7 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setFsImplKeys() {
+  protected void setCredScopedFsKeys() {
     saveAndOverride(
         "fs.abfs.impl", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem", CRED_SCOPED_FS_CLASS);
     saveAndOverride(

@@ -26,7 +26,7 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setFsImplKeys() {
+  protected void setCredScopedFsKeys() {
     saveAndOverride(
         "fs.gs.impl",
         "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem",

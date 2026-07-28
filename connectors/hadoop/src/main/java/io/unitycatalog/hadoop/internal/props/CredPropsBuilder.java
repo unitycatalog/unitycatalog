@@ -82,7 +82,7 @@ public abstract class CredPropsBuilder {
   public Map<String, String> build() {
     Preconditions.checkNotNull(initialCredential, "initialCredential is required");
     if (credScopedFsEnabled) {
-      setFsImplKeys();
+      setCredScopedFsKeys();
     }
     if (renewCredEnabled) {
       setVendedProviderKeys();
@@ -119,7 +119,7 @@ public abstract class CredPropsBuilder {
   }
 
   /** Cloud-specific filesystem-impl overrides that install CredScopedFileSystem. */
-  protected abstract void setFsImplKeys();
+  protected abstract void setCredScopedFsKeys();
 
   /** Cloud-specific key naming the vended token provider (renewable path only). */
   protected abstract void setVendedProviderKeys();

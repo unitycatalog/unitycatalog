@@ -22,7 +22,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setFsImplKeys() {
+  protected void setCredScopedFsKeys() {
     saveAndOverride("fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem", CRED_SCOPED_FS_CLASS);
     saveAndOverride("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem", CRED_SCOPED_FS_CLASS);
     saveAndOverride(
