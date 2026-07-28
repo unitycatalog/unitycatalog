@@ -31,9 +31,7 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
 
   @Override
   protected Map<String, String> catalogExtraProps() {
-    // Override fs.gs.impl to use our testing filesystem that tracks credential renewals
-    // Note: fs.gs.impl.disable.cache is already set by CredPropsUtil.GcsPropsBuilder
-    return Map.of("fs.gs.impl", GcsCredFileSystem.class.getName());
+    return Map.of("spark.hadoop.fs.gs.impl", GcsCredFileSystem.class.getName());
   }
 
   public static class GcsCredGenerator extends TimeBasedCredGenerator<AccessToken>

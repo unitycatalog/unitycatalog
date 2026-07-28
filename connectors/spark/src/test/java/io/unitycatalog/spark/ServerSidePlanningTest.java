@@ -117,16 +117,12 @@ public class ServerSidePlanningTest extends BaseSparkIntegrationTest {
       assertThat(session.conf().get("spark.databricks.delta.catalog.enableServerSidePlanning"))
           .isEqualTo("true");
 
-      // The load outcome then differs by Delta version. Delta >= 4.3.0 eagerly reads table
-      // properties on the SSP load path, so loadTable() still throws even though credential vending
-      // was skipped. Delta < 4.3.0 does not read them here, so loadTable() succeeds with empty
-      // credentials (no exception).
-      if (DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API)) {
-        assertThat(caughtException).isNotNull();
-      } else {
-        assertThat(caughtException).isNull();
-        assertThat(loadedTable).isNotNull();
-      }
+      // SSP is the fallback for tables with no vended credentials, so on this load path Delta must
+      // not force a credentialed `_delta_log` read while deciding to use it. It therefore does not
+      // read table properties here for any supported Delta version, and loadTable() succeeds with
+      // empty credentials (no exception) rather than throwing.
+      assertThat(caughtException).isNull();
+      assertThat(loadedTable).isNotNull();
     }
   }
 }

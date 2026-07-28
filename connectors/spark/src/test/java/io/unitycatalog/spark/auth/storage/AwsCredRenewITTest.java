@@ -35,7 +35,9 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
 
   @Override
   protected Map<String, String> catalogExtraProps() {
-    return Map.of("fs.s3.impl", S3CredFileSystem.class.getName());
+    return Map.of(
+        "spark.hadoop.fs.s3.impl", S3CredFileSystem.class.getName(),
+        "spark.hadoop.fs.s3a.impl", S3CredFileSystem.class.getName());
   }
 
   public static class AwsCredGenerator extends TimeBasedCredGenerator<Credentials>
