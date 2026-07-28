@@ -22,7 +22,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void writeImplOverrides() {
+  protected void setFsImplKeys() {
     saveAndOverride("fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem", CRED_SCOPED_FS_CLASS);
     saveAndOverride("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem", CRED_SCOPED_FS_CLASS);
     saveAndOverride(
@@ -32,12 +32,12 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void writeVendedProviderKeys() {
+  protected void setVendedProviderKeys() {
     set(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER, AWS_VENDED_TOKEN_PROVIDER_CLASS);
   }
 
   @Override
-  protected void writeRenewableCredKeys(GenericCredential cred) {
+  protected void setRenewableCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AwsCredential,
         "Expected AwsCredential, but got %s",
@@ -55,7 +55,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void writeFixedCredKeys(GenericCredential cred) {
+  protected void setFixedCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AwsCredential,
         "Expected AwsCredential, but got %s",

@@ -191,11 +191,14 @@ public class CredPropsUtil {
     GenericCredential cred =
         fetchGenericCredential(
             hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
-    return CredPropsBuilder.forCloud(cloudType.get(), hadoopConf)
-        .renewCredEnabled(renewCredEnabled, catalogUri, tokenProvider, credId, appVersions)
-        .credScopedFsEnabled(credScopedFsEnabled)
-        .initialCredential(cred)
-        .build();
+    CredPropsBuilder builder =
+        CredPropsBuilder.forCloud(cloudType.get(), hadoopConf)
+            .credScopedFsEnabled(credScopedFsEnabled)
+            .initialCredential(cred);
+    if (renewCredEnabled) {
+      builder.enableRenewCred(catalogUri, tokenProvider, credId, appVersions);
+    }
+    return builder.build();
   }
 
   /**

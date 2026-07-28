@@ -24,6 +24,11 @@ public abstract class CredPropsBuilder {
   private final HashMap<String, String> props = new HashMap<>();
 
   private boolean renewCredEnabled;
+  private boolean credScopedFsEnabled;
+  private String catalogUri;
+  private TokenProvider tokenProvider;
+  private CredId credId;
+  private Map<String, String> appVersions;
   private GenericCredential initialCredential;
 
   protected CredPropsBuilder(Configuration hadoopConf) {
@@ -44,37 +49,27 @@ public abstract class CredPropsBuilder {
     throw new IllegalStateException("Unhandled cloud type: " + cloudType);
   }
 
-  /**
-   * Records whether renewal is enabled and, when it is, writes the wiring the vended token provider
-   * needs to renew the credential: the provider-class keys, the catalog uri, the auth configs, the
-   * credential-scope identity, and the engine versions. The fixed path writes none of this.
-   */
-  public CredPropsBuilder renewCredEnabled(
-      boolean renewCredEnabled,
+  /** Records the configuration needed to enable credential renewal. */
+  public CredPropsBuilder enableRenewCred(
       String catalogUri,
       TokenProvider tokenProvider,
       CredId credId,
       Map<String, String> appVersions) {
-    this.renewCredEnabled = renewCredEnabled;
-    if (renewCredEnabled) {
-      writeVendedProviderKeys();
-      set(UCHadoopConfConstants.UC_URI_KEY, catalogUri);
-      // Only 'fs.*' properties propagate to the FileSystem, so prefix the auth configs.
-      tokenProvider
-          .configs()
-          .forEach((key, value) -> set(UCHadoopConfConstants.UC_AUTH_PREFIX + key, value));
-      credId.props().forEach(this::set);
-      appVersions.forEach(
-          (key, value) -> set(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + key, value));
-    }
+    Preconditions.checkNotNull(catalogUri, "catalogUri is required");
+    Preconditions.checkNotNull(tokenProvider, "tokenProvider is required");
+    Preconditions.checkNotNull(credId, "credId is required");
+    Preconditions.checkNotNull(appVersions, "appVersions is required");
+    this.renewCredEnabled = true;
+    this.catalogUri = catalogUri;
+    this.tokenProvider = tokenProvider;
+    this.credId = credId;
+    this.appVersions = appVersions;
     return this;
   }
 
-  /** When enabled, writes the cloud filesystem-impl overrides that install CredScopedFileSystem. */
+  /** Records whether the cloud filesystem implementation overrides should be enabled. */
   public CredPropsBuilder credScopedFsEnabled(boolean credScopedFsEnabled) {
-    if (credScopedFsEnabled) {
-      writeImplOverrides();
-    }
+    this.credScopedFsEnabled = credScopedFsEnabled;
     return this;
   }
 
@@ -86,10 +81,22 @@ public abstract class CredPropsBuilder {
 
   public Map<String, String> build() {
     Preconditions.checkNotNull(initialCredential, "initialCredential is required");
+    if (credScopedFsEnabled) {
+      setFsImplKeys();
+    }
     if (renewCredEnabled) {
-      writeRenewableCredKeys(initialCredential);
+      setVendedProviderKeys();
+      set(UCHadoopConfConstants.UC_URI_KEY, catalogUri);
+      // Only 'fs.*' properties propagate to the FileSystem, so prefix the auth configs.
+      tokenProvider
+          .configs()
+          .forEach((key, value) -> set(UCHadoopConfConstants.UC_AUTH_PREFIX + key, value));
+      credId.props().forEach(this::set);
+      appVersions.forEach(
+          (key, value) -> set(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + key, value));
+      setRenewableCredKeys(initialCredential);
     } else {
-      writeFixedCredKeys(initialCredential);
+      setFixedCredKeys(initialCredential);
     }
     return Collections.unmodifiableMap(new HashMap<>(props));
   }
@@ -112,14 +119,14 @@ public abstract class CredPropsBuilder {
   }
 
   /** Cloud-specific filesystem-impl overrides that install CredScopedFileSystem. */
-  protected abstract void writeImplOverrides();
+  protected abstract void setFsImplKeys();
 
   /** Cloud-specific key naming the vended token provider (renewable path only). */
-  protected abstract void writeVendedProviderKeys();
+  protected abstract void setVendedProviderKeys();
 
   /** Writes the renewable-path credential secrets (the {@code init.*} keys) for this cloud. */
-  protected abstract void writeRenewableCredKeys(GenericCredential cred);
+  protected abstract void setRenewableCredKeys(GenericCredential cred);
 
   /** Writes the fixed-path credential secrets for this cloud. */
-  protected abstract void writeFixedCredKeys(GenericCredential cred);
+  protected abstract void setFixedCredKeys(GenericCredential cred);
 }

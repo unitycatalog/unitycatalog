@@ -21,7 +21,7 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void writeImplOverrides() {
+  protected void setFsImplKeys() {
     saveAndOverride(
         "fs.abfs.impl", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem", CRED_SCOPED_FS_CLASS);
     saveAndOverride(
@@ -39,12 +39,12 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void writeVendedProviderKeys() {
+  protected void setVendedProviderKeys() {
     set(UCHadoopConfConstants.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, ABFS_VENDED_TOKEN_PROVIDER_CLASS);
   }
 
   @Override
-  protected void writeRenewableCredKeys(GenericCredential cred) {
+  protected void setRenewableCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AzureCredential,
         "Expected AzureCredential, but got %s",
@@ -60,7 +60,7 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void writeFixedCredKeys(GenericCredential cred) {
+  protected void setFixedCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AzureCredential,
         "Expected AzureCredential, but got %s",

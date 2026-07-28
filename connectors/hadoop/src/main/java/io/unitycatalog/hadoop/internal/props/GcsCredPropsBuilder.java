@@ -26,7 +26,7 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void writeImplOverrides() {
+  protected void setFsImplKeys() {
     saveAndOverride(
         "fs.gs.impl",
         "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem",
@@ -38,13 +38,13 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void writeVendedProviderKeys() {
+  protected void setVendedProviderKeys() {
     set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
     set("fs.gs.auth.access.token.provider", GCS_VENDED_TOKEN_PROVIDER_CLASS);
   }
 
   @Override
-  protected void writeRenewableCredKeys(GenericCredential cred) {
+  protected void setRenewableCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof GcsCredential,
         "Expected GcsCredential, but got %s",
@@ -60,7 +60,7 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void writeFixedCredKeys(GenericCredential cred) {
+  protected void setFixedCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof GcsCredential,
         "Expected GcsCredential, but got %s",
