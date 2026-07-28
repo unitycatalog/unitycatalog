@@ -113,15 +113,19 @@ public class ArmeriaServerBuilder {
    * disabled); this method only knows how to attach the decorators it is given -- path prefixes,
    * the {@code auth/tokens} exclusion, and that the exception handler must sit at the bottom of the
    * chain.
+   *
+   * <p>Both decorators are attached to the same path prefixes. Armeria runs decorators in the
+   * reverse of their registration order, so {@code authDecorator} (authentication) runs before
+   * {@code accessDecorator} (authorization) at request time -- the opposite of the parameter order.
+   *
+   * @param accessDecorator authorization decorator; runs second at request time
+   * @param authDecorator authentication decorator; runs first at request time
    */
   ArmeriaServerBuilder withSecurityDecorators(
       DecoratingHttpServiceFunction accessDecorator,
       DecoratingHttpServiceFunction authDecorator) {
     Objects.requireNonNull(accessDecorator, "accessDecorator");
     Objects.requireNonNull(authDecorator, "authDecorator");
-    // Both decorators are wired onto the same path prefixes. Armeria applies decorators in reverse
-    // registration order, so listing accessDecorator before authDecorator makes authDecorator
-    // (authentication) run first at request time, then accessDecorator (authorization).
     for (DecoratingHttpServiceFunction decorator : List.of(accessDecorator, authDecorator)) {
       armeriaServerBuilder.routeDecorator().pathPrefix(basePath).build(decorator);
       armeriaServerBuilder
