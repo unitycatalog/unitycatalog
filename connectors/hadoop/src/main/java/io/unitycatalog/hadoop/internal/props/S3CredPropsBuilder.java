@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.props;
 
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
@@ -37,6 +38,10 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
 
   @Override
   protected void writeRenewableCredKeys(GenericCredential cred) {
+    Preconditions.checkArgument(
+        cred instanceof AwsCredential,
+        "Expected AwsCredential, but got %s",
+        cred.getClass().getSimpleName());
     AwsCredential aws = (AwsCredential) cred;
     set(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, aws.accessKeyId());
     set(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, aws.secretAccessKey());
@@ -51,6 +56,10 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
 
   @Override
   protected void writeFixedCredKeys(GenericCredential cred) {
+    Preconditions.checkArgument(
+        cred instanceof AwsCredential,
+        "Expected AwsCredential, but got %s",
+        cred.getClass().getSimpleName());
     AwsCredential aws = (AwsCredential) cred;
     set(S3A_ACCESS_KEY, aws.accessKeyId());
     set(S3A_SECRET_KEY, aws.secretAccessKey());

@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.props;
 
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
@@ -44,6 +45,10 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
 
   @Override
   protected void writeRenewableCredKeys(GenericCredential cred) {
+    Preconditions.checkArgument(
+        cred instanceof GcsCredential,
+        "Expected GcsCredential, but got %s",
+        cred.getClass().getSimpleName());
     GcsCredential gcs = (GcsCredential) cred;
     set(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, gcs.oauthToken());
     // Expiration may be absent (e.g. a static token provider), so write the key only when set.
@@ -56,6 +61,10 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
 
   @Override
   protected void writeFixedCredKeys(GenericCredential cred) {
+    Preconditions.checkArgument(
+        cred instanceof GcsCredential,
+        "Expected GcsCredential, but got %s",
+        cred.getClass().getSimpleName());
     GcsCredential gcs = (GcsCredential) cred;
     Long expirationTime =
         gcs.expirationTimeMillis() == null ? Long.MAX_VALUE : gcs.expirationTimeMillis();

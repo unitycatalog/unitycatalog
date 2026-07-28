@@ -5,6 +5,8 @@ import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CloudType;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
+import io.unitycatalog.hadoop.internal.fs.CredScopedFs;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import java.util.Collections;
 import java.util.HashMap;
@@ -14,11 +16,9 @@ import org.apache.hadoop.conf.Configuration;
 /** Builds the cloud-provider specific Hadoop configuration credential properties. */
 public abstract class CredPropsBuilder {
   /** CredScopedFileSystem implementation classes, swapped in when cred-scoped FS is enabled. */
-  protected static final String CRED_SCOPED_FS_CLASS =
-      "io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem";
+  protected static final String CRED_SCOPED_FS_CLASS = CredScopedFileSystem.class.getName();
 
-  protected static final String CRED_SCOPED_AFS_CLASS =
-      "io.unitycatalog.hadoop.internal.fs.CredScopedFs";
+  protected static final String CRED_SCOPED_AFS_CLASS = CredScopedFs.class.getName();
 
   private final Configuration hadoopConf;
   private final HashMap<String, String> props = new HashMap<>();

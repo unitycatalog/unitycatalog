@@ -1,5 +1,6 @@
 package io.unitycatalog.hadoop.internal.props;
 
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AzureCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
@@ -44,6 +45,10 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
 
   @Override
   protected void writeRenewableCredKeys(GenericCredential cred) {
+    Preconditions.checkArgument(
+        cred instanceof AzureCredential,
+        "Expected AzureCredential, but got %s",
+        cred.getClass().getSimpleName());
     AzureCredential azure = (AzureCredential) cred;
     set(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, azure.sasToken());
     // Expiration may be absent (e.g. a static token provider), so write the key only when set.
@@ -56,6 +61,10 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
 
   @Override
   protected void writeFixedCredKeys(GenericCredential cred) {
+    Preconditions.checkArgument(
+        cred instanceof AzureCredential,
+        "Expected AzureCredential, but got %s",
+        cred.getClass().getSimpleName());
     AzureCredential azure = (AzureCredential) cred;
     set(ABFS_FIXED_SAS_TOKEN_KEY, azure.sasToken());
   }
