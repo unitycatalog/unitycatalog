@@ -20,6 +20,7 @@ import org.apache.spark.sql.catalyst.analysis.{
   NoSuchTableException,
   NoSuchViewException,
   SchemaCompensation,
+  SchemaUnsupported,
   ViewAlreadyExistsException
 }
 import org.apache.spark.sql.catalyst.catalog.CatalogTable
@@ -158,6 +159,11 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     view.sqlConfigs().asScala.foreach { case (k, v) =>
       propertiesToServer.put(CatalogTable.VIEW_SQL_CONFIG_PREFIX + k, v)
     }
+    // `UNSUPPORTED` is the metric-view sentinel, not a persistable mode; skip it and let the read
+    // path default to compensation.
+    Option(view.schemaMode())
+      .filter(_ != SchemaUnsupported.toString)
+      .foreach(m => propertiesToServer.put(CatalogTable.VIEW_SCHEMA_MODE, m))
     ct.setProperties(propertiesToServer)
 
     try {
@@ -214,10 +220,17 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     val props = new util.HashMap[String, String]()
     Option(t.getProperties).foreach(props.putAll)
     val sqlConfigs = UCViewTypes.extractSqlConfigs(props)
-    // The VIEW_SQL_CONFIG_PREFIX keys are surfaced (un-prefixed) via `withSqlConfigs`; drop them
-    // from `props` so they don't also leak into the user-visible `properties()` map and get
-    // re-persisted (double-counted) on a createView/replace round-trip.
+    // Metric views have no persisted mode (createView omits Spark's UNSUPPORTED sentinel), so they
+    // must reload as UNSUPPORTED; plain views use the persisted mode or default to compensation.
+    val defaultSchemaMode =
+      if (t.getTableType == TableType.METRIC_VIEW) SchemaUnsupported.toString
+      else SchemaCompensation.toString
+    val schemaMode = Option(props.get(CatalogTable.VIEW_SCHEMA_MODE)).getOrElse(defaultSchemaMode)
+    // The VIEW_SQL_CONFIG_PREFIX / VIEW_SCHEMA_MODE keys are surfaced via `withSqlConfigs` /
+    // `withSchemaMode`; drop them from `props` so they don't also leak into the user-visible
+    // `properties()` map and get re-persisted (double-counted) on a createView/replace round-trip.
     props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX))
+    props.remove(CatalogTable.VIEW_SCHEMA_MODE)
 
     val builder = new View.Builder()
       .withColumns(columns)
@@ -227,7 +240,7 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       .withCurrentCatalog(t.getCatalogName)
       .withCurrentNamespace(Array(t.getSchemaName))
       .withSqlConfigs(sqlConfigs)
-      .withSchemaMode(SchemaCompensation.toString)
+      .withSchemaMode(schemaMode)
       .withQueryColumnNames(columns.map(_.name()))
     Option(t.getComment).foreach(builder.withComment)
     Option(t.getViewDependencies).foreach { ucDeps =>

@@ -28,7 +28,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, NoSuchNamespaceException, NoSuchTableException, TableAlreadyExistsException, ViewAlreadyExistsException}
-import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
+import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types._
@@ -824,35 +824,11 @@ private[spark] class UCProxy(
     asV1Table(sparkTable)
   }
 
-  // A UC view has no storage or data source format; Spark resolves it from its SQL text. Returning
-  // a VIEW `CatalogTable` routes resolution through Spark's relation resolver, which parses
-  // `viewText` against the view's default catalog/namespace. Used only where no v2 view catalog is
-  // available (Spark 4.0/4.1); on Spark 4.2 views are served through the `RelationCatalog` surface.
-  private[spark] def buildV1ViewTable(t: UCTableInfo): Table = {
-    val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
-    val fields = t.getColumns.asScala.map(toStructField).toArray
-    val viewNamespaceProps =
-      CatalogTable.catalogAndNamespaceToProps(this.name, Seq(t.getSchemaName))
-    val viewTable = CatalogTable(
-      identifier = identifier,
-      tableType = CatalogTableType.VIEW,
-      storage = CatalogStorageFormat.empty,
-      schema = StructType(fields),
-      viewText = Option(t.getViewDefinition),
-      comment = Option(t.getComment),
-      properties = Option(t.getProperties).map(_.asScala.toMap).getOrElse(Map.empty) ++
-        viewNamespaceProps,
-      createTime = t.getCreatedAt,
-      tracksPartitionsInCatalog = false
-    )
-    asV1Table(viewTable)
-  }
-
-  private def toStructField(col: ColumnInfo): StructField =
+  private[spark] def toStructField(col: ColumnInfo): StructField =
     StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
       .withComment(col.getComment)
 
-  private def asV1Table(catalogTable: CatalogTable): Table = {
+  private[spark] def asV1Table(catalogTable: CatalogTable): Table = {
     Class.forName("org.apache.spark.sql.connector.catalog.V1Table")
       .getDeclaredConstructor(classOf[CatalogTable])
       .newInstance(catalogTable)

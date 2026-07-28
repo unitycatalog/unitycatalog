@@ -29,6 +29,7 @@ import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.catalyst.analysis.ViewAlreadyExistsException;
+import org.apache.spark.sql.catalyst.catalog.CatalogTable;
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.Relation;
@@ -215,6 +216,9 @@ public class UCViewProxySuite {
     assertThat(view.queryText()).isEqualTo("version: \"0.1\"");
     assertThat(view.properties().get(TableCatalog.PROP_TABLE_TYPE))
         .isEqualTo(TableSummary.METRIC_VIEW_TABLE_TYPE);
+    // Metric views carry no persisted schema mode; they must reload as UNSUPPORTED, not the plain
+    // view default of COMPENSATION.
+    assertThat(view.schemaMode()).isEqualTo("UNSUPPORTED");
   }
 
   // -- RelationCatalog cross-type filtering --
@@ -692,14 +696,7 @@ public class UCViewProxySuite {
   public void testCreatePlainViewSendsViewPayloadWithNonNullDependencies() throws Exception {
     // A plain CREATE VIEW carries no dependencies; the connector must still send a non-null
     // (empty) dependency list so the server's view validation accepts it.
-    View view =
-        new View.Builder()
-            .withColumns(new Column[] {Column.create("c", DataTypes.IntegerType, true)})
-            .withProperties(Map.of(TableCatalog.PROP_TABLE_TYPE, TableSummary.VIEW_TABLE_TYPE))
-            .withQueryText(PLAIN_VIEW_QUERY)
-            .withCurrentCatalog(CATALOG_NAME)
-            .withCurrentNamespace(NAMESPACE)
-            .build();
+    View view = plainViewBuilder().build();
 
     TableInfo ucView =
         stubPlainView().viewDependencies(new DependencyList().dependencies(List.of()));
@@ -750,7 +747,63 @@ public class UCViewProxySuite {
     verify(mockTablesApi).deleteTable(eq("test_catalog.test_schema.v1"));
   }
 
+  // -- schema mode round-trip --
+
+  @Test
+  public void testCreateViewPersistsSchemaMode() throws Exception {
+    stubPlainView();
+    proxyViews.createView(
+        Identifier.of(NAMESPACE, "v1"), plainViewBuilder().withSchemaMode("BINDING").build());
+
+    ArgumentCaptor<CreateTable> captor = ArgumentCaptor.forClass(CreateTable.class);
+    verify(mockTablesApi).createTable(captor.capture());
+    assertThat(captor.getValue().getProperties())
+        .containsEntry(CatalogTable.VIEW_SCHEMA_MODE(), "BINDING");
+  }
+
+  @Test
+  public void testCreateViewOmitsUnsupportedSchemaMode() throws Exception {
+    // UNSUPPORTED is the metric-view sentinel, not a persistable mode.
+    stubPlainView();
+    proxyViews.createView(
+        Identifier.of(NAMESPACE, "v1"), plainViewBuilder().withSchemaMode("UNSUPPORTED").build());
+
+    ArgumentCaptor<CreateTable> captor = ArgumentCaptor.forClass(CreateTable.class);
+    verify(mockTablesApi).createTable(captor.capture());
+    assertThat(captor.getValue().getProperties())
+        .doesNotContainKey(CatalogTable.VIEW_SCHEMA_MODE());
+  }
+
+  @Test
+  public void testLoadViewRestoresPersistedSchemaMode() throws Exception {
+    stubPlainView().properties(Map.of(CatalogTable.VIEW_SCHEMA_MODE(), "BINDING"));
+
+    View loaded = proxyViews.loadView(Identifier.of(NAMESPACE, "v1"));
+
+    assertThat(loaded.schemaMode()).isEqualTo("BINDING");
+    // Surfaced via schemaMode(); the raw key must not leak into properties() (double-count guard).
+    assertThat(loaded.properties()).doesNotContainKey(CatalogTable.VIEW_SCHEMA_MODE());
+  }
+
+  @Test
+  public void testLoadViewDefaultsSchemaModeToCompensationWhenAbsent() throws Exception {
+    stubPlainView();
+
+    assertThat(proxyViews.loadView(Identifier.of(NAMESPACE, "v1")).schemaMode())
+        .isEqualTo("COMPENSATION");
+  }
+
   private static final String PLAIN_VIEW_QUERY = "SELECT 1 AS c";
+
+  /** A plain-view builder matching {@link #stubPlainView()} (single int column {@code c}). */
+  private View.Builder plainViewBuilder() {
+    return new View.Builder()
+        .withColumns(new Column[] {Column.create("c", DataTypes.IntegerType, true)})
+        .withProperties(Map.of(TableCatalog.PROP_TABLE_TYPE, TableSummary.VIEW_TABLE_TYPE))
+        .withQueryText(PLAIN_VIEW_QUERY)
+        .withCurrentCatalog(CATALOG_NAME)
+        .withCurrentNamespace(NAMESPACE);
+  }
 
   /** Builds a UC {@code VIEW} row named {@code v1} and stubs {@code getTable} to return it. */
   private TableInfo stubPlainView() throws Exception {
