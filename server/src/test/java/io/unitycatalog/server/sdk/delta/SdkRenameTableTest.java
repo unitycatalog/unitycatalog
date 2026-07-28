@@ -64,15 +64,25 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
         () -> deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, oldName),
         DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
         "Table not found");
+  }
 
-    // -------- Not-found: renaming a missing source table returns 404 NoSuchTableException --------
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "unusedTarget", // Missing source renamed to an unused target.
+        "missingSource", // Missing source renamed to itself (no-op fails).
+        "existingTarget" // Missing source renamed to an existing target (404, not 409).
+      })
+  public void testRenameMissingSourceReturnsNotFound(String newName) throws Exception {
+    createDeltaManaged("existingTarget", Map.of());
+
     TestUtils.assertDeltaApiException(
         () ->
             deltaTablesApi.renameTable(
                 TestUtils.CATALOG_NAME,
                 TestUtils.SCHEMA_NAME,
-                "nonexistent",
-                new DeltaRenameTableRequest().newName("whatever")),
+                "missingSource",
+                new DeltaRenameTableRequest().newName(newName)),
         DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
         "Table not found");
   }
@@ -114,6 +124,10 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
     DeltaLoadTableResponse unchangedTable =
         deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
     assertTableStateUnchanged(originalTable, unchangedTable);
+    assertThat(unchangedTable.getMetadata().getUpdatedTime())
+        .isEqualTo(originalTable.getMetadata().getUpdatedTime());
+    assertThat(unchangedTable.getMetadata().getEtag())
+        .isEqualTo(originalTable.getMetadata().getEtag());
   }
 
   @ParameterizedTest
