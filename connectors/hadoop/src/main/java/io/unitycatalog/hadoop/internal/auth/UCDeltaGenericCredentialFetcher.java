@@ -8,6 +8,8 @@ import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /** Adapts the UC Delta temporary credentials SDK API for Hadoop token providers. */
 final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher {
@@ -29,7 +31,7 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
   }
 
   @Override
-  public GenericCredential createCredential() throws ApiException {
+  public List<GenericCredential> createCredentials() throws ApiException {
     UCDeltaTableIdentifier id = credId.identifier();
     DeltaCredentialsResponse response =
         api.getTableCredentials(operation, id.catalog(), id.schema(), id.table());
@@ -39,7 +41,8 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
         id.catalog(),
         id.schema(),
         id.table());
-    return CredentialUtil.toGenericCredential(
-        CredentialUtil.selectForLocation(credId.location(), response.getStorageCredentials()));
+    return response.getStorageCredentials().stream()
+        .map(CredentialUtil::toGenericCredential)
+        .collect(Collectors.toList());
   }
 }

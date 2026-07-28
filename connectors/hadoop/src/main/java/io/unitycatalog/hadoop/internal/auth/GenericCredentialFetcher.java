@@ -14,6 +14,7 @@ import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.net.URI;
+import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -24,7 +25,11 @@ import org.apache.hadoop.conf.Configuration;
  * <p><b>Internal API — not for external use. May change without notice.</b>
  */
 public interface GenericCredentialFetcher {
-  GenericCredential createCredential() throws ApiException;
+  /**
+   * Fetches the vended credentials for this fetcher's scope. A single-credential API returns a
+   * one-element list.
+   */
+  List<GenericCredential> createCredentials() throws ApiException;
 
   /** Creates a fetcher backed by the standard UC temporary credentials API for a table. */
   static GenericCredentialFetcher forUc(TableCredId credId, TemporaryCredentialsApi api) {

@@ -13,6 +13,7 @@ import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.delta.model.DeltaStorageCredentialConfig;
 import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -30,15 +31,62 @@ class UCDeltaStagingTableCredentialFetcherTest {
     DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(response);
 
-    AwsCredential cred =
-        (AwsCredential)
-            GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredential();
+    List<GenericCredential> creds =
+        GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredentials();
 
+    assertThat(creds).hasSize(1);
+    AwsCredential cred = (AwsCredential) creds.get(0);
     assertThat(cred.accessKeyId()).isEqualTo("ak");
     assertThat(cred.secretAccessKey()).isEqualTo("sk");
     assertThat(cred.sessionToken()).isEqualTo("st");
     assertThat(cred.expirationTimeMillis()).isEqualTo(1234L);
+    assertThat(cred.location()).isEqualTo(LOCATION);
     verify(api).getStagingTableCredentials(STAGING_ID);
+  }
+
+  @Test
+  void createCredentialsReturnsAllVendedCredentialsInOrder() throws Exception {
+    DeltaStagingTableCredId credId =
+        new DeltaStagingTableCredId(EMPTY_CRED_CONTEXT_ID, STAGING_ID.toString(), LOCATION);
+
+    DeltaStorageCredential first =
+        new DeltaStorageCredential()
+            .prefix(LOCATION)
+            .operation(DeltaCredentialOperation.READ_WRITE)
+            .expirationTimeMs(1L)
+            .config(
+                new DeltaStorageCredentialConfig()
+                    .s3AccessKeyId("ak1")
+                    .s3SecretAccessKey("sk1")
+                    .s3SessionToken("st1"));
+    DeltaStorageCredential second =
+        new DeltaStorageCredential()
+            .prefix(LOCATION + "/child")
+            .operation(DeltaCredentialOperation.READ_WRITE)
+            .expirationTimeMs(2L)
+            .config(
+                new DeltaStorageCredentialConfig()
+                    .s3AccessKeyId("ak2")
+                    .s3SecretAccessKey("sk2")
+                    .s3SessionToken("st2"));
+    DeltaCredentialsResponse response =
+        new DeltaCredentialsResponse()
+            .addStorageCredentialsItem(first)
+            .addStorageCredentialsItem(second);
+
+    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
+    when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(response);
+
+    List<GenericCredential> creds =
+        GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredentials();
+
+    assertThat(creds).hasSize(2);
+    AwsCredential cred1 = (AwsCredential) creds.get(0);
+    assertThat(cred1.accessKeyId()).isEqualTo("ak1");
+    assertThat(cred1.location()).isEqualTo(LOCATION);
+    AwsCredential cred2 = (AwsCredential) creds.get(1);
+    assertThat(cred2.accessKeyId()).isEqualTo("ak2");
+    assertThat(cred2.location()).isEqualTo(LOCATION + "/child");
   }
 
   @Test
@@ -50,7 +98,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
     when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(null);
 
     assertThatThrownBy(
-            () -> GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredential())
+            () -> GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredentials())
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("returned no credentials response");
   }

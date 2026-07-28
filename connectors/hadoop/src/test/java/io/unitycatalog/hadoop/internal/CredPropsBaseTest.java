@@ -14,6 +14,7 @@ import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -457,10 +458,10 @@ abstract class CredPropsBaseTest {
     return TokenProvider.create(Map.of("type", "static", "token", "tok"));
   }
 
-  static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential creds) {
+  static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential... creds) {
     GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {
-      when(api.createCredential()).thenReturn(creds);
+      when(api.createCredentials()).thenReturn(Arrays.asList(creds));
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
