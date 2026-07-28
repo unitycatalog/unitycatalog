@@ -30,6 +30,7 @@ import org.apache.spark.sql.connector.catalog.{
   RelationCatalog,
   TableCatalog,
   TableDependency,
+  TableSummary,
   View
 }
 import org.apache.spark.sql.types.DataType
@@ -50,6 +51,34 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     listUCTableLikes(namespace)
       .filter(t => UCViewTypes.isViewLikeTableType(t.getTableType))
       .map(table => Identifier.of(namespace, table.getName))
+      .toArray
+  }
+
+  /**
+   * Metadata-only table listing for `SHOW TABLES`.
+   *
+   * Spark 4.2 routes `SHOW TABLES` through `RelationCatalog.listRelationSummaries`, whose default
+   * unions this method's result with `listViews` (so views appear alongside tables, matching v1
+   * `SHOW TABLES` semantics). The default `TableCatalog.listTableSummaries` calls `loadTable` on
+   * every table just to read its type, and `UCProxy.loadTable` -> `loadV1Table` unconditionally
+   * vends storage credentials -- so a single non-externalizable (e.g. `TABLE_STANDARD`/managed)
+   * table would fail the whole listing with a 400 `EXTERNAL_ACCESS_NOT_ALLOWED_FOR_TABLE`.
+   *
+   * Override it to build each `TableSummary` straight from the single `listTables` RPC row (the
+   * same rows `listTables` already reads for filtering), using the row's `getTableType()` and no
+   * `loadTable` -- so listing never vends credentials. View-like rows are excluded here (they are
+   * contributed by `listViews`), exactly mirroring `UCProxy.listTables`. Loading such a table for a
+   * real read (e.g. `SELECT`) still correctly fails, since that genuinely needs credentials.
+   */
+  override def listTableSummaries(namespace: Array[String]): Array[TableSummary] = {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
+    listUCTableLikes(namespace)
+      .filterNot(t => UCViewTypes.isViewLikeTableType(t.getTableType))
+      .map { table =>
+        TableSummary.of(
+          Identifier.of(namespace, table.getName),
+          UCViewTypes.ucTableTypeToSparkTableSummaryType(table.getTableType))
+      }
       .toArray
   }
 
