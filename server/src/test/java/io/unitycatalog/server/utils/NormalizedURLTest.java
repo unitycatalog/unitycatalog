@@ -8,6 +8,8 @@ import io.unitycatalog.server.exception.BaseException;
 import java.net.URI;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class NormalizedURLTest {
 
@@ -107,5 +109,37 @@ public class NormalizedURLTest {
             NormalizedURL.from("abfss://container@account.dfs.core.windows.net/path")
                 .getStorageBase())
         .isEqualTo(NormalizedURL.from("abfss://container@account.dfs.core.windows.net"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "s3://bucket",
+        "s3://bucket/",
+        "s3://bucket///",
+        "s3://bucket/.",
+        "s3://bucket/a/..",
+        "s3://bucket/%2F",
+        "s3://bucket?query",
+        "s3://bucket#fragment",
+        "gs://bucket/",
+        "abfs://container@account.dfs.core.windows.net/",
+        "abfss://container@account.dfs.core.windows.net/"
+      })
+  public void testIdentifiesCloudStorageRoots(String location) {
+    assertThat(NormalizedURL.from(location).isCloudStorageRoot()).isTrue();
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "s3://bucket/path",
+        "gs://bucket/path",
+        "abfs://container@account.dfs.core.windows.net/path",
+        "abfss://container@account.dfs.core.windows.net/path",
+        "file:///"
+      })
+  public void testDoesNotIdentifyScopedOrLocalLocationsAsCloudStorageRoots(String location) {
+    assertThat(NormalizedURL.from(location).isCloudStorageRoot()).isFalse();
   }
 }
