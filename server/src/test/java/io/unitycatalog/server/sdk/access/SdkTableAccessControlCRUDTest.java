@@ -316,8 +316,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
                 .getStatusCode())
         .isEqualTo(204);
 
-    // Delta REST rename shares DELETE_TABLE (rename requires table ownership), so it uses the
-    // same allowed/denied matrix as delete.
+    // Delta REST rename requires both DELETE_TABLE and permission to create the new table name.
     CreateTable createTableRg2Rename =
         new CreateTable()
             .name("tab_rg2_rename")
@@ -329,7 +328,10 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
             .dataSourceFormat(DataSourceFormat.DELTA);
     regular2TablesApi.createTable(createTableRg2Rename);
 
-    // Delta rename (regular-1) -> -- -> denied
+    // Missing DELETE_TABLE: regular-1 can create a new name in the schema but does not own the
+    // source table (or its parent schema/catalog).
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.CREATE_TABLE);
     assertPermissionDenied(
         () ->
             regular1DeltaApi.renameTable(
@@ -338,7 +340,21 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
                 "tab_rg2_rename",
                 new DeltaRenameTableRequest().newName("tab_rg2_renamed")));
 
-    // Delta rename (principal-1) -> owner [catalog] -> allowed
+    // Missing create permission: principal-1 satisfies DELETE_TABLE through catalog ownership but
+    // has neither schema ownership nor USE_SCHEMA + CREATE_TABLE for the new name.
+    assertPermissionDenied(
+        () ->
+            principal1DeltaApi.renameTable(
+                "cat_pr1",
+                "sch_rg2",
+                "tab_rg2_rename",
+                new DeltaRenameTableRequest().newName("tab_rg2_renamed")));
+
+    // Both sides: add the create permissions to principal-1; catalog ownership already satisfies
+    // DELETE_TABLE.
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.CREATE_TABLE);
+
     assertThat(
             principal1DeltaApi
                 .renameTableWithHttpInfo(

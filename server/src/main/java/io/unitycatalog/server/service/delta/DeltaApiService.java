@@ -274,7 +274,7 @@ public class DeltaApiService extends AuthorizedService {
    *
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename")
-  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
+  @AuthorizeExpression(AuthorizeExpressions.RENAME_TABLE)
   public HttpResponse renameTable(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,

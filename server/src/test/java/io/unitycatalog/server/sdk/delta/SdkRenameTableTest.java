@@ -89,17 +89,7 @@ public class SdkRenameTableTest extends BaseServerTest {
     // The new name resolves to the original table with its metadata and commit state intact.
     DeltaLoadTableResponse renamedTable =
         deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, newName);
-    assertThat(renamedTable.getMetadata().getTableUuid())
-        .isEqualTo(originalTable.getMetadata().getTableUuid());
-    assertThat(renamedTable.getMetadata().getLocation())
-        .isEqualTo(originalTable.getMetadata().getLocation());
-    assertThat(renamedTable.getMetadata().getCreatedTime())
-        .isEqualTo(originalTable.getMetadata().getCreatedTime());
-    assertThat(renamedTable.getMetadata().getProperties())
-        .isEqualTo(originalTable.getMetadata().getProperties());
-    assertThat(renamedTable.getCommits()).isEqualTo(originalTable.getCommits());
-    assertThat(renamedTable.getLatestTableVersion())
-        .isEqualTo(originalTable.getLatestTableVersion());
+    assertTableStateUnchanged(originalTable, renamedTable);
 
     // Old name no longer resolves.
     TestUtils.assertDeltaApiException(
@@ -138,6 +128,27 @@ public class SdkRenameTableTest extends BaseServerTest {
         "already exists");
   }
 
+  @Test
+  public void testRenameToSameNameIsNoOp() throws Exception {
+    String tableName = "tbl_rename_same_name";
+    BaseTableCRUDTestEnv.createTestingTable(
+        tableName, TableType.MANAGED, Optional.empty(), tableOps);
+    DeltaLoadTableResponse originalTable =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
+
+    ApiResponse<Void> response =
+        deltaTablesApi.renameTableWithHttpInfo(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            tableName,
+            new DeltaRenameTableRequest().newName(tableName));
+
+    assertThat(response.getStatusCode()).isEqualTo(204);
+    DeltaLoadTableResponse unchangedTable =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
+    assertTableStateUnchanged(originalTable, unchangedTable);
+  }
+
   @ParameterizedTest
   @NullSource
   @ValueSource(strings = {"", " ", "\t"})
@@ -155,5 +166,20 @@ public class SdkRenameTableTest extends BaseServerTest {
               assertThat(e.getCode()).isEqualTo(400);
               assertThat(e.getMessage()).contains("New table name is required");
             });
+  }
+
+  private static void assertTableStateUnchanged(
+      DeltaLoadTableResponse originalTable, DeltaLoadTableResponse currentTable) {
+    assertThat(currentTable.getMetadata().getTableUuid())
+        .isEqualTo(originalTable.getMetadata().getTableUuid());
+    assertThat(currentTable.getMetadata().getLocation())
+        .isEqualTo(originalTable.getMetadata().getLocation());
+    assertThat(currentTable.getMetadata().getCreatedTime())
+        .isEqualTo(originalTable.getMetadata().getCreatedTime());
+    assertThat(currentTable.getMetadata().getProperties())
+        .isEqualTo(originalTable.getMetadata().getProperties());
+    assertThat(currentTable.getCommits()).isEqualTo(originalTable.getCommits());
+    assertThat(currentTable.getLatestTableVersion())
+        .isEqualTo(originalTable.getLatestTableVersion());
   }
 }

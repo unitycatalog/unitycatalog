@@ -971,9 +971,9 @@ public class TableRepository {
   /**
    * Renames a table within the same schema. Looks up the source table by its three-part name
    * (throwing {@link ErrorCode#TABLE_NOT_FOUND} if absent) and rejects a collision with an existing
-   * table of the target name in the same schema (throwing {@link ErrorCode#TABLE_ALREADY_EXISTS},
-   * which also covers a rename-to-self), then updates the name and audit fields. Metadata-only: the
-   * table UUID, schema, and storage location are all unchanged.
+   * table of the target name in the same schema (throwing {@link ErrorCode#TABLE_ALREADY_EXISTS}).
+   * Renaming a table to its current name is an idempotent no-op. Metadata-only: the table UUID,
+   * schema, and storage location are all unchanged.
    */
   public void renameTable(String catalog, String schema, String table, String newName) {
     ValidationUtils.validateSqlObjectName(newName);
@@ -986,6 +986,9 @@ public class TableRepository {
           TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
+          }
+          if (table.equals(newName)) {
+            return null;
           }
           if (findBySchemaIdAndName(session, schemaId, newName) != null) {
             throw new BaseException(
