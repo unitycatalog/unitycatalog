@@ -54,7 +54,10 @@ class URLTranscoderVerticle extends AbstractVerticle {
                     for (Map.Entry<String, String> entry : resp.headers()) {
                       transcodeResp.putHeader(entry.getKey(), entry.getValue());
                     }
-                    return transcodeResp.end(resp.bodyAsBuffer());
+                    // A response with no body gives a null buffer, and end(null) throws before
+                    // anything is written, leaving the client waiting on a response it never gets.
+                    Buffer body = resp.bodyAsBuffer();
+                    return body == null ? transcodeResp.end() : transcodeResp.end(body);
                   });
         });
 
