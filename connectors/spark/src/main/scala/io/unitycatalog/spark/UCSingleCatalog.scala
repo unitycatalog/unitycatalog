@@ -141,8 +141,13 @@ class UCSingleCatalog
    *     Delta-side `buildReplaceProps` after loading; we do not pre-check it here.
    *   - Non-Delta REPLACE stays on the legacy path; its rejection error is unchanged.
    */
+  /** Session default format (`spark.sql.sources.default`); read once per catalog operation. */
+  private def sessionDefaultProvider: String =
+    SQLConf.get.getConf(SQLConf.DEFAULT_DATA_SOURCE_NAME)
+
   private def shouldDelegateReplaceToDeltaApi(properties: util.Map[String, String]): Boolean = {
-    shouldUseDeltaAPI && UCSingleCatalog.hasDeltaProvider(properties)
+    val defaultProvider = sessionDefaultProvider
+    shouldUseDeltaAPI && UCSingleCatalog.hasDeltaProvider(properties, defaultProvider)
   }
 
   /**
@@ -155,18 +160,11 @@ class UCSingleCatalog
    */
   private def managedDeltaCreatePropsForDelegate(
       ident: Identifier,
-      properties: util.Map[String, String]): util.Map[String, String] = {
-    // `hasDeltaProvider` may resolve to Delta via `spark.sql.sources.default` when no `USING`
-    // clause was given, in which case the map has no `provider` key. Materialize it so the Delta
-    // delegate -- and `UCProxy.createTable`'s `requireProviderSpecified` check -- see an explicit
-    // provider, exactly as an explicit `USING delta` would produce.
-    val withProvider = if (properties.containsKey(TableCatalog.PROP_PROVIDER)) {
-      properties
-    } else {
-      val augmented = new util.HashMap[String, String](properties)
-      augmented.put(TableCatalog.PROP_PROVIDER, "delta")
-      augmented
-    }
+      properties: util.Map[String, String],
+      defaultProvider: String): util.Map[String, String] = {
+    // Materialize the effective provider (same resolution as `hasDeltaProvider`) so the Delta
+    // delegate and `UCProxy.createTable`'s `requireProviderSpecified` see an explicit `provider`.
+    val withProvider = UCSingleCatalog.withMaterializedProvider(properties, defaultProvider)
     val validated = validateAndDefaultManagedDeltaCreateProperties(withProvider)
     if (shouldUseDeltaAPI) validated
     else stageManagedDeltaTableAndGetProps(ident, validated)
@@ -202,9 +200,10 @@ class UCSingleCatalog
     }
 
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
-      if (UCSingleCatalog.hasDeltaProvider(properties)) {
+      val defaultProvider = sessionDefaultProvider
+      if (UCSingleCatalog.hasDeltaProvider(properties, defaultProvider)) {
         // Managed Delta table
-        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties, defaultProvider)
         delegate.createTable(ident, schema, partitions, newProps)
       } else {
         // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
@@ -515,7 +514,7 @@ class UCSingleCatalog
     }.getOrElse {
       // Creating a new table -- route through the same gate as `createTable` so a fresh
       // CREATE OR REPLACE picks up the UC Delta API path when it's available.
-      managedDeltaCreatePropsForDelegate(ident, properties)
+      managedDeltaCreatePropsForDelegate(ident, properties, sessionDefaultProvider)
     }
     UCSingleCatalog.requireProviderSpecified("CREATE OR REPLACE TABLE", newProps)
     stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
@@ -565,9 +564,10 @@ class UCSingleCatalog
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val stagingCatalog = requireStagingCatalog("CREATE TABLE AS SELECT (CTAS)")
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
-      if (UCSingleCatalog.hasDeltaProvider(properties)) {
+      val defaultProvider = sessionDefaultProvider
+      if (UCSingleCatalog.hasDeltaProvider(properties, defaultProvider)) {
         // Managed Delta table
-        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties, defaultProvider)
         stagingCatalog.stageCreate(ident, schema, partitions, newProps)
       } else {
         // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
@@ -643,15 +643,40 @@ object UCSingleCatalog {
   }
 
   /**
+   * Explicit `provider` property, else the caller-supplied session default
+   * (`spark.sql.sources.default`). Pure -- does not read {@code SQLConf}; callers on the catalog
+   * operation path supply {@code sessionDefaultProvider} once per request.
+   */
+  def effectiveProvider(
+      properties: util.Map[String, String],
+      defaultProvider: String): String =
+    Option(properties.get(TableCatalog.PROP_PROVIDER)).getOrElse(defaultProvider)
+
+  /**
    * Returns true when the effective provider is `delta` -- i.e. `USING delta`, or no `USING`
    * clause while `spark.sql.sources.default` resolves to delta. Unlike Spark's built-in
    * `V2SessionCatalog`, a named V2 catalog receives no `provider` property when `USING` is
    * omitted, so we apply the same default-source fallback Spark itself uses.
    */
-  def hasDeltaProvider(properties: util.Map[String, String]): Boolean =
-    Option(properties.get(TableCatalog.PROP_PROVIDER))
-      .getOrElse(SQLConf.get.defaultDataSourceName)
-      .equalsIgnoreCase("delta")
+  def hasDeltaProvider(
+      properties: util.Map[String, String],
+      defaultProvider: String): Boolean =
+    effectiveProvider(properties, defaultProvider).equalsIgnoreCase("delta")
+
+  /** Ensures `provider` is present using the same resolution as {@link #hasDeltaProvider}. */
+  def withMaterializedProvider(
+      properties: util.Map[String, String],
+      defaultProvider: String): util.Map[String, String] = {
+    if (properties.containsKey(TableCatalog.PROP_PROVIDER)) {
+      properties
+    } else {
+      val augmented = new util.HashMap[String, String](properties)
+      augmented.put(
+        TableCatalog.PROP_PROVIDER,
+        effectiveProvider(properties, defaultProvider))
+      augmented
+    }
+  }
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
     if (namespace.length > 1) {
