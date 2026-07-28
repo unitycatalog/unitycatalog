@@ -145,13 +145,6 @@ class CredentialUtilTest {
     assertThat(CredentialUtil.prefixCovers("s3://bucket/t", "s3://bucket/t///")).isTrue();
   }
 
-  @Test
-  void selectorMatchesAcrossSchemeAliases() {
-    DeltaStorageCredential s3Prefix = credAt("s3://bucket/t");
-    assertThat(CredentialUtil.selectForLocation("s3a://bucket/t/file", List.of(s3Prefix)))
-        .isSameAs(s3Prefix);
-  }
-
   @ParameterizedTest
   @MethodSource("coveringPrefixes")
   void prefixShouldCover(String location, String prefix) {
@@ -160,9 +153,6 @@ class CredentialUtilTest {
 
   private static Stream<Arguments> coveringPrefixes() {
     return Stream.of(
-        Arguments.of("s3a://bucket/t", "s3://bucket/t"),
-        Arguments.of("S3://bucket/t", "s3://bucket/t"),
-        Arguments.of("abfss://c@a/t", "abfs://c@a/t"),
         Arguments.of("hdfs://nn/t", "hdfs://nn/t"),
         Arguments.of("gs://bucket/A/B/c", "gs://bucket/A/B"));
   }
@@ -175,6 +165,9 @@ class CredentialUtilTest {
 
   private static Stream<Arguments> nonCoveringPrefixes() {
     return Stream.of(
+        Arguments.of("s3a://bucket/t", "s3://bucket/t"),
+        Arguments.of("S3://bucket/t", "s3://bucket/t"),
+        Arguments.of("abfss://c@a/t", "abfs://c@a/t"),
         Arguments.of("gs://bucket/t", "s3://bucket/t"),
         Arguments.of("HDFS://nn/t", "hdfs://nn/t"),
         Arguments.of("gs://bucket/A/B/c", "gs://bucket/A/b"));

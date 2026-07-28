@@ -10,7 +10,7 @@ import io.unitycatalog.hadoop.internal.auth.AzureCredential;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.util.List;
-import java.util.Locale;
+import org.apache.hadoop.fs.Path;
 
 /** Internal utilities for building and selecting {@link GenericCredential}s. */
 public final class CredentialUtil {
@@ -66,7 +66,7 @@ public final class CredentialUtil {
       if (c == null || c.getPrefix() == null || !prefixCovers(location, c.getPrefix())) {
         continue;
       }
-      int len = canonicalLocation(c.getPrefix()).length();
+      int len = normalizeUri(c.getPrefix()).length();
       if (len > bestLen) {
         best = c;
         bestLen = len;
@@ -78,39 +78,19 @@ public final class CredentialUtil {
   }
 
   static boolean prefixCovers(String location, String prefix) {
-    String l = canonicalLocation(location);
-    String p = canonicalLocation(prefix);
+    String l = normalizeUri(location);
+    String p = normalizeUri(prefix);
     return !p.isEmpty() && (l.equals(p) || (l.startsWith(p) && l.charAt(p.length()) == '/'));
   }
 
-  /** The comparable form of a location: canonical scheme with trailing slashes stripped. */
-  static String canonicalLocation(String location) {
-    return stripTrailingSlashes(normalizeScheme(location));
-  }
-
-  /**
-   * Rewrites a known cloud scheme (any alias or letter case) to its canonical form via {@link
-   * CloudType}; a scheme-less or unknown-scheme location is returned unchanged.
-   */
-  private static String normalizeScheme(String location) {
-    int idx = location.indexOf("://");
-    if (idx < 0) {
+  private static String normalizeUri(String location) {
+    if (location.isEmpty()) {
       return location;
     }
-    String scheme = location.substring(0, idx);
-    return CloudType.fromScheme(scheme.toLowerCase(Locale.ROOT))
-        .map(type -> type.canonicalScheme() + location.substring(idx))
-        .orElse(location);
-  }
-
-  private static String stripTrailingSlashes(String value) {
-    int end = value.length();
-    int min = value.indexOf("://");
-    min = min >= 0 ? min + 3 : 1;
-    while (end > min && value.charAt(end - 1) == '/') {
-      end--;
-    }
-    return value.substring(0, end);
+    String normalized = new Path(location).toString();
+    return normalized.length() > 1 && normalized.endsWith("/")
+        ? normalized.substring(0, normalized.length() - 1)
+        : normalized;
   }
 
   private static DeltaStorageCredentialConfig requireSingleCloudConfig(
