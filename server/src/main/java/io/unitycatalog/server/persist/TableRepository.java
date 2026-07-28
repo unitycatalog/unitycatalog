@@ -987,6 +987,8 @@ public class TableRepository {
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
           }
+          // Do the no-op check after the table lookup. A missing table must still return
+          // TABLE_NOT_FOUND rather than succeed as a no-op.
           if (table.equals(newName)) {
             return null;
           }
