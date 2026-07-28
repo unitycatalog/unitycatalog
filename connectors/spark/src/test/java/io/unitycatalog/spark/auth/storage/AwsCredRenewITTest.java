@@ -35,10 +35,6 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
 
   @Override
   protected Map<String, String> catalogExtraProps() {
-    // Register the tracking filesystem as a `spark.hadoop.fs.<scheme>.impl` property (not a bare
-    // catalog option) so it lands in the session Hadoop configuration. With credScopedFs enabled
-    // (the default), CredPropsUtil reads it there and saves it under `fs.<scheme>.impl.original`
-    // before installing CredScopedFileSystem, which then restores and delegates to it.
     return Map.of(
         "spark.hadoop.fs.s3.impl", S3CredFileSystem.class.getName(),
         "spark.hadoop.fs.s3a.impl", S3CredFileSystem.class.getName());

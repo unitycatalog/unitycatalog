@@ -31,11 +31,6 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
 
   @Override
   protected Map<String, String> catalogExtraProps() {
-    // Register the tracking filesystem as a `spark.hadoop.fs.gs.impl` property (not a bare catalog
-    // option) so it lands in the session Hadoop configuration. With credScopedFs enabled (the
-    // default), CredPropsUtil reads it there and saves it under `fs.gs.impl.original` before
-    // installing CredScopedFileSystem, which then restores and delegates to it.
-    // Note: fs.gs.impl.disable.cache is already set by CredPropsUtil.GcsPropsBuilder.
     return Map.of("spark.hadoop.fs.gs.impl", GcsCredFileSystem.class.getName());
   }
 
