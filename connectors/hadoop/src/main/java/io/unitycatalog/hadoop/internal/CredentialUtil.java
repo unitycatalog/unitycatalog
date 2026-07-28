@@ -83,11 +83,12 @@ public final class CredentialUtil {
     return !p.isEmpty() && (l.equals(p) || (l.startsWith(p) && l.charAt(p.length()) == '/'));
   }
 
-  private static String normalizeUri(String location) {
+  public static String normalizeUri(String location) {
     if (location.isEmpty()) {
       return location;
     }
     String normalized = new Path(location).toString();
+    // Path preserves the trailing slash on qualified roots, such as s3://bucket/.
     return normalized.length() > 1 && normalized.endsWith("/")
         ? normalized.substring(0, normalized.length() - 1)
         : normalized;

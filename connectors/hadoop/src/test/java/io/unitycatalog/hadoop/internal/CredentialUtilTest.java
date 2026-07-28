@@ -26,6 +26,27 @@ import org.junit.jupiter.params.provider.MethodSource;
 class CredentialUtilTest {
   private static final long EXPIRATION = 123L;
 
+  @ParameterizedTest(name = "[{index}] {0}")
+  @MethodSource("normalizedUris")
+  void normalizesUri(String input, String expected) {
+    assertThat(CredentialUtil.normalizeUri(input)).isEqualTo(expected);
+  }
+
+  private static Stream<Arguments> normalizedUris() {
+    return Stream.of(
+        Arguments.of("S3A://bucket/Path///", "S3A://bucket/Path"),
+        Arguments.of("ABFSS://container@account/path/", "ABFSS://container@account/path"),
+        Arguments.of("GS://bucket/path/", "GS://bucket/path"),
+        Arguments.of("HDFS://namenode/path///", "HDFS://namenode/path"),
+        Arguments.of("relative/path///", "relative/path"),
+        Arguments.of("s3://bucket/path", "s3://bucket/path"),
+        Arguments.of("s3://bucket/", "s3://bucket"),
+        Arguments.of("s3://bucket", "s3://bucket"),
+        Arguments.of("s3:////", "s3:"),
+        Arguments.of("/", "/"),
+        Arguments.of("", ""));
+  }
+
   @ParameterizedTest(name = "{0}")
   @MethodSource("validCredentials")
   void convertsTemporaryCredentials(
