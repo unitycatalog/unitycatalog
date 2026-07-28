@@ -43,19 +43,19 @@ class CredentialUtilTest {
                         .accessKeyId("access-key")
                         .secretAccessKey("secret-key")
                         .sessionToken("session-token"))
-                .expirationTime(EXPIRATION)
+                .expirationTime(EXPIRATION),
             new AwsCredential("access-key", "secret-key", "session-token", EXPIRATION)),
         Arguments.of(
             "Azure",
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token"))
-                .expirationTime(EXPIRATION)
+                .expirationTime(EXPIRATION),
             new AzureCredential("sas-token", EXPIRATION)),
         Arguments.of(
             "GCS",
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("oauth-token"))
-                .expirationTime(EXPIRATION)
+                .expirationTime(EXPIRATION),
             new GcsCredential("oauth-token", EXPIRATION)));
   }
 
