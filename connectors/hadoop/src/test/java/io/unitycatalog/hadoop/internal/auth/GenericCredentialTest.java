@@ -82,8 +82,8 @@ class GenericCredentialTest {
             new GcsCredential("oauth", null, "gs://bucket/t")),
         Arguments.of(
             "different credential subtypes",
-            new AzureCredential("azure", 1L, null),
-            new GcsCredential("gcs", 1L, null)));
+            new AzureCredential("azure", 1L),
+            new GcsCredential("gcs", 1L)));
   }
 
   @Test
@@ -95,7 +95,7 @@ class GenericCredentialTest {
     assertThat(aws.expirationTimeMillis()).isEqualTo(123L);
     assertThat(aws.location()).isEqualTo("s3://bucket/t");
 
-    AzureCredential azure = new AzureCredential("sas", 456L, null);
+    AzureCredential azure = new AzureCredential("sas", 456L);
     assertThat(azure.sasToken()).isEqualTo("sas");
     assertThat(azure.expirationTimeMillis()).isEqualTo(456L);
     assertThat(azure.location()).isNull();

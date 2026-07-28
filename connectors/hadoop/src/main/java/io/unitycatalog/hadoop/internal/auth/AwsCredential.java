@@ -9,6 +9,11 @@ public final class AwsCredential extends GenericCredential {
   private final String sessionToken;
 
   public AwsCredential(
+      String accessKeyId, String secretAccessKey, String sessionToken, Long expirationTimeMillis) {
+    this(accessKeyId, secretAccessKey, sessionToken, expirationTimeMillis, null);
+  }
+
+  public AwsCredential(
       String accessKeyId,
       String secretAccessKey,
       String sessionToken,

@@ -35,8 +35,7 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
               + "configuration",
           UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME);
 
-      return new AzureCredential(
-          sasToken, expiredTimeMillis, conf.get(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY));
+      return new AzureCredential(sasToken, expiredTimeMillis);
     } else {
       return null;
     }

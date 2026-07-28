@@ -36,12 +36,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
           expiredTimeMillis,
           UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME);
 
-      return new AwsCredential(
-          accessKey,
-          secretKey,
-          sessionToken,
-          expiredTimeMillis,
-          conf.get(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY));
+      return new AwsCredential(accessKey, secretKey, sessionToken, expiredTimeMillis);
     } else {
       return null;
     }

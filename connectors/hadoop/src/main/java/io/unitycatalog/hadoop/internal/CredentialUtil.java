@@ -21,12 +21,11 @@ public final class CredentialUtil {
     if (tempCred.getAwsTempCredentials() != null) {
       AwsCredentials aws = tempCred.getAwsTempCredentials();
       return new AwsCredential(
-          aws.getAccessKeyId(), aws.getSecretAccessKey(), aws.getSessionToken(), expiration, null);
+          aws.getAccessKeyId(), aws.getSecretAccessKey(), aws.getSessionToken(), expiration);
     } else if (tempCred.getAzureUserDelegationSas() != null) {
-      return new AzureCredential(
-          tempCred.getAzureUserDelegationSas().getSasToken(), expiration, null);
+      return new AzureCredential(tempCred.getAzureUserDelegationSas().getSasToken(), expiration);
     } else if (tempCred.getGcpOauthToken() != null) {
-      return new GcsCredential(tempCred.getGcpOauthToken().getOauthToken(), expiration, null);
+      return new GcsCredential(tempCred.getGcpOauthToken().getOauthToken(), expiration);
     }
     throw new IllegalArgumentException("UC temporary credentials contained no cloud credential");
   }
