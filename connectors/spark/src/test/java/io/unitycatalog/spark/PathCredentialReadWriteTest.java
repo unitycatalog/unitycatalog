@@ -114,6 +114,24 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
         .anyMatch(msg -> msg != null && msg.contains(substring));
   }
 
+  /** Finds a bare {@code format.`cloud-path`} relation anywhere in a parsed plan tree. */
+  private static UnresolvedRelation findBareCloudPathRelation(LogicalPlan plan) {
+    if (plan instanceof UnresolvedRelation) {
+      UnresolvedRelation relation = (UnresolvedRelation) plan;
+      if (relation.multipartIdentifier().length() == 2) {
+        return relation;
+      }
+    }
+    scala.collection.Seq<LogicalPlan> children = plan.children();
+    for (int i = 0; i < children.length(); i++) {
+      UnresolvedRelation found = findBareCloudPathRelation(children.apply(i));
+      if (found != null) {
+        return found;
+      }
+    }
+    return null;
+  }
+
   /**
    * Writes to a bare cloud path and reads it back. Exercises {@code INSERT OVERWRITE DIRECTORY}
    * ({@code InsertIntoDir}) and {@code parquet.`path`} reads ({@code UnresolvedRelation}).
@@ -201,8 +219,8 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
   /**
    * After {@code SET CATALOG}, bare-path credential injection must follow the session's current
-   * catalog, not {@code SQLConf.DEFAULT_CATALOG}. Default remains the built-in {@code spark_catalog}
-   * while the UC catalog is selected explicitly.
+   * catalog, not {@code SQLConf.DEFAULT_CATALOG}. Default remains the built-in {@code
+   * spark_catalog} while the UC catalog is selected explicitly.
    */
   @Test
   public void testBarePathUsesCurrentCatalogAfterSetCatalog() throws IOException, ParseException {
@@ -217,8 +235,10 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
             .sessionState()
             .sqlParser()
             .parsePlan(String.format("SELECT * FROM parquet.`%s`", location));
-    assertThat(plan).isInstanceOf(UnresolvedRelation.class);
-    UnresolvedRelation relation = (UnresolvedRelation) plan;
+    UnresolvedRelation relation = findBareCloudPathRelation(plan);
+    assertThat(relation)
+        .as("parsed plan should contain bare cloud-path UnresolvedRelation: %s", plan)
+        .isNotNull();
     assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
   }
