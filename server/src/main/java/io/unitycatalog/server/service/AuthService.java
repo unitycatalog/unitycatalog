@@ -141,7 +141,7 @@ public class AuthService {
     try {
       decodedJWT = JWT.decode(form.getSubjectToken());
     } catch (JWTDecodeException e) {
-      LOGGER.debug("Token rejected: malformed token", e);
+      LOGGER.error("Token rejected: malformed token", e);
       throw new OAuthInvalidRequestException(
           ErrorCode.UNAUTHENTICATED, "Invalid token: " + e.getMessage(), e);
     }
@@ -150,7 +150,7 @@ public class AuthService {
 
     // Validate issuer is in allowlist BEFORE fetching JWKS
     if (!serverProperties.getIssuerAllowlist().isAllowed(issuer)) {
-      LOGGER.debug("Token rejected: invalid issuer '{}'", issuer);
+      LOGGER.error("Token rejected: invalid issuer '{}'", issuer);
       throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid issuer");
     }
 
@@ -163,14 +163,14 @@ public class AuthService {
       JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
       decodedJWT = jwtVerifier.verify(decodedJWT);
     } catch (JWTVerificationException e) {
-      LOGGER.debug("Token rejected: verification failed", e);
+      LOGGER.error("Token rejected: verification failed", e);
       throw new OAuthInvalidRequestException(
           ErrorCode.UNAUTHENTICATED, "Token verification failed: " + e.getMessage(), e);
     }
 
     if (!serverProperties.isAudienceValidationDisabled()
         && !serverProperties.getAudienceAllowlist().isAnyAllowed(decodedJWT.getAudience())) {
-      LOGGER.debug("Token rejected: audience {} not in allowlist", decodedJWT.getAudience());
+      LOGGER.error("Token rejected: audience {} not in allowlist", decodedJWT.getAudience());
       throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
     }
 
