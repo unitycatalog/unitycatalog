@@ -326,8 +326,8 @@ If you have not already done so, restart the UI.
 
 ```sh
 cd ui
-yarn install
-yarn start
+bun install
+bun run start
 ```
 
 This will open a new browser window with your identity provider login (e.g., Google Identity).
@@ -353,7 +353,7 @@ Modify the `server.properties` file to disable the server authentication by chan
 server.authorization=disable
 ```
 
-Restarting your UC server (i.e., `bin/start-uc-server`) and UI (i.e., `yarn start`) will open a new browser window
+Restarting your UC server (i.e., `bin/start-uc-server`) and UI (i.e., `bun run start`) will open a new browser window
 with the Google Auth login but fail with the following login failed error.
 
 ![UC Google Auth UI Enabled Server Disabled](../assets/images/uc_googleauth_ui-enabled_server-disabled.png)
@@ -374,7 +374,7 @@ REACT_APP_GOOGLE_AUTH_ENABLED=false
 REACT_APP_GOOGLE_CLIENT_ID=
 ```
 
-Restarting your UC server (i.e., `bin/start-uc-server`)  and UI (i.e., `yarn start`) will open a new browser window
+Restarting your UC server (i.e., `bin/start-uc-server`)  and UI (i.e., `bun run start`) will open a new browser window
 with the Google Auth login. You will successfully log into the UI but fail to show any Unity Catalog assets as the UI
 is not authenticated to query those assets.
 
@@ -395,6 +395,6 @@ REACT_APP_GOOGLE_AUTH_ENABLED=false
 REACT_APP_GOOGLE_CLIENT_ID=
 ```
 
-Restarting your UC server (i.e., `bin/start-uc-server`) and UI (i.e., `yarn start`) will open a new browser window
+Restarting your UC server (i.e., `bin/start-uc-server`) and UI (i.e., `bun run start`) will open a new browser window
 with the Google Auth login. In this case, there will be **no profile menu nor any login screen** but you will be able
 to see your UC assets.

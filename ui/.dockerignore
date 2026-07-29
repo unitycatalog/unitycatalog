@@ -1,0 +1,17 @@
+# Dependencies are installed inside the image; a host node_modules would
+# overwrite them with binaries built for the wrong platform.
+node_modules
+.bun
+
+# Build outputs and local-only files
+build
+coverage
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log*
+bun-debug.log*
+.DS_Store
+Dockerfile
+.dockerignore
