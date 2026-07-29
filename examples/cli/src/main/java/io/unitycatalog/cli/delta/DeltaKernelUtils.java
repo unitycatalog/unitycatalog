@@ -1,6 +1,6 @@
 package io.unitycatalog.cli.delta;
 
-import de.vandermeer.asciitable.AsciiTable;
+import com.github.freva.asciitable.AsciiTable;
 import io.delta.kernel.ScanBuilder;
 import io.delta.kernel.Snapshot;
 import io.delta.kernel.Table;
@@ -25,6 +25,7 @@ import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -183,27 +184,27 @@ public class DeltaKernelUtils {
       Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       Snapshot snapshot = table.getLatestSnapshot(engine);
       StructType readSchema = snapshot.getSchema();
-      Object[] schema =
+      String[] schema =
           readSchema.fields().stream()
               .map(x -> x.getName() + "(" + x.getDataType().toString() + ")")
               .toArray(String[]::new);
-      AsciiTable at = new AsciiTable();
-      at.addRule();
-      at.addRow(schema);
-      at.addRule();
       // might need to prune it later
       ScanBuilder scanBuilder = snapshot.getScanBuilder().withReadSchema(readSchema);
       List<Row> rowData =
           DeltaKernelReadUtils.readData(engine, readSchema, scanBuilder.build(), maxResults);
+      List<String[]> rows = new ArrayList<>();
       for (Row row : rowData) {
-        Object[] rowValues =
+        String[] rowValues =
             IntStream.range(0, schema.length)
-                .mapToObj(colOrdinal -> DeltaKernelReadUtils.getValue(row, colOrdinal))
-                .toArray();
-        at.addRow(rowValues);
-        at.addRule();
+                .mapToObj(ordinal -> String.valueOf(DeltaKernelReadUtils.getValue(row, ordinal)))
+                .toArray(String[]::new);
+        rows.add(rowValues);
       }
-      return at.render();
+      return AsciiTable.builder()
+          .border(AsciiTable.BASIC_ASCII)
+          .header(schema)
+          .data(rows.toArray(new String[0][]))
+          .asString();
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to read Delta table", e);
     }

@@ -2,7 +2,7 @@ package io.unitycatalog.cli.delta;
 
 import static io.delta.kernel.internal.util.Utils.singletonCloseableIterator;
 
-import de.vandermeer.asciitable.AsciiTable;
+import com.github.freva.asciitable.AsciiTable;
 import io.delta.kernel.Scan;
 import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.data.FilteredColumnarBatch;

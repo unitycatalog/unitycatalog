@@ -585,7 +585,7 @@ lazy val cli = (project in file("examples") / "cli")
       "io.delta" % "delta-kernel-unitycatalog" % deltaVersion,
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
-      "de.vandermeer" % "asciitable" % "0.3.2",
+      "com.github.freva" % "ascii-table" % "1.12.1",
       // for s3 access
       "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
@@ -728,7 +728,6 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("oro", "oro", _) => true
       case DepModuleInfo("org.glassfish", "javax.json", _) => true
       case DepModuleInfo("org.glassfish.hk2.external", "jakarta.inject", _) => true
-      case DepModuleInfo("org.antlr", "ST4", _) => true
     }
   )
 

@@ -6,10 +6,10 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.type.TypeFactory;
-import de.vandermeer.asciitable.AsciiTable;
-import de.vandermeer.asciitable.CWC_FixedWidth;
-import de.vandermeer.asciitable.CWC_LongestLine;
-import de.vandermeer.skb.interfaces.transformers.textformat.TextAlignment;
+import com.github.freva.asciitable.AsciiTable;
+import com.github.freva.asciitable.Column;
+import com.github.freva.asciitable.HorizontalAlign;
+import com.github.freva.asciitable.OverflowBehaviour;
 import io.unitycatalog.client.VersionUtils;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
@@ -28,7 +28,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
@@ -431,13 +430,6 @@ public class CliUtils {
     return objectWriter;
   }
 
-  public static String preprocess(String value, int length) {
-    if (value.length() > length && length > 3) {
-      return value.substring(0, length - 3) + "...";
-    }
-    return value;
-  }
-
   public static List<String> getFieldNames(JsonNode element) {
     List<String> columns = new ArrayList<>();
     if (element.isObject()) {
@@ -510,7 +502,7 @@ public class CliUtils {
         .forEach(idx -> columnWidths[idx] = columnWidth);
   }
 
-  private static void processOutputAsRows(AsciiTable at, JsonNode node, int outputWidth) {
+  private static String processOutputAsRows(JsonNode node, int outputWidth) {
     List<String> fieldNames = getFieldNames(node.get(0));
 
     int[] columnWidths = new int[fieldNames.size()];
@@ -521,47 +513,56 @@ public class CliUtils {
       adjustColumnWidths(fieldNames, outputWidth, columnWidths, isFixedWidthColumns);
     }
 
-    List<String> headers =
-        fieldNames.stream().map(String::toUpperCase).collect(Collectors.toList());
-
-    CWC_FixedWidth cwc = new CWC_FixedWidth();
+    Column[] columns = new Column[fieldNames.size()];
     for (int i = 0; i < fieldNames.size(); i++) {
-      cwc.add(columnWidths[i]);
+      columns[i] =
+          new Column()
+              .header(fieldNames.get(i).toUpperCase())
+              .headerAlign(HorizontalAlign.CENTER)
+              .dataAlign(HorizontalAlign.LEFT)
+              .maxWidth(columnWidths[i], OverflowBehaviour.ELLIPSIS_RIGHT);
     }
 
-    at.getRenderer().setCWC(cwc);
-    at.addRule();
-    at.addRow(headers.toArray()).setTextAlignment(TextAlignment.CENTER);
-    at.addRule();
+    List<String[]> rows = new ArrayList<>();
     node.forEach(
         element -> {
           List<String> row = new ArrayList<>();
           ObjectNode objectNode = (ObjectNode) element;
           Iterator<String> nodeFieldNames = objectNode.fieldNames();
-          int columnIndex = 0;
           while (nodeFieldNames.hasNext()) {
             String nodeFieldName = nodeFieldNames.next();
             JsonNode value = element.get(nodeFieldName);
-            String valueString = value.isTextual() ? value.asText() : value.toString();
-            row.add(preprocess(valueString, columnWidths[columnIndex]));
-            columnIndex++;
+            row.add(value.isTextual() ? value.asText() : value.toString());
           }
-          at.addRow(row.toArray());
-          at.addRule();
+          rows.add(row.toArray(new String[0]));
         });
+
+    return AsciiTable.builder()
+        .border(AsciiTable.BASIC_ASCII)
+        .maxTableWidth(outputWidth)
+        .data(columns, rows.toArray(new String[0][]))
+        .asString();
   }
 
-  private static void processOutputAsKeysAndValues(AsciiTable at, JsonNode node, int outputWidth) {
+  private static String processOutputAsKeysAndValues(JsonNode node, int outputWidth) {
     int minOutputWidth = outputWidth / 2;
 
-    at.getRenderer()
-        .setCWC(
-            new CWC_LongestLine()
-                .add(minOutputWidth / 3, outputWidth / 4)
-                .add(2 * minOutputWidth / 3, 3 * outputWidth / 4));
-    at.addRule();
-    at.addRow("KEY", "VALUE").setTextAlignment(TextAlignment.CENTER);
-    at.addRule();
+    Column keyColumn =
+        new Column()
+            .header("KEY")
+            .headerAlign(HorizontalAlign.CENTER)
+            .dataAlign(HorizontalAlign.LEFT)
+            .minWidth(minOutputWidth / 3)
+            .maxWidth(outputWidth / 4, OverflowBehaviour.NEWLINE);
+    Column valueColumn =
+        new Column()
+            .header("VALUE")
+            .headerAlign(HorizontalAlign.CENTER)
+            .dataAlign(HorizontalAlign.LEFT)
+            .minWidth(2 * minOutputWidth / 3)
+            .maxWidth(3 * outputWidth / 4, OverflowBehaviour.NEWLINE);
+
+    List<String[]> rows = new ArrayList<>();
     node.fields()
         .forEachRemaining(
             field -> {
@@ -577,10 +578,14 @@ public class CliUtils {
               } else {
                 valueString = new StringBuilder(value.toString());
               }
-              at.addRow(field.getKey().toUpperCase(), valueString.toString())
-                  .setTextAlignment(TextAlignment.LEFT);
-              at.addRule();
+              rows.add(new String[] {field.getKey().toUpperCase(), valueString.toString()});
             });
+
+    return AsciiTable.builder()
+        .border(AsciiTable.BASIC_ASCII)
+        .maxTableWidth(outputWidth)
+        .data(new Column[] {keyColumn, valueColumn}, rows.toArray(new String[0][]))
+        .asString();
   }
 
   private static int getOutputWidth() {
@@ -601,21 +606,21 @@ public class CliUtils {
     if (jsonFormat || READ.equals(subCommand) || EXECUTE.equals(subCommand)) {
       System.out.println(output);
     } else {
-      AsciiTable at = new AsciiTable();
       int outputWidth = getOutputWidth();
       try {
         JsonNode node = objectMapper.readTree(output);
+        String table;
         if (node.isArray()) {
           if (node.isEmpty()) {
             System.out.println(output);
             return;
           } else {
-            processOutputAsRows(at, node, outputWidth);
+            table = processOutputAsRows(node, outputWidth);
           }
         } else {
-          processOutputAsKeysAndValues(at, node, outputWidth);
+          table = processOutputAsKeysAndValues(node, outputWidth);
         }
-        System.out.println(at.render(outputWidth));
+        System.out.println(table);
       } catch (Exception e) {
         System.out.println("Error while printing output as table: " + e.getMessage());
         System.out.println(output);
