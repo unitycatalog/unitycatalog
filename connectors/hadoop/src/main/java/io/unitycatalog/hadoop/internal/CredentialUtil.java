@@ -10,7 +10,6 @@ import io.unitycatalog.hadoop.internal.auth.AzureCredential;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.util.List;
-import java.util.function.Function;
 
 /** Internal utilities for building and selecting {@link GenericCredential}s. */
 public final class CredentialUtil {
@@ -60,30 +59,21 @@ public final class CredentialUtil {
   /** Selects the credential whose location covers {@code location} (longest match wins). */
   public static GenericCredential selectForLocation(
       String location, List<GenericCredential> creds) {
-    int index = longestCoveringIndex(location, creds, GenericCredential::location);
-    Preconditions.checkArgument(index >= 0, "No vended credential covers location '%s'.", location);
-    return creds.get(index);
-  }
-
-  /**
-   * Returns the index of the item whose prefix (via {@code prefixOf}) covers {@code location} by
-   * the longest match, or {@code -1} if none does. Items with a null prefix are skipped.
-   */
-  private static <T> int longestCoveringIndex(
-      String location, List<T> items, Function<T, String> prefixOf) {
-    int best = -1;
+    GenericCredential best = null;
     int bestLen = -1;
-    for (int i = 0; i < items.size(); i++) {
-      String prefix = prefixOf.apply(items.get(i));
+    for (GenericCredential cred : creds) {
+      String prefix = cred.location();
       if (prefix == null || !prefixCovers(location, prefix)) {
         continue;
       }
       int len = stripTrailingSlashes(prefix).length();
       if (len > bestLen) {
-        best = i;
+        best = cred;
         bestLen = len;
       }
     }
+    Preconditions.checkArgument(
+        best != null, "No vended credential covers location '%s'.", location);
     return best;
   }
 
