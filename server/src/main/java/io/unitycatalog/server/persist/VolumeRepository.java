@@ -79,6 +79,10 @@ public class VolumeRepository {
                   ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
             }
             storageLocation = NormalizedURL.from(createVolumeRequest.getStorageLocation());
+            ValidationUtils.checkArgument(
+                !storageLocation.isCloudStorageRoot(),
+                "External volume storage location must include a non-empty path prefix: %s",
+                createVolumeRequest.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
           }
           Date now = new Date();

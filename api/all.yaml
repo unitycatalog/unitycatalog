@@ -1464,6 +1464,8 @@ paths:
         most cases the number of unbackfilled commits should be close to zero or one. But if
         clients misbehave and unbackfilled commits accumulate beyond the limit, server will
         reject further commits until more backfill is done.
+        Replaying an already-accepted commit (same version and file-name) is an idempotent no-op
+        that returns 200, so a client that lost the response can safely resend.
         WARNING: This API is experimental and may change in future versions.
       operationId: commit
       requestBody:
@@ -1491,7 +1493,7 @@ paths:
         '404':
           description: Not Found. The specified table does not exist.
         '409':
-          description: Conflict. Indicates that a commit with the same version already exists.
+          description: Conflict. Indicates that a different commit with the same version already exists.
         '429':
           description: The maximum number of unbackfilled commits per table has been reached. Please backfill some commits before retrying.
         '500':
