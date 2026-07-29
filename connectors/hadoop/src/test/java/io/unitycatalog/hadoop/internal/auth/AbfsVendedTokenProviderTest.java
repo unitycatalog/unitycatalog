@@ -20,12 +20,22 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
     return new TestAbfsVendedTokenProvider(conf, mockApi);
   }
 
+  @Override
+  protected AbfsVendedTokenProvider createTestProvider(
+      Configuration conf, GenericCredentialFetcher fetcher) {
+    return new TestAbfsVendedTokenProvider(conf, fetcher);
+  }
+
   static class TestAbfsVendedTokenProvider extends AbfsVendedTokenProvider {
     private final GenericCredentialFetcher credentialFetcher;
 
     TestAbfsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
+      this(conf, BaseTokenProviderTest.ucFetcher(conf, mockApi));
+    }
+
+    TestAbfsVendedTokenProvider(Configuration conf, GenericCredentialFetcher credentialFetcher) {
       initialize(conf);
-      this.credentialFetcher = BaseTokenProviderTest.ucFetcher(conf, mockApi);
+      this.credentialFetcher = credentialFetcher;
     }
 
     @Override
@@ -43,6 +53,11 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
     tempCred.setAzureUserDelegationSas(sas);
     tempCred.setExpirationTime(expirationMillis);
     return tempCred;
+  }
+
+  @Override
+  protected GenericCredential newGenericCred(String id, long expirationMillis, String location) {
+    return new AzureCredential("sasToken" + id, expirationMillis, location);
   }
 
   @Override

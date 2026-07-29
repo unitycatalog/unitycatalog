@@ -27,12 +27,22 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
     return new TestAwsVendedTokenProvider(conf, mockApi);
   }
 
+  @Override
+  protected AwsVendedTokenProvider createTestProvider(
+      Configuration conf, GenericCredentialFetcher fetcher) {
+    return new TestAwsVendedTokenProvider(conf, fetcher);
+  }
+
   static class TestAwsVendedTokenProvider extends AwsVendedTokenProvider {
     private final GenericCredentialFetcher credentialFetcher;
 
     TestAwsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi tempCredApi) {
+      this(conf, BaseTokenProviderTest.ucFetcher(conf, tempCredApi));
+    }
+
+    TestAwsVendedTokenProvider(Configuration conf, GenericCredentialFetcher credentialFetcher) {
       super(conf);
-      this.credentialFetcher = BaseTokenProviderTest.ucFetcher(conf, tempCredApi);
+      this.credentialFetcher = credentialFetcher;
     }
 
     @Override
@@ -53,6 +63,16 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
     tempCred.setExpirationTime(expirationMillis);
 
     return tempCred;
+  }
+
+  @Override
+  protected GenericCredential newGenericCred(String id, long expirationMillis, String location) {
+    return new AwsCredential(
+        "accessKeyId" + id,
+        "secretAccessKey" + id,
+        "sessionToken" + id,
+        expirationMillis,
+        location);
   }
 
   @Override

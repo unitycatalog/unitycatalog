@@ -2,8 +2,10 @@ package io.unitycatalog.hadoop.internal.auth;
 
 import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,12 +22,14 @@ import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.stubbing.OngoingStubbing;
 
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
   private String clockName;
@@ -46,8 +50,15 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   /** Use the {@link Configuration} and the mocked api to create a new provider. */
   protected abstract T createTestProvider(Configuration conf, TemporaryCredentialsApi mockApi);
 
+  /** Uses the given fetcher to create a provider for multi-credential response tests. */
+  protected abstract T createTestProvider(Configuration conf, GenericCredentialFetcher fetcher);
+
   /** New a testing temporary credentials, using the id and expiration time. */
   protected abstract TemporaryCredentials newTempCred(String id, long expirationMillis);
+
+  /** Creates a cloud-specific generic credential scoped to {@code location}. */
+  protected abstract GenericCredential newGenericCred(
+      String id, long expirationMillis, String location);
 
   /** Set the credentials into the hadoop conf, as the initialized credential. */
   protected abstract void setInitialCred(Configuration conf, TemporaryCredentials cred);
@@ -68,6 +79,119 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     clock = null;
     clockName = null;
     GenericCredentialProvider.globalCache.clear();
+  }
+
+  @Test
+  public void selectsCredentialCoveringLocationByLongestPrefix() {
+    GenericCredential bucket = newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket");
+    GenericCredential table = newGenericCred("table", Long.MAX_VALUE, "s3://bucket/t");
+    GenericCredential child = newGenericCred("child", Long.MAX_VALUE, "s3://bucket/t/child");
+
+    T provider = provider("s3://bucket/t/child/file", bucket, table, child);
+
+    assertThat(provider.accessCredentials()).isSameAs(child);
+  }
+
+  @Test
+  public void selectedCredentialIsSharedAcrossProvidersWithoutRefetch() throws Exception {
+    GenericCredential firstSelected = newGenericCred("first", Long.MAX_VALUE, "s3://bucket/t");
+    GenericCredential secondSelected = newGenericCred("second", Long.MAX_VALUE, "s3://bucket/t");
+    GenericCredentialFetcher secondFetcher =
+        fetcherReturning(
+            List.of(newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"), secondSelected));
+
+    T first =
+        provider(
+            "s3://bucket/t/file",
+            newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"),
+            firstSelected);
+    T second = createTestProvider(providerConf("s3://bucket/t/file"), secondFetcher);
+
+    assertThat(first.accessCredentials()).isSameAs(firstSelected);
+    assertThat(GenericCredentialProvider.globalCache.values()).containsExactly(firstSelected);
+
+    assertThat(second.accessCredentials()).isSameAs(firstSelected);
+    verify(secondFetcher, never()).createCredentials();
+  }
+
+  @Test
+  public void renewalReselectsFromTheRefetchedList() throws Exception {
+    long soon = clock.now().toEpochMilli() + 2000L;
+    GenericCredential first = newGenericCred("first", soon, "s3://bucket/t");
+    GenericCredential second = newGenericCred("second", Long.MAX_VALUE, "s3://bucket/t");
+    GenericCredentialFetcher fetcher =
+        fetcherReturning(
+            List.of(newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"), first),
+            List.of(newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"), second));
+    Configuration conf = providerConf("s3://bucket/t/file");
+    conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+    T provider = createTestProvider(conf, fetcher);
+
+    assertThat(provider.accessCredentials()).isSameAs(first);
+
+    clock.sleep(Duration.ofMillis(1500));
+    assertThat(provider.accessCredentials()).isSameAs(second);
+    verify(fetcher, times(2)).createCredentials();
+  }
+
+  @Test
+  public void singleCredentialIsUsedWithoutMatchingLocation() {
+    GenericCredential only = newGenericCred("only", Long.MAX_VALUE, "s3://other-bucket");
+
+    T provider = provider("s3://bucket/t/file", only);
+
+    assertThat(provider.accessCredentials()).isSameAs(only);
+  }
+
+  @Test
+  public void throwsWhenNoCredentialIsVended() {
+    T provider = provider("s3://bucket/t");
+
+    assertThatThrownBy(provider::accessCredentials)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("No vended credential was returned.");
+  }
+
+  @Test
+  public void throwsWhenMultipleCredentialsButNoLocation() {
+    T provider =
+        provider(
+            null,
+            newGenericCred("a", Long.MAX_VALUE, "s3://bucket/a"),
+            newGenericCred("b", Long.MAX_VALUE, "s3://bucket/b"));
+
+    assertThatThrownBy(provider::accessCredentials)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Multiple credentials were vended but no location");
+  }
+
+  @Test
+  public void throwsWhenNoCredentialCoversLocation() {
+    T provider =
+        provider(
+            "s3://bucket/t",
+            newGenericCred("other", Long.MAX_VALUE, "s3://other"),
+            newGenericCred("sibling", Long.MAX_VALUE, "s3://bucket/sibling"));
+
+    assertThatThrownBy(provider::accessCredentials)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("No vended credential covers location");
+  }
+
+  @Test
+  public void selectsCredentialWhenCacheDisabledAndBypassesSharedCache() {
+    GenericCredential table = newGenericCred("table", Long.MAX_VALUE, "s3://bucket/t");
+
+    Configuration conf = providerConf("s3://bucket/t/file");
+    conf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
+    T provider =
+        createTestProvider(
+            conf,
+            fetcherReturning(
+                List.of(newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"), table)));
+
+    assertThat(provider.accessCredentials()).isSameAs(table);
+    assertThat(GenericCredentialProvider.globalCache.values()).isEmpty();
   }
 
   @Test
@@ -452,6 +576,33 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(providerB, credB);
     assertGlobalCache(2, credA, credB);
     verify(tempCredApi, times(2)).generateTemporaryTableCredentials(any());
+  }
+
+  private T provider(String location, GenericCredential... credentials) {
+    return createTestProvider(providerConf(location), fetcherReturning(List.of(credentials)));
+  }
+
+  private Configuration providerConf(String location) {
+    Configuration conf = newTableBasedConf("tid");
+    conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+    if (location != null) {
+      conf.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, location);
+    }
+    return conf;
+  }
+
+  @SafeVarargs
+  private static GenericCredentialFetcher fetcherReturning(List<GenericCredential>... responses) {
+    GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
+    try {
+      OngoingStubbing<List<GenericCredential>> stub = when(fetcher.createCredentials());
+      for (List<GenericCredential> response : responses) {
+        stub = stub.thenReturn(response);
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+    return fetcher;
   }
 
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {
