@@ -95,7 +95,8 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             exception ->
                 assertThat(exception.getCode())
                     .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
-        .withMessageContaining("must include a non-empty path prefix");
+        .withMessageContaining("must include a non-empty path prefix")
+        .withMessageContaining("s3://bucket/");
   }
 
   @Test
