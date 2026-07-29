@@ -2,7 +2,7 @@
 
 Unity Catalog UI is an intuitive user interface designed to manage and interact with Unity Catalog. It facilitates handling data permissions, auditing, and resource discovery in a user-friendly manner. Through this UI, users can efficiently view, create, update, and delete resources within the Unity Catalog server.
 
-For more details on how to use the Unity Catalog UI, please refer to the [UI Documentation](https://github.com/unitycatalog/unitycatalog/tree/main/docs/ui).
+For more details on how to use the Unity Catalog UI, please refer to the [UI Documentation](https://docs.unitycatalog.io/usage/ui/).
 
 ![UC UI](../docs/assets/images/uc-ui.png)
 
@@ -40,6 +40,10 @@ You will also see any lint errors in the console.
 - `bun run format` - apply Prettier and ESLint fixes
 - `bun run test:format` - check formatting without writing changes (this is what CI runs)
 - `bun run generate` - regenerate the API types from the OpenAPI specs in `../api`
+
+> Note: If you are installing behind a corporate proxy (npm-proxy) you will need
+> to **run the following** script before committing changes
+- `bun run scripts/clean-bun-lock.ts` - remove internal proxy urls from the bun lock. This will allow the github workflows to fetch packages from external npm.
 
 Always invoke these through `bun run`. `build` and `test` are Bun's own subcommands, so `bun build` and `bun test`
 would run Bun's bundler and test runner instead of the scripts above.
