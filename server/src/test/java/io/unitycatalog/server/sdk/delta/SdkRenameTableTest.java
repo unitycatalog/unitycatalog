@@ -17,9 +17,6 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullSource;
-import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * E2E tests for the Delta REST Catalog {@code POST .../rename} endpoint (204 on success, 404 when
@@ -66,25 +63,21 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
         "Table not found");
   }
 
-  @ParameterizedTest
-  @ValueSource(
-      strings = {
-        "unusedTarget", // Missing source renamed to an unused target.
-        "missingSource", // Missing source renamed to itself (no-op fails).
-        "existingTarget" // Missing source renamed to an existing target (404, not 409).
-      })
-  public void testRenameMissingSourceReturnsNotFound(String newName) throws Exception {
+  @Test
+  public void testRenameMissingSourceReturnsNotFound() throws Exception {
     createDeltaManaged("existingTarget", Map.of());
 
-    TestUtils.assertDeltaApiException(
-        () ->
-            deltaTablesApi.renameTable(
-                TestUtils.CATALOG_NAME,
-                TestUtils.SCHEMA_NAME,
-                "missingSource",
-                new DeltaRenameTableRequest().newName(newName)),
-        DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
-        "Table not found");
+    for (String newName : new String[] {"unusedTarget", "missingSource", "existingTarget"}) {
+      TestUtils.assertDeltaApiException(
+          () ->
+              deltaTablesApi.renameTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  "missingSource",
+                  new DeltaRenameTableRequest().newName(newName)),
+          DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
+          "Table not found");
+    }
   }
 
   @Test
@@ -130,23 +123,23 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
         .isEqualTo(originalTable.getMetadata().getEtag());
   }
 
-  @ParameterizedTest
-  @NullSource
-  @ValueSource(strings = {"", " ", "\t"})
-  public void testRenameTableRejectsMissingNewName(String newName) {
-    assertThatThrownBy(
-            () ->
-                deltaTablesApi.renameTable(
-                    TestUtils.CATALOG_NAME,
-                    TestUtils.SCHEMA_NAME,
-                    "tbl_rename_src",
-                    new DeltaRenameTableRequest().newName(newName)))
-        .isInstanceOfSatisfying(
-            ApiException.class,
-            e -> {
-              assertThat(e.getCode()).isEqualTo(400);
-              assertThat(e.getMessage()).contains("New table name is required");
-            });
+  @Test
+  public void testRenameTableRejectsMissingNewName() {
+    for (String newName : new String[] {null, "", " ", "\t"}) {
+      assertThatThrownBy(
+              () ->
+                  deltaTablesApi.renameTable(
+                      TestUtils.CATALOG_NAME,
+                      TestUtils.SCHEMA_NAME,
+                      "tbl_rename_src",
+                      new DeltaRenameTableRequest().newName(newName)))
+          .isInstanceOfSatisfying(
+              ApiException.class,
+              e -> {
+                assertThat(e.getCode()).isEqualTo(400);
+                assertThat(e.getMessage()).contains("New table name is required");
+              });
+    }
   }
 
   private static void assertTableStateUnchanged(
