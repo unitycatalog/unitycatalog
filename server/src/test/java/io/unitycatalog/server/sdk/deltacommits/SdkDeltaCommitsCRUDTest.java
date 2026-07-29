@@ -255,13 +255,14 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
     deltaCommitsApi.commit(commit1);
 
-    // Commit the same version again, and it would fail
-    assertApiException(
-        () -> deltaCommitsApi.commit(commit1),
-        ErrorCode.ALREADY_EXISTS,
-        "Commit version already accepted.");
+    // UUID-based idempotency: replaying the identical commit (same version + same file name) is a
+    // no-op success, not a conflict, so a client that lost the response is not misled into
+    // rebasing and duplicating the commit. The table state is unchanged.
+    deltaCommitsApi.commit(commit1);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 1, /* expectedCommits= */ commit1);
 
-    // Commit the same version again with a different filename: the same failure
+    // Committing the same version with a DIFFERENT filename means another writer won it: conflict.
     DeltaCommit commit1_other_filename =
         createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
     commit1_other_filename.getCommitInfo().setFileName("some_other_filename_" + UUID.randomUUID());
@@ -287,9 +288,12 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // Then we can commit 3
     deltaCommitsApi.commit(commit3);
 
-    // Commit the old version 1 again, and it would fail
+    // Replay the old version 1 again (still unbackfilled, so still tracked): identical file name
+    // -> idempotent no-op success even though it is no longer the latest version.
+    deltaCommitsApi.commit(commit1);
+    // Replay old version 1 with a different file name -> genuine conflict.
     assertApiException(
-        () -> deltaCommitsApi.commit(commit1),
+        () -> deltaCommitsApi.commit(commit1_other_filename),
         ErrorCode.ALREADY_EXISTS,
         "Commit version already accepted.");
 
@@ -335,6 +339,22 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     verifyDeltaCommits(
         /* expectedLatestTableVersion= */ 4);
 
+    // The latest backfilled version (v4) is retained as a marker row that keeps its file name (it
+    // is flagged, not purged), so an identical replay of that commit is still recognized as an
+    // idempotent no-op success rather than a conflict.
+    deltaCommitsApi.commit(commit4);
+    verifyDeltaCommits(
+        /* expectedLatestTableVersion= */ 4);
+
+    // Known limitation (see DeltaCommitRepository idempotency TODO): once a version is backfilled
+    // and purged, its file name is no longer tracked, so an idempotent replay of that same commit
+    // can no longer be recognized and surfaces as a conflict. Here versions 2 and 3 were purged by
+    // the backfill above, so replaying the identical commit2 conflicts rather than no-op'ing.
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit2),
+        ErrorCode.ALREADY_EXISTS,
+        "Commit version already accepted.");
+
     // Commit one more version before deleting the table
     DeltaCommit commit5 =
         createCommitObject(tableInfo.getTableId(), 5L, tableInfo.getStorageLocation());
@@ -354,6 +374,27 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         "Table not found");
     List<DeltaCommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(commitDAOs.size()).isEqualTo(0);
+  }
+
+  @Test
+  public void testCommitReplayIsWholeRequestNoOp() throws ApiException {
+    // Commit v1 and v2 (commit-only, no backfill): DB tracks [v1, v2].
+    DeltaCommit commit1 =
+        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
+    DeltaCommit commit2 =
+        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
+    deltaCommitsApi.commit(commit1);
+    deltaCommitsApi.commit(commit2);
+    assertThat(getCommitDAOs(UUID.fromString(tableInfo.getTableId())).size()).isEqualTo(2);
+
+    // Replay v2 (identical file name -> recognized replay) but now ALSO folding in a backfill of
+    // v1. A commit replay is a whole-request no-op success: the request already landed once, so the
+    // extra backfill is NOT applied. Both v1 and v2 remain. (To report backfill after a lost
+    // response, the client sends a standalone set-latest-backfilled-version.)
+    deltaCommitsApi.commit(commit2.latestBackfilledVersion(1L));
+    List<DeltaCommitDAO> remaining = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
+    assertThat(remaining.size()).isEqualTo(2);
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 2, /* expectedCommits= */ 2L, 1L);
   }
 
   private void checkCommitInvalidParameter(

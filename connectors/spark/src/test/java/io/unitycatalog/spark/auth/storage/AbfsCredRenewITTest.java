@@ -30,7 +30,9 @@ public class AbfsCredRenewITTest extends BaseCredRenewITTest {
 
   @Override
   protected Map<String, String> catalogExtraProps() {
-    return Map.of("fs.abfs.impl", AbfsCredFileSystem.class.getName());
+    return Map.of(
+        "spark.hadoop.fs.abfs.impl", AbfsCredFileSystem.class.getName(),
+        "spark.hadoop.fs.abfss.impl", AbfsCredFileSystem.class.getName());
   }
 
   public static class AzureCredGenerator extends TimeBasedCredGenerator<AzureCredential>

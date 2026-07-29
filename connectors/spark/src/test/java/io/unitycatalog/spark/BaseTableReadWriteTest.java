@@ -811,6 +811,16 @@ public abstract class BaseTableReadWriteTest extends BaseSparkIntegrationTest {
                 ColumnTypeName.VARIANT,
                 "variant",
                 "\"variant\""));
+    if (!isSparkAtLeast(4, 1)) {
+      // VARIANT round-trips through a managed Delta table only when Delta's `variantType` writer
+      // table feature is supported. The Delta build for Spark 4.0 does not support it (writes fail
+      // with DELTA_UNSUPPORTED_FEATURES_FOR_WRITE); the Spark 4.1+ build does. Gate the column on
+      // the running Spark version so the rest of the type coverage still runs on Spark 4.0.
+      cols =
+          cols.stream()
+              .filter(col -> !col.getName().equals("col_variant"))
+              .collect(Collectors.toList());
+    }
 
     session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String tableName = TEST_TABLE + "_complex_type";

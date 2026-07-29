@@ -2,6 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.TransactionRollbackException;
 import java.util.Optional;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -90,6 +91,12 @@ public class TransactionManager {
         return result;
       } catch (Exception e) {
         tx.rollback();
+        // A control-flow signal (e.g. an idempotent-replay short-circuit) is not an error: rethrow
+        // it as-is, without error logging, so the caller can catch its specific type. The rollback
+        // above has already undone its work.
+        if (e instanceof TransactionRollbackException) {
+          throw (TransactionRollbackException) e;
+        }
         LOGGER.debug(errorMessage, e);
         if (e instanceof BaseException) {
           throw (BaseException) e;
