@@ -662,6 +662,10 @@ public class TableRepository {
           NormalizedURL storageLocation;
           if (tableType == TableType.EXTERNAL) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());
+            ValidationUtils.checkArgument(
+                !storageLocation.isCloudStorageRoot(),
+                "External table storage location must include a non-empty path prefix: %s",
+                createTable.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
