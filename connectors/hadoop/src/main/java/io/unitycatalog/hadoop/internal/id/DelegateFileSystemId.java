@@ -1,6 +1,5 @@
 package io.unitycatalog.hadoop.internal.id;
 
-import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import java.util.Objects;
@@ -49,8 +48,7 @@ public final class DelegateFileSystemId {
   }
 
   private static String location(Configuration conf) {
-    String location = conf.get(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY);
-    return location == null ? null : CredentialUtil.normalizeUri(location);
+    return conf.get(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY);
   }
 
   @Override

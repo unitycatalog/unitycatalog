@@ -42,9 +42,7 @@ class DelegateFileSystemIdTest {
   }
 
   private static Stream<Arguments> equivalentLocations() {
-    return Stream.of(
-        Arguments.of("s3://bucket/a", "s3://bucket/a"),
-        Arguments.of("s3://bucket/a", "S3A://bucket/a///"));
+    return Stream.of(Arguments.of("s3://bucket/a", "s3://bucket/a"));
   }
 
   @ParameterizedTest
@@ -55,6 +53,13 @@ class DelegateFileSystemIdTest {
 
   private static Stream<Arguments> differentLocations() {
     return Stream.of(
-        Arguments.of("s3://bucket/a", "s3://bucket/b"), Arguments.of(null, "s3://bucket/a"));
+        Arguments.of("s3://bucket/a", "s3://bucket/b"),
+        Arguments.of("s3://bucket/a", "s3://bucket/a///"),
+        Arguments.of("gs://bucket/a", "gs://bucket/a///"),
+        Arguments.of("abfs://container@account/a", "abfs://container@account/a///"),
+        Arguments.of("abfss://container@account/a", "abfss://container@account/a///"),
+        Arguments.of("s3://bucket/a", "S3A://bucket/a///"),
+        Arguments.of("abfs://container@account/a", "abfss://container@account/a"),
+        Arguments.of(null, "s3://bucket/a"));
   }
 }
