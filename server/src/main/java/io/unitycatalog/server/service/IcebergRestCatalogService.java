@@ -69,6 +69,7 @@ public class IcebergRestCatalogService {
       TableConfigService tableConfigService,
       MetadataService metadataService,
       Repositories repositories) {
+    // TODO: avoid this service to service dependency
     this.schemaService = schemaService;
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
