@@ -30,6 +30,7 @@
     "format": "prettier --write 'src/**/*.{js,ts,jsx,tsx,json,html}' && eslint 'src/**/*.{js,ts,jsx,tsx,json,html}' --fix",
     "test:format": "prettier --check 'src/**/*.{js,ts,jsx,tsx,json,html}' && eslint 'src/**/*.{js,ts,jsx,tsx,json,html}'",
     "generate": "bun run generate:catalog && bun run generate:control",
+    "clean-bun-lock": "bun run scripts/clean-bun-lock.ts",
     "generate:catalog": "bunx openapi-typescript --enum ../api/all.yaml -o src/types/api/catalog.gen.ts",
     "generate:control": "bunx openapi-typescript --enum ../api/control.yaml -o src/types/api/control.gen.ts"
   },
@@ -60,7 +61,7 @@
     "prettier": "3.3.3"
   },
   "overrides": {
-    "postcss": "^8.4.49",
-    "nth-check": "^2.1.1"
+    "postcss": "8.5.21",
+    "nth-check": "2.1.1"
   }
 }

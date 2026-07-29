@@ -26,9 +26,8 @@ jobs:
         with:
           bun-version-file: ui/package.json
 
-      - name: Clean bun lock
-        run: |
-          (cd ui && bun run scripts/clean-bun-lock.ts)
+      - name: Check bun lock
+        run: (cd ui && bun run scripts/clean-bun-lock.ts --check)
 
       - name: Run lint check
         run: |

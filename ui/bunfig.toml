@@ -1,5 +1,0 @@
-[test]
-# Default reporters when --coverage is passed. `lcov` writes coverage/lcov.info
-# for Codecov upload.
-coverageReporter = ["text", "lcov"]
-coverageDir = "coverage"

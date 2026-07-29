@@ -13,8 +13,8 @@
  * integrity hashes are never modified.
  *
  * Usage:
- *   bun run scripts/strip-bun-lock-proxy.ts          # rewrite bun.lock in place
- *   bun run scripts/strip-bun-lock-proxy.ts --check   # exit 1 if proxy URLs exist (no write)
+ *   bun run scripts/clean-bun-lock.ts          # rewrite bun.lock in place
+ *   bun run scripts/clean-bun-lock.ts --check   # exit 1 if proxy URLs exist (no write)
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
