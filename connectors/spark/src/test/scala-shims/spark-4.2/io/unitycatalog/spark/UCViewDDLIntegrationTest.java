@@ -20,6 +20,9 @@ public class UCViewDDLIntegrationTest extends AbstractViewReadIntegrationTest {
 
   @TempDir private File sourceTableDir;
 
+  private static final String STAGING_SCHEMA = "staging";
+  private static final String NEUTRAL_SCHEMA = "neutral";
+
   @Override
   protected void createView() {
     sql("CREATE VIEW %s AS %s", VIEW_FULL_NAME, VIEW_QUERY);
@@ -63,6 +66,50 @@ public class UCViewDDLIntegrationTest extends AbstractViewReadIntegrationTest {
     assertThat(getServerTable(VIEW_FULL_NAME).getViewDependencies().getDependencies())
         .extracting(dependency -> dependency.getTable().getTableFullName())
         .containsExactly(srcFullName);
+  }
+
+  /**
+   * A view created with an explicit column list stores the view's output names separately from the
+   * query's output names. Spark resolves the view using the persisted query-output names, not the
+   * declared column names.
+   */
+  @Test
+  public void testViewWithExplicitColumnListIsReadable() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    String view = CATALOG_NAME + "." + SCHEMA_NAME + ".v_renamed";
+    sql("CREATE VIEW %s (total) AS SELECT 42 AS my_count", view);
+
+    assertThat(sql("SELECT * FROM %s", view))
+        .extracting(row -> row.getInt(0))
+        .containsExactly(42);
+  }
+
+  /**
+   * Unqualified table references in a view body are resolved using the catalog/namespace active at
+   * creation time, not the view's own schema. Read from a third schema so the result cannot be
+   * explained by the reader's current namespace.
+   */
+  @Test
+  public void testViewResolvesUnqualifiedReferencesUsingCreationContext() {
+    session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    sql("CREATE SCHEMA IF NOT EXISTS %s.%s", CATALOG_NAME, STAGING_SCHEMA);
+    sql("CREATE SCHEMA IF NOT EXISTS %s.%s", CATALOG_NAME, NEUTRAL_SCHEMA);
+    sql("CREATE VIEW %s.%s.source AS SELECT 'FROM_STAGING' AS src", CATALOG_NAME, STAGING_SCHEMA);
+    sql(
+        "CREATE VIEW %s.%s.source AS SELECT 'FROM_DEFAULT' AS src",
+        CATALOG_NAME,
+        SCHEMA_NAME);
+
+    sql("USE %s.%s", CATALOG_NAME, STAGING_SCHEMA);
+    sql(
+        "CREATE VIEW %s.%s.v_ctx AS SELECT src FROM source",
+        CATALOG_NAME,
+        SCHEMA_NAME);
+
+    sql("USE %s.%s", CATALOG_NAME, NEUTRAL_SCHEMA);
+    assertThat(sql("SELECT src FROM %s.%s.v_ctx", CATALOG_NAME, SCHEMA_NAME))
+        .extracting(row -> row.getString(0))
+        .containsExactly("FROM_STAGING");
   }
 
   private void createSourceTable(String fullName) {
