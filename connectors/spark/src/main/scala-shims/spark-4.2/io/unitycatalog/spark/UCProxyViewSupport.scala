@@ -169,6 +169,13 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     Option(view.schemaMode())
       .filter(_ != SchemaUnsupported.toString)
       .foreach(m => propertiesToServer.put(CatalogTable.VIEW_SCHEMA_MODE, m))
+    UCViewTypes.addQueryColumnNames(propertiesToServer, view.queryColumnNames())
+    Option(view.currentCatalog()).foreach { catalog =>
+      UCViewTypes.addCreationContext(
+        propertiesToServer,
+        catalog,
+        view.currentNamespace())
+    }
     ct.setProperties(propertiesToServer)
 
     try {
@@ -231,22 +238,25 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       if (t.getTableType == TableType.METRIC_VIEW) SchemaUnsupported.toString
       else SchemaCompensation.toString
     val schemaMode = Option(props.get(CatalogTable.VIEW_SCHEMA_MODE)).getOrElse(defaultSchemaMode)
+    val queryColumnNames =
+      UCViewTypes.extractQueryColumnNames(props).getOrElse(columns.map(_.name()))
+    val (currentCatalog, currentNamespace) =
+      UCViewTypes.extractCreationContext(props).getOrElse((t.getCatalogName, Array(t.getSchemaName)))
     // The VIEW_SQL_CONFIG_PREFIX / VIEW_SCHEMA_MODE keys are surfaced via `withSqlConfigs` /
     // `withSchemaMode`; drop them from `props` so they don't also leak into the user-visible
     // `properties()` map and get re-persisted (double-counted) on a createView/replace round-trip.
-    props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX))
-    props.remove(CatalogTable.VIEW_SCHEMA_MODE)
+    UCViewTypes.stripInternalViewProperties(props)
 
     val builder = new View.Builder()
       .withColumns(columns)
       .withProperties(props)
       .withTableType(UCViewTypes.ucTableTypeToSparkViewType(t.getTableType))
       .withQueryText(t.getViewDefinition)
-      .withCurrentCatalog(t.getCatalogName)
-      .withCurrentNamespace(Array(t.getSchemaName))
+      .withCurrentCatalog(currentCatalog)
+      .withCurrentNamespace(currentNamespace)
       .withSqlConfigs(sqlConfigs)
       .withSchemaMode(schemaMode)
-      .withQueryColumnNames(columns.map(_.name()))
+      .withQueryColumnNames(queryColumnNames)
     Option(t.getComment).foreach(builder.withComment)
     Option(t.getViewDependencies).foreach { ucDeps =>
       builder.withViewDependencies(fromUcDependencyList(ucDeps))
