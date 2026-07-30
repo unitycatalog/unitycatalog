@@ -32,17 +32,21 @@ class DelegateFileSystemIdTest {
         .isNotEqualTo(DelegateFileSystemId.create(conf, URI.create("s3://other/a")));
   }
 
-  @ParameterizedTest
-  @MethodSource("equivalentPrefixes")
-  void equivalentPrefixesAreEqualAndHaveSameHashCode(String prefixA, String prefixB) {
-    DelegateFileSystemId idA = createId(prefixA);
-    DelegateFileSystemId idB = createId(prefixB);
+  @Test
+  void equivalentPrefixesAreEqualAndHaveSameHashCode() {
+    DelegateFileSystemId idA = createId("s3://bucket/a");
+    DelegateFileSystemId idB = createId("s3://bucket/a");
 
     assertThat(idA).isEqualTo(idB).hasSameHashCodeAs(idB);
   }
 
-  private static Stream<Arguments> equivalentPrefixes() {
-    return Stream.of(Arguments.of("s3://bucket/a", "s3://bucket/a"));
+  @Test
+  void samePrefixWithDifferentCredentialIdsIsDifferent() {
+    Configuration conf = new Configuration(false);
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");
+
+    assertThat(DelegateFileSystemId.create(conf, URI.create("s3://bucket-a/path")))
+        .isNotEqualTo(DelegateFileSystemId.create(conf, URI.create("s3://bucket-b/path")));
   }
 
   @ParameterizedTest
