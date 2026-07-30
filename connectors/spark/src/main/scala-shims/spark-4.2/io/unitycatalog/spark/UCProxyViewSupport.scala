@@ -173,6 +173,17 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
         propertiesToServer.put(CatalogTable.VIEW_QUERY_OUTPUT_COLUMN_NAME_PREFIX + i, name)
       }
     }
+    // Persist the current catalog/namespace captured at creation time. Unqualified table
+    // references in the view body resolve against this context, which can differ from the view's
+    // own location (a view in `cat.a` created while the session default is `cat.b` resolves
+    // `FROM t` as `cat.b.t`). Stored as `view.catalogAndNamespace.*`, mirroring Spark's own v1
+    // `CatalogTable` encoding; the read path restores it instead of assuming the view's location.
+    Option(view.currentCatalog()).filter(_.nonEmpty).foreach { currentCatalog =>
+      val namespace = Option(view.currentNamespace()).map(_.toSeq).getOrElse(Seq.empty)
+      CatalogTable.catalogAndNamespaceToProps(currentCatalog, namespace).foreach {
+        case (k, v) => propertiesToServer.put(k, v)
+      }
+    }
     // `UNSUPPORTED` is the metric-view sentinel, not a persistable mode; skip it and let the read
     // path default to compensation.
     Option(view.schemaMode())
@@ -249,12 +260,21 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     // written by an older/non-Spark client that never persisted them).
     val queryColumnNames =
       UCViewTypes.extractQueryColumnNames(props).getOrElse(columns.map(_.name()).toSeq)
-    // The VIEW_SQL_CONFIG_PREFIX / VIEW_SCHEMA_MODE / VIEW_QUERY_OUTPUT keys are surfaced via
-    // `withSqlConfigs` / `withSchemaMode` / `withQueryColumnNames`; drop them from `props` so they
-    // don't also leak into the user-visible `properties()` map and get re-persisted
-    // (double-counted) on a createView/replace round-trip.
+    // Unqualified table references in the view body resolve against the current catalog/namespace
+    // captured at creation time, which can differ from the view's own location. Restore the
+    // persisted `view.catalogAndNamespace.*`; only fall back to the view's own location when absent
+    // (a row written by an older/non-Spark client that never persisted the resolution context).
+    val (currentCatalog, currentNamespace) =
+      UCViewTypes.extractCatalogAndNamespace(props)
+        .getOrElse((t.getCatalogName, Seq(t.getSchemaName)))
+    // The VIEW_SQL_CONFIG_PREFIX / VIEW_SCHEMA_MODE / VIEW_QUERY_OUTPUT / VIEW_CATALOG_AND_NAMESPACE
+    // keys are surfaced via `withSqlConfigs` / `withSchemaMode` / `withQueryColumnNames` /
+    // `withCurrentCatalog` + `withCurrentNamespace`; drop them from `props` so they don't also leak
+    // into the user-visible `properties()` map and get re-persisted (double-counted) on a
+    // createView/replace round-trip.
     props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX))
     props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_QUERY_OUTPUT_PREFIX))
+    props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_PREFIX + "catalogAndNamespace."))
     props.remove(CatalogTable.VIEW_SCHEMA_MODE)
 
     val builder = new View.Builder()
@@ -262,8 +282,8 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       .withProperties(props)
       .withTableType(UCViewTypes.ucTableTypeToSparkViewType(t.getTableType))
       .withQueryText(t.getViewDefinition)
-      .withCurrentCatalog(t.getCatalogName)
-      .withCurrentNamespace(Array(t.getSchemaName))
+      .withCurrentCatalog(currentCatalog)
+      .withCurrentNamespace(currentNamespace.toArray)
       .withSqlConfigs(sqlConfigs)
       .withSchemaMode(schemaMode)
       .withQueryColumnNames(queryColumnNames.toArray)

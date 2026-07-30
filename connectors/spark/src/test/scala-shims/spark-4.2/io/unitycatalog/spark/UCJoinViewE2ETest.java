@@ -154,4 +154,36 @@ public class UCJoinViewE2ETest extends BaseSparkIntegrationTest {
             .collect(Collectors.toList());
     assertThat(employees).containsExactlyInAnyOrder("alice", "bob", "carol");
   }
+
+  /**
+   * A view body's UNQUALIFIED table references resolve against the current catalog/namespace at
+   * creation time, which Spark persists as {@code view.catalogAndNamespace.*} -- and which can
+   * differ from the view's own location. Here the view lives in {@code other_schema} but is created
+   * while the session default namespace is {@code SCHEMA_NAME}, and its body references
+   * {@code employees} / {@code departments} unqualified. The connector must round-trip the
+   * creation-time namespace; if it instead substitutes the view's own location
+   * ({@code other_schema}, where those tables do not exist), resolution fails.
+   */
+  @Test
+  public void testViewResolvesUnqualifiedRefsAgainstCreationNamespace() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    createSourceTables(); // employees + departments live in SCHEMA_NAME
+    String otherSchema = "other_schema";
+    sql("CREATE SCHEMA %s.%s", CATALOG_NAME, otherSchema);
+
+    // Session default namespace is SCHEMA_NAME; the view is created in a DIFFERENT schema, and its
+    // body references the base tables UNQUALIFIED (so resolution depends on the creation ns).
+    sql("USE %s.%s", CATALOG_NAME, SCHEMA_NAME);
+    String viewInOtherSchema = CATALOG_NAME + "." + otherSchema + ".unqualified_ref_view";
+    sql(
+        "CREATE VIEW %s AS SELECT e.name AS emp FROM employees e "
+            + "JOIN departments d ON e.dept_id = d.dept_id",
+        viewInOtherSchema);
+
+    List<String> employees =
+        sql("SELECT emp FROM %s ORDER BY emp", viewInOtherSchema).stream()
+            .map(r -> r.getString(0))
+            .collect(Collectors.toList());
+    assertThat(employees).containsExactly("alice", "bob", "carol");
+  }
 }

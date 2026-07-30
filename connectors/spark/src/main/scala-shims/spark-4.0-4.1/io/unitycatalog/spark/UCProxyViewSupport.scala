@@ -55,8 +55,14 @@ trait UCProxyViewSupport { self: UCProxy =>
     val schemaModeDefault =
       if (base.contains(CatalogTable.VIEW_SCHEMA_MODE)) Map.empty[String, String]
       else Map(CatalogTable.VIEW_SCHEMA_MODE -> SchemaCompensation.toString)
+    // Unqualified table references in the view body resolve against the current catalog/namespace
+    // captured at creation time, which can differ from the view's own location. Prefer the
+    // persisted `view.catalogAndNamespace.*` already in `base`; only synthesize it (from the view's
+    // location) when the row never persisted it. Note `self.name()` is the connector's own catalog
+    // name -- correct only as a fallback for a same-namespace view.
     val viewNamespaceProps =
-      CatalogTable.catalogAndNamespaceToProps(self.name(), Seq(t.getSchemaName))
+      if (base.contains(CatalogTable.VIEW_CATALOG_AND_NAMESPACE)) Map.empty[String, String]
+      else CatalogTable.catalogAndNamespaceToProps(self.name(), Seq(t.getSchemaName))
     val viewTable = CatalogTable(
       identifier = identifier,
       tableType = CatalogTableType.VIEW,

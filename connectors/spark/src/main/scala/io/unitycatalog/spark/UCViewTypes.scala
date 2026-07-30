@@ -165,4 +165,28 @@ private[spark] object UCViewTypes {
       }
     }
   }
+
+  /**
+   * Reads the current catalog + namespace captured when the view was created, against which
+   * unqualified table references in the view body are resolved. Spark persists these as
+   * `view.catalogAndNamespace.numParts` plus `view.catalogAndNamespace.part.<i>` (part 0 is the
+   * catalog, the rest the namespace). Returns `(catalog, namespace)`, or `None` when the count key
+   * is absent (a row that never persisted the resolution context). Shared by the view-load paths;
+   * kept here so it stays free of Spark-4.2-only types and compiles on all supported Spark versions.
+   */
+  def extractCatalogAndNamespace(
+      properties: util.Map[String, String]): Option[(String, Seq[String])] = {
+    Option(properties.get(CatalogTable.VIEW_CATALOG_AND_NAMESPACE)).flatMap { numPartsStr =>
+      val parts = (0 until numPartsStr.toInt).map { i =>
+        val key = CatalogTable.VIEW_CATALOG_AND_NAMESPACE_PART_PREFIX + i
+        Option(properties.get(key)).getOrElse(
+          throw new IllegalStateException(
+            s"Corrupted view metadata: expected ${numPartsStr.toInt} catalog/namespace parts " +
+              s"but $key is missing"))
+      }
+      // part 0 is the catalog; the remainder is the namespace. A degenerate 0-part list has no
+      // catalog to resolve against, so treat it as absent.
+      parts.headOption.map(catalog => (catalog, parts.tail))
+    }
+  }
 }
