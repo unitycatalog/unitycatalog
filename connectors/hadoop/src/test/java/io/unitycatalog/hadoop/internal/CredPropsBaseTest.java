@@ -26,6 +26,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 
 /**
  * Shared coverage for {@link CredPropsUtil} that must hold identically for every supported cloud
@@ -69,7 +70,11 @@ abstract class CredPropsBaseTest {
    * A vended credential of the cloud's type. A null {@code expirationMillis} models a credential
    * with no expiration set.
    */
-  abstract GenericCredential vendedCred(Long expirationMillis);
+  abstract GenericCredential vendedCred(Long expirationMillis, String prefix);
+
+  private GenericCredential vendedCred(Long expirationMillis) {
+    return vendedCred(expirationMillis, location());
+  }
 
   // ---- per cloud configuration keys ---------------------------------------------
 
@@ -177,6 +182,20 @@ abstract class CredPropsBaseTest {
     assertThat(captured.get().props()).containsExactlyInAnyOrderEntriesOf(credIdKeys(kind));
   }
 
+  @ParameterizedTest
+  @NullAndEmptySource
+  void credentialPrefixMayBeEmpty(String prefix) throws Exception {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> mockGenericCredentialFetcher(vendedCred(null, prefix));
+
+    Map<String, String> props = createCredPropsFor(CredKind.TABLE, true, false);
+    if (prefix == null) {
+      assertThat(props).doesNotContainKey(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
+    } else {
+      assertThat(props).containsEntry(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
+    }
+  }
+
   @ParameterizedTest(name = "{0}")
   @EnumSource(CredKind.class)
   void returnedCredMapIsUnmodifiable(CredKind kind) throws Exception {
@@ -273,6 +292,7 @@ abstract class CredPropsBaseTest {
     } else {
       expected.putAll(staticCredKeys(expiration));
     }
+    expected.put(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location());
     if (credScoped) {
       expected.putAll(customImplKeys(conf));
     }

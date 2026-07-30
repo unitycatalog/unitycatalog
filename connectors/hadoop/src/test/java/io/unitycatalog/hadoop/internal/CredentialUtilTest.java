@@ -43,20 +43,24 @@ class CredentialUtilTest {
                         .accessKeyId("access-key")
                         .secretAccessKey("secret-key")
                         .sessionToken("session-token"))
-                .expirationTime(EXPIRATION),
-            new AwsCredential("access-key", "secret-key", "session-token", EXPIRATION)),
+                .expirationTime(EXPIRATION)
+                .url("s3://bucket/table"),
+            new AwsCredential(
+                "access-key", "secret-key", "session-token", EXPIRATION, "s3://bucket/table")),
         Arguments.of(
             "Azure",
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token"))
-                .expirationTime(EXPIRATION),
-            new AzureCredential("sas-token", EXPIRATION)),
+                .expirationTime(EXPIRATION)
+                .url("abfss://container@account/table"),
+            new AzureCredential("sas-token", EXPIRATION, "abfss://container@account/table")),
         Arguments.of(
             "GCS",
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("oauth-token"))
-                .expirationTime(EXPIRATION),
-            new GcsCredential("oauth-token", EXPIRATION)));
+                .expirationTime(EXPIRATION)
+                .url("gs://bucket/table"),
+            new GcsCredential("oauth-token", EXPIRATION, "gs://bucket/table")));
   }
 
   @ParameterizedTest(name = "{0}")
@@ -179,6 +183,7 @@ class CredentialUtilTest {
     assertThat(gc.accessKeyId()).isEqualTo("ak");
     assertThat(gc.secretAccessKey()).isEqualTo("sk");
     assertThat(gc.sessionToken()).isEqualTo("st");
+    assertThat(gc.prefix()).isEqualTo("s3://bucket");
   }
 
   @Test
@@ -212,6 +217,7 @@ class CredentialUtilTest {
     AzureCredential gc = (AzureCredential) CredentialUtil.toGenericCredential(c);
     assertThat(gc.sasToken()).isEqualTo("sas-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(Long.MAX_VALUE);
+    assertThat(gc.prefix()).isEqualTo("abfss://container@account.dfs.core.windows.net/");
   }
 
   @Test
@@ -225,6 +231,7 @@ class CredentialUtilTest {
     GcsCredential gc = (GcsCredential) CredentialUtil.toGenericCredential(c);
     assertThat(gc.oauthToken()).isEqualTo("gcs-oauth-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(456L);
+    assertThat(gc.prefix()).isEqualTo("gs://bucket/");
   }
 
   @Test
