@@ -26,8 +26,8 @@ class AzureCredPropsTest extends CredPropsBaseTest {
   }
 
   @Override
-  GenericCredential vendedCred(Long expirationMillis) {
-    return new AzureCredential("sas", expirationMillis, location());
+  GenericCredential vendedCred(Long expirationMillis, String prefix) {
+    return new AzureCredential("sas", expirationMillis, prefix);
   }
 
   @Override

@@ -23,8 +23,8 @@ class S3CredPropsTest extends CredPropsBaseTest {
   }
 
   @Override
-  GenericCredential vendedCred(Long expirationMillis) {
-    return new AwsCredential("ak", "sk", "st", expirationMillis, location());
+  GenericCredential vendedCred(Long expirationMillis, String prefix) {
+    return new AwsCredential("ak", "sk", "st", expirationMillis, prefix);
   }
 
   @Override
