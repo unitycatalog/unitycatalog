@@ -267,11 +267,14 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     val (currentCatalog, currentNamespace) =
       UCViewTypes.extractCatalogAndNamespace(props)
         .getOrElse((t.getCatalogName, Seq(t.getSchemaName)))
-    // The VIEW_SQL_CONFIG_PREFIX / VIEW_SCHEMA_MODE / VIEW_QUERY_OUTPUT / VIEW_CATALOG_AND_NAMESPACE
-    // keys are surfaced via `withSqlConfigs` / `withSchemaMode` / `withQueryColumnNames` /
-    // `withCurrentCatalog` + `withCurrentNamespace`; drop them from `props` so they don't also leak
-    // into the user-visible `properties()` map and get re-persisted (double-counted) on a
-    // createView/replace round-trip.
+    // These four key families are surfaced through the typed `View` accessors (`withSqlConfigs` /
+    // `withQueryColumnNames` / `withCurrentCatalog` + `withCurrentNamespace` / `withSchemaMode`),
+    // so drop them from `props` to keep them out of the user-visible `properties()` map and avoid
+    // re-persisting (double-counting) them on a createView/replace round-trip. Stripping is lossless
+    // *only* for these: on view resolution Spark rebuilds the v1 CatalogTable from the typed fields
+    // (`V1Table.toCatalogTable`) and reads the metadata from there, never from this bag. Other
+    // `view.*` keys (e.g. `view.referredTemp*`) have no typed accessor and are carried to Spark
+    // *only* through `properties()`, so they must be left in place.
     props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX))
     props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_QUERY_OUTPUT_PREFIX))
     props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_PREFIX + "catalogAndNamespace."))
