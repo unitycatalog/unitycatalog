@@ -104,11 +104,15 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     Configuration conf = newTableBasedConf();
     TemporaryCredentials credential = newTempCred("initial", Long.MAX_VALUE);
     setInitialCred(conf, credential);
-    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "test-prefix");
-
     T provider = createTestProvider(conf, mock(TemporaryCredentialsApi.class));
 
-    assertThat(provider.accessCredentials().prefix()).isEqualTo("test-prefix");
+    assertThat(provider.initGenericCredential(conf).prefix()).isNull();
+
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "");
+    assertThat(provider.initGenericCredential(conf).prefix()).isEmpty();
+
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "test-prefix");
+    assertThat(provider.initGenericCredential(conf).prefix()).isEqualTo("test-prefix");
   }
 
   @Test
