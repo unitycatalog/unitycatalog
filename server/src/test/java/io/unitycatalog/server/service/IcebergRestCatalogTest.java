@@ -23,11 +23,13 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -47,6 +49,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -415,7 +418,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             Types.NestedField.optional(2, "data", Types.StringType.get()));
     String location = Files.createTempDirectory("iceberg-rest-table").toUri().toString();
 
-    // Staged creation is rejected with a clear error
+    // Staged creation is stateless: it returns metadata without a metadata-location and
+    // registers nothing, so the direct create below still succeeds.
     {
       CreateTableRequest request =
           CreateTableRequest.builder()
@@ -426,7 +430,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .build();
       AggregatedHttpResponse resp =
           postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(400);
+      assertThat(resp.status().code()).as(resp.contentUtf8()).isEqualTo(200);
+      LoadTableResponse loadTableResponse =
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      assertThat(loadTableResponse.tableMetadata().metadataFileLocation()).isNull();
+      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(404);
     }
 
     // Create the table
@@ -441,7 +449,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .build();
       AggregatedHttpResponse resp =
           postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(resp.status().code()).as(resp.contentUtf8()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
           IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       initialMetadataLocation = loadTableResponse.tableMetadata().metadataFileLocation();
@@ -449,6 +457,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(loadTableResponse.tableMetadata().schema().columns()).hasSize(2);
       assertThat(loadTableResponse.tableMetadata().properties())
           .containsEntry("created-by", "iceberg-rest-test");
+      try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+        TableInfoDAO tableInfoDAO = getTableByName(session, TestUtils.TABLE_NAME);
+        assertThat(tableInfoDAO.getUniformIcebergMetadataLocation())
+            .isEqualTo(NormalizedURL.from(initialMetadataLocation).toString());
+      }
 
       // creating it again is a conflict
       resp = postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
@@ -465,6 +478,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(tableInfo.getColumns())
           .extracting(ColumnInfo::getName)
           .containsExactly("id", "data");
+      assertThat(tableInfo.getProperties()).containsEntry("created-by", "iceberg-rest-test");
     }
 
     // The table is loadable and listable through the Iceberg REST catalog
@@ -491,10 +505,18 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
     // Commit an update against the table
     {
+      Schema updatedSchema =
+          new Schema(
+              Types.NestedField.required(1, "id", Types.LongType.get()),
+              Types.NestedField.optional(2, "data", Types.StringType.get()),
+              Types.NestedField.optional(3, "category", Types.StringType.get()));
       UpdateTableRequest request =
           new UpdateTableRequest(
               List.of(new UpdateRequirement.AssertTableUUID(tableUuid)),
-              List.of(new MetadataUpdate.SetProperties(Map.of("foo", "bar"))));
+              List.of(
+                  new MetadataUpdate.AddSchema(updatedSchema),
+                  new MetadataUpdate.SetCurrentSchema(-1),
+                  new MetadataUpdate.SetProperties(Map.of("foo", "bar"))));
       AggregatedHttpResponse resp =
           postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
       assertThat(resp.status().code()).isEqualTo(200);
@@ -503,6 +525,15 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
           .contains("/metadata/00001-");
       assertThat(loadTableResponse.tableMetadata().properties()).containsEntry("foo", "bar");
+      assertThat(loadTableResponse.tableMetadata().schema().columns())
+          .extracting(Types.NestedField::name)
+          .containsExactly("id", "data", "category");
+
+      TableInfo tableInfo = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+      assertThat(tableInfo.getColumns())
+          .extracting(ColumnInfo::getName)
+          .containsExactly("id", "data", "category");
+      assertThat(tableInfo.getProperties()).containsEntry("foo", "bar");
 
       // the new metadata location is what loadTable now returns
       resp = client.get(tablePath).aggregate().join();
@@ -540,6 +571,134 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
           .isEqualTo(NoSuchTableException.class.getSimpleName());
     }
+
+    // A create request without a location gets a server-assigned managed location
+    {
+      String managedTablePath = tablesPath + "/managed_iceberg_table";
+      CreateTableRequest request =
+          CreateTableRequest.builder().withName("managed_iceberg_table").withSchema(schema).build();
+      AggregatedHttpResponse resp =
+          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(200);
+      LoadTableResponse loadTableResponse =
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      assertThat(loadTableResponse.tableMetadata().location()).contains("/tables/");
+      assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
+          .contains("/metadata/00000-");
+
+      TableInfo tableInfo =
+          tableOperations.getTable(
+              TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".managed_iceberg_table");
+      assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.ICEBERG);
+      assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
+      assertThat(tableInfo.getStorageLocation())
+          .isEqualTo(loadTableResponse.tableMetadata().location());
+
+      resp = client.delete(managedTablePath).aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(204);
+    }
+  }
+
+  @Test
+  public void testStagedCreateAndCommit() throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+
+    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
+    String tablePath = tablesPath + "/" + TestUtils.TABLE_NAME;
+    Schema schema =
+        new Schema(
+            Types.NestedField.required(1, "id", Types.LongType.get()),
+            Types.NestedField.optional(2, "data", Types.StringType.get()));
+
+    // Stage the create (no location -> server-assigned managed location). No permanent table is
+    // registered.
+    TableMetadata staged;
+    UUID stagingTableId;
+    {
+      CreateTableRequest request =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .stageCreate()
+              .build();
+      AggregatedHttpResponse resp =
+          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(200);
+      LoadTableResponse loadTableResponse =
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      staged = loadTableResponse.tableMetadata();
+      assertThat(staged.metadataFileLocation()).isNull();
+      assertThat(staged.location()).contains("/tables/");
+
+      StagingTableDAO stagingTable = getStagingTableByLocation(staged.location());
+      assertThat(stagingTable).isNotNull();
+      assertThat(stagingTable.isStageCommitted()).isFalse();
+      stagingTableId = stagingTable.getId();
+
+      // the staged table is not yet a permanent UC table, so it is not loadable or listable
+      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(404);
+    }
+
+    // Commit the staged create: assert-create requirement + updates rebuilding the metadata
+    {
+      UpdateTableRequest request =
+          new UpdateTableRequest(
+              List.of(new UpdateRequirement.AssertTableDoesNotExist()),
+              List.of(
+                  new MetadataUpdate.AssignUUID(staged.uuid()),
+                  new MetadataUpdate.UpgradeFormatVersion(staged.formatVersion()),
+                  new MetadataUpdate.AddSchema(staged.schema()),
+                  new MetadataUpdate.SetCurrentSchema(-1),
+                  new MetadataUpdate.AddPartitionSpec(staged.spec()),
+                  new MetadataUpdate.SetDefaultPartitionSpec(-1),
+                  new MetadataUpdate.AddSortOrder(staged.sortOrder()),
+                  new MetadataUpdate.SetDefaultSortOrder(-1),
+                  new MetadataUpdate.SetLocation(staged.location()),
+                  new MetadataUpdate.SetProperties(Map.of("staged", "true"))));
+      AggregatedHttpResponse resp =
+          postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(200);
+      LoadTableResponse loadTableResponse =
+          IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
+          .contains("/metadata/00000-");
+      assertThat(loadTableResponse.tableMetadata().uuid()).isEqualTo(staged.uuid());
+      assertThat(loadTableResponse.tableMetadata().properties()).containsEntry("staged", "true");
+
+      // the table is now registered in UC as a managed Iceberg table and loadable
+      TableInfo tableInfo = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+      assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.ICEBERG);
+      assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
+      assertThat(tableInfo.getTableId()).isEqualTo(stagingTableId.toString());
+      try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+        assertThat(session.get(StagingTableDAO.class, stagingTableId).isStageCommitted()).isTrue();
+      }
+      assertThat(client.get(tablePath).aggregate().join().status().code()).isEqualTo(200);
+
+      // replaying the create commit loses the race: 409 CommitFailedException
+      resp = postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(409);
+      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+          .isEqualTo(CommitFailedException.class.getSimpleName());
+    }
+
+    // staging a create for an existing table is a conflict
+    {
+      CreateTableRequest request =
+          CreateTableRequest.builder()
+              .withName(TestUtils.TABLE_NAME)
+              .withSchema(schema)
+              .stageCreate()
+              .build();
+      AggregatedHttpResponse resp =
+          postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
+      assertThat(resp.status().code()).isEqualTo(409);
+      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+          .isEqualTo(AlreadyExistsException.class.getSimpleName());
+    }
   }
 
   @Test
@@ -572,7 +731,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     // Fire N commits at once. Each asserts the original current-schema-id (0) and bumps the schema
     // to a new id, so the commits are mutually exclusive: only the first to land can both satisfy
     // its requirement and win the metadata-location compare-and-swap in
-    // TableRepository#setIcebergMetadataLocation. A loser fails either because it raced and lost
+    // TableRepository#commitIcebergTable. A loser fails either because it raced and lost
     // the CAS, or because it read post-winner state where assert-current-schema-id no longer holds;
     // both surface as 409 CommitFailedException. The CyclicBarrier releases the threads together to
     // exercise the CAS path when timing allows, but the outcome is deterministic either way.
@@ -636,5 +795,22 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             RequestHeaders.builder(HttpMethod.POST, path).contentType(MediaType.JSON).build(), body)
         .aggregate()
         .join();
+  }
+
+  private StagingTableDAO getStagingTableByLocation(String location) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      return session
+          .createQuery(
+              "FROM StagingTableDAO WHERE stagingLocation = :location", StagingTableDAO.class)
+          .setParameter("location", location)
+          .uniqueResult();
+    }
+  }
+
+  private TableInfoDAO getTableByName(Session session, String name) {
+    return session
+        .createQuery("FROM TableInfoDAO WHERE name = :name", TableInfoDAO.class)
+        .setParameter("name", name)
+        .getSingleResult();
   }
 }

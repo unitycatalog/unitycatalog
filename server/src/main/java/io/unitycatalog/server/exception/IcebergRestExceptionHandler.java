@@ -36,6 +36,31 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
 
   @Override
   protected BaseException toBaseException(Throwable cause) {
+    if (cause instanceof BaseException baseException) {
+      return switch (baseException.getErrorCode()) {
+        case SCHEMA_NOT_FOUND ->
+            wrapException(
+                ErrorCode.NOT_FOUND,
+                baseException.getErrorMessage(),
+                new NoSuchNamespaceException("%s", baseException.getErrorMessage()));
+        case TABLE_NOT_FOUND ->
+            wrapException(
+                ErrorCode.NOT_FOUND,
+                baseException.getErrorMessage(),
+                new NoSuchTableException("%s", baseException.getErrorMessage()));
+        case SCHEMA_ALREADY_EXISTS, TABLE_ALREADY_EXISTS ->
+            wrapException(
+                ErrorCode.ALREADY_EXISTS,
+                baseException.getErrorMessage(),
+                new AlreadyExistsException("%s", baseException.getErrorMessage()));
+        case UPDATE_REQUIREMENT_CONFLICT ->
+            wrapException(
+                ErrorCode.ALREADY_EXISTS,
+                baseException.getErrorMessage(),
+                new CommitFailedException("%s", baseException.getErrorMessage()));
+        default -> baseException;
+      };
+    }
     if (cause instanceof NoSuchNamespaceException
         || cause instanceof NoSuchTableException
         || cause instanceof NoSuchViewException) {

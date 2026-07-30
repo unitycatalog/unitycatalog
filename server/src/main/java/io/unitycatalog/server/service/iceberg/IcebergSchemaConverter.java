@@ -126,6 +126,8 @@ public final class IcebergSchemaConverter {
         yield String.format("decimal(%d,%d)", decimal.precision(), decimal.scale());
       }
       case VARIANT -> "variant";
+      // Iceberg has no standard GEOMETRY or GEOGRAPHY primitive type today. Add explicit mappings
+      // here if those types are standardized instead of silently coercing extension types.
       default ->
           throw new BadRequestException(
               "Iceberg type %s is not supported by Unity Catalog",
@@ -152,6 +154,8 @@ public final class IcebergSchemaConverter {
       case STRUCT -> ColumnTypeName.STRUCT;
       case LIST -> ColumnTypeName.ARRAY;
       case MAP -> ColumnTypeName.MAP;
+      // Iceberg has no standard GEOMETRY or GEOGRAPHY primitive type today. Keep this rejection in
+      // sync with primitiveTypeName until Iceberg defines interoperable type IDs for them.
       default ->
           throw new BadRequestException(
               "Iceberg type %s is not supported by Unity Catalog",

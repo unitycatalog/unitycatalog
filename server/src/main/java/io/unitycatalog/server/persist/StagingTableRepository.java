@@ -40,6 +40,17 @@ public class StagingTableRepository {
     return query.uniqueResult(); // Returns null if no result is found
   }
 
+  public boolean isUncommittedStagingLocation(NormalizedURL stagingLocation) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          StagingTableDAO stagingTable = findByStagingLocation(session, stagingLocation);
+          return stagingTable != null && !stagingTable.isStageCommitted();
+        },
+        "Failed to look up staging table at " + stagingLocation,
+        /* readOnly = */ true);
+  }
+
   private void validateIfAlreadyExists(
       Session session, UUID schemaId, String tableName, NormalizedURL stagingLocation) {
     // Check if table by the same name already exists. It's OK if a staging table with the same name
