@@ -77,12 +77,12 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
-  void differentScopeSameLocationGetsDifferentDelegate() throws Exception {
+  void differentScopeSamePrefixGetsDifferentDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
     Configuration confRead = tableConf("tid-1", "READ");
-    confRead.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a");
+    confRead.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
     Configuration confWrite = tableConf("tid-1", "WRITE");
-    confWrite.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a");
+    confWrite.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
 
     CredScopedFileSystem fsRead = init(uri, confRead);
     CredScopedFileSystem fsWrite = init(uri, confWrite);
@@ -101,12 +101,12 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
-  void sameScopeDifferentLocationGetsDifferentDelegate() throws Exception {
+  void sameScopeDifferentPrefixGetsDifferentDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
     Configuration confA = tableConf("tid-1", "READ");
-    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
     Configuration confB = tableConf("tid-1", "READ");
-    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/b");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/b");
 
     CredScopedFileSystem fsA = init(uri, confA);
     CredScopedFileSystem fsB = init(uri, confB);
@@ -115,10 +115,10 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
-  void sameScopeSameLocationReusesSameDelegate() throws Exception {
+  void sameScopeSamePrefixReusesSameDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
     Configuration conf = tableConf("tid-1", "READ");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a");
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
 
     CredScopedFileSystem fs1 = init(uri, conf);
     CredScopedFileSystem fs2 = init(uri, conf);
@@ -127,17 +127,17 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
-  void equivalentLocationsNormalizesAndReusesSameDelegate() throws Exception {
+  void differentlyFormattedPrefixesGetDifferentDelegates() throws Exception {
     URI uri = new URI("file:///tmp");
     Configuration confA = tableConf("tid-1", "READ");
-    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
     Configuration confB = tableConf("tid-1", "READ");
-    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "file:///tmp/a/");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a/");
 
     CredScopedFileSystem fsA = init(uri, confA);
     CredScopedFileSystem fsB = init(uri, confB);
 
-    assertThat(fsA.getDelegate()).isSameAs(fsB.getDelegate());
+    assertThat(fsA.getDelegate()).isNotSameAs(fsB.getDelegate());
   }
 
   @Test

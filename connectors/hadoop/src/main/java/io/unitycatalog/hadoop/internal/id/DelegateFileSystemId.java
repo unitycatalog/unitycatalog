@@ -12,29 +12,29 @@ import org.apache.hadoop.conf.Configuration;
  *
  * <ul>
  *   <li>{@link CredId} — the credential scope, used to retrieve the vended credential.
- *   <li>{@code location} — the storage prefix the credential covers, which distinguishes delegates
+ *   <li>{@code prefix} — the storage prefix the credential covers, which distinguishes delegates
  *       when a single credential scope vends several prefix-scoped credentials.
  * </ul>
  *
- * <p>{@code location} is nullable: a {@code null} location keys purely by {@link CredId}.
+ * <p>{@code prefix} is nullable: a {@code null} prefix keys purely by {@link CredId}.
  *
  * <p><b>Internal API — not for external use. May change without notice.</b>
  */
 public final class DelegateFileSystemId {
   private final CredId credId;
-  private final String location;
+  private final String prefix;
 
-  private DelegateFileSystemId(CredId credId, String location) {
+  private DelegateFileSystemId(CredId credId, String prefix) {
     this.credId = credId;
-    this.location = location;
+    this.prefix = prefix;
   }
 
   /**
    * Derives the id from {@code conf}: the {@link CredId} for the credential scope plus the {@link
-   * UCHadoopConfConstants#UC_CREDENTIAL_LOCATION_KEY location} being served.
+   * UCHadoopConfConstants#UC_CREDENTIAL_PREFIX_KEY prefix} being served.
    */
   public static DelegateFileSystemId create(Configuration conf) {
-    return new DelegateFileSystemId(CredId.create(conf), location(conf));
+    return new DelegateFileSystemId(CredId.create(conf), prefix(conf));
   }
 
   /**
@@ -44,11 +44,11 @@ public final class DelegateFileSystemId {
    */
   public static DelegateFileSystemId create(Configuration conf, URI uri) {
     return new DelegateFileSystemId(
-        CredId.create(conf, () -> new DefaultCredId(uri, conf)), location(conf));
+        CredId.create(conf, () -> new DefaultCredId(uri, conf)), prefix(conf));
   }
 
-  private static String location(Configuration conf) {
-    return conf.get(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY);
+  private static String prefix(Configuration conf) {
+    return conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
   }
 
   @Override
@@ -60,16 +60,16 @@ public final class DelegateFileSystemId {
       return false;
     }
     DelegateFileSystemId that = (DelegateFileSystemId) o;
-    return Objects.equals(credId, that.credId) && Objects.equals(location, that.location);
+    return Objects.equals(credId, that.credId) && Objects.equals(prefix, that.prefix);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(credId, location);
+    return Objects.hash(credId, prefix);
   }
 
   @Override
   public String toString() {
-    return "DelegateFileSystemId{credId=" + credId + ", location=" + location + "}";
+    return "DelegateFileSystemId{credId=" + credId + ", prefix=" + prefix + "}";
   }
 }

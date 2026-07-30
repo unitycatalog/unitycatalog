@@ -36,7 +36,7 @@ public abstract class GenericCredentialProvider {
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
 
-    // Identify the credential scope and location so matching requests can share a credential.
+    // Identify the credential scope and prefix so matching requests can share a credential.
     this.cacheKey = DelegateFileSystemId.create(conf);
 
     this.credCacheEnabled =

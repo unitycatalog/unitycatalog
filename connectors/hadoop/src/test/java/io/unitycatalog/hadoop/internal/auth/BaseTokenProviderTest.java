@@ -375,12 +375,12 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   }
 
   @Test
-  public void sameScopeDifferentLocationUsesSeparateGlobalCacheEntries() throws Exception {
+  public void sameScopeDifferentPrefixUsesSeparateGlobalCacheEntries() throws Exception {
     Configuration confA = newTableBasedConf("shared-table");
-    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/a");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/a");
 
     Configuration confB = newTableBasedConf("shared-table");
-    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/b");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/b");
 
     TemporaryCredentials credA = newTempCred("locationA", Long.MAX_VALUE);
     TemporaryCredentials credB = newTempCred("locationB", Long.MAX_VALUE);
@@ -397,9 +397,9 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   }
 
   @Test
-  public void sameScopeSameLocationReusesGlobalCacheEntry() throws Exception {
+  public void sameScopeSamePrefixReusesGlobalCacheEntry() throws Exception {
     Configuration conf = newTableBasedConf("shared-table");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/a");
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/a");
 
     TemporaryCredentials cred = newTempCred("locationA", Long.MAX_VALUE);
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
@@ -415,12 +415,12 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   }
 
   @Test
-  public void differentScopeSameLocationUsesSeparateGlobalCacheEntries() throws Exception {
+  public void differentScopeSamePrefixUsesSeparateGlobalCacheEntries() throws Exception {
     Configuration confA = newTableBasedConf("table-a");
-    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/shared");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");
 
     Configuration confB = newTableBasedConf("table-b");
-    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, "s3://bucket/shared");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");
 
     TemporaryCredentials credA = newTempCred("tableA", Long.MAX_VALUE);
     TemporaryCredentials credB = newTempCred("tableB", Long.MAX_VALUE);

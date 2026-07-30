@@ -15,10 +15,10 @@ class DelegateFileSystemIdTest {
 
   private static final URI TEST_URI = URI.create("s3://bucket/a");
 
-  private static DelegateFileSystemId createId(String location) {
+  private static DelegateFileSystemId createId(String prefix) {
     Configuration conf = new Configuration(false);
-    if (location != null) {
-      conf.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, location);
+    if (prefix != null) {
+      conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
     }
     return DelegateFileSystemId.create(conf, TEST_URI);
   }
@@ -33,25 +33,25 @@ class DelegateFileSystemIdTest {
   }
 
   @ParameterizedTest
-  @MethodSource("equivalentLocations")
-  void equivalentLocationsAreEqualAndHaveSameHashCode(String locationA, String locationB) {
-    DelegateFileSystemId idA = createId(locationA);
-    DelegateFileSystemId idB = createId(locationB);
+  @MethodSource("equivalentPrefixes")
+  void equivalentPrefixesAreEqualAndHaveSameHashCode(String prefixA, String prefixB) {
+    DelegateFileSystemId idA = createId(prefixA);
+    DelegateFileSystemId idB = createId(prefixB);
 
     assertThat(idA).isEqualTo(idB).hasSameHashCodeAs(idB);
   }
 
-  private static Stream<Arguments> equivalentLocations() {
+  private static Stream<Arguments> equivalentPrefixes() {
     return Stream.of(Arguments.of("s3://bucket/a", "s3://bucket/a"));
   }
 
   @ParameterizedTest
-  @MethodSource("differentLocations")
-  void differentLocationsAreDifferent(String locationA, String locationB) {
-    assertThat(createId(locationA)).isNotEqualTo(createId(locationB));
+  @MethodSource("differentPrefixes")
+  void differentPrefixesAreDifferent(String prefixA, String prefixB) {
+    assertThat(createId(prefixA)).isNotEqualTo(createId(prefixB));
   }
 
-  private static Stream<Arguments> differentLocations() {
+  private static Stream<Arguments> differentPrefixes() {
     return Stream.of(
         Arguments.of("s3://bucket/a", "s3://bucket/b"),
         Arguments.of("s3://bucket/a", "s3://bucket/a///"),
