@@ -7,6 +7,15 @@ This page explains how to configure Unity Catalog server with AWS storage and cr
 * An ***external location*** pointing to the S3 path needs to be created.
 * The user needs to configure the S3 bucket and the storage IAM role properly in AWS.
 
+!!! note "S3-compatible object storage"
+    This page covers Amazon S3 with IAM-role credential vending. Unity Catalog addresses object
+    storage through the `s3://` URL scheme and the S3 API, so an external location can also point at
+    any S3-compatible object store (Amazon S3, Backblaze B2, Cloudflare R2, MinIO). A non-AWS provider
+    does not use AWS IAM role assumption: supply that provider's credentials and set the reading
+    engine's S3 endpoint to the provider's endpoint, for example `https://<endpoint>`. See
+    `unity_catalog_aws_endpoint` in the [Spice.ai integration](../integrations/unity-catalog-spiceai.md)
+    for a worked example.
+
 # Prerequisites
 
 * Unity Catalog server version \>= 0.4.0
