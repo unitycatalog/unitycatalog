@@ -54,7 +54,7 @@ class UCDeltaGenericCredentialFetcherTest {
     assertThat(cred.secretAccessKey()).isEqualTo("sk");
     assertThat(cred.sessionToken()).isEqualTo("st");
     assertThat(cred.expirationTimeMillis()).isEqualTo(789L);
-    assertThat(cred.location()).isEqualTo("s3://bucket/events");
+    assertThat(cred.prefix()).isEqualTo("s3://bucket/events");
     verify(api)
         .getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events");
   }
@@ -103,10 +103,10 @@ class UCDeltaGenericCredentialFetcherTest {
     assertThat(creds).hasSize(2);
     AwsCredential cred1 = (AwsCredential) creds.get(0);
     assertThat(cred1.accessKeyId()).isEqualTo("ak1");
-    assertThat(cred1.location()).isEqualTo("s3://bucket/events");
+    assertThat(cred1.prefix()).isEqualTo("s3://bucket/events");
     AwsCredential cred2 = (AwsCredential) creds.get(1);
     assertThat(cred2.accessKeyId()).isEqualTo("ak2");
-    assertThat(cred2.location()).isEqualTo("s3://bucket/events/child");
+    assertThat(cred2.prefix()).isEqualTo("s3://bucket/events/child");
   }
 
   @Test

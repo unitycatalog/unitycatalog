@@ -102,8 +102,8 @@ public abstract class GenericCredentialProvider {
       return credentials.get(0);
     }
     Preconditions.checkState(
-        cacheKey.location() != null,
+        cacheKey.prefix() != null,
         "Multiple credentials were vended but no location is set to select one.");
-    return CredentialUtil.selectForLocation(cacheKey.location(), credentials);
+    return CredentialUtil.selectForLocation(cacheKey.prefix(), credentials);
   }
 }

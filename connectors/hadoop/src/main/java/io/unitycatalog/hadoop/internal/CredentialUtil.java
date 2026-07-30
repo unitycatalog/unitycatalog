@@ -62,7 +62,7 @@ public final class CredentialUtil {
     GenericCredential best = null;
     int bestLen = -1;
     for (GenericCredential cred : creds) {
-      String prefix = cred.location();
+      String prefix = cred.prefix();
       if (prefix == null || !prefixCovers(location, prefix)) {
         continue;
       }

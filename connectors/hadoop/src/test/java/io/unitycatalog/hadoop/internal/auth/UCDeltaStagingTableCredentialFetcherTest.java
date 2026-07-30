@@ -40,7 +40,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
     assertThat(cred.secretAccessKey()).isEqualTo("sk");
     assertThat(cred.sessionToken()).isEqualTo("st");
     assertThat(cred.expirationTimeMillis()).isEqualTo(1234L);
-    assertThat(cred.location()).isEqualTo(LOCATION);
+    assertThat(cred.prefix()).isEqualTo(LOCATION);
     verify(api).getStagingTableCredentials(STAGING_ID);
   }
 
@@ -83,10 +83,10 @@ class UCDeltaStagingTableCredentialFetcherTest {
     assertThat(creds).hasSize(2);
     AwsCredential cred1 = (AwsCredential) creds.get(0);
     assertThat(cred1.accessKeyId()).isEqualTo("ak1");
-    assertThat(cred1.location()).isEqualTo(LOCATION);
+    assertThat(cred1.prefix()).isEqualTo(LOCATION);
     AwsCredential cred2 = (AwsCredential) creds.get(1);
     assertThat(cred2.accessKeyId()).isEqualTo("ak2");
-    assertThat(cred2.location()).isEqualTo(LOCATION + "/child");
+    assertThat(cred2.prefix()).isEqualTo(LOCATION + "/child");
   }
 
   @Test

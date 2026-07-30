@@ -61,6 +61,11 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
   }
 
   @Override
+  protected String location(String path) {
+    return "abfss://container@account.dfs.core.windows.net" + path;
+  }
+
+  @Override
   protected void setInitialCred(Configuration conf, TemporaryCredentials cred) {
     assertThat(cred.getAzureUserDelegationSas()).isNotNull();
     assertThat(cred.getExpirationTime()).isNotNull();

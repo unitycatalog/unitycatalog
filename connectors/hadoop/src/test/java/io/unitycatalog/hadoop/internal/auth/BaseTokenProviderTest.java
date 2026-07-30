@@ -60,6 +60,9 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   protected abstract GenericCredential newGenericCred(
       String id, long expirationMillis, String location);
 
+  /** Returns a cloud-specific URI under the test storage root. */
+  protected abstract String location(String path);
+
   /** Set the credentials into the hadoop conf, as the initialized credential. */
   protected abstract void setInitialCred(Configuration conf, TemporaryCredentials cred);
 
@@ -83,29 +86,29 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   @Test
   public void selectsCredentialCoveringLocationByLongestPrefix() {
-    GenericCredential bucket = newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket");
-    GenericCredential table = newGenericCred("table", Long.MAX_VALUE, "s3://bucket/t");
-    GenericCredential child = newGenericCred("child", Long.MAX_VALUE, "s3://bucket/t/child");
+    GenericCredential bucket = newGenericCred("bucket", Long.MAX_VALUE, location(""));
+    GenericCredential table = newGenericCred("table", Long.MAX_VALUE, location("/t"));
+    GenericCredential child = newGenericCred("child", Long.MAX_VALUE, location("/t/child"));
 
-    T provider = provider("s3://bucket/t/child/file", bucket, table, child);
+    T provider = provider(location("/t/child/file"), bucket, table, child);
 
     assertThat(provider.accessCredentials()).isSameAs(child);
   }
 
   @Test
   public void selectedCredentialIsSharedAcrossProvidersWithoutRefetch() throws Exception {
-    GenericCredential firstSelected = newGenericCred("first", Long.MAX_VALUE, "s3://bucket/t");
-    GenericCredential secondSelected = newGenericCred("second", Long.MAX_VALUE, "s3://bucket/t");
+    GenericCredential firstSelected = newGenericCred("first", Long.MAX_VALUE, location("/t"));
+    GenericCredential secondSelected = newGenericCred("second", Long.MAX_VALUE, location("/t"));
     GenericCredentialFetcher secondFetcher =
         fetcherReturning(
-            List.of(newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"), secondSelected));
+            List.of(newGenericCred("bucket", Long.MAX_VALUE, location("")), secondSelected));
 
     T first =
         provider(
-            "s3://bucket/t/file",
-            newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"),
+            location("/t/file"),
+            newGenericCred("bucket", Long.MAX_VALUE, location("")),
             firstSelected);
-    T second = createTestProvider(providerConf("s3://bucket/t/file"), secondFetcher);
+    T second = createTestProvider(providerConf(location("/t/file")), secondFetcher);
 
     assertThat(first.accessCredentials()).isSameAs(firstSelected);
     assertThat(GenericCredentialProvider.globalCache.values()).containsExactly(firstSelected);
@@ -117,13 +120,13 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void renewalReselectsFromTheRefetchedList() throws Exception {
     long soon = clock.now().toEpochMilli() + 2000L;
-    GenericCredential first = newGenericCred("first", soon, "s3://bucket/t");
-    GenericCredential second = newGenericCred("second", Long.MAX_VALUE, "s3://bucket/t");
+    GenericCredential first = newGenericCred("first", soon, location("/t"));
+    GenericCredential second = newGenericCred("second", Long.MAX_VALUE, location("/t"));
     GenericCredentialFetcher fetcher =
         fetcherReturning(
-            List.of(newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"), first),
-            List.of(newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"), second));
-    Configuration conf = providerConf("s3://bucket/t/file");
+            List.of(newGenericCred("bucket", Long.MAX_VALUE, location("")), first),
+            List.of(newGenericCred("bucket", Long.MAX_VALUE, location("")), second));
+    Configuration conf = providerConf(location("/t/file"));
     conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
     T provider = createTestProvider(conf, fetcher);
 
@@ -136,16 +139,16 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   @Test
   public void singleCredentialIsUsedWithoutMatchingLocation() {
-    GenericCredential only = newGenericCred("only", Long.MAX_VALUE, "s3://other-bucket");
+    GenericCredential only = newGenericCred("only", Long.MAX_VALUE, location("/other"));
 
-    T provider = provider("s3://bucket/t/file", only);
+    T provider = provider(location("/t/file"), only);
 
     assertThat(provider.accessCredentials()).isSameAs(only);
   }
 
   @Test
   public void throwsWhenNoCredentialIsVended() {
-    T provider = provider("s3://bucket/t");
+    T provider = provider(location("/t"));
 
     assertThatThrownBy(provider::accessCredentials)
         .isInstanceOf(IllegalStateException.class)
@@ -157,8 +160,8 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     T provider =
         provider(
             null,
-            newGenericCred("a", Long.MAX_VALUE, "s3://bucket/a"),
-            newGenericCred("b", Long.MAX_VALUE, "s3://bucket/b"));
+            newGenericCred("a", Long.MAX_VALUE, location("/a")),
+            newGenericCred("b", Long.MAX_VALUE, location("/b")));
 
     assertThatThrownBy(provider::accessCredentials)
         .isInstanceOf(IllegalStateException.class)
@@ -169,9 +172,9 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   public void throwsWhenNoCredentialCoversLocation() {
     T provider =
         provider(
-            "s3://bucket/t",
-            newGenericCred("other", Long.MAX_VALUE, "s3://other"),
-            newGenericCred("sibling", Long.MAX_VALUE, "s3://bucket/sibling"));
+            location("/t"),
+            newGenericCred("other", Long.MAX_VALUE, location("/other")),
+            newGenericCred("sibling", Long.MAX_VALUE, location("/sibling")));
 
     assertThatThrownBy(provider::accessCredentials)
         .isInstanceOf(IllegalArgumentException.class)
@@ -180,15 +183,15 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   @Test
   public void selectsCredentialWhenCacheDisabledAndBypassesSharedCache() {
-    GenericCredential table = newGenericCred("table", Long.MAX_VALUE, "s3://bucket/t");
+    GenericCredential table = newGenericCred("table", Long.MAX_VALUE, location("/t"));
 
-    Configuration conf = providerConf("s3://bucket/t/file");
+    Configuration conf = providerConf(location("/t/file"));
     conf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
     T provider =
         createTestProvider(
             conf,
             fetcherReturning(
-                List.of(newGenericCred("bucket", Long.MAX_VALUE, "s3://bucket"), table)));
+                List.of(newGenericCred("bucket", Long.MAX_VALUE, location("")), table)));
 
     assertThat(provider.accessCredentials()).isSameAs(table);
     assertThat(GenericCredentialProvider.globalCache.values()).isEmpty();
@@ -501,10 +504,10 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void sameScopeDifferentPrefixUsesSeparateGlobalCacheEntries() throws Exception {
     Configuration confA = newTableBasedConf("shared-table");
-    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/a");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location("/a"));
 
     Configuration confB = newTableBasedConf("shared-table");
-    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/b");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location("/b"));
 
     TemporaryCredentials credA = newTempCred("locationA", Long.MAX_VALUE);
     TemporaryCredentials credB = newTempCred("locationB", Long.MAX_VALUE);
@@ -523,7 +526,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void sameScopeSamePrefixReusesGlobalCacheEntry() throws Exception {
     Configuration conf = newTableBasedConf("shared-table");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/a");
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location("/a"));
 
     TemporaryCredentials cred = newTempCred("locationA", Long.MAX_VALUE);
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
@@ -559,10 +562,10 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void differentScopeSamePrefixUsesSeparateGlobalCacheEntries() throws Exception {
     Configuration confA = newTableBasedConf("table-a");
-    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location("/shared"));
 
     Configuration confB = newTableBasedConf("table-b");
-    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location("/shared"));
 
     TemporaryCredentials credA = newTempCred("tableA", Long.MAX_VALUE);
     TemporaryCredentials credB = newTempCred("tableB", Long.MAX_VALUE);
@@ -586,7 +589,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     Configuration conf = newTableBasedConf("tid");
     conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
     if (location != null) {
-      conf.set(UCHadoopConfConstants.UC_CREDENTIAL_LOCATION_KEY, location);
+      conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location);
     }
     return conf;
   }

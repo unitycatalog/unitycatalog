@@ -66,6 +66,11 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
   }
 
   @Override
+  protected String location(String path) {
+    return "gs://bucket" + path;
+  }
+
+  @Override
   protected void setInitialCred(Configuration conf, TemporaryCredentials cred) {
     assertThat(cred.getGcpOauthToken()).isNotNull();
     conf.set(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, cred.getGcpOauthToken().getOauthToken());

@@ -76,6 +76,11 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
   }
 
   @Override
+  protected String location(String path) {
+    return "s3://bucket" + path;
+  }
+
+  @Override
   protected void setInitialCred(Configuration conf, TemporaryCredentials cred) {
     conf.set(
         UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, cred.getAwsTempCredentials().getAccessKeyId());
