@@ -100,6 +100,18 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   }
 
   @Test
+  public void initialCredentialReadsPrefixFromConf() {
+    Configuration conf = newTableBasedConf();
+    TemporaryCredentials credential = newTempCred("initial", Long.MAX_VALUE);
+    setInitialCred(conf, credential);
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "test-prefix");
+
+    T provider = createTestProvider(conf, mock(TemporaryCredentialsApi.class));
+
+    assertThat(provider.accessCredentials().prefix()).isEqualTo("test-prefix");
+  }
+
+  @Test
   public void testTableTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = newTableBasedConf();
     conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);

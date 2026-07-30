@@ -24,7 +24,7 @@ class S3CredPropsTest extends CredPropsBaseTest {
 
   @Override
   GenericCredential vendedCred(Long expirationMillis) {
-    return new AwsCredential("ak", "sk", "st", expirationMillis);
+    return new AwsCredential("ak", "sk", "st", expirationMillis, location());
   }
 
   @Override
@@ -50,7 +50,8 @@ class S3CredPropsTest extends CredPropsBaseTest {
         props(
             UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak",
             UCHadoopConfConstants.S3A_INIT_SECRET_KEY, "sk",
-            UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st");
+            UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st",
+            UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location());
     if (expiration != null) {
       keys.put(UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, String.valueOf(expiration));
     }

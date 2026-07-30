@@ -51,6 +51,7 @@ final class GcsCredPropsBuilder extends CredPropsBuilder {
         cred.getClass().getSimpleName());
     GcsCredential gcs = (GcsCredential) cred;
     set(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, gcs.oauthToken());
+    set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, gcs.prefix());
     // Expiration may be absent (e.g. a static token provider), so write the key only when set.
     if (gcs.expirationTimeMillis() != null) {
       set(

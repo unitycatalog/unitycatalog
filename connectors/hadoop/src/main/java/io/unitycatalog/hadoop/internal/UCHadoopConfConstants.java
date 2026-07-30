@@ -46,6 +46,7 @@ public class UCHadoopConfConstants {
   public static final String UC_AUTH_PREFIX = "fs.unitycatalog.auth.";
   public static final String UC_AUTH_TYPE = "fs.unitycatalog.auth.type";
   public static final String UC_AUTH_TOKEN_KEY = "fs.unitycatalog.auth.token";
+  public static final String UC_CREDENTIAL_PREFIX_KEY = "fs.unitycatalog.credential.prefix";
   /**
    * Stable id derived from the credential context ({@code catalogUri}, storage {@code scheme}, and
    * {@code TokenProvider.configs()}) to isolate caches per credential context.

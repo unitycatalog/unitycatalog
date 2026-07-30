@@ -27,7 +27,7 @@ class AzureCredPropsTest extends CredPropsBaseTest {
 
   @Override
   GenericCredential vendedCred(Long expirationMillis) {
-    return new AzureCredential("sas", expirationMillis);
+    return new AzureCredential("sas", expirationMillis, location());
   }
 
   @Override
@@ -51,7 +51,12 @@ class AzureCredPropsTest extends CredPropsBaseTest {
 
   @Override
   Map<String, String> initialCredKeys(Long expiration) {
-    Map<String, String> keys = props(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, "sas");
+    Map<String, String> keys =
+        props(
+            UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN,
+            "sas",
+            UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY,
+            location());
     if (expiration != null) {
       keys.put(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, String.valueOf(expiration));
     }

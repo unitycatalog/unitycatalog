@@ -6,12 +6,8 @@ import java.util.Objects;
 public final class GcsCredential extends GenericCredential {
   private final String oauthToken;
 
-  public GcsCredential(String oauthToken, Long expirationTimeMillis) {
-    this(oauthToken, expirationTimeMillis, null);
-  }
-
-  public GcsCredential(String oauthToken, Long expirationTimeMillis, String location) {
-    super(expirationTimeMillis, location);
+  public GcsCredential(String oauthToken, Long expirationTimeMillis, String prefix) {
+    super(expirationTimeMillis, prefix);
     Preconditions.checkArgument(
         oauthToken != null && !oauthToken.isEmpty(), "GCS OAuth token is missing");
     this.oauthToken = oauthToken;

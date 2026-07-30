@@ -28,8 +28,8 @@ class GenericCredentialTest {
             new AzureCredential("sas", 1L, "abfs://container/t")),
         Arguments.of(
             "GCS credentials with null expiration",
-            new GcsCredential("oauth", null),
-            new GcsCredential("oauth", null)));
+            new GcsCredential("oauth", null, null),
+            new GcsCredential("oauth", null, null)));
   }
 
   @ParameterizedTest(name = "{0}")
@@ -60,7 +60,7 @@ class GenericCredentialTest {
             new AwsCredential("ak", "sk", "st", 1L, "s3://bucket/t"),
             new AwsCredential("ak", "sk", "st", 2L, "s3://bucket/t")),
         Arguments.of(
-            "different AWS location",
+            "different AWS prefix",
             new AwsCredential("ak", "sk", "st", 1L, "s3://bucket/t"),
             new AwsCredential("ak", "sk", "st", 1L, "s3://bucket/other")),
         Arguments.of(
@@ -73,15 +73,15 @@ class GenericCredentialTest {
             new AzureCredential("sas", 2L, "abfs://container/t")),
         Arguments.of(
             "different GCS OAuth token",
-            new GcsCredential("oauth", 1L),
-            new GcsCredential("oauth2", 1L)),
+            new GcsCredential("oauth", 1L, null),
+            new GcsCredential("oauth2", 1L, null)),
         Arguments.of(
             "different GCS expiration",
-            new GcsCredential("oauth", 1L),
-            new GcsCredential("oauth", null)),
+            new GcsCredential("oauth", 1L, null),
+            new GcsCredential("oauth", null, null)),
         Arguments.of(
             "different credential subtypes",
-            new AzureCredential("azure", 1L),
-            new GcsCredential("gcs", 1L)));
+            new AzureCredential("azure", 1L, null),
+            new GcsCredential("gcs", 1L, null)));
   }
 }

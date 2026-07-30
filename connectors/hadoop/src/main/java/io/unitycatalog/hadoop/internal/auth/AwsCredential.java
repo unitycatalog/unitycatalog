@@ -9,17 +9,12 @@ public final class AwsCredential extends GenericCredential {
   private final String sessionToken;
 
   public AwsCredential(
-      String accessKeyId, String secretAccessKey, String sessionToken, Long expirationTimeMillis) {
-    this(accessKeyId, secretAccessKey, sessionToken, expirationTimeMillis, null);
-  }
-
-  public AwsCredential(
       String accessKeyId,
       String secretAccessKey,
       String sessionToken,
       Long expirationTimeMillis,
-      String location) {
-    super(expirationTimeMillis, location);
+      String prefix) {
+    super(expirationTimeMillis, prefix);
     Preconditions.checkArgument(
         accessKeyId != null && !accessKeyId.isEmpty(), "AWS access key is missing");
     Preconditions.checkArgument(

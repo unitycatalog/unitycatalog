@@ -32,7 +32,7 @@ class GcsCredPropsTest extends CredPropsBaseTest {
 
   @Override
   GenericCredential vendedCred(Long expirationMillis) {
-    return new GcsCredential("token", expirationMillis);
+    return new GcsCredential("token", expirationMillis, location());
   }
 
   @Override
@@ -55,7 +55,12 @@ class GcsCredPropsTest extends CredPropsBaseTest {
 
   @Override
   Map<String, String> initialCredKeys(Long expiration) {
-    Map<String, String> keys = props(UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN, "token");
+    Map<String, String> keys =
+        props(
+            UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN,
+            "token",
+            UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY,
+            location());
     if (expiration != null) {
       keys.put(
           UCHadoopConfConstants.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME, String.valueOf(expiration));
