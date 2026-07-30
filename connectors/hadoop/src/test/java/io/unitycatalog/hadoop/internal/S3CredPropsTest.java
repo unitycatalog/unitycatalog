@@ -50,8 +50,7 @@ class S3CredPropsTest extends CredPropsBaseTest {
         props(
             UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, "ak",
             UCHadoopConfConstants.S3A_INIT_SECRET_KEY, "sk",
-            UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st",
-            UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location());
+            UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, "st");
     if (expiration != null) {
       keys.put(UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, String.valueOf(expiration));
     }

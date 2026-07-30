@@ -51,12 +51,7 @@ class AzureCredPropsTest extends CredPropsBaseTest {
 
   @Override
   Map<String, String> initialCredKeys(Long expiration) {
-    Map<String, String> keys =
-        props(
-            UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN,
-            "sas",
-            UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY,
-            location());
+    Map<String, String> keys = props(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, "sas");
     if (expiration != null) {
       keys.put(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, String.valueOf(expiration));
     }

@@ -46,7 +46,6 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
     set(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, aws.accessKeyId());
     set(UCHadoopConfConstants.S3A_INIT_SECRET_KEY, aws.secretAccessKey());
     set(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, aws.sessionToken());
-    set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, aws.prefix());
     // Expiration may be absent (e.g. a static token provider), so write the key only when set.
     if (aws.expirationTimeMillis() != null) {
       set(

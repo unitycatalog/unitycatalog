@@ -51,7 +51,6 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
         cred.getClass().getSimpleName());
     AzureCredential azure = (AzureCredential) cred;
     set(UCHadoopConfConstants.AZURE_INIT_SAS_TOKEN, azure.sasToken());
-    set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, azure.prefix());
     // Expiration may be absent (e.g. a static token provider), so write the key only when set.
     if (azure.expirationTimeMillis() != null) {
       set(

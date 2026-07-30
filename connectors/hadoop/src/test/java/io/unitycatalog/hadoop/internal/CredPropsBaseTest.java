@@ -273,6 +273,7 @@ abstract class CredPropsBaseTest {
     } else {
       expected.putAll(staticCredKeys(expiration));
     }
+    expected.put(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location());
     if (credScoped) {
       expected.putAll(customImplKeys(conf));
     }

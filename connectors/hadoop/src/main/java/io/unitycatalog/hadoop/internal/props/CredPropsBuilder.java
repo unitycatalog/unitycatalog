@@ -84,6 +84,9 @@ public abstract class CredPropsBuilder {
     if (credScopedFsEnabled) {
       setCredScopedFsKeys();
     }
+    if (initialCredential.prefix() != null) {
+      set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, initialCredential.prefix());
+    }
     if (renewCredEnabled) {
       setVendedProviderKeys();
       set(UCHadoopConfConstants.UC_URI_KEY, catalogUri);
