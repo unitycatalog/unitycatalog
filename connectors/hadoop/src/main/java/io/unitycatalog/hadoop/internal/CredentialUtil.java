@@ -85,6 +85,27 @@ public final class CredentialUtil {
     return best;
   }
 
+  /**
+   * Returns the index of the prefix that covers {@code location} by the longest match, or {@code
+   * -1} if none does. Null prefixes are skipped.
+   */
+  public static int longestCoveringIndex(String location, List<String> prefixes) {
+    int best = -1;
+    int bestLen = -1;
+    for (int i = 0; i < prefixes.size(); i++) {
+      String prefix = prefixes.get(i);
+      if (prefix == null || !prefixCovers(location, prefix)) {
+        continue;
+      }
+      int len = stripTrailingSlashes(prefix).length();
+      if (len > bestLen) {
+        best = i;
+        bestLen = len;
+      }
+    }
+    return best;
+  }
+
   static boolean prefixCovers(String location, String prefix) {
     String l = stripTrailingSlashes(location);
     String p = stripTrailingSlashes(prefix);

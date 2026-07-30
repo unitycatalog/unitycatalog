@@ -37,16 +37,27 @@ public final class FileSystemCredId {
   /**
    * Like {@link #create(Configuration)} but for a filesystem being initialized on {@code uri}: when
    * the configuration carries no Unity Catalog credential type, falls back to a {@link
-   * DefaultCredId} derived from the URI's scheme and authority.
+   * DefaultCredId} derived from the URI's scheme and authority. Reads the prefix from a namespaced
+   * key when the selected credential's config is prefixed with {@code namespace} (multi-credential
+   * layout); a {@code null} namespace reads the top-level {@link
+   * UCHadoopConfConstants#UC_CREDENTIAL_PREFIX_KEY prefix} key.
    */
-  public static FileSystemCredId create(Configuration conf, URI uri) {
+  public static FileSystemCredId create(Configuration conf, URI uri, String namespace) {
     CredId credId = CredId.create(conf, () -> new DefaultCredId(uri, conf));
-    String prefix = getCredPrefix(conf);
+    String prefix = getCredPrefix(conf, namespace);
     return new FileSystemCredId(credId, prefix);
   }
 
   private static String getCredPrefix(Configuration conf) {
     return conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
+  }
+
+  private static String getCredPrefix(Configuration conf, String namespace) {
+    String prefixKey =
+        namespace == null
+            ? UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY
+            : namespace + UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY;
+    return conf.get(prefixKey);
   }
 
   /**
