@@ -17,15 +17,22 @@ public final class CredentialUtil {
 
   /** Converts a UC SDK {@link TemporaryCredentials} into an internal {@link GenericCredential}. */
   public static GenericCredential toGenericCredential(TemporaryCredentials tempCred) {
-    Long expiration = tempCred.getExpirationTime();
+    long expiry =
+        tempCred.getExpirationTime() == null ? Long.MAX_VALUE : tempCred.getExpirationTime();
     if (tempCred.getAwsTempCredentials() != null) {
       AwsCredentials aws = tempCred.getAwsTempCredentials();
       return new AwsCredential(
-          aws.getAccessKeyId(), aws.getSecretAccessKey(), aws.getSessionToken(), expiration);
+          aws.getAccessKeyId(),
+          aws.getSecretAccessKey(),
+          aws.getSessionToken(),
+          expiry,
+          tempCred.getUrl());
     } else if (tempCred.getAzureUserDelegationSas() != null) {
-      return new AzureCredential(tempCred.getAzureUserDelegationSas().getSasToken(), expiration);
+      return new AzureCredential(
+          tempCred.getAzureUserDelegationSas().getSasToken(), expiry, tempCred.getUrl());
     } else if (tempCred.getGcpOauthToken() != null) {
-      return new GcsCredential(tempCred.getGcpOauthToken().getOauthToken(), expiration);
+      return new GcsCredential(
+          tempCred.getGcpOauthToken().getOauthToken(), expiry, tempCred.getUrl());
     }
     throw new IllegalArgumentException("UC temporary credentials contained no cloud credential");
   }
@@ -40,11 +47,12 @@ public final class CredentialUtil {
           config.getS3AccessKeyId(),
           config.getS3SecretAccessKey(),
           config.getS3SessionToken(),
-          expiry);
+          expiry,
+          cred.getPrefix());
     } else if (isAzureConfig(config)) {
-      return new AzureCredential(config.getAzureSasToken(), expiry);
+      return new AzureCredential(config.getAzureSasToken(), expiry, cred.getPrefix());
     } else {
-      return new GcsCredential(config.getGcsOauthToken(), expiry);
+      return new GcsCredential(config.getGcsOauthToken(), expiry, cred.getPrefix());
     }
   }
 
