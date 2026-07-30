@@ -38,6 +38,26 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
 
   @Test
   @SneakyThrows
+  public void useCatalogCannotForceDeleteCatalog() {
+    createTestUser(REGULAR_1, "Regular 1");
+    grantPermissions(
+        REGULAR_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
+
+    CatalogsApi regularCatalogsApi =
+        new CatalogsApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)));
+    CatalogsApi adminCatalogsApi = new CatalogsApi(adminApiClient);
+    SchemasApi adminSchemasApi = new SchemasApi(adminApiClient);
+
+    assertPermissionDenied(() -> regularCatalogsApi.deleteCatalog(TestUtils.CATALOG_NAME, true));
+
+    assertThat(adminCatalogsApi.getCatalog(TestUtils.CATALOG_NAME).getName())
+        .isEqualTo(TestUtils.CATALOG_NAME);
+    assertThat(adminSchemasApi.getSchema(TestUtils.SCHEMA_FULL_NAME).getName())
+        .isEqualTo(TestUtils.SCHEMA_NAME);
+  }
+
+  @Test
+  @SneakyThrows
   public void testCatalogAccess() {
     createCommonTestUsers();
 
