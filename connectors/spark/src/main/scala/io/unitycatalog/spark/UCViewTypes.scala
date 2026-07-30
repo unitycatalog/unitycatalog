@@ -144,4 +144,25 @@ private[spark] object UCViewTypes {
     }
     configs
   }
+
+  /**
+   * Reads the persisted query-output column names of a view -- the names the view's SELECT list
+   * produces, which Spark uses to match the parsed query output against the declared view schema.
+   * These are stored as `view.query.out.numCols` plus `view.query.out.col.<i>` (Spark's
+   * `CatalogTable.VIEW_QUERY_OUTPUT_*`); returns them in ordinal order, or `None` when the count
+   * key is absent (a row that never persisted them). Shared by the view-load paths (`toView` on
+   * 4.2, `buildV1ViewTable` on 4.0/4.1); kept here so it stays free of Spark-4.2-only types and
+   * compiles on all supported Spark versions.
+   */
+  def extractQueryColumnNames(properties: util.Map[String, String]): Option[Seq[String]] = {
+    Option(properties.get(CatalogTable.VIEW_QUERY_OUTPUT_NUM_COLUMNS)).map { numColsStr =>
+      val numCols = numColsStr.toInt
+      (0 until numCols).map { i =>
+        val key = CatalogTable.VIEW_QUERY_OUTPUT_COLUMN_NAME_PREFIX + i
+        Option(properties.get(key)).getOrElse(
+          throw new IllegalStateException(
+            s"Corrupted view metadata: expected $numCols query-output columns but $key is missing"))
+      }
+    }
+  }
 }

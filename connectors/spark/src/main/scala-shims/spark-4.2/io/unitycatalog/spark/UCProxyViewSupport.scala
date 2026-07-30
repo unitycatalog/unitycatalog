@@ -159,6 +159,20 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     view.sqlConfigs().asScala.foreach { case (k, v) =>
       propertiesToServer.put(CatalogTable.VIEW_SQL_CONFIG_PREFIX + k, v)
     }
+    // Persist the query-output column names (the names the SELECT list produces, which can differ
+    // from the declared column names -- e.g. `CREATE VIEW v(a, b) AS SELECT x, y`). Spark resolves
+    // the view by matching the parsed query output against the declared schema BY these names, so
+    // they must round-trip; without them the read path can only guess from the declared names and
+    // resolution fails with INCOMPATIBLE_VIEW_SCHEMA_CHANGE. Stored as `view.query.out.*`, mirroring
+    // Spark's own v1 `CatalogTable` encoding.
+    val queryColumnNames = view.queryColumnNames()
+    if (queryColumnNames.nonEmpty) {
+      propertiesToServer.put(
+        CatalogTable.VIEW_QUERY_OUTPUT_NUM_COLUMNS, queryColumnNames.length.toString)
+      queryColumnNames.zipWithIndex.foreach { case (name, i) =>
+        propertiesToServer.put(CatalogTable.VIEW_QUERY_OUTPUT_COLUMN_NAME_PREFIX + i, name)
+      }
+    }
     // `UNSUPPORTED` is the metric-view sentinel, not a persistable mode; skip it and let the read
     // path default to compensation.
     Option(view.schemaMode())
@@ -226,10 +240,21 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       if (t.getTableType == TableType.METRIC_VIEW) SchemaUnsupported.toString
       else SchemaCompensation.toString
     val schemaMode = Option(props.get(CatalogTable.VIEW_SCHEMA_MODE)).getOrElse(defaultSchemaMode)
-    // The VIEW_SQL_CONFIG_PREFIX / VIEW_SCHEMA_MODE keys are surfaced via `withSqlConfigs` /
-    // `withSchemaMode`; drop them from `props` so they don't also leak into the user-visible
-    // `properties()` map and get re-persisted (double-counted) on a createView/replace round-trip.
+    // The query-output column names (what the view's SELECT list produces) can legitimately differ
+    // from the view's declared column names -- e.g. `CREATE VIEW v(a, b) AS SELECT x, y`, or a
+    // literal like `SELECT 1111`. Spark matches the parsed query output against the declared schema
+    // BY these names, so they must be the persisted `view.query.out.*` values rather than the
+    // declared column names; regenerating from the declared names breaks resolution with
+    // INCOMPATIBLE_VIEW_SCHEMA_CHANGE. Fall back to the declared names only when absent (a row
+    // written by an older/non-Spark client that never persisted them).
+    val queryColumnNames =
+      UCViewTypes.extractQueryColumnNames(props).getOrElse(columns.map(_.name()).toSeq)
+    // The VIEW_SQL_CONFIG_PREFIX / VIEW_SCHEMA_MODE / VIEW_QUERY_OUTPUT keys are surfaced via
+    // `withSqlConfigs` / `withSchemaMode` / `withQueryColumnNames`; drop them from `props` so they
+    // don't also leak into the user-visible `properties()` map and get re-persisted
+    // (double-counted) on a createView/replace round-trip.
     props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX))
+    props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_QUERY_OUTPUT_PREFIX))
     props.remove(CatalogTable.VIEW_SCHEMA_MODE)
 
     val builder = new View.Builder()
@@ -241,7 +266,7 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       .withCurrentNamespace(Array(t.getSchemaName))
       .withSqlConfigs(sqlConfigs)
       .withSchemaMode(schemaMode)
-      .withQueryColumnNames(columns.map(_.name()))
+      .withQueryColumnNames(queryColumnNames.toArray)
     Option(t.getComment).foreach(builder.withComment)
     Option(t.getViewDependencies).foreach { ucDeps =>
       builder.withViewDependencies(fromUcDependencyList(ucDeps))

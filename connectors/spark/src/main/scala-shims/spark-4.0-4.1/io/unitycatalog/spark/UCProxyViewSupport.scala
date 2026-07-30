@@ -36,14 +36,21 @@ trait UCProxyViewSupport { self: UCProxy =>
     // Spark 4.2 surfaces these through the View API (withQueryColumnNames / withSchemaMode); on v1
     // they are read from properties (viewQueryColumnNames / viewSchemaModeFromProperties), so
     // populate them here for parity. The `view.sqlConfig.*` keys are already carried in `base`.
+    //
+    // The query-output column names (what the SELECT list produces) can differ from the declared
+    // column names -- e.g. `CREATE VIEW v(a, b) AS SELECT x, y` or a literal `SELECT 1111`. Spark
+    // matches the parsed query output against the declared schema BY these names, so prefer the
+    // persisted `view.query.out.*` already in `base`; deriving from the declared `fields` would
+    // break resolution with INCOMPATIBLE_VIEW_SCHEMA_CHANGE. Only synthesize them (from the
+    // declared columns) when the row never persisted them.
     val queryOut =
-      if (fields.nonEmpty) {
+      if (base.contains(CatalogTable.VIEW_QUERY_OUTPUT_NUM_COLUMNS) || fields.isEmpty) {
+        Map.empty[String, String]
+      } else {
         Map(CatalogTable.VIEW_QUERY_OUTPUT_NUM_COLUMNS -> fields.length.toString) ++
           fields.zipWithIndex.map { case (f, i) =>
             s"${CatalogTable.VIEW_QUERY_OUTPUT_COLUMN_NAME_PREFIX}$i" -> f.name
           }
-      } else {
-        Map.empty[String, String]
       }
     val schemaModeDefault =
       if (base.contains(CatalogTable.VIEW_SCHEMA_MODE)) Map.empty[String, String]
