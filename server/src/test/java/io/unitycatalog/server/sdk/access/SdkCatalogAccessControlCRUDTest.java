@@ -38,26 +38,6 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
 
   @Test
   @SneakyThrows
-  public void useCatalogCannotForceDeleteCatalog() {
-    createTestUser(REGULAR_1, "Regular 1");
-    grantPermissions(
-        REGULAR_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
-
-    CatalogsApi regularCatalogsApi =
-        new CatalogsApi(TestUtils.createApiClient(createTestUserServerConfig(REGULAR_1)));
-    CatalogsApi adminCatalogsApi = new CatalogsApi(adminApiClient);
-    SchemasApi adminSchemasApi = new SchemasApi(adminApiClient);
-
-    assertPermissionDenied(() -> regularCatalogsApi.deleteCatalog(TestUtils.CATALOG_NAME, true));
-
-    assertThat(adminCatalogsApi.getCatalog(TestUtils.CATALOG_NAME).getName())
-        .isEqualTo(TestUtils.CATALOG_NAME);
-    assertThat(adminSchemasApi.getSchema(TestUtils.SCHEMA_FULL_NAME).getName())
-        .isEqualTo(TestUtils.SCHEMA_NAME);
-  }
-
-  @Test
-  @SneakyThrows
   public void testCatalogAccess() {
     createCommonTestUsers();
 
@@ -163,6 +143,12 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
 
     // delete a catalog -> denied
     assertPermissionDenied(() -> principal1CatalogsApi.deleteCatalog("admincatalog2", null));
+
+    // force delete a catalog -> USE CATALOG -> denied
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, "admincatalog1", Privileges.USE_CATALOG);
+    assertPermissionDenied(() -> regular1CatalogsApi.deleteCatalog("admincatalog1", true));
+    assertThat(adminCatalogsApi.getCatalog("admincatalog1").getName()).isEqualTo("admincatalog1");
+    assertThat(adminSchemasApi.getSchema("admincatalog1.default").getName()).isEqualTo("default");
 
     // delete a catalog -> metastore admin -> allowed
     adminCatalogsApi.deleteCatalog("admincatalog2", null);
