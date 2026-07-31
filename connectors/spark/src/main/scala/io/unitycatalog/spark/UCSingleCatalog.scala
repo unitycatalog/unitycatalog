@@ -736,6 +736,22 @@ object UCSingleCatalog {
     Seq(catalogName, ident.namespace()(0), ident.name()).mkString(".")
   }
 
+  /**
+   * True when `ident` can be expressed as the dotted `catalog.schema.table` string UC identifies
+   * tables by. A dot inside the schema or table name makes the joined name ambiguous, and UC
+   * rejects it rather than guessing, so such an identifier can never denote a table UC holds.
+   *
+   * Spark asks the current catalog to load every relation before falling back to path-based
+   * resolution, so `SELECT * FROM parquet.`s3://bucket/dir/part.parquet`` arrives here as schema
+   * `parquet` with the path as the table name. Callers treat these as absent, which lets Spark
+   * carry on to `ResolveSQLOnFile` -- see [[UCProxy.getUCTableLike]].
+   */
+  def isAddressableTableName(ident: Identifier): Boolean = {
+    ident.namespace().length == 1 &&
+      !ident.namespace()(0).contains(".") &&
+      !ident.name().contains(".")
+  }
+
 }
 
 /** Internal signal that preserves a view row rejected by the table-only catalog surface. */
@@ -797,7 +813,12 @@ private[spark] class UCProxy(
   // exception. `loadTable` re-raises `NoSuchTableException` on `None` (Spark's resolver expects
   // that); the passive-filter paths (`dropTable`, `dropView`) and `loadView` map `None` to their
   // own not-found result.
+  //
+  // Names UC cannot address answer `None` without an RPC. UC rejects them with 400, which Spark's
+  // resolver does not absorb the way it absorbs a not-found, so asking would surface a name Spark
+  // is merely probing (a bare `parquet.`s3://...`` path) as a query failure.
   private[spark] def getUCTableLike(ident: Identifier): Option[UCTableInfo] = {
+    if (!UCSingleCatalog.isAddressableTableName(ident)) return None
     val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
     try {
       Some(tablesApi.getTable(
