@@ -191,37 +191,50 @@ Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
 
 ## Deployment
 
-- To create a tarball that can be used to deploy the UC server or run the CLI, run the following:
-  ```sh
-  build/sbt createTarball
-  ```
-  This will create a tarball in the `target` directory. See the full [deployment guide](docs/deployment.md) for more details.
+To create a tarball that can be used to deploy the UC server or run the CLI, run the following:
+
+```sh
+build/sbt createTarball
+```
+
+This will create a tarball in the `target` directory. See the full [deployment guide](docs/deployment.md) for more details.
 
 ## Compiling and testing
 
-- Install JDK 17 by whatever mechanism is appropriate for your system, and
-  set that version to be the default Java version (e.g. via the env variable `JAVA_HOME`)
-- To compile all the code without running tests, run the following:
-  ```sh
-  build/sbt clean compile
-  ```
-- To compile and execute tests, run the following:
-  ```sh
-  build/sbt -J-Xmx2G clean test
-  ```
-- To execute tests with coverage, run the following:
-  ```sh
-  build/sbt -J-Xmx2G jacoco
-  ```
-- To update the API specification, just update the `api/all.yaml` and then run the following:
-  ```sh
-  build/sbt generate
-  ```
-  This will regenerate the OpenAPI data models in the UC server and data models + APIs in the client SDK.
-- To format the code, run the following:
-  ```sh
-  build/sbt javafmtAll
-  ```
+Install JDK 17 by whatever mechanism is appropriate for your system, and
+set that version to be the default Java version (e.g. via the env variable `JAVA_HOME`)
+
+To compile all the code without running tests, run the following:
+
+```sh
+build/sbt clean compile
+```
+
+To compile and execute tests, run the following:
+
+```sh
+build/sbt -J-Xmx2G clean test
+```
+
+To execute tests with coverage, run the following:
+
+```sh
+build/sbt -J-Xmx2G jacoco
+```
+
+To update the API specification, just update the `api/all.yaml` and then run the following:
+
+```sh
+build/sbt generate
+```
+
+This will regenerate the OpenAPI data models in the UC server and data models + APIs in the client SDK.
+
+To format the code, run the following:
+
+```sh
+build/sbt javafmtAll
+```
 
 ## Setting up IDE
 
@@ -249,3 +262,27 @@ imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-
 
 For an overview of how to contribute to the documentation, please see our introduction [here](./docs/README.md).
 For the official documentation, please take a look at [https://docs.unitycatalog.io/](https://docs.unitycatalog.io/).
+
+# Docker Builds
+
+You can build a local version of the Unity Catalog Server or UI for local testing. All you need is Docker on your machine.
+
+## Unity Catalog Server
+
+```bash
+docker build \
+  -t unitycatalog/unitycatalog:local \
+  .
+```
+
+> Note: `--build-arg MAVEN_PROXY_URL=https://maven-proxy.example.com` can be added to the build args for developers behind a corporate firewall
+
+## Unity Catalog UI
+
+```bash
+docker build \
+  -t unitycatalog/unitycatalog-ui:local \
+  ./ui
+```
+
+> Note: `--build-arg NPM_REGISTRY=https://npm-proxy.example.com/` can be added to the build args for developers behind a corporate firewall
