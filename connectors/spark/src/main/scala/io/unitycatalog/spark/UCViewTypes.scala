@@ -149,6 +149,9 @@ private[spark] object UCViewTypes {
   def addQueryColumnNames(
       properties: util.Map[String, String],
       queryColumnNames: Array[String]): Unit = {
+    if (queryColumnNames.isEmpty) {
+      return
+    }
     properties.put(
       CatalogTable.VIEW_QUERY_OUTPUT_NUM_COLUMNS,
       queryColumnNames.length.toString)
@@ -172,23 +175,37 @@ private[spark] object UCViewTypes {
    * written by an older connector and the read path should fall back to the stored column names.
    */
   def extractQueryColumnNames(properties: util.Map[String, String]): Option[Array[String]] = {
-    Option(properties.get(CatalogTable.VIEW_QUERY_OUTPUT_NUM_COLUMNS)).map { numCols =>
+    Option(properties.get(CatalogTable.VIEW_QUERY_OUTPUT_NUM_COLUMNS)).flatMap { numCols =>
       val count = numCols.toInt
-      (0 until count)
-        .map(index => properties.get(s"${CatalogTable.VIEW_QUERY_OUTPUT_COLUMN_NAME_PREFIX}$index"))
-        .toArray
+      if (count == 0) {
+        None
+      } else {
+        Some((0 until count).map { index =>
+          val key = s"${CatalogTable.VIEW_QUERY_OUTPUT_COLUMN_NAME_PREFIX}$index"
+          Option(properties.get(key)).getOrElse(
+            throw new IllegalStateException(
+              s"Corrupted view metadata: expected $count query-output columns but $key is missing"))
+        }.toArray)
+      }
     }
   }
 
   /** Returns the persisted creation-time catalog and namespace when present. */
   def extractCreationContext(
       properties: util.Map[String, String]): Option[(String, Array[String])] = {
-    Option(properties.get(CatalogTable.VIEW_CATALOG_AND_NAMESPACE)).map { numParts =>
+    Option(properties.get(CatalogTable.VIEW_CATALOG_AND_NAMESPACE)).flatMap { numParts =>
       val count = numParts.toInt
-      val parts = (0 until count)
-        .map(index => properties.get(s"${CatalogTable.VIEW_CATALOG_AND_NAMESPACE_PART_PREFIX}$index"))
-        .toSeq
-      (parts.head, parts.tail.toArray)
+      if (count == 0) {
+        None
+      } else {
+        val parts = (0 until count).map { index =>
+          val key = s"${CatalogTable.VIEW_CATALOG_AND_NAMESPACE_PART_PREFIX}$index"
+          Option(properties.get(key)).getOrElse(
+            throw new IllegalStateException(
+              s"Corrupted view metadata: expected $count catalog/namespace parts but $key is missing"))
+        }.toSeq
+        Some((parts.head, parts.tail.toArray))
+      }
     }
   }
 
