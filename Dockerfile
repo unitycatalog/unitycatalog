@@ -8,6 +8,18 @@ FROM amazoncorretto:17-alpine3.20-jdk@sha256:c045f0537bc890f9e61924f33f35e9667f6
 ARG HOME
 ENV HOME=$HOME
 
+# Corporate Maven mirror for the sbt launcher / Ivy (see build/sbt).
+# Pass at build time: --build-arg MAVEN_PROXY_URL=$MAVEN_PROXY_URL
+ARG MAVEN_PROXY_URL
+ENV MAVEN_PROXY_URL=${MAVEN_PROXY_URL}
+
+# The JVM derives user.home from the passwd entry (/root for uid 0) and ignores
+# HOME, so coursier would otherwise cache jars in /root/.cache, outside the tree
+# the runtime stage copies. sbt bakes absolute jar paths into
+# server/target/classpath, so this directory must resolve identically in both
+# stages or the server starts with some classpath entries missing.
+ENV COURSIER_CACHE=$HOME/.cache/coursier/v1
+
 WORKDIR $HOME
 
 COPY --parents dev/ build/ project/ examples/ server/ api/ clients/ version.sbt build.sbt ./
