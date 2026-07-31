@@ -1,6 +1,7 @@
 package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -299,5 +300,81 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     session = createUcSparkSession(false, false, false, SPARK_CATALOG);
     assertThatThrownBy(() -> sql("SELECT * FROM parquet.`%s`", location))
         .satisfies(e -> assertCauseChainContainsMessage(e, "accessKey0"));
+  }
+
+  /**
+   * Import-style deduped row-count query with {@code parquet.`s3://...`} nested inside a subquery
+   * ({@code SELECT COUNT(*) FROM (SELECT row_number() ... FROM parquet.`path`) ...}).
+   */
+  @Test
+  public void testNestedCountFromBareParquetPath() throws IOException, ParseException {
+    stopSession();
+    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
+    String location = bucketPath("nested_count");
+    sql(
+        "INSERT OVERWRITE DIRECTORY '%s' USING parquet "
+            + "SELECT * FROM (SELECT 1 AS i, 'a' AS s UNION ALL SELECT 1 AS i, 'b' AS s)",
+        location);
+
+    String countSql =
+        String.format(
+            "SELECT COUNT(*) AS c FROM ("
+                + " SELECT row_number() OVER (PARTITION BY i ORDER BY i DESC) AS rn"
+                + " FROM parquet.`%s`"
+                + ") WHERE rn = 1",
+            location);
+    LogicalPlan plan = session.sessionState().sqlParser().parsePlan(countSql);
+    UnresolvedRelation relation = findBareCloudPathRelation(plan);
+    assertThat(relation)
+        .as("nested subquery should still contain bare cloud-path relation: %s", plan)
+        .isNotNull();
+    assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+
+    List<Row> rows = session.sql(countSql).collectAsList();
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getLong(0)).isEqualTo(1L);
+  }
+
+  /**
+   * MERGE-based ingest into a UC Delta table using {@code USING (SELECT ... FROM
+   * parquet.`s3://...`)} rather than a registered external table.
+   */
+  @Test
+  public void testMergeIntoDeltaTableFromBareParquetPath() throws IOException, ParseException {
+    stopSession();
+    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
+    String targetTable = String.format("%s.%s.path_merge_target", SPARK_CATALOG, SCHEMA_NAME);
+    String location = bucketPath("merge_source");
+
+    sql("CREATE TABLE IF NOT EXISTS %s (i INT, s STRING) USING DELTA", targetTable);
+    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 10 AS i, 'x' AS s", location);
+
+    String mergeSql =
+        String.format(
+            "MERGE INTO %s trgt "
+                + "USING (SELECT i, s FROM parquet.`%s`) src "
+                + "ON false "
+                + "WHEN NOT MATCHED THEN INSERT *",
+            targetTable, location);
+    LogicalPlan plan = session.sessionState().sqlParser().parsePlan(mergeSql);
+    UnresolvedRelation relation = findBareCloudPathRelation(plan);
+    assertThat(relation)
+        .as("MERGE source subquery should contain bare cloud-path relation: %s", plan)
+        .isNotNull();
+    assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+
+    sql(
+        "MERGE INTO %s trgt "
+            + "USING (SELECT i, s FROM parquet.`%s`) src "
+            + "ON false "
+            + "WHEN NOT MATCHED THEN INSERT *",
+        targetTable, location);
+
+    List<Row> rows = sql("SELECT i, s FROM %s ORDER BY i", targetTable);
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getInt(0)).isEqualTo(10);
+    assertThat(rows.get(0).getString(1)).isEqualTo("x");
+
+    sql("DROP TABLE IF EXISTS %s", targetTable);
   }
 }
