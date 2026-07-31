@@ -55,8 +55,7 @@ public class EnumDeserializationTest {
   @Test
   public void testDataSourceFormatUnknownValueDeserialization() {
     // Test that an unknown DataSourceFormat value deserializes to UNKNOWN
-    // Using ICEBERG as an example of a format not in the current API spec
-    String unknownFormat = "\"ICEBERG\"";
+    String unknownFormat = "\"NEW_FUTURE_FORMAT\"";
     assertThatCode(
             () -> {
               DataSourceFormat format =
@@ -194,7 +193,7 @@ public class EnumDeserializationTest {
             + "\"table_type\": \"TEMPORARY_VIEW\","
             + "\"catalog_name\": \"main\","
             + "\"schema_name\": \"default\","
-            + "\"data_source_format\": \"ICEBERG\","
+            + "\"data_source_format\": \"NEW_FUTURE_FORMAT\","
             + "\"created_at\": 1234567890"
             + "}";
 
