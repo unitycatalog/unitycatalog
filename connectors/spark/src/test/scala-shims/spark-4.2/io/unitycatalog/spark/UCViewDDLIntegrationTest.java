@@ -5,23 +5,20 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.client.model.ColumnInfo;
-import io.unitycatalog.client.model.ColumnTypeName;
-import io.unitycatalog.client.model.CreateTable;
-import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
-import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
-import java.nio.file.Files;
-import java.util.List;
+import java.io.File;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Spark 4.2 exposes the v2 {@code ViewCatalog}, so CREATE / SHOW / DROP VIEW all route to Unity
  * Catalog. Complements the shared read guarantee with the full DDL round-trip.
  */
 public class UCViewDDLIntegrationTest extends AbstractViewReadIntegrationTest {
+
+  @TempDir private File sourceTableDir;
 
   @Override
   protected void createView() {
@@ -44,7 +41,7 @@ public class UCViewDDLIntegrationTest extends AbstractViewReadIntegrationTest {
   public void testCreateViewPersistsDerivedDependencies() {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
     String srcFullName = CATALOG_NAME + "." + SCHEMA_NAME + ".dep_src";
-    createExternalTable("dep_src");
+    createSourceTable(srcFullName);
     sql("CREATE VIEW %s AS SELECT * FROM %s", VIEW_FULL_NAME, srcFullName);
 
     TableInfo view = getServerTable(VIEW_FULL_NAME);
@@ -58,7 +55,7 @@ public class UCViewDDLIntegrationTest extends AbstractViewReadIntegrationTest {
   public void testCreateViewDerivesDependenciesWithCaseInsensitiveCte() {
     session = createSparkSessionWithCatalogs(CATALOG_NAME);
     String srcFullName = CATALOG_NAME + "." + SCHEMA_NAME + ".dep_src";
-    createExternalTable("dep_src");
+    createSourceTable(srcFullName);
     sql(
         "CREATE VIEW %s AS WITH v_cte AS (SELECT * FROM %s) SELECT * FROM V_CTE",
         VIEW_FULL_NAME, srcFullName);
@@ -68,29 +65,8 @@ public class UCViewDDLIntegrationTest extends AbstractViewReadIntegrationTest {
         .containsExactly(srcFullName);
   }
 
-  /** Registers an external parquet table server-side so it is resolvable by Spark's analyzer. */
-  @SneakyThrows
-  private void createExternalTable(String name) {
-    new SdkTableOperations(createApiClient(serverConfig))
-        .createTable(
-            new CreateTable()
-                .name(name)
-                .catalogName(CATALOG_NAME)
-                .schemaName(SCHEMA_NAME)
-                .tableType(TableType.EXTERNAL)
-                .dataSourceFormat(DataSourceFormat.PARQUET)
-                .storageLocation(Files.createTempDirectory("uc_" + name).toUri().toString())
-                .columns(
-                    List.of(
-                        new ColumnInfo()
-                            .name("c")
-                            .typeName(ColumnTypeName.INT)
-                            .typeText("int")
-                            .typeJson(
-                                "{\"name\":\"c\",\"type\":\"integer\",\"nullable\":true,"
-                                    + "\"metadata\":{}}")
-                            .nullable(true)
-                            .position(0))));
+  private void createSourceTable(String fullName) {
+    sql("CREATE TABLE %s (c INT) USING parquet LOCATION '%s'", fullName, sourceTableDir.toURI());
   }
 
   @SneakyThrows

@@ -65,10 +65,10 @@ private[spark] object UCViewDependencies extends Logging {
       // CTEs resolve in declaration order: each definition sees the ones before it (plus itself
       // under WITH RECURSIVE); the main query sees them all.
       var visible = visibleCtes
-      val fromDefinitions = w.cteRelations.flatMap { cte =>
-        val name = normalize(cte._1, caseSensitive)
+      val fromDefinitions = w.cteRelations.flatMap { case (cteName, ctePlan, _) =>
+        val name = normalize(cteName, caseSensitive)
         val bodyScope = if (w.allowRecursion) visible + name else visible
-        val deps = baseRelations(cte._2, bodyScope, caseSensitive)
+        val deps = baseRelations(ctePlan, bodyScope, caseSensitive)
         visible += name
         deps
       }

@@ -47,4 +47,25 @@ class UCViewDependenciesSuite {
   @Test
   def dropsReferencesWithMoreThanThreeParts(): Unit =
     assertTrue(deps("SELECT * FROM a.b.c.d").isEmpty)
+
+  @Test
+  def doesNotLeakCteAliasAsDependency(): Unit =
+    assertEquals(Seq("main.default.t"), deps("WITH c AS (SELECT * FROM t) SELECT * FROM c"))
+
+  @Test
+  def resolvesChainedCtesInDeclarationOrderWithoutLeaking(): Unit =
+    assertEquals(
+      Seq("main.default.t1"),
+      deps("WITH a AS (SELECT * FROM t1), b AS (SELECT * FROM a) SELECT * FROM b"))
+
+  @Test
+  def doesNotLeakRecursiveCteSelfReference(): Unit =
+    assertTrue(
+      deps("WITH RECURSIVE r AS (SELECT 1 UNION ALL SELECT * FROM r) SELECT * FROM r").isEmpty)
+
+  @Test
+  def keepsBaseTableInRecursiveCteWithoutLeakingSelfReference(): Unit =
+    assertEquals(
+      Seq("main.default.t"),
+      deps("WITH RECURSIVE r AS (SELECT * FROM t UNION ALL SELECT * FROM r) SELECT * FROM r"))
 }
