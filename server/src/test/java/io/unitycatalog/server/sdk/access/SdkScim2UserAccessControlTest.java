@@ -31,22 +31,15 @@ public class SdkScim2UserAccessControlTest extends SdkAccessControlBaseCRUDTest 
 
   @Test
   @SneakyThrows
-  public void testMetastoreAdminCanListAndGetUsers() {
+  public void testOnlyMetastoreAdminCanListAndGetUsers() {
     UserResourceList users = usersApi.listUsers(null, null, null);
     assertThat(users.getResources()).extracting(UserResource::getId).contains(otherUser.getId());
 
     UserResource fetchedUser = usersApi.getUser(otherUser.getId());
     assertThat(fetchedUser.getId()).isEqualTo(otherUser.getId());
     assertThat(fetchedUser.getEmails().get(0).getValue()).isEqualTo(OTHER_USER);
-  }
 
-  @Test
-  public void testRegularUserCannotListUsers() {
     assertScimPermissionDenied(() -> regularUsersApi.listUsers(null, null, null));
-  }
-
-  @Test
-  public void testRegularUserCannotGetAnotherUserById() {
     assertScimPermissionDenied(() -> regularUsersApi.getUser(otherUser.getId()));
   }
 
