@@ -69,6 +69,12 @@ public class CliUtils {
 
   public static final int TABLE_WIDTH = 120;
 
+  // freva ascii-table pads each cell with one space on each side and treats
+  // Column.maxWidth as the total (content + padding) width, so a column's
+  // usable content budget is maxWidth - 2 * CELL_PADDING. Our columnWidths[]
+  // values are content widths, so add this back when handing them to freva.
+  private static final int CELL_PADDING = 1;
+
   public static class CliOptions {
     List<CliParams> necessaryParams;
     List<CliParams> optionalParams;
@@ -490,19 +496,28 @@ public class CliUtils {
     int[] fixedWidthIndices =
         IntStream.range(0, fieldNames.size()).filter(idx -> isFixedWidthColumns[idx]).toArray();
 
+    int flexibleColumnCount = fieldNames.size() - fixedWidthIndices.length;
+    if (flexibleColumnCount == 0) {
+      // Every column is fixed width, so there is nothing to shrink; leave the
+      // widths as-is (the renderer's overall max-width still caps the total).
+      return;
+    }
+
     int widthRemaining =
         outputWidth
             - fieldNames.size()
             - IntStream.of(fixedWidthIndices).map(idx -> columnWidths[idx]).sum();
 
-    int columnWidth = (widthRemaining) / (fieldNames.size() - fixedWidthIndices.length);
+    int columnWidth = widthRemaining / flexibleColumnCount;
 
     IntStream.range(0, fieldNames.size())
         .filter(idx -> !isFixedWidthColumns[idx])
         .forEach(idx -> columnWidths[idx] = columnWidth);
   }
 
-  private static String processOutputAsRows(JsonNode node, int outputWidth) {
+  // Package-private for unit testing of the table-rendering path (CLI integration
+  // tests use --output json and never exercise this).
+  static String processOutputAsRows(JsonNode node, int outputWidth) {
     List<String> fieldNames = getFieldNames(node.get(0));
 
     int[] columnWidths = new int[fieldNames.size()];
@@ -520,7 +535,7 @@ public class CliUtils {
               .header(fieldNames.get(i).toUpperCase())
               .headerAlign(HorizontalAlign.CENTER)
               .dataAlign(HorizontalAlign.LEFT)
-              .maxWidth(columnWidths[i], OverflowBehaviour.ELLIPSIS_RIGHT);
+              .maxWidth(columnWidths[i] + 2 * CELL_PADDING, OverflowBehaviour.ELLIPSIS_RIGHT);
     }
 
     List<String[]> rows = new ArrayList<>();
@@ -544,7 +559,8 @@ public class CliUtils {
         .asString();
   }
 
-  private static String processOutputAsKeysAndValues(JsonNode node, int outputWidth) {
+  // Package-private for unit testing (see processOutputAsRows).
+  static String processOutputAsKeysAndValues(JsonNode node, int outputWidth) {
     int minOutputWidth = outputWidth / 2;
 
     Column keyColumn =
@@ -552,15 +568,15 @@ public class CliUtils {
             .header("KEY")
             .headerAlign(HorizontalAlign.CENTER)
             .dataAlign(HorizontalAlign.LEFT)
-            .minWidth(minOutputWidth / 3)
-            .maxWidth(outputWidth / 4, OverflowBehaviour.NEWLINE);
+            .minWidth(minOutputWidth / 3 + 2 * CELL_PADDING)
+            .maxWidth(outputWidth / 4 + 2 * CELL_PADDING, OverflowBehaviour.NEWLINE);
     Column valueColumn =
         new Column()
             .header("VALUE")
             .headerAlign(HorizontalAlign.CENTER)
             .dataAlign(HorizontalAlign.LEFT)
-            .minWidth(2 * minOutputWidth / 3)
-            .maxWidth(3 * outputWidth / 4, OverflowBehaviour.NEWLINE);
+            .minWidth(2 * minOutputWidth / 3 + 2 * CELL_PADDING)
+            .maxWidth(3 * outputWidth / 4 + 2 * CELL_PADDING, OverflowBehaviour.NEWLINE);
 
     List<String[]> rows = new ArrayList<>();
     node.fields()

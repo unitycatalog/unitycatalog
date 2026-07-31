@@ -194,9 +194,11 @@ public class DeltaKernelUtils {
           DeltaKernelReadUtils.readData(engine, readSchema, scanBuilder.build(), maxResults);
       List<String[]> rows = new ArrayList<>();
       for (Row row : rowData) {
+        // getValue may return null for SQL NULLs; leave them null so freva
+        // renders an empty cell rather than the literal string "null".
         String[] rowValues =
             IntStream.range(0, schema.length)
-                .mapToObj(ordinal -> String.valueOf(DeltaKernelReadUtils.getValue(row, ordinal)))
+                .mapToObj(ordinal -> DeltaKernelReadUtils.getValue(row, ordinal))
                 .toArray(String[]::new);
         rows.add(rowValues);
       }
