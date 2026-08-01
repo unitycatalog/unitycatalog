@@ -25,7 +25,7 @@ public final class FileSystemCredId {
   }
 
   /**
-   * Derives the id from {@code conf}: the {@link CredId} for the credential scope plus the {@link
+   * Derives the id from {@code conf}: the {@link CredId} for the credential request plus the {@link
    * UCHadoopConfConstants#UC_CREDENTIAL_PREFIX_KEY prefix} being served.
    */
   public static FileSystemCredId create(Configuration conf) {
