@@ -36,16 +36,12 @@ import org.apache.hadoop.fs.FilterFileSystem;
  *       CredScopedFileSystem} for each file access. Because {@code CredScopedFileSystem} is a thin,
  *       stateless wrapper, this is cheap.
  *   <li><b>Global credential-scoped cache for the real delegate.</b> {@code CredScopedFileSystem}
- *       maintains a static {@link #CACHE} keyed by {@link FileSystemCredId}. Hadoop's canonical
- *       filesystem API associates one credential with an entire filesystem, while each credential
- *       issued by Unity Catalog is associated with a storage location. The key therefore combines
- *       the credential request with its storage location to distinguish concrete filesystem
- *       instances in the JVM-wide cache. On each {@link #initialize(URI, Configuration)} call the
- *       key is derived from the Hadoop {@link Configuration} injected by {@link
- *       io.unitycatalog.hadoop.internal.CredPropsUtil}, and the corresponding real {@link
- *       FileSystem} (e.g. {@code S3AFileSystem}) is looked up or created. Requests that share the
- *       same credential scope and prefix therefore reuse the same underlying connection pool, while
- *       requests with different credentials receive their own isolated instance.
+ *       maintains a static {@link #CACHE} keyed by {@link FileSystemCredId}. On each {@link
+ *       #initialize(URI, Configuration)} call the key is derived from the Hadoop {@link
+ *       Configuration} injected by {@link io.unitycatalog.hadoop.internal.CredPropsUtil}, and the
+ *       corresponding real {@link FileSystem} (e.g. {@code S3AFileSystem}) is looked up or created.
+ *       Requests that share the same key reuse the same underlying connection pool, while other
+ *       requests receive an isolated instance.
  * </ol>
  *
  * <p>All public {@link FileSystem} operations are delegated to the credential-scoped instance via

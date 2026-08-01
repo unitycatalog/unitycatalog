@@ -6,15 +6,10 @@ import java.util.Objects;
 import org.apache.hadoop.conf.Configuration;
 
 /**
- * Uniquely identifies a Hadoop filesystem by the credential request and storage prefix that it
- * serves. This maintains the semantics that a single filesystem is associated with a single
- * credential and single storage prefix that it serves.
- *
- * <ul>
- *   <li>{@link CredId} — the credential request, used to retrieve the vended credential.
- *   <li>{@code prefix} — the storage prefix the credential covers, which distinguishes filesystem
- *       instances when one request vends several prefix-scoped credentials.
- * </ul>
+ * Uniquely identifies a concrete Hadoop filesystem. Hadoop's canonical filesystem API supports one
+ * credential for the entire filesystem, while each credential returned by Unity Catalog is scoped
+ * to a storage prefix. Both the credential request ({@link CredId}) and prefix are therefore
+ * required to identify the filesystem.
  *
  * <p>{@code prefix} is nullable: a {@code null} prefix keys purely by {@link CredId}.
  *
