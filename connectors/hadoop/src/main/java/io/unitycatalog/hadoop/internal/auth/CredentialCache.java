@@ -7,9 +7,9 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Caches vended {@link GenericCredential}s keyed by their scope ({@code K}). A cached credential is
- * reused while it is still valid and re-fetched via the supplied factory only once it is about to
- * expire.
+ * Caches vended {@link GenericCredential}s keyed by the supplied key ({@code K}). A cached
+ * credential is reused while it is still valid and re-fetched via the supplied factory only once it
+ * is about to expire.
  */
 public class CredentialCache<K> {
   private static final int DEFAULT_MAX_SIZE = 1024;

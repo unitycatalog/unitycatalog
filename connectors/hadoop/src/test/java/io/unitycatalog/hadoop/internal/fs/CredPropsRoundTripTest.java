@@ -18,7 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
-/** Round-trip tests for credential properties written by the driver and read by Hadoop. */
+/** Round-trip tests for credential properties produced and consumed during filesystem setup. */
 class CredPropsRoundTripTest {
 
   private static final String LOCATION = "s3://bucket/table";

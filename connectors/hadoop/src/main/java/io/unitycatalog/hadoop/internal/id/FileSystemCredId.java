@@ -6,25 +6,25 @@ import java.util.Objects;
 import org.apache.hadoop.conf.Configuration;
 
 /**
- * Uniquely identifies a credential-scoped delegate filesystem, so the correct delegate can be
- * selected and reused from the cache. A delegate covers exactly one credential and storage prefix,
- * and this id pairs the two dimensions that pin it down:
+ * Uniquely identifies a Hadoop filesystem by the credential request and storage prefix that it
+ * serves. This maintains the semantics that a single filesystem is associated with a single
+ * credential and single storage prefix that it serves.
  *
  * <ul>
- *   <li>{@link CredId} — the credential scope, used to retrieve the vended credential.
- *   <li>{@code prefix} — the storage prefix the credential covers, which distinguishes delegates
- *       when a single credential scope vends several prefix-scoped credentials.
+ *   <li>{@link CredId} — the credential request, used to retrieve the vended credential.
+ *   <li>{@code prefix} — the storage prefix the credential covers, which distinguishes filesystem
+ *       instances when one request vends several prefix-scoped credentials.
  * </ul>
  *
  * <p>{@code prefix} is nullable: a {@code null} prefix keys purely by {@link CredId}.
  *
  * <p><b>Internal API — not for external use. May change without notice.</b>
  */
-public final class DelegateFileSystemId {
+public final class FileSystemCredId {
   private final CredId credId;
   private final String prefix;
 
-  private DelegateFileSystemId(CredId credId, String prefix) {
+  private FileSystemCredId(CredId credId, String prefix) {
     this.credId = credId;
     this.prefix = prefix;
   }
@@ -33,8 +33,8 @@ public final class DelegateFileSystemId {
    * Derives the id from {@code conf}: the {@link CredId} for the credential scope plus the {@link
    * UCHadoopConfConstants#UC_CREDENTIAL_PREFIX_KEY prefix} being served.
    */
-  public static DelegateFileSystemId create(Configuration conf) {
-    return new DelegateFileSystemId(CredId.create(conf), prefix(conf));
+  public static FileSystemCredId create(Configuration conf) {
+    return new FileSystemCredId(CredId.create(conf), prefix(conf));
   }
 
   /**
@@ -42,8 +42,8 @@ public final class DelegateFileSystemId {
    * the configuration carries no Unity Catalog credential type, falls back to a {@link
    * DefaultCredId} derived from the URI's scheme and authority.
    */
-  public static DelegateFileSystemId create(Configuration conf, URI uri) {
-    return new DelegateFileSystemId(
+  public static FileSystemCredId create(Configuration conf, URI uri) {
+    return new FileSystemCredId(
         CredId.create(conf, () -> new DefaultCredId(uri, conf)), prefix(conf));
   }
 
@@ -56,10 +56,10 @@ public final class DelegateFileSystemId {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof DelegateFileSystemId)) {
+    if (!(o instanceof FileSystemCredId)) {
       return false;
     }
-    DelegateFileSystemId that = (DelegateFileSystemId) o;
+    FileSystemCredId that = (FileSystemCredId) o;
     return Objects.equals(credId, that.credId) && Objects.equals(prefix, that.prefix);
   }
 
@@ -70,6 +70,6 @@ public final class DelegateFileSystemId {
 
   @Override
   public String toString() {
-    return "DelegateFileSystemId{credId=" + credId + ", prefix=" + prefix + "}";
+    return "FileSystemCredId{credId=" + credId + ", prefix=" + prefix + "}";
   }
 }

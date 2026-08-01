@@ -415,6 +415,24 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   }
 
   @Test
+  public void sameScopeNullPrefixReusesGlobalCacheEntry() throws Exception {
+    Configuration confA = newTableBasedConf("shared-table");
+    Configuration confB = newTableBasedConf("shared-table");
+
+    TemporaryCredentials cred = newTempCred("locationA", Long.MAX_VALUE);
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred);
+
+    T providerA = createTestProvider(confA, tempCredApi);
+    T providerB = createTestProvider(confB, tempCredApi);
+
+    assertCred(providerA, cred);
+    assertCred(providerB, cred);
+    assertGlobalCache(1, cred);
+    verify(tempCredApi, times(1)).generateTemporaryTableCredentials(any());
+  }
+
+  @Test
   public void differentScopeSamePrefixUsesSeparateGlobalCacheEntries() throws Exception {
     Configuration confA = newTableBasedConf("table-a");
     confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");

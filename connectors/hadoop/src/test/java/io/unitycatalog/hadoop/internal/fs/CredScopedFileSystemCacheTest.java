@@ -6,12 +6,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
-import io.unitycatalog.hadoop.internal.id.DelegateFileSystemId;
+import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -64,6 +65,23 @@ class CredScopedFileSystemCacheTest {
     CredScopedFileSystem fs2 = init(uri, conf);
 
     assertThat(fs1.getDelegate()).isSameAs(fs2.getDelegate());
+  }
+
+  @Test
+  void noCredentialRequestUsesDefaultFilesystemWithoutUcProvider() throws Exception {
+    Configuration conf = new Configuration(false);
+    conf.set("fs.file.impl", RawLocalFileSystem.class.getName());
+    conf.setBoolean("fs.file.impl.disable.cache", true);
+
+    CredScopedFileSystem fsA = init(new URI("file:///tmp/a"), conf);
+    CredScopedFileSystem fsB = init(new URI("file:///tmp/b"), conf);
+
+    assertThat(fsA.getDelegate()).isInstanceOf(RawLocalFileSystem.class);
+    assertThat(fsA.getDelegate()).isSameAs(fsB.getDelegate());
+    assertThat(fsA.getDelegate().getConf().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
+        .isNull();
+    assertThat(fsA.getDelegate().getConf().get(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER))
+        .isNull();
   }
 
   @Test
@@ -143,7 +161,7 @@ class CredScopedFileSystemCacheTest {
   @Test
   void evictedEntryClosesCachedDelegate() throws Exception {
     FileSystem mockFs = mock(FileSystem.class);
-    DelegateFileSystemId key = DelegateFileSystemId.create(tableConf("tid-evict", "READ"));
+    FileSystemCredId key = FileSystemCredId.create(tableConf("tid-evict", "READ"));
     CredScopedFileSystem.CACHE.put(key, mockFs);
 
     CredScopedFileSystem.clearCacheForTesting();

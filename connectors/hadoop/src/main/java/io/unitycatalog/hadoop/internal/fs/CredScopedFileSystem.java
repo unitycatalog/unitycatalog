@@ -1,6 +1,6 @@
 package io.unitycatalog.hadoop.internal.fs;
 
-import io.unitycatalog.hadoop.internal.id.DelegateFileSystemId;
+import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
@@ -36,11 +36,12 @@ import org.apache.hadoop.fs.FilterFileSystem;
  *       CredScopedFileSystem} for each file access. Because {@code CredScopedFileSystem} is a thin,
  *       stateless wrapper, this is cheap.
  *   <li><b>Global credential-scoped cache for the real delegate.</b> {@code CredScopedFileSystem}
- *       maintains a static {@link #CACHE} keyed by {@link DelegateFileSystemId}, which encodes the
- *       credential scope (table ID + operation, or path + operation) and credential prefix. Since a
- *       delegate covers exactly one prefix and credential, keying by both keeps each prefix's
- *       delegate distinct. On each {@link #initialize(URI, Configuration)} call the key is derived
- *       from the Hadoop {@link Configuration} injected by {@link
+ *       maintains a static {@link #CACHE} keyed by {@link FileSystemCredId}. Hadoop's canonical
+ *       filesystem API associates one credential with an entire filesystem, while each credential
+ *       issued by Unity Catalog is associated with a storage location. The key therefore combines
+ *       the credential request with its storage location to distinguish concrete filesystem
+ *       instances in the JVM-wide cache. On each {@link #initialize(URI, Configuration)} call the
+ *       key is derived from the Hadoop {@link Configuration} injected by {@link
  *       io.unitycatalog.hadoop.internal.CredPropsUtil}, and the corresponding real {@link
  *       FileSystem} (e.g. {@code S3AFileSystem}) is looked up or created. Requests that share the
  *       same credential scope and prefix therefore reuse the same underlying connection pool, while
@@ -65,7 +66,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
    * tuned via the system property {@code unitycatalog.credScopedFs.cache.maxSize}.
    */
   /** Visible for testing. */
-  static final BoundedKeyedCache<DelegateFileSystemId, FileSystem> CACHE;
+  static final BoundedKeyedCache<FileSystemCredId, FileSystem> CACHE;
 
   static {
     int maxSize =
@@ -85,7 +86,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    DelegateFileSystemId key = DelegateFileSystemId.create(conf, uri);
+    FileSystemCredId key = FileSystemCredId.create(conf, uri);
     this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
   }
 

@@ -11,31 +11,31 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-class DelegateFileSystemIdTest {
+class FileSystemCredIdTest {
 
   private static final URI TEST_URI = URI.create("s3://bucket/a");
 
-  private static DelegateFileSystemId createId(String prefix) {
+  private static FileSystemCredId createId(String prefix) {
     Configuration conf = new Configuration(false);
     if (prefix != null) {
       conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
     }
-    return DelegateFileSystemId.create(conf, TEST_URI);
+    return FileSystemCredId.create(conf, TEST_URI);
   }
 
   @Test
   void uriFallbackKeysBySchemeAndAuthority() {
     Configuration conf = new Configuration(false);
 
-    assertThat(DelegateFileSystemId.create(conf, URI.create("s3://bucket/a")))
-        .isEqualTo(DelegateFileSystemId.create(conf, URI.create("s3://bucket/b")))
-        .isNotEqualTo(DelegateFileSystemId.create(conf, URI.create("s3://other/a")));
+    assertThat(FileSystemCredId.create(conf, URI.create("s3://bucket/a")))
+        .isEqualTo(FileSystemCredId.create(conf, URI.create("s3://bucket/b")))
+        .isNotEqualTo(FileSystemCredId.create(conf, URI.create("s3://other/a")));
   }
 
   @Test
   void equivalentPrefixesAreEqualAndHaveSameHashCode() {
-    DelegateFileSystemId idA = createId("s3://bucket/a");
-    DelegateFileSystemId idB = createId("s3://bucket/a");
+    FileSystemCredId idA = createId("s3://bucket/a");
+    FileSystemCredId idB = createId("s3://bucket/a");
 
     assertThat(idA).isEqualTo(idB).hasSameHashCodeAs(idB);
   }
@@ -45,8 +45,8 @@ class DelegateFileSystemIdTest {
     Configuration conf = new Configuration(false);
     conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");
 
-    assertThat(DelegateFileSystemId.create(conf, URI.create("s3://bucket-a/path")))
-        .isNotEqualTo(DelegateFileSystemId.create(conf, URI.create("s3://bucket-b/path")));
+    assertThat(FileSystemCredId.create(conf, URI.create("s3://bucket-a/path")))
+        .isNotEqualTo(FileSystemCredId.create(conf, URI.create("s3://bucket-b/path")));
   }
 
   @ParameterizedTest
