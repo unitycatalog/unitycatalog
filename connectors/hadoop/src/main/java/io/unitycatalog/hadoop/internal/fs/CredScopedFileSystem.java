@@ -55,7 +55,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
   private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
 
   /**
-   * LRU cache of real {@link FileSystem} instances keyed by credential scope and prefix. Evicted
+   * LRU cache of real {@link FileSystem} instances keyed by {@link FileSystemCredId}. Evicted
    * entries are closed to release connection pools and SDK thread pools (e.g. AWS
    * sdk-ScheduledExecutor threads). The cache is bounded to prevent unbounded growth when many
    * distinct credential scopes are accessed in a long-running session. The maximum size can be
