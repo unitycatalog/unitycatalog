@@ -34,7 +34,9 @@ public final class FileSystemCredId {
    * UCHadoopConfConstants#UC_CREDENTIAL_PREFIX_KEY prefix} being served.
    */
   public static FileSystemCredId create(Configuration conf) {
-    return new FileSystemCredId(CredId.create(conf), prefix(conf));
+    CredId credId = CredId.create(conf);
+    String prefix = prefix(conf);
+    return new FileSystemCredId(credId, prefix);
   }
 
   /**
@@ -43,8 +45,9 @@ public final class FileSystemCredId {
    * DefaultCredId} derived from the URI's scheme and authority.
    */
   public static FileSystemCredId create(Configuration conf, URI uri) {
-    return new FileSystemCredId(
-        CredId.create(conf, () -> new DefaultCredId(uri, conf)), prefix(conf));
+    CredId credId = CredId.create(conf, () -> new DefaultCredId(uri, conf));
+    String prefix = prefix(conf);
+    return new FileSystemCredId(credId, prefix);
   }
 
   private static String prefix(Configuration conf) {
