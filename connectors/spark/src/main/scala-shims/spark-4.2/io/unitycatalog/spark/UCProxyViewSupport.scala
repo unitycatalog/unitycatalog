@@ -143,10 +143,15 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       .viewDefinition(view.queryText())
 
     Option(properties.get(TableCatalog.PROP_COMMENT)).foreach(ct.setComment)
-    // The server requires a non-null dependency list; a plain view often has none.
-    val ucDeps = Option(view.viewDependencies())
-      .map(toUcDependencyList)
-      .getOrElse(new UCDependencyList().dependencies(new util.ArrayList[UCDependency]()))
+    // Spark only fills `viewDependencies()` for metric views; for a plain view derive them from the
+    // query text (the server requires a non-null list).
+    val ucDeps = Option(view.viewDependencies()) match {
+      case Some(deps) => toUcDependencyList(deps)
+      case None =>
+        ucDependencyListFromNames(
+          UCViewDependencies.derive(
+            view.queryText(), view.currentCatalog(), view.currentNamespace().toSeq))
+    }
     ct.setViewDependencies(ucDeps)
     ct.setColumns(buildColumnInfos(view, convertDataTypeToTypeName).asJava)
 
@@ -251,9 +256,9 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
 
   /**
    * Converts Spark's typed `DependencyList` into the wire-format UC `DependencyList`.
-   * Only `TableDependency` is currently translated; UC OSS does not persist function
-   * dependencies. The conversion is dot-flatten lossy for identifiers with literal `.`,
-   * matching the wire format already used by the UC server.
+   * Only `TableDependency` is translated; the connector does not yet emit function
+   * dependencies even though the UC server can persist them. The conversion is dot-flatten
+   * lossy for identifiers with literal `.`, matching the wire format used by the UC server.
    */
   private def toUcDependencyList(sparkDeps: DependencyList): UCDependencyList = {
     val ucDeps = new java.util.ArrayList[UCDependency]()
@@ -263,7 +268,16 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
           .table(new UCTableDependency()
             .tableFullName(td.nameParts().mkString("."))))
       case _ =>
-      // UC OSS does not currently persist function dependencies; drop.
+      // Function dependencies are not emitted yet; drop.
+    }
+    new UCDependencyList().dependencies(ucDeps)
+  }
+
+  /** Builds a wire-format UC `DependencyList` from derived `catalog.schema.table` names. */
+  private def ucDependencyListFromNames(fullNames: Seq[String]): UCDependencyList = {
+    val ucDeps = new java.util.ArrayList[UCDependency]()
+    fullNames.foreach { fullName =>
+      ucDeps.add(new UCDependency().table(new UCTableDependency().tableFullName(fullName)))
     }
     new UCDependencyList().dependencies(ucDeps)
   }
