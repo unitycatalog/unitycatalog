@@ -738,18 +738,18 @@ object UCSingleCatalog {
 
   /**
    * True when `ident` can be expressed as the dotted `catalog.schema.table` string UC identifies
-   * tables by. A dot inside the schema or table name makes the joined name ambiguous, and UC
-   * rejects it rather than guessing, so such an identifier can never denote a table UC holds.
+   * tables by. Cloud paths (including extensionless ones like `s3://bucket/dir/part`) carry `/`
+   * in the table name and can never denote a UC table row.
    *
    * Spark asks the current catalog to load every relation before falling back to path-based
-   * resolution, so `SELECT * FROM parquet.`s3://bucket/dir/part.parquet`` arrives here as schema
+   * resolution, so `SELECT * FROM parquet.`s3://bucket/dir/part`` arrives here as schema
    * `parquet` with the path as the table name. Callers treat these as absent, which lets Spark
    * carry on to `ResolveSQLOnFile` -- see [[UCProxy.getUCTableLike]].
    */
   def isAddressableTableName(ident: Identifier): Boolean = {
     ident.namespace().length == 1 &&
-      !ident.namespace()(0).contains(".") &&
-      !ident.name().contains(".")
+      !ident.namespace()(0).contains("/") &&
+      !ident.name().contains("/")
   }
 
 }
