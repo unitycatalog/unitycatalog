@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 /**
  * Tests for {@link ResolvePathCredentials}: Unity Catalog credentials are vended for cloud paths
@@ -38,46 +39,177 @@ import org.junit.jupiter.params.provider.CsvSource;
 public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
   private static final String MERGE_TARGET_TABLE = "path_cred_merge_target";
+  private static final String DELTA_AND_UC_EXTENSIONS =
+      "io.delta.sql.DeltaSparkSessionExtension," + "io.unitycatalog.spark.UCSparkSessionExtensions";
+  private static final String DELTA_CATALOG = "org.apache.spark.sql.delta.catalog.DeltaCatalog";
 
   @TempDir protected File dataDir;
 
-  /**
-   * Builds a Spark session that registers {@code UCSparkSessionExtensions} (so the parser-level
-   * {@link ResolvePathCredentials} hook is active) and points the given catalogs at the test UC
-   * server. Mirrors {@link BaseSparkIntegrationTest#createSparkSessionWithCatalogs} but adds the UC
-   * extension. The catalogs are expected to already exist (created in {@code setUp}).
-   */
-  private SparkSession createUcSparkSession(
+  private SparkSession.Builder configureUcCatalog(SparkSession.Builder builder, String catalog) {
+    String catalogConf = "spark.sql.catalog." + catalog;
+    return builder
+        .config(catalogConf, UCSingleCatalog.class.getName())
+        .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
+        .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
+        .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog);
+  }
+
+  private SparkSession.Builder configureUcCatalogWithPathCredOptions(
+      SparkSession.Builder builder,
+      String catalog,
       boolean renewCred,
-      boolean credScopedFsEnabled,
-      boolean vendPathCredentialsEnabled,
-      String... catalogs) {
+      boolean credScopedFs,
+      boolean vendPathEnabled) {
+    String catalogConf = "spark.sql.catalog." + catalog;
+    return configureUcCatalog(builder, catalog)
+        .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred)
+        .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFs)
+        .config(catalogConf + "." + OptionsUtil.VEND_PATH_CREDENTIALS_ENABLED, vendPathEnabled);
+  }
+
+  /** Default path-credential session: Delta + UC extensions, fake S3 FS, path cred enabled. */
+  private SparkSession createPathCredSession(String... ucCatalogs) {
+    return createPathCredSession(false, false, true, ucCatalogs);
+  }
+
+  private SparkSession createPathCredSession(
+      boolean renewCred, boolean credScopedFs, boolean vendPathEnabled, String... ucCatalogs) {
+    return createPathCredSessionWithLayout(
+        renewCred, credScopedFs, vendPathEnabled, null, null, ucCatalogs);
+  }
+
+  /** UC catalog selected via {@code spark.sql.defaultCatalog} at session creation. */
+  private SparkSession createPathCredSessionWithDefaultCatalogAtStartup(
+      String defaultCatalog, String... ucCatalogs) {
+    return createPathCredSessionWithLayout(false, false, true, defaultCatalog, null, ucCatalogs);
+  }
+
+  private SparkSession createPathCredSessionWithLayout(
+      boolean renewCred,
+      boolean credScopedFs,
+      boolean vendPathEnabled,
+      String defaultCatalogAtStartup,
+      String sparkCatalogImpl,
+      String... ucCatalogs) {
     SparkSession.Builder builder =
         SparkSession.builder()
             .appName("test")
             .master("local[*]")
             .config("spark.sql.shuffle.partitions", "4")
-            .config(
-                "spark.sql.extensions",
-                "io.delta.sql.DeltaSparkSessionExtension,"
-                    + "io.unitycatalog.spark.UCSparkSessionExtensions");
-    for (String catalog : catalogs) {
-      String catalogConf = "spark.sql.catalog." + catalog;
-      builder =
-          builder
-              .config(catalogConf, UCSingleCatalog.class.getName())
-              .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
-              .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
-              .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
-              .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred)
-              .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFsEnabled)
-              .config(
-                  catalogConf + "." + OptionsUtil.VEND_PATH_CREDENTIALS_ENABLED,
-                  vendPathCredentialsEnabled);
+            .config("spark.sql.extensions", DELTA_AND_UC_EXTENSIONS);
+    if (sparkCatalogImpl != null) {
+      builder.config("spark.sql.catalog.spark_catalog", sparkCatalogImpl);
     }
-    // Use fake file system for cloud storage so that we can assert vended credentials.
+    if (defaultCatalogAtStartup != null) {
+      builder.config("spark.sql.defaultCatalog", defaultCatalogAtStartup);
+    }
+    for (String catalog : ucCatalogs) {
+      builder =
+          configureUcCatalogWithPathCredOptions(
+              builder, catalog, renewCred, credScopedFs, vendPathEnabled);
+    }
     builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
     return builder.getOrCreate();
+  }
+
+  /** UC extension only — parameterized SQL tests delegate to {@code SparkSqlParser} directly. */
+  private SparkSession createUcExtensionOnlySession(String... catalogs) {
+    SparkSession.Builder builder =
+        SparkSession.builder()
+            .appName("test")
+            .master("local[*]")
+            .config("spark.sql.shuffle.partitions", "4")
+            .config("spark.sql.extensions", "io.unitycatalog.spark.UCSparkSessionExtensions");
+    for (String catalog : catalogs) {
+      builder = configureUcCatalog(builder, catalog);
+    }
+    return builder.getOrCreate();
+  }
+
+  /**
+   * Session with {@code spark_catalog} wired to Delta and a separate {@link UCSingleCatalog}
+   * registered under {@code ucCatalog}.
+   */
+  private SparkSession createDeltaSparkCatalogSession(
+      String ucCatalog, boolean defaultCatalogAtStartup) {
+    return createPathCredSessionWithLayout(
+        false, false, true, defaultCatalogAtStartup ? ucCatalog : null, DELTA_CATALOG, ucCatalog);
+  }
+
+  /**
+   * Ways a session can select the UC catalog as {@code current_catalog} before a bare-path count
+   * subquery succeeds. Each constant owns session creation and any post-open catalog setup.
+   */
+  private enum CountSubqueryLayout {
+    SET_CATALOG_AFTER_STARTUP("count_subquery") {
+      @Override
+      SparkSession openSession(PathCredentialReadWriteTest test) {
+        return test.createPathCredSession(SPARK_CATALOG, CATALOG_NAME);
+      }
+
+      @Override
+      void prepareSession(PathCredentialReadWriteTest test) {
+        test.sql("SET CATALOG %s", CATALOG_NAME);
+      }
+    },
+    DEFAULT_CATALOG_AT_SESSION_START("count_session_start_default") {
+      @Override
+      SparkSession openSession(PathCredentialReadWriteTest test) {
+        return test.createPathCredSessionWithDefaultCatalogAtStartup(
+            CATALOG_NAME, SPARK_CATALOG, CATALOG_NAME);
+      }
+    },
+    SET_CATALOG_WITH_DELTA_SPARK_CATALOG("delta_spark_catalog_set_uc") {
+      @Override
+      SparkSession openSession(PathCredentialReadWriteTest test) {
+        return test.createDeltaSparkCatalogSession(CATALOG_NAME, false);
+      }
+
+      @Override
+      void prepareSession(PathCredentialReadWriteTest test) {
+        test.session.conf().set("spark.sql.defaultCatalog", CATALOG_NAME);
+        test.sql("SET CATALOG %s", CATALOG_NAME);
+      }
+    },
+    RUNTIME_DEFAULT_CATALOG_WITH_DELTA_SPARK_CATALOG("delta_spark_catalog_runtime_default") {
+      @Override
+      SparkSession openSession(PathCredentialReadWriteTest test) {
+        return test.createDeltaSparkCatalogSession(CATALOG_NAME, false);
+      }
+
+      @Override
+      void prepareSession(PathCredentialReadWriteTest test) {
+        test.session.conf().set("spark.sql.defaultCatalog", CATALOG_NAME);
+      }
+
+      @Override
+      void assertPreconditions(PathCredentialReadWriteTest test) {
+        assertThat(test.sql("SELECT current_catalog()").get(0).getString(0))
+            .isEqualTo(CATALOG_NAME);
+      }
+    };
+
+    final String pathSuffix;
+
+    CountSubqueryLayout(String pathSuffix) {
+      this.pathSuffix = pathSuffix;
+    }
+
+    abstract SparkSession openSession(PathCredentialReadWriteTest test);
+
+    void prepareSession(PathCredentialReadWriteTest test) {}
+
+    void assertPreconditions(PathCredentialReadWriteTest test) {}
+  }
+
+  private void writeBareParquetSample(String location) {
+    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
+  }
+
+  private void assertCountSubquerySucceeds(String location) {
+    List<Row> rows = sql("SELECT COUNT(*) AS c FROM (SELECT * FROM parquet.`%s`)", location);
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getLong(0)).isEqualTo(1);
   }
 
   /** A bare `s3://test-bucket0/...` path backed by a local temp dir understood by the fake FS. */
@@ -146,32 +278,11 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   @CsvSource({"false, false", "true, true"})
   public void testWriteAndReadBareS3Path(boolean renewCred, boolean credScopedFsEnabled)
       throws IOException {
-    stopSession();
-    session = createUcSparkSession(renewCred, credScopedFsEnabled, true, SPARK_CATALOG);
+    session = createPathCredSession(renewCred, credScopedFsEnabled, true, SPARK_CATALOG);
     String location = bucketPath("write_directory_" + renewCred + "_" + credScopedFsEnabled);
 
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
-  }
-
-  /** UC extension only — enough for parameterized SQL parser tests (no Delta needed). */
-  private SparkSession createUcExtensionOnlySparkSession(String... catalogs) {
-    SparkSession.Builder builder =
-        SparkSession.builder()
-            .appName("test")
-            .master("local[*]")
-            .config("spark.sql.shuffle.partitions", "4")
-            .config("spark.sql.extensions", "io.unitycatalog.spark.UCSparkSessionExtensions");
-    for (String catalog : catalogs) {
-      String catalogConf = "spark.sql.catalog." + catalog;
-      builder =
-          builder
-              .config(catalogConf, UCSingleCatalog.class.getName())
-              .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
-              .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
-              .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog);
-    }
-    return builder.getOrCreate();
   }
 
   /**
@@ -182,8 +293,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    */
   @Test
   public void testPositionalSqlParameters() {
-    stopSession();
-    session = createUcExtensionOnlySparkSession(SPARK_CATALOG);
+    session = createUcExtensionOnlySession(SPARK_CATALOG);
     List<Row> rows = session.sql("SELECT ? AS c", new Object[] {42}).collectAsList();
     assertThat(rows).hasSize(1);
     assertThat(rows.get(0).getInt(0)).isEqualTo(42);
@@ -191,8 +301,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
   @Test
   public void testNamedSqlParameters() {
-    stopSession();
-    session = createUcExtensionOnlySparkSession(SPARK_CATALOG);
+    session = createUcExtensionOnlySession(SPARK_CATALOG);
     List<Row> rows = session.sql("SELECT :x AS c", Map.of("x", 42)).collectAsList();
     assertThat(rows).hasSize(1);
     assertThat(rows.get(0).getInt(0)).isEqualTo(42);
@@ -208,7 +317,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   @Test
   public void testInsertIntoBarePathInjectsCredentialsAtParseTime()
       throws IOException, ParseException {
-    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
+    session = createPathCredSession(SPARK_CATALOG);
     String location = bucketPath("insert_into_parse");
     String insertSql = String.format("INSERT INTO parquet.`%s` SELECT 2 AS i, 'b' AS s", location);
 
@@ -227,8 +336,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    */
   @Test
   public void testBarePathUsesCurrentCatalogAfterSetCatalog() throws IOException, ParseException {
-    stopSession();
-    session = createUcSparkSession(false, false, true, CATALOG_NAME);
+    session = createPathCredSession(CATALOG_NAME);
     String location = bucketPath("use_catalog");
     sql("SET CATALOG %s", CATALOG_NAME);
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
@@ -254,7 +362,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    */
   @Test
   public void testVendPathCredentialsWithoutActiveSession() throws IOException {
-    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
+    session = createPathCredSession(SPARK_CATALOG);
     String location = bucketPath("no_active_session");
     UCSingleCatalog catalog =
         (UCSingleCatalog) session.sessionState().catalogManager().catalog(SPARK_CATALOG);
@@ -275,7 +383,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    */
   @Test
   public void testFallsBackToAmbientWhenPathNotManagedByUc() throws IOException {
-    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
+    session = createPathCredSession(SPARK_CATALOG);
     String location = "s3://" + NO_CREDS_BUCKET + new File(dataDir, "unmanaged").getCanonicalPath();
 
     assertThatThrownBy(
@@ -293,32 +401,32 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    */
   @Test
   public void testDisabledByFlag() throws IOException {
-    session = createUcSparkSession(false, false, true, SPARK_CATALOG);
+    session = createPathCredSession(SPARK_CATALOG);
     String location = bucketPath("import_disabled");
     // Write with the feature on so the data exists.
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
 
+    // Recreate session with path credential vending disabled.
     stopSession();
-    session = createUcSparkSession(false, false, false, SPARK_CATALOG);
+    session = createPathCredSession(false, false, false, SPARK_CATALOG);
     assertThatThrownBy(() -> sql("SELECT * FROM parquet.`%s`", location))
         .satisfies(e -> assertCauseChainContainsMessage(e, "accessKey0"));
   }
 
   /**
-   * Storium import row-count SQL wraps bare paths in a subquery: {@code SELECT COUNT(*) FROM
-   * (SELECT * FROM parquet.`s3://...`)}.
+   * Row-count SQL that wraps a bare path in a subquery: {@code SELECT COUNT(*) FROM (SELECT * FROM
+   * parquet.`s3://...`)}. Each layout exercises a different way of selecting the UC catalog as
+   * {@code current_catalog} before the count runs.
    */
-  @Test
-  public void testCountFromParquetSubquery() throws IOException {
-    stopSession();
-    session = createUcSparkSession(false, false, true, SPARK_CATALOG, CATALOG_NAME);
-    String location = bucketPath("count_subquery");
-    sql("SET CATALOG %s", CATALOG_NAME);
-    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
-
-    List<Row> rows = sql("SELECT COUNT(*) AS c FROM (SELECT * FROM parquet.`%s`)", location);
-    assertThat(rows).hasSize(1);
-    assertThat(rows.get(0).getLong(0)).isEqualTo(1);
+  @ParameterizedTest(name = "{0}")
+  @EnumSource(CountSubqueryLayout.class)
+  public void testCountFromParquetSubquery(CountSubqueryLayout layout) throws IOException {
+    session = layout.openSession(this);
+    layout.prepareSession(this);
+    String location = bucketPath(layout.pathSuffix);
+    writeBareParquetSample(location);
+    layout.assertPreconditions(this);
+    assertCountSubquerySucceeds(location);
   }
 
   private String mergeTargetTable() {
@@ -326,15 +434,13 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
-   * Storium import MERGE shape: {@code USING (SELECT cols FROM (SELECT * FROM parquet.`path`))}.
-   * With {@code SET CATALOG} pointing at the UC catalog (as Thrift sessions do when the JDBC URL
-   * includes a catalog), bare paths must stay 2-part relations after parse — not {@code
-   * catalog.parquet.s3://...}.
+   * MERGE with a nested bare-path subquery: {@code USING (SELECT cols FROM (SELECT * FROM
+   * parquet.`path`))}. With {@code SET CATALOG} pointing at the UC catalog, bare paths must stay
+   * 2-part relations after parse — not {@code catalog.parquet.s3://...}.
    */
   @Test
   public void testMergeIntoUsingParquetSubquery() throws IOException, ParseException {
-    stopSession();
-    session = createUcSparkSession(false, false, true, SPARK_CATALOG, CATALOG_NAME);
+    session = createPathCredSession(SPARK_CATALOG, CATALOG_NAME);
     String location = bucketPath("merge_subquery");
     sql("SET CATALOG %s", CATALOG_NAME);
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
@@ -368,8 +474,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    */
   @Test
   public void testMergeIntoParquetSubqueryWithDefaultCatalog() throws IOException {
-    stopSession();
-    session = createUcSparkSession(false, false, true, SPARK_CATALOG, CATALOG_NAME);
+    session = createPathCredSession(SPARK_CATALOG, CATALOG_NAME);
     session.conf().set("spark.sql.defaultCatalog", CATALOG_NAME);
     String location = bucketPath("merge_default_catalog");
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 2 AS i, 'b' AS s", location);
@@ -393,157 +498,24 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
-   * Thrift JDBC pushes {@code hiveconf:spark.sql.defaultCatalog} at session creation — not via
-   * runtime {@code conf().set} or {@code SET CATALOG}. {@link ResolvePathCredentials} keys off
-   * {@code catalogManager.currentCatalog}, which may still be {@code spark_catalog} even when
-   * defaultCatalog points at the UC catalog.
-   */
-  @Test
-  public void testCountFromParquetSubqueryDefaultCatalogAtSessionStart() throws IOException {
-    stopSession();
-    session =
-        createUcSparkSessionWithDefaultCatalog(
-            CATALOG_NAME, false, false, true, SPARK_CATALOG, CATALOG_NAME);
-    String location = bucketPath("count_session_start_default");
-    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
-
-    List<Row> rows = sql("SELECT COUNT(*) AS c FROM (SELECT * FROM parquet.`%s`)", location);
-    assertThat(rows).hasSize(1);
-    assertThat(rows.get(0).getLong(0)).isEqualTo(1);
-  }
-
-  /**
-   * Storium Thrift layout: {@code spark_catalog=DeltaCatalog}, tenant {@code UCSingleCatalog},
-   * {@code defaultCatalog=tenant}, {@code current_catalog=spark_catalog}. Path cred is skipped;
-   * Thrift e2e fails with {@code Invalid table name: tenant.parquet.s3://…}; fake FS may instead
-   * report missing vended credentials.
+   * When {@code spark_catalog} is {@code DeltaCatalog} and {@code current_catalog} stays on it,
+   * path credentials are not vended even if {@code spark.sql.defaultCatalog} points at a UC catalog
+   * — the count subquery fails with missing vended credentials.
    */
   @Test
   public void testCountFromParquetSubqueryFailsWhenCurrentCatalogIsDeltaCatalog()
       throws IOException {
-    stopSession();
-    session = createStoriumLikeThriftSession(CATALOG_NAME, false);
+    session = createDeltaSparkCatalogSession(CATALOG_NAME, false);
     session.conf().set("spark.sql.defaultCatalog", CATALOG_NAME);
     sql("SET CATALOG %s", CATALOG_NAME);
-    String location = bucketPath("storium_like_thrift");
-    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
+    String location = bucketPath("delta_spark_catalog_current");
+    writeBareParquetSample(location);
     sql("SET CATALOG %s", SPARK_CATALOG);
 
     assertThat(sql("SELECT current_catalog()").get(0).getString(0)).isEqualTo(SPARK_CATALOG);
     assertThat(session.conf().get("spark.sql.defaultCatalog")).isEqualTo(CATALOG_NAME);
 
-    assertThatThrownBy(
-            () -> sql("SELECT COUNT(*) AS c FROM (SELECT * FROM parquet.`%s`)", location))
-        .isNotNull();
-  }
-
-  /** {@code SET CATALOG} to the tenant UC catalog is the Storium-side workaround. */
-  @Test
-  public void testCountFromParquetSubqueryWorksAfterSetCatalogToTenant() throws IOException {
-    stopSession();
-    session = createStoriumLikeThriftSession(CATALOG_NAME, false);
-    session.conf().set("spark.sql.defaultCatalog", CATALOG_NAME);
-    sql("SET CATALOG %s", CATALOG_NAME);
-    String location = bucketPath("storium_set_catalog");
-    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
-
-    List<Row> rows = sql("SELECT COUNT(*) AS c FROM (SELECT * FROM parquet.`%s`)", location);
-    assertThat(rows.get(0).getLong(0)).isEqualTo(1);
-  }
-
-  /**
-   * {@code conf().set("spark.sql.defaultCatalog", …)} switches {@code current_catalog} to the
-   * tenant UC catalog — unlike Thrift {@code hiveconf}, which can leave {@code current_catalog} on
-   * Delta.
-   */
-  @Test
-  public void testCountFromParquetSubqueryWorksAfterRuntimeDefaultCatalog() throws IOException {
-    stopSession();
-    session = createStoriumLikeThriftSession(CATALOG_NAME, false);
-    session.conf().set("spark.sql.defaultCatalog", CATALOG_NAME);
-
-    String location = bucketPath("storium_runtime_default");
-    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
-
-    assertThat(sql("SELECT current_catalog()").get(0).getString(0)).isEqualTo(CATALOG_NAME);
-    List<Row> rows = sql("SELECT COUNT(*) AS c FROM (SELECT * FROM parquet.`%s`)", location);
-    assertThat(rows.get(0).getLong(0)).isEqualTo(1);
-  }
-
-  /** Mirrors celospark spark-uc.properties + Storium per-session hiveconf catalog layout. */
-  private SparkSession createStoriumLikeThriftSession(String tenantCatalog) {
-    return createStoriumLikeThriftSession(tenantCatalog, true);
-  }
-
-  private SparkSession createStoriumLikeThriftSession(
-      String tenantCatalog, boolean defaultCatalogAtStartup) {
-    SparkSession.Builder builder =
-        SparkSession.builder()
-            .appName("test")
-            .master("local[*]")
-            .config("spark.sql.shuffle.partitions", "4")
-            .config(
-                "spark.sql.extensions",
-                "io.delta.sql.DeltaSparkSessionExtension,"
-                    + "io.unitycatalog.spark.UCSparkSessionExtensions")
-            // Driver static (spark-uc.properties)
-            .config(
-                "spark.sql.catalog.spark_catalog",
-                "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-            // Per-session hiveconf (SparkUnityCatalogDatasourceMapper)
-            .config("spark.sql.catalog." + tenantCatalog, UCSingleCatalog.class.getName())
-            .config(
-                "spark.sql.catalog." + tenantCatalog + "." + OptionsUtil.URI,
-                serverConfig.getServerUrl())
-            .config(
-                "spark.sql.catalog." + tenantCatalog + "." + OptionsUtil.TOKEN,
-                serverConfig.getAuthToken())
-            .config(
-                "spark.sql.catalog." + tenantCatalog + "." + OptionsUtil.WAREHOUSE, tenantCatalog)
-            .config(
-                "spark.sql.catalog."
-                    + tenantCatalog
-                    + "."
-                    + OptionsUtil.VEND_PATH_CREDENTIALS_ENABLED,
-                true);
-    if (defaultCatalogAtStartup) {
-      builder.config("spark.sql.defaultCatalog", tenantCatalog);
-    }
-    builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
-    return builder.getOrCreate();
-  }
-
-  private SparkSession createUcSparkSessionWithDefaultCatalog(
-      String defaultCatalog,
-      boolean renewCred,
-      boolean credScopedFsEnabled,
-      boolean vendPathCredentialsEnabled,
-      String... catalogs) {
-    SparkSession.Builder builder =
-        SparkSession.builder()
-            .appName("test")
-            .master("local[*]")
-            .config("spark.sql.shuffle.partitions", "4")
-            .config("spark.sql.defaultCatalog", defaultCatalog)
-            .config(
-                "spark.sql.extensions",
-                "io.delta.sql.DeltaSparkSessionExtension,"
-                    + "io.unitycatalog.spark.UCSparkSessionExtensions");
-    for (String catalog : catalogs) {
-      String catalogConf = "spark.sql.catalog." + catalog;
-      builder =
-          builder
-              .config(catalogConf, UCSingleCatalog.class.getName())
-              .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
-              .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
-              .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
-              .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred)
-              .config(catalogConf + "." + OptionsUtil.CRED_SCOPED_FS_ENABLED, credScopedFsEnabled)
-              .config(
-                  catalogConf + "." + OptionsUtil.VEND_PATH_CREDENTIALS_ENABLED,
-                  vendPathCredentialsEnabled);
-    }
-    builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
-    return builder.getOrCreate();
+    assertThatThrownBy(() -> assertCountSubquerySucceeds(location))
+        .satisfies(e -> assertCauseChainContainsMessage(e, "accessKey0"));
   }
 }
