@@ -51,6 +51,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   private static final String TEST_BASE_PREFIX = "/v1/catalogs/" + TestUtils.CATALOG_NAME;
   private static final String TEST_BASE_NON_PREFIX = "/v1";
+  private static final String ICEBERG_TABLE_LOCATION = "/tmp/uniform_iceberg_table";
 
   protected CatalogOperations catalogOperations;
   protected SchemaOperations schemaOperations;
@@ -210,7 +211,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             .schemaName(TestUtils.SCHEMA_NAME)
             .columns(List.of(columnInfo1, columnInfo2))
             .comment(TestUtils.COMMENT)
-            .storageLocation("/tmp/stagingLocation")
+            .storageLocation(ICEBERG_TABLE_LOCATION)
             .tableType(TableType.EXTERNAL)
             .dataSourceFormat(DataSourceFormat.DELTA);
     TableInfo tableInfo = tableOperations.createTable(createTableRequest);
@@ -329,5 +330,28 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .join();
       assertThat(resp.status().code()).isEqualTo(404);
     }
+
+    // Credentials must never be scoped by a conflicting location in the metadata payload.
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      TableInfoDAO tableInfoDAO =
+          session.get(TableInfoDAO.class, UUID.fromString(tableInfo.getTableId()));
+      assertThat(tableInfoDAO).isNotNull();
+      tableInfoDAO.setUrl("/tmp/other_table");
+      tx.commit();
+    }
+    AggregatedHttpResponse resp =
+        client
+            .get(
+                TEST_BASE_PREFIX
+                    + "/namespaces/"
+                    + TestUtils.SCHEMA_NAME
+                    + "/tables/"
+                    + TestUtils.TABLE_NAME)
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(400);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).message())
+        .contains("must match the registered table location");
   }
 }
