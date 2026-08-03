@@ -117,11 +117,11 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
 object ResolvePathCredentials {
 
   /**
-   * URI schemes for which UC can vend credentials. These match the schemes UC external locations
-   * are registered with and the ones [[UCCredentialHadoopConfs]] understands; other schemes (local
-   * paths, `s3a`, HDFS, ...) are left untouched.
+   * URI schemes for which UC can vend credentials. These match [[CloudType]] (including Hadoop's
+   * `s3a://` alias for S3). UC external locations and the path-credentials API use canonical
+   * `s3://` URLs; [[UCSingleCatalog.vendPathCredentialConf]] rewrites `s3a://` for lookup only.
    */
-  private val CLOUD_SCHEMES = Set("s3", "gs", "abfs", "abfss")
+  private val CLOUD_SCHEMES = Set("s3", "s3a", "gs", "abfs", "abfss")
 
   /** True when `pathStr` is an absolute URI whose scheme is one UC can vend credentials for. */
   private def isCloudPath(pathStr: String): Boolean = {

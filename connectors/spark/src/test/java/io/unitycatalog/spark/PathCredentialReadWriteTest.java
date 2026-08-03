@@ -108,7 +108,9 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
           configureUcCatalogWithPathCredOptions(
               builder, catalog, renewCred, credScopedFs, vendPathEnabled);
     }
-    builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
+    builder
+        .config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName())
+        .config("spark.hadoop.fs.s3a.impl", S3CredentialTestFileSystem.S3a.class.getName());
     return builder.getOrCreate();
   }
 
@@ -212,9 +214,15 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(rows.get(0).getLong(0)).isEqualTo(1);
   }
 
-  /** A bare `s3://test-bucket0/...` path backed by a local temp dir understood by the fake FS. */
+  /**
+   * A bare {@code s3://test-bucket0/...} path backed by a local temp dir understood by the fake FS.
+   */
   private String bucketPath(String name) throws IOException {
-    return "s3://test-bucket0" + new File(dataDir, name).getCanonicalPath();
+    return bucketPath("s3", name);
+  }
+
+  private String bucketPath(String scheme, String name) throws IOException {
+    return scheme + "://test-bucket0" + new File(dataDir, name).getCanonicalPath();
   }
 
   private void stopSession() {
@@ -275,13 +283,28 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    * analysis ({@code TABLE_OR_VIEW_NOT_FOUND}) on all supported versions (4.0–4.2).
    */
   @ParameterizedTest
-  @CsvSource({"false, false", "true, true"})
-  public void testWriteAndReadBareS3Path(boolean renewCred, boolean credScopedFsEnabled)
-      throws IOException {
+  @CsvSource({"s3,  false, false", "s3,  true,  true", "s3a, false, false"})
+  public void testWriteAndReadBarePath(
+      String scheme, boolean renewCred, boolean credScopedFsEnabled)
+      throws IOException, ParseException {
     session = createPathCredSession(renewCred, credScopedFsEnabled, true, SPARK_CATALOG);
-    String location = bucketPath("write_directory_" + renewCred + "_" + credScopedFsEnabled);
+    String location =
+        bucketPath(
+            scheme, "write_directory_" + scheme + "_" + renewCred + "_" + credScopedFsEnabled);
 
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
+
+    if ("s3a".equals(scheme)) {
+      LogicalPlan readPlan =
+          session
+              .sessionState()
+              .sqlParser()
+              .parsePlan(String.format("SELECT * FROM parquet.`%s`", location));
+      UnresolvedRelation relation = findBareCloudPathRelation(readPlan);
+      assertThat(relation).isNotNull();
+      assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+    }
+
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
   }
 
@@ -352,6 +375,22 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
         .isNotNull();
     assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
+  }
+
+  /**
+   * {@code s3://} and {@code s3a://} both vend S3 credentials as {@code fs.s3a.*} keys; {@code
+   * s3a://} is rewritten to {@code s3://} for UC path-credential lookup only.
+   */
+  @ParameterizedTest
+  @CsvSource({"s3", "s3a"})
+  public void testVendPathCredentialsForScheme(String scheme) throws IOException {
+    session = createPathCredSession(SPARK_CATALOG);
+    String location = bucketPath(scheme, "vend_" + scheme);
+    UCSingleCatalog catalog =
+        (UCSingleCatalog) session.sessionState().catalogManager().catalog(SPARK_CATALOG);
+
+    assertThat(catalog.vendPathCredentialConfWithFallback(session, location))
+        .containsEntry("fs.s3a.access.key", "accessKey0");
   }
 
   /**

@@ -404,7 +404,7 @@ class UCSingleCatalog
       spark: SparkSession,
       location: String,
       operation: PathOperation): util.Map[String, String] = {
-    val scheme = new Path(location).toUri.getScheme
+    val (apiLocation, scheme) = pathForCredentialApi(location)
     if (scheme == null) return util.Collections.emptyMap[String, String]()
     UCCredentialHadoopConfs
       .builder(uri.toString, scheme)
@@ -414,7 +414,23 @@ class UCSingleCatalog
       .enableCredentialRenewal(renewCredEnabled)
       .enableCredentialScopedFs(credScopedFsEnabled)
       .hadoopConf(UCSingleCatalog.sessionHadoopConf(spark))
-      .buildForPath(location, operation)
+      .buildForPath(apiLocation, operation)
+  }
+
+  /**
+   * UC external locations and the temporary path-credentials API use canonical `s3://` URLs on the
+   * server. Hadoop clients may still reference the same storage as `s3a://`; rewrite to `s3://`
+   * for credential lookup only.
+   */
+  private def pathForCredentialApi(location: String): (String, String) = {
+    val scheme = new Path(location).toUri.getScheme
+    if (scheme == null) {
+      (location, null)
+    } else if (scheme.equalsIgnoreCase("s3a")) {
+      (location.replaceFirst("(?i)^s3a://", "s3://"), "s3")
+    } else {
+      (location, scheme)
+    }
   }
 
   /**
