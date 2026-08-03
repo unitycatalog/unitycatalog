@@ -52,17 +52,10 @@ public class CredentialCache {
    */
   public GenericCredential access(CredId credId, RenewableCredentialFactory factory)
       throws ApiException {
-    synchronized (cache) {
-      RenewableCredential cached = cache.getIfPresent(credId);
-      // Reuse the cached credential while it's still valid; otherwise fetch and cache a fresh one.
-      if (cached != null && !cached.readyToRenew()) {
-        return cached.credential();
-      }
-
-      RenewableCredential created = factory.create();
-      cache.put(credId, created);
-      return created.credential();
-    }
+    // Per-key locking: only accessors of the same scope contend, and only one of them performs
+    // the renewal RPC while same-scope waiters briefly block and reuse the fresh credential.
+    // Accessors of other scopes are never blocked by an in-flight renewal (#1651).
+    return cache.getOrLoad(credId, cached -> !cached.readyToRenew(), factory::create).credential();
   }
 
   /** Removes all cached credentials. Public so tests in other packages can reset shared caches. */
