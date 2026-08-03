@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AwsIamRoleRequest;
 import io.unitycatalog.server.model.CreateCredentialRequest;
@@ -64,6 +65,20 @@ public class CloudCredentialVendorTest {
     StorageCredentialVendor storageCredentialVendor =
         new StorageCredentialVendor(credentialsOperations, externalLocationUtils);
     return storageCredentialVendor.vendCredential(NormalizedURL.from(path), privileges);
+  }
+
+  @Test
+  public void testRejectsCloudStorageRootBeforeVendingCredentials() {
+    reset(externalLocationUtils);
+    credentialsOperations = new CloudCredentialVendor(null, null, null);
+
+    assertThatThrownBy(
+            () -> vendCredential("s3://storageBase/", Set.of(CredentialContext.Privilege.SELECT)))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("must include a non-empty path prefix")
+        .hasMessageContaining("s3://storageBase")
+        .extracting(exception -> ((BaseException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.INVALID_ARGUMENT);
   }
 
   @Test
@@ -131,7 +146,8 @@ public class CloudCredentialVendorTest {
     credentialsOperations = new CloudCredentialVendor(null, azureCredentialVendor, null);
     TemporaryCredentials azureTemporaryCredentials =
         vendCredential(
-            "abfss://test@uctest.dfs.core.windows.net", Set.of(CredentialContext.Privilege.UPDATE));
+            "abfss://test@uctest.dfs.core.windows.net/abc",
+            Set.of(CredentialContext.Privilege.UPDATE));
     assertThat(azureTemporaryCredentials.getAzureUserDelegationSas().getSasToken()).isNotNull();
 
     // Use datalake service client
@@ -148,7 +164,9 @@ public class CloudCredentialVendorTest {
     azureCredentialVendor = new AzureCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, azureCredentialVendor, null);
     assertThatThrownBy(
-            () -> vendCredential("abfss://test@uctest", Set.of(CredentialContext.Privilege.UPDATE)))
+            () ->
+                vendCredential(
+                    "abfss://test@uctest/abc", Set.of(CredentialContext.Privilege.UPDATE)))
         .isInstanceOf(CompletionException.class);
   }
 

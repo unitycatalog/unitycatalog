@@ -8,7 +8,6 @@ import com.auth0.jwk.JwkProviderBuilder;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.interfaces.Verification;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.client.WebClient;
@@ -20,7 +19,6 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
-import java.util.List;
 import java.util.Map;
 import lombok.SneakyThrows;
 import org.slf4j.Logger;
@@ -39,18 +37,13 @@ public class JwksOperations {
   }
 
   @SneakyThrows
-  public JWTVerifier verifierForIssuerAndKey(
-      String issuer, String keyId, String alg, List<String> audiences) {
+  public JWTVerifier verifierForIssuerAndKey(String issuer, String keyId, String alg) {
     JwkProvider jwkProvider = loadJwkProvider(issuer);
     Jwk jwk = jwkProvider.get(keyId);
 
     Algorithm algorithm = algorithmForJwk(jwk, alg);
 
-    Verification builder = JWT.require(algorithm).withIssuer(issuer);
-    if (audiences != null && !audiences.isEmpty()) {
-      builder.withAnyOfAudience(audiences.toArray(new String[0]));
-    }
-    return builder.build();
+    return JWT.require(algorithm).withIssuer(issuer).build();
   }
 
   @SneakyThrows
