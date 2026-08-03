@@ -36,102 +36,19 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
 
   @Test
   public void testRenameTableEndpoint() throws Exception {
-    // -------- Happy path: rename returns 204, new name loads, old name is gone --------
-    String oldName = "tbl_rename_src";
-    String newName = "tbl_rename_dst";
-    createDeltaManaged(oldName, Map.of());
-    DeltaLoadTableResponse originalTable =
-        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, oldName);
+    String source = "renameSource";
+    String existingTarget = "existingTarget";
+    String missingSource = "missingSource";
+    String unusedTarget = "unusedTarget";
 
-    ApiResponse<Void> response =
-        deltaTablesApi.renameTableWithHttpInfo(
-            TestUtils.CATALOG_NAME,
-            TestUtils.SCHEMA_NAME,
-            oldName,
-            new DeltaRenameTableRequest().newName(newName));
-    assertThat(response.getStatusCode()).isEqualTo(204);
-
-    // The new name resolves to the original table with its metadata and commit state intact.
-    DeltaLoadTableResponse renamedTable =
-        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, newName);
-    assertTableStateUnchanged(originalTable, renamedTable);
-
-    // Old name no longer resolves.
-    TestUtils.assertDeltaApiException(
-        () -> deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, oldName),
-        DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
-        "Table not found");
-  }
-
-  @Test
-  public void testRenameMissingSourceReturnsNotFound() throws Exception {
-    createDeltaManaged("existingTarget", Map.of());
-
-    for (String newName : new String[] {"unusedTarget", "missingSource", "existingTarget"}) {
-      TestUtils.assertDeltaApiException(
-          () ->
-              deltaTablesApi.renameTable(
-                  TestUtils.CATALOG_NAME,
-                  TestUtils.SCHEMA_NAME,
-                  "missingSource",
-                  new DeltaRenameTableRequest().newName(newName)),
-          DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
-          "Table not found");
-    }
-  }
-
-  @Test
-  public void testRenameToExistingTargetConflicts() throws Exception {
-    // -------- Conflict: renaming onto an existing name returns 409 AlreadyExistsException --------
-    String source = "tbl_rename_conflict_src";
-    String target = "tbl_rename_conflict_dst";
-    createDeltaManaged(source, Map.of());
-    createDeltaManaged(target, Map.of());
-
-    TestUtils.assertDeltaApiException(
-        () ->
-            deltaTablesApi.renameTable(
-                TestUtils.CATALOG_NAME,
-                TestUtils.SCHEMA_NAME,
-                source,
-                new DeltaRenameTableRequest().newName(target)),
-        DeltaErrorType.ALREADY_EXISTS_EXCEPTION,
-        "already exists");
-  }
-
-  @Test
-  public void testRenameToSameNameIsNoOp() throws Exception {
-    String tableName = "tbl_rename_same_name";
-    createDeltaManaged(tableName, Map.of());
-    DeltaLoadTableResponse originalTable =
-        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
-
-    ApiResponse<Void> response =
-        deltaTablesApi.renameTableWithHttpInfo(
-            TestUtils.CATALOG_NAME,
-            TestUtils.SCHEMA_NAME,
-            tableName,
-            new DeltaRenameTableRequest().newName(tableName));
-
-    assertThat(response.getStatusCode()).isEqualTo(204);
-    DeltaLoadTableResponse unchangedTable =
-        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, tableName);
-    assertTableStateUnchanged(originalTable, unchangedTable);
-    assertThat(unchangedTable.getMetadata().getUpdatedTime())
-        .isEqualTo(originalTable.getMetadata().getUpdatedTime());
-    assertThat(unchangedTable.getMetadata().getEtag())
-        .isEqualTo(originalTable.getMetadata().getEtag());
-  }
-
-  @Test
-  public void testRenameTableRejectsMissingNewName() {
+    // Missing or blank target names return 400 before source lookup.
     for (String newName : new String[] {null, "", " ", "\t"}) {
       assertThatThrownBy(
               () ->
                   deltaTablesApi.renameTable(
                       TestUtils.CATALOG_NAME,
                       TestUtils.SCHEMA_NAME,
-                      "tbl_rename_src",
+                      source,
                       new DeltaRenameTableRequest().newName(newName)))
           .isInstanceOfSatisfying(
               ApiException.class,
@@ -140,6 +57,69 @@ public class SdkRenameTableTest extends DeltaBaseTableCRUDTestEnv {
                 assertThat(e.getMessage()).contains("New table name is required");
               });
     }
+
+    // A missing source returns 404 whether the target is unused, unchanged, or already exists.
+    createDeltaManaged(existingTarget, Map.of());
+    for (String newName : new String[] {unusedTarget, missingSource, existingTarget}) {
+      TestUtils.assertDeltaApiException(
+          () ->
+              deltaTablesApi.renameTable(
+                  TestUtils.CATALOG_NAME,
+                  TestUtils.SCHEMA_NAME,
+                  missingSource,
+                  new DeltaRenameTableRequest().newName(newName)),
+          DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
+          "Table not found");
+    }
+
+    createDeltaManaged(source, Map.of());
+    DeltaLoadTableResponse originalTable =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, source);
+
+    // Renaming to an existing target returns 409.
+    TestUtils.assertDeltaApiException(
+        () ->
+            deltaTablesApi.renameTable(
+                TestUtils.CATALOG_NAME,
+                TestUtils.SCHEMA_NAME,
+                source,
+                new DeltaRenameTableRequest().newName(existingTarget)),
+        DeltaErrorType.ALREADY_EXISTS_EXCEPTION,
+        "already exists");
+
+    // Renaming a table to its current name is a no-op.
+    ApiResponse<Void> noOpResponse =
+        deltaTablesApi.renameTableWithHttpInfo(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            source,
+            new DeltaRenameTableRequest().newName(source));
+    assertThat(noOpResponse.getStatusCode()).isEqualTo(204);
+
+    DeltaLoadTableResponse afterNoOp =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, source);
+    assertTableStateUnchanged(originalTable, afterNoOp);
+    assertThat(afterNoOp.getMetadata().getUpdatedTime())
+        .isEqualTo(originalTable.getMetadata().getUpdatedTime());
+    assertThat(afterNoOp.getMetadata().getEtag()).isEqualTo(originalTable.getMetadata().getEtag());
+
+    // A successful rename preserves table state and removes the old name.
+    ApiResponse<Void> renameResponse =
+        deltaTablesApi.renameTableWithHttpInfo(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            source,
+            new DeltaRenameTableRequest().newName(unusedTarget));
+    assertThat(renameResponse.getStatusCode()).isEqualTo(204);
+
+    DeltaLoadTableResponse renamedTable =
+        deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, unusedTarget);
+    assertTableStateUnchanged(afterNoOp, renamedTable);
+
+    TestUtils.assertDeltaApiException(
+        () -> deltaTablesApi.loadTable(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, source),
+        DeltaErrorType.NO_SUCH_TABLE_EXCEPTION,
+        "Table not found");
   }
 
   private static void assertTableStateUnchanged(
