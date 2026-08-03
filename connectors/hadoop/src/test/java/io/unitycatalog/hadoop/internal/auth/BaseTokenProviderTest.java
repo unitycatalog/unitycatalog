@@ -4,6 +4,8 @@ import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_I
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
@@ -370,6 +372,86 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(providerA, credA);
     assertCred(providerB, credB);
     assertGlobalCache(2, credA, credB);
+  }
+
+  @Test
+  public void sameScopeDifferentPrefixUsesSeparateGlobalCacheEntries() throws Exception {
+    Configuration confA = newTableBasedConf("shared-table");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/a");
+
+    Configuration confB = newTableBasedConf("shared-table");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/b");
+
+    TemporaryCredentials credA = newTempCred("locationA", Long.MAX_VALUE);
+    TemporaryCredentials credB = newTempCred("locationB", Long.MAX_VALUE);
+
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(credA).thenReturn(credB);
+
+    T providerA = createTestProvider(confA, tempCredApi);
+    T providerB = createTestProvider(confB, tempCredApi);
+
+    assertCred(providerA, credA);
+    assertCred(providerB, credB);
+    assertGlobalCache(2, credA, credB);
+  }
+
+  @Test
+  public void sameScopeSamePrefixReusesGlobalCacheEntry() throws Exception {
+    Configuration conf = newTableBasedConf("shared-table");
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/a");
+
+    TemporaryCredentials cred = newTempCred("locationA", Long.MAX_VALUE);
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred);
+
+    T providerA = createTestProvider(conf, tempCredApi);
+    T providerB = createTestProvider(conf, tempCredApi);
+
+    assertCred(providerA, cred);
+    assertCred(providerB, cred);
+    assertGlobalCache(1, cred);
+    verify(tempCredApi, times(1)).generateTemporaryTableCredentials(any());
+  }
+
+  @Test
+  public void sameScopeNullPrefixReusesGlobalCacheEntry() throws Exception {
+    Configuration confA = newTableBasedConf("shared-table");
+    Configuration confB = newTableBasedConf("shared-table");
+
+    TemporaryCredentials cred = newTempCred("locationA", Long.MAX_VALUE);
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred);
+
+    T providerA = createTestProvider(confA, tempCredApi);
+    T providerB = createTestProvider(confB, tempCredApi);
+
+    assertCred(providerA, cred);
+    assertCred(providerB, cred);
+    assertGlobalCache(1, cred);
+    verify(tempCredApi, times(1)).generateTemporaryTableCredentials(any());
+  }
+
+  @Test
+  public void differentScopeSamePrefixUsesSeparateGlobalCacheEntries() throws Exception {
+    Configuration confA = newTableBasedConf("table-a");
+    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");
+
+    Configuration confB = newTableBasedConf("table-b");
+    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");
+
+    TemporaryCredentials credA = newTempCred("tableA", Long.MAX_VALUE);
+    TemporaryCredentials credB = newTempCred("tableB", Long.MAX_VALUE);
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(credA).thenReturn(credB);
+
+    T providerA = createTestProvider(confA, tempCredApi);
+    T providerB = createTestProvider(confB, tempCredApi);
+
+    assertCred(providerA, credA);
+    assertCred(providerB, credB);
+    assertGlobalCache(2, credA, credB);
+    verify(tempCredApi, times(2)).generateTemporaryTableCredentials(any());
   }
 
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {

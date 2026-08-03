@@ -4,7 +4,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
-import io.unitycatalog.hadoop.internal.id.CredId;
+import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
 import io.unitycatalog.hadoop.internal.util.ClockUtil;
 import org.apache.hadoop.conf.Configuration;
 
@@ -15,12 +15,12 @@ import org.apache.hadoop.conf.Configuration;
  * cache lookup.
  */
 public abstract class GenericCredentialProvider {
-  static final CredentialCache globalCache = CredentialCache.createGlobalCache();
+  static final CredentialCache<FileSystemCredId> globalCache = CredentialCache.createGlobalCache();
 
   private Configuration conf;
   private Clock clock;
   private long renewalLeadTimeMillis;
-  private CredId cacheKey;
+  private FileSystemCredId cacheKey;
   private boolean credCacheEnabled;
 
   private volatile GenericCredential credential;
@@ -35,9 +35,8 @@ public abstract class GenericCredentialProvider {
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY,
             UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
 
-    // Identify the credential scope; used as the global cache key so that requests targeting the
-    // same scope can share a vended credential.
-    this.cacheKey = CredId.create(conf);
+    // Identify the credential scope and prefix so matching requests can share a credential.
+    this.cacheKey = FileSystemCredId.create(conf);
 
     this.credCacheEnabled =
         conf.getBoolean(
