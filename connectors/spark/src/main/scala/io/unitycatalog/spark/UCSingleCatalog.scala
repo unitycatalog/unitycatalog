@@ -418,18 +418,21 @@ class UCSingleCatalog
   }
 
   /**
-   * UC external locations and the temporary path-credentials API use canonical `s3://` URLs on the
-   * server. Hadoop clients may still reference the same storage as `s3a://`; rewrite to `s3://`
-   * for credential lookup only.
+   * UC external locations and the temporary path-credentials API use canonical lowercase
+   * `s3://` URLs on the server. Hadoop clients may reference the same storage as `s3a://`
+   * (any casing); rewrite to `s3://` for credential lookup only and lowercase other schemes.
    */
   private def pathForCredentialApi(location: String): (String, String) = {
     val scheme = new Path(location).toUri.getScheme
     if (scheme == null) {
       (location, null)
-    } else if (scheme.equalsIgnoreCase("s3a")) {
-      (location.replaceFirst("(?i)^s3a://", "s3://"), "s3")
     } else {
-      (location, scheme)
+      val canonicalScheme =
+        if (scheme.equalsIgnoreCase("s3a")) "s3" else scheme.toLowerCase
+      val apiLocation = location.replaceFirst(
+        s"(?i)^${java.util.regex.Pattern.quote(scheme)}://",
+        s"$canonicalScheme://")
+      (apiLocation, canonicalScheme)
     }
   }
 
