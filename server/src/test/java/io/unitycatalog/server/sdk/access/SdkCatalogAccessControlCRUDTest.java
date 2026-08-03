@@ -161,6 +161,8 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     // create a catalog -> CREATE CATALOG -> allowed
     CreateCatalog catalog4 = new CreateCatalog().name("catalog4").comment("(created from scratch)");
     principal1CatalogsApi.createCatalog(catalog4);
+
+    // delete a catalog -> catalog owner -> allowed
     principal1CatalogsApi.deleteCatalog("catalog4", null);
 
     // managed storage with external location
