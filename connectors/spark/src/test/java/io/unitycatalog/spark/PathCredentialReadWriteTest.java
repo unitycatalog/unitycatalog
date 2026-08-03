@@ -294,7 +294,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
     sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
 
-    if ("s3a".equals(scheme)) {
+    if ("s3a".equalsIgnoreCase(scheme)) {
       LogicalPlan readPlan =
           session
               .sessionState()
@@ -379,10 +379,11 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
   /**
    * {@code s3://} and {@code s3a://} both vend S3 credentials as {@code fs.s3a.*} keys; {@code
-   * s3a://} is rewritten to {@code s3://} for UC path-credential lookup only.
+   * s3a://} is rewritten to {@code s3://} for UC path-credential lookup only. Scheme casing is
+   * normalized to lowercase for UC API calls ({@code S3://}, {@code S3A://}, etc.).
    */
   @ParameterizedTest
-  @CsvSource({"s3", "s3a"})
+  @CsvSource({"s3", "s3a", "S3", "S3A"})
   public void testVendPathCredentialsForScheme(String scheme) throws IOException {
     session = createPathCredSession(SPARK_CATALOG);
     String location = bucketPath(scheme, "vend_" + scheme);
