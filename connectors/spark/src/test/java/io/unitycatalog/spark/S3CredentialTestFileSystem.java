@@ -87,4 +87,14 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
   protected String scheme() {
     return "s3:";
   }
+
+  /**
+   * Same fake S3 credentials check as {@link S3CredentialTestFileSystem}, for {@code s3a://} URIs.
+   */
+  public static class S3a extends S3CredentialTestFileSystem {
+    @Override
+    protected String scheme() {
+      return "s3a:";
+    }
+  }
 }
