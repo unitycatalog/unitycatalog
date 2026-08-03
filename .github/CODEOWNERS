@@ -9,8 +9,8 @@
 # Hadoop Connector
 /connectors/hadoop/ @tdas @openinx @TimothyW553 @yili-db
 
-# Java clients.
-/clients/java/ @tdas @openinx @yili-db
+# Clients.
+/clients/ @tdas @openinx @TimothyW553 @yili-db
 
 # Integration tests.
 /integration-tests/ @tdas @openinx @yili-db
