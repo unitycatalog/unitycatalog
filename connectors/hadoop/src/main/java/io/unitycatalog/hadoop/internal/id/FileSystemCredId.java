@@ -30,7 +30,7 @@ public final class FileSystemCredId {
    */
   public static FileSystemCredId create(Configuration conf) {
     CredId credId = CredId.create(conf);
-    String prefix = prefix(conf);
+    String prefix = getCredPrefix(conf);
     return new FileSystemCredId(credId, prefix);
   }
 
@@ -41,11 +41,11 @@ public final class FileSystemCredId {
    */
   public static FileSystemCredId create(Configuration conf, URI uri) {
     CredId credId = CredId.create(conf, () -> new DefaultCredId(uri, conf));
-    String prefix = prefix(conf);
+    String prefix = getCredPrefix(conf);
     return new FileSystemCredId(credId, prefix);
   }
 
-  private static String prefix(Configuration conf) {
+  private static String getCredPrefix(Configuration conf) {
     return conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
   }
 
