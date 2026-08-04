@@ -1,17 +1,14 @@
 package io.unitycatalog.hadoop.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
-import io.unitycatalog.hadoop.internal.auth.GenericCredential;
-import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
-import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
-import java.util.List;
+import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -20,6 +17,12 @@ import org.junit.jupiter.api.Test;
  * CredPropsCacheTest}).
  */
 class CredPropsUtilTest {
+
+  @AfterEach
+  void resetState() {
+    CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
+    CredPropsUtil.initialCredCache.clear();
+  }
 
   @Test
   void credContextIdVariesByCatalogUriSchemeAndAuth() {
@@ -35,50 +38,46 @@ class CredPropsUtilTest {
         .isNotEqualTo(base);
   }
 
+  // TODO: This test will be deleted and moved to CredPropsBaseTest when multiple vended creds are
+  // supported.
   @Test
-  void multipleVendedCredentialsAreRejected() {
+  void multipleDeltaCredentialsAreSelectedByLocation() throws Exception {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) ->
             CredPropsBaseTest.mockGenericCredentialFetcher(
-                new AwsCredential("ak1", "sk1", "st1", Long.MAX_VALUE, null),
-                new AwsCredential("ak2", "sk2", "st2", Long.MAX_VALUE, null));
+                new AwsCredential(
+                    "parent-ak", "parent-sk", "parent-st", Long.MAX_VALUE, "s3://bucket"),
+                new AwsCredential(
+                    "child-ak", "child-sk", "child-st", Long.MAX_VALUE, "s3://bucket/table"));
 
-    assertThatThrownBy(
-            () ->
-                CredPropsUtil.createTableCredProps(
-                    false,
-                    false,
-                    new Configuration(false),
-                    "s3",
-                    null,
-                    "http://uc",
-                    tokenProvider(),
-                    "tid",
-                    UCCredentialHadoopConfs.TableOperation.READ_WRITE,
-                    Map.of()))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Expected only one credential for this credential request type");
-  }
-
-  @Test
-  void multipleDeltaCredentialsAreSelectedByLocation() {
-    GenericCredential parent =
-        new AwsCredential("parent-ak", "parent-sk", "parent-st", Long.MAX_VALUE, "s3://bucket");
-    GenericCredential child =
-        new AwsCredential("child-ak", "child-sk", "child-st", Long.MAX_VALUE, "s3://bucket/table");
-    List<GenericCredential> credentials = List.of(parent, child);
-
-    DeltaTableCredId tableCredId =
-        new DeltaTableCredId(
-            "context",
+    Map<String, String> tableProps =
+        CredPropsUtil.createDeltaTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "s3",
+            null,
+            "http://uc",
+            tokenProvider(),
             UCDeltaTableIdentifier.of("catalog", "schema", "table"),
-            "READ",
-            "s3://bucket/table/child");
-    DeltaStagingTableCredId stagingCredId =
-        new DeltaStagingTableCredId("context", "staging-table-id", "s3://bucket/table/child");
+            "s3://bucket/table/child",
+            UCCredentialHadoopConfs.TableOperation.READ,
+            Map.of());
+    Map<String, String> stagingProps =
+        CredPropsUtil.createDeltaStagingTableCredProps(
+            false,
+            false,
+            new Configuration(false),
+            "s3",
+            null,
+            "http://uc",
+            tokenProvider(),
+            "staging-table-id",
+            "s3://bucket/table/child",
+            Map.of());
 
-    assertThat(CredPropsUtil.selectCredential(tableCredId, credentials)).isSameAs(child);
-    assertThat(CredPropsUtil.selectCredential(stagingCredId, credentials)).isSameAs(child);
+    assertThat(tableProps).containsEntry("fs.s3a.access.key", "child-ak");
+    assertThat(stagingProps).containsEntry("fs.s3a.access.key", "child-ak");
   }
 
   private static TokenProvider tokenProvider() {

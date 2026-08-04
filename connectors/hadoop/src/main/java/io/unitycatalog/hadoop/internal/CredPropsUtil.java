@@ -206,7 +206,8 @@ public class CredPropsUtil {
   }
 
   // TODO: Remove this method once CredPropsBuilder supports multiple vended credentials.
-  static GenericCredential selectCredential(CredId credId, List<GenericCredential> credentials) {
+  private static GenericCredential selectCredential(
+      CredId credId, List<GenericCredential> credentials) {
     if (credentials.size() == 1) {
       return credentials.get(0);
     }
