@@ -10,6 +10,7 @@ import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
@@ -34,7 +35,7 @@ class CredPropsRoundTripTest {
   void singleCredentialRoundTripsThroughCredScopedFileSystemAndProvider() throws Exception {
     AwsCredential credential =
         new AwsCredential("access-key", "secret-key", "session-token", null, LOCATION);
-    CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> () -> credential;
+    CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> () -> List.of(credential);
 
     Configuration initialConf = new Configuration(false);
     initialConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);

@@ -49,6 +49,13 @@ public final class FileSystemCredId {
     return conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
   }
 
+  /**
+   * The credential prefix being accessed, or {@code null} when the key is scoped by CredId only.
+   */
+  public String prefix() {
+    return prefix;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {

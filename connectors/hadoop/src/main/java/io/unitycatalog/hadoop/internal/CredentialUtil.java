@@ -56,31 +56,32 @@ public final class CredentialUtil {
     }
   }
 
-  /** Selects the credential whose prefix covers the requested location. */
-  public static DeltaStorageCredential selectForLocation(
-      String location, List<DeltaStorageCredential> creds) {
+  /** Selects the credential whose location covers {@code location} (longest match wins). */
+  public static GenericCredential selectForLocation(
+      String location, List<GenericCredential> creds) {
     Preconditions.checkArgument(
-        creds != null && !creds.isEmpty(),
-        "UC Delta API response for '%s' has no storage credentials.",
-        location);
+        creds != null && !creds.isEmpty(), "Credential response has no storage credentials.");
     if (creds.size() == 1) {
-      Preconditions.checkNotNull(
-          creds.get(0), "UC Delta API response for '%s' contains null.", location);
+      Preconditions.checkNotNull(creds.get(0), "Credential response contains null.");
     }
-    DeltaStorageCredential best = null;
+    GenericCredential best = null;
     int bestLen = -1;
-    for (DeltaStorageCredential c : creds) {
-      if (c == null || c.getPrefix() == null || !prefixCovers(location, c.getPrefix())) {
+    for (GenericCredential cred : creds) {
+      if (cred == null) {
         continue;
       }
-      int len = stripTrailingSlashes(c.getPrefix()).length();
+      String prefix = cred.prefix();
+      if (prefix == null || !prefixCovers(location, prefix)) {
+        continue;
+      }
+      int len = stripTrailingSlashes(prefix).length();
       if (len > bestLen) {
-        best = c;
+        best = cred;
         bestLen = len;
       }
     }
     Preconditions.checkArgument(
-        best != null, "No UC Delta credential matched location '%s'.", location);
+        best != null, "No vended credential covers location '%s'.", location);
     return best;
   }
 
