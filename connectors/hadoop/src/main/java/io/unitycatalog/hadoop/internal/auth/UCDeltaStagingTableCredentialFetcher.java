@@ -16,6 +16,7 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
 
   private final DeltaTemporaryCredentialsApi api;
   private final UUID stagingTableId;
+  private final String stagingTableLocation;
 
   UCDeltaStagingTableCredentialFetcher(
       DeltaStagingTableCredId credId, DeltaTemporaryCredentialsApi api) {
@@ -24,6 +25,7 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
 
     this.api = api;
     this.stagingTableId = UUID.fromString(credId.stagingTableId());
+    this.stagingTableLocation = credId.location();
   }
 
   @Override

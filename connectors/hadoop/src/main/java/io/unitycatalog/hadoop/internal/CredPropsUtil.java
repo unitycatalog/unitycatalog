@@ -255,7 +255,7 @@ public class CredPropsUtil {
           Clock clock = ClockUtil.resolveClock(hadoopConf);
           List<GenericCredential> credentials =
               createCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
-          return new RenewableCredential<List<GenericCredential>>(credentials) {
+          return new RenewableCredential<>(credentials) {
             @Override
             public boolean readyToRenew() {
               return credentials.stream()

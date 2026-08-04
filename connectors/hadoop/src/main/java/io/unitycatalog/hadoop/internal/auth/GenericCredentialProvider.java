@@ -86,7 +86,7 @@ public abstract class GenericCredentialProvider {
           cacheKey,
           () -> {
             GenericCredential credential = fetchAndSelectCredential();
-            return new RenewableCredential<GenericCredential>(credential) {
+            return new RenewableCredential<>(credential) {
               @Override
               public boolean readyToRenew() {
                 return credential.readyToRenew(clock, renewalLeadTimeMillis);
