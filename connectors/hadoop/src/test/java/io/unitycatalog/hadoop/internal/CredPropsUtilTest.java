@@ -32,7 +32,7 @@ class CredPropsUtilTest {
   }
 
   @Test
-  void multipleVendedCredentialsAreRejectedOnDriver() {
+  void multipleVendedCredentialsAreRejected() {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) ->
             CredPropsBaseTest.mockGenericCredentialFetcher(

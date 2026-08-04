@@ -77,10 +77,6 @@ public final class CredentialUtil {
     return best;
   }
 
-  /**
-   * Whether {@code prefix} covers {@code location}: they denote the same storage location or {@code
-   * prefix} is an ancestor path of it. Trailing slashes are ignored.
-   */
   static boolean prefixCovers(String location, String prefix) {
     String l = stripTrailingSlashes(location);
     String p = stripTrailingSlashes(prefix);

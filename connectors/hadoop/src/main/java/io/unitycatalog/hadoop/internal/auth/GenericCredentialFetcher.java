@@ -25,10 +25,6 @@ import org.apache.hadoop.conf.Configuration;
  * <p><b>Internal API — not for external use. May change without notice.</b>
  */
 public interface GenericCredentialFetcher {
-  /**
-   * Fetches the vended credentials for this fetcher's scope. A single-credential API returns a
-   * one-element list.
-   */
   List<GenericCredential> createCredentials() throws ApiException;
 
   /** Creates a fetcher backed by the standard UC temporary credentials API for a table. */

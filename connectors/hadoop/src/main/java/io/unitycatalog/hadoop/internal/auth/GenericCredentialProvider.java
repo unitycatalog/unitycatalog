@@ -98,9 +98,14 @@ public abstract class GenericCredentialProvider {
   private GenericCredential fetchAndSelectCredential() throws ApiException {
     List<GenericCredential> credentials = genericCredentialFetcher().createCredentials();
     Preconditions.checkState(!credentials.isEmpty(), "No vended credential was returned.");
+
+    // If there is only one credential, no selection is needed.
     if (credentials.size() == 1) {
       return credentials.get(0);
     }
+
+    // For multiple credentials, UC_CREDENTIAL_PREFIX_KEY identifies which credential covers the
+    // requested storage location. Without it, the provider cannot select from the vended list.
     Preconditions.checkState(
         cacheKey.prefix() != null,
         "Multiple credentials were vended but no location is set to select one.");
