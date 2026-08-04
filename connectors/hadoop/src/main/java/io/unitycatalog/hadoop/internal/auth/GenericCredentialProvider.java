@@ -84,12 +84,15 @@ public abstract class GenericCredentialProvider {
     if (credCacheEnabled) {
       return globalCache.access(
           cacheKey,
-          () ->
-              new RenewableCredential<>(
-                  renewalLeadTimeMillis,
-                  clock,
-                  fetchAndSelectCredential(),
-                  GenericCredential::readyToRenew));
+          () -> {
+            GenericCredential credential = fetchAndSelectCredential();
+            return new RenewableCredential<GenericCredential>(credential) {
+              @Override
+              public boolean readyToRenew() {
+                return credential.readyToRenew(clock, renewalLeadTimeMillis);
+              }
+            };
+          });
     } else {
       return fetchAndSelectCredential();
     }

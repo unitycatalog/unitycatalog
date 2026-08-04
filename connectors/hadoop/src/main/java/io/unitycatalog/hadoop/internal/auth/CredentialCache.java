@@ -1,7 +1,6 @@
 package io.unitycatalog.hadoop.internal.auth;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -9,7 +8,7 @@ import java.util.stream.Collectors;
 /**
  * Caches vended credentials keyed by the supplied key ({@code K}). A cached value is reused while
  * it is still valid and re-fetched via the supplied factory only once it is about to expire, as
- * decided by the {@link Staleness} predicate captured with each entry.
+ * decided by the cached entry's {@link RenewableCredential#readyToRenew()} implementation.
  *
  * <p>Generic over both the key type {@code K} and the value type {@code T}: the global renewal
  * cache holds a single {@link GenericCredential}, while the driver's initial cache holds a {@code
@@ -89,32 +88,17 @@ public class CredentialCache<K, T> {
     RenewableCredential<T> create() throws ApiException;
   }
 
-  /** Decides whether {@code value} is close enough to expiry that it should be renewed. */
-  @FunctionalInterface
-  public interface Staleness<T> {
-    boolean readyToRenew(T value, Clock clock, long renewalLeadTimeMillis);
-  }
-
-  public static class RenewableCredential<T> {
-    private final long renewalLeadTimeMillis;
-    private final Clock clock;
+  public abstract static class RenewableCredential<T> {
     private final T credential;
-    private final Staleness<T> staleness;
 
-    public RenewableCredential(
-        long renewalLeadTimeMillis, Clock clock, T credential, Staleness<T> staleness) {
-      this.renewalLeadTimeMillis = renewalLeadTimeMillis;
-      this.clock = clock;
+    public RenewableCredential(T credential) {
       this.credential = credential;
-      this.staleness = staleness;
     }
 
     public T credential() {
       return credential;
     }
 
-    public boolean readyToRenew() {
-      return staleness.readyToRenew(credential, clock, renewalLeadTimeMillis);
-    }
+    public abstract boolean readyToRenew();
   }
 }

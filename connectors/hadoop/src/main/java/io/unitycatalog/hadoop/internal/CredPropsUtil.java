@@ -218,7 +218,9 @@ public class CredPropsUtil {
           ((DeltaStagingTableCredId) credId).location(), credentials);
     }
     throw new IllegalStateException(
-        String.format("Expected exactly one vended credential, got %s", credentials.size()));
+        String.format(
+            "Expected only one credential for this credential request type, got %s",
+            credentials.size()));
   }
 
   /**
@@ -261,12 +263,17 @@ public class CredPropsUtil {
 
     return initialCredCache.access(
         credId,
-        () ->
-            new RenewableCredential<>(
-                renewalLeadTimeMillis,
-                ClockUtil.resolveClock(hadoopConf),
-                createCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId),
-                CredPropsUtil::credentialsReadyToRenew));
+        () -> {
+          Clock clock = ClockUtil.resolveClock(hadoopConf);
+          List<GenericCredential> credentials =
+              createCredentials(apiClient, catalogUri, tokenProvider, appVersions, credId);
+          return new RenewableCredential<List<GenericCredential>>(credentials) {
+            @Override
+            public boolean readyToRenew() {
+              return credentialsReadyToRenew(credentials, clock, renewalLeadTimeMillis);
+            }
+          };
+        });
   }
 
   /** Renew as soon as any credential is ready to renew. */

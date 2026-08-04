@@ -57,7 +57,7 @@ class CredPropsUtilTest {
                     UCCredentialHadoopConfs.TableOperation.READ_WRITE,
                     Map.of()))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Expected exactly one vended credential, got 2");
+        .hasMessageContaining("Expected only one credential for this credential request type");
   }
 
   @Test

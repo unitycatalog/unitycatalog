@@ -1,5 +1,8 @@
 package io.unitycatalog.hadoop.internal.auth;
 
+import static io.unitycatalog.hadoop.internal.auth.UCDeltaCredentialFetcherTestUtils.assertAwsCredentialsInOrder;
+import static io.unitycatalog.hadoop.internal.auth.UCDeltaCredentialFetcherTestUtils.assertRejectsNullOrEmptyStorageCredentials;
+import static io.unitycatalog.hadoop.internal.auth.UCDeltaCredentialFetcherTestUtils.s3Response;
 import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -68,45 +71,16 @@ class UCDeltaGenericCredentialFetcherTest {
             "READ_WRITE",
             "s3://bucket/events");
 
-    DeltaStorageCredential first =
-        new DeltaStorageCredential()
-            .prefix("s3://bucket/events")
-            .operation(DeltaCredentialOperation.READ_WRITE)
-            .expirationTimeMs(1L)
-            .config(
-                new DeltaStorageCredentialConfig()
-                    .s3AccessKeyId("ak1")
-                    .s3SecretAccessKey("sk1")
-                    .s3SessionToken("st1"));
-    DeltaStorageCredential second =
-        new DeltaStorageCredential()
-            .prefix("s3://bucket/events/child")
-            .operation(DeltaCredentialOperation.READ_WRITE)
-            .expirationTimeMs(2L)
-            .config(
-                new DeltaStorageCredentialConfig()
-                    .s3AccessKeyId("ak2")
-                    .s3SecretAccessKey("sk2")
-                    .s3SessionToken("st2"));
     DeltaCredentialsResponse response =
-        new DeltaCredentialsResponse()
-            .addStorageCredentialsItem(first)
-            .addStorageCredentialsItem(second);
+        s3Response("s3://bucket/events", "s3://bucket/events/child");
 
     DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events"))
         .thenReturn(response);
 
-    List<GenericCredential> creds =
+    List<GenericCredential> credentials =
         GenericCredentialFetcher.forUcDelta(credId, api).createCredentials();
-
-    assertThat(creds).hasSize(2);
-    AwsCredential cred1 = (AwsCredential) creds.get(0);
-    assertThat(cred1.accessKeyId()).isEqualTo("ak1");
-    assertThat(cred1.prefix()).isEqualTo("s3://bucket/events");
-    AwsCredential cred2 = (AwsCredential) creds.get(1);
-    assertThat(cred2.accessKeyId()).isEqualTo("ak2");
-    assertThat(cred2.prefix()).isEqualTo("s3://bucket/events/child");
+    assertAwsCredentialsInOrder(credentials, "s3://bucket/events", "s3://bucket/events/child");
   }
 
   @Test
@@ -137,17 +111,12 @@ class UCDeltaGenericCredentialFetcherTest {
             "s3://bucket/events");
 
     DeltaCredentialsResponse response = mock(DeltaCredentialsResponse.class);
-    when(response.getStorageCredentials()).thenReturn(null).thenReturn(List.of());
     DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
     when(api.getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events"))
         .thenReturn(response);
 
-    assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(credId, api).createCredentials())
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("returned no storage credentials");
-    assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(credId, api).createCredentials())
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("returned no storage credentials");
+    assertRejectsNullOrEmptyStorageCredentials(
+        response, () -> GenericCredentialFetcher.forUcDelta(credId, api).createCredentials());
   }
 
   @Test
