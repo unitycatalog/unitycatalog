@@ -457,10 +457,10 @@ abstract class CredPropsBaseTest {
     return TokenProvider.create(Map.of("type", "static", "token", "tok"));
   }
 
-  static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential creds) {
+  static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential... creds) {
     GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {
-      when(api.createCredential()).thenReturn(creds);
+      when(api.createCredentials()).thenReturn(List.of(creds));
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

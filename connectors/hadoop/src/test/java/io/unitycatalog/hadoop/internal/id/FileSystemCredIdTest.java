@@ -33,6 +33,18 @@ class FileSystemCredIdTest {
   }
 
   @Test
+  void createReadsPrefixFromConfiguration() {
+    Configuration conf = new Configuration(false);
+
+    // The prefix is null when it is not configured.
+    assertThat(FileSystemCredId.create(conf, TEST_URI).prefix()).isNull();
+
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/prefix");
+
+    assertThat(FileSystemCredId.create(conf, TEST_URI).prefix()).isEqualTo("s3://bucket/prefix");
+  }
+
+  @Test
   void equivalentPrefixesAreEqualAndHaveSameHashCode() {
     FileSystemCredId idA = createId("s3://bucket/a");
     FileSystemCredId idB = createId("s3://bucket/a");

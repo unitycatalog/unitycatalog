@@ -21,15 +21,21 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
   @Override
   protected GcsVendedTokenProvider createTestProvider(
       Configuration conf, TemporaryCredentialsApi mockApi) {
-    return new TestGcsVendedTokenProvider(conf, mockApi);
+    return new TestGcsVendedTokenProvider(conf, ucFetcher(conf, mockApi));
+  }
+
+  @Override
+  protected GcsVendedTokenProvider createTestProvider(
+      Configuration conf, GenericCredentialFetcher fetcher) {
+    return new TestGcsVendedTokenProvider(conf, fetcher);
   }
 
   static class TestGcsVendedTokenProvider extends GcsVendedTokenProvider {
     private final GenericCredentialFetcher credentialFetcher;
 
-    TestGcsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
+    TestGcsVendedTokenProvider(Configuration conf, GenericCredentialFetcher credentialFetcher) {
       setConf(conf);
-      this.credentialFetcher = BaseTokenProviderTest.ucFetcher(conf, mockApi);
+      this.credentialFetcher = credentialFetcher;
     }
 
     @Override
@@ -48,6 +54,16 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
     tempCred.setExpirationTime(expirationMillis);
 
     return tempCred;
+  }
+
+  @Override
+  protected GenericCredential newGenericCred(String id, long expirationMillis, String location) {
+    return new GcsCredential("oauthToken" + id, expirationMillis, location);
+  }
+
+  @Override
+  protected String location(String path) {
+    return "gs://bucket" + path;
   }
 
   @Override
