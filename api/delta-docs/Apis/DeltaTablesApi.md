@@ -225,7 +225,7 @@ No authorization required
 
 Update table
 
-    Update table properties, columns, or commit Delta changes. Unlike IRC, this endpoint does not support table creation. This endpoint also covers the coordinated commit flow described in the Unity Catalog Managed Tables Specification. 
+    Update table properties, columns, or commit Delta changes. Unlike IRC, this endpoint does not support table creation. This endpoint also covers the coordinated commit flow described in the Unity Catalog Managed Tables Specification. Replaying an already-accepted add-commit (same version and file-name) is an idempotent whole-request no-op that returns 200, so a client that lost the response can safely resend. 
 
 ### Parameters
 
