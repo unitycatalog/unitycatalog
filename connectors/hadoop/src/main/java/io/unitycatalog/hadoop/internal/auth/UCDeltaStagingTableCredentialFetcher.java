@@ -3,6 +3,7 @@ package io.unitycatalog.hadoop.internal.auth;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
@@ -33,7 +34,12 @@ final class UCDeltaStagingTableCredentialFetcher implements GenericCredentialFet
         "UC Delta API returned no credentials response for staging table '%s'.",
         stagingTableId);
 
-    return response.getStorageCredentials().stream()
+    List<DeltaStorageCredential> storageCredentials = response.getStorageCredentials();
+    Preconditions.checkArgument(
+        storageCredentials != null && !storageCredentials.isEmpty(),
+        "UC Delta API returned no storage credentials for staging table '%s'.",
+        stagingTableId);
+    return storageCredentials.stream()
         .map(CredentialUtil::toGenericCredential)
         .collect(Collectors.toList());
   }

@@ -24,7 +24,7 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
   @Override
   protected AwsVendedTokenProvider createTestProvider(
       Configuration conf, TemporaryCredentialsApi mockApi) {
-    return new TestAwsVendedTokenProvider(conf, mockApi);
+    return new TestAwsVendedTokenProvider(conf, ucFetcher(conf, mockApi));
   }
 
   @Override
@@ -35,10 +35,6 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
 
   static class TestAwsVendedTokenProvider extends AwsVendedTokenProvider {
     private final GenericCredentialFetcher credentialFetcher;
-
-    TestAwsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi tempCredApi) {
-      this(conf, BaseTokenProviderTest.ucFetcher(conf, tempCredApi));
-    }
 
     TestAwsVendedTokenProvider(Configuration conf, GenericCredentialFetcher credentialFetcher) {
       super(conf);

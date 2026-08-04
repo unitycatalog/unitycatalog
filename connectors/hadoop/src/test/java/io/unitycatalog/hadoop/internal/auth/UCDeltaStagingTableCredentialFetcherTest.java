@@ -23,7 +23,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
   private static final String LOCATION = "s3://bucket/staging-table";
 
   @Test
-  void createCredentialCallsDeltaStagingApiAndReturnsCredential() throws Exception {
+  void createCredentialsCallsDeltaStagingApiAndReturnsCredential() throws Exception {
     DeltaStagingTableCredId credId =
         new DeltaStagingTableCredId(EMPTY_CRED_CONTEXT_ID, STAGING_ID.toString(), LOCATION);
     DeltaCredentialsResponse response = s3StagingResponse();
@@ -90,7 +90,7 @@ class UCDeltaStagingTableCredentialFetcherTest {
   }
 
   @Test
-  void createCredentialRejectsNullResponse() throws Exception {
+  void createCredentialsRejectsNullResponse() throws Exception {
     DeltaStagingTableCredId credId =
         new DeltaStagingTableCredId(EMPTY_CRED_CONTEXT_ID, STAGING_ID.toString(), LOCATION);
 
@@ -101,6 +101,26 @@ class UCDeltaStagingTableCredentialFetcherTest {
             () -> GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredentials())
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("returned no credentials response");
+  }
+
+  @Test
+  void createCredentialsRejectsNullOrEmptyStorageCredentials() throws Exception {
+    DeltaStagingTableCredId credId =
+        new DeltaStagingTableCredId(EMPTY_CRED_CONTEXT_ID, STAGING_ID.toString(), LOCATION);
+
+    DeltaCredentialsResponse response = mock(DeltaCredentialsResponse.class);
+    when(response.getStorageCredentials()).thenReturn(null).thenReturn(List.of());
+    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
+    when(api.getStagingTableCredentials(STAGING_ID)).thenReturn(response);
+
+    assertThatThrownBy(
+            () -> GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredentials())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("returned no storage credentials");
+    assertThatThrownBy(
+            () -> GenericCredentialFetcher.forUcDeltaStagingTable(credId, api).createCredentials())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("returned no storage credentials");
   }
 
   private static DeltaCredentialsResponse s3StagingResponse() {

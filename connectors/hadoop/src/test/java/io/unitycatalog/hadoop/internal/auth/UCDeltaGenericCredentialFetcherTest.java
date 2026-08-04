@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 class UCDeltaGenericCredentialFetcherTest {
 
   @Test
-  void createCredentialCallsDeltaApiWithCredIdFieldsAndReturnsCredential() throws Exception {
+  void createCredentialsCallsDeltaApiWithCredIdFieldsAndReturnsCredential() throws Exception {
     DeltaTableCredId credId =
         new DeltaTableCredId(
             EMPTY_CRED_CONTEXT_ID,
@@ -110,7 +110,7 @@ class UCDeltaGenericCredentialFetcherTest {
   }
 
   @Test
-  void createCredentialRejectsMissingDeltaCredentialsResponse() throws Exception {
+  void createCredentialsRejectsMissingDeltaCredentialsResponse() throws Exception {
     DeltaTableCredId credId =
         new DeltaTableCredId(
             EMPTY_CRED_CONTEXT_ID,
@@ -125,6 +125,29 @@ class UCDeltaGenericCredentialFetcherTest {
     assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(credId, api).createCredentials())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("returned no credentials response");
+  }
+
+  @Test
+  void createCredentialsRejectsNullOrEmptyStorageCredentials() throws Exception {
+    DeltaTableCredId credId =
+        new DeltaTableCredId(
+            EMPTY_CRED_CONTEXT_ID,
+            UCDeltaTableIdentifier.of("main", "default", "events"),
+            "READ_WRITE",
+            "s3://bucket/events");
+
+    DeltaCredentialsResponse response = mock(DeltaCredentialsResponse.class);
+    when(response.getStorageCredentials()).thenReturn(null).thenReturn(List.of());
+    DeltaTemporaryCredentialsApi api = mock(DeltaTemporaryCredentialsApi.class);
+    when(api.getTableCredentials(DeltaCredentialOperation.READ_WRITE, "main", "default", "events"))
+        .thenReturn(response);
+
+    assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(credId, api).createCredentials())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("returned no storage credentials");
+    assertThatThrownBy(() -> GenericCredentialFetcher.forUcDelta(credId, api).createCredentials())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("returned no storage credentials");
   }
 
   @Test

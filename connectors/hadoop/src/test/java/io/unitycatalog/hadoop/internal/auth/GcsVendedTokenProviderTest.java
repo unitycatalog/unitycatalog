@@ -21,7 +21,7 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
   @Override
   protected GcsVendedTokenProvider createTestProvider(
       Configuration conf, TemporaryCredentialsApi mockApi) {
-    return new TestGcsVendedTokenProvider(conf, mockApi);
+    return new TestGcsVendedTokenProvider(conf, ucFetcher(conf, mockApi));
   }
 
   @Override
@@ -32,10 +32,6 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
 
   static class TestGcsVendedTokenProvider extends GcsVendedTokenProvider {
     private final GenericCredentialFetcher credentialFetcher;
-
-    TestGcsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
-      this(conf, BaseTokenProviderTest.ucFetcher(conf, mockApi));
-    }
 
     TestGcsVendedTokenProvider(Configuration conf, GenericCredentialFetcher credentialFetcher) {
       setConf(conf);
