@@ -218,9 +218,9 @@ public class OAuthTokenProviderTest {
   }
 
   @Test
-  public void testAccessTokenEncodesSpaceSeparatedAndFineGrainedScopes() throws Exception {
+  public void testAccessTokenNormalizesAndEncodesSpaceSeparatedScopes() throws Exception {
     mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
-    String customScope = "https://example.com/.default catalog.tables:read";
+    String customScope = "  https://example.com/.default  \t catalog.tables:read  ";
     OAuthTokenProvider provider = oauthTokenProvider(customScope);
 
     provider.accessToken();
@@ -234,16 +234,10 @@ public class OAuthTokenProviderTest {
   }
 
   @Test
-  public void testAccessTokenDefaultsBlankScopeToAllApis() throws Exception {
-    mockOAuthResponse(ACCESS_TOKEN_1, EXPIRES_IN_SECONDS);
-    OAuthTokenProvider provider = oauthTokenProvider("   ");
-
-    provider.accessToken();
-
-    ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
-    verify(mockHttpClient).send(requestCaptor.capture(), any());
-    assertThat(requestBody(requestCaptor.getValue()))
-        .isEqualTo("grant_type=client_credentials&scope=all-apis");
+  public void testBlankScopeIsRejected() {
+    assertThatThrownBy(() -> oauthTokenProvider("   "))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
   }
 
   @Test

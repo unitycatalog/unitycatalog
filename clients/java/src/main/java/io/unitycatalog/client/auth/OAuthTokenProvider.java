@@ -173,10 +173,16 @@ class OAuthTokenProvider implements TokenProvider {
   }
 
   private static String normalizeOAuthScope(String oauthScope) {
-    if (oauthScope == null || oauthScope.trim().isEmpty()) {
+    if (oauthScope == null) {
       return AuthConfigs.DEFAULT_OAUTH_SCOPE;
     }
-    return oauthScope.trim();
+
+    String normalizedScope = oauthScope.trim().replaceAll("\\s+", " ");
+    Preconditions.checkArgument(
+        !normalizedScope.isEmpty(),
+        "Configuration key '%s' must not be empty",
+        AuthConfigs.OAUTH_SCOPE);
+    return normalizedScope;
   }
 
   private class TempToken {

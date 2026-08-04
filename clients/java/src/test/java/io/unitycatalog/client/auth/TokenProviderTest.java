@@ -109,15 +109,22 @@ public class TokenProviderTest {
     assertThat(TokenProvider.create(configs).configs())
         .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
 
-    // When set to an empty string, it also falls back to the default scope.
+    // An explicitly empty scope is rejected rather than silently changing its meaning.
     configs.put(AuthConfigs.OAUTH_SCOPE, "");
-    assertThat(TokenProvider.create(configs).configs())
-        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+    assertThatThrownBy(() -> TokenProvider.create(configs))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
 
-    // When set to whitespace, it also falls back to the default scope.
+    // A scope that is empty after trimming is rejected as well.
     configs.put(AuthConfigs.OAUTH_SCOPE, "   ");
+    assertThatThrownBy(() -> TokenProvider.create(configs))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
+
+    // Leading, trailing, and repeated interior whitespace is normalized.
+    configs.put(AuthConfigs.OAUTH_SCOPE, "  scope-a  \t scope-b  ");
     assertThat(TokenProvider.create(configs).configs())
-        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, "scope-a scope-b");
   }
 
   @Test
