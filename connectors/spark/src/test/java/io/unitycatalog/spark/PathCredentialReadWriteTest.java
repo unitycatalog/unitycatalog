@@ -26,8 +26,8 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 /**
  * Tests for {@link ResolvePathCredentials}: Unity Catalog credentials are vended for cloud paths
- * referenced directly in a query (e.g. {@code parquet.`s3://bucket/dir`}), without a pre-registered
- * external table.
+ * referenced directly in a query (e.g. {@code parquet.`s3://bucket/dir`} or {@code
+ * delta.`s3://bucket/dir`}), without a pre-registered external table.
  *
  * <p>Unlike the other Spark integration tests, these register {@code UCSparkSessionExtensions} (the
  * home of the parser hook that invokes the rule), and use the {@link S3CredentialTestFileSystem}
@@ -306,6 +306,42 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     }
 
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
+  }
+
+  /**
+   * Exercises bare {@code delta.`...`} path tables with {@code DeltaCatalog} on {@code
+   * spark_catalog} and the Delta session extension.
+   *
+   * <p>Local storage: end-to-end CREATE + read (mirrors {@link
+   * DeltaExternalTableReadWriteTest#testDeltaPathTable()} under the path-cred session layout).
+   *
+   * <p>Cloud storage: UC external table seeds data; {@link ResolvePathCredentials} injects
+   * credentials into the parsed {@code delta.`s3://...`} relation. Execution-time reads of bare
+   * delta cloud paths do not yet propagate those options the way {@code parquet.`s3://...`} does —
+   * tracked as a follow-up.
+   */
+  @Test
+  public void testWriteAndReadBareDeltaPath() throws IOException, ParseException {
+    session = createDeltaSparkCatalogSession(CATALOG_NAME, false);
+    sql("SET CATALOG %s", CATALOG_NAME);
+
+    String localPath = new File(dataDir, "delta_local_path").getCanonicalPath();
+    sql("CREATE TABLE delta.`%s` USING delta AS SELECT 1 AS i, 'a' AS s", localPath);
+    assertSingleRow(sql("SELECT * FROM delta.`%s`", localPath));
+
+    String s3Location = bucketPath("delta_path");
+    String seedTable = String.format("%s.%s.path_cred_delta_seed", CATALOG_NAME, SCHEMA_NAME);
+    sql("CREATE TABLE %s (i INT, s STRING) USING delta LOCATION '%s'", seedTable, s3Location);
+    sql("INSERT INTO %s SELECT 1 AS i, 'a' AS s", seedTable);
+
+    LogicalPlan readPlan =
+        session
+            .sessionState()
+            .sqlParser()
+            .parsePlan(String.format("SELECT * FROM delta.`%s`", s3Location));
+    UnresolvedRelation relation = findBareCloudPathRelation(readPlan);
+    assertThat(relation).isNotNull();
+    assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
   }
 
   /**
