@@ -98,19 +98,6 @@ class CredentialUtilTest {
   }
 
   @Test
-  void selectorMatchesAtPathBoundary() {
-    assertThat(CredentialUtil.prefixCovers("s3://bucket/t", "s3://bucket/t")).isTrue();
-    assertThat(CredentialUtil.prefixCovers("s3://bucket/t/x", "s3://bucket/t")).isTrue();
-    assertThat(CredentialUtil.prefixCovers("s3://bucket/t-other", "s3://bucket/t")).isFalse();
-  }
-
-  @Test
-  void selectorNormalizesTrailingSlashes() {
-    assertThat(CredentialUtil.prefixCovers("s3://bucket/t//", "s3://bucket/t")).isTrue();
-    assertThat(CredentialUtil.prefixCovers("s3://bucket/t", "s3://bucket/t///")).isTrue();
-  }
-
-  @Test
   void selectorRejectsMissingResponse() {
     assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", null))
         .isInstanceOf(IllegalArgumentException.class)
@@ -147,6 +134,19 @@ class CredentialUtilTest {
             CredentialUtil.selectForLocation(
                 "s3://bucket/t/child/file", Arrays.asList(bucket, table, child)))
         .isSameAs(child);
+  }
+
+  @Test
+  void selectorMatchesAtPathBoundary() {
+    assertThat(CredentialUtil.prefixCovers("s3://bucket/t", "s3://bucket/t")).isTrue();
+    assertThat(CredentialUtil.prefixCovers("s3://bucket/t/x", "s3://bucket/t")).isTrue();
+    assertThat(CredentialUtil.prefixCovers("s3://bucket/t-other", "s3://bucket/t")).isFalse();
+  }
+
+  @Test
+  void selectorNormalizesTrailingSlashes() {
+    assertThat(CredentialUtil.prefixCovers("s3://bucket/t//", "s3://bucket/t")).isTrue();
+    assertThat(CredentialUtil.prefixCovers("s3://bucket/t", "s3://bucket/t///")).isTrue();
   }
 
   @Test

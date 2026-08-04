@@ -1,6 +1,7 @@
 package io.unitycatalog.hadoop.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
@@ -38,10 +39,9 @@ class CredPropsUtilTest {
         .isNotEqualTo(base);
   }
 
-  // TODO: This test will be deleted and moved to CredPropsBaseTest when multiple vended creds are
-  // supported.
+  // TODO: Remove this test once CredPropsBuilder supports multiple vended credentials.
   @Test
-  void multipleDeltaCredentialsAreSelectedByLocation() throws Exception {
+  void multipleDeltaCredentialsAreRejected() {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) ->
             CredPropsBaseTest.mockGenericCredentialFetcher(
@@ -50,34 +50,22 @@ class CredPropsUtilTest {
                 new AwsCredential(
                     "child-ak", "child-sk", "child-st", Long.MAX_VALUE, "s3://bucket/table"));
 
-    Map<String, String> tableProps =
-        CredPropsUtil.createDeltaTableCredProps(
-            false,
-            false,
-            new Configuration(false),
-            "s3",
-            null,
-            "http://uc",
-            tokenProvider(),
-            UCDeltaTableIdentifier.of("catalog", "schema", "table"),
-            "s3://bucket/table/child",
-            UCCredentialHadoopConfs.TableOperation.READ,
-            Map.of());
-    Map<String, String> stagingProps =
-        CredPropsUtil.createDeltaStagingTableCredProps(
-            false,
-            false,
-            new Configuration(false),
-            "s3",
-            null,
-            "http://uc",
-            tokenProvider(),
-            "staging-table-id",
-            "s3://bucket/table/child",
-            Map.of());
-
-    assertThat(tableProps).containsEntry("fs.s3a.access.key", "child-ak");
-    assertThat(stagingProps).containsEntry("fs.s3a.access.key", "child-ak");
+    assertThatThrownBy(
+            () ->
+                CredPropsUtil.createDeltaTableCredProps(
+                    false,
+                    false,
+                    new Configuration(false),
+                    "s3",
+                    null,
+                    "http://uc",
+                    tokenProvider(),
+                    UCDeltaTableIdentifier.of("catalog", "schema", "table"),
+                    "s3://bucket/table/child",
+                    UCCredentialHadoopConfs.TableOperation.READ,
+                    Map.of()))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("Only single credential responses are supported, got 2");
   }
 
   private static TokenProvider tokenProvider() {
