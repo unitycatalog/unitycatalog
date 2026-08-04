@@ -15,6 +15,7 @@ import io.unitycatalog.hadoop.internal.auth.AzureCredential;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -110,25 +111,62 @@ class CredentialUtilTest {
   }
 
   @Test
-  void selectForLocationPicksLongestCoveringPrefix() {
-    GenericCredential unscoped = credAt(null);
+  void selectorRejectsMissingResponse() {
+    assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("has no storage credentials");
+    assertThatThrownBy(
+            () -> CredentialUtil.selectForLocation("s3://bucket/t", Collections.emptyList()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("has no storage credentials");
+  }
+
+  @Test
+  void selectorRejectsSingleWithoutPrefixMatch() {
+    GenericCredential only = credAt("s3://other-bucket");
+    assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", List.of(only)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("No vended credential covers location");
+  }
+
+  @Test
+  void selectorRejectsSingleNull() {
+    assertThatThrownBy(
+            () ->
+                CredentialUtil.selectForLocation("s3://bucket/t", Collections.singletonList(null)))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("contains null");
+  }
+
+  @Test
+  void selectorPicksLongestMatchingPrefix() {
     GenericCredential bucket = credAt("s3://bucket");
     GenericCredential table = credAt("s3://bucket/t");
     GenericCredential child = credAt("s3://bucket/t/child");
     assertThat(
             CredentialUtil.selectForLocation(
-                "s3://bucket/t/child/file", Arrays.asList(unscoped, bucket, table, child)))
+                "s3://bucket/t/child/file", Arrays.asList(bucket, table, child)))
         .isSameAs(child);
   }
 
   @Test
-  void selectForLocationThrowsWhenNoPrefixCovers() {
+  void selectorIgnoresNullAndPrefixlessInMultiResponse() {
+    List<GenericCredential> creds = Arrays.asList(null, credAt(null), credAt("s3://bucket/t"));
+    assertThat(CredentialUtil.selectForLocation("s3://bucket/t", creds).prefix())
+        .isEqualTo("s3://bucket/t");
+  }
+
+  @Test
+  void selectorThrowsWhenMultiResponseHasNoMatch() {
     List<GenericCredential> creds =
-        Arrays.asList(credAt(null), credAt("s3://other"), credAt("s3://bucket/sibling"));
+        Arrays.asList(credAt("s3://other"), credAt("s3://bucket/sibling"));
     assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", creds))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("No vended credential covers location");
-    assertThatThrownBy(() -> CredentialUtil.selectForLocation("S3A://bucket/t", creds))
+    // Scheme aliases are not normalized; otherwise, the s3 prefix would cover the s3a location.
+    assertThatThrownBy(
+            () ->
+                CredentialUtil.selectForLocation("s3a://bucket/t", List.of(credAt("s3://bucket"))))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("No vended credential covers location");
   }

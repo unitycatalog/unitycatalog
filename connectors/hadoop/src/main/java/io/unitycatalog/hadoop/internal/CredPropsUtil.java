@@ -5,7 +5,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.internal.Clock;
-import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
@@ -195,11 +194,7 @@ public class CredPropsUtil {
     List<GenericCredential> credentials =
         fetchGenericCredentials(
             hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
-    Preconditions.checkState(
-        credentials.size() == 1,
-        "Expected exactly one vended credential, got %s",
-        credentials.size());
-    GenericCredential cred = credentials.get(0);
+    GenericCredential cred = selectCredential(credId, credentials);
     CredPropsBuilder builder =
         CredPropsBuilder.forCloud(cloudType.get(), hadoopConf)
             .credScopedFsEnabled(credScopedFsEnabled)
@@ -208,6 +203,22 @@ public class CredPropsUtil {
       builder.enableRenewCred(catalogUri, tokenProvider, credId, appVersions);
     }
     return builder.build();
+  }
+
+  // TODO: Remove this method once CredPropsBuilder supports multiple vended credentials.
+  static GenericCredential selectCredential(CredId credId, List<GenericCredential> credentials) {
+    if (credentials.size() == 1) {
+      return credentials.get(0);
+    }
+    if (credId instanceof DeltaTableCredId) {
+      return CredentialUtil.selectForLocation(((DeltaTableCredId) credId).location(), credentials);
+    }
+    if (credId instanceof DeltaStagingTableCredId) {
+      return CredentialUtil.selectForLocation(
+          ((DeltaStagingTableCredId) credId).location(), credentials);
+    }
+    throw new IllegalStateException(
+        String.format("Expected exactly one vended credential, got %s", credentials.size()));
   }
 
   /**

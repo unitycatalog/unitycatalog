@@ -59,9 +59,17 @@ public final class CredentialUtil {
   /** Selects the credential whose location covers {@code location} (longest match wins). */
   public static GenericCredential selectForLocation(
       String location, List<GenericCredential> creds) {
+    Preconditions.checkArgument(
+        creds != null && !creds.isEmpty(), "Credential response has no storage credentials.");
+    if (creds.size() == 1) {
+      Preconditions.checkNotNull(creds.get(0), "Credential response contains null.");
+    }
     GenericCredential best = null;
     int bestLen = -1;
     for (GenericCredential cred : creds) {
+      if (cred == null) {
+        continue;
+      }
       String prefix = cred.prefix();
       if (prefix == null || !prefixCovers(location, prefix)) {
         continue;

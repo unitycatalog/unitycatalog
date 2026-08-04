@@ -6,6 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
+import io.unitycatalog.hadoop.internal.auth.GenericCredential;
+import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
+import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
+import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
@@ -54,6 +58,27 @@ class CredPropsUtilTest {
                     Map.of()))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Expected exactly one vended credential, got 2");
+  }
+
+  @Test
+  void multipleDeltaCredentialsAreSelectedByLocation() {
+    GenericCredential parent =
+        new AwsCredential("parent-ak", "parent-sk", "parent-st", Long.MAX_VALUE, "s3://bucket");
+    GenericCredential child =
+        new AwsCredential("child-ak", "child-sk", "child-st", Long.MAX_VALUE, "s3://bucket/table");
+    List<GenericCredential> credentials = List.of(parent, child);
+
+    DeltaTableCredId tableCredId =
+        new DeltaTableCredId(
+            "context",
+            UCDeltaTableIdentifier.of("catalog", "schema", "table"),
+            "READ",
+            "s3://bucket/table/child");
+    DeltaStagingTableCredId stagingCredId =
+        new DeltaStagingTableCredId("context", "staging-table-id", "s3://bucket/table/child");
+
+    assertThat(CredPropsUtil.selectCredential(tableCredId, credentials)).isSameAs(child);
+    assertThat(CredPropsUtil.selectCredential(stagingCredId, credentials)).isSameAs(child);
   }
 
   private static TokenProvider tokenProvider() {
