@@ -9,10 +9,6 @@ import java.util.stream.Collectors;
  * Caches vended credentials keyed by the supplied key ({@code K}). A cached value is reused while
  * it is still valid and re-fetched via the supplied factory only once it is about to expire, as
  * decided by the cached entry's {@link RenewableCredential#readyToRenew()} implementation.
- *
- * <p>Generic over both the key type {@code K} and the value type {@code T}: the global renewal
- * cache holds a single {@link GenericCredential}, while the driver's initial cache holds a {@code
- * List<GenericCredential>}.
  */
 public class CredentialCache<K, T> {
   private static final int DEFAULT_MAX_SIZE = 1024;
