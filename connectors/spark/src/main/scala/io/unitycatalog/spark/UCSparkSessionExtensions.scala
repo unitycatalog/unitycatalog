@@ -10,5 +10,15 @@ class UCSparkSessionExtensions extends (SparkSessionExtensions => Unit) {
     extensions.injectParser { case (spark, parser) =>
       new UCSparkSqlExtensionsParser(spark, parser)
     }
+    // Parse-time injection is required before ResolveSQLOnFile lists cloud paths. Delta path
+    // tables additionally need hint-resolution injection so bare delta relations are resolved
+    // (with options) before ResolveSQLOnFile replaces UnresolvedRelation nodes.
+    extensions.injectHintResolutionRule { spark =>
+      ResolvePathCredentials(spark, resolveDeltaPathRelations = true)
+    }
+    // Post-resolution pass re-injects on Delta-specific plan nodes and patches resolved relations.
+    extensions.injectResolutionRule { spark =>
+      ResolvePathCredentials(spark, resolveDeltaPathRelations = false)
+    }
   }
 }

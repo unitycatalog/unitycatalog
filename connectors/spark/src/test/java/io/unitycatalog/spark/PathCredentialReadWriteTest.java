@@ -315,10 +315,8 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    * <p>Local storage: end-to-end CREATE + read (mirrors {@link
    * DeltaExternalTableReadWriteTest#testDeltaPathTable()} under the path-cred session layout).
    *
-   * <p>Cloud storage: UC external table seeds data; {@link ResolvePathCredentials} injects
-   * credentials into the parsed {@code delta.`s3://...`} relation. Execution-time reads of bare
-   * delta cloud paths do not yet propagate those options the way {@code parquet.`s3://...`} does —
-   * tracked as a follow-up.
+   * <p>Cloud storage: UC external table seeds data, then bare {@code delta.`s3://...`} is read
+   * end-to-end with vended credentials.
    */
   @Test
   public void testWriteAndReadBareDeltaPath() throws IOException, ParseException {
@@ -342,6 +340,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     UnresolvedRelation relation = findBareCloudPathRelation(readPlan);
     assertThat(relation).isNotNull();
     assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+    assertSingleRow(sql("SELECT * FROM delta.`%s`", s3Location));
   }
 
   /**

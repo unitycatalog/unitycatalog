@@ -15,7 +15,7 @@ class UCSparkSqlExtensionsParser(spark: SparkSession, delegate: ParserInterface)
   protected def delegateParser: ParserInterface = delegate
 
   protected def applyPathCredentials(plan: LogicalPlan): LogicalPlan =
-    ResolvePathCredentials(spark).apply(plan)
+    ResolvePathCredentials(spark, resolveDeltaPathRelations = false).apply(plan)
 
   override def parseDataType(sqlText: String): DataType = delegate.parseDataType(sqlText)
 
