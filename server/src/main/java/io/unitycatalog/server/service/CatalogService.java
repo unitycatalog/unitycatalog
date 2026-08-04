@@ -10,22 +10,38 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateCatalog;
+import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListCatalogsResponse;
+import io.unitycatalog.server.model.ListFunctionsResponse;
+import io.unitycatalog.server.model.ListRegisteredModelsResponse;
+import io.unitycatalog.server.model.ListSchemasResponse;
+import io.unitycatalog.server.model.ListTablesResponse;
+import io.unitycatalog.server.model.ListVolumesResponseContent;
+import io.unitycatalog.server.model.RegisteredModelInfo;
+import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.UpdateCatalog;
+import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.utils.ServerProperties;
-import lombok.SneakyThrows;
-
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import lombok.SneakyThrows;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
@@ -35,6 +51,11 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 public class CatalogService extends AuthorizedService {
   private final CatalogRepository catalogRepository;
   private final MetastoreRepository metastoreRepository;
+  private final SchemaRepository schemaRepository;
+  private final TableRepository tableRepository;
+  private final VolumeRepository volumeRepository;
+  private final FunctionRepository functionRepository;
+  private final ModelRepository modelRepository;
 
   @SneakyThrows
   public CatalogService(
@@ -44,6 +65,11 @@ public class CatalogService extends AuthorizedService {
     super(authorizer, repositories, serverProperties);
     this.catalogRepository = repositories.getCatalogRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.tableRepository = repositories.getTableRepository();
+    this.volumeRepository = repositories.getVolumeRepository();
+    this.functionRepository = repositories.getFunctionRepository();
+    this.modelRepository = repositories.getModelRepository();
   }
 
   /**
@@ -72,8 +98,8 @@ public class CatalogService extends AuthorizedService {
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createCatalog(
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
-      @AuthorizeKey(key = "storage_root")
-      CreateCatalog createCatalog) {
+          @AuthorizeKey(key = "storage_root")
+          CreateCatalog createCatalog) {
     CatalogInfo catalogInfo = catalogRepository.addCatalog(createCatalog);
     initializeBasicAuthorization(catalogInfo.getId());
     return HttpResponse.ofJson(catalogInfo);
@@ -91,8 +117,8 @@ public class CatalogService extends AuthorizedService {
   public HttpResponse listCatalogs(
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
-    ListCatalogsResponse listCatalogsResponse = catalogRepository.listCatalogs(
-        maxResults, pageToken);
+    ListCatalogsResponse listCatalogsResponse =
+        catalogRepository.listCatalogs(maxResults, pageToken);
     applyResponseFilter(SecurableType.CATALOG, listCatalogsResponse.getCatalogs());
     return HttpResponse.ofJson(listCatalogsResponse);
   }
@@ -125,9 +151,129 @@ public class CatalogService extends AuthorizedService {
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,
       @Param("force") Optional<Boolean> force) {
     CatalogInfo catalogInfo = catalogRepository.getCatalog(name);
-    catalogRepository.deleteCatalog(name, force.orElse(false));
+    boolean isForceDelete = force.orElse(false);
+    List<SchemaAuthorizationSubtree> schemaSubtrees =
+        isForceDelete ? collectSchemaAuthorizationSubtrees(catalogInfo) : List.of();
+
+    catalogRepository.deleteCatalog(name, isForceDelete);
+
+    if (isForceDelete) {
+      clearForceDeletedCatalogAuthorizations(catalogInfo.getId(), schemaSubtrees);
+    }
     removeAuthorizations(catalogInfo.getId());
     return HttpResponse.of(HttpStatus.OK);
   }
 
+  private List<SchemaAuthorizationSubtree> collectSchemaAuthorizationSubtrees(
+      CatalogInfo catalogInfo) {
+    List<SchemaAuthorizationSubtree> schemaSubtrees = new ArrayList<>();
+    String catalogName = catalogInfo.getName();
+    String nextSchemaPageToken = null;
+    do {
+      ListSchemasResponse schemaPage =
+          schemaRepository.listSchemas(
+              catalogName,
+              Optional.empty(),
+              Optional.ofNullable(nextSchemaPageToken));
+      for (SchemaInfo schema : schemaPage.getSchemas()) {
+        schemaSubtrees.add(
+            new SchemaAuthorizationSubtree(
+                schema.getSchemaId(),
+                listChildResourceIds(catalogName, schema.getName())));
+      }
+      nextSchemaPageToken = schemaPage.getNextPageToken();
+    } while (nextSchemaPageToken != null);
+    return schemaSubtrees;
+  }
+
+  private List<String> listChildResourceIds(String catalogName, String schemaName) {
+    List<String> childResourceIds = new ArrayList<>();
+    childResourceIds.addAll(listAllTableIds(catalogName, schemaName));
+    childResourceIds.addAll(listAllVolumeIds(catalogName, schemaName));
+    childResourceIds.addAll(listAllFunctionIds(catalogName, schemaName));
+    childResourceIds.addAll(listAllRegisteredModelIds(catalogName, schemaName));
+    return childResourceIds;
+  }
+
+  private List<String> listAllTableIds(String catalogName, String schemaName) {
+    List<String> tableIds = new ArrayList<>();
+    String nextPageToken = null;
+    do {
+      ListTablesResponse response =
+          tableRepository.listTables(
+              catalogName,
+              schemaName,
+              Optional.empty(),
+              Optional.ofNullable(nextPageToken),
+              true,
+              true);
+      for (TableInfo table : response.getTables()) {
+        tableIds.add(table.getTableId());
+      }
+      nextPageToken = response.getNextPageToken();
+    } while (nextPageToken != null);
+    return tableIds;
+  }
+
+  private List<String> listAllVolumeIds(String catalogName, String schemaName) {
+    List<String> volumeIds = new ArrayList<>();
+    String nextPageToken = null;
+    do {
+      ListVolumesResponseContent response =
+          volumeRepository.listVolumes(
+              catalogName,
+              schemaName,
+              Optional.empty(),
+              Optional.ofNullable(nextPageToken),
+              Optional.empty());
+      for (VolumeInfo volume : response.getVolumes()) {
+        volumeIds.add(volume.getVolumeId());
+      }
+      nextPageToken = response.getNextPageToken();
+    } while (nextPageToken != null);
+    return volumeIds;
+  }
+
+  private List<String> listAllFunctionIds(String catalogName, String schemaName) {
+    List<String> functionIds = new ArrayList<>();
+    String nextPageToken = null;
+    do {
+      ListFunctionsResponse response =
+          functionRepository.listFunctions(
+              catalogName, schemaName, Optional.empty(), Optional.ofNullable(nextPageToken));
+      for (FunctionInfo function : response.getFunctions()) {
+        functionIds.add(function.getFunctionId());
+      }
+      nextPageToken = response.getNextPageToken();
+    } while (nextPageToken != null);
+    return functionIds;
+  }
+
+  private List<String> listAllRegisteredModelIds(String catalogName, String schemaName) {
+    List<String> modelIds = new ArrayList<>();
+    String nextPageToken = null;
+    do {
+      ListRegisteredModelsResponse response =
+          modelRepository.listRegisteredModels(
+              Optional.of(catalogName),
+              Optional.of(schemaName),
+              Optional.empty(),
+              Optional.ofNullable(nextPageToken));
+      for (RegisteredModelInfo model : response.getRegisteredModels()) {
+        modelIds.add(model.getId());
+      }
+      nextPageToken = response.getNextPageToken();
+    } while (nextPageToken != null);
+    return modelIds;
+  }
+
+  private void clearForceDeletedCatalogAuthorizations(
+      String catalogId, List<SchemaAuthorizationSubtree> schemaSubtrees) {
+    for (SchemaAuthorizationSubtree schemaSubtree : schemaSubtrees) {
+      removeSchemaAuthorizationSubtree(
+          schemaSubtree.schemaId(), catalogId, schemaSubtree.childResourceIds());
+    }
+  }
+
+  private record SchemaAuthorizationSubtree(String schemaId, List<String> childResourceIds) {}
 }

@@ -81,6 +81,20 @@ public abstract class AuthorizedService {
   }
 
   /**
+   * Removes Casbin policies and hierarchy for a schema subtree: child securables first, then the
+   * schema and its catalog link. Matches {@link SchemaService#deleteSchema} auth cleanup extended
+   * to child resource policies.
+   */
+  protected void removeSchemaAuthorizationSubtree(
+      String schemaId, String catalogId, Iterable<String> childResourceIds) {
+    for (String childResourceId : childResourceIds) {
+      removeHierarchicalAuthorizations(childResourceId, schemaId);
+    }
+    authorizer.removeHierarchyChildren(UUID.fromString(schemaId));
+    removeHierarchicalAuthorizations(schemaId, catalogId);
+  }
+
+  /**
    * Applies authorization filtering to a list of resources.
    *
    * <p>This method should be called by service methods annotated with

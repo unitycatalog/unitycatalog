@@ -10,7 +10,9 @@ import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -18,6 +20,8 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -213,5 +217,65 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
         TestUtils.sendRawEmptyPost(adminConfig, "/api/2.1/unity-catalog/catalogs"),
         ErrorCode.PERMISSION_DENIED,
         "Authorization could not be verified for this request");
+  }
+
+  @Test
+  @SneakyThrows
+  public void forceDeleteCatalogClearsChildAuthorizations() {
+    createCommonTestUsers();
+
+    CatalogsApi adminCatalogsApi = new CatalogsApi(adminApiClient);
+    SchemasApi adminSchemasApi = new SchemasApi(adminApiClient);
+    TablesApi adminTablesApi = new TablesApi(adminApiClient);
+
+    CreateCatalog catalog =
+        new CreateCatalog().name("force_delete_catalog").comment("force delete auth cleanup test");
+    CatalogInfo catalogInfo = adminCatalogsApi.createCatalog(catalog);
+    adminSchemasApi.createSchema(
+        new CreateSchema().name("default").catalogName("force_delete_catalog"));
+    SchemaInfo schemaInfo = adminSchemasApi.getSchema("force_delete_catalog.default");
+    TableInfo tableInfo =
+        createExternalTable(
+            adminTablesApi,
+            "force_delete_catalog",
+            "default",
+            "tbl",
+            testDirectoryRoot.resolve("force_delete_tbl").toUri().toString());
+
+    grantPermissions(
+        REGULAR_1, SecurableType.CATALOG, "force_delete_catalog", Privileges.USE_CATALOG);
+    grantPermissions(
+        REGULAR_1, SecurableType.SCHEMA, "force_delete_catalog.default", Privileges.USE_SCHEMA);
+    grantPermissions(
+        REGULAR_1, SecurableType.TABLE, "force_delete_catalog.default.tbl", Privileges.SELECT);
+
+    assertThat(
+            countCasbinRulesReferencing(
+                catalogInfo.getId(), schemaInfo.getSchemaId(), tableInfo.getTableId()))
+        .isPositive();
+
+    adminCatalogsApi.deleteCatalog("force_delete_catalog", true);
+
+    assertThat(
+            countCasbinRulesReferencing(
+                catalogInfo.getId(), schemaInfo.getSchemaId(), tableInfo.getTableId()))
+        .isZero();
+  }
+
+  private long countCasbinRulesReferencing(String... resourceIds) {
+    SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
+    try (Session session = sessionFactory.openSession()) {
+      long total = 0;
+      for (String resourceId : resourceIds) {
+        total +=
+            session
+                .createNativeQuery(
+                    "select count(*) from casbin_rule where v0 = :id or v1 = :id or v2 = :id",
+                    Long.class)
+                .setParameter("id", resourceId)
+                .uniqueResult();
+      }
+      return total;
+    }
   }
 }
