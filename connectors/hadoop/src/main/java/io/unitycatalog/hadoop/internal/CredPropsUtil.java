@@ -258,16 +258,11 @@ public class CredPropsUtil {
           return new RenewableCredential<List<GenericCredential>>(credentials) {
             @Override
             public boolean readyToRenew() {
-              return credentialsReadyToRenew(credentials, clock, renewalLeadTimeMillis);
+              return credentials.stream()
+                  .anyMatch(c -> c.readyToRenew(clock, renewalLeadTimeMillis));
             }
           };
         });
-  }
-
-  /** Renew as soon as any credential is ready to renew. */
-  private static boolean credentialsReadyToRenew(
-      List<GenericCredential> creds, Clock clock, long renewalLeadTimeMillis) {
-    return creds.stream().anyMatch(c -> c.readyToRenew(clock, renewalLeadTimeMillis));
   }
 
   private static List<GenericCredential> createCredentials(
