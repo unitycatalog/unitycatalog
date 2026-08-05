@@ -36,7 +36,8 @@ public final class FileSystemCredId {
 
   public static FileSystemCredId create(Configuration conf, URI uri) {
     CredId credId = CredId.create(conf, () -> new DefaultCredId(uri, conf));
-    return new FileSystemCredId(credId, getCredPrefix(conf));
+    String prefix = getCredPrefix(conf);
+    return new FileSystemCredId(credId, prefix);
   }
 
   public static FileSystemCredId create(Configuration conf, URI uri, String prefix) {
