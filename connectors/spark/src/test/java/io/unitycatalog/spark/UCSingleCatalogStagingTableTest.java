@@ -1,5 +1,6 @@
 package io.unitycatalog.spark;
 
+import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -79,8 +80,8 @@ public class UCSingleCatalogStagingTableTest {
     setField(
         catalog, "tokenProvider", TokenProvider.create(Map.of("type", "static", "token", "tok")));
     GenericCredentialFetcher mockFetcher = mock(GenericCredentialFetcher.class);
-    when(mockFetcher.createCredential())
-        .thenReturn(new GcsCredential("token", Long.MAX_VALUE, null));
+    when(mockFetcher.createCredentials())
+        .thenReturn(singletonList(new GcsCredential("token", Long.MAX_VALUE, null)));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockFetcher;
   }
 
@@ -162,8 +163,8 @@ public class UCSingleCatalogStagingTableTest {
     // GenericCredentialFetcher factory so the test runs without a real UC server. file:// would
     // short-circuit before any fetch, making the verify() below vacuously true.
     GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
-    when(mockCredApi.createCredential())
-        .thenReturn(new GcsCredential("token", Long.MAX_VALUE, null));
+    when(mockCredApi.createCredentials())
+        .thenReturn(singletonList(new GcsCredential("token", Long.MAX_VALUE, null)));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
@@ -181,7 +182,7 @@ public class UCSingleCatalogStagingTableTest {
     ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass((Class) Map.class);
 
     verify(mocks.tablesApi).createStagingTable(any(CreateStagingTable.class));
-    verify(mockCredApi).createCredential();
+    verify(mockCredApi).createCredentials();
     verify(mockDelegate).stageCreateOrReplace(eq(IDENT), eq(SCHEMA), any(), propsCaptor.capture());
     assertThat(propsCaptor.getValue())
         .containsEntry(TableCatalog.PROP_LOCATION, "gs://uc-staging/table")
@@ -194,8 +195,8 @@ public class UCSingleCatalogStagingTableTest {
   public void testStageCreateOrReplaceMissingManagedTableAutoDefaultsCatalogManagedFeature()
       throws Exception {
     GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
-    when(mockCredApi.createCredential())
-        .thenReturn(new GcsCredential("token", Long.MAX_VALUE, null));
+    when(mockCredApi.createCredentials())
+        .thenReturn(singletonList(new GcsCredential("token", Long.MAX_VALUE, null)));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
@@ -253,8 +254,8 @@ public class UCSingleCatalogStagingTableTest {
   public void testStageCreateMissingManagedTableAutoDefaultsCatalogManagedFeature()
       throws Exception {
     GenericCredentialFetcher mockCredApi = mock(GenericCredentialFetcher.class);
-    when(mockCredApi.createCredential())
-        .thenReturn(new GcsCredential("token", Long.MAX_VALUE, null));
+    when(mockCredApi.createCredentials())
+        .thenReturn(singletonList(new GcsCredential("token", Long.MAX_VALUE, null)));
     CredPropsUtil.genericCredFetcherFactory = (apiClient, conf) -> mockCredApi;
 
     ManagedReplaceMocks mocks = new ManagedReplaceMocks();
