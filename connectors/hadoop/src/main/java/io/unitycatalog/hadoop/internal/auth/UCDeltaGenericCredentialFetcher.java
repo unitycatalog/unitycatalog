@@ -4,10 +4,13 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
 import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaStorageCredential;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /** Adapts the UC Delta temporary credentials SDK API for Hadoop token providers. */
 final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher {
@@ -29,7 +32,7 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
   }
 
   @Override
-  public GenericCredential createCredential() throws ApiException {
+  public List<GenericCredential> createCredentials() throws ApiException {
     UCDeltaTableIdentifier id = credId.identifier();
     DeltaCredentialsResponse response =
         api.getTableCredentials(operation, id.catalog(), id.schema(), id.table());
@@ -39,7 +42,15 @@ final class UCDeltaGenericCredentialFetcher implements GenericCredentialFetcher 
         id.catalog(),
         id.schema(),
         id.table());
-    return CredentialUtil.toGenericCredential(
-        CredentialUtil.selectForLocation(credId.location(), response.getStorageCredentials()));
+    List<DeltaStorageCredential> storageCredentials = response.getStorageCredentials();
+    Preconditions.checkArgument(
+        storageCredentials != null && !storageCredentials.isEmpty(),
+        "UC Delta API returned no storage credentials for '%s.%s.%s'.",
+        id.catalog(),
+        id.schema(),
+        id.table());
+    return storageCredentials.stream()
+        .map(CredentialUtil::toGenericCredential)
+        .collect(Collectors.toList());
   }
 }

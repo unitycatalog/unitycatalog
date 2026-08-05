@@ -110,10 +110,10 @@ class CredentialUtilTest {
 
   @Test
   void selectorRejectsSingleWithoutPrefixMatch() {
-    DeltaStorageCredential only = credAt("s3://other-bucket");
+    GenericCredential only = credAt("s3://other-bucket");
     assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", List.of(only)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("No UC Delta credential matched");
+        .hasMessageContaining("No vended credential covers location");
   }
 
   @Test
@@ -127,9 +127,9 @@ class CredentialUtilTest {
 
   @Test
   void selectorPicksLongestMatchingPrefix() {
-    DeltaStorageCredential bucket = credAt("s3://bucket");
-    DeltaStorageCredential table = credAt("s3://bucket/t");
-    DeltaStorageCredential child = credAt("s3://bucket/t/child");
+    GenericCredential bucket = credAt("s3://bucket");
+    GenericCredential table = credAt("s3://bucket/t");
+    GenericCredential child = credAt("s3://bucket/t/child");
     assertThat(
             CredentialUtil.selectForLocation(
                 "s3://bucket/t/child/file", Arrays.asList(bucket, table, child)))
@@ -151,19 +151,24 @@ class CredentialUtilTest {
 
   @Test
   void selectorIgnoresNullAndPrefixlessInMultiResponse() {
-    List<DeltaStorageCredential> creds =
-        Arrays.asList(null, new DeltaStorageCredential(), credAt("s3://bucket/t"));
-    assertThat(CredentialUtil.selectForLocation("s3://bucket/t", creds).getPrefix())
+    List<GenericCredential> creds = Arrays.asList(null, credAt(null), credAt("s3://bucket/t"));
+    assertThat(CredentialUtil.selectForLocation("s3://bucket/t", creds).prefix())
         .isEqualTo("s3://bucket/t");
   }
 
   @Test
   void selectorThrowsWhenMultiResponseHasNoMatch() {
-    List<DeltaStorageCredential> creds =
+    List<GenericCredential> creds =
         Arrays.asList(credAt("s3://other"), credAt("s3://bucket/sibling"));
     assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", creds))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("No UC Delta credential matched");
+        .hasMessageContaining("No vended credential covers location");
+    // Scheme aliases are not normalized; otherwise, the s3 prefix would cover the s3a location.
+    assertThatThrownBy(
+            () ->
+                CredentialUtil.selectForLocation("s3a://bucket/t", List.of(credAt("s3://bucket"))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("No vended credential covers location");
   }
 
   @Test
@@ -246,7 +251,7 @@ class CredentialUtilTest {
         .hasMessageContaining("AWS access key is missing");
   }
 
-  private static DeltaStorageCredential credAt(String prefix) {
-    return new DeltaStorageCredential().prefix(prefix);
+  private static GenericCredential credAt(String location) {
+    return new AwsCredential("ak", "sk", "st", 1L, location);
   }
 }
