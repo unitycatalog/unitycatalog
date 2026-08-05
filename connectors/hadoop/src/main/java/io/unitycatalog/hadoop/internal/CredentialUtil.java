@@ -10,6 +10,7 @@ import io.unitycatalog.hadoop.internal.auth.AzureCredential;
 import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.util.List;
+import java.util.function.Function;
 
 /** Internal utilities for building and selecting {@link GenericCredential}s. */
 public final class CredentialUtil {
@@ -68,25 +69,10 @@ public final class CredentialUtil {
     if (creds.size() == 1) {
       Preconditions.checkNotNull(creds.get(0), "Credential response contains null.");
     }
-    GenericCredential best = null;
-    int bestLen = -1;
-    for (GenericCredential cred : creds) {
-      if (cred == null) {
-        continue;
-      }
-      String prefix = cred.prefix();
-      if (prefix == null || !prefixCovers(location, prefix)) {
-        continue;
-      }
-      int len = stripTrailingSlashes(prefix).length();
-      if (len > bestLen) {
-        best = cred;
-        bestLen = len;
-      }
-    }
+    int selected = longestCoveringIndex(location, creds, GenericCredential::prefix);
     Preconditions.checkArgument(
-        best != null, "No vended credential covers location '%s'.", location);
-    return best;
+        selected >= 0, "No vended credential covers location '%s'.", location);
+    return creds.get(selected);
   }
 
   /**
@@ -94,10 +80,20 @@ public final class CredentialUtil {
    * -1} if none does. Null prefixes are skipped.
    */
   public static int longestCoveringIndex(String location, List<String> prefixes) {
+    Preconditions.checkNotNull(prefixes, "List of prefixes cannot be null.");
+    return longestCoveringIndex(location, prefixes, Function.identity());
+  }
+
+  private static <T> int longestCoveringIndex(
+      String location, List<T> values, Function<T, String> prefixExtractor) {
     int best = -1;
     int bestLen = -1;
-    for (int i = 0; i < prefixes.size(); i++) {
-      String prefix = prefixes.get(i);
+    for (int i = 0; i < values.size(); i++) {
+      T value = values.get(i);
+      if (value == null) {
+        continue;
+      }
+      String prefix = prefixExtractor.apply(value);
       if (prefix == null || !prefixCovers(location, prefix)) {
         continue;
       }

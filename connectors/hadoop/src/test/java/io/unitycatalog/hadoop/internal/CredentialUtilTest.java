@@ -27,12 +27,12 @@ class CredentialUtilTest {
   private static final long EXPIRATION = 123L;
 
   @Test
-  void buildsHadoopConfNamespaceForIndex() {
+  void hadoopConfNamespaceForIndexReturnsNamespace() {
     assertThat(CredentialUtil.hadoopConfNamespaceForIndex(2))
-        .isEqualTo("fs.unitycatalog.multi.cred.2.");
+        .isEqualTo(UCHadoopConfConstants.UC_MULTI_CRED_NAMESPACE_PREFIX + "2.");
 
     assertThat(CredentialUtil.hadoopConfNamespaceForIndex(0))
-        .isEqualTo("fs.unitycatalog.multi.cred.0.");
+        .isEqualTo(UCHadoopConfConstants.UC_MULTI_CRED_NAMESPACE_PREFIX + "0.");
   }
 
   @ParameterizedTest(name = "{0}")
@@ -261,13 +261,13 @@ class CredentialUtilTest {
   }
 
   @ParameterizedTest(name = "{0}")
-  @MethodSource("longestCoveringIndexCases")
+  @MethodSource("coveringPrefixCases")
   void longestCoveringIndexMatchesLocationToPrefix(
       String description, List<String> prefixes, String location, int expectedIndex) {
     assertThat(CredentialUtil.longestCoveringIndex(location, prefixes)).isEqualTo(expectedIndex);
   }
 
-  private static Stream<Arguments> longestCoveringIndexCases() {
+  private static Stream<Arguments> coveringPrefixCases() {
     List<String> nested =
         Arrays.asList("s3://bucket/table", "s3://bucket/table/clone", "s3://bucket");
     return Stream.of(
@@ -275,46 +275,59 @@ class CredentialUtilTest {
         Arguments.of("most specific prefix wins", nested, "s3://bucket/table/clone/data", 1),
         // A location under only the broader prefix selects it, not the deeper sibling.
         Arguments.of("shorter prefix when deeper does not cover", nested, "s3://bucket/table/x", 0),
-        // Scheme aliases are compared literally.
-        Arguments.of(
-            "s3a location does not match s3 prefix",
-            List.of("s3://bucket/table"),
-            "s3a://bucket/table/data",
-            -1),
-        Arguments.of(
-            "abfss location does not match abfs prefix",
-            List.of("abfs://c@a/t"),
-            "abfss://c@a/t/data",
-            -1),
-        // Scheme comparison is case-sensitive.
-        Arguments.of(
-            "uppercase scheme does not match", List.of("s3://bucket/t"), "S3://bucket/t/data", -1),
         // Trailing slashes on the prefix are normalized away.
         Arguments.of(
             "trailing slashes ignored", List.of("s3://bucket/t///"), "s3://bucket/t/data", 0),
-        // Different clouds never match, even with the same bucket/path.
-        Arguments.of(
-            "cross-cloud does not match", List.of("s3://bucket/t"), "gs://bucket/t/data", -1),
-        // Unknown schemes are compared literally (case-sensitive), so a case mismatch fails.
-        Arguments.of("unknown scheme is case-sensitive", List.of("hdfs://nn/t"), "HDFS://nn/t", -1),
         // Null and empty prefixes are skipped; the covering one is chosen.
         Arguments.of(
             "null and empty prefixes skipped",
             Arrays.asList(null, "", "s3://bucket/t"),
             "s3://bucket/t/data",
             2),
-        // No prefix covers the location.
-        Arguments.of(
-            "no covering prefix",
-            Arrays.asList("s3://other", "s3://bucket/sibling"),
-            "s3://bucket/t",
-            -1),
         // On equal-length normalized prefixes, the first covering one wins.
         Arguments.of(
             "first of equal-length prefixes wins",
             Arrays.asList("s3://bucket/table/", "s3://bucket/table"),
             "s3://bucket/table/data",
             0));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("nonCoveringPrefixCases")
+  void longestCoveringIndexReturnsNegativeOneWhenNoPrefixMatches(
+      String description, List<String> prefixes, String location) {
+    assertThat(CredentialUtil.longestCoveringIndex(location, prefixes)).isEqualTo(-1);
+  }
+
+  @Test
+  void longestCoveringIndexRejectsNullPrefixList() {
+    assertThatThrownBy(() -> CredentialUtil.longestCoveringIndex("s3://bucket/table", null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("List of prefixes cannot be null.");
+  }
+
+  private static Stream<Arguments> nonCoveringPrefixCases() {
+    return Stream.of(
+        Arguments.of("empty prefix list", List.of(), "s3://bucket/table"),
+        Arguments.of("only null and empty prefixes", Arrays.asList(null, ""), "s3://bucket/table"),
+        // Scheme aliases are compared literally.
+        Arguments.of(
+            "s3a location does not match s3 prefix",
+            List.of("s3://bucket/table"),
+            "s3a://bucket/table/data"),
+        Arguments.of(
+            "abfss location does not match abfs prefix", List.of("abfs://c@a/t"), "abfss://c@a/t"),
+        // Scheme comparison is case-sensitive.
+        Arguments.of("uppercase scheme does not match", List.of("s3://bucket/t"), "S3://bucket/t"),
+        // Different clouds never match, even with the same bucket/path.
+        Arguments.of("cross-cloud does not match", List.of("s3://bucket/t"), "gs://bucket/t"),
+        // Unknown schemes are compared literally (case-sensitive), so a case mismatch fails.
+        Arguments.of("unknown scheme is case-sensitive", List.of("hdfs://nn/t"), "HDFS://nn/t"),
+        // No prefix covers the location.
+        Arguments.of(
+            "no covering prefix",
+            Arrays.asList("s3://other", "s3://bucket/sibling"),
+            "s3://bucket/t"));
   }
 
   private static GenericCredential credAt(String location) {

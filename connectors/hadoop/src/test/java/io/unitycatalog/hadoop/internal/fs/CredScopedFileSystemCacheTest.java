@@ -167,7 +167,7 @@ class CredScopedFileSystemCacheTest {
   }
 
   @Test
-  void namespacedSelectedPrefixDeterminesDelegateIdentity() throws Exception {
+  void multiCredSelectionDeterminesDelegateIdentity() throws Exception {
     Configuration conf = tableConf("tid-1", "READ");
     conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, 2);
     setNamespacedCredential(conf, 0, "file:///tmp/a");

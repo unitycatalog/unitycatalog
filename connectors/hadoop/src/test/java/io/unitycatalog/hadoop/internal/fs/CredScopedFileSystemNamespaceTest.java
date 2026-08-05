@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +31,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class CredScopedFileSystemNamespaceTest {
 
   private static final String TEST_CREDENTIAL_KEY = "fs.unitycatalog.test.credential";
+  private static final String UNSELECTED_ONLY_KEY = "fs.unitycatalog.test.unselected-only";
   private static final String ACCESS_KEY = "fs.cloud.access.key";
   private static final String LOCATION_KEY = UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY;
 
@@ -110,6 +112,8 @@ class CredScopedFileSystemNamespaceTest {
         setScopedKey(conf, i, key.getKey(), key.getValue());
       }
     }
+    int unselectedIndex = (expectedIndex + 1) % credentials.size();
+    setScopedKey(conf, unselectedIndex, UNSELECTED_ONLY_KEY, "must-not-be-copied");
     Map<String, String> before = snapshot(conf);
 
     FileSystem delegate = initDelegate(new URI(uri), conf);
@@ -119,18 +123,9 @@ class CredScopedFileSystemNamespaceTest {
     credentials
         .get(expectedIndex)
         .forEach((key, value) -> assertThat(delegateConf.get(key)).isEqualTo(value));
+    assertThat(delegateConf.get(UNSELECTED_ONLY_KEY)).isNull();
     // The source configuration is not mutated by the overlay.
     assertThat(snapshot(conf)).isEqualTo(before);
-  }
-
-  private static Map<String, String> credential(int i, String location) {
-    Map<String, String> keys = new HashMap<>();
-    if (location != null) {
-      keys.put(LOCATION_KEY, location);
-    }
-    keys.put(TEST_CREDENTIAL_KEY, "cred-" + i);
-    keys.put(ACCESS_KEY, "ak-" + i);
-    return keys;
   }
 
   private static Stream<Arguments> multiCredentialSelectionCases() {
@@ -150,6 +145,40 @@ class CredScopedFileSystemNamespaceTest {
                 credential(2, "file:///tmp/c")),
             "file:///tmp/a/b/data",
             1));
+  }
+
+  @Test
+  void defaultMaximumCredentialCountIsAccepted() throws Exception {
+    List<Map<String, String>> credentials = credentials(10);
+    Configuration conf = tableConf();
+    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, credentials.size());
+    for (int i = 0; i < credentials.size(); i++) {
+      for (Map.Entry<String, String> key : credentials.get(i).entrySet()) {
+        setScopedKey(conf, i, key.getKey(), key.getValue());
+      }
+    }
+
+    FileSystem delegate = initDelegate(new URI("file:///tmp/credential-9/data"), conf);
+
+    assertThat(delegate.getConf().get(TEST_CREDENTIAL_KEY)).isEqualTo("cred-9");
+  }
+
+  private static Map<String, String> credential(int i, String location) {
+    Map<String, String> keys = new HashMap<>();
+    if (location != null) {
+      keys.put(LOCATION_KEY, location);
+    }
+    keys.put(TEST_CREDENTIAL_KEY, "cred-" + i);
+    keys.put(ACCESS_KEY, "ak-" + i);
+    return keys;
+  }
+
+  private static List<Map<String, String>> credentials(int count) {
+    List<Map<String, String>> credentials = new ArrayList<>(count);
+    for (int i = 0; i < count; i++) {
+      credentials.add(credential(i, "file:///tmp/credential-" + i));
+    }
+    return credentials;
   }
 
   // --- malformed configuration ------------------------------------------------------------------

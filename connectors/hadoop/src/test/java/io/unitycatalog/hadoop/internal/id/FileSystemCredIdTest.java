@@ -2,6 +2,7 @@ package io.unitycatalog.hadoop.internal.id;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import java.util.stream.Stream;
@@ -43,6 +44,20 @@ class FileSystemCredIdTest {
 
     assertThat(FileSystemCredId.create(conf, TEST_URI, null).prefix())
         .isEqualTo("s3://bucket/prefix");
+  }
+
+  @Test
+  void createReadsPrefixFromNamespace() {
+    Configuration conf = new Configuration(false);
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/top-level");
+    String namespace = CredentialUtil.hadoopConfNamespaceForIndex(1);
+
+    assertThat(FileSystemCredId.create(conf, TEST_URI, namespace).prefix()).isNull();
+
+    conf.set(namespace + UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/namespaced");
+
+    assertThat(FileSystemCredId.create(conf, TEST_URI, namespace).prefix())
+        .isEqualTo("s3://bucket/namespaced");
   }
 
   @Test
