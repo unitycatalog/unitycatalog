@@ -25,11 +25,12 @@ public class TokenProviderTest {
     TokenProvider oauthProvider = TokenProviderUtils.create(OAUTH_URI, CLIENT_ID, CLIENT_SECRET);
     assertThat(oauthProvider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(oauthProvider.configs())
-        .hasSize(4)
+        .hasSize(5)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
 
     // Test with incomplete OAuth config - should throw
     Map<String, String> incompleteOAuthOptions =
@@ -82,11 +83,48 @@ public class TokenProviderTest {
     assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
 
     assertThat(provider.configs())
-        .hasSize(4)
+        .hasSize(5)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+  }
+
+  @Test
+  public void testOAuthScopeIsConfigurableAndRoundTrips() {
+    Map<String, String> configs = new HashMap<>();
+    configs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
+    configs.put(AuthConfigs.OAUTH_URI, OAUTH_URI);
+    configs.put(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID);
+    configs.put(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+    configs.put(AuthConfigs.OAUTH_SCOPE, "https://example.com/.default");
+
+    // A configured scope is honored and round-trips through configs().
+    assertThat(TokenProvider.create(configs).configs())
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, "https://example.com/.default");
+
+    // When unset, it falls back to the default scope.
+    configs.remove(AuthConfigs.OAUTH_SCOPE);
+    assertThat(TokenProvider.create(configs).configs())
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+
+    // An explicitly empty scope is rejected rather than silently changing its meaning.
+    configs.put(AuthConfigs.OAUTH_SCOPE, "");
+    assertThatThrownBy(() -> TokenProvider.create(configs))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
+
+    // A scope that is empty after trimming is rejected as well.
+    configs.put(AuthConfigs.OAUTH_SCOPE, "   ");
+    assertThatThrownBy(() -> TokenProvider.create(configs))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
+
+    // Leading, trailing, and repeated interior whitespace is normalized.
+    configs.put(AuthConfigs.OAUTH_SCOPE, "  scope-a  \t scope-b  ");
+    assertThat(TokenProvider.create(configs).configs())
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, "scope-a scope-b");
   }
 
   @Test
@@ -104,11 +142,12 @@ public class TokenProviderTest {
 
     assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(provider.configs())
-        .hasSize(4)
+        .hasSize(5)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
   }
 
   @Test
@@ -126,11 +165,12 @@ public class TokenProviderTest {
 
     assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(provider.configs())
-        .hasSize(4)
+        .hasSize(5)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
   }
 
   /**
