@@ -73,6 +73,14 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
         createTestCatalog(catalog);
       }
     }
+    // Delta requires spark.sql.catalog.spark_catalog to be set for ANY Delta operation
+    // (DeltaLog.checkRequiredConfigurations); otherwise a Delta table -- even in a named UC catalog
+    // -- fails with DELTA_CONFIGURE_SPARK_SESSION_WITH_EXTENSION_AND_CATALOG. When the caller did
+    // not configure spark_catalog above, point it at Delta's own catalog to satisfy that check.
+    if (!List.of(catalogs).contains(SPARK_CATALOG)) {
+      builder.config(
+          "spark.sql.catalog." + SPARK_CATALOG, "org.apache.spark.sql.delta.catalog.DeltaCatalog");
+    }
     // Use fake file system for cloud storage so that we can test credentials.
     builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
     builder.config("spark.hadoop.fs.gs.impl", GCSCredentialTestFileSystem.class.getName());

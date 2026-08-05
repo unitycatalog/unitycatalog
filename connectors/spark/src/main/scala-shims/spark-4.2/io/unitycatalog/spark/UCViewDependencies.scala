@@ -14,23 +14,34 @@ import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, UnresolvedWith}
  *
  * Works on the *parsed* (unresolved) plan, not the analyzed one: analyzing would read each base
  * table's log / vend credentials and can rewrite away its catalog identity, dropping the dependency.
- * Best-effort -- any failure yields an empty list so view creation still succeeds.
+ * Best-effort -- derivation failure yields `None` (not an empty list), so the caller can leave the
+ * server's `view_dependencies` unset (null) rather than persisting a wrong "no dependencies" list;
+ * a successful derivation with no base tables (e.g. `SELECT 1`) yields `Some(Seq.empty)`.
  */
 private[spark] object UCViewDependencies extends Logging {
 
-  def derive(queryText: String, currentCatalog: String, currentNamespace: Seq[String]): Seq[String] = {
+  /**
+   * Returns `Some(deps)` when the query text parses and dependencies could be collected (the list
+   * may be empty for a view with no base tables), or `None` when parsing/derivation fails so the
+   * caller can send null instead of a misleading empty list.
+   */
+  def derive(
+      queryText: String,
+      currentCatalog: String,
+      currentNamespace: Seq[String]): Option[Seq[String]] = {
     try {
       val spark = SparkSession.active
       val parsed = spark.sessionState.sqlParser.parsePlan(queryText)
-      collectTableDependencies(
-        parsed, currentCatalog, currentNamespace, spark.sessionState.conf.caseSensitiveAnalysis)
+      Some(
+        collectTableDependencies(
+          parsed, currentCatalog, currentNamespace, spark.sessionState.conf.caseSensitiveAnalysis))
     } catch {
       case NonFatal(e) =>
         logWarning(
-          s"Failed to derive view dependencies from query text; persisting an empty list. " +
-            s"Query: $queryText",
+          s"Failed to derive view dependencies from query text; leaving them unset (null) so the " +
+            s"server can decide. Query: $queryText",
           e)
-        Seq.empty
+        None
     }
   }
 
