@@ -15,6 +15,7 @@ import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
 import io.unitycatalog.client.delta.model.DeltaProtocol;
+import io.unitycatalog.client.delta.model.DeltaRenameTableRequest;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
@@ -312,6 +313,55 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     assertThat(
             principal1DeltaApi
                 .deleteTableWithHttpInfo("cat_pr1", "sch_rg2", "tab_rg2_delta")
+                .getStatusCode())
+        .isEqualTo(204);
+
+    // Delta REST rename requires both DELETE_TABLE and permission to create the new table name.
+    CreateTable createTableRg2Rename =
+        new CreateTable()
+            .name("tab_rg2_rename")
+            .catalogName("cat_pr1")
+            .schemaName("sch_rg2")
+            .columns(TEST_COLUMNS)
+            .storageLocation("/tmp/tab_rg2_rename")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA);
+    regular2TablesApi.createTable(createTableRg2Rename);
+
+    // Missing DELETE_TABLE: regular-1 can create a new name in the schema but does not own the
+    // source table (or its parent schema/catalog).
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.CREATE_TABLE);
+    assertPermissionDenied(
+        () ->
+            regular1DeltaApi.renameTable(
+                "cat_pr1",
+                "sch_rg2",
+                "tab_rg2_rename",
+                new DeltaRenameTableRequest().newName("tab_rg2_renamed")));
+
+    // Missing create permission: principal-1 satisfies DELETE_TABLE through catalog ownership but
+    // has neither schema ownership nor USE_SCHEMA + CREATE_TABLE for the new name.
+    assertPermissionDenied(
+        () ->
+            principal1DeltaApi.renameTable(
+                "cat_pr1",
+                "sch_rg2",
+                "tab_rg2_rename",
+                new DeltaRenameTableRequest().newName("tab_rg2_renamed")));
+
+    // Both sides: add the create permissions to principal-1; catalog ownership already satisfies
+    // DELETE_TABLE.
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.CREATE_TABLE);
+
+    assertThat(
+            principal1DeltaApi
+                .renameTableWithHttpInfo(
+                    "cat_pr1",
+                    "sch_rg2",
+                    "tab_rg2_rename",
+                    new DeltaRenameTableRequest().newName("tab_rg2_renamed"))
                 .getStatusCode())
         .isEqualTo(204);
   }

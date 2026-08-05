@@ -11,6 +11,8 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
+import java.util.Collections;
+import java.util.List;
 
 /** Adapts the standard Unity Catalog temporary credentials SDK API for Hadoop token providers. */
 final class UCGenericCredentialFetcher implements GenericCredentialFetcher {
@@ -39,8 +41,8 @@ final class UCGenericCredentialFetcher implements GenericCredentialFetcher {
   }
 
   @Override
-  public GenericCredential createCredential() throws ApiException {
-    return CredentialUtil.toGenericCredential(credentialCaller.get());
+  public List<GenericCredential> createCredentials() throws ApiException {
+    return Collections.singletonList(CredentialUtil.toGenericCredential(credentialCaller.get()));
   }
 
   /** Supplies temporary credentials from a pre-built request, bound at construction time. */

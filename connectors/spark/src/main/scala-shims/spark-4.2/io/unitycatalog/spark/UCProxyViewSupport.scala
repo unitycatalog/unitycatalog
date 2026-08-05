@@ -143,10 +143,15 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       .viewDefinition(view.queryText())
 
     Option(properties.get(TableCatalog.PROP_COMMENT)).foreach(ct.setComment)
-    // The server requires a non-null dependency list; a plain view often has none.
-    val ucDeps = Option(view.viewDependencies())
-      .map(toUcDependencyList)
-      .getOrElse(new UCDependencyList().dependencies(new util.ArrayList[UCDependency]()))
+    // Spark only fills `viewDependencies()` for metric views; for a plain view derive them from the
+    // query text (the server requires a non-null list).
+    val ucDeps = Option(view.viewDependencies()) match {
+      case Some(deps) => toUcDependencyList(deps)
+      case None =>
+        ucDependencyListFromNames(
+          UCViewDependencies.derive(
+            view.queryText(), view.currentCatalog(), view.currentNamespace().toSeq))
+    }
     ct.setViewDependencies(ucDeps)
     ct.setColumns(buildColumnInfos(view, convertDataTypeToTypeName).asJava)
 
@@ -164,6 +169,13 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
     Option(view.schemaMode())
       .filter(_ != SchemaUnsupported.toString)
       .foreach(m => propertiesToServer.put(CatalogTable.VIEW_SCHEMA_MODE, m))
+    UCViewTypes.addQueryColumnNames(propertiesToServer, view.queryColumnNames())
+    Option(view.currentCatalog()).foreach { catalog =>
+      UCViewTypes.addCreationContext(
+        propertiesToServer,
+        catalog,
+        view.currentNamespace())
+    }
     ct.setProperties(propertiesToServer)
 
     try {
@@ -226,22 +238,25 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
       if (t.getTableType == TableType.METRIC_VIEW) SchemaUnsupported.toString
       else SchemaCompensation.toString
     val schemaMode = Option(props.get(CatalogTable.VIEW_SCHEMA_MODE)).getOrElse(defaultSchemaMode)
+    val queryColumnNames =
+      UCViewTypes.extractQueryColumnNames(props).getOrElse(columns.map(_.name()))
+    val (currentCatalog, currentNamespace) =
+      UCViewTypes.extractCreationContext(props).getOrElse((t.getCatalogName, Array(t.getSchemaName)))
     // The VIEW_SQL_CONFIG_PREFIX / VIEW_SCHEMA_MODE keys are surfaced via `withSqlConfigs` /
     // `withSchemaMode`; drop them from `props` so they don't also leak into the user-visible
     // `properties()` map and get re-persisted (double-counted) on a createView/replace round-trip.
-    props.keySet().removeIf(_.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX))
-    props.remove(CatalogTable.VIEW_SCHEMA_MODE)
+    UCViewTypes.stripInternalViewProperties(props)
 
     val builder = new View.Builder()
       .withColumns(columns)
       .withProperties(props)
       .withTableType(UCViewTypes.ucTableTypeToSparkViewType(t.getTableType))
       .withQueryText(t.getViewDefinition)
-      .withCurrentCatalog(t.getCatalogName)
-      .withCurrentNamespace(Array(t.getSchemaName))
+      .withCurrentCatalog(currentCatalog)
+      .withCurrentNamespace(currentNamespace)
       .withSqlConfigs(sqlConfigs)
       .withSchemaMode(schemaMode)
-      .withQueryColumnNames(columns.map(_.name()))
+      .withQueryColumnNames(queryColumnNames)
     Option(t.getComment).foreach(builder.withComment)
     Option(t.getViewDependencies).foreach { ucDeps =>
       builder.withViewDependencies(fromUcDependencyList(ucDeps))
@@ -251,9 +266,9 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
 
   /**
    * Converts Spark's typed `DependencyList` into the wire-format UC `DependencyList`.
-   * Only `TableDependency` is currently translated; UC OSS does not persist function
-   * dependencies. The conversion is dot-flatten lossy for identifiers with literal `.`,
-   * matching the wire format already used by the UC server.
+   * Only `TableDependency` is translated; the connector does not yet emit function
+   * dependencies even though the UC server can persist them. The conversion is dot-flatten
+   * lossy for identifiers with literal `.`, matching the wire format used by the UC server.
    */
   private def toUcDependencyList(sparkDeps: DependencyList): UCDependencyList = {
     val ucDeps = new java.util.ArrayList[UCDependency]()
@@ -263,7 +278,16 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
           .table(new UCTableDependency()
             .tableFullName(td.nameParts().mkString("."))))
       case _ =>
-      // UC OSS does not currently persist function dependencies; drop.
+      // Function dependencies are not emitted yet; drop.
+    }
+    new UCDependencyList().dependencies(ucDeps)
+  }
+
+  /** Builds a wire-format UC `DependencyList` from derived `catalog.schema.table` names. */
+  private def ucDependencyListFromNames(fullNames: Seq[String]): UCDependencyList = {
+    val ucDeps = new java.util.ArrayList[UCDependency]()
+    fullNames.foreach { fullName =>
+      ucDeps.add(new UCDependency().table(new UCTableDependency().tableFullName(fullName)))
     }
     new UCDependencyList().dependencies(ucDeps)
   }
