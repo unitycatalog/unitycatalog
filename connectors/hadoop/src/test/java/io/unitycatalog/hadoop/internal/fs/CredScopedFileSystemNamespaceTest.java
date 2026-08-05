@@ -4,6 +4,7 @@ import static io.unitycatalog.hadoop.internal.id.CredIdTest.EMPTY_CRED_CONTEXT_I
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import java.util.HashMap;
@@ -56,7 +57,7 @@ class CredScopedFileSystemNamespaceTest {
   }
 
   private static void setScopedKey(Configuration conf, int index, String key, String value) {
-    conf.set(UCHadoopConfConstants.UC_SCOPED_CRED_PREFIX + index + "." + key, value);
+    conf.set(CredentialUtil.hadoopConfNamespaceForIndex(index) + key, value);
   }
 
   /** A snapshot of every entry in {@code conf}, for asserting the source config is not mutated. */
@@ -68,13 +69,12 @@ class CredScopedFileSystemNamespaceTest {
     return entries;
   }
 
-  // --- count == 0 (legacy top-level layout, no prefix matching)
+  // --- count == 0 (single-credential top-level layout, no prefix matching)
   // -----------------------------------------------------
 
   @Test
-  void legacyLayoutNeitherLiftsNorOverridesWithNamespacedKeys() throws Exception {
+  void singleCredentialLayoutNeitherLiftsNorOverridesWithNamespacedKeys() throws Exception {
     Configuration conf = tableConf();
-    // Backwards compatibility test, scoped cred count not set.
     conf.set(TEST_CREDENTIAL_KEY, "top-level-credential");
     setScopedKey(conf, 0, LOCATION_KEY, "file:///tmp/table");
     setScopedKey(conf, 0, TEST_CREDENTIAL_KEY, "namespaced-0");
@@ -101,10 +101,10 @@ class CredScopedFileSystemNamespaceTest {
    */
   @ParameterizedTest(name = "creds={0} uri={1} selects index {2}")
   @MethodSource("multiCredentialSelectionCases")
-  void multipleScopedCredentialsSelectAndOverlayCoveringCredential(
+  void multipleNamespacedCredentialsSelectAndOverlayCoveringCredential(
       List<Map<String, String>> credentials, String uri, int expectedIndex) throws Exception {
     Configuration conf = tableConf();
-    conf.setInt(UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY, credentials.size());
+    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, credentials.size());
     for (int i = 0; i < credentials.size(); i++) {
       for (Map.Entry<String, String> key : credentials.get(i).entrySet()) {
         setScopedKey(conf, i, key.getKey(), key.getValue());
@@ -163,7 +163,7 @@ class CredScopedFileSystemNamespaceTest {
   void malformedConfigurationIsRejected(
       int count, List<Map<String, String>> credentials, String uri, String expectedMessage) {
     Configuration conf = tableConf();
-    conf.setInt(UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY, count);
+    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, count);
     for (int i = 0; i < credentials.size(); i++) {
       for (Map.Entry<String, String> key : credentials.get(i).entrySet()) {
         setScopedKey(conf, i, key.getKey(), key.getValue());
@@ -189,8 +189,8 @@ class CredScopedFileSystemNamespaceTest {
             "missing its prefix"),
         // Count claims more credentials than are encoded; index 2 is a phantom with no keys.
         Arguments.of(
-            3, twoCreds, "file:///tmp/a/data", "Scoped credential 2 is missing its prefix"),
-        // Count of one: a single credential must use the legacy top-level layout, not a namespace.
+            3, twoCreds, "file:///tmp/a/data", "Namespaced credential 2 is missing its prefix"),
+        // Count of one: a single credential must use the top-level layout, not a namespace.
         Arguments.of(
             1,
             List.of(credential(0, "file:///tmp/table")),
@@ -204,6 +204,6 @@ class CredScopedFileSystemNamespaceTest {
             Integer.MAX_VALUE,
             List.<Map<String, String>>of(),
             "file:///tmp/table/data",
-            "must be greater than 1"));
+            "at most 10"));
   }
 }

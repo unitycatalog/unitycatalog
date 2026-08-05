@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
@@ -93,7 +94,7 @@ class CredPropsRoundTripTest {
     Configuration confWithCreds = new Configuration(false);
     props.forEach(confWithCreds::set);
 
-    confWithCreds.setInt(UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY, 2);
+    confWithCreds.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, 2);
 
     // TODO: Replace these manually encoded properties with CredPropsUtil when it supports
     // producing properties for multiple vended credentials.
@@ -119,7 +120,7 @@ class CredPropsRoundTripTest {
       String accessKey,
       String secretKey,
       String sessionToken) {
-    String namespace = UCHadoopConfConstants.UC_SCOPED_CRED_PREFIX + index + ".";
+    String namespace = CredentialUtil.hadoopConfNamespaceForIndex(index);
     conf.set(namespace + UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location);
     conf.set(namespace + UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, accessKey);
     conf.set(namespace + UCHadoopConfConstants.S3A_INIT_SECRET_KEY, secretKey);

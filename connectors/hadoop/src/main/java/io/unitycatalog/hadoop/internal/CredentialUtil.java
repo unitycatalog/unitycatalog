@@ -15,6 +15,10 @@ import java.util.List;
 public final class CredentialUtil {
   private CredentialUtil() {}
 
+  public static String hadoopConfNamespaceForIndex(int index) {
+    return UCHadoopConfConstants.UC_MULTI_CRED_NAMESPACE_PREFIX + index + ".";
+  }
+
   /** Converts a UC SDK {@link TemporaryCredentials} into an internal {@link GenericCredential}. */
   public static GenericCredential toGenericCredential(TemporaryCredentials tempCred) {
     long expiry =

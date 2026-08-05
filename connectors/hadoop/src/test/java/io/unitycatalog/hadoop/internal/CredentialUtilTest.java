@@ -26,6 +26,15 @@ import org.junit.jupiter.params.provider.MethodSource;
 class CredentialUtilTest {
   private static final long EXPIRATION = 123L;
 
+  @Test
+  void buildsHadoopConfNamespaceForIndex() {
+    assertThat(CredentialUtil.hadoopConfNamespaceForIndex(2))
+        .isEqualTo("fs.unitycatalog.multi.cred.2.");
+
+    assertThat(CredentialUtil.hadoopConfNamespaceForIndex(0))
+        .isEqualTo("fs.unitycatalog.multi.cred.0.");
+  }
+
   @ParameterizedTest(name = "{0}")
   @MethodSource("validCredentials")
   void convertsTemporaryCredentials(

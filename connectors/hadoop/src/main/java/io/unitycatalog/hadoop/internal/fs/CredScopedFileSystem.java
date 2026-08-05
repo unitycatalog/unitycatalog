@@ -59,11 +59,11 @@ public class CredScopedFileSystem extends FilterFileSystem {
       "unitycatalog.credScopedFs.cache.maxSize";
   private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
 
-  // Hard ceiling to the number of scoped credentials to read from the configuration to prevent OOM.
-  private static final String MAX_SCOPED_CRED_COUNT_PROPERTY = "unitycatalog.scoped.cred.maxCount";
-  private static final int MAX_SCOPED_CRED_COUNT_DEFAULT = 10;
-  private static final int MAX_SCOPED_CRED_COUNT =
-      Integer.getInteger(MAX_SCOPED_CRED_COUNT_PROPERTY, MAX_SCOPED_CRED_COUNT_DEFAULT);
+  // Maximum number of namespaced credentials read from the configuration to prevent OOM.
+  private static final String MAX_MULTI_CRED_COUNT_PROPERTY = "unitycatalog.multi.cred.maxCount";
+  private static final int MAX_MULTI_CRED_COUNT_DEFAULT = 10;
+  private static final int MAX_MULTI_CRED_COUNT =
+      Integer.getInteger(MAX_MULTI_CRED_COUNT_PROPERTY, MAX_MULTI_CRED_COUNT_DEFAULT);
 
   /**
    * LRU cache of real {@link FileSystem} instances keyed by {@link FileSystemCredId}. Evicted
@@ -102,44 +102,41 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   /**
    * Returns the namespace key for the credential that covers the given URI, or null if no namespace
-   * is needed. When there are multiple credentials, each credential's details are prefixed with the
-   * namespace key to avoid key collisions. These namespaced keys cannot be picked up downstream;
-   * they must be extracted and restored to top-level keys prior to delegate file system
-   * initialization.
+   * is needed (when there is only one credential). When there are multiple credentials, each
+   * credential's details in the Hadoop configuration are prefixed with the namespace key to avoid
+   * key collisions. These namespaced keys cannot be picked up downstream; they must be extracted
+   * and restored to top-level keys prior to file system initialization.
    */
   private static String selectNamespace(URI uri, Configuration conf) {
-    int count = conf.getInt(UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY, 0);
+    int count = conf.getInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, 0);
     if (count == 0) {
-      return null; // legacy top-level credential layout, no namespace keys
+      return null; // Single credentials should not use a namespace. Key remains at top-level.
     }
-    // A single credential uses the legacy layout, so a namespaced layout always encodes more than
-    // one credential to select among.
+    // Multiple credentials require a namespace and should always contain more than one credential.
+    // Otherwise, this is a single credential and should not set UC_MULTI_CRED_COUNT_KEY.
     Preconditions.checkArgument(
-        count > 1 && count <= MAX_SCOPED_CRED_COUNT,
-        "%s must be greater than 1 and at most %s: %s",
-        UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY,
-        MAX_SCOPED_CRED_COUNT,
+        count > 1 && count <= MAX_MULTI_CRED_COUNT,
+        "Number of credentials must be greater than 1 and at most %s: %s",
+        MAX_MULTI_CRED_COUNT,
         count);
 
     List<String> prefixes = new ArrayList<>(count);
     for (int i = 0; i < count; i++) {
-      String prefix =
-          conf.get(namespaceAtIndex(i) + UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
-      // With multiple credentials each one must carry a prefix to be selectable.
+      String credNamespace = CredentialUtil.hadoopConfNamespaceForIndex(i);
+      String credPrefixKey = credNamespace + UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY;
+      String prefix = conf.get(credPrefixKey);
+      // Each credential must include the prefix it covers to be selectable.
       Preconditions.checkArgument(
           prefix != null,
-          "Scoped credential %s is missing its prefix for storage location %s",
+          "Namespaced credential %s is missing its prefix for storage location %s",
           i,
           uri);
       prefixes.add(prefix);
     }
-    int selected = CredentialUtil.longestCoveringIndex(uri.toString(), prefixes);
-    Preconditions.checkArgument(selected >= 0, "No credential covers storage location %s", uri);
-    return namespaceAtIndex(selected);
-  }
-
-  private static String namespaceAtIndex(int index) {
-    return UCHadoopConfConstants.UC_SCOPED_CRED_PREFIX + index + ".";
+    int selectedIndex = CredentialUtil.longestCoveringIndex(uri.toString(), prefixes);
+    Preconditions.checkArgument(
+        selectedIndex >= 0, "No credential covers storage location %s", uri);
+    return CredentialUtil.hadoopConfNamespaceForIndex(selectedIndex);
   }
 
   /**

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
@@ -56,9 +57,9 @@ class CredScopedFileSystemCacheTest {
     return conf;
   }
 
-  /** Encodes a scoped credential's location and a placeholder credential key at {@code index}. */
-  private static void setScopedLocation(Configuration conf, int index, String location) {
-    String namespace = UCHadoopConfConstants.UC_SCOPED_CRED_PREFIX + index + ".";
+  /** Encodes a namespaced credential's location and a placeholder key at {@code index}. */
+  private static void setNamespacedCredential(Configuration conf, int index, String location) {
+    String namespace = CredentialUtil.hadoopConfNamespaceForIndex(index);
     conf.set(namespace + UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location);
     conf.set(namespace + "fs.unitycatalog.test.credential", "credential-" + index);
   }
@@ -168,9 +169,9 @@ class CredScopedFileSystemCacheTest {
   @Test
   void namespacedSelectedPrefixDeterminesDelegateIdentity() throws Exception {
     Configuration conf = tableConf("tid-1", "READ");
-    conf.setInt(UCHadoopConfConstants.UC_SCOPED_CRED_COUNT_KEY, 2);
-    setScopedLocation(conf, 0, "file:///tmp/a");
-    setScopedLocation(conf, 1, "file:///tmp/b");
+    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, 2);
+    setNamespacedCredential(conf, 0, "file:///tmp/a");
+    setNamespacedCredential(conf, 1, "file:///tmp/b");
 
     // URIs covered by the same credential resolve to one delegate; different ones do not.
     CredScopedFileSystem fsA1 = init(new URI("file:///tmp/a/one"), conf);
