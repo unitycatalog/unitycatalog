@@ -967,4 +967,42 @@ public class TableRepository {
     session.remove(tableInfoDAO);
     return tableInfoDAO;
   }
+
+  /**
+   * Renames a table within the same schema. Looks up the source table by its three-part name
+   * (throwing {@link ErrorCode#TABLE_NOT_FOUND} if absent) and rejects a collision with an existing
+   * table of the target name in the same schema (throwing {@link ErrorCode#TABLE_ALREADY_EXISTS}).
+   * Renaming a table to its current name is an idempotent no-op. Metadata-only: the table UUID,
+   * schema, and storage location are all unchanged.
+   */
+  public void renameTable(String catalog, String schema, String table, String newName) {
+    ValidationUtils.validateSqlObjectName(newName);
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
+          TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
+          }
+          // Do the no-op check after the table lookup. A missing table must still return
+          // TABLE_NOT_FOUND rather than succeed as a no-op.
+          if (table.equals(newName)) {
+            return null;
+          }
+          if (findBySchemaIdAndName(session, schemaId, newName) != null) {
+            throw new BaseException(
+                ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + newName);
+          }
+          tableInfoDAO.setName(newName);
+          tableInfoDAO.setUpdatedAt(new Date());
+          tableInfoDAO.setUpdatedBy(callerId);
+          session.merge(tableInfoDAO);
+          return null;
+        },
+        "Failed to rename table " + catalog + "." + schema + "." + table,
+        /* readOnly = */ false);
+  }
 }
