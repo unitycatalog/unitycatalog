@@ -13,13 +13,6 @@ ENV HOME=$HOME
 ARG MAVEN_PROXY_URL
 ENV MAVEN_PROXY_URL=${MAVEN_PROXY_URL}
 
-# The JVM derives user.home from the passwd entry (/root for uid 0) and ignores
-# HOME, so coursier would otherwise cache jars in /root/.cache, outside the tree
-# the runtime stage copies. sbt bakes absolute jar paths into
-# server/target/classpath, so this directory must resolve identically in both
-# stages or the server starts with some classpath entries missing.
-ENV COURSIER_CACHE=$HOME/.cache/coursier/v1
-
 WORKDIR $HOME
 
 COPY --parents dev/ build/ project/ examples/ server/ api/ clients/ version.sbt build.sbt ./
