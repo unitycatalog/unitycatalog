@@ -269,10 +269,10 @@ class CredentialUtilTest {
 
   private static Stream<Arguments> coveringPrefixCases() {
     List<String> nested =
-        Arrays.asList("s3://bucket/table", "s3://bucket/table/clone", "s3://bucket");
+        Arrays.asList("s3://bucket/table", "s3://bucket/table/child", "s3://bucket");
     return Stream.of(
         // Longest (most specific) covering prefix wins over shorter ancestors.
-        Arguments.of("most specific prefix wins", nested, "s3://bucket/table/clone/data", 1),
+        Arguments.of("most specific prefix wins", nested, "s3://bucket/table/child/data", 1),
         // A location under only the broader prefix selects it, not the deeper sibling.
         Arguments.of("shorter prefix when deeper does not cover", nested, "s3://bucket/table/x", 0),
         // Trailing slashes on the prefix are normalized away.

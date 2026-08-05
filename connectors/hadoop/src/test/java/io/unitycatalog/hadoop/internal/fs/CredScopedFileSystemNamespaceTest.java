@@ -30,6 +30,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class CredScopedFileSystemNamespaceTest {
 
+  private static final int MAX_COUNT = 10;
   private static final String TEST_CREDENTIAL_KEY = "fs.unitycatalog.test.credential";
   private static final String UNSELECTED_ONLY_KEY = "fs.unitycatalog.test.unselected-only";
   private static final String ACCESS_KEY = "fs.cloud.access.key";
@@ -131,11 +132,11 @@ class CredScopedFileSystemNamespaceTest {
   private static Stream<Arguments> multiCredentialSelectionCases() {
     return Stream.of(
         Arguments.of(
-            List.of(credential(0, "file:///tmp/table"), credential(1, "file:///tmp/table/clone")),
-            "file:///tmp/table/clone/data",
+            List.of(credential(0, "file:///tmp/table"), credential(1, "file:///tmp/table/child")),
+            "file:///tmp/table/child/data",
             1),
         Arguments.of(
-            List.of(credential(0, "file:///tmp/table"), credential(1, "file:///tmp/table/clone")),
+            List.of(credential(0, "file:///tmp/table"), credential(1, "file:///tmp/table/child")),
             "file:///tmp/table/other",
             0),
         Arguments.of(
@@ -149,7 +150,7 @@ class CredScopedFileSystemNamespaceTest {
 
   @Test
   void defaultMaximumCredentialCountIsAccepted() throws Exception {
-    List<Map<String, String>> credentials = credentials(10);
+    List<Map<String, String>> credentials = credentials(MAX_COUNT);
     Configuration conf = tableConf();
     conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, credentials.size());
     for (int i = 0; i < credentials.size(); i++) {
@@ -158,9 +159,27 @@ class CredScopedFileSystemNamespaceTest {
       }
     }
 
-    FileSystem delegate = initDelegate(new URI("file:///tmp/credential-9/data"), conf);
+    FileSystem delegate =
+        initDelegate(new URI("file:///tmp/credential-" + (MAX_COUNT - 1) + "/data"), conf);
 
-    assertThat(delegate.getConf().get(TEST_CREDENTIAL_KEY)).isEqualTo("cred-9");
+    assertThat(delegate.getConf().get(TEST_CREDENTIAL_KEY)).isEqualTo("cred-" + (MAX_COUNT - 1));
+  }
+
+  @Test
+  void credentialsBeyondDeclaredCountAreIgnored() {
+    List<Map<String, String>> credentials = credentials(MAX_COUNT + 1);
+    Configuration conf = tableConf();
+    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, MAX_COUNT);
+    for (int i = 0; i < credentials.size(); i++) {
+      for (Map.Entry<String, String> key : credentials.get(i).entrySet()) {
+        setScopedKey(conf, i, key.getKey(), key.getValue());
+      }
+    }
+    // The covering credential is past the declared count.
+    assertThatThrownBy(
+            () -> initDelegate(new URI("file:///tmp/credential-" + MAX_COUNT + "/data"), conf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("No credential covers storage location");
   }
 
   private static Map<String, String> credential(int i, String location) {
@@ -233,6 +252,6 @@ class CredScopedFileSystemNamespaceTest {
             Integer.MAX_VALUE,
             List.<Map<String, String>>of(),
             "file:///tmp/table/data",
-            "at most 10"));
+            "at most " + MAX_COUNT));
   }
 }
