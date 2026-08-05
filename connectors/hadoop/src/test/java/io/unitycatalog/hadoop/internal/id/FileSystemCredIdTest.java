@@ -2,7 +2,6 @@ package io.unitycatalog.hadoop.internal.id;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
 import java.util.stream.Stream;
@@ -21,16 +20,16 @@ class FileSystemCredIdTest {
     if (prefix != null) {
       conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
     }
-    return FileSystemCredId.create(conf, TEST_URI, null);
+    return FileSystemCredId.create(conf, TEST_URI);
   }
 
   @Test
   void uriFallbackKeysBySchemeAndAuthority() {
     Configuration conf = new Configuration(false);
 
-    assertThat(FileSystemCredId.create(conf, URI.create("s3://bucket/a"), null))
-        .isEqualTo(FileSystemCredId.create(conf, URI.create("s3://bucket/b"), null))
-        .isNotEqualTo(FileSystemCredId.create(conf, URI.create("s3://other/a"), null));
+    assertThat(FileSystemCredId.create(conf, URI.create("s3://bucket/a")))
+        .isEqualTo(FileSystemCredId.create(conf, URI.create("s3://bucket/b")))
+        .isNotEqualTo(FileSystemCredId.create(conf, URI.create("s3://other/a")));
   }
 
   @Test
@@ -38,26 +37,20 @@ class FileSystemCredIdTest {
     Configuration conf = new Configuration(false);
 
     // The prefix is null when it is not configured.
-    assertThat(FileSystemCredId.create(conf, TEST_URI, null).prefix()).isNull();
+    assertThat(FileSystemCredId.create(conf, TEST_URI).prefix()).isNull();
 
     conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/prefix");
 
-    assertThat(FileSystemCredId.create(conf, TEST_URI, null).prefix())
-        .isEqualTo("s3://bucket/prefix");
+    assertThat(FileSystemCredId.create(conf, TEST_URI).prefix()).isEqualTo("s3://bucket/prefix");
   }
 
   @Test
-  void createReadsPrefixFromNamespace() {
+  void createUsesProvidedPrefix() {
     Configuration conf = new Configuration(false);
     conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/top-level");
-    String namespace = CredentialUtil.hadoopConfNamespaceForIndex(1);
 
-    assertThat(FileSystemCredId.create(conf, TEST_URI, namespace).prefix()).isNull();
-
-    conf.set(namespace + UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/namespaced");
-
-    assertThat(FileSystemCredId.create(conf, TEST_URI, namespace).prefix())
-        .isEqualTo("s3://bucket/namespaced");
+    assertThat(FileSystemCredId.create(conf, TEST_URI, "s3://bucket/selected").prefix())
+        .isEqualTo("s3://bucket/selected");
   }
 
   @Test
@@ -73,8 +66,8 @@ class FileSystemCredIdTest {
     Configuration conf = new Configuration(false);
     conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "s3://bucket/shared");
 
-    assertThat(FileSystemCredId.create(conf, URI.create("s3://bucket-a/path"), null))
-        .isNotEqualTo(FileSystemCredId.create(conf, URI.create("s3://bucket-b/path"), null));
+    assertThat(FileSystemCredId.create(conf, URI.create("s3://bucket-a/path")))
+        .isNotEqualTo(FileSystemCredId.create(conf, URI.create("s3://bucket-b/path")));
   }
 
   @ParameterizedTest

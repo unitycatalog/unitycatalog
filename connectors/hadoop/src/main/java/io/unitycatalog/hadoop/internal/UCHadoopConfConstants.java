@@ -62,18 +62,16 @@ public class UCHadoopConfConstants {
   public static final String UC_CRED_CONTEXT_ID_KEY = "fs.unitycatalog.cred.context.id";
 
   /**
-   * Number of credential namespaces encoded in the Hadoop configuration. When there is only one
-   * credential vended, it should never be encoded under a namespace. This key is only used when
-   * there are multiple credentials.
+   * Denotes the number of credentials that are vended. When multiple credentials are vended, this
+   * key should be set; otherwise, it should be absent.
    */
   public static final String UC_MULTI_CRED_COUNT_KEY = "fs.unitycatalog.multi.cred.count";
 
   /**
-   * Hadoop configuration prefix used for encoding multiple credentials. Credential-specific keys
-   * are encoded as {@code fs.unitycatalog.multi.cred.<index>.<key>}; stripping the namespace yields
-   * the existing top-level (single credential) keys consumed by downstream providers.
+   * The Hadoop configuration prefix used to separate the different prefixes that the vended
+   * credentials cover.
    */
-  public static final String UC_MULTI_CRED_NAMESPACE_PREFIX = "fs.unitycatalog.multi.cred.";
+  public static final String UC_MULTI_CRED_PREFIX_KEY = "fs.unitycatalog.multi.cred.prefix.";
 
   // Prefix for engine version metadata (e.g. fs.unitycatalog.engine.version.Spark=4.0.0). Values
   // stored under this prefix are propagated to the User-Agent header on UC API calls so the

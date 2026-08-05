@@ -1,6 +1,9 @@
 package io.unitycatalog.hadoop.internal.fs;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
@@ -10,6 +13,7 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
+import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +22,7 @@ import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
 /** Round-trip tests for credential properties produced and consumed during filesystem setup. */
@@ -70,10 +75,11 @@ class CredPropsRoundTripTest {
   }
 
   @Test
-  void multipleCredentialsRoundTripThroughCredScopedFileSystemAndProvider() throws Exception {
-    AwsCredential credential =
+  void multipleCredentialPrefixesRoundTripThroughCredScopedFileSystem() throws Exception {
+    AwsCredential initialCredential =
         new AwsCredential("access-key", "secret-key", "session-token", null, LOCATION);
-    CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> () -> List.of(credential);
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> () -> List.of(initialCredential);
 
     Configuration initialConf = new Configuration(false);
     initialConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
@@ -94,36 +100,50 @@ class CredPropsRoundTripTest {
     Configuration confWithCreds = new Configuration(false);
     props.forEach(confWithCreds::set);
 
+    // TODO: Delete this manual step when CredPropsBuilder supports producing
+    // properties for multiple vended credentials. This is a temporary test
+    // workaround until the encoder side changes land.
+    confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY);
+    confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_SECRET_KEY);
+    confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN);
     confWithCreds.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, 2);
-
-    // TODO: Replace these manually encoded properties with CredPropsUtil when it supports
-    // producing properties for multiple vended credentials.
-    setScopedAwsCredential(confWithCreds, 0, "s3://bucket", "parent-ak", "parent-sk", "parent-st");
-    setScopedAwsCredential(confWithCreds, 1, LOCATION, "child-ak", "child-sk", "child-st");
+    confWithCreds.set(CredentialUtil.multiCredPrefixKeyForIndex(0), "s3://bucket");
+    confWithCreds.set(CredentialUtil.multiCredPrefixKeyForIndex(1), LOCATION);
 
     CredScopedFileSystem fs = new CredScopedFileSystem();
     fs.initialize(new URI(LOCATION + "/part-0.parquet"), confWithCreds);
 
-    AwsVendedTokenProvider provider = new AwsVendedTokenProvider(fs.getDelegate().getConf());
-    AwsSessionCredentials resolved = (AwsSessionCredentials) provider.resolveCredentials();
+    Configuration delegateConf = fs.getDelegate().getConf();
+    assertThat(delegateConf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY))
+        .isEqualTo(LOCATION);
+    assertThat(delegateConf.get(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY)).isNull();
+    assertThat(delegateConf.get(UCHadoopConfConstants.S3A_INIT_SECRET_KEY)).isNull();
+    assertThat(delegateConf.get(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN)).isNull();
 
-    assertThat(provider.accessCredentials().prefix()).isEqualTo(LOCATION);
-    assertThat(resolved.accessKeyId()).isEqualTo("child-ak");
-    assertThat(resolved.secretAccessKey()).isEqualTo("child-sk");
-    assertThat(resolved.sessionToken()).isEqualTo("child-st");
-  }
+    TableCredId expectedCredId =
+        new TableCredId(
+            delegateConf.get(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY), "table-id", "READ");
+    expectedCredId
+        .props()
+        .forEach((key, value) -> assertThat(delegateConf.get(key)).isEqualTo(value));
 
-  private static void setScopedAwsCredential(
-      Configuration conf,
-      int index,
-      String location,
-      String accessKey,
-      String secretKey,
-      String sessionToken) {
-    String namespace = CredentialUtil.hadoopConfNamespaceForIndex(index);
-    conf.set(namespace + UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location);
-    conf.set(namespace + UCHadoopConfConstants.S3A_INIT_ACCESS_KEY, accessKey);
-    conf.set(namespace + UCHadoopConfConstants.S3A_INIT_SECRET_KEY, secretKey);
-    conf.set(namespace + UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN, sessionToken);
+    AwsCredential parent =
+        new AwsCredential("parent-ak", "parent-sk", "parent-st", null, "s3://bucket");
+    AwsCredential child = new AwsCredential("child-ak", "child-sk", "child-st", null, LOCATION);
+    GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
+    when(fetcher.createCredentials()).thenReturn(List.of(parent, child));
+
+    try (MockedStatic<GenericCredentialFetcher> mockedFetcher =
+        mockStatic(GenericCredentialFetcher.class)) {
+      mockedFetcher.when(() -> GenericCredentialFetcher.create(delegateConf)).thenReturn(fetcher);
+
+      AwsVendedTokenProvider provider = new AwsVendedTokenProvider(delegateConf);
+      AwsSessionCredentials resolved = (AwsSessionCredentials) provider.resolveCredentials();
+
+      assertThat(provider.accessCredentials().prefix()).isEqualTo(LOCATION);
+      assertThat(resolved.accessKeyId()).isEqualTo("child-ak");
+      assertThat(resolved.secretAccessKey()).isEqualTo("child-sk");
+      assertThat(resolved.sessionToken()).isEqualTo("child-st");
+    }
   }
 }

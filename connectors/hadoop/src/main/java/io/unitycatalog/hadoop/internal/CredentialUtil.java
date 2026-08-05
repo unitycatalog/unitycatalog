@@ -16,8 +16,8 @@ import java.util.function.Function;
 public final class CredentialUtil {
   private CredentialUtil() {}
 
-  public static String hadoopConfNamespaceForIndex(int index) {
-    return UCHadoopConfConstants.UC_MULTI_CRED_NAMESPACE_PREFIX + index + ".";
+  public static String multiCredPrefixKeyForIndex(int index) {
+    return UCHadoopConfConstants.UC_MULTI_CRED_PREFIX_KEY + index;
   }
 
   /** Converts a UC SDK {@link TemporaryCredentials} into an internal {@link GenericCredential}. */

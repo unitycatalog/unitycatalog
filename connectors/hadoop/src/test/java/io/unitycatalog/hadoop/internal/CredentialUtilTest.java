@@ -27,12 +27,9 @@ class CredentialUtilTest {
   private static final long EXPIRATION = 123L;
 
   @Test
-  void hadoopConfNamespaceForIndexReturnsNamespace() {
-    assertThat(CredentialUtil.hadoopConfNamespaceForIndex(2))
-        .isEqualTo(UCHadoopConfConstants.UC_MULTI_CRED_NAMESPACE_PREFIX + "2.");
-
-    assertThat(CredentialUtil.hadoopConfNamespaceForIndex(0))
-        .isEqualTo(UCHadoopConfConstants.UC_MULTI_CRED_NAMESPACE_PREFIX + "0.");
+  void multiCredPrefixKeyForIndexReturnsIndexedPrefixKey() {
+    assertThat(CredentialUtil.multiCredPrefixKeyForIndex(2))
+        .isEqualTo(UCHadoopConfConstants.UC_MULTI_CRED_PREFIX_KEY + "2");
   }
 
   @ParameterizedTest(name = "{0}")

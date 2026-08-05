@@ -57,13 +57,6 @@ class CredScopedFileSystemCacheTest {
     return conf;
   }
 
-  /** Encodes a namespaced credential's location and a placeholder key at {@code index}. */
-  private static void setNamespacedCredential(Configuration conf, int index, String location) {
-    String namespace = CredentialUtil.hadoopConfNamespaceForIndex(index);
-    conf.set(namespace + UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location);
-    conf.set(namespace + "fs.unitycatalog.test.credential", "credential-" + index);
-  }
-
   @Test
   void sameScopeReusesSameDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
@@ -170,8 +163,8 @@ class CredScopedFileSystemCacheTest {
   void multiCredSelectionDeterminesDelegateIdentity() throws Exception {
     Configuration conf = tableConf("tid-1", "READ");
     conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, 2);
-    setNamespacedCredential(conf, 0, "file:///tmp/a");
-    setNamespacedCredential(conf, 1, "file:///tmp/b");
+    conf.set(CredentialUtil.multiCredPrefixKeyForIndex(0), "file:///tmp/a");
+    conf.set(CredentialUtil.multiCredPrefixKeyForIndex(1), "file:///tmp/b");
 
     // URIs covered by the same credential resolve to one delegate; different ones do not.
     CredScopedFileSystem fsA1 = init(new URI("file:///tmp/a/one"), conf);

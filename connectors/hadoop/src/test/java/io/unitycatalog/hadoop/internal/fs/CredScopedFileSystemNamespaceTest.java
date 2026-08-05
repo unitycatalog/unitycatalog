@@ -7,10 +7,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -20,21 +21,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-/**
- * Verifies the namespaced-credential mechanism of {@link CredScopedFileSystem}: reading the count,
- * selecting the credential whose location covers the accessed URI, and overlaying that credential's
- * keys (and only that credential's keys) onto the delegate filesystem's configuration.
- *
- * <p>Uses {@code file://} URIs with the local filesystem so no cloud SDK is required. The
- * delegate's effective configuration is inspected via {@link CredScopedFileSystem#getDelegate()}.
- */
+/** Verifies prefix selection for multi-credential configurations. */
 class CredScopedFileSystemNamespaceTest {
 
   private static final int MAX_COUNT = 10;
-  private static final String TEST_CREDENTIAL_KEY = "fs.unitycatalog.test.credential";
-  private static final String UNSELECTED_ONLY_KEY = "fs.unitycatalog.test.unselected-only";
-  private static final String ACCESS_KEY = "fs.cloud.access.key";
-  private static final String LOCATION_KEY = UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY;
 
   @AfterEach
   void clearCache() {
@@ -59,11 +49,6 @@ class CredScopedFileSystemNamespaceTest {
     return conf;
   }
 
-  private static void setScopedKey(Configuration conf, int index, String key, String value) {
-    conf.set(CredentialUtil.hadoopConfNamespaceForIndex(index) + key, value);
-  }
-
-  /** A snapshot of every entry in {@code conf}, for asserting the source config is not mutated. */
   private static Map<String, String> snapshot(Configuration conf) {
     Map<String, String> entries = new HashMap<>();
     for (Map.Entry<String, String> entry : conf) {
@@ -72,150 +57,85 @@ class CredScopedFileSystemNamespaceTest {
     return entries;
   }
 
-  // --- count == 0 (single-credential top-level layout, no prefix matching)
-  // -----------------------------------------------------
+  private static void setPrefixes(Configuration conf, List<String> prefixes) {
+    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, prefixes.size());
+    for (int i = 0; i < prefixes.size(); i++) {
+      conf.set(CredentialUtil.multiCredPrefixKeyForIndex(i), prefixes.get(i));
+    }
+  }
 
   @Test
-  void singleCredentialLayoutNeitherLiftsNorOverridesWithNamespacedKeys() throws Exception {
+  void withoutMultiCredentialCountIndexedPrefixesAreIgnored() throws Exception {
     Configuration conf = tableConf();
-    conf.set(TEST_CREDENTIAL_KEY, "top-level-credential");
-    setScopedKey(conf, 0, LOCATION_KEY, "file:///tmp/table");
-    setScopedKey(conf, 0, TEST_CREDENTIAL_KEY, "namespaced-0");
-    setScopedKey(conf, 1, LOCATION_KEY, "file:///tmp/b");
-    setScopedKey(conf, 1, TEST_CREDENTIAL_KEY, "namespaced-1");
-    setScopedKey(conf, 2, LOCATION_KEY, "file:///tmp/c");
-    setScopedKey(conf, 2, TEST_CREDENTIAL_KEY, "namespaced-2");
+    conf.set(CredentialUtil.multiCredPrefixKeyForIndex(0), "file:///tmp/table");
+    conf.set(CredentialUtil.multiCredPrefixKeyForIndex(1), "file:///tmp/table/child");
     Map<String, String> before = snapshot(conf);
 
     FileSystem delegate = initDelegate(new URI("file:///tmp/table/data"), conf);
 
-    assertThat(delegate.getConf().get(TEST_CREDENTIAL_KEY)).isEqualTo("top-level-credential");
-    // The source configuration is not mutated by initialization.
+    assertThat(delegate.getConf().get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY)).isNull();
     assertThat(snapshot(conf)).isEqualTo(before);
   }
 
-  // --- count > 1 requires selection and overlay
-  // ----------------------------------------------------------
-
-  /**
-   * Across credential sets of varying size, the one whose location is the longest prefix covering
-   * the URI is selected, and exactly that credential's keys are lifted to the top level (overriding
-   * any stale top-level placeholder), while the source configuration is left unchanged.
-   */
-  @ParameterizedTest(name = "creds={0} uri={1} selects index {2}")
+  @ParameterizedTest(name = "prefixes={0} uri={1} selects {2}")
   @MethodSource("multiCredentialSelectionCases")
-  void multipleNamespacedCredentialsSelectAndOverlayCoveringCredential(
-      List<Map<String, String>> credentials, String uri, int expectedIndex) throws Exception {
+  void multiCredentialPrefixListSelectsLongestCoveringPrefix(
+      List<String> prefixes, String uri, String expectedPrefix) throws Exception {
     Configuration conf = tableConf();
-    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, credentials.size());
-    for (int i = 0; i < credentials.size(); i++) {
-      for (Map.Entry<String, String> key : credentials.get(i).entrySet()) {
-        setScopedKey(conf, i, key.getKey(), key.getValue());
-      }
-    }
-    int unselectedIndex = (expectedIndex + 1) % credentials.size();
-    setScopedKey(conf, unselectedIndex, UNSELECTED_ONLY_KEY, "must-not-be-copied");
+    setPrefixes(conf, prefixes);
     Map<String, String> before = snapshot(conf);
 
     FileSystem delegate = initDelegate(new URI(uri), conf);
 
-    // The selected credential's keys are lifted to the top level.
-    Configuration delegateConf = delegate.getConf();
-    credentials
-        .get(expectedIndex)
-        .forEach((key, value) -> assertThat(delegateConf.get(key)).isEqualTo(value));
-    assertThat(delegateConf.get(UNSELECTED_ONLY_KEY)).isNull();
-    // The source configuration is not mutated by the overlay.
+    assertThat(delegate.getConf().get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY))
+        .isEqualTo(expectedPrefix);
     assertThat(snapshot(conf)).isEqualTo(before);
   }
 
   private static Stream<Arguments> multiCredentialSelectionCases() {
     return Stream.of(
         Arguments.of(
-            List.of(credential(0, "file:///tmp/table"), credential(1, "file:///tmp/table/child")),
+            List.of("file:///tmp/table", "file:///tmp/table/child"),
             "file:///tmp/table/child/data",
-            1),
+            "file:///tmp/table/child"),
         Arguments.of(
-            List.of(credential(0, "file:///tmp/table"), credential(1, "file:///tmp/table/child")),
+            List.of("file:///tmp/table", "file:///tmp/table/child"),
             "file:///tmp/table/other",
-            0),
+            "file:///tmp/table"),
         Arguments.of(
-            List.of(
-                credential(0, "file:///tmp/a"),
-                credential(1, "file:///tmp/a/b"),
-                credential(2, "file:///tmp/c")),
+            List.of("file:///tmp/a", "file:///tmp/a/b", "file:///tmp/c"),
             "file:///tmp/a/b/data",
-            1));
+            "file:///tmp/a/b"),
+        Arguments.of(
+            List.of("file:///tmp/table", "file:///tmp/table,archive"),
+            "file:///tmp/table,archive/data",
+            "file:///tmp/table,archive"));
   }
 
   @Test
   void defaultMaximumCredentialCountIsAccepted() throws Exception {
-    List<Map<String, String>> credentials = credentials(MAX_COUNT);
+    List<String> prefixes =
+        IntStream.range(0, MAX_COUNT)
+            .mapToObj(i -> "file:///tmp/credential-" + i)
+            .collect(Collectors.toList());
     Configuration conf = tableConf();
-    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, credentials.size());
-    for (int i = 0; i < credentials.size(); i++) {
-      for (Map.Entry<String, String> key : credentials.get(i).entrySet()) {
-        setScopedKey(conf, i, key.getKey(), key.getValue());
-      }
-    }
+    setPrefixes(conf, prefixes);
 
     FileSystem delegate =
         initDelegate(new URI("file:///tmp/credential-" + (MAX_COUNT - 1) + "/data"), conf);
 
-    assertThat(delegate.getConf().get(TEST_CREDENTIAL_KEY)).isEqualTo("cred-" + (MAX_COUNT - 1));
+    assertThat(delegate.getConf().get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY))
+        .isEqualTo("file:///tmp/credential-" + (MAX_COUNT - 1));
   }
 
-  @Test
-  void credentialsBeyondDeclaredCountAreIgnored() {
-    List<Map<String, String>> credentials = credentials(MAX_COUNT + 1);
-    Configuration conf = tableConf();
-    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, MAX_COUNT);
-    for (int i = 0; i < credentials.size(); i++) {
-      for (Map.Entry<String, String> key : credentials.get(i).entrySet()) {
-        setScopedKey(conf, i, key.getKey(), key.getValue());
-      }
-    }
-    // The covering credential is past the declared count.
-    assertThatThrownBy(
-            () -> initDelegate(new URI("file:///tmp/credential-" + MAX_COUNT + "/data"), conf))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("No credential covers storage location");
-  }
-
-  private static Map<String, String> credential(int i, String location) {
-    Map<String, String> keys = new HashMap<>();
-    if (location != null) {
-      keys.put(LOCATION_KEY, location);
-    }
-    keys.put(TEST_CREDENTIAL_KEY, "cred-" + i);
-    keys.put(ACCESS_KEY, "ak-" + i);
-    return keys;
-  }
-
-  private static List<Map<String, String>> credentials(int count) {
-    List<Map<String, String>> credentials = new ArrayList<>(count);
-    for (int i = 0; i < count; i++) {
-      credentials.add(credential(i, "file:///tmp/credential-" + i));
-    }
-    return credentials;
-  }
-
-  // --- malformed configuration ------------------------------------------------------------------
-
-  /**
-   * Malformed namespaced configurations are rejected with a descriptive {@link
-   * IllegalArgumentException}.
-   */
   @ParameterizedTest(name = "{3}")
-  @MethodSource("malformedConfigurationCases")
-  void malformedConfigurationIsRejected(
-      int count, List<Map<String, String>> credentials, String uri, String expectedMessage) {
+  @MethodSource("malformedPrefixLists")
+  void malformedPrefixListIsRejected(
+      int count, List<String> prefixes, String uri, String expectedMessage) {
     Configuration conf = tableConf();
     conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, count);
-    for (int i = 0; i < credentials.size(); i++) {
-      for (Map.Entry<String, String> key : credentials.get(i).entrySet()) {
-        setScopedKey(conf, i, key.getKey(), key.getValue());
-      }
+    for (int i = 0; i < prefixes.size(); i++) {
+      conf.set(CredentialUtil.multiCredPrefixKeyForIndex(i), prefixes.get(i));
     }
 
     assertThatThrownBy(() -> initDelegate(new URI(uri), conf))
@@ -223,35 +143,29 @@ class CredScopedFileSystemNamespaceTest {
         .hasMessageContaining(expectedMessage);
   }
 
-  private static Stream<Arguments> malformedConfigurationCases() {
-    List<Map<String, String>> twoCreds =
-        List.of(credential(0, "file:///tmp/a"), credential(1, "file:///tmp/b"));
+  private static Stream<Arguments> malformedPrefixLists() {
     return Stream.of(
-        // No encoded credential covers the accessed location.
-        Arguments.of(2, twoCreds, "file:///tmp/other/data", "file:///tmp/other/data"),
-        // A credential in the set is missing its prefix key.
         Arguments.of(
             2,
-            List.of(credential(0, "file:///tmp/a"), credential(1, null)),
+            List.of("file:///tmp/a", "file:///tmp/b"),
+            "file:///tmp/other/data",
+            "No credential covers storage location"),
+        Arguments.of(
+            2,
+            List.of("file:///tmp/a", ""),
             "file:///tmp/a/data",
-            "missing its prefix"),
-        // Count claims more credentials than are encoded; index 2 is a phantom with no keys.
+            "Credential prefixes cannot be null or empty: index 1"),
         Arguments.of(
-            3, twoCreds, "file:///tmp/a/data", "Namespaced credential 2 is missing its prefix"),
-        // Count of one: a single credential must use the top-level layout, not a namespace.
-        Arguments.of(
-            1,
-            List.of(credential(0, "file:///tmp/table")),
+            2,
+            List.of("file:///tmp/table"),
             "file:///tmp/table/data",
-            "must be greater than 1"),
-        // Negative count.
+            "Credential prefixes cannot be null or empty: index 1"),
         Arguments.of(
-            -1, List.<Map<String, String>>of(), "file:///tmp/table/data", "must be greater than 1"),
-        // Count above the hard ceiling.
-        Arguments.of(
-            Integer.MAX_VALUE,
-            List.<Map<String, String>>of(),
-            "file:///tmp/table/data",
+            MAX_COUNT + 1,
+            IntStream.rangeClosed(0, MAX_COUNT)
+                .mapToObj(i -> "file:///tmp/credential-" + i)
+                .collect(Collectors.toList()),
+            "file:///tmp/credential-0/data",
             "at most " + MAX_COUNT));
   }
 }
