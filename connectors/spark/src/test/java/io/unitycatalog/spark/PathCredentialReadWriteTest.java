@@ -26,8 +26,9 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 /**
  * Tests for {@link ResolvePathCredentials}: Unity Catalog credentials are vended for cloud paths
- * referenced directly in a query (e.g. {@code parquet.`s3://bucket/dir`} or {@code
- * delta.`s3://bucket/dir`}), without a pre-registered external table.
+ * referenced directly in a query (e.g. {@code parquet.`s3://bucket/dir`}), without a pre-registered
+ * external table. Bare {@code delta.`s3://...`} paths are excluded and continue to use ambient
+ * storage credentials until Delta execution support lands separately.
  *
  * <p>Unlike the other Spark integration tests, these register {@code UCSparkSessionExtensions} (the
  * home of the parser hook that invokes the rule), and use the {@link S3CredentialTestFileSystem}
@@ -315,10 +316,9 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    * <p>Local storage: end-to-end CREATE + read (mirrors {@link
    * DeltaExternalTableReadWriteTest#testDeltaPathTable()} under the path-cred session layout).
    *
-   * <p>Cloud storage: UC external table seeds data; {@link ResolvePathCredentials} injects
-   * credentials into the parsed {@code delta.`s3://...`} relation. Execution-time reads of bare
-   * delta cloud paths do not yet propagate those options the way {@code parquet.`s3://...`} does —
-   * tracked as a follow-up.
+   * <p>Cloud storage: seeds data via a UC catalog table, then asserts {@link
+   * ResolvePathCredentials} does not inject credentials into parsed {@code delta.`s3://...`} (Delta
+   * bare-path execution with UC-vended credentials is tracked in a follow-up PR).
    */
   @Test
   public void testWriteAndReadBareDeltaPath() throws IOException, ParseException {
@@ -341,7 +341,7 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
             .parsePlan(String.format("SELECT * FROM delta.`%s`", s3Location));
     UnresolvedRelation relation = findBareCloudPathRelation(readPlan);
     assertThat(relation).isNotNull();
-    assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+    assertThat(relation.options().get("fs.s3a.access.key")).isNull();
   }
 
   /**
