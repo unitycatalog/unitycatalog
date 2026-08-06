@@ -44,7 +44,7 @@ Comparison with External Tables:
 
 Feature | Managed Table | External Table
 -|-|-
-Storage ownership | Unity Catalog | User
+Storage ownership | User | User
 Auto-cleanup on drop | Yes | No
 Storage location | Assigned | User-specified
 
