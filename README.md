@@ -253,13 +253,13 @@ For the official documentation, please take a look at [https://docs.unitycatalog
 # Docker Builds
 
 You can build a local version of the Unity Catalog Server or UI for local testing. All you need is Docker on your machine. In addition,
-if you are working behind a corporate firewall, simply add the environment variable `MAVEN_PROXY_URL=https://maven-proxy.your-company.com` for the Unity Catalog server build, or `NPM_PROXY=https://npm-proxy.your-company.com/` for the Unity Catalog UI build. If you don't need a proxy, you can safely still run the following commands without any variables set.
+if you are working behind a corporate firewall, simply add the environment variable `MAVEN_PROXY_URL=https://maven-proxy.your-company.com` for the Unity Catalog server build, or `NPM_PROXY_URL=https://npm-proxy.your-company.com/` for the Unity Catalog UI build. If you don't need a proxy, you can safely still run the following commands without any variables set.
 
 ## Unity Catalog Server
 
 ```bash
 docker build \
-  --build-arg MAVEN_PROXY_URL=$MAVEN_PROXY_URL \
+  --build-arg MAVEN_PROXY_URL="$MAVEN_PROXY_URL" \
   -t unitycatalog/unitycatalog:local \
   .
 ```
@@ -268,7 +268,7 @@ docker build \
 
 ```bash
 docker build \
-  --build-arg NPM_REGISTRY=$NPM_REGISTRY \
+  --build-arg NPM_PROXY_URL="$NPM_PROXY_URL" \
   -t unitycatalog/unitycatalog-ui:local \
   ./ui
 ```
