@@ -107,6 +107,15 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     tableOperations.deleteTable(VIEW_FULL_NAME);
     assertApiException(
         () -> tableOperations.getTable(VIEW_FULL_NAME), ErrorCode.TABLE_NOT_FOUND, VIEW_FULL_NAME);
+
+    // view_dependencies is optional for a plain view: a client that does not compute base-table
+    // lineage (e.g. Spark for a plain view) may omit it. The view is still created and readable.
+    TableInfo createdWithoutDeps =
+        tableOperations.createTable(validViewRequest().viewDependencies(null));
+    assertThat(createdWithoutDeps.getName()).isEqualTo(VIEW_NAME);
+    assertThat(createdWithoutDeps.getTableType()).isEqualTo(TableType.VIEW);
+    assertThat(tableOperations.getTable(VIEW_FULL_NAME).getName()).isEqualTo(VIEW_NAME);
+    tableOperations.deleteTable(VIEW_FULL_NAME);
   }
 
   private static Stream<Arguments> negativeCreateCases() {
@@ -116,11 +125,6 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
             (UnaryOperator<CreateTable>) request -> request.viewDefinition(null),
             ErrorCode.INVALID_ARGUMENT,
             "view_definition is required for view"),
-        Arguments.of(
-            "missing view_dependencies",
-            (UnaryOperator<CreateTable>) request -> request.viewDependencies(null),
-            ErrorCode.INVALID_ARGUMENT,
-            "view_dependencies is required for view"),
         Arguments.of(
             "non-existent dependency",
             (UnaryOperator<CreateTable>)
