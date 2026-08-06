@@ -95,9 +95,9 @@ public class CredScopedFileSystem extends FilterFileSystem {
   public void initialize(URI uri, Configuration conf) throws IOException {
     List<String> multiCredPrefixes = getMultiCredPrefixes(conf);
     if (multiCredPrefixes.isEmpty()) {
-      initializeSingleCredentialFileSystem(uri, conf);
+      initializeFileSystem(uri, conf);
     } else {
-      initializeMultiCredentialFileSystem(uri, conf, multiCredPrefixes);
+      selectPrefixAndInitializeFileSystem(uri, conf, multiCredPrefixes);
     }
   }
 
@@ -116,12 +116,12 @@ public class CredScopedFileSystem extends FilterFileSystem {
     return CredentialUtil.decodeMultiCredPrefixes(encodedMultiCredPrefixes);
   }
 
-  private void initializeSingleCredentialFileSystem(URI uri, Configuration conf) {
+  private void initializeFileSystem(URI uri, Configuration conf) {
     FileSystemCredId key = FileSystemCredId.create(conf, uri);
     this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
   }
 
-  private void initializeMultiCredentialFileSystem(
+  private void selectPrefixAndInitializeFileSystem(
       URI uri, Configuration conf, List<String> multiCredPrefixes) {
     FileSystemCredId key = getMultiCredFileSystemKey(uri, conf, multiCredPrefixes);
     this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf, key.prefix()));
