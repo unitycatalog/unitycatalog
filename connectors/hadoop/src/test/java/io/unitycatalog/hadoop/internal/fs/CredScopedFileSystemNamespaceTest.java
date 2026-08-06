@@ -66,10 +66,15 @@ class CredScopedFileSystemNamespaceTest {
     Configuration missing = tableConf();
     Configuration empty = tableConf();
     empty.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, "");
+
+    // Assert single cred path is taken as prefix matching would throw.
+    Configuration onlySeparators = tableConf();
+    onlySeparators.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, ",,,");
+
     Configuration single = tableConf();
     setPrefixes(single, List.of("file:///tmp/other"));
 
-    for (Configuration conf : List.of(missing, empty, single)) {
+    for (Configuration conf : List.of(missing, empty, onlySeparators, single)) {
       Map<String, String> before = snapshot(conf);
       FileSystem delegate = initDelegate(new URI("file:///tmp/table/data"), conf);
 

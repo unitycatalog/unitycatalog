@@ -94,14 +94,15 @@ public class CredScopedFileSystem extends FilterFileSystem {
       return;
     }
 
-    FileSystemCredId key = FileSystemCredId.create(conf, uri);
+    String prefix = conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
+    FileSystemCredId key = FileSystemCredId.create(conf, uri, prefix);
     this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf));
   }
 
   private static List<String> getMultiCredPrefixes(Configuration conf) {
     String[] encodedMultiCredPrefixes =
         conf.getStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY);
-    if (encodedMultiCredPrefixes == null || encodedMultiCredPrefixes.length == 0) {
+    if (encodedMultiCredPrefixes == null) {
       return Collections.emptyList();
     }
     return CredentialUtil.decodeMultiCredPrefixes(encodedMultiCredPrefixes);
