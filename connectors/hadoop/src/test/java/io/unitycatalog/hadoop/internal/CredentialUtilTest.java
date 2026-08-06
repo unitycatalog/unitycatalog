@@ -27,9 +27,60 @@ class CredentialUtilTest {
   private static final long EXPIRATION = 123L;
 
   @Test
-  void multiCredPrefixKeyForIndexReturnsIndexedPrefixKey() {
-    assertThat(CredentialUtil.multiCredPrefixKeyForIndex(2))
-        .isEqualTo(UCHadoopConfConstants.UC_MULTI_CRED_PREFIX_KEY + "2");
+  void multiCredPrefixesRoundTripInOrder() {
+    List<String> prefixes =
+        List.of(
+            "s3://bucket/table,archive",
+            "s3://bucket/table/%20/${credential}",
+            "s3://bucket/table/%2C/%25/%2F",
+            "s3://bucket/table with spaces",
+            "s3://bucket/table\twith\ttabs",
+            "s3://bucket/table-name_with.parts~",
+            "s3://bucket/table?key=value&other=a+b#fragment",
+            "s3://bucket/café");
+
+    String[] encodedPrefixes = CredentialUtil.encodeMultiCredPrefixes(prefixes);
+
+    assertThat(CredentialUtil.decodeMultiCredPrefixes(encodedPrefixes))
+        .containsExactlyElementsOf(prefixes);
+  }
+
+  @ParameterizedTest
+  @MethodSource("malformedPrefixesToEncode")
+  void encodeMultiCredPrefixesRejectsMalformedInput(List<String> prefixes, String expectedMessage) {
+    assertThatThrownBy(() -> CredentialUtil.encodeMultiCredPrefixes(prefixes))
+        .hasMessageContaining(expectedMessage);
+  }
+
+  private static Stream<Arguments> malformedPrefixesToEncode() {
+    return Stream.of(
+        Arguments.of(null, "cannot be null or empty"),
+        Arguments.of(Collections.emptyList(), "cannot be null or empty"),
+        Arguments.of(Collections.singletonList(null), "cannot be null or empty"),
+        Arguments.of(List.of(""), "cannot be null or empty"),
+        Arguments.of(Arrays.asList("s3://bucket/valid", null), "cannot be null or empty"),
+        Arguments.of(List.of("s3://bucket/valid", ""), "cannot be null or empty"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("malformedPrefixesToDecode")
+  void decodeMultiCredPrefixesRejectsMalformedInput(
+      String[] encodedPrefixes, String expectedMessage) {
+    assertThatThrownBy(() -> CredentialUtil.decodeMultiCredPrefixes(encodedPrefixes))
+        .hasMessageContaining(expectedMessage);
+  }
+
+  private static Stream<Arguments> malformedPrefixesToDecode() {
+    String validPrefix = CredentialUtil.encodeMultiCredPrefixes(List.of("s3://bucket/valid"))[0];
+    return Stream.of(
+        Arguments.of(null, "cannot be null or empty"),
+        Arguments.of(new String[0], "cannot be null or empty"),
+        Arguments.of(new String[] {null}, "cannot be null"),
+        Arguments.of(new String[] {""}, "cannot be empty"),
+        Arguments.of(new String[] {"not-base64!"}, "Illegal base64"),
+        Arguments.of(new String[] {validPrefix, null}, "cannot be null"),
+        Arguments.of(new String[] {validPrefix, ""}, "cannot be empty"),
+        Arguments.of(new String[] {validPrefix, "not-base64!"}, "Illegal base64"));
   }
 
   @ParameterizedTest(name = "{0}")

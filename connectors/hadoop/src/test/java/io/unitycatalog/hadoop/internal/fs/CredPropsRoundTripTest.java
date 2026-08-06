@@ -30,6 +30,26 @@ class CredPropsRoundTripTest {
 
   private static final String LOCATION = "s3://bucket/table";
 
+  @Test
+  void multiCredentialPrefixesRoundTripThroughHadoopConfiguration() {
+    Configuration conf = new Configuration(false);
+    List<String> prefixes =
+        List.of(
+            "s3://bucket/table",
+            "s3://bucket/table,archive",
+            "s3://bucket/table/%20/${credential}",
+            "s3://bucket/table/%2C/%25/%2F");
+
+    conf.setStrings(
+        UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY,
+        CredentialUtil.encodeMultiCredPrefixes(prefixes));
+
+    assertThat(
+            CredentialUtil.decodeMultiCredPrefixes(
+                conf.getStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY)))
+        .containsExactlyElementsOf(prefixes);
+  }
+
   @BeforeEach
   @AfterEach
   void reset() {
@@ -106,9 +126,9 @@ class CredPropsRoundTripTest {
     confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY);
     confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_SECRET_KEY);
     confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN);
-    confWithCreds.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, 2);
-    confWithCreds.set(CredentialUtil.multiCredPrefixKeyForIndex(0), "s3://bucket");
-    confWithCreds.set(CredentialUtil.multiCredPrefixKeyForIndex(1), LOCATION);
+    confWithCreds.setStrings(
+        UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY,
+        CredentialUtil.encodeMultiCredPrefixes(List.of("s3://bucket", LOCATION)));
 
     CredScopedFileSystem fs = new CredScopedFileSystem();
     fs.initialize(new URI(LOCATION + "/part-0.parquet"), confWithCreds);

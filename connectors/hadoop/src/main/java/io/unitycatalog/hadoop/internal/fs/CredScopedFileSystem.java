@@ -8,7 +8,7 @@ import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -59,7 +59,7 @@ public class CredScopedFileSystem extends FilterFileSystem {
       "unitycatalog.credScopedFs.cache.maxSize";
   private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
 
-  // Maximum number of namespaced credentials read from the configuration to prevent OOM.
+  // Maximum number of credential prefixes read from the configuration to prevent OOM.
   private static final String MAX_MULTI_CRED_COUNT_PROPERTY = "unitycatalog.multi.cred.maxCount";
   private static final int MAX_MULTI_CRED_COUNT_DEFAULT = 10;
   private static final int MAX_MULTI_CRED_COUNT =
@@ -93,39 +93,46 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    int multiCredCount = conf.getInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, 0);
-    if (multiCredCount > 1) {
-      FileSystemCredId key = getMultiCredFileSystemKey(uri, conf, multiCredCount);
-      this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf, key.prefix()));
-      return;
+    List<String> multiCredPrefixes = getMultiCredPrefixes(conf);
+    if (multiCredPrefixes.isEmpty()) {
+      initializeSingleCredentialFileSystem(uri, conf);
+    } else {
+      initializeMultiCredentialFileSystem(uri, conf, multiCredPrefixes);
     }
+  }
 
+  private static List<String> getMultiCredPrefixes(Configuration conf) {
+    String[] encodedMultiCredPrefixes =
+        conf.getStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY);
+    if (encodedMultiCredPrefixes == null) {
+      return Collections.emptyList();
+    }
+    Preconditions.checkArgument(
+        encodedMultiCredPrefixes.length > 1
+            && encodedMultiCredPrefixes.length <= MAX_MULTI_CRED_COUNT,
+        "Number of credentials must be between 2 and %s: got %s",
+        MAX_MULTI_CRED_COUNT,
+        encodedMultiCredPrefixes.length);
+    return CredentialUtil.decodeMultiCredPrefixes(encodedMultiCredPrefixes);
+  }
+
+  private void initializeSingleCredentialFileSystem(URI uri, Configuration conf) {
     FileSystemCredId key = FileSystemCredId.create(conf, uri);
     this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
   }
 
-  private static FileSystemCredId getMultiCredFileSystemKey(
-      URI uri, Configuration conf, int multiCredCount) {
-    Preconditions.checkArgument(
-        multiCredCount <= MAX_MULTI_CRED_COUNT,
-        "Number of credentials must be at most %s: got %s",
-        MAX_MULTI_CRED_COUNT,
-        multiCredCount);
+  private void initializeMultiCredentialFileSystem(
+      URI uri, Configuration conf, List<String> multiCredPrefixes) {
+    FileSystemCredId key = getMultiCredFileSystemKey(uri, conf, multiCredPrefixes);
+    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf, key.prefix()));
+  }
 
-    List<String> prefixes = new ArrayList<>(multiCredCount);
-    for (int i = 0; i < multiCredCount; i++) {
-      String prefix = conf.get(CredentialUtil.multiCredPrefixKeyForIndex(i));
-      Preconditions.checkArgument(
-          prefix != null && !prefix.isEmpty(),
-          "Credential prefixes cannot be null or empty: index %s for storage location %s",
-          i,
-          uri);
-      prefixes.add(prefix);
-    }
-    int selectedIndex = CredentialUtil.longestCoveringIndex(uri.toString(), prefixes);
+  private static FileSystemCredId getMultiCredFileSystemKey(
+      URI uri, Configuration conf, List<String> multiCredPrefixes) {
+    int selectedIndex = CredentialUtil.longestCoveringIndex(uri.toString(), multiCredPrefixes);
     Preconditions.checkArgument(
         selectedIndex >= 0, "No credential covers storage location %s", uri);
-    String selectedPrefix = prefixes.get(selectedIndex);
+    String selectedPrefix = multiCredPrefixes.get(selectedIndex);
     return FileSystemCredId.create(conf, uri, selectedPrefix);
   }
 

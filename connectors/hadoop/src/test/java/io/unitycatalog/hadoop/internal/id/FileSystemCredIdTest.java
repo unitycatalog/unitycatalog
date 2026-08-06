@@ -54,6 +54,16 @@ class FileSystemCredIdTest {
   }
 
   @Test
+  void createWithProvidedPrefixFallsBackToUriIdentity() {
+    Configuration conf = new Configuration(false);
+    String prefix = "s3://bucket/selected";
+
+    assertThat(FileSystemCredId.create(conf, URI.create("s3://bucket/a"), prefix))
+        .isEqualTo(FileSystemCredId.create(conf, URI.create("s3://bucket/b"), prefix))
+        .isNotEqualTo(FileSystemCredId.create(conf, URI.create("s3://other/a"), prefix));
+  }
+
+  @Test
   void equivalentPrefixesAreEqualAndHaveSameHashCode() {
     FileSystemCredId idA = createId("s3://bucket/a");
     FileSystemCredId idB = createId("s3://bucket/a");

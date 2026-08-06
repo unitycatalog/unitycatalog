@@ -62,16 +62,10 @@ public class UCHadoopConfConstants {
   public static final String UC_CRED_CONTEXT_ID_KEY = "fs.unitycatalog.cred.context.id";
 
   /**
-   * Denotes the number of credentials that are vended. When multiple credentials are vended, this
-   * key should be set; otherwise, it should be absent.
+   * The list of credential prefixes for multi-credential responses. This should not be set when
+   * only one credential is vended. It must be set when there are multiple credentials.
    */
-  public static final String UC_MULTI_CRED_COUNT_KEY = "fs.unitycatalog.multi.cred.count";
-
-  /**
-   * The Hadoop configuration prefix used to separate the different prefixes that the vended
-   * credentials cover.
-   */
-  public static final String UC_MULTI_CRED_PREFIX_KEY = "fs.unitycatalog.multi.cred.prefix.";
+  public static final String UC_MULTI_CRED_PREFIXES_KEY = "fs.unitycatalog.multi.cred.prefixes";
 
   // Prefix for engine version metadata (e.g. fs.unitycatalog.engine.version.Spark=4.0.0). Values
   // stored under this prefix are propagated to the User-Agent header on UC API calls so the

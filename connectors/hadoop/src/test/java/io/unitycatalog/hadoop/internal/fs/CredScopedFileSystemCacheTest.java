@@ -10,6 +10,7 @@ import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
 import io.unitycatalog.hadoop.internal.util.MapIdGenerator;
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -162,9 +163,9 @@ class CredScopedFileSystemCacheTest {
   @Test
   void multiCredSelectionDeterminesDelegateIdentity() throws Exception {
     Configuration conf = tableConf("tid-1", "READ");
-    conf.setInt(UCHadoopConfConstants.UC_MULTI_CRED_COUNT_KEY, 2);
-    conf.set(CredentialUtil.multiCredPrefixKeyForIndex(0), "file:///tmp/a");
-    conf.set(CredentialUtil.multiCredPrefixKeyForIndex(1), "file:///tmp/b");
+    conf.setStrings(
+        UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY,
+        CredentialUtil.encodeMultiCredPrefixes(List.of("file:///tmp/a", "file:///tmp/b")));
 
     // URIs covered by the same credential resolve to one delegate; different ones do not.
     CredScopedFileSystem fsA1 = init(new URI("file:///tmp/a/one"), conf);
