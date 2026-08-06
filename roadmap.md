@@ -3,26 +3,25 @@
 This document outlines the roadmap for the Unity Catalog open source project. As always,
 features may move in/out of milestones pending available resources, priorities, and community discussions.
 
-## 0.5 Release priorities
+## 0.6+
 
-### Managed Delta table support
+### View support
 
-Delta's [Catalog managed commits](https://github.com/delta-io/delta/blob/master/PROTOCOL.md#catalog-managed-tables) are the basis for many new and powerful client (Delta) and server side features and
-were introduced as `experimental` in the 0.4 release.
-* This release will introduce new Delta Catalog APIs as well as
-moving to non-experimental.
-* In addition, we'll be providing Uniform support with this release.
+Views provide governed, reusable definitions over tables.
+We will start with supporting basic Spark SQL views and then progress toward broader engine interoperability.
 
-### Metric Views
+### Full Iceberg REST Catalog support
 
-Metric views provide a centralized way to define and manage consistent, reusable, and governed core business metrics.
-This will enable Unity Catalog to abstract your complex business logic into centralized definitions, enabling
-you to have a single source of metric truth for your key performance indicators.
+The Iceberg REST Catalog provides an open interface for engines and tools to discover and access Iceberg tables. We will continue to strengthen interoperability through this interface, including Delta Uniform table access and Iceberg table lifecycle support, so more engines can access data registered in Unity Catalog through open standards.
 
-* This release will provide an experimental preview of this new capability.
+### S3-compatible storage
 
-### Authentication
-Modular authentication will allow you to reuse your existing auth to secure Unity Catalog.
+S3-compatible storage support will allow Unity Catalog deployments to use object stores that expose an S3-compatible API. This allows Unity Catalog to be deployed across a broader range of on-prem and cloud environments.
+
+### Production hardening
+
+Production hardening focuses on the reliability and operational maturity needed for broader production deployments.
+The roadmap includes monitoring and telemetry, database schema upgrades, server-side storage credential and FileIO caching, and managed table and volume lifecycle support.
 
 
 ## Full roadmap
@@ -104,9 +103,35 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
 
+  <tr>
+    <td>Credential</td>
+    <td>API + Server</td>
+    <td></td>
+    <td></td>
+    <td align="center">🛠️</td>
+    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+  </tr>
+  <tr>
+    <td>External Location</td>
+    <td>API + Server</td>
+    <td></td>
+    <td></td>
+    <td align="center">🛠️</td>
+    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+  </tr>
 
     <tr>
-    <td rowspan="1">Multi-tenancy</td>
+    <td>Multi-tenancy</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -350,7 +375,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
     <tr>
-    <td rowspan="1">Auditing</td>
+    <td>Auditing</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -361,6 +386,19 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+  </tr>
+  <tr>
+    <td>SQL DCL changes</td>
+    <td>Spark Integration</td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td align="center">❓</td>
   </tr>
   <tr>
     <td>RBAC</td>
@@ -582,7 +620,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
+    <td align="center" bgcolor="green"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
@@ -644,7 +682,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
 
-    <tr><td rowspan="1">Iceberg tables with create+read+write</td>
+    <tr><td>Iceberg tables with create+read+write</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -658,7 +696,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
   <tr>
-    <td rowspan="1">Multi-engine data types for column definitions</td>
+    <td>Multi-engine data types for column definitions</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -678,7 +716,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
     <tr>
-    <td rowspan="1">Basic Spark SQL flavor views</td>
+    <td>Basic Spark SQL flavor views</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -692,7 +730,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
     <tr>
-    <td rowspan="1">Multi-dialect views</td>
+    <td>Multi-dialect views</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -706,7 +744,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
     <tr>
-    <td rowspan="1">Iceberg view support</td>
+    <td>Iceberg view support</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -720,7 +758,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
     <tr>
-    <td rowspan="1">Materialized views</td>
+    <td>Materialized views</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -733,7 +771,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td align="center">❓</td>
   </tr>
 
-    <tr><td rowspan="1">Metric views</td>
+    <tr><td>Metric views</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -747,7 +785,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
     <tr>
-    <td rowspan="1">Streaming tables</td>
+    <td>Streaming tables</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -761,7 +799,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
     <tr>
-    <td rowspan="1">Shallow clones</td>
+    <td>Shallow clones</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -820,7 +858,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
   <tr>
-    <td rowspan="1">Multi-engine functions (SQL)</td>
+    <td>Multi-engine functions (SQL)</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -835,7 +873,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
   <tr>
-    <td rowspan="1">Remote functions</td>
+    <td>Remote functions</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -944,7 +982,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
   <tr>
-    <td rowspan="1">Features tables</td>
+    <td>Features tables</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -959,7 +997,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
   <tr>
-    <td rowspan="1">Data monitors</td>
+    <td>Data monitors</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -978,7 +1016,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
     <td colspan="11" bgcolor="grey" align="center">Sharing</td>
   </tr>
 
-    <tr><td rowspan="1">Open Sharing</td>
+    <tr><td>Open Sharing</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -992,7 +1030,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
       <tr>
-    <td rowspan="1">Shares</td>
+    <td>Shares</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -1006,7 +1044,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
       <tr>
-    <td rowspan="1">Recipients</td>
+    <td>Recipients</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -1020,7 +1058,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
       <tr>
-    <td rowspan="1">Providers</td>
+    <td>Providers</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -1039,7 +1077,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
   <tr>
-    <td rowspan="1">Connections</td>
+    <td>Connections</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -1054,7 +1092,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
   <tr>
-    <td rowspan="1">Foreign objects (catalogs, schemas, tables)</td>
+    <td>Foreign objects (catalogs, schemas, tables)</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
@@ -1069,7 +1107,7 @@ Modular authentication will allow you to reuse your existing auth to secure Unit
   </tr>
 
     <tr>
-    <td rowspan="1">Support for different data sources: JDBC, Iceberg REST, HMS</td>
+    <td>Support for different data sources: JDBC, Iceberg REST, HMS</td>
     <td>API + Server</td>
     <td></td>
     <td></td>
