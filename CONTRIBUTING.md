@@ -19,6 +19,11 @@ We are excited to work with the open source communities in the many years to com
 - If it is appropriate to write a design document, the document must be hosted either in the GitHub tracking issue, or linked to from the issue and hosted in a world-readable location.
 - Specifically, if the goal is to add a new extension, please read the extension policy.
 - Small patches and bug fixes don't need prior communication. If you have identified a bug and have ways to solve it, please create an [issue](https://github.com/unitycatalog/unitycatalog/issues) or create a [pull request](https://github.com/unitycatalog/unitycatalog/pulls).
+- In this project, only maintainers can start [GitHub Discussions](https://github.com/unitycatalog/unitycatalog/discussions).
+- Non-maintainers who wish to initiate a Discussion typically follow one of two approaches:  
+  1. Create an issue and ask a maintainer to convert it to a Discussion.  
+  2. Contact a maintainer on Slack to request the creation of a Discussion.
+- Using either of these approaches has become the standard practice.
 
 # Auto-Assigning Issues
 We have implemented a feature that allows users to comment "**take**" on an issue to be auto-assigned the issue without having to depend on or wait for the maintainers to assign the issue before working on it.
