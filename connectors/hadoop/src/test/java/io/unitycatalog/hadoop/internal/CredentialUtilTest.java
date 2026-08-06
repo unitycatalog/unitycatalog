@@ -158,28 +158,24 @@ class CredentialUtilTest {
   void selectorRejectsMissingResponse() {
     assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", null))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("has no storage credentials");
+        .hasMessageContaining("requires multiple storage credentials");
     assertThatThrownBy(
             () -> CredentialUtil.selectForLocation("s3://bucket/t", Collections.emptyList()))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("has no storage credentials");
+        .hasMessageContaining("requires multiple storage credentials");
   }
 
   @Test
-  void selectorRejectsSingleWithoutPrefixMatch() {
-    GenericCredential only = credAt("s3://other-bucket");
-    assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", List.of(only)))
+  void selectorRejectsSingleCredential() {
+    assertThatThrownBy(
+            () -> CredentialUtil.selectForLocation("s3://bucket/t", List.of(credAt("s3://bucket"))))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("No vended credential covers location");
-  }
-
-  @Test
-  void selectorRejectsSingleNull() {
+        .hasMessageContaining("requires multiple storage credentials");
     assertThatThrownBy(
             () ->
                 CredentialUtil.selectForLocation("s3://bucket/t", Collections.singletonList(null)))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("contains null");
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("requires multiple storage credentials");
   }
 
   @Test
@@ -223,7 +219,8 @@ class CredentialUtilTest {
     // Scheme aliases are not normalized; otherwise, the s3 prefix would cover the s3a location.
     assertThatThrownBy(
             () ->
-                CredentialUtil.selectForLocation("s3a://bucket/t", List.of(credAt("s3://bucket"))))
+                CredentialUtil.selectForLocation(
+                    "s3a://bucket/t", Arrays.asList(credAt("s3://bucket"), credAt("gs://other"))))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("No vended credential covers location");
   }

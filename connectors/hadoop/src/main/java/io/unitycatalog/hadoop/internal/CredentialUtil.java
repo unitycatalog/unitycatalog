@@ -96,10 +96,8 @@ public final class CredentialUtil {
   public static GenericCredential selectForLocation(
       String location, List<GenericCredential> creds) {
     Preconditions.checkArgument(
-        creds != null && !creds.isEmpty(), "Credential response has no storage credentials.");
-    if (creds.size() == 1) {
-      Preconditions.checkNotNull(creds.get(0), "Credential response contains null.");
-    }
+        creds != null && creds.size() > 1,
+        "Credential selection requires multiple storage credentials.");
     int selected = longestCoveringIndex(location, creds, GenericCredential::prefix);
     Preconditions.checkArgument(
         selected >= 0, "No vended credential covers location '%s'.", location);
