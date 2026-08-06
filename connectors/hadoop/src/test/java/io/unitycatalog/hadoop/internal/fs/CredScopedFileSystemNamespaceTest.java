@@ -147,19 +147,24 @@ class CredScopedFileSystemNamespaceTest {
         .hasMessageContaining("between 2 and " + MAX_COUNT);
   }
 
-  @Test
-  void trailingEmptyEncodedPrefixIsRejected() {
+  @ParameterizedTest
+  @MethodSource("uncoveredLocationCases")
+  void multiCredentialPrefixesRejectUncoveredLocation(List<String> prefixes, String uri) {
     Configuration conf = tableConf();
-    String encodedPrefixes =
-        String.join(
-                ",",
-                CredentialUtil.encodeMultiCredPrefixes(
-                    List.of("file:///tmp/credential-a", "file:///tmp/credential-b")))
-            + ",";
-    conf.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, encodedPrefixes);
+    setPrefixes(conf, prefixes);
 
-    assertThatThrownBy(() -> initDelegate(new URI("file:///tmp/credential-a/data"), conf))
-        .hasMessageContaining("Credential prefixes cannot be empty");
+    assertThatThrownBy(() -> initDelegate(new URI(uri), conf))
+        .hasMessageContaining("No credential covers storage location");
+  }
+
+  private static Stream<Arguments> uncoveredLocationCases() {
+    return Stream.of(
+        Arguments.of(List.of("file:///tmp/a", "file:///tmp/b"), "file:///tmp/other/data"),
+        Arguments.of(
+            List.of("file:///tmp/table", "file:///tmp/table/child"),
+            "file:///tmp/table-other/data"),
+        Arguments.of(List.of("s3://bucket/a", "s3://bucket/b"), "s3a://bucket/a/data"),
+        Arguments.of(List.of("s3://bucket/a", "s3://bucket/b"), "gs://bucket/a/data"));
   }
 
   @ParameterizedTest(name = "{2}")
@@ -175,13 +180,13 @@ class CredScopedFileSystemNamespaceTest {
   private static Stream<Arguments> malformedPrefixLists() {
     return Stream.of(
         Arguments.of(
-            encodePrefixes(List.of("file:///tmp/a", "file:///tmp/b")),
-            "file:///tmp/other/data",
-            "No credential covers storage location"),
-        Arguments.of(
             encodePrefixes(List.of("file:///tmp/table")),
             "file:///tmp/table/data",
             "Number of credentials must be between 2 and " + MAX_COUNT + ": got 1"),
-        Arguments.of("not-base64!,also-invalid!", "file:///tmp/credential/data", "Illegal base64"));
+        Arguments.of("not-base64!,also-invalid!", "file:///tmp/credential/data", "Illegal base64"),
+        Arguments.of(
+            encodePrefixes(List.of("file:///tmp/credential-a", "file:///tmp/credential-b")) + ",",
+            "file:///tmp/credential-a/data",
+            "Credential prefixes cannot be empty"));
   }
 }
