@@ -43,6 +43,7 @@ class CredentialUtilTest {
     String[] encodedPrefixes = CredentialUtil.encodeMultiCredPrefixes(prefixes);
 
     assertThat(encodedPrefixes).doesNotContainAnyElementsOf(prefixes);
+    assertThat(encodedPrefixes).allMatch(prefix -> !prefix.contains(","));
     assertThat(CredentialUtil.decodeMultiCredPrefixes(encodedPrefixes))
         .containsExactlyElementsOf(prefixes);
   }
