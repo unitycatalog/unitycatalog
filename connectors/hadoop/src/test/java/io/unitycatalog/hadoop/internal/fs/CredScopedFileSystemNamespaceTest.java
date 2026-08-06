@@ -59,9 +59,11 @@ class CredScopedFileSystemNamespaceTest {
   }
 
   private static void setPrefixes(Configuration conf, List<String> prefixes) {
-    conf.setStrings(
-        UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY,
-        CredentialUtil.encodeMultiCredPrefixes(prefixes));
+    conf.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, encodePrefixes(prefixes));
+  }
+
+  private static String encodePrefixes(List<String> prefixes) {
+    return String.join(",", CredentialUtil.encodeMultiCredPrefixes(prefixes));
   }
 
   @Test
@@ -106,7 +108,7 @@ class CredScopedFileSystemNamespaceTest {
             "file:///tmp/table"),
         Arguments.of(
             List.of("file:///tmp/a", "file:///tmp/a/b", "file:///tmp/c"),
-            "file:///tmp/a/b/data",
+            "file:///tmp/a/b",
             "file:///tmp/a/b"),
         Arguments.of(
             List.of("file:///tmp/a", "file:///tmp/a/b", "file:///tmp/c"),
@@ -162,9 +164,9 @@ class CredScopedFileSystemNamespaceTest {
 
   @ParameterizedTest(name = "{2}")
   @MethodSource("malformedPrefixLists")
-  void malformedPrefixListIsRejected(List<String> prefixes, String uri, String expectedMessage) {
+  void malformedPrefixListIsRejected(String encodedPrefixes, String uri, String expectedMessage) {
     Configuration conf = tableConf();
-    setPrefixes(conf, prefixes);
+    conf.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, encodedPrefixes);
 
     assertThatThrownBy(() -> initDelegate(new URI(uri), conf))
         .hasMessageContaining(expectedMessage);
@@ -173,12 +175,13 @@ class CredScopedFileSystemNamespaceTest {
   private static Stream<Arguments> malformedPrefixLists() {
     return Stream.of(
         Arguments.of(
-            List.of("file:///tmp/a", "file:///tmp/b"),
+            encodePrefixes(List.of("file:///tmp/a", "file:///tmp/b")),
             "file:///tmp/other/data",
             "No credential covers storage location"),
         Arguments.of(
-            List.of("file:///tmp/table"),
+            encodePrefixes(List.of("file:///tmp/table")),
             "file:///tmp/table/data",
-            "Number of credentials must be between 2 and " + MAX_COUNT + ": got 1"));
+            "Number of credentials must be between 2 and " + MAX_COUNT + ": got 1"),
+        Arguments.of("not-base64!,also-invalid!", "file:///tmp/credential/data", "Illegal base64"));
   }
 }
