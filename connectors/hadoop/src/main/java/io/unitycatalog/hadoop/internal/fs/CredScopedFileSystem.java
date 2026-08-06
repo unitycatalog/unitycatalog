@@ -59,12 +59,6 @@ public class CredScopedFileSystem extends FilterFileSystem {
       "unitycatalog.credScopedFs.cache.maxSize";
   private static final int CRED_SCOPED_FS_CACHE_MAX_SIZE_DEFAULT = 100;
 
-  // Maximum number of credential prefixes read from the configuration to prevent OOM.
-  private static final String MAX_MULTI_CRED_COUNT_PROPERTY = "unitycatalog.multi.cred.maxCount";
-  private static final int MAX_MULTI_CRED_COUNT_DEFAULT = 10;
-  private static final int MAX_MULTI_CRED_COUNT =
-      Integer.getInteger(MAX_MULTI_CRED_COUNT_PROPERTY, MAX_MULTI_CRED_COUNT_DEFAULT);
-
   /**
    * LRU cache of real {@link FileSystem} instances keyed by {@link FileSystemCredId}. Evicted
    * entries are closed to release connection pools and SDK thread pools (e.g. AWS
@@ -94,36 +88,23 @@ public class CredScopedFileSystem extends FilterFileSystem {
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
     List<String> multiCredPrefixes = getMultiCredPrefixes(conf);
-    if (multiCredPrefixes.isEmpty()) {
-      initializeFileSystem(uri, conf);
-    } else {
-      selectPrefixAndInitializeFileSystem(uri, conf, multiCredPrefixes);
+    if (multiCredPrefixes.size() > 1) {
+      FileSystemCredId key = getMultiCredFileSystemKey(uri, conf, multiCredPrefixes);
+      this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, key.prefix()));
+      return;
     }
+
+    FileSystemCredId key = FileSystemCredId.create(conf, uri);
+    this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf));
   }
 
   private static List<String> getMultiCredPrefixes(Configuration conf) {
-    String encodedMultiCredPrefixes = conf.get(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY);
-    if (encodedMultiCredPrefixes == null || encodedMultiCredPrefixes.isEmpty()) {
+    String[] encodedMultiCredPrefixes =
+        conf.getStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY);
+    if (encodedMultiCredPrefixes == null || encodedMultiCredPrefixes.length == 0) {
       return Collections.emptyList();
     }
-    String[] encodedPrefixes = encodedMultiCredPrefixes.split(",", -1);
-    Preconditions.checkArgument(
-        encodedPrefixes.length > 1 && encodedPrefixes.length <= MAX_MULTI_CRED_COUNT,
-        "Number of credentials must be between 2 and %s: got %s",
-        MAX_MULTI_CRED_COUNT,
-        encodedPrefixes.length);
-    return CredentialUtil.decodeMultiCredPrefixes(encodedPrefixes);
-  }
-
-  private void initializeFileSystem(URI uri, Configuration conf) {
-    FileSystemCredId key = FileSystemCredId.create(conf, uri);
-    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
-  }
-
-  private void selectPrefixAndInitializeFileSystem(
-      URI uri, Configuration conf, List<String> multiCredPrefixes) {
-    FileSystemCredId key = getMultiCredFileSystemKey(uri, conf, multiCredPrefixes);
-    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf, key.prefix()));
+    return CredentialUtil.decodeMultiCredPrefixes(encodedMultiCredPrefixes);
   }
 
   private static FileSystemCredId getMultiCredFileSystemKey(
@@ -144,50 +125,51 @@ public class CredScopedFileSystem extends FilterFileSystem {
     fsConf.set(key, fsConf.get(key + ".original", defaultImpl));
   }
 
-  private static FileSystem newFileSystem(URI uri, Configuration conf, String prefix) {
+  private static FileSystem copyConfAndCreateNewFileSystem(URI uri, Configuration conf) {
+    Configuration fsConf = new Configuration(conf);
+    return newFileSystem(uri, fsConf);
+  }
+
+  private static FileSystem copyConfAndCreateNewFileSystem(
+      URI uri, Configuration conf, String prefix) {
     Configuration fsConf = new Configuration(conf);
     fsConf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
-    return createFileSystem(uri, fsConf);
+    return newFileSystem(uri, fsConf);
   }
 
-  private static FileSystem newFileSystem(URI uri, Configuration conf) {
-    Configuration fsConf = new Configuration(conf);
-    return createFileSystem(uri, fsConf);
-  }
-
-  private static FileSystem createFileSystem(URI uri, Configuration fsConf) {
+  // Creates a files system from the provided configuration. Note: modifies the conf in-place.
+  private static FileSystem newFileSystem(URI uri, Configuration fsConf) {
     try {
-      restoreFileSystemOverrides(fsConf);
+      // S3: restore impl using the side-channel key saved by CredPropsUtil before it overrode
+      // fs.<scheme>.impl with CredScopedFileSystem. Falls back to S3AFileSystem if not set.
+      restoreImpl(fsConf, "fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
+      restoreImpl(fsConf, "fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
+      restoreImpl(fsConf, "fs.AbstractFileSystem.s3.impl", "org.apache.hadoop.fs.s3a.S3A");
+      restoreImpl(fsConf, "fs.AbstractFileSystem.s3a.impl", "org.apache.hadoop.fs.s3a.S3A");
+      fsConf.set("fs.s3.impl.disable.cache", "true");
+      fsConf.set("fs.s3a.impl.disable.cache", "true");
+
+      // GCS: restore impl using the side-channel key. Falls back to GoogleHadoopFileSystem if not
+      // set (registered via the Java service loader).
+      restoreImpl(fsConf, "fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
+      restoreImpl(
+          fsConf, "fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS");
+      fsConf.set("fs.gs.impl.disable.cache", "true");
+
+      // Azure: restore impl using the side-channel key. Falls back to AzureBlobFileSystem /
+      // SecureAzureBlobFileSystem if not set (registered via the Java service loader).
+      restoreImpl(fsConf, "fs.abfs.impl", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem");
+      restoreImpl(
+          fsConf, "fs.abfss.impl", "org.apache.hadoop.fs.azurebfs.SecureAzureBlobFileSystem");
+      restoreImpl(fsConf, "fs.AbstractFileSystem.abfs.impl", "org.apache.hadoop.fs.azurebfs.Abfs");
+      restoreImpl(
+          fsConf, "fs.AbstractFileSystem.abfss.impl", "org.apache.hadoop.fs.azurebfs.Abfss");
+      fsConf.set("fs.abfs.impl.disable.cache", "true");
+      fsConf.set("fs.abfss.impl.disable.cache", "true");
+
       return FileSystem.get(uri, fsConf);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
-  }
-
-  private static void restoreFileSystemOverrides(Configuration fsConf) {
-    // S3: restore impl using the side-channel key saved by CredPropsUtil before it overrode
-    // fs.<scheme>.impl with CredScopedFileSystem. Falls back to S3AFileSystem if not set.
-    restoreImpl(fsConf, "fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
-    restoreImpl(fsConf, "fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
-    restoreImpl(fsConf, "fs.AbstractFileSystem.s3.impl", "org.apache.hadoop.fs.s3a.S3A");
-    restoreImpl(fsConf, "fs.AbstractFileSystem.s3a.impl", "org.apache.hadoop.fs.s3a.S3A");
-    fsConf.set("fs.s3.impl.disable.cache", "true");
-    fsConf.set("fs.s3a.impl.disable.cache", "true");
-
-    // GCS: restore impl using the side-channel key. Falls back to GoogleHadoopFileSystem if not
-    // set (registered via the Java service loader).
-    restoreImpl(fsConf, "fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
-    restoreImpl(
-        fsConf, "fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS");
-    fsConf.set("fs.gs.impl.disable.cache", "true");
-
-    // Azure: restore impl using the side-channel key. Falls back to AzureBlobFileSystem /
-    // SecureAzureBlobFileSystem if not set (registered via the Java service loader).
-    restoreImpl(fsConf, "fs.abfs.impl", "org.apache.hadoop.fs.azurebfs.AzureBlobFileSystem");
-    restoreImpl(fsConf, "fs.abfss.impl", "org.apache.hadoop.fs.azurebfs.SecureAzureBlobFileSystem");
-    restoreImpl(fsConf, "fs.AbstractFileSystem.abfs.impl", "org.apache.hadoop.fs.azurebfs.Abfs");
-    restoreImpl(fsConf, "fs.AbstractFileSystem.abfss.impl", "org.apache.hadoop.fs.azurebfs.Abfss");
-    fsConf.set("fs.abfs.impl.disable.cache", "true");
-    fsConf.set("fs.abfss.impl.disable.cache", "true");
   }
 }

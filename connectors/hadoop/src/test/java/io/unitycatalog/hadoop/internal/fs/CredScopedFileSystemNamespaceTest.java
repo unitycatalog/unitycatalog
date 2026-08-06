@@ -7,12 +7,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.net.URI;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -24,8 +21,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 /** Verifies prefix selection for multi-credential configurations. */
 class CredScopedFileSystemNamespaceTest {
-
-  private static final int MAX_COUNT = 10;
 
   @AfterEach
   void clearCache() {
@@ -67,12 +62,14 @@ class CredScopedFileSystemNamespaceTest {
   }
 
   @Test
-  void missingOrEmptyMultiCredentialPrefixesUseSingleCredentialPath() throws Exception {
+  void missingOrSingleCredPrefixUsesSingleCredPath() throws Exception {
     Configuration missing = tableConf();
     Configuration empty = tableConf();
     empty.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, "");
+    Configuration single = tableConf();
+    setPrefixes(single, List.of("file:///tmp/other"));
 
-    for (Configuration conf : List.of(missing, empty)) {
+    for (Configuration conf : List.of(missing, empty, single)) {
       Map<String, String> before = snapshot(conf);
       FileSystem delegate = initDelegate(new URI("file:///tmp/table/data"), conf);
 
@@ -120,33 +117,6 @@ class CredScopedFileSystemNamespaceTest {
             "file:///tmp/table,archive"));
   }
 
-  @Test
-  void defaultMaximumCredentialCountIsAccepted() throws Exception {
-    List<String> prefixes =
-        IntStream.range(0, MAX_COUNT)
-            .mapToObj(i -> "file:///tmp/credential-" + i)
-            .collect(Collectors.toList());
-    Configuration conf = tableConf();
-    setPrefixes(conf, prefixes);
-
-    FileSystem delegate =
-        initDelegate(new URI("file:///tmp/credential-" + (MAX_COUNT - 1) + "/data"), conf);
-
-    assertThat(delegate.getConf().get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY))
-        .isEqualTo("file:///tmp/credential-" + (MAX_COUNT - 1));
-  }
-
-  @Test
-  void maximumCredentialCountIsCheckedBeforeDecoding() {
-    Configuration conf = tableConf();
-    String[] invalidEncodedPrefixes =
-        Collections.nCopies(MAX_COUNT + 1, "not-base64!").toArray(String[]::new);
-    conf.setStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, invalidEncodedPrefixes);
-
-    assertThatThrownBy(() -> initDelegate(new URI("file:///tmp/credential/data"), conf))
-        .hasMessageContaining("between 2 and " + MAX_COUNT);
-  }
-
   @ParameterizedTest
   @MethodSource("uncoveredLocationCases")
   void multiCredentialPrefixesRejectUncoveredLocation(List<String> prefixes, String uri) {
@@ -167,26 +137,13 @@ class CredScopedFileSystemNamespaceTest {
         Arguments.of(List.of("s3://bucket/a", "s3://bucket/b"), "gs://bucket/a/data"));
   }
 
-  @ParameterizedTest(name = "{2}")
-  @MethodSource("malformedPrefixLists")
-  void malformedPrefixListIsRejected(String encodedPrefixes, String uri, String expectedMessage) {
+  @Test
+  void malformedPrefixListIsRejected() {
     Configuration conf = tableConf();
-    conf.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, encodedPrefixes);
+    String validPrefix = CredentialUtil.encodeMultiCredPrefixes(List.of("file:///tmp/valid"))[0];
+    conf.setStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, validPrefix, "not-base64!");
 
-    assertThatThrownBy(() -> initDelegate(new URI(uri), conf))
-        .hasMessageContaining(expectedMessage);
-  }
-
-  private static Stream<Arguments> malformedPrefixLists() {
-    return Stream.of(
-        Arguments.of(
-            encodePrefixes(List.of("file:///tmp/table")),
-            "file:///tmp/table/data",
-            "Number of credentials must be between 2 and " + MAX_COUNT + ": got 1"),
-        Arguments.of("not-base64!,also-invalid!", "file:///tmp/credential/data", "Illegal base64"),
-        Arguments.of(
-            encodePrefixes(List.of("file:///tmp/credential-a", "file:///tmp/credential-b")) + ",",
-            "file:///tmp/credential-a/data",
-            "Credential prefixes cannot be empty"));
+    assertThatThrownBy(() -> initDelegate(new URI("file:///tmp/credential/data"), conf))
+        .hasMessageContaining("Illegal base64");
   }
 }

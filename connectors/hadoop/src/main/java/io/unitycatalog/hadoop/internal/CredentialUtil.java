@@ -11,44 +11,30 @@ import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** Internal utilities for building and selecting {@link GenericCredential}s. */
 public final class CredentialUtil {
   private static final Charset UTF_8 = StandardCharsets.UTF_8;
+  private static final Base64.Encoder ENCODER = Base64.getEncoder();
+  private static final Base64.Decoder DECODER = Base64.getDecoder();
 
   private CredentialUtil() {}
 
   public static String[] encodeMultiCredPrefixes(List<String> prefixes) {
-    Preconditions.checkArgument(
-        prefixes != null && !prefixes.isEmpty(),
-        "List of credential prefixes cannot be null or empty");
-    List<String> encodedPrefixes = new ArrayList<>(prefixes.size());
-    Base64.Encoder encoder = Base64.getEncoder();
-    for (String prefix : prefixes) {
-      Preconditions.checkArgument(
-          prefix != null && !prefix.isEmpty(), "Credential prefixes cannot be null or empty");
-      encodedPrefixes.add(encoder.encodeToString(prefix.getBytes(UTF_8)));
-    }
-    return encodedPrefixes.toArray(String[]::new);
+    return prefixes.stream()
+        .map(prefix -> ENCODER.encodeToString(prefix.getBytes(UTF_8)))
+        .toArray(String[]::new);
   }
 
   public static List<String> decodeMultiCredPrefixes(String[] prefixes) {
-    Preconditions.checkArgument(
-        prefixes != null && prefixes.length > 0,
-        "Encoded credential prefixes cannot be null or empty");
-    Base64.Decoder decoder = Base64.getDecoder();
-    List<String> decodedPrefixes = new ArrayList<>(prefixes.length);
-    for (String prefix : prefixes) {
-      Preconditions.checkArgument(prefix != null, "Encoded credential prefixes cannot be null");
-      String decodedPrefix = new String(decoder.decode(prefix), UTF_8);
-      Preconditions.checkArgument(!decodedPrefix.isEmpty(), "Credential prefixes cannot be empty");
-      decodedPrefixes.add(decodedPrefix);
-    }
-    return decodedPrefixes;
+    return Arrays.stream(prefixes)
+        .map(prefix -> new String(DECODER.decode(prefix), UTF_8))
+        .collect(Collectors.toList());
   }
 
   /** Converts a UC SDK {@link TemporaryCredentials} into an internal {@link GenericCredential}. */
