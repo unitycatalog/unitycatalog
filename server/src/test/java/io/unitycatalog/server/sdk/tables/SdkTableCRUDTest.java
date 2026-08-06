@@ -78,6 +78,28 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   }
 
   @Test
+  public void testCreateExternalTableRejectsCloudStorageRoot() {
+    CreateTable request =
+        new CreateTable()
+            .name("root_location_table")
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(columns)
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA)
+            .storageLocation("s3://bucket/");
+
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> localTablesApi.createTable(request))
+        .satisfies(
+            exception ->
+                assertThat(exception.getCode())
+                    .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
+        .withMessageContaining("must include a non-empty path prefix")
+        .withMessageContaining("s3://bucket/");
+  }
+
+  @Test
   public void testListTablesWithNoNextPageTokenShouldReturnNull() throws Exception {
     TableInfo testingTable =
         createTestingTable(

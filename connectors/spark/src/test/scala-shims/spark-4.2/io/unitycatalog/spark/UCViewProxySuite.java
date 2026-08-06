@@ -29,6 +29,7 @@ import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.catalyst.analysis.ViewAlreadyExistsException;
+import org.apache.spark.sql.catalyst.catalog.CatalogTable;
 import org.apache.spark.sql.connector.catalog.Column;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.Relation;
@@ -215,6 +216,9 @@ public class UCViewProxySuite {
     assertThat(view.queryText()).isEqualTo("version: \"0.1\"");
     assertThat(view.properties().get(TableCatalog.PROP_TABLE_TYPE))
         .isEqualTo(TableSummary.METRIC_VIEW_TABLE_TYPE);
+    // Metric views carry no persisted schema mode; they must reload as UNSUPPORTED, not the plain
+    // view default of COMPENSATION.
+    assertThat(view.schemaMode()).isEqualTo("UNSUPPORTED");
   }
 
   // -- RelationCatalog cross-type filtering --
@@ -665,6 +669,165 @@ public class UCViewProxySuite {
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.any(),
             org.mockito.ArgumentMatchers.any());
+  }
+
+  // -- Plain SQL views (TableType.VIEW) --
+
+  @Test
+  public void testListViewsIncludesPlainViews() throws Exception {
+    ListTablesResponse response =
+        new ListTablesResponse()
+            .tables(
+                List.of(
+                    new TableInfo().name("t1").tableType(TableType.EXTERNAL),
+                    new TableInfo().name("v1").tableType(TableType.VIEW),
+                    new TableInfo().name("mv1").tableType(TableType.METRIC_VIEW)))
+            .nextPageToken(null);
+    when(mockTablesApi.listTables(eq(CATALOG_NAME), eq(SCHEMA_NAME), eq(0), isNull()))
+        .thenReturn(response);
+
+    assertThat(proxyViews.listViews(NAMESPACE))
+        .containsExactly(Identifier.of(NAMESPACE, "v1"), Identifier.of(NAMESPACE, "mv1"));
+    // The same rows: plain view is view-like, so listTables must exclude it.
+    assertThat(proxy.listTables(NAMESPACE)).containsExactly(Identifier.of(NAMESPACE, "t1"));
+  }
+
+  @Test
+  public void testCreatePlainViewOmitsDependenciesWhenDerivationFails() throws Exception {
+    // Spark leaves `viewDependencies()` null for a plain view. The connector then derives lineage
+    // from the query text; on failure it must send NO dependency list (null), not an empty one --
+    // an empty list would persist "no dependencies", wrong for a view that reads tables. This
+    // pure-mock suite has no active SparkSession, so derivation always fails here, exercising that
+    // fallback. (Successful derivation is covered end-to-end by UCViewDDLIntegrationTest.)
+    View view = plainViewBuilder().build();
+
+    TableInfo ucView = stubPlainView();
+    when(mockTablesApi.createTable(any(CreateTable.class))).thenReturn(ucView);
+
+    View loaded = proxyViews.createView(Identifier.of(NAMESPACE, "v1"), view);
+
+    ArgumentCaptor<CreateTable> captor = ArgumentCaptor.forClass(CreateTable.class);
+    verify(mockTablesApi).createTable(captor.capture());
+    CreateTable request = captor.getValue();
+    assertThat(request.getTableType()).isEqualTo(TableType.VIEW);
+    assertThat(request.getViewDefinition()).isEqualTo(PLAIN_VIEW_QUERY);
+    assertThat(request.getViewDependencies()).isNull();
+    assertThat(loaded.queryText()).isEqualTo(PLAIN_VIEW_QUERY);
+    assertThat(loaded.properties().get(TableCatalog.PROP_TABLE_TYPE))
+        .isEqualTo(TableSummary.VIEW_TABLE_TYPE);
+  }
+
+  @Test
+  public void testLoadRelationForPlainViewReturnsView() throws Exception {
+    stubPlainView();
+
+    Relation relation = proxyRelations.loadRelation(Identifier.of(NAMESPACE, "v1"));
+
+    assertThat(relation).isInstanceOf(View.class);
+    View view = (View) relation;
+    assertThat(view.queryText()).isEqualTo(PLAIN_VIEW_QUERY);
+    assertThat(view.properties().get(TableCatalog.PROP_TABLE_TYPE))
+        .isEqualTo(TableSummary.VIEW_TABLE_TYPE);
+  }
+
+  @Test
+  public void testLoadTableRejectsPlainView() throws Exception {
+    stubPlainView();
+
+    assertThatThrownBy(() -> proxy.loadTable(Identifier.of(NAMESPACE, "v1")))
+        .isInstanceOf(NoSuchTableException.class);
+  }
+
+  @Test
+  public void testDropViewDeletesPlainView() throws Exception {
+    stubPlainView();
+
+    boolean dropped = proxyViews.dropView(Identifier.of(NAMESPACE, "v1"));
+
+    assertThat(dropped).isTrue();
+    verify(mockTablesApi).deleteTable(eq("test_catalog.test_schema.v1"));
+  }
+
+  // -- schema mode round-trip --
+
+  @Test
+  public void testCreateViewPersistsSchemaMode() throws Exception {
+    stubPlainView();
+    proxyViews.createView(
+        Identifier.of(NAMESPACE, "v1"), plainViewBuilder().withSchemaMode("BINDING").build());
+
+    ArgumentCaptor<CreateTable> captor = ArgumentCaptor.forClass(CreateTable.class);
+    verify(mockTablesApi).createTable(captor.capture());
+    assertThat(captor.getValue().getProperties())
+        .containsEntry(CatalogTable.VIEW_SCHEMA_MODE(), "BINDING");
+  }
+
+  @Test
+  public void testCreateViewOmitsUnsupportedSchemaMode() throws Exception {
+    // UNSUPPORTED is the metric-view sentinel, not a persistable mode.
+    stubPlainView();
+    proxyViews.createView(
+        Identifier.of(NAMESPACE, "v1"), plainViewBuilder().withSchemaMode("UNSUPPORTED").build());
+
+    ArgumentCaptor<CreateTable> captor = ArgumentCaptor.forClass(CreateTable.class);
+    verify(mockTablesApi).createTable(captor.capture());
+    assertThat(captor.getValue().getProperties())
+        .doesNotContainKey(CatalogTable.VIEW_SCHEMA_MODE());
+  }
+
+  @Test
+  public void testLoadViewRestoresPersistedSchemaMode() throws Exception {
+    stubPlainView().properties(Map.of(CatalogTable.VIEW_SCHEMA_MODE(), "BINDING"));
+
+    View loaded = proxyViews.loadView(Identifier.of(NAMESPACE, "v1"));
+
+    assertThat(loaded.schemaMode()).isEqualTo("BINDING");
+    // Surfaced via schemaMode(); the raw key must not leak into properties() (double-count guard).
+    assertThat(loaded.properties()).doesNotContainKey(CatalogTable.VIEW_SCHEMA_MODE());
+  }
+
+  @Test
+  public void testLoadViewDefaultsSchemaModeToCompensationWhenAbsent() throws Exception {
+    stubPlainView();
+
+    assertThat(proxyViews.loadView(Identifier.of(NAMESPACE, "v1")).schemaMode())
+        .isEqualTo("COMPENSATION");
+  }
+
+  private static final String PLAIN_VIEW_QUERY = "SELECT 1 AS c";
+
+  /** A plain-view builder matching {@link #stubPlainView()} (single int column {@code c}). */
+  private View.Builder plainViewBuilder() {
+    return new View.Builder()
+        .withColumns(new Column[] {Column.create("c", DataTypes.IntegerType, true)})
+        .withProperties(Map.of(TableCatalog.PROP_TABLE_TYPE, TableSummary.VIEW_TABLE_TYPE))
+        .withQueryText(PLAIN_VIEW_QUERY)
+        .withCurrentCatalog(CATALOG_NAME)
+        .withCurrentNamespace(NAMESPACE);
+  }
+
+  /** Builds a UC {@code VIEW} row named {@code v1} and stubs {@code getTable} to return it. */
+  private TableInfo stubPlainView() throws Exception {
+    TableInfo ucView =
+        new TableInfo()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .name("v1")
+            .tableType(TableType.VIEW)
+            .viewDefinition(PLAIN_VIEW_QUERY)
+            .columns(
+                List.of(
+                    new ColumnInfo()
+                        .name("c")
+                        .typeName(ColumnTypeName.INT)
+                        .typeText("int")
+                        .typeJson("{\"name\":\"c\",\"type\":\"integer\",\"nullable\":true,"
+                            + "\"metadata\":{}}")
+                        .nullable(true)
+                        .position(0)));
+    when(mockTablesApi.getTable(eq("test_catalog.test_schema.v1"), eq(true), eq(true)))
+        .thenReturn(ucView);
+    return ucView;
   }
 
   private static void setCatalogField(UCSingleCatalog catalog, String fieldName, Object value) {

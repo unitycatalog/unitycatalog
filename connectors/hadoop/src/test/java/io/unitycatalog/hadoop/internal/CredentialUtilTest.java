@@ -43,20 +43,24 @@ class CredentialUtilTest {
                         .accessKeyId("access-key")
                         .secretAccessKey("secret-key")
                         .sessionToken("session-token"))
-                .expirationTime(EXPIRATION),
-            new AwsCredential("access-key", "secret-key", "session-token", EXPIRATION)),
+                .expirationTime(EXPIRATION)
+                .url("s3://bucket/table"),
+            new AwsCredential(
+                "access-key", "secret-key", "session-token", EXPIRATION, "s3://bucket/table")),
         Arguments.of(
             "Azure",
             new TemporaryCredentials()
                 .azureUserDelegationSas(new AzureUserDelegationSAS().sasToken("sas-token"))
-                .expirationTime(EXPIRATION),
-            new AzureCredential("sas-token", EXPIRATION)),
+                .expirationTime(EXPIRATION)
+                .url("abfss://container@account/table"),
+            new AzureCredential("sas-token", EXPIRATION, "abfss://container@account/table")),
         Arguments.of(
             "GCS",
             new TemporaryCredentials()
                 .gcpOauthToken(new GcpOauthToken().oauthToken("oauth-token"))
-                .expirationTime(EXPIRATION),
-            new GcsCredential("oauth-token", EXPIRATION)));
+                .expirationTime(EXPIRATION)
+                .url("gs://bucket/table"),
+            new GcsCredential("oauth-token", EXPIRATION, "gs://bucket/table")));
   }
 
   @ParameterizedTest(name = "{0}")
@@ -106,10 +110,10 @@ class CredentialUtilTest {
 
   @Test
   void selectorRejectsSingleWithoutPrefixMatch() {
-    DeltaStorageCredential only = credAt("s3://other-bucket");
+    GenericCredential only = credAt("s3://other-bucket");
     assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", List.of(only)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("No UC Delta credential matched");
+        .hasMessageContaining("No vended credential covers location");
   }
 
   @Test
@@ -123,9 +127,9 @@ class CredentialUtilTest {
 
   @Test
   void selectorPicksLongestMatchingPrefix() {
-    DeltaStorageCredential bucket = credAt("s3://bucket");
-    DeltaStorageCredential table = credAt("s3://bucket/t");
-    DeltaStorageCredential child = credAt("s3://bucket/t/child");
+    GenericCredential bucket = credAt("s3://bucket");
+    GenericCredential table = credAt("s3://bucket/t");
+    GenericCredential child = credAt("s3://bucket/t/child");
     assertThat(
             CredentialUtil.selectForLocation(
                 "s3://bucket/t/child/file", Arrays.asList(bucket, table, child)))
@@ -147,19 +151,24 @@ class CredentialUtilTest {
 
   @Test
   void selectorIgnoresNullAndPrefixlessInMultiResponse() {
-    List<DeltaStorageCredential> creds =
-        Arrays.asList(null, new DeltaStorageCredential(), credAt("s3://bucket/t"));
-    assertThat(CredentialUtil.selectForLocation("s3://bucket/t", creds).getPrefix())
+    List<GenericCredential> creds = Arrays.asList(null, credAt(null), credAt("s3://bucket/t"));
+    assertThat(CredentialUtil.selectForLocation("s3://bucket/t", creds).prefix())
         .isEqualTo("s3://bucket/t");
   }
 
   @Test
   void selectorThrowsWhenMultiResponseHasNoMatch() {
-    List<DeltaStorageCredential> creds =
+    List<GenericCredential> creds =
         Arrays.asList(credAt("s3://other"), credAt("s3://bucket/sibling"));
     assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", creds))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("No UC Delta credential matched");
+        .hasMessageContaining("No vended credential covers location");
+    // Scheme aliases are not normalized; otherwise, the s3 prefix would cover the s3a location.
+    assertThatThrownBy(
+            () ->
+                CredentialUtil.selectForLocation("s3a://bucket/t", List.of(credAt("s3://bucket"))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("No vended credential covers location");
   }
 
   @Test
@@ -179,6 +188,7 @@ class CredentialUtilTest {
     assertThat(gc.accessKeyId()).isEqualTo("ak");
     assertThat(gc.secretAccessKey()).isEqualTo("sk");
     assertThat(gc.sessionToken()).isEqualTo("st");
+    assertThat(gc.prefix()).isEqualTo("s3://bucket");
   }
 
   @Test
@@ -212,6 +222,7 @@ class CredentialUtilTest {
     AzureCredential gc = (AzureCredential) CredentialUtil.toGenericCredential(c);
     assertThat(gc.sasToken()).isEqualTo("sas-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(Long.MAX_VALUE);
+    assertThat(gc.prefix()).isEqualTo("abfss://container@account.dfs.core.windows.net/");
   }
 
   @Test
@@ -225,6 +236,7 @@ class CredentialUtilTest {
     GcsCredential gc = (GcsCredential) CredentialUtil.toGenericCredential(c);
     assertThat(gc.oauthToken()).isEqualTo("gcs-oauth-token");
     assertThat(gc.expirationTimeMillis()).isEqualTo(456L);
+    assertThat(gc.prefix()).isEqualTo("gs://bucket/");
   }
 
   @Test
@@ -239,7 +251,7 @@ class CredentialUtilTest {
         .hasMessageContaining("AWS access key is missing");
   }
 
-  private static DeltaStorageCredential credAt(String prefix) {
-    return new DeltaStorageCredential().prefix(prefix);
+  private static GenericCredential credAt(String location) {
+    return new AwsCredential("ak", "sk", "st", 1L, location);
   }
 }

@@ -11,6 +11,7 @@ import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -263,17 +264,17 @@ class CredPropsCacheTest {
   }
 
   private static GenericCredential s3Creds() {
-    return new AwsCredential("ak", "sk", "st", null);
+    return new AwsCredential("ak", "sk", "st", null, null);
   }
 
   private static GenericCredential s3CredsExpiringAt(String id, long expirationMillis) {
-    return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis);
+    return new AwsCredential("ak" + id, "sk" + id, "st" + id, expirationMillis, null);
   }
 
   private static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential creds) {
     GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {
-      when(api.createCredential()).thenReturn(creds);
+      when(api.createCredentials()).thenReturn(Collections.singletonList(creds));
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

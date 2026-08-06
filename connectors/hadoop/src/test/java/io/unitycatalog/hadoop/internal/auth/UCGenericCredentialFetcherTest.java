@@ -57,7 +57,7 @@ class UCGenericCredentialFetcherTest {
                 EMPTY_CRED_CONTEXT_ID, "original-table-id", TableOperation.READ.getValue()),
             api);
 
-    credentialFetcher.createCredential();
+    credentialFetcher.createCredentials();
 
     ArgumentCaptor<GenerateTemporaryTableCredential> request =
         ArgumentCaptor.forClass(GenerateTemporaryTableCredential.class);
@@ -80,7 +80,7 @@ class UCGenericCredentialFetcherTest {
                 PathOperation.PATH_READ.getValue()),
             api);
 
-    credentialFetcher.createCredential();
+    credentialFetcher.createCredentials();
 
     ArgumentCaptor<GenerateTemporaryPathCredential> request =
         ArgumentCaptor.forClass(GenerateTemporaryPathCredential.class);

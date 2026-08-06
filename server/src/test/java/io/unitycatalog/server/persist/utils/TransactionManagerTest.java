@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.TransactionRollbackException;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.sql.Connection;
@@ -116,6 +117,28 @@ public class TransactionManagerTest {
           .isInstanceOf(BaseException.class)
           .hasMessageContaining(errorMessage)
           .hasMessageContaining(testException.getMessage());
+
+      verify(transaction).rollback();
+      verify(transaction, never()).commit();
+    }
+
+    @Test
+    public void testTransactionRollbackExceptionIsRethrownAsIsNotWrapped() {
+      // A TransactionRollbackException signals rollback, not an error, so it is rethrown by
+      // identity for the caller to catch, not wrapped into a BaseException/INTERNAL.
+      class SignalException extends TransactionRollbackException {}
+      SignalException signal = new SignalException();
+
+      assertThatThrownBy(
+              () ->
+                  TransactionManager.executeWithTransaction(
+                      sessionFactory,
+                      session -> {
+                        throw signal;
+                      },
+                      "Error executing operation",
+                      false))
+          .isSameAs(signal);
 
       verify(transaction).rollback();
       verify(transaction, never()).commit();

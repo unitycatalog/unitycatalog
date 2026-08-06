@@ -744,10 +744,11 @@ private[spark] class UCProxy(
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
-    // Per the RelationCatalog contract, listTables must return tables only -- view-like UC
-    // table types (metric views, materialized views) belong on listViews.
+    // Which view-like rows to hide from the table surface is version-specific: on Spark 4.2 all
+    // view-like types are served via listViews, while on 4.0/4.1 plain views remain here so they
+    // stay readable without a v2 view catalog.
     listUCTableLikes(namespace)
-      .filterNot(t => UCViewTypes.isViewLikeTableType(t.getTableType))
+      .filterNot(t => hideFromTableListing(t.getTableType))
       .map(table => Identifier.of(namespace, table.getName))
       .toArray
   }
@@ -781,12 +782,13 @@ private[spark] class UCProxy(
     }
   }
 
-  // Single-RPC table path. Calls UC `getTable` once and rejects view-like rows from the
-  // table-only surface by throwing `NoSuchTableException`.
+  // Single-RPC table path. Calls UC `getTable` once and routes view-like rows through a
+  // version-specific hook (rejected from the table surface on 4.2; plain views resolved as
+  // read-only V1 views on 4.0/4.1).
   override def loadTable(ident: Identifier): Table = {
     val t = getUCTableLike(ident).getOrElse(throw new NoSuchTableException(ident))
     if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
-      throw new ViewFoundDuringTableLoadException(ident, t)
+      loadViewLikeFromTableSurface(t, ident)
     } else {
       loadV1Table(t)
     }
@@ -799,8 +801,7 @@ private[spark] class UCProxy(
       Option(col.getPartitionIndex).foreach { index =>
         partitionCols += col.getName -> index
       }
-      StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
-        .withComment(col.getComment)
+      toStructField(col)
     }.toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
@@ -863,9 +864,17 @@ private[spark] class UCProxy(
     // Spark separates table lookup and data source resolution. To support Spark native data
     // sources, here we return the `V1Table` which only contains the table metadata. Spark will
     // resolve the data source and create scan node later.
+    asV1Table(sparkTable)
+  }
+
+  private[spark] def toStructField(col: ColumnInfo): StructField =
+    StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
+      .withComment(col.getComment)
+
+  private[spark] def asV1Table(catalogTable: CatalogTable): Table = {
     Class.forName("org.apache.spark.sql.connector.catalog.V1Table")
       .getDeclaredConstructor(classOf[CatalogTable])
-      .newInstance(sparkTable)
+      .newInstance(catalogTable)
       .asInstanceOf[Table]
   }
 

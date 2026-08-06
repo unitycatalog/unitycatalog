@@ -40,7 +40,6 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
-import jakarta.persistence.PessimisticLockException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -52,7 +51,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
-import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -63,7 +61,6 @@ public class TableRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
-  private final FileOperations fileOperations;
   private final ServerProperties serverProperties;
   private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(TableInfoDAO.class);
@@ -72,7 +69,6 @@ public class TableRepository {
       Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositories.getFileOperations();
     this.serverProperties = serverProperties;
   }
 
@@ -292,25 +288,52 @@ public class TableRepository {
    * <p>The transaction makes exactly one {@code uc_properties} read (via {@link
    * MutablePropertyMap#load}): all property-touching actions mutate the in-memory map, and a single
    * diff-flush at the end applies only the keys that actually changed. Request classification runs
-   * before opening the transaction (see {@link DeltaUpdateTableMapper#collectRequest}); inside,
-   * requirement checks run first so a stale-snapshot conflict short-circuits before any write is
-   * persisted. The DAO's {@code updatedAt}/{@code updatedBy} advance at the end only when the
-   * request changes catalog-visible metadata; data-only commits and backfill notifications leave
-   * them untouched.
+   * before opening the transaction (see {@link DeltaUpdateTableMapper#collectRequest}).
+   *
+   * <p>Requirement checks straddle the apply: {@code assert-table-uuid} up front, then the request
+   * is applied, then {@code assert-etag} (against the pre-apply etag). A resend of an
+   * already-accepted commit throws {@link DeltaCommitRepository.CommitAlreadyAcceptedException}
+   * from within the apply, which rolls the transaction back to a no-op; it is caught here and the
+   * current table state is returned as success. Because the throw unwinds before the {@code
+   * assert-etag} check, a replay carrying a now-stale etag still succeeds.
+   *
+   * <p>The DAO's {@code updatedAt}/{@code updatedBy} advance at the end only when the request
+   * changes catalog-visible metadata; data-only commits and backfill notifications leave them
+   * untouched.
    */
   public DeltaLoadTableResponse updateTableForDelta(
+      String catalog, String schema, String table, DeltaUpdateTableRequest request) {
+    try {
+      return updateTableForDeltaInTransaction(catalog, schema, table, request);
+    } catch (DeltaCommitRepository.CommitAlreadyAcceptedException e) {
+      // Idempotent replay: the transaction rolled back to a no-op. Return the current table state
+      // (a fresh read, since the rolled-back transaction produced no response).
+      return loadTableForDelta(catalog, schema, table);
+    }
+  }
+
+  private DeltaLoadTableResponse updateTableForDeltaInTransaction(
       String catalog, String schema, String table, DeltaUpdateTableRequest request) {
     DeltaUpdateTableMapper.CollectedRequest collected =
         DeltaUpdateTableMapper.collectRequest(request);
     String callerId = IdentityUtils.findPrincipalEmailAddress();
+    String tableFullName = catalog + "." + schema + "." + table;
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
           requireDeltaTable(dao, catalog, schema, table);
-          lockTableForDeltaUpdate(session, dao, catalog, schema, table);
-          DeltaUpdateTableMapper.checkRequirements(dao, collected);
+          DeltaCommitRepository.lockTableForCommit(
+              session, dao, dao.getId(), Optional.of(tableFullName));
+          // assert-table-uuid is stable identity, so check it up front. assert-etag is deferred to
+          // after the apply, captured here against pre-apply state: a commit advances the etag, and
+          // an idempotent replay must bypass the etag entirely (it throws mid-apply and rolls back
+          // before the deferred check runs).
+          DeltaUpdateTableMapper.checkTableUuidRequirement(dao, collected);
+          String preApplyEtag = DeltaUpdateTableMapper.computeEtag(dao);
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          // The commit path throws CommitAlreadyAcceptedException on an idempotent replay (caught
+          // in updateTableForDelta); everything applied above is rolled back with it.
           DeltaUpdateTableMapper.applyUpdates(session, dao, properties, collected, serverProperties)
               .ifPresent(
                   d ->
@@ -322,6 +345,9 @@ public class TableRepository {
                               d.commit(),
                               d.uniformFields(),
                               d.latestBackfilledVersion()));
+          // Non-replay only (a replay already threw out): enforce assert-etag against pre-apply
+          // state, rolling back the applied changes on mismatch.
+          DeltaUpdateTableMapper.checkEtagRequirement(preApplyEtag, collected);
           properties.flush(session, dao.getId());
           // updatedAt/updatedBy track the last change to the table's catalog-visible metadata.
           // Data-only add-commit and backfill-only requests change no metadata, so they must
@@ -335,7 +361,7 @@ public class TableRepository {
           return buildLoadTableResponse(
               session, dao, Optional.of(properties.asMap()), catalog, schema, table);
         },
-        "Failed to update table " + catalog + "." + schema + "." + table,
+        "Failed to update table " + tableFullName,
         /* readOnly = */ false);
   }
 
@@ -352,28 +378,6 @@ public class TableRepository {
       throw new BaseException(
           ErrorCode.UNSUPPORTED_TABLE_FORMAT,
           "Table is not a Delta table: " + catalog + "." + schema + "." + table);
-    }
-  }
-
-  /**
-   * Acquire {@code SELECT ... FOR UPDATE} on the table row and refresh in-memory state, so two
-   * concurrent {@link #updateTableForDelta} calls serialize. Lock-wait timeouts and deadlock
-   * victims surface as {@code UPDATE_REQUIREMENT_CONFLICT} (409) instead of a generic 500.
-   */
-  private static void lockTableForDeltaUpdate(
-      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
-    try {
-      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
-    } catch (PessimisticLockException e) {
-      throw new BaseException(
-          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
-          "Concurrent update in progress on "
-              + catalog
-              + "."
-              + schema
-              + "."
-              + table
-              + "; retry the request.");
     }
   }
 
@@ -656,6 +660,10 @@ public class TableRepository {
           NormalizedURL storageLocation;
           if (tableType == TableType.EXTERNAL) {
             storageLocation = NormalizedURL.from(createTable.getStorageLocation());
+            ValidationUtils.checkArgument(
+                !storageLocation.isCloudStorageRoot(),
+                "External table storage location must include a non-empty path prefix: %s",
+                createTable.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
             tableUUID = UUID.randomUUID();
           } else if (tableType == TableType.MANAGED) {
@@ -735,10 +743,12 @@ public class TableRepository {
           session.persist(tableInfoDAO);
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
+            // view_dependencies is optional (see validateViewLike); treat an absent list as empty.
             List<DependencyDAO> depDAOs =
-                createTable.getViewDependencies().getDependencies().stream()
+                Optional.ofNullable(createTable.getViewDependencies())
+                    .map(DependencyList::getDependencies).orElse(List.of()).stream()
                     .map(dep -> DependencyDAO.from(dep, tableUUID, dependentType))
-                    .collect(Collectors.toList());
+                    .toList();
             repositories
                 .getDependencyRepository()
                 .createDependencies(session, tableUUID, dependentType, depDAOs);
@@ -758,7 +768,11 @@ public class TableRepository {
 
   private void validateMetricView(Session session, CreateTable createTable) {
     validateViewLike(session, createTable, "metric view");
-    if (createTable.getViewDependencies().getDependencies().isEmpty()) {
+    // A metric view's dependencies are always client-supplied; require at least one.
+    if (Optional.ofNullable(createTable.getViewDependencies())
+        .map(DependencyList::getDependencies)
+        .orElse(List.of())
+        .isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "view_dependencies must contain at least one entry for metric view");
@@ -774,10 +788,14 @@ public class TableRepository {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "view_definition is required for " + entityLabel);
     }
+    // view_dependencies is optional here (shared by view + metric view):
+    //  - a plain view may omit it (e.g. the Spark connector sends null when it cannot derive
+    //    lineage from the view text).
+    //  - metric views DO require it, enforced by the validateMetricView caller, not here.
+    // When present, every listed dependency must resolve to an existing table/function.
     DependencyList viewDeps = createTable.getViewDependencies();
     if (viewDeps == null || viewDeps.getDependencies() == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for " + entityLabel);
+      return;
     }
     List<DependencyDAO> depDAOs =
         viewDeps.getDependencies().stream()
@@ -956,5 +974,43 @@ public class TableRepository {
         .forEach(session::remove);
     session.remove(tableInfoDAO);
     return tableInfoDAO;
+  }
+
+  /**
+   * Renames a table within the same schema. Looks up the source table by its three-part name
+   * (throwing {@link ErrorCode#TABLE_NOT_FOUND} if absent) and rejects a collision with an existing
+   * table of the target name in the same schema (throwing {@link ErrorCode#TABLE_ALREADY_EXISTS}).
+   * Renaming a table to its current name is an idempotent no-op. Metadata-only: the table UUID,
+   * schema, and storage location are all unchanged.
+   */
+  public void renameTable(String catalog, String schema, String table, String newName) {
+    ValidationUtils.validateSqlObjectName(newName);
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
+          TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
+          }
+          // Do the no-op check after the table lookup. A missing table must still return
+          // TABLE_NOT_FOUND rather than succeed as a no-op.
+          if (table.equals(newName)) {
+            return null;
+          }
+          if (findBySchemaIdAndName(session, schemaId, newName) != null) {
+            throw new BaseException(
+                ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + newName);
+          }
+          tableInfoDAO.setName(newName);
+          tableInfoDAO.setUpdatedAt(new Date());
+          tableInfoDAO.setUpdatedBy(callerId);
+          session.merge(tableInfoDAO);
+          return null;
+        },
+        "Failed to rename table " + catalog + "." + schema + "." + table,
+        /* readOnly = */ false);
   }
 }

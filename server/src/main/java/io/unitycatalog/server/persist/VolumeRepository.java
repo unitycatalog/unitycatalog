@@ -32,14 +32,12 @@ public class VolumeRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(VolumeRepository.class);
   private final Repositories repositories;
   private final SessionFactory sessionFactory;
-  private final FileOperations fileOperations;
   private static final PagedListingHelper<VolumeInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(VolumeInfoDAO.class);
 
   public VolumeRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositories.getFileOperations();
   }
 
   public VolumeInfo createVolume(CreateVolumeRequestContent createVolumeRequest) {
@@ -79,6 +77,10 @@ public class VolumeRepository {
                   ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
             }
             storageLocation = NormalizedURL.from(createVolumeRequest.getStorageLocation());
+            ValidationUtils.checkArgument(
+                !storageLocation.isCloudStorageRoot(),
+                "External volume storage location must include a non-empty path prefix: %s",
+                createVolumeRequest.getStorageLocation());
             ExternalLocationUtils.validateNotOverlapWithManagedStorage(session, storageLocation);
           }
           Date now = new Date();

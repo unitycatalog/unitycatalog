@@ -22,6 +22,7 @@ import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +70,7 @@ public class IcebergRestCatalogService {
       TableConfigService tableConfigService,
       MetadataService metadataService,
       Repositories repositories) {
+    // TODO: avoid this service to service dependency
     this.schemaService = schemaService;
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
@@ -182,7 +184,8 @@ public class IcebergRestCatalogService {
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
 
-    TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
+    TableMetadata tableMetadata =
+        metadataService.readTableMetadata(NormalizedURL.from(metadataLocation));
     Map<String, String> config = tableConfigService.getTableConfig(tableMetadata);
 
     return LoadTableResponse.builder()

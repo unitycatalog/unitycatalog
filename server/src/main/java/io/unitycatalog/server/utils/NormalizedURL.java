@@ -94,6 +94,23 @@ public final class NormalizedURL {
   }
 
   /**
+   * Returns whether this URL identifies an entire cloud storage bucket or container.
+   *
+   * <p>The decoded path is checked so equivalent root forms such as a trailing slash, normalized
+   * dot segments, and encoded slashes are treated consistently.
+   */
+  public boolean isCloudStorageRoot() {
+    URI uri = toUri();
+    return switch (UriScheme.fromURI(uri)) {
+      case S3, GS, ABFS, ABFSS -> {
+        String path = uri.getPath();
+        yield path == null || path.chars().allMatch(character -> character == '/');
+      }
+      default -> false;
+    };
+  }
+
+  /**
    * Converts a given input path or URI into a standardized URI string. This method ensures that
    * local file paths are correctly formatted as file URIs and that URIs for different storage
    * providers (e.g., S3, Azure, GCS) are handled appropriately.

@@ -16,12 +16,7 @@
 
 package io.unitycatalog.spark
 
-import java.util
-
-import scala.collection.JavaConverters._
-
 import io.unitycatalog.client.model.TableType
-import org.apache.spark.sql.catalyst.catalog.CatalogTable
 
 /**
  * View-type mapping for the connector, kept out of `UCSingleCatalog` so that catalog stays focused
@@ -50,6 +45,7 @@ private[spark] object UCViewTypes {
    * from this map, so listing / dispatch / createView reject all stay in sync.
    */
   private val viewLikeUcTypes: Map[TableType, Option[String]] = Map(
+    TableType.VIEW -> Some("VIEW"),
     TableType.METRIC_VIEW -> Some("METRIC_VIEW" /* TableSummary.METRIC_VIEW_TABLE_TYPE on Spark 4.2 */),
     TableType.MATERIALIZED_VIEW -> None
   )
@@ -126,21 +122,5 @@ private[spark] object UCViewTypes {
     case TableType.STREAMING_TABLE => "MANAGED"
     case TableType.EXTERNAL => "EXTERNAL"
     case _ => "FOREIGN"
-  }
-
-  /**
-   * Splits the `VIEW_SQL_CONFIG_PREFIX`-prefixed entries out of a UC properties map and returns
-   * them un-prefixed, as Spark's `View.sqlConfigs()` expects. Shared by the view-load path
-   * (`UCProxyViewSupport.toView` on Spark 4.2); kept here so it stays free of any
-   * Spark-4.2-only types and compiles on all three Spark versions.
-   */
-  def extractSqlConfigs(properties: util.Map[String, String]): util.Map[String, String] = {
-    val configs = new util.HashMap[String, String]()
-    properties.asScala.foreach { case (k, v) =>
-      if (k.startsWith(CatalogTable.VIEW_SQL_CONFIG_PREFIX)) {
-        configs.put(k.substring(CatalogTable.VIEW_SQL_CONFIG_PREFIX.length), v)
-      }
-    }
-    configs
   }
 }

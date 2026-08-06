@@ -46,6 +46,12 @@ public class UCHadoopConfConstants {
   public static final String UC_AUTH_PREFIX = "fs.unitycatalog.auth.";
   public static final String UC_AUTH_TYPE = "fs.unitycatalog.auth.type";
   public static final String UC_AUTH_TOKEN_KEY = "fs.unitycatalog.auth.token";
+
+  /**
+   * The storage prefix that a UC credential covers. When there are multiple credentials, each
+   * credential must set this key so the correct credential can be selected.
+   */
+  public static final String UC_CREDENTIAL_PREFIX_KEY = "fs.unitycatalog.credential.prefix";
   /**
    * Stable id derived from the credential context ({@code catalogUri}, storage {@code scheme}, and
    * {@code TokenProvider.configs()}) to isolate caches per credential context.

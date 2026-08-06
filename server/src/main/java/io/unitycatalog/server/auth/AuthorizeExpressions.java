@@ -103,6 +103,18 @@ public final class AuthorizeExpressions {
       """;
 
   /**
+   * Authorization policy for renaming a table. Rename requires permission to delete the existing
+   * table name as well as permission to create the new name in the same schema.
+   */
+  public static final String RENAME_TABLE =
+      "(" + DELETE_TABLE + """
+      ) &&
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+        (#authorize(#principal, #schema, OWNER) ||
+          #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)))
+      """;
+
+  /**
    * Authorization policy for vending table credentials. Admin-above-the-table privileges on
    * their own are not sufficient; the caller must have an explicit table-level privilege
    * matching the requested operation. {@code READ} needs OWNER or SELECT; {@code READ_WRITE}

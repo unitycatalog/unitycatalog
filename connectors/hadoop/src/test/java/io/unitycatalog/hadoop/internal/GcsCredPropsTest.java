@@ -31,8 +31,8 @@ class GcsCredPropsTest extends CredPropsBaseTest {
   }
 
   @Override
-  GenericCredential vendedCred(Long expirationMillis) {
-    return new GcsCredential("token", expirationMillis);
+  GenericCredential vendedCred(Long expirationMillis, String prefix) {
+    return new GcsCredential("token", expirationMillis, prefix);
   }
 
   @Override
