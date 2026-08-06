@@ -96,6 +96,8 @@ class CredPropsRoundTripTest {
 
   @Test
   void multipleCredentialPrefixesRoundTripThroughCredScopedFileSystem() throws Exception {
+    // TODO: Once CredPropsUtil can encode multi-creds, initialCredential should be a list
+    // that matches the AwsVendedTokenProvider step at the end of the test.
     AwsCredential initialCredential =
         new AwsCredential("access-key", "secret-key", "session-token", null, LOCATION);
     CredPropsUtil.genericCredFetcherFactory =
@@ -120,12 +122,14 @@ class CredPropsRoundTripTest {
     Configuration confWithCreds = new Configuration(false);
     props.forEach(confWithCreds::set);
 
-    // TODO: Delete this manual step when CredPropsBuilder supports producing
+    // TODO: Delete the manual steps below when CredPropsBuilder supports producing
     // properties for multiple vended credentials. This is a temporary test
     // workaround until the encoder side changes land.
+    // Unset the initialCredential that was set for multi-cred encodings.
     confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY);
     confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_SECRET_KEY);
     confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN);
+    // Encode the list of prefixes.
     confWithCreds.setStrings(
         UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY,
         CredentialUtil.encodeMultiCredPrefixes(List.of("s3://bucket", LOCATION)));

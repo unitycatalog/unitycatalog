@@ -41,6 +41,7 @@ class CredentialUtilTest {
 
     String[] encodedPrefixes = CredentialUtil.encodeMultiCredPrefixes(prefixes);
 
+    assertThat(encodedPrefixes).doesNotContainAnyElementsOf(prefixes);
     assertThat(CredentialUtil.decodeMultiCredPrefixes(encodedPrefixes))
         .containsExactlyElementsOf(prefixes);
   }
@@ -344,13 +345,6 @@ class CredentialUtilTest {
     assertThat(CredentialUtil.longestCoveringIndex(location, prefixes)).isEqualTo(-1);
   }
 
-  @Test
-  void longestCoveringIndexRejectsNullPrefixList() {
-    assertThatThrownBy(() -> CredentialUtil.longestCoveringIndex("s3://bucket/table", null))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessage("List of prefixes cannot be null.");
-  }
-
   private static Stream<Arguments> nonCoveringPrefixCases() {
     return Stream.of(
         Arguments.of("empty prefix list", List.of(), "s3://bucket/table"),
@@ -373,6 +367,13 @@ class CredentialUtilTest {
             "no covering prefix",
             Arrays.asList("s3://other", "s3://bucket/sibling"),
             "s3://bucket/t"));
+  }
+
+  @Test
+  void longestCoveringIndexRejectsNullPrefixList() {
+    assertThatThrownBy(() -> CredentialUtil.longestCoveringIndex("s3://bucket/table", null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("List of prefixes cannot be null.");
   }
 
   private static GenericCredential credAt(String location) {
