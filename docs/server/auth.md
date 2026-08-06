@@ -101,38 +101,6 @@ values under that pattern can steer JWKS fetches (an SSRF-style surface).
 Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
 cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
 
-### OAuth Client Scope
-
-Java clients that use the OAuth token provider request the `all-apis` scope by default. If your
-Identity Provider expects a resource-specific scope, configure it with `oauth.scope`. Unity Catalog
-does not restrict this value; follow the scope format required by your Identity Provider and resource
-server.
-
-For example, Microsoft Entra ID Java client configuration can include:
-
-```java
-Map<String, String> configs = Map.of(
-    "type", "oauth",
-    "oauth.uri", "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
-    "oauth.clientId", "<client ID>",
-    "oauth.clientSecret", "<client secret>",
-    "oauth.scope", "<resource-application-id-uri>/.default");
-```
-
-Spark catalog configuration uses the same key with the catalog auth prefix:
-
-```sh
---conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
---conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope=<resource-application-id-uri>/.default"
-```
-
-Scope values can be provider-specific strings such as `all-apis`, resource scopes such as
-`<resource-application-id-uri>/.default`, fine-grained scopes such as `catalog.tables:read`, or
-multiple space-separated scopes.
-
 ### Restart the UC Server
 
 Now that the Google Authentication is configured, restart the UC Server with the following command.
@@ -372,6 +340,38 @@ bin/spark-sql --name "local-uc-test" \
 With this set, now you can continue your [Using Spark SQL to query Unity Catalog schemas and tables](../integrations/unity-catalog-spark.md#using-spark-sql-to-query-unity-catalog-schemas-and-tables)
 and [Running CRUD Operations on a Unity Catalog table](../integrations/unity-catalog-spark.md#running-crud-operations-on-a-unity-catalog-table)
 steps with Spark as an authenticated client to UC.
+
+## Using OAuth Client Credentials
+
+Java clients that use the OAuth token provider request the `all-apis` scope by default. If your
+Identity Provider expects a different scope, configure it with `oauth.scope`. The client passes the
+configured scope to the Identity Provider's token endpoint; Unity Catalog does not define or
+interpret it. Follow the scope format required by your Identity Provider and resource server.
+
+For example, Microsoft Entra ID Java client configuration can include:
+
+```java
+Map<String, String> configs = Map.of(
+    "type", "oauth",
+    "oauth.uri", "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
+    "oauth.clientId", "<client ID>",
+    "oauth.clientSecret", "<client secret>",
+    "oauth.scope", "<resource-application-id-uri>/.default");
+```
+
+Spark catalog configuration uses the same key with the catalog auth prefix:
+
+```sh
+--conf "spark.sql.catalog.<catalog_name>.auth.type=oauth" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.uri=https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientId=<client ID>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.clientSecret=<client secret>" \
+--conf "spark.sql.catalog.<catalog_name>.auth.oauth.scope=<resource-application-id-uri>/.default"
+```
+
+The value can contain one or more space-separated scopes defined by the Identity Provider. For
+Microsoft Entra ID, a resource's default scope typically has the form
+`<resource-application-id-uri>/.default`.
 
 ## Using Google Identity with Unity Catalog UI
 
