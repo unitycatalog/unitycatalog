@@ -118,7 +118,7 @@ public class CatalogService extends AuthorizedService {
   @Delete("/{name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+      #authorize(#principal, #catalog, OWNER)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCatalog(
