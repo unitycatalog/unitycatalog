@@ -30,6 +30,7 @@ class CredentialUtilTest {
   void multiCredPrefixesRoundTripInOrder() {
     List<String> prefixes =
         List.of(
+            "s3://bucket/table",
             "s3://bucket/table,archive",
             "s3://bucket/table/%20/${credential}",
             "s3://bucket/table/%2C/%25/%2F",

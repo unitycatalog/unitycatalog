@@ -145,6 +145,21 @@ class CredScopedFileSystemNamespaceTest {
         .hasMessageContaining("between 2 and " + MAX_COUNT);
   }
 
+  @Test
+  void trailingEmptyEncodedPrefixIsRejected() {
+    Configuration conf = tableConf();
+    String encodedPrefixes =
+        String.join(
+                ",",
+                CredentialUtil.encodeMultiCredPrefixes(
+                    List.of("file:///tmp/credential-a", "file:///tmp/credential-b")))
+            + ",";
+    conf.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, encodedPrefixes);
+
+    assertThatThrownBy(() -> initDelegate(new URI("file:///tmp/credential-a/data"), conf))
+        .hasMessageContaining("Credential prefixes cannot be empty");
+  }
+
   @ParameterizedTest(name = "{2}")
   @MethodSource("malformedPrefixLists")
   void malformedPrefixListIsRejected(List<String> prefixes, String uri, String expectedMessage) {

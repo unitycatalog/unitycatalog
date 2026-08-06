@@ -30,26 +30,6 @@ class CredPropsRoundTripTest {
 
   private static final String LOCATION = "s3://bucket/table";
 
-  @Test
-  void multiCredentialPrefixesRoundTripThroughHadoopConfiguration() {
-    Configuration conf = new Configuration(false);
-    List<String> prefixes =
-        List.of(
-            "s3://bucket/table",
-            "s3://bucket/table,archive",
-            "s3://bucket/table/%20/${credential}",
-            "s3://bucket/table/%2C/%25/%2F");
-
-    conf.setStrings(
-        UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY,
-        CredentialUtil.encodeMultiCredPrefixes(prefixes));
-
-    assertThat(
-            CredentialUtil.decodeMultiCredPrefixes(
-                conf.getStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY)))
-        .containsExactlyElementsOf(prefixes);
-  }
-
   @BeforeEach
   @AfterEach
   void reset() {

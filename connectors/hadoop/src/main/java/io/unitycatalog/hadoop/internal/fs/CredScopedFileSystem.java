@@ -102,18 +102,17 @@ public class CredScopedFileSystem extends FilterFileSystem {
   }
 
   private static List<String> getMultiCredPrefixes(Configuration conf) {
-    String[] encodedMultiCredPrefixes =
-        conf.getStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY);
-    if (encodedMultiCredPrefixes == null) {
+    String encodedMultiCredPrefixes = conf.get(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY);
+    if (encodedMultiCredPrefixes == null || encodedMultiCredPrefixes.isEmpty()) {
       return Collections.emptyList();
     }
+    String[] encodedPrefixes = encodedMultiCredPrefixes.split(",", -1);
     Preconditions.checkArgument(
-        encodedMultiCredPrefixes.length > 1
-            && encodedMultiCredPrefixes.length <= MAX_MULTI_CRED_COUNT,
+        encodedPrefixes.length > 1 && encodedPrefixes.length <= MAX_MULTI_CRED_COUNT,
         "Number of credentials must be between 2 and %s: got %s",
         MAX_MULTI_CRED_COUNT,
-        encodedMultiCredPrefixes.length);
-    return CredentialUtil.decodeMultiCredPrefixes(encodedMultiCredPrefixes);
+        encodedPrefixes.length);
+    return CredentialUtil.decodeMultiCredPrefixes(encodedPrefixes);
   }
 
   private void initializeFileSystem(URI uri, Configuration conf) {
