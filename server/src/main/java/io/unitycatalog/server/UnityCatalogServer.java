@@ -12,6 +12,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.BaseExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
@@ -39,7 +40,6 @@ import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.delta.DeltaApiService;
-import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.OptionParser;
@@ -175,6 +175,7 @@ public class UnityCatalogServer implements AutoCloseable {
             : new CloudCredentialVendor(serverProperties);
     StorageCredentialVendor storageCredentialVendor =
         new StorageCredentialVendor(cloudCredentialVendor, repositories.getExternalLocationUtils());
+    FileOperations fileOperations = new FileOperations(storageCredentialVendor, serverProperties);
 
     SchemaService schemaService = new SchemaService(authorizer, repositories, serverProperties);
 
@@ -216,29 +217,21 @@ public class UnityCatalogServer implements AutoCloseable {
         .annotateUc(
             "external-locations",
             new ExternalLocationService(authorizer, repositories, serverProperties));
-    addIcebergApiServices(
-        armeriaServerBuilder,
-        serverProperties,
-        storageCredentialVendor,
-        schemaService,
-        repositories);
+    addIcebergApiServices(armeriaServerBuilder, schemaService, repositories, fileOperations);
     addDeltaApiServices(
         armeriaServerBuilder, authorizer, repositories, serverProperties, storageCredentialVendor);
   }
 
   private void addIcebergApiServices(
       ArmeriaServerBuilder armeriaServerBuilder,
-      ServerProperties serverProperties,
-      StorageCredentialVendor storageCredentialVendor,
       SchemaService schemaService,
-      Repositories repositories) {
+      Repositories repositories,
+      FileOperations fileOperations) {
     LOGGER.info("Adding Iceberg services...");
 
     // Add support for Iceberg REST APIs
-    MetadataService metadataService =
-        new MetadataService(new FileIOFactory(storageCredentialVendor, serverProperties));
-    TableConfigService tableConfigService =
-        new TableConfigService(storageCredentialVendor, serverProperties);
+    MetadataService metadataService = new MetadataService(fileOperations);
+    TableConfigService tableConfigService = new TableConfigService(fileOperations);
 
     armeriaServerBuilder.annotateIceberg(
         "iceberg",
