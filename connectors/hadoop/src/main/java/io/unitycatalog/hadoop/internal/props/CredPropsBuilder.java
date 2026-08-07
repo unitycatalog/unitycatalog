@@ -110,9 +110,9 @@ public abstract class CredPropsBuilder {
     if (initialCredentials.size() == 1) {
       GenericCredential credential = initialCredentials.get(0);
       if (renewCredEnabled) {
-        setRenewableCredKeys(credential);
+        setInitRenewableCredKeys(credential);
       } else {
-        setFixedCredKeys(credential);
+        setInitFixedCredKeys(credential);
       }
     } else {
       // Do not set initial credentials when there are multiple credentials to minimize the
@@ -166,8 +166,8 @@ public abstract class CredPropsBuilder {
   protected abstract void setVendedProviderKeys();
 
   /** Writes the renewable-path credential secrets (the {@code init.*} keys) for this cloud. */
-  protected abstract void setRenewableCredKeys(GenericCredential cred);
+  protected abstract void setInitRenewableCredKeys(GenericCredential cred);
 
   /** Writes the fixed-path credential secrets for this cloud. */
-  protected abstract void setFixedCredKeys(GenericCredential cred);
+  protected abstract void setInitFixedCredKeys(GenericCredential cred);
 }
