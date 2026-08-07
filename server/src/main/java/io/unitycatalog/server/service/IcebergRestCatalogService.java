@@ -17,12 +17,14 @@ import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -174,8 +176,10 @@ public class IcebergRestCatalogService {
       @Param("namespace") String namespace,
       @Param("table") String table) {
     String metadataLocation;
+    NormalizedURL tableLocation;
     try (Session session = sessionFactory.openSession()) {
-      tableRepository.getTable(catalog + "." + namespace + "." + table);
+      TableInfo tableInfo = tableRepository.getTable(catalog + "." + namespace + "." + table);
+      tableLocation = NormalizedURL.from(tableInfo.getStorageLocation());
       metadataLocation =
           tableRepository.getTableUniformMetadataLocation(session, catalog, namespace, table);
     }
@@ -186,7 +190,10 @@ public class IcebergRestCatalogService {
 
     TableMetadata tableMetadata =
         metadataService.readTableMetadata(NormalizedURL.from(metadataLocation));
-    Map<String, String> config = tableConfigService.getTableConfig(tableMetadata);
+    ValidationUtils.checkArgument(
+        tableLocation.equals(NormalizedURL.from(tableMetadata.location())),
+        "Iceberg table location must match the registered table location.");
+    Map<String, String> config = tableConfigService.getTableConfig(tableLocation);
 
     return LoadTableResponse.builder()
         .withTableMetadata(tableMetadata)
