@@ -30,6 +30,7 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -82,6 +83,13 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   protected SchemaOperations schemaOperations;
   protected TableOperations tableOperations;
   private WebClient client;
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    // Native Iceberg REST writes are opt-in in production; this integration suite exercises them.
+    serverProperties.setProperty(Property.ICEBERG_TABLE_ENABLED.getKey(), "true");
+  }
 
   @BeforeEach
   public void setUp() {
@@ -285,6 +293,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
               .toURI()
               .toString();
+      // The fixture's metadata document declares file:/tmp/uniform_iceberg_table as its table
+      // root; keep the persisted DAO location aligned so the REST service's location check models
+      // a valid UniForm table rather than an out-of-root metadata pointer.
+      tableInfoDAO.setUrl("file:/tmp/uniform_iceberg_table");
       tableInfoDAO.setUniformIcebergMetadataLocation(metadataLocation);
       session.merge(tableInfoDAO);
       tx.commit();

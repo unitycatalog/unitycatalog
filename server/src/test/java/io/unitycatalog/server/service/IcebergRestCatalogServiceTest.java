@@ -19,6 +19,8 @@ import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.UUID;
+import org.apache.iceberg.rest.Endpoint;
+import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +30,7 @@ public class IcebergRestCatalogServiceTest {
   private final UnityCatalogAuthorizer authorizer = mock();
   private final Repositories repositories = mock();
   private final UserRepository userRepository = mock();
+  private final ServerProperties serverProperties = mock();
   private IcebergRestCatalogService service;
 
   @BeforeEach
@@ -44,7 +47,7 @@ public class IcebergRestCatalogServiceTest {
             mock(TableConfigService.class),
             mock(MetadataService.class),
             repositories,
-            mock(ServerProperties.class));
+            serverProperties);
   }
 
   @Test
@@ -59,7 +62,10 @@ public class IcebergRestCatalogServiceTest {
     assertThat(
             service.getLoadCredentialPrivileges(
                 new TableRepository.IcebergTableState(
-                    tableId, DataSourceFormat.ICEBERG, "s3://bucket/table/metadata.json")))
+                    tableId,
+                    DataSourceFormat.ICEBERG,
+                    "s3://bucket/table/metadata.json",
+                    "s3://bucket/table")))
         .isEqualTo(READ_ONLY);
   }
 
@@ -73,7 +79,10 @@ public class IcebergRestCatalogServiceTest {
     assertThat(
             service.getLoadCredentialPrivileges(
                 new TableRepository.IcebergTableState(
-                    tableId, DataSourceFormat.ICEBERG, "s3://bucket/table/metadata.json")))
+                    tableId,
+                    DataSourceFormat.ICEBERG,
+                    "s3://bucket/table/metadata.json",
+                    "s3://bucket/table")))
         .isEqualTo(READ_WRITE);
   }
 
@@ -82,7 +91,22 @@ public class IcebergRestCatalogServiceTest {
     assertThat(
             service.getLoadCredentialPrivileges(
                 new TableRepository.IcebergTableState(
-                    UUID.randomUUID(), DataSourceFormat.DELTA, "s3://bucket/table/metadata.json")))
+                    UUID.randomUUID(),
+                    DataSourceFormat.DELTA,
+                    "s3://bucket/table/metadata.json",
+                    "s3://bucket/table")))
         .isEqualTo(READ_ONLY);
+  }
+
+  @Test
+  public void configAdvertisesWritesOnlyWhenIcebergTableWritesAreEnabled() {
+    when(serverProperties.isIcebergTableEnabled()).thenReturn(false);
+    ConfigResponse readOnly = service.config(java.util.Optional.of("catalog"));
+    assertThat(readOnly.endpoints()).doesNotContain(Endpoint.V1_CREATE_TABLE);
+    assertThat(readOnly.endpoints()).doesNotContain(Endpoint.V1_UPDATE_TABLE);
+
+    when(serverProperties.isIcebergTableEnabled()).thenReturn(true);
+    ConfigResponse writable = service.config(java.util.Optional.of("catalog"));
+    assertThat(writable.endpoints()).contains(Endpoint.V1_CREATE_TABLE, Endpoint.V1_UPDATE_TABLE);
   }
 }

@@ -6,6 +6,7 @@ import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.UriScheme;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.nio.file.Paths;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -34,7 +35,30 @@ public class MetadataService {
     }
   }
 
+  /**
+   * Reads metadata only after confirming both the requested file and the table root recorded in the
+   * metadata are inside the persisted table location.
+   */
+  public TableMetadata readTableMetadata(
+      NormalizedURL metadataLocation, NormalizedURL persistedTableLocation) {
+    validateMetadataLocation(metadataLocation, persistedTableLocation);
+    TableMetadata tableMetadata = readTableMetadata(metadataLocation);
+    validateTableMetadataLocation(tableMetadata, persistedTableLocation);
+    return tableMetadata;
+  }
+
   public void writeTableMetadata(TableMetadata tableMetadata, NormalizedURL metadataLocation) {
+    writeTableMetadata(
+        tableMetadata, metadataLocation, NormalizedURL.from(tableMetadata.location()));
+  }
+
+  /** Writes metadata only within the table location persisted by UC. */
+  public void writeTableMetadata(
+      TableMetadata tableMetadata,
+      NormalizedURL metadataLocation,
+      NormalizedURL persistedTableLocation) {
+    validateTableMetadataLocation(tableMetadata, persistedTableLocation);
+    validateMetadataLocation(metadataLocation, persistedTableLocation);
     try (FileIO fileIO = fileOperations.getFileIO(metadataLocation, CredentialContext.READ_WRITE)) {
       TableMetadataParser.write(tableMetadata, fileIO.newOutputFile(metadataLocation.toString()));
     }
@@ -45,7 +69,14 @@ public class MetadataService {
    * data and manifest files before the first metadata commit. Object stores have no directories.
    */
   public void prepareTableLocation(TableMetadata tableMetadata) {
-    NormalizedURL location = NormalizedURL.from(tableMetadata.location());
+    prepareTableLocation(tableMetadata, NormalizedURL.from(tableMetadata.location()));
+  }
+
+  /** Prepares local table directories after validating the table's client-supplied locations. */
+  public void prepareTableLocation(
+      TableMetadata tableMetadata, NormalizedURL persistedTableLocation) {
+    validateTableMetadataLocation(tableMetadata, persistedTableLocation);
+    NormalizedURL location = persistedTableLocation;
     createStorageLocationDirIfAbsent(location);
     createStorageLocationDirIfAbsent(NormalizedURL.from(location + "/metadata"));
     createStorageLocationDirIfAbsent(NormalizedURL.from(location + "/data"));
@@ -60,6 +91,13 @@ public class MetadataService {
     }
   }
 
+  /** Best-effort cleanup constrained to the persisted table location. */
+  public void deleteTableMetadata(
+      NormalizedURL metadataLocation, NormalizedURL persistedTableLocation) {
+    validateMetadataLocation(metadataLocation, persistedTableLocation);
+    deleteTableMetadata(metadataLocation);
+  }
+
   /** Builds the location of the next metadata file, following Iceberg's naming scheme. */
   public static NormalizedURL newMetadataLocation(TableMetadata tableMetadata, int version) {
     String metadataDirectory =
@@ -69,6 +107,46 @@ public class MetadataService {
                 TableProperties.WRITE_METADATA_LOCATION, tableMetadata.location() + "/metadata");
     return NormalizedURL.from(
         String.format("%s/%05d-%s.metadata.json", metadataDirectory, version, UUID.randomUUID()));
+  }
+
+  /** Builds and validates the next metadata location against the persisted table root. */
+  public static NormalizedURL newMetadataLocation(
+      TableMetadata tableMetadata, int version, NormalizedURL persistedTableLocation) {
+    validateTableMetadataLocation(tableMetadata, persistedTableLocation);
+    NormalizedURL metadataLocation = newMetadataLocation(tableMetadata, version);
+    validateMetadataLocation(metadataLocation, persistedTableLocation);
+    return metadataLocation;
+  }
+
+  /**
+   * Validates the table root and optional write-metadata directory from an Iceberg metadata
+   * document against the location stored in UC's table DAO.
+   */
+  public static void validateTableMetadataLocation(
+      TableMetadata tableMetadata, NormalizedURL persistedTableLocation) {
+    NormalizedURL metadataTableLocation = NormalizedURL.from(tableMetadata.location());
+    ValidationUtils.checkArgument(
+        metadataTableLocation.equals(persistedTableLocation),
+        "Iceberg table location ('%s') must match the persisted table location ('%s').",
+        metadataTableLocation,
+        persistedTableLocation);
+
+    String configuredMetadataLocation =
+        tableMetadata.properties().get(TableProperties.WRITE_METADATA_LOCATION);
+    if (configuredMetadataLocation != null) {
+      validateMetadataLocation(
+          NormalizedURL.from(configuredMetadataLocation), persistedTableLocation);
+    }
+  }
+
+  /** Validates that a metadata file or metadata directory is strictly under the table root. */
+  public static void validateMetadataLocation(
+      NormalizedURL metadataLocation, NormalizedURL persistedTableLocation) {
+    ValidationUtils.checkArgument(
+        metadataLocation.toString().startsWith(persistedTableLocation.toString() + "/"),
+        "Iceberg metadata location ('%s') must be a subpath of the persisted table location ('%s').",
+        metadataLocation,
+        persistedTableLocation);
   }
 
   public static int parseMetadataVersion(NormalizedURL metadataLocation) {

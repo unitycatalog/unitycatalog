@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.iceberg;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -8,6 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.amazonaws.util.IOUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.persist.utils.SimpleLocalFileIO;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Map;
 import java.util.Objects;
@@ -16,6 +19,7 @@ import lombok.SneakyThrows;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +39,7 @@ public class MetadataServiceTest {
   public static final String TEST_SIMPLE_ICEBERG_V1_METADATA_FILE_NAME =
       "simple-v1-iceberg.metadata.json";
 
-  private final FileIOFactory mockFileIOFactory = mock();
+  private final FileOperations mockFileOperations = mock();
   private final S3Client mockS3Client = S3_MOCK.createS3ClientV2();
 
   private MetadataService metadataService;
@@ -43,13 +47,13 @@ public class MetadataServiceTest {
   @SneakyThrows
   @BeforeEach
   public void setUp() {
-    metadataService = new MetadataService(mockFileIOFactory);
+    metadataService = new MetadataService(mockFileOperations);
   }
 
   @SneakyThrows
   @Test
   public void testGetTableMetadataFromS3() {
-    when(mockFileIOFactory.getFileIO(any())).thenReturn(new S3FileIO(() -> mockS3Client));
+    when(mockFileOperations.getFileIO(any())).thenReturn(new S3FileIO(() -> mockS3Client));
     mockS3Client.createBucket(builder -> builder.bucket(TEST_BUCKET).build());
     String simpleMetadataJson =
         IOUtils.toString(
@@ -79,7 +83,7 @@ public class MetadataServiceTest {
   @SneakyThrows
   @Test
   public void testGetTableMetadataFromLocalFS() {
-    when(mockFileIOFactory.getFileIO(any())).thenReturn(new SimpleLocalFileIO());
+    when(mockFileOperations.getFileIO(any())).thenReturn(new SimpleLocalFileIO());
     NormalizedURL metadataLocation =
         NormalizedURL.from(
             Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).toURI());
@@ -90,8 +94,8 @@ public class MetadataServiceTest {
   @SneakyThrows
   @Test
   public void testWriteAndDeleteTableMetadataOnS3() {
-    when(mockFileIOFactory.getFileIO(any())).thenReturn(new S3FileIO(() -> mockS3Client));
-    when(mockFileIOFactory.getFileIO(any(), any())).thenReturn(new S3FileIO(() -> mockS3Client));
+    when(mockFileOperations.getFileIO(any())).thenReturn(new S3FileIO(() -> mockS3Client));
+    when(mockFileOperations.getFileIO(any(), any())).thenReturn(new S3FileIO(() -> mockS3Client));
     // Dedicated bucket: the S3Mock extension is static and shared across this class's tests.
     String bucket = "metadata-write-test";
     mockS3Client.createBucket(builder -> builder.bucket(bucket).build());
@@ -114,5 +118,59 @@ public class MetadataServiceTest {
     metadataService.deleteTableMetadata(metadataLocation);
     assertThatThrownBy(() -> metadataService.readTableMetadata(metadataLocation))
         .isInstanceOf(RuntimeException.class);
+  }
+
+  @Test
+  public void acceptsMetadataLocationsUnderPersistedTableLocation() {
+    NormalizedURL tableLocation = NormalizedURL.from("s3://bucket/table");
+    TableMetadata metadata =
+        TableMetadata.newTableMetadata(
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+            PartitionSpec.unpartitioned(),
+            tableLocation.toString(),
+            Map.of(TableProperties.WRITE_METADATA_LOCATION, tableLocation + "/metadata"));
+
+    assertThatCode(() -> MetadataService.validateTableMetadataLocation(metadata, tableLocation))
+        .doesNotThrowAnyException();
+    assertThatCode(
+            () -> {
+              MetadataService.validateMetadataLocation(
+                  NormalizedURL.from(tableLocation + "/metadata/v1.metadata.json"), tableLocation);
+            })
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  public void rejectsClientSuppliedMetadataLocationsOutsidePersistedTableLocation() {
+    NormalizedURL tableLocation = NormalizedURL.from("s3://bucket/table");
+    TableMetadata metadata =
+        TableMetadata.newTableMetadata(
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+            PartitionSpec.unpartitioned(),
+            tableLocation.toString(),
+            Map.of(TableProperties.WRITE_METADATA_LOCATION, "s3://bucket/other-table/metadata"));
+
+    assertThatThrownBy(() -> MetadataService.validateTableMetadataLocation(metadata, tableLocation))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("must be a subpath");
+    assertThatThrownBy(
+            () ->
+                MetadataService.validateMetadataLocation(
+                    NormalizedURL.from("s3://bucket/other-table/v1.metadata.json"), tableLocation))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("must be a subpath");
+
+    TableMetadata metadataWithWrongTableRoot =
+        TableMetadata.newTableMetadata(
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+            PartitionSpec.unpartitioned(),
+            "s3://bucket/other-table",
+            Map.of());
+    assertThatThrownBy(
+            () ->
+                MetadataService.validateTableMetadataLocation(
+                    metadataWithWrongTableRoot, tableLocation))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("must match the persisted table location");
   }
 }

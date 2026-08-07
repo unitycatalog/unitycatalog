@@ -41,6 +41,7 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.iceberg.IcebergSchemaConverter;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Collections;
@@ -51,6 +52,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.SortOrder;
@@ -81,7 +83,7 @@ public class IcebergRestCatalogService extends AuthorizedService {
 
   private static final String PREFIX_BASE = "catalogs/";
 
-  private static final List<Endpoint> ENDPOINTS =
+  private static final List<Endpoint> READ_ENDPOINTS =
       List.of(
           Endpoint.V1_LIST_NAMESPACES,
           Endpoint.V1_LOAD_NAMESPACE,
@@ -89,7 +91,10 @@ public class IcebergRestCatalogService extends AuthorizedService {
           Endpoint.V1_LOAD_TABLE,
           Endpoint.V1_LOAD_VIEW,
           Endpoint.V1_REPORT_METRICS,
-          Endpoint.V1_LIST_TABLES,
+          Endpoint.V1_LIST_TABLES);
+
+  private static final List<Endpoint> WRITE_ENDPOINTS =
+      List.of(
           Endpoint.V1_CREATE_NAMESPACE,
           Endpoint.V1_CREATE_TABLE,
           Endpoint.V1_UPDATE_TABLE,
@@ -134,7 +139,10 @@ public class IcebergRestCatalogService extends AuthorizedService {
     // set catalog prefix
     return ConfigResponse.builder()
         .withOverride("prefix", PREFIX_BASE + catalog)
-        .withEndpoints(ENDPOINTS)
+        .withEndpoints(
+            serverProperties.isIcebergTableEnabled()
+                ? Stream.concat(READ_ENDPOINTS.stream(), WRITE_ENDPOINTS.stream()).toList()
+                : READ_ENDPOINTS)
         .build();
   }
 
@@ -183,6 +191,7 @@ public class IcebergRestCatalogService extends AuthorizedService {
   @AuthorizeResourceKey(METASTORE)
   public CreateNamespaceResponse createNamespace(
       @Param("catalog") String catalog, CreateNamespaceRequest request) {
+    serverProperties.checkIcebergTableEnabled();
     request.validate();
     if (request.namespace().levels().length != 1) {
       throw new BadRequestException("Nested namespaces are not supported: %s", request.namespace());
@@ -232,10 +241,12 @@ public class IcebergRestCatalogService extends AuthorizedService {
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
 
+    NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
     TableMetadata tableMetadata =
-        metadataService.readTableMetadata(NormalizedURL.from(state.metadataLocation()));
+        metadataService.readTableMetadata(
+            NormalizedURL.from(state.metadataLocation()), tableLocation);
     Map<String, String> config =
-        tableConfigService.getTableConfig(tableMetadata, getLoadCredentialPrivileges(state));
+        tableConfigService.getTableConfig(tableLocation, getLoadCredentialPrivileges(state));
 
     return LoadTableResponse.builder()
         .withTableMetadata(tableMetadata)
@@ -267,6 +278,7 @@ public class IcebergRestCatalogService extends AuthorizedService {
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
       CreateTableRequest request) {
+    serverProperties.checkIcebergTableEnabled();
     request.validate();
     NormalizedURL location;
     TableType tableType;
@@ -297,13 +309,13 @@ public class IcebergRestCatalogService extends AuthorizedService {
       // The permanent table is not registered and no metadata file is written. Managed creates
       // retain their staging row so duplicate validation, temporary credentials, and later
       // lifecycle management use the same path as other managed tables.
-      if (ucTableExists(catalog, namespace, request.name())) {
+      if (tableType == TableType.EXTERNAL && ucTableExists(catalog, namespace, request.name())) {
         throw new AlreadyExistsException("Table already exists: %s.%s", namespace, request.name());
       }
-      metadataService.prepareTableLocation(tableMetadata);
+      metadataService.prepareTableLocation(tableMetadata, location);
       return LoadTableResponse.builder()
           .withTableMetadata(tableMetadata)
-          .addAllConfig(tableConfigService.getTableConfig(tableMetadata, READ_WRITE))
+          .addAllConfig(tableConfigService.getTableConfig(location, READ_WRITE))
           .build();
     }
 
@@ -324,9 +336,12 @@ public class IcebergRestCatalogService extends AuthorizedService {
       TableType tableType,
       TableMetadata tableMetadata,
       boolean fromCommit) {
-    NormalizedURL metadataLocation = MetadataService.newMetadataLocation(tableMetadata, 0);
+    NormalizedURL tableLocation = NormalizedURL.from(tableMetadata.location());
+    NormalizedURL metadataLocation =
+        MetadataService.newMetadataLocation(tableMetadata, 0, tableLocation);
     TableMetadata committed =
         TableMetadata.buildFrom(tableMetadata)
+            // Discard builder-only changes before assigning the authoritative metadata pointer.
             .discardChanges()
             .withMetadataLocation(MetadataService.toIcebergMetadataLocation(metadataLocation))
             .build();
@@ -341,12 +356,12 @@ public class IcebergRestCatalogService extends AuthorizedService {
             .columns(IcebergSchemaConverter.toColumnInfos(committed.schema()))
             .storageLocation(committed.location())
             .properties(committed.properties());
-    metadataService.writeTableMetadata(committed, metadataLocation);
+    metadataService.writeTableMetadata(committed, metadataLocation, tableLocation);
     TableInfo tableInfo;
     try {
       tableInfo = tableRepository.createTableForIceberg(createTable, metadataLocation);
     } catch (RuntimeException e) {
-      metadataService.deleteTableMetadata(metadataLocation);
+      metadataService.deleteTableMetadata(metadataLocation, tableLocation);
       if (fromCommit
           && e instanceof BaseException baseException
           && baseException.getErrorCode() == ErrorCode.TABLE_ALREADY_EXISTS) {
@@ -361,9 +376,12 @@ public class IcebergRestCatalogService extends AuthorizedService {
       initializeHierarchicalAuthorization(tableInfo.getTableId(), schemaInfo.getSchemaId());
     }
 
+    // Use the location returned from the persisted UC row for credential vending, not the
+    // client-supplied metadata object used to create the row.
+    NormalizedURL persistedTableLocation = NormalizedURL.from(tableInfo.getStorageLocation());
     return LoadTableResponse.builder()
         .withTableMetadata(committed)
-        .addAllConfig(tableConfigService.getTableConfig(committed, READ_WRITE))
+        .addAllConfig(tableConfigService.getTableConfig(persistedTableLocation, READ_WRITE))
         .build();
   }
 
@@ -376,6 +394,7 @@ public class IcebergRestCatalogService extends AuthorizedService {
       @Param("namespace") String namespace,
       @Param("table") String table,
       UpdateTableRequest request) {
+    serverProperties.checkIcebergTableEnabled();
     boolean isCreateCommit =
         request.requirements().stream()
             .anyMatch(r -> r instanceof UpdateRequirement.AssertTableDoesNotExist);
@@ -388,29 +407,35 @@ public class IcebergRestCatalogService extends AuthorizedService {
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
 
+    NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
     NormalizedURL metadataLocation = NormalizedURL.from(state.metadataLocation());
-    TableMetadata base = metadataService.readTableMetadata(metadataLocation);
+    TableMetadata base = metadataService.readTableMetadata(metadataLocation, tableLocation);
     request.requirements().forEach(requirement -> requirement.validate(base));
 
     TableMetadata.Builder builder = TableMetadata.buildFrom(base);
     request.updates().forEach(update -> update.applyTo(builder));
     TableMetadata updatedWithoutLocation = builder.build();
     if (updatedWithoutLocation.changes().isEmpty()) {
+      // No-op update: requirements were validated, but there is no new metadata file or DAO write.
       return LoadTableResponse.builder()
           .withTableMetadata(base)
-          .addAllConfig(tableConfigService.getTableConfig(base, READ_WRITE))
+          .addAllConfig(tableConfigService.getTableConfig(tableLocation, READ_WRITE))
           .build();
     }
 
     NormalizedURL newMetadataLocation =
         MetadataService.newMetadataLocation(
-            updatedWithoutLocation, MetadataService.parseMetadataVersion(metadataLocation) + 1);
+            updatedWithoutLocation,
+            MetadataService.parseMetadataVersion(metadataLocation) + 1,
+            tableLocation);
     TableMetadata updated =
         TableMetadata.buildFrom(updatedWithoutLocation)
+            // Iceberg update builders retain pending changes; persist a clean snapshot with the
+            // newly assigned metadata location.
             .discardChanges()
             .withMetadataLocation(MetadataService.toIcebergMetadataLocation(newMetadataLocation))
             .build();
-    metadataService.writeTableMetadata(updated, newMetadataLocation);
+    metadataService.writeTableMetadata(updated, newMetadataLocation, tableLocation);
     try {
       tableRepository.commitIcebergTable(
           catalog,
@@ -423,13 +448,13 @@ public class IcebergRestCatalogService extends AuthorizedService {
     } catch (RuntimeException e) {
       // The metadata file was written before the swap, so any failure (a lost commit race or an
       // unexpected error) leaves it orphaned unless we clean it up.
-      metadataService.deleteTableMetadata(newMetadataLocation);
+      metadataService.deleteTableMetadata(newMetadataLocation, tableLocation);
       throw e;
     }
 
     return LoadTableResponse.builder()
         .withTableMetadata(updated)
-        .addAllConfig(tableConfigService.getTableConfig(updated, READ_WRITE))
+        .addAllConfig(tableConfigService.getTableConfig(tableLocation, READ_WRITE))
         .build();
   }
 
@@ -441,6 +466,7 @@ public class IcebergRestCatalogService extends AuthorizedService {
       @Param("namespace") String namespace,
       @Param("table") String table,
       @Param("purgeRequested") Optional<Boolean> purgeRequested) {
+    serverProperties.checkIcebergTableEnabled();
     String fullName = catalog + "." + namespace + "." + table;
     TableRepository.IcebergTableState state =
         tableRepository.getIcebergTableState(catalog, namespace, table);
@@ -474,10 +500,6 @@ public class IcebergRestCatalogService extends AuthorizedService {
             "Invalid requirement for a create commit: %s", requirement.getClass().getSimpleName());
       }
     }
-    if (ucTableExists(catalog, namespace, table)) {
-      throw new CommitFailedException("Requirement failed: table already exists: %s", fullName);
-    }
-
     // Pick the format version out of the updates before building, like CatalogHandlers.create:
     // buildFromEmpty defaults to v2, and applying an upgrade-format-version update for a lower
     // version would otherwise fail as a downgrade.
@@ -496,9 +518,10 @@ public class IcebergRestCatalogService extends AuthorizedService {
           "Create commit for %s must include a set-location update", fullName);
     }
 
+    // Managed locations carry UC's reserved marker. The final repository transaction performs the
+    // authoritative staging-row ownership and committed-state validation.
     TableType tableType =
-        stagingTableRepository.isUncommittedStagingLocation(
-                NormalizedURL.from(tableMetadata.location()))
+        tableMetadata.location().contains(Constants.MANAGED_STORAGE_PREFIX)
             ? TableType.MANAGED
             : TableType.EXTERNAL;
     return finalizeIcebergTableCreation(

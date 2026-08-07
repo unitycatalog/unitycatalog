@@ -4,15 +4,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import io.unitycatalog.server.model.GcpOauthToken;
-import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.StorageCredentialVendor;
-import io.unitycatalog.server.utils.ServerProperties;
-import java.util.Map;
-import org.apache.iceberg.TableMetadata;
+import io.unitycatalog.server.utils.NormalizedURL;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -23,26 +18,19 @@ import org.junit.jupiter.api.Test;
  */
 public class TableConfigServiceTest {
 
-  private final StorageCredentialVendor mockVendor = mock();
-  private final TableMetadata mockMetadata = mock();
+  private final FileOperations mockFileOperations = mock();
   private TableConfigService tableConfigService;
 
   @BeforeEach
   public void setUp() {
-    ServerProperties serverProperties = mock();
-    when(serverProperties.getS3Configurations()).thenReturn(Map.of());
-    when(mockMetadata.location()).thenReturn("gs://test-bucket/table");
-    when(mockVendor.vendCredential(any(), any()))
-        .thenReturn(
-            new TemporaryCredentials()
-                .gcpOauthToken(new GcpOauthToken().oauthToken("token"))
-                .expirationTime(0L));
-    tableConfigService = new TableConfigService(mockVendor, serverProperties);
+    tableConfigService = new TableConfigService(mockFileOperations);
   }
 
   @Test
   public void passesThroughRequestedPrivileges() {
-    tableConfigService.getTableConfig(mockMetadata, CredentialContext.READ_WRITE);
-    verify(mockVendor).vendCredential(any(), eq(CredentialContext.READ_WRITE));
+    tableConfigService.getTableConfig(
+        NormalizedURL.from("gs://test-bucket/table"), CredentialContext.READ_WRITE);
+    verify(mockFileOperations)
+        .getFileIOConfig(any(NormalizedURL.class), eq(CredentialContext.READ_WRITE));
   }
 }

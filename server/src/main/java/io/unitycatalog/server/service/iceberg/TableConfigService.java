@@ -5,7 +5,6 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Map;
 import java.util.Set;
-import org.apache.iceberg.TableMetadata;
 
 /**
  * Builds the per-table FileIO configuration (credentials, region, etc.) returned to clients in the
@@ -18,9 +17,12 @@ public class TableConfigService {
     this.fileOperations = fileOperations;
   }
 
+  /**
+   * Builds credentials from the location persisted in the UC table DAO. Do not accept a location
+   * extracted from client-supplied Iceberg metadata here: that metadata is untrusted input.
+   */
   public Map<String, String> getTableConfig(
-      TableMetadata tableMetadata, Set<CredentialContext.Privilege> privileges) {
-    return fileOperations.getFileIOConfig(
-        NormalizedURL.from(tableMetadata.location()), privileges);
+      NormalizedURL tableLocation, Set<CredentialContext.Privilege> privileges) {
+    return fileOperations.getFileIOConfig(tableLocation, privileges);
   }
 }

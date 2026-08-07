@@ -18,6 +18,7 @@ import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
@@ -26,7 +27,6 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
-import jakarta.persistence.PessimisticLockException;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -36,7 +36,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
@@ -284,38 +283,13 @@ public class DeltaCommitRepository {
           // Serialize all commit/backfill mutations on this table by write-locking its uc_tables
           // row, matching the Delta update path. This makes the commit-log reads and writes below
           // atomic against a concurrent commit or backfill.
-          lockTableForCommit(session, tableInfoDAO, tableId, Optional.empty());
+          RepositoryUtils.lockTableForCommit(session, tableInfoDAO, tableId, Optional.empty());
           validateTableForCommit(session, commit, tableInfoDAO, uniformFields);
           postCommitCore(session, tableId, tableInfoDAO, commit, uniformFields);
           return null;
         },
         "Error committing to table: " + commit.getTableId(),
         /* readOnly = */ false);
-  }
-
-  /**
-   * Acquire a {@code PESSIMISTIC_WRITE} lock on the table's {@code uc_tables} row so concurrent
-   * CCv2 commit/backfill transactions on the same table serialize. Shared by both commit entry
-   * points: UC REST {@code postCommit} and the Delta update path.
-   *
-   * <p>Call this before reading or mutating commit-log state (and, on the Delta path, before
-   * snapshotting the etag): {@code session.refresh} reloads the row, so calling it after in-memory
-   * DAO mutations would discard them.
-   *
-   * <p>A lock-wait timeout or deadlock surfaces as {@code UPDATE_REQUIREMENT_CONFLICT} (409) so the
-   * client retries, rather than as a generic 500.
-   */
-  public static void lockTableForCommit(
-      Session session, TableInfoDAO dao, UUID tableId, Optional<String> tableFullNameForLogging) {
-    try {
-      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
-    } catch (PessimisticLockException e) {
-      throw new BaseException(
-          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
-          "Concurrent commit in progress on table "
-              + tableFullNameForLogging.orElseGet(tableId::toString)
-              + "; retry the request.");
-    }
   }
 
   /**
@@ -766,7 +740,7 @@ public class DeltaCommitRepository {
    *
    * <p>Covers only versions still tracked in the DB; a replay of a backfilled-and-purged version is
    * conservatively reported as not-a-replay. The caller must hold the table lock (see {@link
-   * #lockTableForCommit}).
+   * RepositoryUtils#lockTableForCommit}).
    *
    * <p>Filename with the client-generated, per-commit-unique UUID is used for dedup.
    *

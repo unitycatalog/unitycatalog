@@ -53,6 +53,14 @@ public class IcebergSchemaConverterTest {
     assertThat(json.get("type").asText()).isEqualTo("long");
     assertThat(json.get("nullable").asBoolean()).isFalse();
     assertThat(json.get("metadata")).isNotNull();
+
+    ColumnInfo named =
+        IcebergSchemaConverter.toColumnInfos(
+                new Schema(
+                    Types.NestedField.optional(2, "name", Types.StringType.get(), "the name")))
+            .get(0);
+    assertThat(MAPPER.readTree(named.getTypeJson()).path("metadata").path("comment").asText())
+        .isEqualTo("the name");
   }
 
   @Test

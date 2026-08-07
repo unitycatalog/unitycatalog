@@ -51,8 +51,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
-import org.hibernate.LockMode;
-import org.hibernate.PessimisticLockException;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -83,7 +81,10 @@ public class TableRepository {
 
   /** Detached catalog state needed to load or commit an Iceberg metadata file. */
   public record IcebergTableState(
-      UUID tableId, DataSourceFormat dataSourceFormat, String metadataLocation) {}
+      UUID tableId,
+      DataSourceFormat dataSourceFormat,
+      String metadataLocation,
+      String storageLocation) {}
 
   /**
    * Retrieves the storage location for a table or staging table by its ID, plus the table type.
@@ -329,8 +330,7 @@ public class TableRepository {
         session -> {
           TableInfoDAO dao = findTableOrThrow(session, catalog, schema, table);
           requireDeltaTable(dao, catalog, schema, table);
-          DeltaCommitRepository.lockTableForCommit(
-              session, dao, dao.getId(), Optional.of(tableFullName));
+          RepositoryUtils.lockTableForCommit(session, dao, dao.getId(), Optional.of(tableFullName));
           // assert-table-uuid is stable identity, so check it up front. assert-etag is deferred to
           // after the apply, captured here against pre-apply state: a commit advances the etag, and
           // an idempotent replay must bypass the etag entirely (it throws mid-apply and rolls back
@@ -384,28 +384,6 @@ public class TableRepository {
       throw new BaseException(
           ErrorCode.UNSUPPORTED_TABLE_FORMAT,
           "Table is not a Delta table: " + catalog + "." + schema + "." + table);
-    }
-  }
-
-  /**
-   * Acquire {@code SELECT ... FOR UPDATE} on the table row and refresh in-memory state, so two
-   * concurrent Iceberg REST commits serialize. Lock-wait timeouts and deadlock victims surface as
-   * {@code UPDATE_REQUIREMENT_CONFLICT} (409) instead of a generic 500.
-   */
-  private static void lockTableForUpdate(
-      Session session, TableInfoDAO dao, String catalog, String schema, String table) {
-    try {
-      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
-    } catch (PessimisticLockException e) {
-      throw new BaseException(
-          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
-          "Concurrent update in progress on "
-              + catalog
-              + "."
-              + schema
-              + "."
-              + table
-              + "; retry the request.");
     }
   }
 
@@ -621,7 +599,7 @@ public class TableRepository {
                     + fullName);
           }
           return new IcebergTableState(
-              dao.getId(), dataSourceFormat, dao.getUniformIcebergMetadataLocation());
+              dao.getId(), dataSourceFormat, dao.getUniformIcebergMetadataLocation(), dao.getUrl());
         },
         "Failed to load Iceberg table state for " + fullName,
         /* readOnly = */ true);
@@ -661,7 +639,7 @@ public class TableRepository {
                     + " REST catalog: "
                     + fullName);
           }
-          lockTableForUpdate(session, dao, catalogName, schemaName, tableName);
+          RepositoryUtils.lockTableForCommit(session, dao, dao.getId(), Optional.of(fullName));
           if (!Objects.equals(dao.getUniformIcebergMetadataLocation(), expectedMetadataLocation)) {
             throw new BaseException(
                 ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
@@ -684,6 +662,9 @@ public class TableRepository {
           dao.setColumnCount(newColumns.size());
 
           MutablePropertyMap properties = MutablePropertyMap.load(session, dao.getId());
+          // Native Iceberg metadata is the authoritative projection of UC-visible properties. A
+          // commit therefore replaces the complete property set; server-owned properties must not
+          // be persisted here because the next client snapshot would intentionally erase them.
           properties.removeAll(new ArrayList<>(properties.asMap().keySet()));
           properties.putAll(tableProperties);
           properties.flush(session, dao.getId());
@@ -712,14 +693,52 @@ public class TableRepository {
   }
 
   public TableInfo createTable(CreateTable createTable) {
+    requireNonIcebergFormat(createTable, "createTable");
     return createTableImpl(
         createTable, Optional.empty(), Optional.empty(), (session, dao, tableInfo) -> tableInfo);
   }
 
+  /**
+   * Renames a table within its schema. Looks up the source table first (throwing {@link
+   * ErrorCode#TABLE_NOT_FOUND} if absent) and rejects a collision with an existing table of the
+   * target name in the same schema (throwing {@link ErrorCode#TABLE_ALREADY_EXISTS}). Renaming a
+   * table to its current name is an idempotent no-op. Metadata-only: the table UUID, schema, and
+   * storage location are all unchanged.
+   */
+  public void renameTable(String catalog, String schema, String table, String newName) {
+    ValidationUtils.validateSqlObjectName(newName);
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
+          TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
+          }
+          // Do the no-op check after the table lookup. A missing table must still return
+          // TABLE_NOT_FOUND rather than succeed as a no-op.
+          if (table.equals(newName)) {
+            return null;
+          }
+          if (findBySchemaIdAndName(session, schemaId, newName) != null) {
+            throw new BaseException(
+                ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + newName);
+          }
+          tableInfoDAO.setName(newName);
+          tableInfoDAO.setUpdatedAt(new Date());
+          tableInfoDAO.setUpdatedBy(callerId);
+          session.merge(tableInfoDAO);
+          return null;
+        },
+        "Failed to rename table " + catalog + "." + schema + "." + table,
+        /* readOnly = */ false);
+  }
+
   public TableInfo createTableForIceberg(CreateTable createTable, NormalizedURL metadataLocation) {
     if (createTable.getDataSourceFormat() != DataSourceFormat.ICEBERG) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "createTableForIceberg requires ICEBERG format.");
+      throw new BaseException(ErrorCode.INTERNAL, "createTableForIceberg requires ICEBERG format.");
     }
     return createTableImpl(
         createTable,
@@ -741,6 +760,7 @@ public class TableRepository {
    */
   public DeltaLoadTableResponse createTableForDelta(
       CreateTable createTable, Optional<DeltaUniformUtils.UniformIcebergFields> uniformFields) {
+    requireNonIcebergFormat(createTable, "createTableForDelta");
     return createTableImpl(
         createTable,
         uniformFields,
@@ -753,6 +773,14 @@ public class TableRepository {
                 createTable.getCatalogName(),
                 createTable.getSchemaName(),
                 createTable.getName()));
+  }
+
+  private static void requireNonIcebergFormat(CreateTable createTable, String caller) {
+    if (createTable.getDataSourceFormat() == DataSourceFormat.ICEBERG) {
+      throw new BaseException(
+          ErrorCode.UNSUPPORTED_TABLE_FORMAT,
+          caller + " cannot create native ICEBERG tables; use createTableForIceberg instead.");
+    }
   }
 
   /**
@@ -824,6 +852,8 @@ public class TableRepository {
                   ErrorCode.INVALID_ARGUMENT,
                   "Managed table creation is only supported for Delta and Iceberg formats.");
             }
+            // Find and commit the staging table with the same staging location. This single
+            // transaction validates ownership and prevents a staging location from being reused.
             StagingTableDAO stagingTableDAO =
                 repositories
                     .getStagingTableRepository()

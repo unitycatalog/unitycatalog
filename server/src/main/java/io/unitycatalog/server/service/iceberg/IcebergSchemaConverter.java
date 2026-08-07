@@ -57,7 +57,11 @@ public final class IcebergSchemaConverter {
     node.put("name", field.name());
     node.set("type", typeJson(field.type()));
     node.put("nullable", field.isOptional());
-    node.set("metadata", MAPPER.createObjectNode());
+    ObjectNode metadata = MAPPER.createObjectNode();
+    if (field.doc() != null) {
+      metadata.put("comment", field.doc());
+    }
+    node.set("metadata", metadata);
     return node;
   }
 
