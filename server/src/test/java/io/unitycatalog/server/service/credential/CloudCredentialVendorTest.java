@@ -149,6 +149,15 @@ public class CloudCredentialVendorTest {
             "abfss://test@uctest.dfs.core.windows.net/abc",
             Set.of(CredentialContext.Privilege.UPDATE));
     assertThat(azureTemporaryCredentials.getAzureUserDelegationSas().getSasToken()).isNotNull();
+    assertThatThrownBy(
+            () ->
+                vendCredential(
+                    "abfss://test@unconfigured.dfs.core.windows.net/abc",
+                    Set.of(CredentialContext.Privilege.UPDATE)))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("Azure storage account configuration not found")
+        .extracting(exception -> ((BaseException) exception).getErrorCode())
+        .isEqualTo(ErrorCode.FAILED_PRECONDITION);
 
     // Use datalake service client
     when(serverProperties.getAdlsConfigurations())
