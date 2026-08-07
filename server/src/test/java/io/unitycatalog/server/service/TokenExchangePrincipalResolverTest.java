@@ -28,15 +28,15 @@ class TokenExchangePrincipalResolverTest {
   }
 
   @Test
-  void extractOAuthClientIdFallsBackToNonUrlAudience() {
-    DecodedJWT jwt = decode(tokenWithAudOnly(CLIENT_ID, "https://dev.dev.example.com"));
+  void extractOAuthClientIdReadsClientIdClaim() {
+    DecodedJWT jwt = decode(tokenWithClientIdClaim(CLIENT_ID));
 
     assertThat(TokenExchangePrincipalResolver.extractOAuthClientId(jwt)).contains(CLIENT_ID);
   }
 
   @Test
-  void extractOAuthClientIdSkipsUrlOnlyAudiences() {
-    DecodedJWT jwt = decode(tokenWithAudOnly("https://dev.dev.example.com"));
+  void extractOAuthClientIdIgnoresAudienceOnlyTokens() {
+    DecodedJWT jwt = decode(tokenWithAudOnly(CLIENT_ID, "https://dev.dev.example.com"));
 
     assertThat(TokenExchangePrincipalResolver.extractOAuthClientId(jwt)).isEmpty();
   }
@@ -60,6 +60,16 @@ class TokenExchangePrincipalResolverTest {
     return JWT.create()
         .withSubject("subject")
         .withAudience(audiences)
+        .withIssuer("https://issuer.example.com")
+        .withIssuedAt(new Date())
+        .withJWTId(UUID.randomUUID().toString())
+        .sign(Algorithm.none());
+  }
+
+  private static String tokenWithClientIdClaim(String clientId) {
+    return JWT.create()
+        .withSubject("subject")
+        .withClaim("client_id", clientId)
         .withIssuer("https://issuer.example.com")
         .withIssuedAt(new Date())
         .withJWTId(UUID.randomUUID().toString())

@@ -33,9 +33,8 @@ public class TokenExchangePrincipalResolver {
    * Validates audience rules and returns the UC principal email for the issued access token.
    *
    * <p>For {@code id_token} subjects, resolution order is email (or {@code sub}) then OAuth client
-   * id from {@code azp} or non-URL {@code aud} mapped to {@code externalId}. For {@code
-   * access_token} subjects without an {@code email} claim, {@code externalId} is tried before
-   * {@code sub}.
+   * id from {@code azp} or {@code client_id} mapped to {@code externalId}. For {@code access_token}
+   * subjects without an {@code email} claim, {@code externalId} is tried before {@code sub}.
    */
   public String resolvePrincipalEmail(TokenType subjectTokenType, DecodedJWT decodedJWT) {
     validateAudience(subjectTokenType, decodedJWT);
@@ -81,10 +80,11 @@ public class TokenExchangePrincipalResolver {
   }
 
   /**
-   * Returns the OAuth client id from the subject token, preferring {@code azp} over {@code aud}.
+   * Returns the OAuth client id from the subject token, preferring {@code azp} over {@code
+   * client_id}.
    *
-   * <p>URL-like audience values are skipped so realm-wide {@code aud} entries do not shadow the
-   * per-client id.
+   * <p>{@code aud} is intentionally excluded: it identifies the receiving service (UC), not the
+   * calling OAuth client, and can be attacker-influenceable.
    */
   static Optional<String> extractOAuthClientId(DecodedJWT decodedJWT) {
     Claim azp = decodedJWT.getClaim("azp");
@@ -95,21 +95,15 @@ public class TokenExchangePrincipalResolver {
       }
     }
 
-    List<String> audiences = decodedJWT.getAudience();
-    if (audiences == null) {
-      return Optional.empty();
+    Claim clientId = decodedJWT.getClaim("client_id");
+    if (!clientId.isNull()) {
+      String clientIdValue = clientId.asString();
+      if (clientIdValue != null && !clientIdValue.isBlank()) {
+        return Optional.of(clientIdValue);
+      }
     }
 
-    return audiences.stream()
-        .filter(TokenExchangePrincipalResolver::isOAuthClientIdAudience)
-        .findFirst();
-  }
-
-  private static boolean isOAuthClientIdAudience(String audience) {
-    if (audience == null || audience.isBlank()) {
-      return false;
-    }
-    return !audience.contains("://");
+    return Optional.empty();
   }
 
   private void validateAudience(TokenType subjectTokenType, DecodedJWT decodedJWT) {

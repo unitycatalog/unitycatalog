@@ -103,9 +103,9 @@ public class AuthService implements RegisteredService {
    *
    * <p>Principal resolution tries email mode first ({@code email} claim or {@code sub} fallback),
    * then external id mode when email resolution fails. External id mode reads the OAuth client id
-   * from the subject token ({@code azp}, or a non-URL {@code aud} value) and looks up the UC user
-   * by {@code externalId}. Audience validation uses {@code server.audiences}, with additional
-   * acceptance when the signed subject token carries an OAuth client id.
+   * from the subject token ({@code azp} or {@code client_id}) and looks up the UC user by {@code
+   * externalId}. Audience validation uses {@code server.audiences}, with additional acceptance when
+   * the signed subject token carries an OAuth client id in those claims.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
