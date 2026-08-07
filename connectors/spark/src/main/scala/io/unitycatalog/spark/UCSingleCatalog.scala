@@ -133,6 +133,35 @@ class UCSingleCatalog
   private def shouldUseDeltaAPI: Boolean =
     DeltaVersionUtils.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
 
+  /** Session default format (`spark.sql.sources.default`). */
+  private def sessionDefaultProvider: String =
+    SQLConf.get.getConf(SQLConf.DEFAULT_DATA_SOURCE_NAME)
+
+  /**
+   * Returns true when the effective provider is `delta` -- i.e. `USING delta`, or no `USING`
+   * clause while `spark.sql.sources.default` resolves to delta. Unlike Spark's built-in
+   * `V2SessionCatalog`, a named V2 catalog receives no `provider` property when `USING` is
+   * omitted, so we apply the same default-source fallback Spark itself uses.
+   */
+  private def hasDeltaProvider(properties: util.Map[String, String]): Boolean =
+    Option(properties.get(TableCatalog.PROP_PROVIDER))
+      .getOrElse(sessionDefaultProvider)
+      .equalsIgnoreCase("delta")
+
+  /** Ensures `provider` is present using the same resolution as {@link #hasDeltaProvider}. */
+  private def withMaterializedProvider(
+      properties: util.Map[String, String]): util.Map[String, String] = {
+    if (properties.containsKey(TableCatalog.PROP_PROVIDER)) {
+      properties
+    } else {
+      val augmented = new util.HashMap[String, String](properties)
+      augmented.put(
+        TableCatalog.PROP_PROVIDER,
+        Option(properties.get(TableCatalog.PROP_PROVIDER)).getOrElse(sessionDefaultProvider))
+      augmented
+    }
+  }
+
   /**
    * REPLACE / CREATE OR REPLACE delegation gate.
    *
@@ -141,14 +170,8 @@ class UCSingleCatalog
    *     Delta-side `buildReplaceProps` after loading; we do not pre-check it here.
    *   - Non-Delta REPLACE stays on the legacy path; its rejection error is unchanged.
    */
-  /** Session default format (`spark.sql.sources.default`); read once per catalog operation. */
-  private def sessionDefaultProvider: String =
-    SQLConf.get.getConf(SQLConf.DEFAULT_DATA_SOURCE_NAME)
-
-  private def shouldDelegateReplaceToDeltaApi(properties: util.Map[String, String]): Boolean = {
-    val defaultProvider = sessionDefaultProvider
-    shouldUseDeltaAPI && UCSingleCatalog.hasDeltaProvider(properties, defaultProvider)
-  }
+  private def shouldDelegateReplaceToDeltaApi(properties: util.Map[String, String]): Boolean =
+    shouldUseDeltaAPI && hasDeltaProvider(properties)
 
   /**
    * Returns the properties UC should pass to the Delta catalog delegate for a managed Delta
@@ -160,11 +183,10 @@ class UCSingleCatalog
    */
   private def managedDeltaCreatePropsForDelegate(
       ident: Identifier,
-      properties: util.Map[String, String],
-      defaultProvider: String): util.Map[String, String] = {
+      properties: util.Map[String, String]): util.Map[String, String] = {
     // Materialize the effective provider (same resolution as `hasDeltaProvider`) so the Delta
     // delegate and `UCProxy.createTable`'s `requireProviderSpecified` see an explicit `provider`.
-    val withProvider = UCSingleCatalog.withMaterializedProvider(properties, defaultProvider)
+    val withProvider = withMaterializedProvider(properties)
     val validated = validateAndDefaultManagedDeltaCreateProperties(withProvider)
     if (shouldUseDeltaAPI) validated
     else stageManagedDeltaTableAndGetProps(ident, validated)
@@ -200,10 +222,9 @@ class UCSingleCatalog
     }
 
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
-      val defaultProvider = sessionDefaultProvider
-      if (UCSingleCatalog.hasDeltaProvider(properties, defaultProvider)) {
+      if (hasDeltaProvider(properties)) {
         // Managed Delta table
-        val newProps = managedDeltaCreatePropsForDelegate(ident, properties, defaultProvider)
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
         delegate.createTable(ident, schema, partitions, newProps)
       } else {
         // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
@@ -514,7 +535,7 @@ class UCSingleCatalog
     }.getOrElse {
       // Creating a new table -- route through the same gate as `createTable` so a fresh
       // CREATE OR REPLACE picks up the UC Delta API path when it's available.
-      managedDeltaCreatePropsForDelegate(ident, properties, sessionDefaultProvider)
+      managedDeltaCreatePropsForDelegate(ident, properties)
     }
     UCSingleCatalog.requireProviderSpecified("CREATE OR REPLACE TABLE", newProps)
     stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
@@ -564,10 +585,9 @@ class UCSingleCatalog
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val stagingCatalog = requireStagingCatalog("CREATE TABLE AS SELECT (CTAS)")
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
-      val defaultProvider = sessionDefaultProvider
-      if (UCSingleCatalog.hasDeltaProvider(properties, defaultProvider)) {
+      if (hasDeltaProvider(properties)) {
         // Managed Delta table
-        val newProps = managedDeltaCreatePropsForDelegate(ident, properties, defaultProvider)
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
         stagingCatalog.stageCreate(ident, schema, partitions, newProps)
       } else {
         // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
@@ -640,42 +660,6 @@ object UCSingleCatalog {
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
     !hasExternalClause && !hasLocationClause && !isPathTable
-  }
-
-  /**
-   * Explicit `provider` property, else the caller-supplied session default
-   * (`spark.sql.sources.default`). Pure -- does not read {@code SQLConf}; callers on the catalog
-   * operation path supply {@code sessionDefaultProvider} once per request.
-   */
-  def effectiveProvider(
-      properties: util.Map[String, String],
-      defaultProvider: String): String =
-    Option(properties.get(TableCatalog.PROP_PROVIDER)).getOrElse(defaultProvider)
-
-  /**
-   * Returns true when the effective provider is `delta` -- i.e. `USING delta`, or no `USING`
-   * clause while `spark.sql.sources.default` resolves to delta. Unlike Spark's built-in
-   * `V2SessionCatalog`, a named V2 catalog receives no `provider` property when `USING` is
-   * omitted, so we apply the same default-source fallback Spark itself uses.
-   */
-  def hasDeltaProvider(
-      properties: util.Map[String, String],
-      defaultProvider: String): Boolean =
-    effectiveProvider(properties, defaultProvider).equalsIgnoreCase("delta")
-
-  /** Ensures `provider` is present using the same resolution as {@link #hasDeltaProvider}. */
-  def withMaterializedProvider(
-      properties: util.Map[String, String],
-      defaultProvider: String): util.Map[String, String] = {
-    if (properties.containsKey(TableCatalog.PROP_PROVIDER)) {
-      properties
-    } else {
-      val augmented = new util.HashMap[String, String](properties)
-      augmented.put(
-        TableCatalog.PROP_PROVIDER,
-        effectiveProvider(properties, defaultProvider))
-      augmented
-    }
   }
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {

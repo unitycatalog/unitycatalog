@@ -116,7 +116,7 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
    * resolves to delta, UC treats the table as a managed Delta table (mirroring Spark's built-in
    * session catalog) instead of rejecting it as non-Delta. Unlike Spark's `V2SessionCatalog`, a
    * named V2 catalog receives no `provider` property when USING is omitted, so this relies on the
-   * default-source fallback in {@code UCSingleCatalog.hasDeltaProvider(properties, defaultProvider)}.
+   * default-source fallback in {@code UCSingleCatalog}'s {@code hasDeltaProvider}.
    */
   @Test
   public void testCreateManagedTableDefaultsToDeltaWhenDefaultSourceIsDelta() throws ApiException {
