@@ -1,10 +1,15 @@
 package io.unitycatalog.hadoop.internal.fs;
 
+import io.unitycatalog.client.internal.Preconditions;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.id.FileSystemCredId;
 import io.unitycatalog.hadoop.internal.util.BoundedKeyedCache;
 import io.unitycatalog.hadoop.internal.util.CloseableUtils;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Collections;
+import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FilterFileSystem;
@@ -82,8 +87,36 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    FileSystemCredId key = FileSystemCredId.create(conf, uri);
-    this.fs = CACHE.getOrLoad(key, () -> newFileSystem(uri, conf));
+    List<String> credPrefixes = getCredPrefixes(conf);
+    if (credPrefixes.size() <= 1) {
+      // No selection is necessary when there is only one credential (there is only one choice).
+      String prefix = credPrefixes.isEmpty() ? null : credPrefixes.get(0);
+      FileSystemCredId key = FileSystemCredId.create(conf, uri, prefix);
+      this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, prefix));
+    } else {
+      // When there are multiple credentials (credPrefixes > 1), select the (longest) prefix that
+      // covers the requested URI.
+      FileSystemCredId key = getFileSystemCredId(uri, conf, credPrefixes);
+      this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, key.prefix()));
+    }
+  }
+
+  private static List<String> getCredPrefixes(Configuration conf) {
+    String[] encodedCredPrefixes =
+        conf.getStrings(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY);
+    if (encodedCredPrefixes == null || encodedCredPrefixes.length == 0) {
+      return Collections.emptyList();
+    }
+    return CredentialUtil.decodeCredPrefixes(encodedCredPrefixes);
+  }
+
+  private static FileSystemCredId getFileSystemCredId(
+      URI uri, Configuration conf, List<String> credPrefixes) {
+    int selectedIndex = CredentialUtil.longestCoveringIndex(uri.toString(), credPrefixes);
+    Preconditions.checkArgument(
+        selectedIndex >= 0, "No credential covers storage location %s", uri);
+    String selectedPrefix = credPrefixes.get(selectedIndex);
+    return FileSystemCredId.create(conf, uri, selectedPrefix);
   }
 
   /**
@@ -95,10 +128,18 @@ public class CredScopedFileSystem extends FilterFileSystem {
     fsConf.set(key, fsConf.get(key + ".original", defaultImpl));
   }
 
-  private static FileSystem newFileSystem(URI uri, Configuration conf) {
-    try {
-      Configuration fsConf = new Configuration(conf);
+  private static FileSystem copyConfAndCreateNewFileSystem(
+      URI uri, Configuration conf, String prefix) {
+    Configuration fsConf = new Configuration(conf);
+    if (prefix != null) {
+      fsConf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
+    }
+    return newFileSystem(uri, fsConf);
+  }
 
+  // Creates a files system from the provided configuration. Note: modifies the conf in-place.
+  private static FileSystem newFileSystem(URI uri, Configuration fsConf) {
+    try {
       // S3: restore impl using the side-channel key saved by CredPropsUtil before it overrode
       // fs.<scheme>.impl with CredScopedFileSystem. Falls back to S3AFileSystem if not set.
       restoreImpl(fsConf, "fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
