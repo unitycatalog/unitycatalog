@@ -11,14 +11,14 @@ To use the Unity Catalog UI, start a new terminal and ensure you have already st
 
 !!! warning "Prerequisites"
     The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and
-    [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
+    [Bun](https://bun.com/docs/installation).
 
-To start the UI locally, run the following commands to start `yarn`
+To start the UI locally, run the following commands to start `bun`
 
 ```sh
 cd ui
-yarn install
-yarn start
+bun install
+bun run start
 ```
 
 ## Assets
