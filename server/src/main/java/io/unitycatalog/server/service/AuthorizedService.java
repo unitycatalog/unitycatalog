@@ -10,6 +10,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
@@ -81,17 +82,36 @@ public abstract class AuthorizedService {
   }
 
   /**
-   * Removes Casbin policies and hierarchy for a schema subtree: child securables first, then the
-   * schema and its catalog link. Matches {@link SchemaService#deleteSchema} auth cleanup extended
-   * to child resource policies.
+   * Clears Casbin policies and hierarchy for resources removed by a repository cascade delete.
+   *
+   * @param deleted resources returned from {@code CatalogRepository#deleteCatalog} or {@code
+   *     SchemaRepository#deleteSchema}
    */
-  protected void removeSchemaAuthorizationSubtree(
-      String schemaId, String catalogId, Iterable<String> childResourceIds) {
-    for (String childResourceId : childResourceIds) {
-      removeHierarchicalAuthorizations(childResourceId, schemaId);
+  protected void clearDeletedResourceAuthorizations(List<DeletedResource> deleted) {
+    if (deleted.isEmpty()) {
+      return;
     }
-    authorizer.removeHierarchyChildren(UUID.fromString(schemaId));
-    removeHierarchicalAuthorizations(schemaId, catalogId);
+
+    for (DeletedResource resource : deleted) {
+      switch (resource.type()) {
+        case TABLE, VOLUME, FUNCTION, REGISTERED_MODEL ->
+            removeHierarchicalAuthorizations(resource.id(), resource.parentId());
+        default -> {}
+      }
+    }
+
+    for (DeletedResource resource : deleted) {
+      if (resource.type() == SecurableType.SCHEMA) {
+        authorizer.removeHierarchyChildren(UUID.fromString(resource.id()));
+        removeHierarchicalAuthorizations(resource.id(), resource.parentId());
+      }
+    }
+
+    for (DeletedResource resource : deleted) {
+      if (resource.type() == SecurableType.CATALOG) {
+        removeAuthorizations(resource.id());
+      }
+    }
   }
 
   /**

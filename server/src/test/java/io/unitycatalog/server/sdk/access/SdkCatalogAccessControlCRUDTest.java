@@ -20,8 +20,6 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import lombok.SneakyThrows;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -260,22 +258,5 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
             countCasbinRulesReferencing(
                 catalogInfo.getId(), schemaInfo.getSchemaId(), tableInfo.getTableId()))
         .isZero();
-  }
-
-  private long countCasbinRulesReferencing(String... resourceIds) {
-    SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
-    try (Session session = sessionFactory.openSession()) {
-      long total = 0;
-      for (String resourceId : resourceIds) {
-        total +=
-            session
-                .createNativeQuery(
-                    "select count(*) from casbin_rule where v0 = :id or v1 = :id or v2 = :id",
-                    Long.class)
-                .setParameter("id", resourceId)
-                .uniqueResult();
-      }
-      return total;
-    }
   }
 }
