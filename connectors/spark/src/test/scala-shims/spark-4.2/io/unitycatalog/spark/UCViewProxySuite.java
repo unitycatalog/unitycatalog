@@ -693,13 +693,15 @@ public class UCViewProxySuite {
   }
 
   @Test
-  public void testCreatePlainViewSendsViewPayloadWithNonNullDependencies() throws Exception {
-    // A plain CREATE VIEW carries no dependencies; the connector must still send a non-null
-    // (empty) dependency list so the server's view validation accepts it.
+  public void testCreatePlainViewOmitsDependenciesWhenDerivationFails() throws Exception {
+    // Spark leaves `viewDependencies()` null for a plain view. The connector then derives lineage
+    // from the query text; on failure it must send NO dependency list (null), not an empty one --
+    // an empty list would persist "no dependencies", wrong for a view that reads tables. This
+    // pure-mock suite has no active SparkSession, so derivation always fails here, exercising that
+    // fallback. (Successful derivation is covered end-to-end by UCViewDDLIntegrationTest.)
     View view = plainViewBuilder().build();
 
-    TableInfo ucView =
-        stubPlainView().viewDependencies(new DependencyList().dependencies(List.of()));
+    TableInfo ucView = stubPlainView();
     when(mockTablesApi.createTable(any(CreateTable.class))).thenReturn(ucView);
 
     View loaded = proxyViews.createView(Identifier.of(NAMESPACE, "v1"), view);
@@ -709,8 +711,7 @@ public class UCViewProxySuite {
     CreateTable request = captor.getValue();
     assertThat(request.getTableType()).isEqualTo(TableType.VIEW);
     assertThat(request.getViewDefinition()).isEqualTo(PLAIN_VIEW_QUERY);
-    assertThat(request.getViewDependencies()).isNotNull();
-    assertThat(request.getViewDependencies().getDependencies()).isEmpty();
+    assertThat(request.getViewDependencies()).isNull();
     assertThat(loaded.queryText()).isEqualTo(PLAIN_VIEW_QUERY);
     assertThat(loaded.properties().get(TableCatalog.PROP_TABLE_TYPE))
         .isEqualTo(TableSummary.VIEW_TABLE_TYPE);

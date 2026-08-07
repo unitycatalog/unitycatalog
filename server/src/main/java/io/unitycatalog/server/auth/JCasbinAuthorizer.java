@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
+import org.casbin.jcasbin.main.SyncedEnforcer;
 import org.casbin.jcasbin.model.Model;
 
 /**
@@ -21,10 +22,13 @@ import org.casbin.jcasbin.model.Model;
  * <p>This class is an implementation of UnityCatalogAuthorizor that uses JCasbin as the back end to
  * both store and enforce access control policies.
  *
- * <p>The implementation stores the policies in a database using the JDBCAdapter class.
+ * <p>The implementation stores the policies in a database using the JDBCAdapter class. A {@link
+ * SyncedEnforcer} is used because the UC server shares one authorizer across concurrent REST
+ * requests; jCasbin's plain {@link Enforcer} is not thread-safe for concurrent {@code enforce()}
+ * and policy mutations.
  */
 public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
-  private final Enforcer enforcer;
+  private final SyncedEnforcer enforcer;
 
   private static final int PRINCIPAL_INDEX = 0;
   private static final int RESOURCE_INDEX = 1;
@@ -47,7 +51,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
     Model model = new Model();
     model.loadModelFromText(string);
 
-    enforcer = new Enforcer(model, adapter);
+    enforcer = new SyncedEnforcer(model, adapter);
     enforcer.enableAutoSave(true);
   }
 

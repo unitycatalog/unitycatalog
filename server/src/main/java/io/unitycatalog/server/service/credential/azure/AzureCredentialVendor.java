@@ -36,7 +36,8 @@ public class AzureCredentialVendor {
     ADLSStorageConfig config = adlsConfigurations.get(locParts.accountName());
 
     if (config == null) {
-      return new AzureCredentialGenerator.DatalakeCredentialGenerator(null);
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION, "Azure storage account configuration not found.");
     }
 
     if (config.getCredentialGenerator() != null) {

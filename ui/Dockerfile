@@ -3,6 +3,10 @@ FROM oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f
 FROM node:18@sha256:c6ae79e38498325db67193d391e6ec1d224d96c693a8a4d943498556716d3783
 
 ARG PROXY_HOST=server
+
+# Optional corporate npm mirror, e.g. --build-arg NPM_PROXY_URL=https://npm-proxy.example.com/
+ARG NPM_PROXY_URL
+
 WORKDIR /ui
 
 # Bun is the package manager and script runner; react-scripts itself still runs on Node.
