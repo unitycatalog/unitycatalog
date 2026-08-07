@@ -8,6 +8,11 @@ FROM amazoncorretto:17-alpine3.20-jdk@sha256:c045f0537bc890f9e61924f33f35e9667f6
 ARG HOME
 ENV HOME=$HOME
 
+# Corporate Maven mirror for the sbt launcher / Ivy (see build/sbt).
+# Pass at build time: --build-arg MAVEN_PROXY_URL=$MAVEN_PROXY_URL
+ARG MAVEN_PROXY_URL
+ENV MAVEN_PROXY_URL=${MAVEN_PROXY_URL}
+
 WORKDIR $HOME
 
 COPY --parents dev/ build/ project/ examples/ server/ api/ clients/ version.sbt build.sbt ./
