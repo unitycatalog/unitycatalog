@@ -64,7 +64,7 @@ class CredPropsRoundTripTest {
     // TODO: this MUST be set in the CredPropsUtil. Temporary workaround.
     confWithCreds.setStrings(
         UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
-        CredentialUtil.encodeMultiCredPrefixes(List.of(LOCATION)));
+        CredentialUtil.encodeCredPrefixes(List.of(LOCATION)));
     CredScopedFileSystem fs = new CredScopedFileSystem();
     fs.initialize(new URI(LOCATION + "/part-0.parquet"), confWithCreds);
 
@@ -116,7 +116,7 @@ class CredPropsRoundTripTest {
     // Encode the list of prefixes.
     confWithCreds.setStrings(
         UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
-        CredentialUtil.encodeMultiCredPrefixes(List.of("s3://bucket", LOCATION)));
+        CredentialUtil.encodeCredPrefixes(List.of("s3://bucket", LOCATION)));
 
     CredScopedFileSystem fs = new CredScopedFileSystem();
     fs.initialize(new URI(LOCATION + "/part-0.parquet"), confWithCreds);

@@ -61,7 +61,7 @@ class CredScopedFileSystemCacheTest {
   private static void setCredPrefixes(Configuration conf, String... prefixes) {
     conf.setStrings(
         UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
-        CredentialUtil.encodeMultiCredPrefixes(List.of(prefixes)));
+        CredentialUtil.encodeCredPrefixes(List.of(prefixes)));
   }
 
   @Test
@@ -171,7 +171,7 @@ class CredScopedFileSystemCacheTest {
     Configuration conf = tableConf("tid-1", "READ");
     conf.setStrings(
         UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
-        CredentialUtil.encodeMultiCredPrefixes(List.of("file:///tmp/a", "file:///tmp/b")));
+        CredentialUtil.encodeCredPrefixes(List.of("file:///tmp/a", "file:///tmp/b")));
 
     // URIs covered by the same credential resolve to one delegate; different ones do not.
     CredScopedFileSystem fsA1 = init(new URI("file:///tmp/a/one"), conf);

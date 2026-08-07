@@ -89,30 +89,32 @@ public class CredScopedFileSystem extends FilterFileSystem {
   public void initialize(URI uri, Configuration conf) throws IOException {
     List<String> credPrefixes = getCredPrefixes(conf);
     if (credPrefixes.size() <= 1) {
-      String prefix = credPrefixes.isEmpty() ? "" : credPrefixes.get(0);
+      // No selection is necessary when there is only one credential (there is only one choice).
+      String prefix = credPrefixes.isEmpty() ? null : credPrefixes.get(0);
       FileSystemCredId key = FileSystemCredId.create(conf, uri, prefix);
       this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, prefix));
     } else {
-      FileSystemCredId key = getMultiCredFileSystemKey(uri, conf, credPrefixes);
+      // When there are multiple credentials (credPrefixes > 1), select the (longest) prefix that
+      // covers the requested URI.
+      FileSystemCredId key = getFileSystemCredId(uri, conf, credPrefixes);
       this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, key.prefix()));
     }
   }
 
   private static List<String> getCredPrefixes(Configuration conf) {
-    String[] encodedCredPrefixes =
-        conf.getStrings(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY);
-    if (encodedCredPrefixes == null) {
+    String encodedCredPrefixes = conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY);
+    if (encodedCredPrefixes == null || encodedCredPrefixes.isEmpty()) {
       return Collections.emptyList();
     }
-    return CredentialUtil.decodeMultiCredPrefixes(encodedCredPrefixes);
+    return CredentialUtil.decodeCredPrefixes(encodedCredPrefixes.split(",", -1));
   }
 
-  private static FileSystemCredId getMultiCredFileSystemKey(
-      URI uri, Configuration conf, List<String> multiCredPrefixes) {
-    int selectedIndex = CredentialUtil.longestCoveringIndex(uri.toString(), multiCredPrefixes);
+  private static FileSystemCredId getFileSystemCredId(
+      URI uri, Configuration conf, List<String> credPrefixes) {
+    int selectedIndex = CredentialUtil.longestCoveringIndex(uri.toString(), credPrefixes);
     Preconditions.checkArgument(
         selectedIndex >= 0, "No credential covers storage location %s", uri);
-    String selectedPrefix = multiCredPrefixes.get(selectedIndex);
+    String selectedPrefix = credPrefixes.get(selectedIndex);
     return FileSystemCredId.create(conf, uri, selectedPrefix);
   }
 

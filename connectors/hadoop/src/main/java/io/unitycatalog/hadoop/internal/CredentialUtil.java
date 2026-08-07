@@ -25,13 +25,13 @@ public final class CredentialUtil {
 
   private CredentialUtil() {}
 
-  public static String[] encodeMultiCredPrefixes(List<String> prefixes) {
+  public static String[] encodeCredPrefixes(List<String> prefixes) {
     return prefixes.stream()
         .map(prefix -> ENCODER.encodeToString(prefix.getBytes(UTF_8)))
         .toArray(String[]::new);
   }
 
-  public static List<String> decodeMultiCredPrefixes(String[] prefixes) {
+  public static List<String> decodeCredPrefixes(String[] prefixes) {
     return Arrays.stream(prefixes)
         .map(prefix -> new String(DECODER.decode(prefix), UTF_8))
         .collect(Collectors.toList());

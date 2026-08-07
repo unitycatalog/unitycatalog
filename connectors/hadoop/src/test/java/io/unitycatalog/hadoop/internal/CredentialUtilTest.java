@@ -40,11 +40,11 @@ class CredentialUtilTest {
             "s3://bucket/table?key=value&other=a+b#fragment",
             "s3://bucket/café");
 
-    String[] encodedPrefixes = CredentialUtil.encodeMultiCredPrefixes(prefixes);
+    String[] encodedPrefixes = CredentialUtil.encodeCredPrefixes(prefixes);
 
     assertThat(encodedPrefixes).doesNotContainAnyElementsOf(prefixes);
     assertThat(encodedPrefixes).allMatch(prefix -> !prefix.contains(","));
-    assertThat(CredentialUtil.decodeMultiCredPrefixes(encodedPrefixes))
+    assertThat(CredentialUtil.decodeCredPrefixes(encodedPrefixes))
         .containsExactlyElementsOf(prefixes);
   }
 

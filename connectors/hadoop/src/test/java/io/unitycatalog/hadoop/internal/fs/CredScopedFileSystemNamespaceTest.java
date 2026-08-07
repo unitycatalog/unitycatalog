@@ -58,7 +58,7 @@ class CredScopedFileSystemNamespaceTest {
   }
 
   private static String encodePrefixes(List<String> prefixes) {
-    return String.join(",", CredentialUtil.encodeMultiCredPrefixes(prefixes));
+    return String.join(",", CredentialUtil.encodeCredPrefixes(prefixes));
   }
 
   @Test
@@ -155,7 +155,7 @@ class CredScopedFileSystemNamespaceTest {
   @Test
   void malformedPrefixListIsRejected() {
     Configuration conf = tableConf();
-    String validPrefix = CredentialUtil.encodeMultiCredPrefixes(List.of("file:///tmp/valid"))[0];
+    String validPrefix = CredentialUtil.encodeCredPrefixes(List.of("file:///tmp/valid"))[0];
     conf.setStrings(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, validPrefix, "not-base64!");
 
     assertThatThrownBy(() -> initDelegate(new URI("file:///tmp/credential/data"), conf))
