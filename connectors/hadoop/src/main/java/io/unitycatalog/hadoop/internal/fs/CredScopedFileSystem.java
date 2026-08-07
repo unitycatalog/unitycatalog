@@ -87,25 +87,24 @@ public class CredScopedFileSystem extends FilterFileSystem {
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
-    List<String> multiCredPrefixes = getMultiCredPrefixes(conf);
-    if (multiCredPrefixes.size() > 1) {
-      FileSystemCredId key = getMultiCredFileSystemKey(uri, conf, multiCredPrefixes);
+    List<String> credPrefixes = getCredPrefixes(conf);
+    if (credPrefixes.size() <= 1) {
+      String prefix = credPrefixes.isEmpty() ? "" : credPrefixes.get(0);
+      FileSystemCredId key = FileSystemCredId.create(conf, uri, prefix);
+      this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, prefix));
+    } else {
+      FileSystemCredId key = getMultiCredFileSystemKey(uri, conf, credPrefixes);
       this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf, key.prefix()));
-      return;
     }
-
-    String prefix = conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
-    FileSystemCredId key = FileSystemCredId.create(conf, uri, prefix);
-    this.fs = CACHE.getOrLoad(key, () -> copyConfAndCreateNewFileSystem(uri, conf));
   }
 
-  private static List<String> getMultiCredPrefixes(Configuration conf) {
-    String[] encodedMultiCredPrefixes =
-        conf.getStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY);
-    if (encodedMultiCredPrefixes == null) {
+  private static List<String> getCredPrefixes(Configuration conf) {
+    String[] encodedCredPrefixes =
+        conf.getStrings(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY);
+    if (encodedCredPrefixes == null) {
       return Collections.emptyList();
     }
-    return CredentialUtil.decodeMultiCredPrefixes(encodedMultiCredPrefixes);
+    return CredentialUtil.decodeMultiCredPrefixes(encodedCredPrefixes);
   }
 
   private static FileSystemCredId getMultiCredFileSystemKey(
@@ -126,15 +125,12 @@ public class CredScopedFileSystem extends FilterFileSystem {
     fsConf.set(key, fsConf.get(key + ".original", defaultImpl));
   }
 
-  private static FileSystem copyConfAndCreateNewFileSystem(URI uri, Configuration conf) {
-    Configuration fsConf = new Configuration(conf);
-    return newFileSystem(uri, fsConf);
-  }
-
   private static FileSystem copyConfAndCreateNewFileSystem(
       URI uri, Configuration conf, String prefix) {
     Configuration fsConf = new Configuration(conf);
-    fsConf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
+    if (prefix != null) {
+      fsConf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
+    }
     return newFileSystem(uri, fsConf);
   }
 

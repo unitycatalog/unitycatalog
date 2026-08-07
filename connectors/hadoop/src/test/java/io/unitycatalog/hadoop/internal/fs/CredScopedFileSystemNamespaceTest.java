@@ -54,7 +54,7 @@ class CredScopedFileSystemNamespaceTest {
   }
 
   private static void setPrefixes(Configuration conf, List<String> prefixes) {
-    conf.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, encodePrefixes(prefixes));
+    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, encodePrefixes(prefixes));
   }
 
   private static String encodePrefixes(List<String> prefixes) {
@@ -62,25 +62,35 @@ class CredScopedFileSystemNamespaceTest {
   }
 
   @Test
-  void missingOrSingleCredPrefixUsesSingleCredPath() throws Exception {
+  void missingOrEmptyCredPrefixesDoesNotSetPrefix() throws Exception {
     Configuration missing = tableConf();
     Configuration empty = tableConf();
-    empty.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, "");
-
-    // Assert single cred path is taken as prefix matching would throw.
+    empty.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, "");
     Configuration onlySeparators = tableConf();
-    onlySeparators.set(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, ",,,");
+    onlySeparators.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, ",,,");
 
-    Configuration single = tableConf();
-    setPrefixes(single, List.of("file:///tmp/other"));
-
-    for (Configuration conf : List.of(missing, empty, onlySeparators, single)) {
+    for (Configuration conf : List.of(missing, empty, onlySeparators)) {
       Map<String, String> before = snapshot(conf);
       FileSystem delegate = initDelegate(new URI("file:///tmp/table/data"), conf);
 
-      assertThat(delegate.getConf().get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY)).isNull();
+      assertThat(delegate.getConf().get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY)).isEmpty();
       assertThat(snapshot(conf)).isEqualTo(before);
     }
+  }
+
+  @Test
+  void singleCredPrefixUsesSingleCredPath() throws Exception {
+    Configuration conf = tableConf();
+    String prefix = "file:///tmp/other";
+    setPrefixes(conf, List.of(prefix));
+    Map<String, String> before = snapshot(conf);
+
+    // The prefix does not cover the URI, so multi-credential selection would throw.
+    FileSystem delegate = initDelegate(new URI("file:///tmp/table/data"), conf);
+
+    assertThat(delegate.getConf().get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY))
+        .isEqualTo(prefix);
+    assertThat(snapshot(conf)).isEqualTo(before);
   }
 
   @ParameterizedTest(name = "prefixes={0} uri={1} selects {2}")
@@ -146,7 +156,7 @@ class CredScopedFileSystemNamespaceTest {
   void malformedPrefixListIsRejected() {
     Configuration conf = tableConf();
     String validPrefix = CredentialUtil.encodeMultiCredPrefixes(List.of("file:///tmp/valid"))[0];
-    conf.setStrings(UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY, validPrefix, "not-base64!");
+    conf.setStrings(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, validPrefix, "not-base64!");
 
     assertThatThrownBy(() -> initDelegate(new URI("file:///tmp/credential/data"), conf))
         .hasMessageContaining("Illegal base64");

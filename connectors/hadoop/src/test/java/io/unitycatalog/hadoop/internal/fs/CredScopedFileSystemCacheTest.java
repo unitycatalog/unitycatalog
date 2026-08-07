@@ -58,6 +58,12 @@ class CredScopedFileSystemCacheTest {
     return conf;
   }
 
+  private static void setCredPrefixes(Configuration conf, String... prefixes) {
+    conf.setStrings(
+        UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+        CredentialUtil.encodeMultiCredPrefixes(List.of(prefixes)));
+  }
+
   @Test
   void sameScopeReusesSameDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
@@ -100,9 +106,9 @@ class CredScopedFileSystemCacheTest {
   void differentScopeSamePrefixGetsDifferentDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
     Configuration confRead = tableConf("tid-1", "READ");
-    confRead.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
+    setCredPrefixes(confRead, "file:///tmp/a");
     Configuration confWrite = tableConf("tid-1", "WRITE");
-    confWrite.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
+    setCredPrefixes(confWrite, "file:///tmp/a");
 
     CredScopedFileSystem fsRead = init(uri, confRead);
     CredScopedFileSystem fsWrite = init(uri, confWrite);
@@ -124,9 +130,9 @@ class CredScopedFileSystemCacheTest {
   void sameScopeDifferentPrefixGetsDifferentDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
     Configuration confA = tableConf("tid-1", "READ");
-    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
+    setCredPrefixes(confA, "file:///tmp/a");
     Configuration confB = tableConf("tid-1", "READ");
-    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/b");
+    setCredPrefixes(confB, "file:///tmp/b");
 
     CredScopedFileSystem fsA = init(uri, confA);
     CredScopedFileSystem fsB = init(uri, confB);
@@ -138,7 +144,7 @@ class CredScopedFileSystemCacheTest {
   void sameScopeSamePrefixReusesSameDelegate() throws Exception {
     URI uri = new URI("file:///tmp");
     Configuration conf = tableConf("tid-1", "READ");
-    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
+    setCredPrefixes(conf, "file:///tmp/a");
 
     CredScopedFileSystem fs1 = init(uri, conf);
     CredScopedFileSystem fs2 = init(uri, conf);
@@ -150,9 +156,9 @@ class CredScopedFileSystemCacheTest {
   void differentlyFormattedPrefixesGetDifferentDelegates() throws Exception {
     URI uri = new URI("file:///tmp");
     Configuration confA = tableConf("tid-1", "READ");
-    confA.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a");
+    setCredPrefixes(confA, "file:///tmp/a");
     Configuration confB = tableConf("tid-1", "READ");
-    confB.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, "file:///tmp/a/");
+    setCredPrefixes(confB, "file:///tmp/a/");
 
     CredScopedFileSystem fsA = init(uri, confA);
     CredScopedFileSystem fsB = init(uri, confB);
@@ -164,7 +170,7 @@ class CredScopedFileSystemCacheTest {
   void multiCredSelectionDeterminesDelegateIdentity() throws Exception {
     Configuration conf = tableConf("tid-1", "READ");
     conf.setStrings(
-        UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY,
+        UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
         CredentialUtil.encodeMultiCredPrefixes(List.of("file:///tmp/a", "file:///tmp/b")));
 
     // URIs covered by the same credential resolve to one delegate; different ones do not.

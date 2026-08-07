@@ -61,6 +61,10 @@ class CredPropsRoundTripTest {
 
     Configuration confWithCreds = new Configuration(false);
     props.forEach(confWithCreds::set);
+    // TODO: this MUST be set in the CredPropsUtil. Temporary workaround.
+    confWithCreds.setStrings(
+        UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+        CredentialUtil.encodeMultiCredPrefixes(List.of(LOCATION)));
     CredScopedFileSystem fs = new CredScopedFileSystem();
     fs.initialize(new URI(LOCATION + "/part-0.parquet"), confWithCreds);
 
@@ -111,7 +115,7 @@ class CredPropsRoundTripTest {
     confWithCreds.unset(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN);
     // Encode the list of prefixes.
     confWithCreds.setStrings(
-        UCHadoopConfConstants.UC_MULTI_CRED_PREFIXES_KEY,
+        UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
         CredentialUtil.encodeMultiCredPrefixes(List.of("s3://bucket", LOCATION)));
 
     CredScopedFileSystem fs = new CredScopedFileSystem();
