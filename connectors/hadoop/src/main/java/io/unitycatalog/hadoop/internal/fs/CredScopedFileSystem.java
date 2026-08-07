@@ -102,11 +102,12 @@ public class CredScopedFileSystem extends FilterFileSystem {
   }
 
   private static List<String> getCredPrefixes(Configuration conf) {
-    String encodedCredPrefixes = conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY);
-    if (encodedCredPrefixes == null || encodedCredPrefixes.isEmpty()) {
+    String[] encodedCredPrefixes =
+        conf.getStrings(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY);
+    if (encodedCredPrefixes == null || encodedCredPrefixes.length == 0) {
       return Collections.emptyList();
     }
-    return CredentialUtil.decodeCredPrefixes(encodedCredPrefixes.split(",", -1));
+    return CredentialUtil.decodeCredPrefixes(encodedCredPrefixes);
   }
 
   private static FileSystemCredId getFileSystemCredId(

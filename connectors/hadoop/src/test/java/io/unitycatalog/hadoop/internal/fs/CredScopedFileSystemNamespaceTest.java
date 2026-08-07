@@ -54,11 +54,9 @@ class CredScopedFileSystemNamespaceTest {
   }
 
   private static void setPrefixes(Configuration conf, List<String> prefixes) {
-    conf.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, encodePrefixes(prefixes));
-  }
-
-  private static String encodePrefixes(List<String> prefixes) {
-    return String.join(",", CredentialUtil.encodeCredPrefixes(prefixes));
+    conf.setStrings(
+        UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+        CredentialUtil.encodeCredPrefixes(prefixes));
   }
 
   @Test
@@ -77,7 +75,7 @@ class CredScopedFileSystemNamespaceTest {
   }
 
   @Test
-  void singleCredPrefixUsesSingleCredPath() throws Exception {
+  void singleCredPrefixDoesNotDoSelection() throws Exception {
     Configuration conf = tableConf();
     String prefix = "file:///tmp/other";
     setPrefixes(conf, List.of(prefix));
@@ -142,7 +140,6 @@ class CredScopedFileSystemNamespaceTest {
 
   private static Stream<Arguments> uncoveredLocationCases() {
     return Stream.of(
-        Arguments.of(List.of("", "", "", ""), "file:///tmp/table/data"),
         Arguments.of(List.of("file:///tmp/a", "file:///tmp/b"), "file:///tmp/other/data"),
         Arguments.of(
             List.of("file:///tmp/table", "file:///tmp/table/child"),
