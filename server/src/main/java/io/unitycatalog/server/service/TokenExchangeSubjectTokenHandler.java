@@ -14,16 +14,16 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Resolves UC principals and validates subject token audiences during token exchange. */
-public class TokenExchangePrincipalResolver {
+/** Validates subject token audiences and resolves UC principals during token exchange. */
+public class TokenExchangeSubjectTokenHandler {
 
   private static final Logger LOGGER =
-      LoggerFactory.getLogger(TokenExchangePrincipalResolver.class);
+      LoggerFactory.getLogger(TokenExchangeSubjectTokenHandler.class);
 
   private final ServerProperties serverProperties;
   private final UserRepository userRepository;
 
-  public TokenExchangePrincipalResolver(
+  public TokenExchangeSubjectTokenHandler(
       ServerProperties serverProperties, UserRepository userRepository) {
     this.serverProperties = serverProperties;
     this.userRepository = userRepository;
@@ -39,30 +39,24 @@ public class TokenExchangePrincipalResolver {
   public String resolvePrincipalEmail(TokenType subjectTokenType, DecodedJWT decodedJWT) {
     validateAudience(subjectTokenType, decodedJWT);
 
-    if (subjectTokenType == TokenType.ACCESS_TOKEN && !hasEmailClaim(decodedJWT)) {
-      Optional<String> clientPrincipal = tryResolvePrincipalEmailForClient(decodedJWT);
-      if (clientPrincipal.isPresent()) {
-        return clientPrincipal.get();
+    PrincipalResolutionOrder order =
+        subjectTokenType == TokenType.ACCESS_TOKEN && !hasEmailClaim(decodedJWT)
+            ? PrincipalResolutionOrder.CLIENT_THEN_CLAIMS
+            : PrincipalResolutionOrder.CLAIMS_THEN_CLIENT;
+
+    return resolveInOrder(decodedJWT, order);
+  }
+
+  private String resolveInOrder(DecodedJWT decodedJWT, PrincipalResolutionOrder order) {
+    for (ResolutionStep step : order.steps()) {
+      Optional<String> email =
+          step == ResolutionStep.CLAIMS
+              ? tryResolvePrincipalEmailFromTokenClaims(decodedJWT)
+              : tryResolvePrincipalEmailForClient(decodedJWT);
+      if (email.isPresent()) {
+        return email.get();
       }
-
-      Optional<String> principalEmail = tryResolvePrincipalEmailFromTokenClaims(decodedJWT);
-      if (principalEmail.isPresent()) {
-        return principalEmail.get();
-      }
-
-      throw new OAuthInvalidRequestException(ErrorCode.INVALID_ARGUMENT, "User not allowed");
     }
-
-    Optional<String> principalEmail = tryResolvePrincipalEmailFromTokenClaims(decodedJWT);
-    if (principalEmail.isPresent()) {
-      return principalEmail.get();
-    }
-
-    Optional<String> clientPrincipal = tryResolvePrincipalEmailForClient(decodedJWT);
-    if (clientPrincipal.isPresent()) {
-      return clientPrincipal.get();
-    }
-
     throw new OAuthInvalidRequestException(ErrorCode.INVALID_ARGUMENT, "User not allowed");
   }
 
@@ -112,7 +106,8 @@ public class TokenExchangePrincipalResolver {
     }
 
     if (audiences.isEmpty()) {
-      if (tokenClientId.isPresent() && hasEnabledUserForExternalId(tokenClientId.get())) {
+      if (tokenClientId.isPresent()
+          && findEnabledUserByExternalId(tokenClientId.get()).isPresent()) {
         return;
       }
       throw new OAuthInvalidRequestException(
@@ -136,7 +131,7 @@ public class TokenExchangePrincipalResolver {
       }
     }
 
-    if (tokenClientId.isPresent() && hasEnabledUserForExternalId(tokenClientId.get())) {
+    if (tokenClientId.isPresent() && findEnabledUserByExternalId(tokenClientId.get()).isPresent()) {
       return;
     }
 
@@ -144,13 +139,16 @@ public class TokenExchangePrincipalResolver {
     throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
   }
 
-  private boolean hasEnabledUserForExternalId(String externalId) {
+  private Optional<User> findEnabledUserByExternalId(String externalId) {
     try {
       User user = userRepository.getUserByExternalId(externalId);
-      return user != null && user.getState() == User.StateEnum.ENABLED;
+      if (user != null && user.getState() == User.StateEnum.ENABLED) {
+        return Optional.of(user);
+      }
     } catch (Exception e) {
-      return false;
+      // IGNORE
     }
+    return Optional.empty();
   }
 
   private static boolean subjectTokenReferencesClient(DecodedJWT decodedJWT, String clientId) {
@@ -164,16 +162,11 @@ public class TokenExchangePrincipalResolver {
 
   private Optional<String> tryResolvePrincipalEmailForClient(String clientId) {
     LOGGER.debug("Resolving principal for OAuth client id {}", clientId);
-    try {
-      User user = userRepository.getUserByExternalId(clientId);
-      if (user != null && user.getState() == User.StateEnum.ENABLED) {
-        LOGGER.debug("Principal for client {} resolved to {}", clientId, user.getEmail());
-        return Optional.of(user.getEmail());
-      }
-    } catch (Exception e) {
-      // IGNORE
-    }
-    return Optional.empty();
+    Optional<String> email = findEnabledUserByExternalId(clientId).map(User::getEmail);
+    email.ifPresent(
+        resolvedEmail ->
+            LOGGER.debug("Principal for client {} resolved to {}", clientId, resolvedEmail));
+    return email;
   }
 
   private Optional<String> tryResolvePrincipalEmailFromTokenClaims(DecodedJWT decodedJWT) {
@@ -205,5 +198,25 @@ public class TokenExchangePrincipalResolver {
     }
 
     return Optional.empty();
+  }
+
+  private enum ResolutionStep {
+    CLAIMS,
+    CLIENT
+  }
+
+  private enum PrincipalResolutionOrder {
+    CLAIMS_THEN_CLIENT(ResolutionStep.CLAIMS, ResolutionStep.CLIENT),
+    CLIENT_THEN_CLAIMS(ResolutionStep.CLIENT, ResolutionStep.CLAIMS);
+
+    private final ResolutionStep[] steps;
+
+    PrincipalResolutionOrder(ResolutionStep... steps) {
+      this.steps = steps;
+    }
+
+    ResolutionStep[] steps() {
+      return steps;
+    }
   }
 }
