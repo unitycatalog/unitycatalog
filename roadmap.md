@@ -26,6 +26,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
 
 ## Full roadmap
 
+<table>
   <tr>
     <td><b>Feature</b></td>
     <td><b>Area</b></td>
@@ -1032,3 +1033,4 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
   </tr>
+</table>
