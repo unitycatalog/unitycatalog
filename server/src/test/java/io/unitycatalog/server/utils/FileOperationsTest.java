@@ -37,6 +37,8 @@ import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.FileInfo;
 import org.apache.iceberg.io.InputFile;
+import org.apache.iceberg.io.OutputFile;
+import org.apache.iceberg.io.PositionOutputStream;
 import org.apache.iceberg.io.ResolvingFileIO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -320,6 +322,22 @@ public class FileOperationsTest {
       InputFile input = fileIO.newInputFile(file.toUri().toString());
       assertThat(input.getLength()).isEqualTo("hello world".length());
     }
+  }
+
+  @SneakyThrows
+  @Test
+  public void testGetFileIOForLocalPathWritesThroughReturnedFileIO() {
+    Path file = rootBase.resolve("metadata-" + UUID.randomUUID() + ".json");
+    StorageCredentialVendor vendor = mock(StorageCredentialVendor.class);
+    FileOperations fileOps = new FileOperations(vendor, new ServerProperties(new Properties()));
+
+    try (FileIO fileIO = fileOps.getFileIO(NormalizedURL.from(file.toUri().toString()))) {
+      OutputFile output = fileIO.newOutputFile(file.toUri().toString());
+      try (PositionOutputStream stream = output.createOrOverwrite()) {
+        stream.write("{\"table\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      }
+    }
+    assertThat(Files.readString(file)).isEqualTo("{\"table\":true}");
   }
 
   @Test

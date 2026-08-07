@@ -24,9 +24,8 @@ import org.slf4j.LoggerFactory;
  * java.nio} with reads delegating to iceberg-core's {@link org.apache.iceberg.Files}.
  *
  * <p>Iceberg's {@link org.apache.iceberg.io.ResolvingFileIO} resolves the file:// scheme to
- * HadoopFileIO, which requires hadoop-client-runtime on the classpath. Since the server only needs
- * read + directory operations on local paths (the Iceberg REST path is read-only), this wrapper
- * avoids that heavy runtime dependency by using only {@code java.nio} and iceberg-core.
+ * HadoopFileIO, which requires hadoop-client-runtime on the classpath. This wrapper keeps local
+ * Iceberg REST metadata reads and writes on the lightweight iceberg-core adapter.
  *
  * <p>It implements {@link DelegateFileIO} (rather than plain {@code FileIO}) for the {@link
  * #deletePrefix(String)} operation that backs directory deletion for managed tables/volumes.
@@ -42,9 +41,18 @@ public class SimpleLocalFileIO implements DelegateFileIO {
 
   @Override
   public OutputFile newOutputFile(String path) {
-    // SimpleLocalFileIO is read-only: the Iceberg REST path only reads local metadata, and managed
-    // storage writes go through other code paths. Writes are intentionally unsupported.
-    throw new UnsupportedOperationException("SimpleLocalFileIO is read-only: " + path);
+    // Local Iceberg REST tables write metadata through the same FileIO abstraction as cloud
+    // tables. The core local adapter supplies the required atomic create/overwrite semantics.
+    Path filePath = toPath(path);
+    Path parent = filePath.getParent();
+    if (parent != null) {
+      try {
+        Files.createDirectories(parent);
+      } catch (IOException e) {
+        throw new UncheckedIOException("Failed to create parent directories for: " + path, e);
+      }
+    }
+    return org.apache.iceberg.Files.localOutput(filePath.toFile());
   }
 
   @Override

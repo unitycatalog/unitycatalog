@@ -100,6 +100,9 @@ public class ServerPropertiesTest {
     testValidProperty(Property.MANAGED_TABLE_ENABLED, "true");
     testValidProperty(Property.MANAGED_TABLE_ENABLED, "false");
     testValidProperty(Property.MANAGED_TABLE_ENABLED, "TRUE");
+    testValidProperty(Property.ICEBERG_TABLE_ENABLED, "true");
+    testValidProperty(Property.ICEBERG_TABLE_ENABLED, "false");
+    testValidProperty(Property.ICEBERG_TABLE_ENABLED, "TRUE");
 
     // Invalid values
     testInvalidProperty(
@@ -108,6 +111,25 @@ public class ServerPropertiesTest {
         "Invalid value 'yes'",
         "server.managed-table.enabled",
         "Allowed values: [true, false]");
+    testInvalidProperty(
+        Property.ICEBERG_TABLE_ENABLED,
+        "yes",
+        "Invalid value 'yes'",
+        "server.iceberg-table.enabled",
+        "Allowed values: [true, false]");
+  }
+
+  @Test
+  public void testIcebergTableEnabledCheck() {
+    ServerProperties serverProperties = new ServerProperties();
+    assertThat(serverProperties.isIcebergTableEnabled()).isFalse();
+    assertThatThrownBy(serverProperties::checkIcebergTableEnabled)
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server.iceberg-table.enabled=true");
+
+    serverProperties.set(Property.ICEBERG_TABLE_ENABLED, "true");
+    assertThat(serverProperties.isIcebergTableEnabled()).isTrue();
+    serverProperties.checkIcebergTableEnabled();
   }
 
   @Test

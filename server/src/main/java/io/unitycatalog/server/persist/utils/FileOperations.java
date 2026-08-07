@@ -90,6 +90,12 @@ public class FileOperations {
    */
   // TODO: Cache fileIOs
   public FileIO getFileIO(NormalizedURL path) {
+    return getFileIO(path, CredentialContext.READ_ONLY);
+  }
+
+  /** Returns a FileIO configured for the requested storage privileges. */
+  public FileIO getFileIO(
+      NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
     return switch (UriScheme.fromURI(path.toUri())) {
       // Local paths are served by SimpleLocalFileIO (backed by java.nio + iceberg-core). We
       // deliberately do NOT route these through ResolvingFileIO: it resolves the file:// scheme to
@@ -99,7 +105,7 @@ public class FileOperations {
       case FILE, NULL -> new SimpleLocalFileIO();
       case S3, GS, ABFS, ABFSS -> {
         ResolvingFileIO fileio = new ResolvingFileIO();
-        fileio.initialize(getFileIOConfig(path));
+        fileio.initialize(getFileIOConfig(path, privileges));
         yield fileio;
       }
     };
@@ -113,6 +119,12 @@ public class FileOperations {
    * @param path the normalized storage location to vend credentials and build config for
    */
   public Map<String, String> getFileIOConfig(NormalizedURL path) {
+    return getFileIOConfig(path, CredentialContext.READ_ONLY);
+  }
+
+  /** Builds FileIO configuration using the requested storage privileges. */
+  public Map<String, String> getFileIOConfig(
+      NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
     UriScheme scheme = UriScheme.fromURI(path.toUri());
     if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
       // Local (file://) paths need no cloud credentials, so short-circuit before vending: the
@@ -121,10 +133,7 @@ public class FileOperations {
       return Map.of();
     }
 
-    // FIXME!! privileges are defaulted to READ only here for now as Iceberg REST impl doesn't
-    //  support write
-    TemporaryCredentials cred =
-        storageCredentialVendor.vendCredential(path, Set.of(CredentialContext.Privilege.SELECT));
+    TemporaryCredentials cred = storageCredentialVendor.vendCredential(path, privileges);
     if (cred.getAzureUserDelegationSas() != null) {
       return getADLSConfig(path, cred.getAzureUserDelegationSas());
     } else if (cred.getGcpOauthToken() != null) {

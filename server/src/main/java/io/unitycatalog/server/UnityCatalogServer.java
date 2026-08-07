@@ -217,16 +217,18 @@ public class UnityCatalogServer implements AutoCloseable {
         .annotateUc(
             "external-locations",
             new ExternalLocationService(authorizer, repositories, serverProperties));
-    addIcebergApiServices(armeriaServerBuilder, schemaService, repositories, fileOperations);
+    addIcebergApiServices(
+        armeriaServerBuilder, authorizer, repositories, fileOperations, serverProperties);
     addDeltaApiServices(
         armeriaServerBuilder, authorizer, repositories, serverProperties, storageCredentialVendor);
   }
 
   private void addIcebergApiServices(
       ArmeriaServerBuilder armeriaServerBuilder,
-      SchemaService schemaService,
+      UnityCatalogAuthorizer authorizer,
       Repositories repositories,
-      FileOperations fileOperations) {
+      FileOperations fileOperations,
+      ServerProperties serverProperties) {
     LOGGER.info("Adding Iceberg services...");
 
     // Add support for Iceberg REST APIs
@@ -236,7 +238,7 @@ public class UnityCatalogServer implements AutoCloseable {
     armeriaServerBuilder.annotateIceberg(
         "iceberg",
         new IcebergRestCatalogService(
-            schemaService, tableConfigService, metadataService, repositories));
+            authorizer, tableConfigService, metadataService, repositories, serverProperties));
   }
 
   private void addDeltaApiServices(
