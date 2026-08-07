@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.SessionProtocol;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
@@ -56,7 +57,10 @@ public class ArmeriaServerBuilder {
   private final JacksonResponseConverterFunction deltaResponseConverter;
 
   ArmeriaServerBuilder(int port, String basePath, String controlPath) {
-    this.armeriaServerBuilder = Server.builder().http(port).serviceUnder("/docs", new DocService());
+    this.armeriaServerBuilder =
+        Server.builder()
+            .localPort(port, SessionProtocol.HTTP)
+            .serviceUnder("/docs", new DocService());
     this.armeriaServerBuilder.service(
         "/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
     this.basePath = basePath;

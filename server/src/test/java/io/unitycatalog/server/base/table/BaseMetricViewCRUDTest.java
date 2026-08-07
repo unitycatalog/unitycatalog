@@ -191,7 +191,7 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
             "missing view_dependencies",
             (UnaryOperator<CreateTable>) request -> request.viewDependencies(null),
             ErrorCode.INVALID_ARGUMENT,
-            "view_dependencies is required for metric view"),
+            "view_dependencies must contain at least one entry for metric view"),
         Arguments.of(
             "empty dependency list",
             (UnaryOperator<CreateTable>)
