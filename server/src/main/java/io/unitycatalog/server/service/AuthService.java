@@ -30,14 +30,11 @@ import io.unitycatalog.control.model.OAuthTokenExchangeForm;
 import io.unitycatalog.control.model.OAuthTokenExchangeInfo;
 import io.unitycatalog.control.model.TokenEndpointExtensionType;
 import io.unitycatalog.control.model.TokenType;
-import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.Repositories;
-import io.unitycatalog.server.persist.UserRepository;
-import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -54,7 +51,7 @@ import org.slf4j.LoggerFactory;
 public class AuthService {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
-  private final UserRepository userRepository;
+  private final TokenExchangeSubjectTokenHandler tokenExchangeSubjectTokenHandler;
 
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
@@ -69,7 +66,8 @@ public class AuthService {
     this.securityContext = securityContext;
     this.jwksOperations = new JwksOperations(securityContext);
     this.serverProperties = serverProperties;
-    this.userRepository = repositories.getUserRepository();
+    this.tokenExchangeSubjectTokenHandler =
+        new TokenExchangeSubjectTokenHandler(serverProperties, repositories.getUserRepository());
   }
 
   /**
@@ -98,6 +96,14 @@ public class AuthService {
    * patterns with {@code *} (same rules as server.allowed-issuers). A single value of {@code *}
    * disables audience validation. Both configurations are required when token exchange runs with
    * authorization enabled.
+   *
+   * <p>Subject-token audience validation and principal resolution are delegated to {@link
+   * TokenExchangeSubjectTokenHandler}. For {@code id_token} subjects, resolution order is {@code
+   * email} (or {@code sub}) then OAuth client id from {@code azp} or {@code client_id} mapped to
+   * {@code externalId}. For {@code access_token} subjects without an {@code email} claim, {@code
+   * externalId} is tried before {@code sub}. Audience validation uses {@code server.audiences},
+   * with additional acceptance when the subject token's {@code azp} or {@code client_id} matches a
+   * registered {@code externalId}.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
@@ -168,18 +174,14 @@ public class AuthService {
           ErrorCode.UNAUTHENTICATED, "Token verification failed: " + e.getMessage(), e);
     }
 
-    if (!serverProperties.isAudienceValidationDisabled()
-        && !serverProperties.getAudienceAllowlist().isAnyAllowed(decodedJWT.getAudience())) {
-      LOGGER.error("Token rejected: audience {} not in allowlist", decodedJWT.getAudience());
-      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
-    }
+    String principalEmail =
+        tokenExchangeSubjectTokenHandler.resolvePrincipalEmail(
+            form.getSubjectTokenType(), decodedJWT);
 
-    verifyPrincipal(decodedJWT);
-
-    LOGGER.debug("Validated. Creating access token.");
+    LOGGER.debug("Validated. Creating access token for principal {}.", principalEmail);
 
     Duration accessTokenTimeout = serverProperties.getAccessTokenTimeout();
-    String accessToken = securityContext.createAccessToken(decodedJWT, accessTokenTimeout);
+    String accessToken = securityContext.createAccessToken(principalEmail, accessTokenTimeout);
 
     OAuthTokenExchangeInfo tokenExchangeInfo =
         new OAuthTokenExchangeInfo()
@@ -222,34 +224,6 @@ public class AuthService {
               return HttpResponse.of(headers, HttpData.ofUtf8(EMPTY_RESPONSE));
             })
         .orElse(HttpResponse.of(HttpStatus.OK, MediaType.JSON, EMPTY_RESPONSE));
-  }
-
-  private void verifyPrincipal(DecodedJWT decodedJWT) {
-    String subject =
-        decodedJWT
-            .getClaims()
-            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
-            .asString();
-
-    LOGGER.debug("Validating principal: {}", subject);
-
-    if (subject.equals("admin")) {
-      LOGGER.debug("admin always allowed");
-      return;
-    }
-
-    try {
-      User user = userRepository.getUserByEmail(subject);
-      if (user != null && user.getState() == User.StateEnum.ENABLED) {
-        LOGGER.debug("Principal {} is enabled", subject);
-        return;
-      }
-    } catch (Exception e) {
-      // IGNORE
-    }
-
-    throw new OAuthInvalidRequestException(
-        ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
   }
 
   private Cookie createCookie(String key, String value, String path, Duration maxAge) {
