@@ -176,6 +176,7 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
             .withJWTId(UUID.randomUUID().toString());
     if (audience != null) {
       builder.withAudience(audience);
+      builder.withClaim("azp", audience);
     }
     return builder.sign(algorithm);
   }
