@@ -116,7 +116,7 @@ public abstract class CredPropsBuilder {
       }
     } else {
       // Do not set initial credentials when there are multiple credentials to minimize the
-      // number of key that need to be encoded. Instead, token providers fetch credentials
+      // number of keys that need to be encoded. Instead, token providers fetch credentials
       // at file system initialization time.
       Preconditions.checkState(
           credScopedFsEnabled,
