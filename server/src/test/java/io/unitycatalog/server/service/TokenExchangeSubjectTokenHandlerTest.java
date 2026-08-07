@@ -9,7 +9,7 @@ import java.util.Date;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-class TokenExchangePrincipalResolverTest {
+class TokenExchangeSubjectTokenHandlerTest {
 
   private static final String CLIENT_ID = "6e8bc60c-5e4d-4cd8-93ce-0b7c02b32499";
 
@@ -17,28 +17,28 @@ class TokenExchangePrincipalResolverTest {
   void hasEmailClaimDetectsMissingEmailClaim() {
     DecodedJWT jwt = decode(tokenWithAzpAndAud(CLIENT_ID, "https://dev.dev.example.com"));
 
-    assertThat(TokenExchangePrincipalResolver.hasEmailClaim(jwt)).isFalse();
+    assertThat(TokenExchangeSubjectTokenHandler.hasEmailClaim(jwt)).isFalse();
   }
 
   @Test
   void extractOAuthClientIdPrefersAzp() {
     DecodedJWT jwt = decode(tokenWithAzpAndAud(CLIENT_ID, "https://dev.dev.example.com"));
 
-    assertThat(TokenExchangePrincipalResolver.extractOAuthClientId(jwt)).contains(CLIENT_ID);
+    assertThat(TokenExchangeSubjectTokenHandler.extractOAuthClientId(jwt)).contains(CLIENT_ID);
   }
 
   @Test
   void extractOAuthClientIdReadsClientIdClaim() {
     DecodedJWT jwt = decode(tokenWithClientIdClaim(CLIENT_ID));
 
-    assertThat(TokenExchangePrincipalResolver.extractOAuthClientId(jwt)).contains(CLIENT_ID);
+    assertThat(TokenExchangeSubjectTokenHandler.extractOAuthClientId(jwt)).contains(CLIENT_ID);
   }
 
   @Test
   void extractOAuthClientIdIgnoresAudienceOnlyTokens() {
     DecodedJWT jwt = decode(tokenWithAudOnly(CLIENT_ID, "https://dev.dev.example.com"));
 
-    assertThat(TokenExchangePrincipalResolver.extractOAuthClientId(jwt)).isEmpty();
+    assertThat(TokenExchangeSubjectTokenHandler.extractOAuthClientId(jwt)).isEmpty();
   }
 
   private static DecodedJWT decode(String token) {

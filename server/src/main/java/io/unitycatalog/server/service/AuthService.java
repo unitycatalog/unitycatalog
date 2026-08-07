@@ -51,7 +51,7 @@ import org.slf4j.LoggerFactory;
 public class AuthService {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
-  private final TokenExchangePrincipalResolver tokenExchangePrincipalResolver;
+  private final TokenExchangeSubjectTokenHandler tokenExchangeSubjectTokenHandler;
 
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
@@ -66,8 +66,8 @@ public class AuthService {
     this.securityContext = securityContext;
     this.jwksOperations = new JwksOperations(securityContext);
     this.serverProperties = serverProperties;
-    this.tokenExchangePrincipalResolver =
-        new TokenExchangePrincipalResolver(serverProperties, repositories.getUserRepository());
+    this.tokenExchangeSubjectTokenHandler =
+        new TokenExchangeSubjectTokenHandler(serverProperties, repositories.getUserRepository());
   }
 
   /**
@@ -97,12 +97,13 @@ public class AuthService {
    * disables audience validation. Both configurations are required when token exchange runs with
    * authorization enabled.
    *
-   * <p>Principal resolution tries email mode first ({@code email} claim or {@code sub} fallback),
-   * then external id mode when email resolution fails. External id mode reads the OAuth client id
-   * from the subject token ({@code azp} or {@code client_id}) and looks up the UC user by {@code
-   * externalId}. Audience validation uses {@code server.audiences}, with additional acceptance when
-   * the signed subject token's {@code azp} or {@code client_id} matches a registered {@code
-   * externalId}.
+   * <p>Subject-token audience validation and principal resolution are delegated to {@link
+   * TokenExchangeSubjectTokenHandler}. For {@code id_token} subjects, resolution order is {@code
+   * email} (or {@code sub}) then OAuth client id from {@code azp} or {@code client_id} mapped to
+   * {@code externalId}. For {@code access_token} subjects without an {@code email} claim, {@code
+   * externalId} is tried before {@code sub}. Audience validation uses {@code server.audiences},
+   * with additional acceptance when the subject token's {@code azp} or {@code client_id} matches a
+   * registered {@code externalId}.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
@@ -174,7 +175,7 @@ public class AuthService {
     }
 
     String principalEmail =
-        tokenExchangePrincipalResolver.resolvePrincipalEmail(
+        tokenExchangeSubjectTokenHandler.resolvePrincipalEmail(
             form.getSubjectTokenType(), decodedJWT);
 
     LOGGER.debug("Validated. Creating access token for principal {}.", principalEmail);
