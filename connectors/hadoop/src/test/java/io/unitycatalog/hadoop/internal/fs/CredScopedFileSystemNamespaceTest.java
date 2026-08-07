@@ -66,14 +66,12 @@ class CredScopedFileSystemNamespaceTest {
     Configuration missing = tableConf();
     Configuration empty = tableConf();
     empty.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, "");
-    Configuration onlySeparators = tableConf();
-    onlySeparators.set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, ",,,");
 
-    for (Configuration conf : List.of(missing, empty, onlySeparators)) {
+    for (Configuration conf : List.of(missing, empty)) {
       Map<String, String> before = snapshot(conf);
       FileSystem delegate = initDelegate(new URI("file:///tmp/table/data"), conf);
 
-      assertThat(delegate.getConf().get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY)).isEmpty();
+      assertThat(delegate.getConf().get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY)).isNull();
       assertThat(snapshot(conf)).isEqualTo(before);
     }
   }
@@ -144,6 +142,7 @@ class CredScopedFileSystemNamespaceTest {
 
   private static Stream<Arguments> uncoveredLocationCases() {
     return Stream.of(
+        Arguments.of(List.of("", "", "", ""), "file:///tmp/table/data"),
         Arguments.of(List.of("file:///tmp/a", "file:///tmp/b"), "file:///tmp/other/data"),
         Arguments.of(
             List.of("file:///tmp/table", "file:///tmp/table/child"),
