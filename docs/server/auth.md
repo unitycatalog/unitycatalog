@@ -63,7 +63,7 @@ When authorization is enabled, the server validates incoming identity tokens aga
 Service integrations exchange an upstream OAuth access token on `POST /auth/tokens` without client credentials on the UC request. UC resolves the principal in two steps:
 
 1. **Email mode** — look up the user by the token `email` claim (or `sub` fallback for `id_token`).
-2. **External id mode** — look up the user by OAuth client id from the subject token (`azp`, or `client_id`) mapped to `externalId`. For `access_token` subjects without an `email` claim, this is tried before `sub`. The `aud` claim is not used for principal lookup; it identifies the receiving service (UC).
+2. **External id mode** — look up the user by OAuth client id from the subject token (`azp`, or `client_id`) mapped to `externalId`. For `access_token` subjects without an `email` claim, this is tried before `sub`.
 
 Create UC users with a human-readable `email` for grants and set `externalId` to the OAuth client id for programmatic exchange. The issued UC access token always uses the resolved user's `email`.
 

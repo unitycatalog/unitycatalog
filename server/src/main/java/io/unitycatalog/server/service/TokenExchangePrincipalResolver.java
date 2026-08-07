@@ -79,13 +79,7 @@ public class TokenExchangePrincipalResolver {
     return !email.isNull() && email.asString() != null && !email.asString().isBlank();
   }
 
-  /**
-   * Returns the OAuth client id from the subject token, preferring {@code azp} over {@code
-   * client_id}.
-   *
-   * <p>{@code aud} is intentionally excluded: it identifies the receiving service (UC), not the
-   * calling OAuth client, and can be attacker-influenceable.
-   */
+  /** Returns the OAuth client id from {@code azp}, else {@code client_id}. */
   static Optional<String> extractOAuthClientId(DecodedJWT decodedJWT) {
     Claim azp = decodedJWT.getClaim("azp");
     if (!azp.isNull()) {
