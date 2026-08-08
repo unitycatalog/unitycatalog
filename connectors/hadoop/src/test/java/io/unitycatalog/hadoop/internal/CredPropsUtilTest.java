@@ -39,33 +39,56 @@ class CredPropsUtilTest {
         .isNotEqualTo(base);
   }
 
-  // TODO: Remove this test once CredPropsBuilder supports multiple vended credentials.
   @Test
-  void multipleDeltaCredentialsAreRejected() {
+  void noVendedCredentialsIsRejected() {
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) -> CredPropsBaseTest.mockGenericCredentialFetcher();
+
+    assertThatThrownBy(() -> createTableCredProps(true, true))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Initial credentials cannot be null or empty");
+  }
+
+  @Test
+  void invalidMultipleCredentialConfigurationsAreRejected() {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) ->
             CredPropsBaseTest.mockGenericCredentialFetcher(
-                new AwsCredential(
-                    "parent-ak", "parent-sk", "parent-st", Long.MAX_VALUE, "s3://bucket"),
-                new AwsCredential(
-                    "child-ak", "child-sk", "child-st", Long.MAX_VALUE, "s3://bucket/table"));
+                s3CredAt("1", "s3://bucket/a"), s3CredAt("2", ""), s3CredAt("3", null));
 
-    assertThatThrownBy(
-            () ->
-                CredPropsUtil.createDeltaTableCredProps(
-                    false,
-                    false,
-                    new Configuration(false),
-                    "s3",
-                    null,
-                    "http://uc",
-                    tokenProvider(),
-                    UCDeltaTableIdentifier.of("catalog", "schema", "table"),
-                    "s3://bucket/table/child",
-                    UCCredentialHadoopConfs.TableOperation.READ,
-                    Map.of()))
+    assertThatThrownBy(() -> createTableCredProps(true, false))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessage("Only single credential responses are supported, got 2");
+        .hasMessageContaining("3 credentials were vended but the credential-scoped filesystem");
+
+    assertThatThrownBy(() -> createTableCredProps(false, true))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("credential renewal is disabled");
+
+    assertThatThrownBy(() -> createTableCredProps(true, true))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining(
+            "Credential prefixes cannot be null or empty when multiple credentials are vended");
+  }
+
+  private static Map<String, String> createTableCredProps(
+      boolean renewCredEnabled, boolean credScopedFsEnabled) throws Exception {
+    Configuration conf = new Configuration(false);
+    conf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
+    return CredPropsUtil.createTableCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        conf,
+        "s3",
+        null,
+        "http://uc",
+        tokenProvider(),
+        "tid",
+        UCCredentialHadoopConfs.TableOperation.READ_WRITE,
+        Map.of());
+  }
+
+  private static AwsCredential s3CredAt(String id, String location) {
+    return new AwsCredential("ak" + id, "sk" + id, "st" + id, null, location);
   }
 
   private static TokenProvider tokenProvider() {

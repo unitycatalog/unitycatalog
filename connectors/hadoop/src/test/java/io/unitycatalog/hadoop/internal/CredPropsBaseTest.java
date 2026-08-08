@@ -189,10 +189,17 @@ abstract class CredPropsBaseTest {
         (apiClient, credId) -> mockGenericCredentialFetcher(vendedCred(null, prefix));
 
     Map<String, String> props = createCredPropsFor(CredKind.TABLE, true, false);
-    if (prefix == null) {
-      assertThat(props).doesNotContainKey(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
+    if (prefix == null || prefix.isEmpty()) {
+      assertThat(props)
+          .doesNotContainKeys(
+              UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY,
+              UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY);
     } else {
-      assertThat(props).containsEntry(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
+      assertThat(props)
+          .doesNotContainKey(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY)
+          .containsEntry(
+              UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+              CredentialUtil.encodeCredPrefixes(List.of(prefix))[0]);
     }
   }
 
@@ -201,6 +208,31 @@ abstract class CredPropsBaseTest {
   void returnedCredMapIsUnmodifiable(CredKind kind) throws Exception {
     Map<String, String> props = createCredPropsFor(kind, false, false);
     assertThatThrownBy(() -> props.put("k", "v")).isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @EnumSource(CredKind.class)
+  void multipleRenewableCredentialsEncodeOnlyPrefixList(CredKind kind) throws Exception {
+    String firstLocation = location() + "/first";
+    String secondLocation = location() + "/second";
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) ->
+            mockGenericCredentialFetcher(
+                vendedCred(null, firstLocation), vendedCred(null, secondLocation));
+
+    Configuration conf = new Configuration(false);
+    Map<String, String> actual = createCredPropsFor(kind, true, true, conf, Map.of());
+
+    Map<String, String> expected = new HashMap<>(defaultKeys());
+    expected.putAll(renewableProviderKeys());
+    expected.putAll(requestContext(kind, Map.of()));
+    expected.putAll(customImplKeys(conf));
+    expected.put(
+        UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+        String.join(
+            ",", CredentialUtil.encodeCredPrefixes(List.of(firstLocation, secondLocation))));
+
+    assertThat(actual).containsExactlyInAnyOrderEntriesOf(expected);
   }
 
   @ParameterizedTest(name = "{0}")
@@ -292,7 +324,9 @@ abstract class CredPropsBaseTest {
     } else {
       expected.putAll(staticCredKeys(expiration));
     }
-    expected.put(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location());
+    expected.put(
+        UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+        CredentialUtil.encodeCredPrefixes(List.of(location()))[0]);
     if (credScoped) {
       expected.putAll(customImplKeys(conf));
     }

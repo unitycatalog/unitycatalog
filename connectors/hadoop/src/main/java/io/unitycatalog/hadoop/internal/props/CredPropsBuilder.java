@@ -3,6 +3,7 @@ package io.unitycatalog.hadoop.internal.props;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CloudType;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
@@ -10,7 +11,9 @@ import io.unitycatalog.hadoop.internal.fs.CredScopedFs;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 
 /** Builds the cloud-provider specific Hadoop configuration credential properties. */
@@ -29,7 +32,7 @@ public abstract class CredPropsBuilder {
   private TokenProvider tokenProvider;
   private CredId credId;
   private Map<String, String> appVersions;
-  private GenericCredential initialCredential;
+  private List<GenericCredential> initialCredentials;
 
   protected CredPropsBuilder(Configuration hadoopConf) {
     Preconditions.checkNotNull(hadoopConf, "hadoopConf is required");
@@ -73,19 +76,19 @@ public abstract class CredPropsBuilder {
     return this;
   }
 
-  /** Records the fetched credential whose secrets are written by {@link #build()}. */
-  public CredPropsBuilder initialCredential(GenericCredential initialCredential) {
-    this.initialCredential = initialCredential;
+  /** Records the fetched credentials used by {@link #build()}. */
+  public CredPropsBuilder initialCredentials(List<GenericCredential> initialCredentials) {
+    this.initialCredentials = initialCredentials;
     return this;
   }
 
   public Map<String, String> build() {
-    Preconditions.checkNotNull(initialCredential, "initialCredential is required");
+    Preconditions.checkState(
+        initialCredentials != null && !initialCredentials.isEmpty(),
+        "Initial credentials cannot be null or empty");
+
     if (credScopedFsEnabled) {
       setCredScopedFsKeys();
-    }
-    if (initialCredential.prefix() != null) {
-      set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, initialCredential.prefix());
     }
     if (renewCredEnabled) {
       setVendedProviderKeys();
@@ -97,10 +100,45 @@ public abstract class CredPropsBuilder {
       credId.props().forEach(this::set);
       appVersions.forEach(
           (key, value) -> set(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + key, value));
-      setRenewableCredKeys(initialCredential);
-    } else {
-      setFixedCredKeys(initialCredential);
     }
+    List<String> credPrefixes =
+        initialCredentials.stream()
+            .map(GenericCredential::prefix)
+            .filter(prefix -> prefix != null && !prefix.isEmpty())
+            .collect(Collectors.toList());
+
+    if (initialCredentials.size() == 1) {
+      GenericCredential credential = initialCredentials.get(0);
+      if (renewCredEnabled) {
+        setInitRenewableCredKeys(credential);
+      } else {
+        setInitFixedCredKeys(credential);
+      }
+    } else {
+      // Do not set initial credentials when there are multiple credentials to minimize the
+      // number of keys that need to be encoded. Instead, token providers fetch credentials
+      // at file system initialization time.
+      Preconditions.checkState(
+          credScopedFsEnabled,
+          "%s credentials were vended but the credential-scoped filesystem is disabled.",
+          initialCredentials.size());
+      Preconditions.checkState(
+          renewCredEnabled,
+          "%s credentials were vended but credential renewal is disabled.",
+          initialCredentials.size());
+      // Since there are multiple credentials, each credential's prefix must be non-null
+      // and non-empty to differentiate between credentials.
+      Preconditions.checkArgument(
+          credPrefixes.size() == initialCredentials.size(),
+          "Credential prefixes cannot be null or empty when multiple credentials are vended");
+    }
+
+    if (!credPrefixes.isEmpty()) {
+      String commaSeparatedPrefixes =
+          String.join(",", CredentialUtil.encodeCredPrefixes(credPrefixes));
+      set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, commaSeparatedPrefixes);
+    }
+
     return Collections.unmodifiableMap(new HashMap<>(props));
   }
 
@@ -128,8 +166,8 @@ public abstract class CredPropsBuilder {
   protected abstract void setVendedProviderKeys();
 
   /** Writes the renewable-path credential secrets (the {@code init.*} keys) for this cloud. */
-  protected abstract void setRenewableCredKeys(GenericCredential cred);
+  protected abstract void setInitRenewableCredKeys(GenericCredential cred);
 
   /** Writes the fixed-path credential secrets for this cloud. */
-  protected abstract void setFixedCredKeys(GenericCredential cred);
+  protected abstract void setInitFixedCredKeys(GenericCredential cred);
 }
