@@ -3,6 +3,7 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
+| **additional-client-maintenance-operations** | **List** | Maintenance operations that clients may perform in addition to the operations allowed by default for catalog-managed tables in the Delta protocol. Missing or empty means no additional operations. Names are case-sensitive; clients treat this list as a set, ignore duplicates, and ignore names they do not recognize. This field does not grant table privileges or storage access.  | [optional] [default to null] |
 | **metadata** | [**DeltaTableMetadata**](DeltaTableMetadata.md) | Complete table metadata including schema and properties | [default to null] |
 | **commits** | [**List**](DeltaCommit.md) | All unbackfilled CCv2 commits, in descending version order (newest first). For managed Delta tables the list is complete and contiguous up to latest-table-version and is returned atomically with the metadata; the server bounds its size at write time (ResourceExhaustedException) rather than truncating the response.  | [optional] [default to null] |
 | **uniform** | [**DeltaUniformMetadata**](DeltaUniformMetadata.md) |  | [optional] [default to null] |

@@ -784,6 +784,16 @@ components:
     DeltaLoadTableResponse:
       type: object
       properties:
+        additional-client-maintenance-operations:
+          type: array
+          description: |
+            Maintenance operations that clients may perform in addition to the operations allowed
+            by default for catalog-managed tables in the Delta protocol. Missing or empty means no
+            additional operations. Names are case-sensitive; clients treat this list as a set,
+            ignore duplicates, and ignore names they do not recognize. This field does not grant
+            table privileges or storage access.
+          items:
+            type: string
         metadata:
           $ref: '#/components/schemas/DeltaTableMetadata'
           description: Complete table metadata including schema and properties

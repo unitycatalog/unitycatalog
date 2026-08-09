@@ -123,6 +123,8 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
               new DeltaSetDomainMetadataUpdate().updates(newDM),
               new DeltaSetTableCommentUpdate().comment("umbrella comment"));
 
+      assertThat(r1.getAdditionalClientMaintenanceOperations())
+          .containsExactly("OPTIMIZE", "VACUUM");
       Map<String, String> props1 = r1.getMetadata().getProperties();
       assertThat(props1)
           .containsEntry("keep", "v1")

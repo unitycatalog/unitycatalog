@@ -59,6 +59,8 @@ import org.slf4j.LoggerFactory;
 
 public class TableRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
+  private static final List<String> ADDITIONAL_CLIENT_MAINTENANCE_OPERATIONS =
+      List.of("OPTIMIZE", "VACUUM");
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
   private final ServerProperties serverProperties;
@@ -410,6 +412,7 @@ public class TableRepository {
     // Commits (managed Delta tables only)
     if (TableType.MANAGED.toString().equals(dao.getType())
         && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
+      response.setAdditionalClientMaintenanceOperations(ADDITIONAL_CLIENT_MAINTENANCE_OPERATIONS);
       populateCommitsForDelta(
           response, repositories.getDeltaCommitRepository(), session, dao.getId());
     }

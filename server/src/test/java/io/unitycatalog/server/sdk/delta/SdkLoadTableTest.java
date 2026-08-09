@@ -146,6 +146,7 @@ public class SdkLoadTableTest extends BaseServerTest {
       assertThat(fields.get(1).getNullable()).isTrue();
 
       // External table: no commits
+      assertThat(response.getAdditionalClientMaintenanceOperations()).isNullOrEmpty();
       assertThat(response.getCommits()).isNullOrEmpty();
       assertThat(response.getLatestTableVersion()).isNull();
     }
@@ -163,6 +164,8 @@ public class SdkLoadTableTest extends BaseServerTest {
 
       // Load before any commits: version 0, empty list
       DeltaLoadTableResponse r1 = loadTable(tableName);
+      assertThat(r1.getAdditionalClientMaintenanceOperations())
+          .containsExactly("OPTIMIZE", "VACUUM");
       assertThat(r1.getCommits()).isEmpty();
       assertThat(r1.getLatestTableVersion()).isEqualTo(0L);
 

@@ -82,6 +82,8 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
 
     assertThat(resp.getMetadata()).isNotNull();
     assertThat(resp.getMetadata().getTableType()).isEqualTo(DeltaTableType.MANAGED);
+    assertThat(resp.getAdditionalClientMaintenanceOperations())
+        .containsExactly("OPTIMIZE", "VACUUM");
     // Finalized table inherits the staging location and the UUID allocated at staging time.
     assertThat(resp.getMetadata().getLocation()).isEqualTo(staging.getLocation());
     assertThat(resp.getMetadata().getTableUuid()).isEqualTo(staging.getTableId());
@@ -117,6 +119,7 @@ public class SdkCreateTableTest extends BaseCRUDTestWithMockCredentials {
             externalTableRequest(externalName, externalLocation));
     assertThat(extResp.getMetadata().getTableType()).isEqualTo(DeltaTableType.EXTERNAL);
     assertThat(extResp.getMetadata().getLocation()).isEqualTo(externalLocation);
+    assertThat(extResp.getAdditionalClientMaintenanceOperations()).isNullOrEmpty();
 
     // -------- name missing --------
     assertDeltaInvalidParam(
