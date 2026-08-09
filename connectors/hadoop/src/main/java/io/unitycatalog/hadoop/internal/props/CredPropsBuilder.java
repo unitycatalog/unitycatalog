@@ -83,13 +83,12 @@ public abstract class CredPropsBuilder {
   }
 
   public Map<String, String> build() {
-    Preconditions.checkState(
-        initialCredentials != null && !initialCredentials.isEmpty(),
-        "Initial credentials cannot be null or empty");
-
+    // Set the props when credential scoped filesystem enabled.
     if (credScopedFsEnabled) {
       setCredScopedFsKeys();
     }
+
+    // Set the props when renewal credential enabled.
     if (renewCredEnabled) {
       setVendedProviderKeys();
       set(UCHadoopConfConstants.UC_URI_KEY, catalogUri);
@@ -101,42 +100,32 @@ public abstract class CredPropsBuilder {
       appVersions.forEach(
           (key, value) -> set(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + key, value));
     }
-    List<String> credPrefixes =
-        initialCredentials.stream()
-            .map(GenericCredential::prefix)
-            .filter(prefix -> prefix != null && !prefix.isEmpty())
-            .collect(Collectors.toList());
 
+    // Set the props for initial credentials.
+    Preconditions.checkState(
+        initialCredentials != null && !initialCredentials.isEmpty(),
+        "Initial credentials cannot be null or empty");
     if (initialCredentials.size() == 1) {
+      // Seed the initial credential only in the common single-credential case. In the uncommon
+      // multiple-credential case, skip this optimization to keep the code and configuration simple.
       GenericCredential credential = initialCredentials.get(0);
       if (renewCredEnabled) {
         setInitRenewableCredKeys(credential);
       } else {
         setInitFixedCredKeys(credential);
       }
-    } else {
-      // Do not set initial credentials when there are multiple credentials to minimize the
-      // number of keys that need to be encoded. Instead, token providers fetch credentials
-      // at file system initialization time.
-      Preconditions.checkState(
-          credScopedFsEnabled,
-          "%s credentials were vended but the credential-scoped filesystem is disabled.",
-          initialCredentials.size());
-      Preconditions.checkState(
-          renewCredEnabled,
-          "%s credentials were vended but credential renewal is disabled.",
-          initialCredentials.size());
-      // Since there are multiple credentials, each credential's prefix must be non-null
-      // and non-empty to differentiate between credentials.
-      Preconditions.checkArgument(
-          credPrefixes.size() == initialCredentials.size(),
-          "Credential prefixes cannot be null or empty when multiple credentials are vended");
     }
 
+    // Set the props for initial credential prefixes.
+    List<String> credPrefixes =
+        initialCredentials.stream()
+            .map(GenericCredential::prefix)
+            .filter(prefix -> prefix != null && !prefix.isEmpty())
+            .collect(Collectors.toList());
     if (!credPrefixes.isEmpty()) {
-      String commaSeparatedPrefixes =
-          String.join(",", CredentialUtil.encodeCredPrefixes(credPrefixes));
-      set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY, commaSeparatedPrefixes);
+      set(
+          UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+          String.join(",", CredentialUtil.encodeCredPrefixes(credPrefixes)));
     }
 
     return Collections.unmodifiableMap(new HashMap<>(props));

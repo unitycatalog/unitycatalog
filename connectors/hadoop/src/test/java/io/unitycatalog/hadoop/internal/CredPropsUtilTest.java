@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
-import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
@@ -49,27 +48,6 @@ class CredPropsUtilTest {
         .hasMessageContaining("Initial credentials cannot be null or empty");
   }
 
-  @Test
-  void invalidMultipleCredentialConfigurationsAreRejected() {
-    CredPropsUtil.genericCredFetcherFactory =
-        (apiClient, credId) ->
-            CredPropsBaseTest.mockGenericCredentialFetcher(
-                s3CredAt("1", "s3://bucket/a"), s3CredAt("2", ""), s3CredAt("3", null));
-
-    assertThatThrownBy(() -> createTableCredProps(true, false))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("3 credentials were vended but the credential-scoped filesystem");
-
-    assertThatThrownBy(() -> createTableCredProps(false, true))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("credential renewal is disabled");
-
-    assertThatThrownBy(() -> createTableCredProps(true, true))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining(
-            "Credential prefixes cannot be null or empty when multiple credentials are vended");
-  }
-
   private static Map<String, String> createTableCredProps(
       boolean renewCredEnabled, boolean credScopedFsEnabled) throws Exception {
     Configuration conf = new Configuration(false);
@@ -85,10 +63,6 @@ class CredPropsUtilTest {
         "tid",
         UCCredentialHadoopConfs.TableOperation.READ_WRITE,
         Map.of());
-  }
-
-  private static AwsCredential s3CredAt(String id, String location) {
-    return new AwsCredential("ak" + id, "sk" + id, "st" + id, null, location);
   }
 
   private static TokenProvider tokenProvider() {
