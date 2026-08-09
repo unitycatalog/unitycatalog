@@ -43,26 +43,22 @@ class CredPropsUtilTest {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> CredPropsBaseTest.mockGenericCredentialFetcher();
 
-    assertThatThrownBy(() -> createTableCredProps(true, true))
+    assertThatThrownBy(
+            () ->
+                CredPropsUtil.createDeltaTableCredProps(
+                    false,
+                    false,
+                    new Configuration(false),
+                    "s3",
+                    null,
+                    "http://uc",
+                    tokenProvider(),
+                    UCDeltaTableIdentifier.of("catalog", "schema", "table"),
+                    "s3://bucket/table/child",
+                    UCCredentialHadoopConfs.TableOperation.READ,
+                    Map.of()))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Initial credentials cannot be null or empty");
-  }
-
-  private static Map<String, String> createTableCredProps(
-      boolean renewCredEnabled, boolean credScopedFsEnabled) throws Exception {
-    Configuration conf = new Configuration(false);
-    conf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
-    return CredPropsUtil.createTableCredProps(
-        renewCredEnabled,
-        credScopedFsEnabled,
-        conf,
-        "s3",
-        null,
-        "http://uc",
-        tokenProvider(),
-        "tid",
-        UCCredentialHadoopConfs.TableOperation.READ_WRITE,
-        Map.of());
   }
 
   private static TokenProvider tokenProvider() {

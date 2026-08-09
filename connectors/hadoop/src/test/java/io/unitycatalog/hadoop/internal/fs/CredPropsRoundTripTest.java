@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
-import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
@@ -24,6 +23,9 @@ import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.MockedStatic;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
@@ -141,24 +143,31 @@ class CredPropsRoundTripTest {
     }
   }
 
-  @Test
-  void singleVendedCredentialRoundTripsWithoutRequiringUriCoverage() throws Exception {
-    mockFetcher(awsCred("a", LOCATION_A));
+  @ParameterizedTest
+  @NullAndEmptySource
+  @ValueSource(strings = LOCATION)
+  void singleVendedCredentialRoundTripsWithoutRequiringUriCoverage(String credentialPrefix)
+      throws Exception {
+    AwsCredential credential =
+        new AwsCredential("access-key", "secret-key", "session-token", null, credentialPrefix);
+    CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> () -> List.of(credential);
 
-    Configuration conf = createTableCredProps();
-    assertThat(
-            CredentialUtil.decodeCredPrefixes(
-                conf.getStrings(UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY)))
-        .containsExactly(LOCATION_A);
-    assertThat(conf.get(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY)).isEqualTo("ak-a");
+    Map<String, String> props = createCredProps();
 
-    Configuration uncoveredDelegate =
-        getDelegateFileSystemConf(new URI("s3://bucket/uncovered/part-0.parquet"), conf);
-    assertInitialCredential(uncoveredDelegate, "a", LOCATION_A);
+    Configuration confWithCreds = new Configuration(false);
+    props.forEach(confWithCreds::set);
+
+    CredScopedFileSystem fs = new CredScopedFileSystem();
+    fs.initialize(new URI("s3://totally-different-bucket/uncovered/part-0.parquet"), confWithCreds);
+    Configuration delegateConf = fs.getDelegate().getConf();
+
+    assertResolvedCreds(
+        delegateConf,
+        credentialPrefix == null || credentialPrefix.isEmpty() ? null : credentialPrefix);
   }
 
   @Test
-  void decodeRejectsUriCoveredByNoVendedCredentials() throws Exception {
+  void multiCredentialRequiresCoveringPrefix() throws Exception {
     mockFetcher(awsCred("a", LOCATION_A), awsCred("b", LOCATION_B));
     Configuration conf = createTableCredProps();
 
@@ -166,6 +175,34 @@ class CredPropsRoundTripTest {
             () -> getDelegateFileSystemConf(new URI("s3://bucket/uncovered/part-0.parquet"), conf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("No credential covers storage location");
+  }
+
+  private static Map<String, String> createCredProps() throws Exception {
+    Configuration initialConf = new Configuration(false);
+    initialConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
+    initialConf.set("fs.s3.impl", RawLocalFileSystem.class.getName());
+    return CredPropsUtil.createTableCredProps(
+        /* renewCredEnabled= */ true,
+        /* credScopedFsEnabled= */ true,
+        initialConf,
+        "s3",
+        /* apiClient= */ null,
+        "http://uc",
+        TokenProvider.create(Map.of("type", "static", "token", "token")),
+        "table-id",
+        UCCredentialHadoopConfs.TableOperation.READ,
+        Map.of());
+  }
+
+  private static void assertResolvedCreds(Configuration conf, String credentialPrefix)
+      throws Exception {
+    AwsVendedTokenProvider provider = new AwsVendedTokenProvider(conf);
+    AwsSessionCredentials resolved = (AwsSessionCredentials) provider.resolveCredentials();
+
+    assertThat(provider.accessCredentials().prefix()).isEqualTo(credentialPrefix);
+    assertThat(resolved.accessKeyId()).isEqualTo("access-key");
+    assertThat(resolved.secretAccessKey()).isEqualTo("secret-key");
+    assertThat(resolved.sessionToken()).isEqualTo("session-token");
   }
 
   /** Runs the real driver encoder for a renewable table request against the current fetcher. */
@@ -216,19 +253,6 @@ class CredPropsRoundTripTest {
 
   private static AwsCredential awsCred(String id, String location) {
     return new AwsCredential("ak-" + id, "sk-" + id, "st-" + id, null, location);
-  }
-
-  private static void assertInitialCredential(
-      Configuration conf, String id, String credentialPrefix) {
-    assertThat(conf.get(UCHadoopConfConstants.S3A_INIT_ACCESS_KEY)).isEqualTo("ak-" + id);
-    assertThat(conf.get(UCHadoopConfConstants.S3A_INIT_SECRET_KEY)).isEqualTo("sk-" + id);
-    assertThat(conf.get(UCHadoopConfConstants.S3A_INIT_SESSION_TOKEN)).isEqualTo("st-" + id);
-    assertThat(conf.get(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER))
-        .isEqualTo(AwsVendedTokenProvider.class.getName());
-    assertThat(conf.get(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY))
-        .isEqualTo(credentialPrefix);
-    assertThat(conf.get("fs.s3.impl")).isEqualTo(RawLocalFileSystem.class.getName());
-    assertThat(conf.getBoolean("fs.s3.impl.disable.cache", false)).isTrue();
   }
 
   private static TokenProvider tokenProvider() {

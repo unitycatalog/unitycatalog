@@ -450,7 +450,9 @@ abstract class CredPropsBaseTest {
     String validPrefix = location() + "/valid";
     return List.of(
         List.of(validPrefix, ""),
+        List.of("", validPrefix),
         Arrays.asList(validPrefix, null),
+        Arrays.asList(null, validPrefix),
         List.of("", ""),
         Arrays.asList(null, null));
   }
