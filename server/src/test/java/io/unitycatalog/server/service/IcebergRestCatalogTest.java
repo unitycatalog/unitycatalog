@@ -25,9 +25,12 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -46,11 +49,14 @@ import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class IcebergRestCatalogTest extends BaseServerTest {
 
   private static final String TEST_BASE_PREFIX = "/v1/catalogs/" + TestUtils.CATALOG_NAME;
   private static final String TEST_BASE_NON_PREFIX = "/v1";
+
+  @TempDir private Path icebergTableLocation;
 
   protected CatalogOperations catalogOperations;
   protected SchemaOperations schemaOperations;
@@ -175,6 +181,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   @Test
   public void testTable() throws ApiException, IOException, URISyntaxException {
+    Path metadataFile = writeIcebergMetadata();
     CreateCatalog createCatalog =
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
     catalogOperations.createCatalog(createCatalog);
@@ -210,7 +217,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             .schemaName(TestUtils.SCHEMA_NAME)
             .columns(List.of(columnInfo1, columnInfo2))
             .comment(TestUtils.COMMENT)
-            .storageLocation("/tmp/stagingLocation")
+            .storageLocation(icebergTableLocation.toString())
             .tableType(TableType.EXTERNAL)
             .dataSourceFormat(DataSourceFormat.DELTA);
     TableInfo tableInfo = tableOperations.createTable(createTableRequest);
@@ -251,11 +258,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       TableInfoDAO tableInfoDAO = TableInfoDAO.builder().build();
       assertThat(tableInfo.getTableId()).isNotNull();
       session.load(tableInfoDAO, UUID.fromString(tableInfo.getTableId()));
-      String metadataLocation =
-          Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
-              .toURI()
-              .toString();
-      tableInfoDAO.setUniformIcebergMetadataLocation(metadataLocation);
+      tableInfoDAO.setUniformIcebergMetadataLocation(metadataFile.toUri().toString());
       session.merge(tableInfoDAO);
       tx.commit();
     }
@@ -290,9 +293,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       LoadTableResponse loadTableResponse =
           IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
-          .isEqualTo(
-              Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
-                  .getPath());
+          .isEqualTo(metadataFile.toString());
 
       // non-prefixed URL should result in 404
       resp =
@@ -329,5 +330,39 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .join();
       assertThat(resp.status().code()).isEqualTo(404);
     }
+
+    // Credentials must never be scoped by a conflicting location in the metadata payload.
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Transaction tx = session.beginTransaction();
+      TableInfoDAO tableInfoDAO =
+          session.get(TableInfoDAO.class, UUID.fromString(tableInfo.getTableId()));
+      assertThat(tableInfoDAO).isNotNull();
+      tableInfoDAO.setUrl(icebergTableLocation.resolve("other_table").toString());
+      tx.commit();
+    }
+    AggregatedHttpResponse resp =
+        client
+            .get(
+                TEST_BASE_PREFIX
+                    + "/namespaces/"
+                    + TestUtils.SCHEMA_NAME
+                    + "/tables/"
+                    + TestUtils.TABLE_NAME)
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(400);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).message())
+        .contains("must match the registered table location");
+  }
+
+  private Path writeIcebergMetadata() throws IOException, URISyntaxException {
+    Path source =
+        Path.of(
+            Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).toURI());
+    Path metadataFile = icebergTableLocation.resolve("iceberg.metadata.json");
+    String tableLocation = NormalizedURL.from(icebergTableLocation.toUri()).toString();
+    String metadata =
+        Files.readString(source).replace("file:/tmp/uniform_iceberg_table", tableLocation);
+    return Files.writeString(metadataFile, metadata);
   }
 }
