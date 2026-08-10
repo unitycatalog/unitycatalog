@@ -64,6 +64,7 @@ public class MultiCredentialScopedFsTest extends BaseSparkIntegrationTest {
       CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
       CredentialTestFileSystem.credentialCheckEnabled = true;
       PerPathCredentialTestFileSystem.clearExpectedCredentials();
+      PerPathCredentialTestFileSystem.clearVendedCredentials();
     }
   }
 
@@ -106,12 +107,14 @@ public class MultiCredentialScopedFsTest extends BaseSparkIntegrationTest {
   }
 
   private static void vend(GenericCredential... credentials) {
+    List<GenericCredential> vendedCredentials = List.of(credentials);
     GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
     try {
-      when(fetcher.createCredentials()).thenReturn(List.of(credentials));
+      when(fetcher.createCredentials()).thenReturn(vendedCredentials);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
     CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> fetcher;
+    PerPathCredentialTestFileSystem.setVendedCredentials(vendedCredentials);
   }
 }
