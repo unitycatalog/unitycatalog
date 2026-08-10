@@ -64,10 +64,7 @@ public class UnityCatalogServer implements AutoCloseable {
   /** True when this server built the configurator itself and must therefore close it. */
   private final boolean ownsHibernateConfigurator;
 
-  /**
-   * Retained so {@link #close()} can stop the authorizer's background policy refresh. Assigned
-   * during {@link #initializeServer}, so it may still be null if construction fails early.
-   */
+  /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
 
   static {
@@ -93,8 +90,7 @@ public class UnityCatalogServer implements AutoCloseable {
     } catch (Throwable t) {
       // Construction failed after the SessionFactory was built; close it so a failed boot does
       // not leak its connection pool. Errors matter as much as RuntimeExceptions here: a
-      // NoClassDefFoundError out of initializeServer() would leak the pool just the same. The
-      // authorizer goes first because its policy refresh polls through the SessionFactory.
+      // NoClassDefFoundError out of initializeServer() would leak the pool just the same.
       closeAuthorizer(t);
       closeOwnedSessionFactory(t);
       throw t;
@@ -116,10 +112,7 @@ public class UnityCatalogServer implements AutoCloseable {
     }
   }
 
-  /**
-   * Stops the authorizer's background work if it has any. A failure to close is attached to {@code
-   * primaryFailure} so it cannot mask the original error; pass null when there is none.
-   */
+  /** Stops the authorizer if closeable; failures are suppressed onto {@code primaryFailure}. */
   private void closeAuthorizer(Throwable primaryFailure) {
     if (!(authorizer instanceof AutoCloseable closeable)) {
       return;
@@ -177,10 +170,15 @@ public class UnityCatalogServer implements AutoCloseable {
     if (serverProperties.isAuthorizationEnabled()) {
       try {
         LOGGER.info("Initializing JCasbinAuthorizer...");
-        UnityCatalogAuthorizer authorizer =
+        JCasbinAuthorizer authorizer =
             new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
-        new UnityAccessUtil(repositories).initializeAdmin(authorizer);
-        return authorizer;
+        try {
+          new UnityAccessUtil(repositories).initializeAdmin(authorizer);
+          return authorizer;
+        } catch (Exception e) {
+          authorizer.close();
+          throw e;
+        }
       } catch (Exception e) {
         throw new BaseException(ErrorCode.INTERNAL, "Problem initializing authorizer.", e);
       }
@@ -321,10 +319,9 @@ public class UnityCatalogServer implements AutoCloseable {
   }
 
   /**
-   * Stops the server, stops the authorizer's background policy refresh, and closes the Hibernate
-   * SessionFactory it created, releasing its pooled database connections, which the Armeria
-   * shutdown does not touch and which would otherwise stay open until the JVM exits. A
-   * configurator supplied via {@link Builder#hibernateConfigurator} is
+   * Stops the server and closes the Hibernate SessionFactory it created, releasing its pooled
+   * database connections, which the Armeria shutdown does not touch and which would otherwise stay
+   * open until the JVM exits. A configurator supplied via {@link Builder#hibernateConfigurator} is
    * left open — the caller owns its lifecycle. Unlike {@link #stop()}, a server that owns its
    * SessionFactory must not be restarted after this call: the factory is closed, so all persistence
    * operations would fail. Safe to call more than once and safe to call before {@link #start()}.
@@ -334,8 +331,6 @@ public class UnityCatalogServer implements AutoCloseable {
     try {
       stop();
     } finally {
-      // Before the SessionFactory: the authorizer's policy refresh polls through it, so closing
-      // the factory first would leave the refresher querying a closed factory.
       closeAuthorizer(null);
       if (ownsHibernateConfigurator) {
         hibernateConfigurator.getSessionFactory().close();

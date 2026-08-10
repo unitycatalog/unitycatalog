@@ -471,27 +471,15 @@ public class ServerProperties {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
   }
 
-  /**
-   * Whether this instance picks up authorization changes made through other instances. Must stay
-   * enabled whenever more than one instance runs against one database, or a grant or revocation
-   * made through one instance will never reach the others.
-   *
-   * <p>Gates both the periodic poll and the refresh performed when a request is about to be denied,
-   * so that disabling it is a complete kill switch rather than only stopping the poll.
-   */
+  /** Whether cross-instance policy refresh is enabled (poll and deny-path reload). */
   public boolean isPolicyRefreshEnabled() {
     return isTrueOrEnable(get(Property.POLICY_REFRESH_ENABLED));
   }
 
-  /** How long to wait between checks for authorization changes. Defaults to 1 second. */
   public Duration getPolicyRefreshInterval() {
     return Duration.parse(get(Property.POLICY_REFRESH_INTERVAL));
   }
 
-  /**
-   * Shortest interval between two refreshes triggered by a denied request. Bounds the work an
-   * unauthorized caller can force by repeatedly hitting a denied endpoint. Defaults to 1 second.
-   */
   public Duration getPolicyRefreshDebounce() {
     return Duration.parse(get(Property.POLICY_REFRESH_DEBOUNCE));
   }

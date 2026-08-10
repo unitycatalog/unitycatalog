@@ -31,10 +31,8 @@ import org.slf4j.LoggerFactory;
  * requests; jCasbin's plain {@link Enforcer} is not thread-safe for concurrent {@code enforce()}
  * and policy mutations.
  *
- * <p>The policy set lives in memory and is loaded once by the enforcer's constructor, so an
- * instance would otherwise never see a grant or revocation made through another instance. A {@link
- * CasbinPolicyRefresher} polls the shared table and reloads on change, which is what makes running
- * more than one server instance against one database safe.
+ * <p>{@link CasbinPolicyRefresher} polls the shared {@code casbin_rule} table so grants and
+ * revocations made through other instances are picked up.
  */
 public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
 
@@ -44,17 +42,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   private final CasbinPolicyRefresher refresher;
   private final long refreshDebounceNanos;
 
-  /**
-   * Gates every part of cross-instance policy refresh — both the background poll and the
-   * deny-triggered reload — so that disabling it restores exactly the behaviour from before refresh
-   * existed. A flag that only turned off the poll would not be a usable kill switch.
-   */
   private final boolean refreshEnabled;
 
-  /**
-   * When the last deny-triggered refresh was claimed. Seeded so the very first deny is allowed to
-   * refresh rather than being treated as inside a window that never happened.
-   */
   private final AtomicLong lastRefreshNanos = new AtomicLong(Long.MIN_VALUE / 2);
 
   private static final int PRINCIPAL_INDEX = 0;
@@ -203,16 +192,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
                     l -> Privileges.fromValue(l.get(PRIVILEGE_INDEX)), Collectors.toList())));
   }
 
-  /**
-   * Reloads the policy set so a request denied against a stale view can be re-evaluated, at most
-   * once per configured debounce interval.
-   *
-   * <p>The timestamp is claimed <em>before</em> reloading, and losing the compare-and-set means
-   * returning false rather than waiting. Both matter: this runs on a path reachable by
-   * unauthenticated callers, so without them a client repeatedly hitting a denied endpoint could
-   * force continuous full-table reloads, each taking the enforcer's write lock and stalling every
-   * concurrent authorization check.
-   */
+  /** Rate-limited reload before returning 403, for cross-instance create-then-read. */
   @Override
   public boolean refreshAuthorizations() {
     if (!refreshEnabled) {
@@ -230,13 +210,11 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     return true;
   }
 
-  /** Stops the background policy refresh. The enforcer and its adapter need no explicit cleanup. */
   @Override
   public void close() {
     refresher.close();
   }
 
-  /** Visible for testing. */
   CasbinPolicyRefresher getRefresher() {
     return refresher;
   }

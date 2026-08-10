@@ -22,8 +22,7 @@ public class JCasbinAuthorizerTest {
   void setUp() throws Exception {
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
-    // These tests only ever use one authorizer, so there is nothing to pick up from another
-    // instance; polling would just add a background thread per test.
+    // Single-instance tests do not need background polling.
     properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "disable");
     ServerProperties serverProperties = new ServerProperties(properties);
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);

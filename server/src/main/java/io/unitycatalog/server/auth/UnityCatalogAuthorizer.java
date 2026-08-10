@@ -43,18 +43,10 @@ public interface UnityCatalogAuthorizer {
   Map<UUID, List<Privileges>> listAuthorizations(UUID resource);
 
   /**
-   * Forces this instance to pick up authorization changes made through another instance, if it has
-   * not already done so recently.
+   * Reload cached authorization state from the shared store, if supported. Called on the deny path
+   * before returning 403. Implementations should rate-limit; default is a no-op.
    *
-   * <p>Called on the deny path so that a request denied against a stale view can be re-evaluated
-   * before returning {@code 403}: without session affinity, the request that grants a privilege and
-   * the request that next relies on it may land on different instances. Implementations are
-   * expected to rate-limit, since the deny path is reachable by unauthenticated callers.
-   *
-   * <p>The default does nothing, which is correct for any implementation that does not cache
-   * authorization state.
-   *
-   * @return true if a refresh actually happened, meaning a re-evaluation may now succeed
+   * @return true if a refresh ran and re-evaluation may succeed
    */
   default boolean refreshAuthorizations() {
     return false;
