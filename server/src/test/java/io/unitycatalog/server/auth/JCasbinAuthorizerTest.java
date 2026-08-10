@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,9 +22,23 @@ public class JCasbinAuthorizerTest {
   void setUp() throws Exception {
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
+    // These tests only ever use one authorizer, so there is nothing to pick up from another
+    // instance; polling would just add a background thread per test.
+    properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "disable");
     ServerProperties serverProperties = new ServerProperties(properties);
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
-    authenticator = new JCasbinAuthorizer(hibernateConfigurator);
+    authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
+  }
+
+  @AfterEach
+  void tearDown() {
+    if (authenticator instanceof AutoCloseable closeable) {
+      try {
+        closeable.close();
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    }
   }
 
   @Test

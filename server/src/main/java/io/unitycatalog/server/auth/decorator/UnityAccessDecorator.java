@@ -89,6 +89,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private final UnityAccessEvaluator evaluator;
 
+  /**
+   * Retained so a denied request can ask the authorizer to pick up changes made through another
+   * server instance before the denial is final. See {@link RequestEvaluationAction#beforeRequest}.
+   */
+  private final UnityCatalogAuthorizer authorizer;
+
   // Context attribute key for passing ResultFilter to service methods
   public static final AttributeKey<ResultFilter> RESULT_FILTER_ATTR =
       AttributeKey.valueOf(ResultFilter.class, "RESULT_FILTER");
@@ -100,6 +106,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
     }
+    this.authorizer = authorizer;
     keyMapper = repositories.getKeyMapper();
     userRepository = repositories.getUserRepository();
   }
@@ -245,6 +252,17 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private class RequestEvaluationAction implements EvaluationAction {
 
+    /**
+     * Evaluates the authorization expression, and on failure gives the authorizer one chance to
+     * pick up changes made through another server instance before denying.
+     *
+     * <p>Without this retry, a client that creates a resource through one instance and immediately
+     * reads it through another gets a spurious {@code 403} until the reading instance next
+     * refreshes its policy set. The refresh is rate-limited by the authorizer, so a genuinely
+     * unauthorized caller cannot turn repeated denials into repeated reloads. Only the
+     * request-level gate does this; response filtering deliberately does not, since there a false
+     * result is an ordinary "omit this row" decision rather than a denial.
+     */
     @Override
     public void beforeRequest(
         UUID principal,
@@ -252,7 +270,11 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         Map<SecurableType, UUID> resourceIds,
         Map<String, Object> nonResourceValues) {
       if (!evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
-        throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+        if (!authorizer.refreshAuthorizations()
+            || !evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
+          throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+        }
+        LOGGER.debug("Access allowed after refreshing authorizations for principal {}", principal);
       }
     }
 
