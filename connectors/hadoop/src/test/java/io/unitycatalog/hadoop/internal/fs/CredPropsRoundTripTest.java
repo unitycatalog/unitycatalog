@@ -177,6 +177,11 @@ class CredPropsRoundTripTest {
     assertResolvedCreds(
         delegateConf,
         credentialPrefix == null || credentialPrefix.isEmpty() ? null : credentialPrefix);
+
+    // A single vended credential renews without selection, regardless of prefix coverage.
+    AwsCredential renewed =
+        new AwsCredential("renewed-ak", "renewed-sk", "renewed-st", null, credentialPrefix);
+    assertProviderRenews(delegateConf, renewed, renewed);
   }
 
   @Test
