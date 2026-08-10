@@ -169,8 +169,10 @@ class CredPropsRoundTripTest {
     fs.initialize(new URI("s3://totally-different-bucket/uncovered/part-0.parquet"), confWithCreds);
     Configuration delegateConf = fs.getDelegate().getConf();
 
+    AwsVendedTokenProvider provider = new AwsVendedTokenProvider(delegateConf);
     assertResolvedCreds(
-        delegateConf,
+        provider,
+        credential,
         credentialPrefix == null || credentialPrefix.isEmpty() ? null : credentialPrefix);
 
     // A single vended credential renews without selection, regardless of prefix coverage.
@@ -217,23 +219,21 @@ class CredPropsRoundTripTest {
 
         // Advance past the seeded credential's expiry so the next access renews from the fetcher.
         clock.sleep(Duration.ofMillis(1_000L));
-        assertThat(accessKeyId(provider)).isEqualTo(expected.accessKeyId());
-        assertThat(provider.accessCredentials().prefix()).isEqualTo(expected.prefix());
+        assertResolvedCreds(provider, expected, expected.prefix());
       }
     } finally {
       Clock.removeManualClock(clockName);
     }
   }
 
-  private static void assertResolvedCreds(Configuration conf, String credentialPrefix)
-      throws Exception {
-    AwsVendedTokenProvider provider = new AwsVendedTokenProvider(conf);
+  private static void assertResolvedCreds(
+      AwsVendedTokenProvider provider, AwsCredential expected, String expectedPrefix) {
     AwsSessionCredentials resolved = (AwsSessionCredentials) provider.resolveCredentials();
 
-    assertThat(provider.accessCredentials().prefix()).isEqualTo(credentialPrefix);
-    assertThat(resolved.accessKeyId()).isEqualTo("access-key");
-    assertThat(resolved.secretAccessKey()).isEqualTo("secret-key");
-    assertThat(resolved.sessionToken()).isEqualTo("session-token");
+    assertThat(provider.accessCredentials().prefix()).isEqualTo(expectedPrefix);
+    assertThat(resolved.accessKeyId()).isEqualTo(expected.accessKeyId());
+    assertThat(resolved.secretAccessKey()).isEqualTo(expected.secretAccessKey());
+    assertThat(resolved.sessionToken()).isEqualTo(expected.sessionToken());
   }
 
   /** Runs the real encoder for a renewable table request against the current fetcher. */
@@ -284,10 +284,6 @@ class CredPropsRoundTripTest {
 
   private static AwsCredential awsCred(String id, String location) {
     return new AwsCredential("ak-" + id, "sk-" + id, "st-" + id, null, location);
-  }
-
-  private static String accessKeyId(AwsVendedTokenProvider provider) {
-    return ((AwsSessionCredentials) provider.resolveCredentials()).accessKeyId();
   }
 
   private static TokenProvider tokenProvider() {
