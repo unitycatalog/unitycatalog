@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.internal.Clock;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
@@ -16,8 +17,10 @@ import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.junit.jupiter.api.AfterEach;
@@ -81,6 +84,9 @@ class CredPropsRoundTripTest {
     assertThat(resolved.accessKeyId()).isEqualTo("access-key");
     assertThat(resolved.secretAccessKey()).isEqualTo("secret-key");
     assertThat(resolved.sessionToken()).isEqualTo("session-token");
+
+    // The seeded single credential renews once it enters the renewal lead window.
+    assertProviderRenews(delegateConf, LOCATION);
   }
 
   @Test
@@ -141,6 +147,9 @@ class CredPropsRoundTripTest {
       assertThat(resolved.secretAccessKey()).isEqualTo("child-sk");
       assertThat(resolved.sessionToken()).isEqualTo("child-st");
     }
+
+    // The selected child credential re-fetches and re-selects when it enters the renewal window.
+    assertProviderRenews(delegateConf, LOCATION);
   }
 
   @ParameterizedTest
@@ -175,6 +184,52 @@ class CredPropsRoundTripTest {
             () -> getDelegateFileSystemConf(new URI("s3://bucket/uncovered/part-0.parquet"), conf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("No credential covers storage location");
+  }
+
+  /**
+   * Drives a full credential renewal through {@code delegateConf} and asserts the provider
+   * re-fetches and re-selects the credential covering {@code prefix}. Works for both credential
+   * paths: it forces any seeded initial credential to expire and vends a fresh list, so the seeded
+   * single-credential path and the fetch-and-select multi-credential path both converge on the
+   * re-fetched credential.
+   */
+  private static void assertProviderRenews(Configuration delegateConf, String prefix)
+      throws Exception {
+    String clockName = UUID.randomUUID().toString();
+    Clock clock = Clock.getManualClock(clockName);
+    try {
+      Configuration conf = new Configuration(delegateConf);
+      // Disable the JVM-wide read-time cache so renewal fetches directly and no static cache
+      // state leaks across tests.
+      conf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
+      conf.set(UCHadoopConfConstants.UC_TEST_CLOCK_NAME, clockName);
+      conf.setLong(UCHadoopConfConstants.UC_RENEWAL_LEAD_TIME_KEY, 1_000L);
+      // Expire any seeded initial credential so the first access must renew from the fetcher.
+      conf.setLong(
+          UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, clock.now().toEpochMilli() + 500L);
+
+      // Vend a fresh list on renewal: a non-covering sibling plus the covering credential, so the
+      // provider must both re-fetch and re-select the one covering the prefix.
+      AwsCredential sibling =
+          awsCredExpiring("sibling", "s3://uncovered-sibling", clock.now().toEpochMilli() + 20_000);
+      AwsCredential renewed =
+          awsCredExpiring("renewed", prefix, clock.now().toEpochMilli() + 20_000L);
+      GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
+      when(fetcher.createCredentials()).thenReturn(List.of(sibling, renewed));
+
+      try (MockedStatic<GenericCredentialFetcher> mockedFetcher =
+          mockStatic(GenericCredentialFetcher.class)) {
+        mockedFetcher.when(() -> GenericCredentialFetcher.create(conf)).thenReturn(fetcher);
+        AwsVendedTokenProvider provider = new AwsVendedTokenProvider(conf);
+
+        // Advance past the seeded credential's expiry so the next access renews from the fetcher.
+        clock.sleep(Duration.ofMillis(1_000L));
+        assertThat(accessKeyId(provider)).isEqualTo("ak-renewed");
+        assertThat(provider.accessCredentials().prefix()).isEqualTo(prefix);
+      }
+    } finally {
+      Clock.removeManualClock(clockName);
+    }
   }
 
   private static Map<String, String> createCredProps() throws Exception {
@@ -253,6 +308,14 @@ class CredPropsRoundTripTest {
 
   private static AwsCredential awsCred(String id, String location) {
     return new AwsCredential("ak-" + id, "sk-" + id, "st-" + id, null, location);
+  }
+
+  private static AwsCredential awsCredExpiring(String id, String location, long expiryMillis) {
+    return new AwsCredential("ak-" + id, "sk-" + id, "st-" + id, expiryMillis, location);
+  }
+
+  private static String accessKeyId(AwsVendedTokenProvider provider) {
+    return ((AwsSessionCredentials) provider.resolveCredentials()).accessKeyId();
   }
 
   private static TokenProvider tokenProvider() {
