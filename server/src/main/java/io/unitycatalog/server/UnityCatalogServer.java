@@ -119,7 +119,11 @@ public class UnityCatalogServer implements AutoCloseable {
 
   private Server initializeServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     ArmeriaServerBuilder armeriaServerBuilder =
-        new ArmeriaServerBuilder(unityCatalogServerBuilder.port, BASE_PATH, CONTROL_PATH);
+        new ArmeriaServerBuilder(
+            unityCatalogServerBuilder.port,
+            BASE_PATH,
+            CONTROL_PATH,
+            unityCatalogServerBuilder.serverProperties);
 
     // Init all repositories
     Repositories repositories =
