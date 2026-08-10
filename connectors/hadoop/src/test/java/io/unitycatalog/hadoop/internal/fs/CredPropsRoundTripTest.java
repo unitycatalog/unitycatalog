@@ -86,7 +86,9 @@ class CredPropsRoundTripTest {
     assertThat(resolved.sessionToken()).isEqualTo("session-token");
 
     // The seeded single credential renews once it enters the renewal lead window.
-    assertProviderRenews(delegateConf, LOCATION);
+    AwsCredential renewed =
+        new AwsCredential("renewed-ak", "renewed-sk", "renewed-st", null, LOCATION);
+    assertProviderRenews(delegateConf, renewed, renewed);
   }
 
   @Test
@@ -149,7 +151,12 @@ class CredPropsRoundTripTest {
     }
 
     // The selected child credential re-fetches and re-selects when it enters the renewal window.
-    assertProviderRenews(delegateConf, LOCATION);
+    // Vend a non-covering sibling plus the covering child so the provider re-selects on renewal.
+    AwsCredential sibling =
+        new AwsCredential("sibling-ak", "sibling-sk", "sibling-st", null, "s3://uncovered-sibling");
+    AwsCredential renewedChild =
+        new AwsCredential("child2-ak", "child2-sk", "child2-st", null, LOCATION);
+    assertProviderRenews(delegateConf, renewedChild, sibling, renewedChild);
   }
 
   @ParameterizedTest
@@ -161,10 +168,7 @@ class CredPropsRoundTripTest {
         new AwsCredential("access-key", "secret-key", "session-token", null, credentialPrefix);
     CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> () -> List.of(credential);
 
-    Map<String, String> props = createCredProps();
-
-    Configuration confWithCreds = new Configuration(false);
-    props.forEach(confWithCreds::set);
+    Configuration confWithCreds = createTableCredProps();
 
     CredScopedFileSystem fs = new CredScopedFileSystem();
     fs.initialize(new URI("s3://totally-different-bucket/uncovered/part-0.parquet"), confWithCreds);
@@ -186,14 +190,9 @@ class CredPropsRoundTripTest {
         .hasMessageContaining("No credential covers storage location");
   }
 
-  /**
-   * Drives a full credential renewal through {@code delegateConf} and asserts the provider
-   * re-fetches and re-selects the credential covering {@code prefix}. Works for both credential
-   * paths: it forces any seeded initial credential to expire and vends a fresh list, so the seeded
-   * single-credential path and the fetch-and-select multi-credential path both converge on the
-   * re-fetched credential.
-   */
-  private static void assertProviderRenews(Configuration delegateConf, String prefix)
+  /** Performs a renewal to ensure the provider supplies the correct credential. */
+  private static void assertProviderRenews(
+      Configuration delegateConf, AwsCredential expected, GenericCredential... vended)
       throws Exception {
     String clockName = UUID.randomUUID().toString();
     Clock clock = Clock.getManualClock(clockName);
@@ -208,14 +207,8 @@ class CredPropsRoundTripTest {
       conf.setLong(
           UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, clock.now().toEpochMilli() + 500L);
 
-      // Vend a fresh list on renewal: a non-covering sibling plus the covering credential, so the
-      // provider must both re-fetch and re-select the one covering the prefix.
-      AwsCredential sibling =
-          awsCredExpiring("sibling", "s3://uncovered-sibling", clock.now().toEpochMilli() + 20_000);
-      AwsCredential renewed =
-          awsCredExpiring("renewed", prefix, clock.now().toEpochMilli() + 20_000L);
       GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
-      when(fetcher.createCredentials()).thenReturn(List.of(sibling, renewed));
+      when(fetcher.createCredentials()).thenReturn(List.of(vended));
 
       try (MockedStatic<GenericCredentialFetcher> mockedFetcher =
           mockStatic(GenericCredentialFetcher.class)) {
@@ -224,29 +217,12 @@ class CredPropsRoundTripTest {
 
         // Advance past the seeded credential's expiry so the next access renews from the fetcher.
         clock.sleep(Duration.ofMillis(1_000L));
-        assertThat(accessKeyId(provider)).isEqualTo("ak-renewed");
-        assertThat(provider.accessCredentials().prefix()).isEqualTo(prefix);
+        assertThat(accessKeyId(provider)).isEqualTo(expected.accessKeyId());
+        assertThat(provider.accessCredentials().prefix()).isEqualTo(expected.prefix());
       }
     } finally {
       Clock.removeManualClock(clockName);
     }
-  }
-
-  private static Map<String, String> createCredProps() throws Exception {
-    Configuration initialConf = new Configuration(false);
-    initialConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
-    initialConf.set("fs.s3.impl", RawLocalFileSystem.class.getName());
-    return CredPropsUtil.createTableCredProps(
-        /* renewCredEnabled= */ true,
-        /* credScopedFsEnabled= */ true,
-        initialConf,
-        "s3",
-        /* apiClient= */ null,
-        "http://uc",
-        TokenProvider.create(Map.of("type", "static", "token", "token")),
-        "table-id",
-        UCCredentialHadoopConfs.TableOperation.READ,
-        Map.of());
   }
 
   private static void assertResolvedCreds(Configuration conf, String credentialPrefix)
@@ -308,10 +284,6 @@ class CredPropsRoundTripTest {
 
   private static AwsCredential awsCred(String id, String location) {
     return new AwsCredential("ak-" + id, "sk-" + id, "st-" + id, null, location);
-  }
-
-  private static AwsCredential awsCredExpiring(String id, String location, long expiryMillis) {
-    return new AwsCredential("ak-" + id, "sk-" + id, "st-" + id, expiryMillis, location);
   }
 
   private static String accessKeyId(AwsVendedTokenProvider provider) {
