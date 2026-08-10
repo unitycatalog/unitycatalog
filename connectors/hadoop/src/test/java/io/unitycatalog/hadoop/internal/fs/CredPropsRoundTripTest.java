@@ -161,13 +161,13 @@ class CredPropsRoundTripTest {
       throws Exception {
     AwsCredential credential =
         new AwsCredential("access-key", "secret-key", "session-token", null, credentialPrefix);
-    CredPropsUtil.genericCredFetcherFactory = (apiClient, credId) -> () -> List.of(credential);
+    mockFetcher(credential);
 
     Configuration confWithCreds = createTableCredProps();
 
-    CredScopedFileSystem fs = new CredScopedFileSystem();
-    fs.initialize(new URI("s3://totally-different-bucket/uncovered/part-0.parquet"), confWithCreds);
-    Configuration delegateConf = fs.getDelegate().getConf();
+    Configuration delegateConf =
+        getDelegateFileSystemConf(
+            new URI("s3://totally-different-bucket/uncovered/part-0.parquet"), confWithCreds);
 
     AwsVendedTokenProvider provider = new AwsVendedTokenProvider(delegateConf);
     assertResolvedCreds(
@@ -183,7 +183,9 @@ class CredPropsRoundTripTest {
 
   @Test
   void multiCredentialRequiresCoveringPrefix() throws Exception {
-    mockFetcher(awsCred("a", "s3://bucket/a"), awsCred("b", "s3://bucket/b"));
+    mockFetcher(
+        new AwsCredential("ak-a", "sk-a", "st-a", null, "s3://bucket/a"),
+        new AwsCredential("ak-b", "sk-b", "st-b", null, "s3://bucket/b"));
     Configuration conf = createTableCredProps();
 
     assertThatThrownBy(
@@ -194,7 +196,7 @@ class CredPropsRoundTripTest {
 
   /** Performs a renewal to ensure the provider supplies the correct credential. */
   private static void assertProviderRenews(
-      Configuration delegateConf, AwsCredential expected, GenericCredential... vended)
+      Configuration delegateConf, AwsCredential expected, GenericCredential... vendedCredentials)
       throws Exception {
     String clockName = UUID.randomUUID().toString();
     Clock clock = Clock.getManualClock(clockName);
@@ -210,7 +212,7 @@ class CredPropsRoundTripTest {
           UCHadoopConfConstants.S3A_INIT_CRED_EXPIRED_TIME, clock.now().toEpochMilli() + 500L);
 
       GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
-      when(fetcher.createCredentials()).thenReturn(List.of(vended));
+      when(fetcher.createCredentials()).thenReturn(List.of(vendedCredentials));
 
       try (MockedStatic<GenericCredentialFetcher> mockedFetcher =
           mockStatic(GenericCredentialFetcher.class)) {
@@ -250,7 +252,7 @@ class CredPropsRoundTripTest {
             "s3",
             /* apiClient= */ null,
             "http://uc",
-            tokenProvider(),
+            TokenProvider.create(Map.of("type", "static", "token", "tok")),
             "tid-1",
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
@@ -269,24 +271,16 @@ class CredPropsRoundTripTest {
   }
 
   private static void mockFetcher(GenericCredential... credentials) {
-    List<GenericCredential> vended = List.of(credentials);
+    List<GenericCredential> vendedCredentials = List.of(credentials);
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> {
           GenericCredentialFetcher fetcher = mock(GenericCredentialFetcher.class);
           try {
-            when(fetcher.createCredentials()).thenReturn(vended);
+            when(fetcher.createCredentials()).thenReturn(vendedCredentials);
           } catch (Exception e) {
             throw new RuntimeException(e);
           }
           return fetcher;
         };
-  }
-
-  private static AwsCredential awsCred(String id, String location) {
-    return new AwsCredential("ak-" + id, "sk-" + id, "st-" + id, null, location);
-  }
-
-  private static TokenProvider tokenProvider() {
-    return TokenProvider.create(Map.of("type", "static", "token", "tok"));
   }
 }
