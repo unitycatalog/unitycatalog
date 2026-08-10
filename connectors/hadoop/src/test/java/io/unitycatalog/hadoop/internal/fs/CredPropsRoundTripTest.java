@@ -241,17 +241,17 @@ class CredPropsRoundTripTest {
     assertThat(resolved.sessionToken()).isEqualTo("session-token");
   }
 
-  /** Runs the real driver encoder for a renewable table request against the current fetcher. */
+  /** Runs the real encoder for a renewable table request against the current fetcher. */
   private static Configuration createTableCredProps() throws Exception {
-    Configuration driverConf = new Configuration(false);
+    Configuration encoderConf = new Configuration(false);
     // Disable the credential cache so each test uses a fresh fetcher.
-    driverConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
-    driverConf.set("fs.s3.impl", RawLocalFileSystem.class.getName());
+    encoderConf.setBoolean(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, false);
+    encoderConf.set("fs.s3.impl", RawLocalFileSystem.class.getName());
     Map<String, String> props =
         CredPropsUtil.createTableCredProps(
             /* renewCredEnabled= */ true,
             /* credScopedFsEnabled= */ true,
-            driverConf,
+            encoderConf,
             SCHEME,
             /* apiClient= */ null,
             CATALOG_URI,
@@ -265,7 +265,7 @@ class CredPropsRoundTripTest {
     return conf;
   }
 
-  /** Runs the real executor decoder and returns the selected delegate's effective configuration. */
+  /** Runs the real decoder and returns the selected delegate's effective configuration. */
   private static Configuration getDelegateFileSystemConf(URI uri, Configuration conf)
       throws Exception {
     CredScopedFileSystem fs = new CredScopedFileSystem();
