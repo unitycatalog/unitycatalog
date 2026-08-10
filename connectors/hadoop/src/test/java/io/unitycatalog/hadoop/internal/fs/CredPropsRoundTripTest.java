@@ -35,12 +35,7 @@ import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 /** Round-trip tests for credential properties produced and consumed during filesystem setup. */
 class CredPropsRoundTripTest {
 
-  private static final String CATALOG_URI = "http://uc";
-  private static final String SCHEME = "s3";
-  private static final String TABLE_ID = "tid-1";
   private static final String LOCATION = "s3://bucket/table";
-  private static final String LOCATION_A = "s3://bucket/shared-prefix/location-a";
-  private static final String LOCATION_B = "s3://bucket/shared-prefix/location-b";
 
   @BeforeEach
   @AfterEach
@@ -186,7 +181,7 @@ class CredPropsRoundTripTest {
 
   @Test
   void multiCredentialRequiresCoveringPrefix() throws Exception {
-    mockFetcher(awsCred("a", LOCATION_A), awsCred("b", LOCATION_B));
+    mockFetcher(awsCred("a", "s3://bucket/a"), awsCred("b", "s3://bucket/b"));
     Configuration conf = createTableCredProps();
 
     assertThatThrownBy(
@@ -252,11 +247,11 @@ class CredPropsRoundTripTest {
             /* renewCredEnabled= */ true,
             /* credScopedFsEnabled= */ true,
             encoderConf,
-            SCHEME,
+            "s3",
             /* apiClient= */ null,
-            CATALOG_URI,
+            "http://uc",
             tokenProvider(),
-            TABLE_ID,
+            "tid-1",
             UCCredentialHadoopConfs.TableOperation.READ_WRITE,
             Map.of());
 
