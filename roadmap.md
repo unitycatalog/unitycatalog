@@ -36,8 +36,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td><b>v0.4</b></td>
     <td><b>v0.5</b></td>
     <td><b>v0.6</b></td>
+    <td><b>v0.7</b></td>
     <td><b>v0.8+</b></td>
-    
   </tr>
   <!-- Core Section -->
   <tr>
