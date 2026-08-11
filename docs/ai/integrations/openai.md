@@ -54,7 +54,7 @@ client = UnitycatalogFunctionClient(api_client=api_client)
 
 Create an instance of the Unity Catalog Functions client
 
-``` python
+```python
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
@@ -64,7 +64,7 @@ client = DatabricksFunctionClient()
 
 Create a Python function within Unity Catalog
 
-``` python
+```python
 CATALOG = "your_catalog"
 SCHEMA = "your_schema"
 
@@ -99,7 +99,7 @@ Here we create an instance of our UC function as a toolkit, then verify that the
 [OpenAI function calling](https://platform.openai.com/docs/guides/function-calling) allows a subset of their more recent models to accept external tool
 calling capabilities. Ensure that the model that you are selecting to interface with has the capability to accept tool definitions.
 
-``` python
+```python
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 
 # Create a UCFunctionToolkit that includes the UC function
@@ -107,21 +107,15 @@ toolkit = UCFunctionToolkit(function_names=[func_name])
 
 # Fetch the tools stored in the toolkit
 tools = toolkit.tools
-python_exec_tool = tools[0]
-
-# Printing the tool definition will display the configured metadata for the instance.
-print(python_exec_tool)
-
-# Execute the tool directly
-result = client.execute_function(function_name=func_name, parameters={"code": "print(1 + 1)"})
-print(result.value)  # Outputs: 2
 ```
+
+`tools` is a Python dictionary. You can pass this dictionary directly to your OpenAI application to use the functions stored inside.
 
 ### Send a tool-enabled question to OpenAI
 
 With the client defined, we can now submit the tools along with our request to our defined OpenAI model.
 
-``` python
+```python
 import openai
 
 messages = [
@@ -142,7 +136,7 @@ print(response)
 
 After the response is returned from OpenAI, you will need to invoke the UC function call to generate the response answer back to OpenAI.
 
-``` python
+```python
 import json
 
 # OpenAI will only send a single request per tool call
@@ -157,7 +151,7 @@ print(result.value)
 
 Once the answer has been returned, you can construct the response payload for the subsequent call to OpenAI.
 
-``` python
+```python
 # Create a message containing the result of the function call
 function_call_result_message = {
     "role": "tool",
@@ -181,12 +175,11 @@ openai.chat.completions.create(
 To simplify the process of crafting the tool response, the ucai-openai package has a utility, `generate_tool_call_messages`, that will convert the
 `ChatCompletion` response message from OpenAI so that it can be used for response generation.
 
-``` python
+```python
 from unitycatalog.ai.openai.utils import generate_tool_call_messages
 
 messages = generate_tool_call_messages(response=response, client=client)
 print(messages)
 ```
 
-> Note: if the response contains multiple `choice` entries, you can pass the `choice_index` argument when calling `generate_tool_call_messages` to choose
-which `choice` entry to utilize. There is currently no support for processing multiple `choice` entries.
+> Note: if the response contains multiple `choice` entries, you can pass the `choice_index` argument when calling `generate_tool_call_messages` to choose which `choice` entry to utilize. There is currently no support for processing multiple `choice` entries.
