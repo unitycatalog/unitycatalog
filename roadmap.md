@@ -36,13 +36,12 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td><b>v0.4</b></td>
     <td><b>v0.5</b></td>
     <td><b>v0.6</b></td>
-    <td><b>v0.7</b></td>
-    <td><b>v0.8</b></td>
-    <td><b>v1.0+</b></td>
+    <td><b>v0.8+</b></td>
+    
   </tr>
   <!-- Core Section -->
   <tr>
-    <td colspan="11" bgcolor="grey" align="center">Core</td>
+    <td colspan="10" bgcolor="grey" align="center">Core</td>
   </tr>
   <tr>
     <td>Catalog</td>
@@ -55,7 +54,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Schema</td>
@@ -68,7 +67,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Managed location in catalog</td>
@@ -81,7 +80,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Managed location in schema</td>
@@ -94,7 +93,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Credential</td>
@@ -107,7 +106,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>External Location</td>
@@ -120,7 +119,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Multi-tenancy</td>
@@ -132,8 +131,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
 <tr>
     <td>S3-compatible storage</td>
@@ -146,11 +145,11 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <!-- Identity & Authentication Section -->
   <tr>
-    <td colspan="11" bgcolor="grey" align="center">Identity & Authentication</td>
+    <td colspan="10" bgcolor="grey" align="center">Identity & Authentication</td>
   </tr>
   <tr>
     <td>Local identity management (user)</td>
@@ -163,7 +162,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Group management</td>
@@ -175,8 +174,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Support for Machine identities (SPs)</td>
@@ -189,7 +188,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>SCIM to support identity sync from IdP  (users and groups)</td>
@@ -202,7 +201,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>OAuth/OIDC for Users</td>
@@ -215,7 +214,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>OAuth/OIDC for Services</td>
@@ -228,7 +227,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>OAuth client-side support</td>
@@ -241,7 +240,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>SAML authentication support</td>
@@ -253,12 +252,12 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <!-- Access Control & Governance Section -->
   <tr>
-    <td colspan="11" bgcolor="grey" align="center">Access Control & Governance</td>
+    <td colspan="10" bgcolor="grey" align="center">Access Control & Governance</td>
   </tr>
     <tr>
     <td>Support for change of ownership</td>
@@ -270,8 +269,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Add permission/privilege support for MODIFY, CREATE_X, BROWSE</td>
@@ -284,7 +283,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Add remaining permissions/privileges (MANAGE etc)</td>
@@ -297,7 +296,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Temporary credential vending for tables</td>
@@ -310,7 +309,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Temporary credential vending for volumes</td>
@@ -323,7 +322,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Temporary credential vending for models</td>
@@ -336,7 +335,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Basic grants</td>
@@ -349,7 +348,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Auditing</td>
@@ -361,8 +360,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>SQL DCL changes</td>
@@ -374,8 +373,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td>RBAC</td>
@@ -387,8 +386,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td>Row level filters</td>
@@ -400,8 +399,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td>Column level masks</td>
@@ -413,8 +412,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td>ABAC</td>
@@ -426,8 +425,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td>Lineage</td>
@@ -439,12 +438,12 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <!-- Server production-readiness (support running as a HMS replacement) Section -->
   <tr>
-    <td colspan="11" bgcolor="grey" align="center">Server production-readiness (support running as a HMS replacement)</td>
+    <td colspan="10" bgcolor="grey" align="center">Server production-readiness (support running as a HMS replacement)</td>
   </tr>
     <tr><td>Monitoring and Telemetry</td>
     <td>API + Server</td>
@@ -456,7 +455,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr><td>Database schema upgrades</td>
     <td>API + Server</td>
@@ -468,7 +467,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Change events</td>
@@ -480,8 +479,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td>Server-side storage credential and FileIO caching</td>
@@ -494,7 +493,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Managed tables and volumes lifecycle</td>
@@ -507,11 +506,11 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <!-- Tables Section -->
   <tr>
-    <td colspan="11" bgcolor="grey" align="center">Tables</td>
+    <td colspan="10" bgcolor="grey" align="center">Tables</td>
   </tr>
   <tr>
     <td rowspan="3">External table reads & writes</td>
@@ -524,7 +523,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Spark integration</td>
@@ -536,7 +535,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Delta integration</td>
@@ -548,7 +547,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td rowspan="2">Managed Delta table reads</td>
@@ -561,7 +560,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Delta+Spark integration</td>
@@ -573,7 +572,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr><td rowspan="3">Managed Delta tables creates+writes with catalog-managed commits</td>
     <td>API + Server</td>
@@ -585,7 +584,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Delta-Spark integration</td>
@@ -597,7 +596,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Delta Kernel integration</td>
@@ -609,7 +608,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td rowspan="2">Delta Uniform tables with read as Iceberg via Iceberg REST API</td>
@@ -622,7 +621,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Delta integration</td>
@@ -634,7 +633,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr><td>Iceberg tables with create+read+write</td>
     <td>API + Server</td>
@@ -646,7 +645,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Multi-engine data types for column definitions</td>
@@ -659,11 +658,11 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <!-- Views Section -->
   <tr>
-    <td colspan="11" bgcolor="grey" align="center">Views</td>
+    <td colspan="10" bgcolor="grey" align="center">Views</td>
   </tr>
     <tr>
     <td>Basic Spark SQL flavor views</td>
@@ -676,7 +675,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Multi-dialect views</td>
@@ -688,8 +687,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Iceberg view support</td>
@@ -702,7 +701,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Materialized views</td>
@@ -714,8 +713,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
     <tr><td>Metric views</td>
     <td>API + Server</td>
@@ -727,7 +726,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Streaming tables</td>
@@ -739,8 +738,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
     <tr>
     <td>Shallow clones</td>
@@ -752,12 +751,12 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <!-- Non-tabular and AI assets Section -->
   <tr>
-    <td colspan="11" bgcolor="grey" align="center">Non-tabular and AI assets</td>
+    <td colspan="10" bgcolor="grey" align="center">Non-tabular and AI assets</td>
   </tr>
   <tr>
     <td rowspan="3">Functions (SQL UDFs, Python UDFs)</td>
@@ -770,7 +769,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>ML integrations with advanced python SDK</td>
@@ -782,7 +781,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Spark integration</td>
@@ -793,8 +792,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Multi-engine functions (SQL)</td>
@@ -806,8 +805,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td>Remote functions</td>
@@ -819,8 +818,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td rowspan="2">External volumes</td>
@@ -833,7 +832,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Spark integration</td>
@@ -844,8 +843,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td rowspan="2">Managed volumes</td>
@@ -858,7 +857,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Spark integration</td>
@@ -869,8 +868,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td rowspan="3">Models and model versions</td>
@@ -883,7 +882,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>MLflow integration</td>
@@ -895,7 +894,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
     <tr>
     <td>Spark integration</td>
@@ -906,8 +905,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <tr>
     <td>Features tables</td>
@@ -919,8 +918,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td>Data monitors</td>
@@ -932,12 +931,12 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <!-- Sharing Section -->
   <tr>
-    <td colspan="11" bgcolor="grey" align="center">Sharing</td>
+    <td colspan="10" bgcolor="grey" align="center">Sharing</td>
   </tr>
     <tr><td>Open Sharing</td>
     <td>API + Server</td>
@@ -949,7 +948,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
       <tr>
     <td>Shares</td>
@@ -962,7 +961,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
       <tr>
     <td>Recipients</td>
@@ -975,7 +974,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
       <tr>
     <td>Providers</td>
@@ -988,11 +987,11 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
-    <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
   <!-- Federation Section -->
   <tr>
-    <td colspan="11" bgcolor="grey" align="center">Federation</td>
+    <td colspan="10" bgcolor="grey" align="center">Federation</td>
   </tr>
   <tr>
     <td>Connections</td>
@@ -1004,8 +1003,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
   <tr>
     <td>Foreign objects (catalogs, schemas, tables)</td>
@@ -1017,8 +1016,8 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center">❓</td>
+    
   </tr>
     <tr>
     <td>Support for different data sources: JDBC, Iceberg REST, HMS</td>
@@ -1030,7 +1029,7 @@ The roadmap includes monitoring and telemetry, database schema upgrades, server-
     <td></td>
     <td></td>
     <td></td>
-    <td></td>
     <td align="center"><img src="https://cdn.jsdelivr.net/gh/Readme-Workflows/Readme-Icons@main/icons/octicons/ApprovedChanges.svg" alt="done"/></td>
+    
   </tr>
 </table>
