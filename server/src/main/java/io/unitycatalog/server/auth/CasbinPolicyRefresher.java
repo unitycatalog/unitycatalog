@@ -70,29 +70,39 @@ public class CasbinPolicyRefresher implements AutoCloseable {
   }
 
   /** @return true if a reload happened */
-  public synchronized boolean checkAndReload() {
+  public boolean checkAndReload() {
+    // Read the DB version outside the monitor so poller/deny-path callers do not contend on
+    // JDBC latency. Only the compare / loadPolicy / cached-version update need the lock.
     long[] version = readVersion().orElse(null);
     if (version == null) {
       return false;
     }
-    if (version[0] == lastCount && version[1] == lastMaxId) {
-      return false;
+    synchronized (this) {
+      if (version[0] == lastCount && version[1] == lastMaxId) {
+        return false;
+      }
+      LOGGER.debug(
+          "Casbin policy changed (count {} -> {}, maxId {} -> {}); reloading",
+          lastCount,
+          version[0],
+          lastMaxId,
+          version[1]);
+      enforcer.loadPolicy();
+      recordVersion(version[0], version[1]);
+      return true;
     }
-    LOGGER.debug(
-        "Casbin policy changed (count {} -> {}, maxId {} -> {}); reloading",
-        lastCount,
-        version[0],
-        lastMaxId,
-        version[1]);
-    enforcer.loadPolicy();
-    recordVersion(version[0], version[1]);
-    return true;
   }
 
   /** Unconditional reload for callers that cannot wait for the next poll. */
-  public synchronized void forceReload() {
+  public void forceReload() {
     enforcer.loadPolicy();
-    readVersion().ifPresent(version -> recordVersion(version[0], version[1]));
+    readVersion()
+        .ifPresent(
+            version -> {
+              synchronized (this) {
+                recordVersion(version[0], version[1]);
+              }
+            });
   }
 
   private void recordVersion(long count, long maxId) {
