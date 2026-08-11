@@ -7,7 +7,6 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateCredentialRequest;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.ListCredentialsResponse;
@@ -21,7 +20,6 @@ import java.util.Optional;
 import java.util.UUID;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.Get;
@@ -41,8 +39,7 @@ import lombok.SneakyThrows;
  *   <li><b>GCP</b> - Not implemented yet.
  * </ul>
  */
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class CredentialService extends AuthorizedService {
+public class CredentialService extends AuthorizedService implements UnityCatalogRestService {
   private final CredentialRepository credentialRepository;
   private final MetastoreRepository metastoreRepository;
 

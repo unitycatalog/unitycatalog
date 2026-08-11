@@ -7,7 +7,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
@@ -36,7 +35,6 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
@@ -63,8 +61,7 @@ import java.util.UUID;
  *   <li>userName - maps to SCIM primary email
  * </ul>
  */
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class Scim2UserService {
+public class Scim2UserService implements ScimService {
   private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
 

@@ -12,6 +12,11 @@ import java.util.Arrays;
  */
 public class DeltaApiExceptionHandler extends BaseExceptionHandler {
 
+  /** Shared instance; these handlers are stateless. */
+  public static final DeltaApiExceptionHandler INSTANCE = new DeltaApiExceptionHandler();
+
+  private DeltaApiExceptionHandler() {}
+
   @Override
   protected HttpResponse createErrorResponse(BaseException exception) {
     ErrorCode errorCode = exception.getErrorCode();

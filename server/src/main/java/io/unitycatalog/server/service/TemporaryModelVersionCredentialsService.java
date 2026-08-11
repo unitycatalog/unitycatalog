@@ -12,7 +12,6 @@ import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryModelVersionCredential;
 import io.unitycatalog.server.model.ModelVersionInfo;
 import io.unitycatalog.server.model.ModelVersionOperation;
@@ -25,11 +24,9 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Set;
 import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class TemporaryModelVersionCredentialsService {
+public class TemporaryModelVersionCredentialsService implements UnityCatalogRestService {
   private final ModelRepository modelRepository;
   private final StorageCredentialVendor storageCredentialVendor;
 

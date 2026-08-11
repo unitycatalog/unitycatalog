@@ -3,6 +3,8 @@ package io.unitycatalog.server.utils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiClientBuilder;
 import io.unitycatalog.client.ApiException;
@@ -124,12 +126,79 @@ public class TestUtils {
   }
 
   /**
-   * Asserts the call fails with PERMISSION_DENIED (HTTP 403). Only checks the error code and the
-   * generic {@code "PERMISSION_DENIED"} marker in the message; use {@link
-   * #assertPermissionDenied(Executable, String)} when the specific cause matters.
+   * Asserts the call fails with permission-denied at HTTP 403 in the <em>Unity Catalog</em> error
+   * envelope, parsing the body to confirm its shape: {@code {"error_code": "PERMISSION_DENIED",
+   * "message": ..., "details": [{"reason": "PERMISSION_DENIED", "@type": ...}]}}.
+   *
+   * <p>Use for endpoints served by {@code GlobalExceptionHandler}. Delta API endpoints speak a
+   * different dialect and must be asserted with {@link #assertDeltaPermissionDenied} -- keeping the
+   * two apart is what makes these tests notice if an endpoint starts answering in the wrong format.
    */
   public static void assertPermissionDenied(Executable executable) {
-    assertPermissionDenied(executable, "PERMISSION_DENIED");
+    ApiException ex = assertThrows(ApiException.class, executable);
+    assertThat(ex.getCode()).isEqualTo(ErrorCode.PERMISSION_DENIED.getHttpStatus().code());
+    JsonNode body = parseErrorBody(ex);
+    assertThat(body.path("error_code").asText())
+        .as("UC envelope error_code in: %s", ex.getResponseBody())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED.name());
+    assertThat(body.has("message"))
+        .as("UC envelope must carry a message: %s", ex.getResponseBody())
+        .isTrue();
+    assertThat(body.path("details").isArray())
+        .as("UC envelope must carry a details array: %s", ex.getResponseBody())
+        .isTrue();
+    assertThat(body.path("details").path(0).path("reason").asText())
+        .as("UC envelope details[0].reason in: %s", ex.getResponseBody())
+        .isEqualTo(ErrorCode.PERMISSION_DENIED.name());
+    // The Delta envelope nests under "error"; its absence is what distinguishes the two dialects.
+    assertThat(body.has("error"))
+        .as(
+            "expected the UC envelope, but the body is nested Delta-style: %s",
+            ex.getResponseBody())
+        .isFalse();
+  }
+
+  /**
+   * Asserts the call fails with permission-denied in the <em>Delta API</em> error envelope, parsing
+   * the body to confirm its shape: {@code {"error": {"type": "PermissionDeniedException", "code":
+   * 403, "message": ...}}}.
+   *
+   * <p>Delta clients parse this shape specifically, so a UC-style body here would be a regression
+   * even though the status code is the same. See {@link #assertPermissionDenied} for UC endpoints.
+   */
+  public static void assertDeltaPermissionDenied(Executable executable) {
+    int expectedCode =
+        ErrorCode.getDeltaHttpStatus(DeltaErrorType.PERMISSION_DENIED_EXCEPTION.getValue()).code();
+    ApiException ex = assertThrows(ApiException.class, executable);
+    assertThat(ex.getCode()).isEqualTo(expectedCode);
+    JsonNode body = parseErrorBody(ex);
+    assertThat(body.has("error"))
+        .as("expected the Delta envelope nested under \"error\": %s", ex.getResponseBody())
+        .isTrue();
+    JsonNode error = body.path("error");
+    assertThat(error.path("type").asText())
+        .as("Delta envelope error.type in: %s", ex.getResponseBody())
+        .isEqualTo(DeltaErrorType.PERMISSION_DENIED_EXCEPTION.getValue());
+    assertThat(error.path("code").asInt())
+        .as("Delta envelope error.code in: %s", ex.getResponseBody())
+        .isEqualTo(expectedCode);
+    assertThat(error.has("message"))
+        .as("Delta envelope must carry a message: %s", ex.getResponseBody())
+        .isTrue();
+    // The UC envelope puts error_code at the top level; its absence distinguishes the two dialects.
+    assertThat(body.has("error_code"))
+        .as("expected the Delta envelope, but the body is UC-style: %s", ex.getResponseBody())
+        .isFalse();
+  }
+
+  /** Parses an error response body as JSON, failing with the raw body if it is not valid JSON. */
+  private static JsonNode parseErrorBody(ApiException ex) {
+    try {
+      return new ObjectMapper().readTree(ex.getResponseBody());
+    } catch (Exception e) {
+      return org.assertj.core.api.Assertions.fail(
+          "Error response was not valid JSON: " + ex.getResponseBody(), e);
+    }
   }
 
   /**

@@ -19,7 +19,7 @@ import com.linecorp.armeria.common.ResponseHeaders;
 import com.linecorp.armeria.common.ResponseHeadersBuilder;
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.ServiceRequestContext;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.RequestConverter;
@@ -50,8 +50,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class AuthService {
+public class AuthService implements RegisteredService {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
   private final UserRepository userRepository;
@@ -61,6 +60,11 @@ public class AuthService {
   private final ServerProperties serverProperties;
 
   private static final String EMPTY_RESPONSE = "{}";
+
+  @Override
+  public ExceptionHandlerFunction exceptionHandler() {
+    return GlobalExceptionHandler.INSTANCE;
+  }
 
   public AuthService(
       SecurityContext securityContext,

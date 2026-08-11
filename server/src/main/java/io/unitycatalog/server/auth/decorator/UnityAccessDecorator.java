@@ -11,7 +11,6 @@ import com.linecorp.armeria.internal.server.annotation.AnnotatedService;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.ServiceRequestContext;
-import com.linecorp.armeria.server.SimpleDecoratingHttpService;
 import io.netty.util.AttributeKey;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -384,8 +383,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   }
 
   private static Method findServiceMethod(HttpService httpService) throws ClassNotFoundException {
-    if (httpService.unwrap() instanceof SimpleDecoratingHttpService decoratingService
-        && decoratingService.unwrap() instanceof AnnotatedService service) {
+    // as() searches the whole decorator chain, so this does not depend on how many decorators sit
+    // between the route and the annotated service.
+    HttpService annotated = httpService.as(AnnotatedService.class);
+    if (annotated instanceof AnnotatedService service) {
 
       LOGGER.debug("serviceName = {}, methodName = {}",
           service.serviceName(),

@@ -16,6 +16,11 @@ import java.util.Map;
  */
 public class GlobalExceptionHandler extends BaseExceptionHandler {
 
+  /** Shared instance; these handlers are stateless. */
+  public static final GlobalExceptionHandler INSTANCE = new GlobalExceptionHandler();
+
+  private GlobalExceptionHandler() {}
+
   @Override
   public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
     // SCIM has its own error format, handle before normalization
