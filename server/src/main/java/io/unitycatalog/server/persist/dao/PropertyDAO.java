@@ -49,7 +49,7 @@ public class PropertyDAO {
   @Column(name = "property_key", nullable = false)
   private String key;
 
-  @Column(name = "property_value", nullable = false)
+  @Column(name = "property_value", nullable = false, length = 2000)
   private String value;
 
   public static List<PropertyDAO> from(
