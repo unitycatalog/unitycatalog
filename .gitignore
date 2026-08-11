@@ -22,6 +22,9 @@ python_engine.log
 .python-version
 .java-version
 
+# Node.js dependencies
+node_modules/
+
 # Signing keys and access tokens
 etc/conf/certs.json
 etc/conf/*.txt
