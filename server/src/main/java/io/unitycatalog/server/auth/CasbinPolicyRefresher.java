@@ -14,6 +14,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Reloads the in-memory Casbin policy when {@code casbin_rule} changes in the shared database.
  *
+ * <p>{@code casbin_rule} is the JDBC adapter table that persists Casbin policy and grouping rows
+ * (grants, revokes, and hierarchy). {@link JCasbinAuthorizer} writes through the adapter with
+ * auto-save enabled, but each server process only loads that table into its enforcer at startup
+ * unless this refresher reloads it.
+ *
  * <p>Change detection uses {@code select count(*), coalesce(max(id), 0) from casbin_rule}. The JDBC
  * adapter only inserts and deletes rows with auto-incrementing ids, so any write changes at least
  * one of the two values. Requires a {@link SyncedEnforcer} so {@code loadPolicy()} is safe under
