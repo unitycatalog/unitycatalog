@@ -337,6 +337,41 @@ public class CredIdTest {
   }
 
   @Test
+  void icebergPlanKeyPropsRoundTripAndIsolatePlans() {
+    String endpoint = "https://uc/iceberg/v1/ns/t/credentials";
+    CredId key = new IcebergPlanCredId(CONTEXT_A, endpoint, "plan-1");
+    assertThat(key.props())
+        .containsOnly(
+            entry(UCHadoopConfConstants.UC_CRED_CONTEXT_ID_KEY, CONTEXT_A),
+            entry(
+                UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+                UCHadoopConfConstants.UC_CREDENTIALS_TYPE_ICEBERG_PLAN_VALUE),
+            entry(UCHadoopConfConstants.UC_ICEBERG_CREDENTIALS_ENDPOINT_KEY, endpoint),
+            entry(UCHadoopConfConstants.UC_ICEBERG_PLAN_ID_KEY, "plan-1"));
+    assertPropsRoundTrip(key);
+
+    assertThat(key).isNotEqualTo(new IcebergPlanCredId(CONTEXT_A, endpoint, "plan-2"));
+    assertThat(key)
+        .isNotEqualTo(
+            new IcebergPlanCredId(
+                CONTEXT_A, "https://other/iceberg/v1/ns/t/credentials", "plan-1"));
+    assertThat(key).isNotEqualTo(new IcebergPlanCredId(CONTEXT_B, endpoint, "plan-1"));
+  }
+
+  @Test
+  void icebergPlanKeyRejectsMissingFields() {
+    assertThatThrownBy(() -> new IcebergPlanCredId(null, "https://uc/credentials", "plan"))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("credContextId");
+    assertThatThrownBy(() -> new IcebergPlanCredId(CONTEXT_A, "", "plan"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("credentialsEndpoint");
+    assertThatThrownBy(() -> new IcebergPlanCredId(CONTEXT_A, "https://uc/credentials", null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("planId");
+  }
+
+  @Test
   void defaultKeyPropsAreEmpty() {
     assertThat(new DefaultCredId(URI.create("s3://b"), new Configuration()).props()).isEmpty();
   }
