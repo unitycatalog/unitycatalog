@@ -164,4 +164,59 @@ public class AwsPolicyGeneratorTest {
         .doesNotContain("s3:DeleteO*")
         .contains("s3:GetO*");
   }
+
+  @Test
+  public void testSelectPolicyGrantsKmsDecrypt() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement).isNotNull();
+    assertThat(statement.path("Action")).map(JsonNode::asText).containsExactly("kms:Decrypt");
+    assertThat(statement.path("Resource")).map(JsonNode::asText).containsExactly("*");
+  }
+
+  @Test
+  public void testUpdatePolicyGrantsKmsDecryptAndGenerateDataKey() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement).isNotNull();
+    assertThat(statement.path("Action"))
+        .map(JsonNode::asText)
+        .containsExactlyInAnyOrder("kms:Decrypt", "kms:GenerateDataKey*");
+    assertThat(statement.path("Resource")).map(JsonNode::asText).containsExactly("*");
+  }
+
+  @Test
+  public void testKmsStatementDoesNotShiftS3Statements() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode statements = JSON_MAPPER.readTree(policy).get("Statement");
+    assertThat(statements.get(0).path("Action")).map(JsonNode::asText).containsExactly("s3:GetO*");
+    assertThat(statements.get(1).path("Action"))
+        .map(JsonNode::asText)
+        .containsExactly("s3:ListBucket");
+  }
+
+  /**
+   * Returns the statement that carries the KMS actions, or {@code null} when the policy has none.
+   * Located by action prefix rather than by index so that the S3 statements the other tests assert
+   * on by index stay where they are.
+   */
+  private static JsonNode findKmsStatement(JsonNode policyRoot) {
+    for (JsonNode statement : policyRoot.path("Statement")) {
+      for (JsonNode action : statement.path("Action")) {
+        if (action.asText().startsWith("kms:")) {
+          return statement;
+        }
+      }
+    }
+    return null;
+  }
 }

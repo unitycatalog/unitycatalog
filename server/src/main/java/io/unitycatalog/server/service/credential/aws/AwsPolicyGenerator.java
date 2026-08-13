@@ -22,6 +22,12 @@ public class AwsPolicyGenerator {
   static final List<String> UPDATE_ACTIONS = List.of(
       "s3:GetO*", "s3:PutO*", "s3:DeleteO*", "s3:*Multipart*");
 
+  // Reading an object encrypted with SSE-KMS requires kms:Decrypt, and writing one additionally
+  // requires kms:GenerateDataKey*. Without these the vended session credentials can't touch a
+  // table stored in a bucket with SSE-KMS, even when the assumed role itself is allowed to.
+  static final List<String> SELECT_KMS_ACTIONS = List.of("kms:Decrypt");
+  static final List<String> UPDATE_KMS_ACTIONS = List.of("kms:Decrypt", "kms:GenerateDataKey*");
+
   static final String POLICY_STATEMENT = """
       Version: 2012-10-17
       Statement: []
@@ -43,6 +49,16 @@ public class AwsPolicyGenerator {
       Resource: []
       """;
 
+  // Unity Catalog doesn't know which KMS key a bucket is configured with, so the resource stays
+  // open. This grants nothing extra in practice: a session policy can only narrow what the
+  // assumed role is already allowed to do, so a role without KMS access still gets none.
+  static final String KMS_STATEMENT = """
+      Effect: Allow
+      Action: []
+      Resource:
+        - "*"
+      """;
+
   private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
   private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
 
@@ -56,13 +72,17 @@ public class AwsPolicyGenerator {
     ArrayNode policyStatement = (ArrayNode) policyRoot.findPath("Statement");
     JsonNode operationsStatement = loadYaml(OPERATION_STATEMENT);
     policyStatement.add(operationsStatement);
+    JsonNode kmsStatement = loadYaml(KMS_STATEMENT);
 
-    // Add the appropriate S3 operations for the privileges requested
+    // Add the appropriate S3 and KMS operations for the privileges requested
     ArrayNode actions = (ArrayNode) operationsStatement.findPath("Action");
+    ArrayNode kmsActions = (ArrayNode) kmsStatement.findPath("Action");
     if (privileges.contains(CredentialContext.Privilege.UPDATE)) {
       UPDATE_ACTIONS.forEach(actions::add);
+      UPDATE_KMS_ACTIONS.forEach(kmsActions::add);
     } else if (privileges.contains(CredentialContext.Privilege.SELECT)) {
       SELECT_ACTIONS.forEach(actions::add);
+      SELECT_KMS_ACTIONS.forEach(kmsActions::add);
     } else {
       throw new NotAuthorizedException(
           String.format("Can't generate policy for unknown privileges '%s' for locations: '%s'",
@@ -98,6 +118,10 @@ public class AwsPolicyGenerator {
         }
       });
     });
+
+    // Appended after the per-bucket statements so that the position of the S3 statements
+    // within the policy doesn't change
+    policyStatement.add(kmsStatement);
 
     return JSON_MAPPER.writeValueAsString(policyRoot);
   }
