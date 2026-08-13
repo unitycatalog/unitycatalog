@@ -268,7 +268,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     commit1_other_filename.getCommitInfo().setFileName("some_other_filename_" + UUID.randomUUID());
     assertApiException(
         () -> deltaCommitsApi.commit(commit1_other_filename),
-        ErrorCode.ALREADY_EXISTS,
+        ErrorCode.COMMIT_VERSION_CONFLICT,
         "Commit version already accepted.");
 
     DeltaCommit commit3 =
@@ -294,13 +294,13 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // Replay old version 1 with a different file name -> genuine conflict.
     assertApiException(
         () -> deltaCommitsApi.commit(commit1_other_filename),
-        ErrorCode.ALREADY_EXISTS,
+        ErrorCode.COMMIT_VERSION_CONFLICT,
         "Commit version already accepted.");
 
     // Get commits with wrong table id
     assertApiException(
         () -> getAllCommits(ZERO_UUID, tableInfo.getStorageLocation(), 0L, Optional.empty()),
-        ErrorCode.NOT_FOUND,
+        ErrorCode.TABLE_NOT_FOUND,
         "Table not found");
 
     // Try to get the commits with different start and end version range
@@ -352,7 +352,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // the backfill above, so replaying the identical commit2 conflicts rather than no-op'ing.
     assertApiException(
         () -> deltaCommitsApi.commit(commit2),
-        ErrorCode.ALREADY_EXISTS,
+        ErrorCode.COMMIT_VERSION_CONFLICT,
         "Commit version already accepted.");
 
     // Commit one more version before deleting the table
@@ -370,7 +370,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         () ->
             getAllCommits(
                 tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty()),
-        ErrorCode.NOT_FOUND,
+        ErrorCode.TABLE_NOT_FOUND,
         "Table not found");
     List<DeltaCommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(commitDAOs.size()).isEqualTo(0);
@@ -424,7 +424,9 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     DeltaCommit commitWithWrongId =
         createCommitObject(ZERO_UUID, 1L, tableInfo.getStorageLocation());
     assertApiException(
-        () -> deltaCommitsApi.commit(commitWithWrongId), ErrorCode.NOT_FOUND, "Table not found");
+        () -> deltaCommitsApi.commit(commitWithWrongId),
+        ErrorCode.TABLE_NOT_FOUND,
+        "Table not found");
 
     checkCommitInvalidParameter(1L, c -> c.setTableUri(null), "table_uri");
     checkCommitInvalidParameter(1L, c -> c.setTableUri(""), "table_uri");

@@ -41,7 +41,7 @@ public class GlobalExceptionHandler extends BaseExceptionHandler {
     }
 
     Map<String, Object> details = new HashMap<>();
-    details.put("@type", "google.rpc.ErrorInfo");
+    details.put("@type", "type.googleapis.com/google.rpc.ErrorInfo");
     details.put("reason", exception.getErrorCode().name());
     response.put("details", List.of(details));
 

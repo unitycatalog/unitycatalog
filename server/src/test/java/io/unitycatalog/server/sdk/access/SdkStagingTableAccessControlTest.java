@@ -61,6 +61,13 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
   protected abstract void assertDeniedInSurfaceFormat(Executable executable);
 
   /**
+   * As {@link #assertDeniedInSurfaceFormat(Executable)}, and additionally asserts the denial
+   * reason. Use when the test cares which authorization check rejected the request.
+   */
+  protected abstract void assertDeniedInSurfaceFormat(
+      Executable executable, String containsMessage);
+
+  /**
    * Test that attempting to create a managed table from another user's staging table fails with
    * PERMISSION_DENIED error.
    *
@@ -161,7 +168,7 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
     // Steps 3+4: User B's createTable on User A's staging is rejected at commitStagingTable;
     // User A's same request succeeds and produces a regular table that reuses the staging UUID
     // and storage location.
-    TestUtils.assertPermissionDenied(
+    assertDeniedInSurfaceFormat(
         () -> finalizeManagedTable(userBConfig, staging, TestUtils.TABLE_NAME),
         "User attempts to create table on a staging location without ownership");
     FinalizedTable finalized = finalizeManagedTable(userAConfig, staging, TestUtils.TABLE_NAME);

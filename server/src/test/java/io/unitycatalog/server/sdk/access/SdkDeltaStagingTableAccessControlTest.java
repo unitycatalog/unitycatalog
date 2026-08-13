@@ -73,6 +73,11 @@ public class SdkDeltaStagingTableAccessControlTest extends SdkStagingTableAccess
   }
 
   @Override
+  protected void assertDeniedInSurfaceFormat(Executable executable, String containsMessage) {
+    TestUtils.assertDeltaPermissionDenied(executable, containsMessage);
+  }
+
+  @Override
   protected void fetchTempCreds(ServerConfig config, String tableId) throws Exception {
     new DeltaTemporaryCredentialsApi(TestUtils.createApiClient(config))
         .getStagingTableCredentials(UUID.fromString(tableId));

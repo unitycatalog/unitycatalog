@@ -32,8 +32,14 @@ public abstract class ExceptionHandlingDecorator extends SimpleDecoratingHttpSer
 
   @Override
   public final HttpResponse serve(ServiceRequestContext ctx, HttpRequest req) throws Exception {
+    // An exception can surface two ways: thrown while serve() runs (the catch), or delivered later
+    // as an error signal on the returned response when the service completes asynchronously (the
+    // recover). recover can only substitute a response that has not started flushing yet; a failure
+    // after headers are on the wire is unrecoverable by anyone.
     try {
-      return unwrap().serve(ctx, req);
+      return unwrap()
+          .serve(ctx, req)
+          .recover(Throwable.class, cause -> resolveHandler(ctx).handleException(ctx, req, cause));
     } catch (Exception e) {
       return resolveHandler(ctx).handleException(ctx, req, e);
     }

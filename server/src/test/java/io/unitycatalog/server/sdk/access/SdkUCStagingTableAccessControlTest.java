@@ -70,6 +70,11 @@ public class SdkUCStagingTableAccessControlTest extends SdkStagingTableAccessCon
   }
 
   @Override
+  protected void assertDeniedInSurfaceFormat(Executable executable, String containsMessage) {
+    TestUtils.assertPermissionDenied(executable, containsMessage);
+  }
+
+  @Override
   protected void fetchTempCreds(ServerConfig config, String tableId) throws Exception {
     new TemporaryCredentialsApi(TestUtils.createApiClient(config))
         .generateTemporaryTableCredentials(
