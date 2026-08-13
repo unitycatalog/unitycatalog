@@ -19,7 +19,7 @@ public class CredentialCache<K, T> {
   private final BoundedKeyedCache<K, RenewableCredential<T>> cache;
 
   public CredentialCache(int maxSize) {
-    this.cache = new BoundedKeyedCache<>(maxSize);
+    this.cache = new BoundedKeyedCache<>(maxSize, null, cached -> !cached.readyToRenew());
   }
 
   /**
@@ -47,19 +47,13 @@ public class CredentialCache<K, T> {
    *   <li>Cached but about to expire: create a fresh one via {@code factory}, cache it, return it.
    *   <li>Not cached: create it via {@code factory}, cache it, return it.
    * </ul>
+   *
+   * <p>Locking is per key: concurrent accessors of the same key are single-flight, so one invokes
+   * {@code factory} while the others wait and reuse its result. Accessors of other keys are never
+   * blocked by an in-flight creation, and a valid cached value is returned without locking at all.
    */
   public T access(K key, RenewableCredentialFactory<T> factory) throws ApiException {
-    synchronized (cache) {
-      RenewableCredential<T> cached = cache.getIfPresent(key);
-      // Reuse the cached value while it's still valid; otherwise fetch and cache a fresh one.
-      if (cached != null && !cached.readyToRenew()) {
-        return cached.credential();
-      }
-
-      RenewableCredential<T> created = factory.create();
-      cache.put(key, created);
-      return created.credential();
-    }
+    return cache.getOrLoad(key, factory::create).credential();
   }
 
   /** Removes all cached values. Public so tests in other packages can reset shared caches. */
