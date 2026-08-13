@@ -5,11 +5,11 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 from databricks.sdk.service.catalog import ColumnTypeName
+from databricks_langchain.chat_models import ChatDatabricks
+from databricks_langchain.chat_models import ChatGeneration as LangChainChatGeneration
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 from langchain_core.runnables import RunnableGenerator
-from langchain_databricks.chat_models import ChatDatabricks
-from langchain_databricks.chat_models import ChatGeneration as LangChainChatGeneration
 from langgraph.prebuilt import create_react_agent
 
 from tests.helper_functions import wrap_output
@@ -171,7 +171,7 @@ def test_toolkit_creation_errors_no_client(monkeypatch):
 
 
 def test_toolkit_creation_errors(uc_client):
-    with pytest.raises(ValueError, match=r"instance of BaseFunctionClient expected"):
+    with pytest.raises(ValueError, match=r"Input should be an instance of BaseFunctionClient"):
         UCFunctionToolkit(function_names=[], client="client")
 
 

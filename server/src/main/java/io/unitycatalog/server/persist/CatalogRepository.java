@@ -2,22 +2,29 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.CreateCatalog;
+import io.unitycatalog.server.model.ListCatalogsResponse;
+import io.unitycatalog.server.model.ListSchemasResponse;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,9 +44,10 @@ public class CatalogRepository {
     ValidationUtils.validateSqlObjectName(createCatalog.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     Long createTime = System.currentTimeMillis();
+    UUID catalogId = UUID.randomUUID();
     CatalogInfo catalogInfo =
         new CatalogInfo()
-            .id(java.util.UUID.randomUUID().toString())
+            .id(catalogId.toString())
             .comment(createCatalog.getComment())
             .name(createCatalog.getName())
             .owner(callerId)
@@ -48,13 +56,23 @@ public class CatalogRepository {
             .updatedAt(createTime)
             .updatedBy(callerId)
             .properties(createCatalog.getProperties());
+    NormalizedURL storageRoot = NormalizedURL.from(createCatalog.getStorageRoot());
+    if (storageRoot != null) {
+      // storageRoot, if set, is already authorized as a valid external location by CatalogService.
+      ExternalLocationUtils.validateNotSameOrUnderManagedStoragePrefix(storageRoot);
+      NormalizedURL storageLocation =
+          ExternalLocationUtils.getManagedLocationForCatalog(storageRoot, catalogId);
+      catalogInfo.setStorageRoot(storageRoot.toString());
+      catalogInfo.storageLocation(storageLocation.toString());
+    }
 
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          if (getCatalogDAO(session, createCatalog.getName()) != null) {
+          if (RepositoryUtils.getCatalogDaoOpt(session, createCatalog.getName()).isPresent()) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS, "Catalog already exists: " + createCatalog.getName());
+                ErrorCode.CATALOG_ALREADY_EXISTS,
+                "Catalog already exists: " + createCatalog.getName());
           }
           CatalogInfoDAO catalogInfoDAO = CatalogInfoDAO.from(catalogInfo);
           PropertyDAO.from(catalogInfo.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
@@ -102,10 +120,7 @@ public class CatalogRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          CatalogInfoDAO catalogInfoDAO = getCatalogDAO(session, name);
-          if (catalogInfoDAO == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
-          }
+          CatalogInfoDAO catalogInfoDAO = getCatalogDaoOrThrow(session, name);
           CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
           return RepositoryUtils.attachProperties(
               catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
@@ -114,12 +129,15 @@ public class CatalogRepository {
         /* readOnly = */ true);
   }
 
-  public CatalogInfoDAO getCatalogDAO(Session session, String name) {
-    Query<CatalogInfoDAO> query =
-        session.createQuery("FROM CatalogInfoDAO WHERE name = :value", CatalogInfoDAO.class);
-    query.setParameter("value", name);
-    query.setMaxResults(1);
-    return query.uniqueResult();
+  public CatalogInfoDAO getCatalogDaoOrThrow(Session session, String name) {
+    return RepositoryUtils.getCatalogDaoOpt(session, name)
+        .orElseThrow(
+            () -> new BaseException(ErrorCode.CATALOG_NOT_FOUND, "Catalog not found: " + name));
+  }
+
+  public UUID getCatalogIdOrThrow(Session session, String catalogName) {
+    CatalogInfoDAO catalogInfo = getCatalogDaoOrThrow(session, catalogName);
+    return catalogInfo.getId();
   }
 
   public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
@@ -131,10 +149,7 @@ public class CatalogRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          CatalogInfoDAO catalogInfoDAO = getCatalogDAO(session, name);
-          if (catalogInfoDAO == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
-          }
+          CatalogInfoDAO catalogInfoDAO = getCatalogDaoOrThrow(session, name);
           if (updateCatalog.getNewName() == null
               && updateCatalog.getComment() == null
               && (updateCatalog.getProperties() == null
@@ -144,9 +159,11 @@ public class CatalogRepository {
                 catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
           }
           if (updateCatalog.getNewName() != null
-              && getCatalogDAO(session, updateCatalog.getNewName()) != null) {
+              && RepositoryUtils.getCatalogDaoOpt(session, updateCatalog.getNewName())
+                  .isPresent()) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS, "Catalog already exists: " + updateCatalog.getNewName());
+                ErrorCode.CATALOG_ALREADY_EXISTS,
+                "Catalog already exists: " + updateCatalog.getNewName());
           }
           if (updateCatalog.getNewName() != null) {
             catalogInfoDAO.setName(updateCatalog.getNewName());
@@ -177,10 +194,7 @@ public class CatalogRepository {
     TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          CatalogInfoDAO catalogInfo = getCatalogDAO(session, name);
-          if (catalogInfo == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
-          }
+          CatalogInfoDAO catalogInfo = getCatalogDaoOrThrow(session, name);
 
           // First, check if there are any schemas in the catalog (to determine if force is needed)
           ListSchemasResponse initialSchemaCheck =

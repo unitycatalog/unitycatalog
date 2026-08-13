@@ -34,9 +34,7 @@ public class SecurityConfiguration {
   private static final Logger log = LoggerFactory.getLogger(SecurityConfiguration.class);
 
   private Path rsa512PublicKey;
-
   private Path rsa512PrivateKey;
-
   private Path keyId;
 
   @SneakyThrows
@@ -79,7 +77,6 @@ public class SecurityConfiguration {
 
   public RSAPublicKey rsaPublicKey()
       throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
-
     if (Files.notExists(rsa512PublicKey)) {
       log.info("No JWT public signing key present.");
       return null;
@@ -93,7 +90,6 @@ public class SecurityConfiguration {
 
   public RSAPrivateKey rsaPrivateKey()
       throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
-
     if (Files.notExists(rsa512PrivateKey)) {
       log.info("No JWT private signing key present.");
       return null;

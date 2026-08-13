@@ -6,21 +6,24 @@ import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.SplitHttpResponse;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedService;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.SimpleDecoratingHttpService;
-import com.linecorp.armeria.server.annotation.Param;
+import io.netty.util.AttributeKey;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
-import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,133 +32,189 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
-import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.PARAM;
-import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.PAYLOAD;
-import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.SYSTEM;
+import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PARAM;
+import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PAYLOAD;
+import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.SYSTEM;
 
 /**
  * Armeria access control Decorator.
- * <p>
- * This decorator provides the ability to protect Armeria service methods with per method access
- * control rules. This decorator is used in conjunction with two annotations, @AuthorizeExpression
- * and @AuthorizeKey to define authorization rules and identify requests parameters for objects
- * to authorize with.
  *
- * {@code @AuthorizeExpression} - This defines a Spring Expression Language expression to evaluate to make
- * an authorization decision.
- * {@code @AuthorizeKey} - This annotation is used to define request and payload parameters for the authorization
- * context. These are typically things like catalog, schema and table names. This annotation may be used
- * at both the method and method parameter context. It may be specified more than once per method to
- * map parameters to object keys.
+ * <p>This decorator provides the ability to protect Armeria service methods with per method access
+ * control rules. This decorator is used in conjunction with following 3 annotations to define
+ * authorization rules and identify requests parameters for objects to authorize with:
+ *
+ * <p>1. {@code @AuthorizeExpression} - This defines a Spring Expression Language expression to
+ * evaluate to make an authorization decision.
+ *
+ * <p>2. {@code @AuthorizeResourceKey} - This annotation maps a request value to a unity catalog
+ * resource (catalog, schema, table, etc.) for the authorization context. The source is chosen by
+ * whether the annotated method parameter also carries {@code @Param}: if present, the value is
+ * read from the URL query or path; if absent, from the request body field named by
+ * {@code @AuthorizeResourceKey.key()}. May be used at the method level (server-level resources
+ * like METASTORE) or at the parameter level, and may be specified more than once per method.
+ *
+ * <p>3. {@code @AuthorizeKey} - Works like {@code @AuthorizeResourceKey} for source selection, but
+ * for non-resource request values (operation mode, table type, flag, etc.) exposed directly as a
+ * SpEL variable instead of being mapped to a resource identifier.
+ *
+ * <p>For PAYLOAD-source locators (body-read), {@code peekData} only observes complete JSON chunks;
+ * anything else (no body, non-JSON content-type, malformed JSON, trailing whitespace) silently
+ * skips the authorization evaluation. The {@link #AUTH_PENDING} flag and {@link
+ * AuthorizationGateConverter} close that gap: the decorator marks the request auth-pending on
+ * entry to the PAYLOAD path, clears it only after authorization succeeds, and the gate converter
+ * denies any body-binding where the flag is still set.
  */
 public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityAccessDecorator.class);
   private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  /**
+   * Per-request flag: {@code true} once the decorator enters the PAYLOAD path, flipped to
+   * {@code false} when the authorization evaluation completes inside the peekData callback. Read by
+   * {@link AuthorizationGateConverter} at body-binding time: if still {@code true}, authorization
+   * never ran (no body chunk arrived, content-type wasn't JSON, or JSON didn't complete) and the
+   * request must be denied.
+   */
+  public static final AttributeKey<Boolean> AUTH_PENDING =
+      AttributeKey.valueOf(UnityAccessDecorator.class, "AUTH_PENDING");
   private final KeyMapper keyMapper;
   private final UserRepository userRepository;
 
   private final UnityAccessEvaluator evaluator;
 
-  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer, Repositories repositories) throws BaseException {
+  // Context attribute key for passing ResultFilter to service methods
+  public static final AttributeKey<ResultFilter> RESULT_FILTER_ATTR =
+      AttributeKey.valueOf(ResultFilter.class, "RESULT_FILTER");
+
+  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer, Repositories repositories)
+      throws BaseException {
     try {
       evaluator = new UnityAccessEvaluator(authorizer);
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
     }
-    keyMapper = new KeyMapper(repositories);
+    keyMapper = repositories.getKeyMapper();
     userRepository = repositories.getUserRepository();
   }
 
   @Override
   public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req)
-          throws Exception {
+      throws Exception {
     LOGGER.debug("AccessDecorator checking {}", req.path());
 
     Method method = findServiceMethod(ctx.config().service());
-
-    if (method != null) {
-
-      // Find the authorization parameters to use for this service method.
-      String expression = findAuthorizeExpression(method);
-      List<KeyLocator> locator = findAuthorizeKeys(method);
-
-      if (expression != null) {
-        if (!locator.isEmpty()) {
-          UUID principal = userRepository.findPrincipalId();
-          return authorizeByRequest(delegate, ctx, req, principal, locator, expression);
-        } else {
-          LOGGER.warn("No authorization resource(s) found.");
-          // going to assume the expression is just #deny, #permit or #defer
-        }
-      } else {
-        LOGGER.debug("No authorization expression found.");
-      }
-    } else {
-      LOGGER.warn("Couldn't unwrap service.");
+    if (method == null) {
+      throw new RuntimeException("Couldn't unwrap service.");
     }
 
-    return delegate.serve(ctx, req);
+    // Find the authorization parameters to use for this service method.
+    String expression = findAuthorizeExpression(method);
+    List<AuthorizeKeyLocator> locators = findAuthorizeKeys(method);
+
+    // Check for response filtering annotation
+    Optional<ResponseAuthorizeFilter> filterAnnotation =
+        Optional.ofNullable(method.getAnnotation(ResponseAuthorizeFilter.class));
+
+    if (expression == null) {
+      throw new RuntimeException("No authorization expression found.");
+    }
+    UUID principal = userRepository.findPrincipalId();
+    return authorizeByRequest(
+        delegate, ctx, method, req, principal, locators, expression, filterAnnotation);
   }
 
-  private HttpResponse authorizeByRequest(HttpService delegate, ServiceRequestContext ctx,
-                                          HttpRequest req, UUID principal, List<KeyLocator> locators,
-                                          String expression) throws Exception {
+  private HttpResponse authorizeByRequest(
+      HttpService delegate,
+      ServiceRequestContext ctx,
+      Method method,
+      HttpRequest req,
+      UUID principal,
+      List<AuthorizeKeyLocator> locators,
+      String expression,
+      Optional<ResponseAuthorizeFilter> filterAnnotation) throws Exception {
     //
     // Based on the query and payload parameters defined on the service method (that
     // have been gathered as Locators), we'll attempt to find the entity/resource that
     // we want to authorize against.
 
     Map<SecurableType, Object> resourceKeys = new HashMap<>();
+    Map<String, Object> nonResourceValues = new HashMap<>();
 
     // Split up the locators by type, because we have to extract the value from the request
     // different ways for different types
 
-    List<KeyLocator> systemLocators = locators.stream().filter(l -> l.getSource().equals(SYSTEM)).toList();
-    List<KeyLocator> paramLocators = locators.stream().filter(l -> l.getSource().equals(PARAM)).toList();
-    List<KeyLocator> payloadLocators = locators.stream().filter(l -> l.getSource().equals(PAYLOAD)).toList();
+    List<AuthorizeKeyLocator> systemLocators = locators.stream()
+        .filter(l -> l.getSource().equals(SYSTEM))
+        .toList();
+    List<AuthorizeKeyLocator> paramLocators = locators.stream()
+        .filter(l -> l.getSource().equals(PARAM))
+        .toList();
+    List<AuthorizeKeyLocator> payloadLocators = locators.stream()
+        .filter(l -> l.getSource().equals(PAYLOAD))
+        .toList();
 
     // Add system-type keys, just metastore for now.
-    systemLocators.forEach(l -> resourceKeys.put(l.getType(), "metastore"));
+    systemLocators.forEach(l -> resourceKeys.put(l.getType().get(), "metastore"));
 
     // Extract the query/path parameter values just by grabbing them from the request
     paramLocators.forEach(l -> {
-      String value = ctx.pathParam(l.getKey()) != null ? ctx.pathParam(l.getKey()) : ctx.queryParam(l.getKey());
-      resourceKeys.put(l.getType(), value);
+      String value = ctx.pathParam(l.getKey()) != null
+          ? ctx.pathParam(l.getKey())
+          : ctx.queryParam(l.getKey());
+      if (l.getType().isPresent()) {
+        resourceKeys.put(l.getType().get(), value);
+      } else {
+        nonResourceValues.put(l.getVariableName(), value);
+      }
     });
 
-    if (payloadLocators.isEmpty()) {
-      // If we don't have any PAYLOAD locators, we're ready to evaluate the authorization and allow or deny
-      // the request.
-      LOGGER.debug("Checking authorization before method.");
-      checkAuthorization(principal, expression, resourceKeys);
+    EvaluationAction evaluateAction =
+        filterAnnotation
+            .<EvaluationAction>map(x -> new ResultFilterAction(ctx, method))
+            .orElseGet(RequestEvaluationAction::new);
 
-      return delegate.serve(ctx, req);
+    if (payloadLocators.isEmpty()) {
+      Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
+      evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
     } else {
       // Since we have PAYLOAD locators, we can only interrogate the payload while the request
       // is being evaluated, via peekData()
       LOGGER.debug("Checking authorization before in peekData.");
 
-      PeekDataHandler peekDataHandler = new PeekDataHandler(req.contentType(), payloadLocators, resourceKeys);
+      PeekDataHandler peekDataHandler = new PeekDataHandler(
+          req.contentType(),
+          payloadLocators,
+          resourceKeys,
+          nonResourceValues);
 
-      // Note that peekData only gets called for requests that actually have data (like PUT and POST)
+      // peekData's lambda only fires when a body chunk arrives AND processPeekData returns true
+      // (JSON content-type + chunk ending in '}'). Any other path (no body, non-JSON, malformed
+      // JSON, trailing whitespace) silently skips authorization. Mark the request auth-pending
+      // here and clear it only after the authorization evaluation runs; AuthorizationGateConverter
+      // denies any body-binding attempt where this flag is still set.
+      ctx.setAttr(AUTH_PENDING, true);
 
-      var peekReq = req.peekData(data -> {
+      req = req.peekData(data -> {
+        // This code block is not called immediately. It is called later as part of delegate.serve()
         LOGGER.debug("Authorization peekData invoked.");
 
         if (peekDataHandler.processPeekData(data)) {
-          checkAuthorization(principal, expression, resourceKeys);
+          Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
+          evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
+          ctx.setAttr(AUTH_PENDING, false);
         }
       });
-
-      return delegate.serve(ctx, peekReq);
     }
+
+    HttpResponse response = delegate.serve(ctx, req);
+    return evaluateAction.afterRequest(response);
   }
 
   private static Object findPayloadValue(String key, Map<String, Object> payload) {
@@ -174,20 +233,109 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  private void checkAuthorization(UUID principal, String expression, Map<SecurableType, Object> resourceKeys) {
-    LOGGER.debug("resourceKeys = {}", resourceKeys);
+  private interface EvaluationAction {
+    void beforeRequest(
+        UUID principal,
+        String expression,
+        Map<SecurableType, UUID> resourceIds,
+        Map<String, Object> nonResourceValues);
 
-    Map<SecurableType, Object> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
+    HttpResponse afterRequest(HttpResponse response);
+  }
+
+  private class RequestEvaluationAction implements EvaluationAction {
+
+    @Override
+    public void beforeRequest(
+        UUID principal,
+        String expression,
+        Map<SecurableType, UUID> resourceIds,
+        Map<String, Object> nonResourceValues) {
+      if (!evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
+        throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+      }
+    }
+
+    @Override
+    public HttpResponse afterRequest(HttpResponse response) {
+      return response;
+    }
+  }
+
+  private class ResultFilterAction implements EvaluationAction {
+    protected static final String ERR_AUTH_NOT_EXECUTED =
+        "Authorization required but failed to execute";
+    private final ServiceRequestContext ctx;
+    private final Method method;
+    private volatile ResultFilter resultFilter = null;
+
+    ResultFilterAction(ServiceRequestContext ctx, Method method) {
+      this.ctx = ctx;
+      this.method = method;
+    }
+
+    @Override
+    public void beforeRequest(
+      UUID principal,
+      String expression,
+      Map<SecurableType, UUID> resourceIds,
+      Map<String, Object> nonResourceValues) {
+      resultFilter =
+          new ResultFilter(
+              evaluator, principal, expression, resourceIds, nonResourceValues, keyMapper);
+      ctx.setAttr(RESULT_FILTER_ATTR, resultFilter);
+    }
+
+    @Override
+    public HttpResponse afterRequest(HttpResponse response) {
+      // Wait only for response headers (not the full body) to run the enforcement check,
+      // then stream the body through. This avoids buffering large LIST responses just to
+      // check a flag that would allocate O(response size) per concurrent request.
+      SplitHttpResponse split = response.split();
+      return HttpResponse.of(split.headers().thenApply(
+        headers -> {
+          if (headers.status().isSuccess()) {
+            if (resultFilter == null) {
+              split.body().abort();
+              LOGGER.error(
+                  "SECURITY VIOLATION: Method {} did not execute evaluateAction",
+                  method.getName());
+              throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
+            }
+            if (!resultFilter.wasCalled()) {
+              split.body().abort();
+              LOGGER.error(
+                  "SECURITY VIOLATION: Method {} with @ResponseAuthorizeFilter did not call "
+                      + "applyResponseFilter(). This is a security vulnerability!",
+                  method.getName());
+              throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
+            }
+          }
+          return HttpResponse.of(headers, split.body());
+        }));
+    }
+  }
+
+  private Map<SecurableType, UUID> mapResourceKeys(
+      Map<SecurableType, Object> resourceKeys, Map<String, Object> nonResourceValues) {
+    Map<SecurableType, UUID> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
+
+    if (resourceKeys.containsKey(SecurableType.EXTERNAL_LOCATION)) {
+      // KeyMapper will try to map a path of EXTERNAL_LOCATION to any data securable if the path
+      // belongs to it, instead of just the external location. This new variable is introduced so
+      // that auth expression can easily check if the input path overlaps with any data securable.
+      boolean noOverlapWithDataSecurable =
+          ExternalLocationUtils.DATA_SECURABLE_TYPES.stream()
+              .allMatch(type -> resourceIds.get(type) == null);
+      nonResourceValues.put("no_overlap_with_data_securable", noOverlapWithDataSecurable);
+    }
 
     if (!resourceIds.keySet().containsAll(resourceKeys.keySet())) {
       LOGGER.warn("Some resource keys have unresolved ids.");
     }
 
     LOGGER.debug("resourceIds = {}", resourceIds);
-
-    if (!evaluator.evaluate(principal, expression, resourceIds)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
-    }
+    return resourceIds;
   }
 
   private static String findAuthorizeExpression(Method method) {
@@ -204,57 +352,44 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  private static List<KeyLocator> findAuthorizeKeys(Method method) {
+  private static List<AuthorizeKeyLocator> findAuthorizeKeys(Method method) {
     // TODO: Cache this by method
 
-    List<KeyLocator> locators = new ArrayList<>();
+    List<AuthorizeKeyLocator> locators = new ArrayList<>();
 
-    AuthorizeKey methodKey = method.getAnnotation(AuthorizeKey.class);
+    AuthorizeResourceKey methodKey = method.getAnnotation(AuthorizeResourceKey.class);
 
     // If resource is on the method, its source is from a global/system variable
     if (methodKey != null) {
-      locators.add(KeyLocator.builder().source(SYSTEM).type(methodKey.value()).build());
+      locators.add(
+          AuthorizeKeyLocator.builder()
+              .source(SYSTEM)
+              .type(Optional.of(methodKey.value()))
+              .build());
     }
 
     for (Parameter parameter : method.getParameters()) {
-      AuthorizeKey paramKey = parameter.getAnnotation(AuthorizeKey.class);
-      AuthorizeKeys paramKeys = parameter.getAnnotation(AuthorizeKeys.class);
-
-      if (paramKey != null && paramKeys != null) {
-        LOGGER.warn("Both AuthorizeKey and AuthorizeKeys present");
+      AuthorizeResourceKey[] allResourceKeys =
+          parameter.getAnnotationsByType(AuthorizeResourceKey.class);
+      for (AuthorizeResourceKey key : allResourceKeys) {
+        locators.add(AuthorizeKeyLocator.from(key, parameter));
       }
 
-      List<AuthorizeKey> allKeys = new ArrayList<>();
-      if (paramKey != null) {
-        allKeys.add(paramKey);
-      }
-      if (paramKeys != null) {
-        allKeys.addAll(Arrays.asList(paramKeys.value()));
-      }
-
-      for (AuthorizeKey key : allKeys) {
-        if (!key.key().isEmpty()) {
-          // Explicitly declaring a key, so it's the source is from the payload data
-          locators.add(KeyLocator.builder().source(PAYLOAD).type(key.value()).key(key.key()).build());
-        } else {
-          // No key defined so implicitly referencing an (annotated) (query) parameter
-          Param param = parameter.getAnnotation(Param.class);
-          if (param != null) {
-            locators.add(KeyLocator.builder().source(PARAM).type(key.value()).key(param.value()).build());
-          } else {
-            LOGGER.warn("Couldn't find param key for authorization key");
-          }
-        }
+      AuthorizeKey[] allNonResourceKeys = parameter.getAnnotationsByType(AuthorizeKey.class);
+      for (AuthorizeKey key : allNonResourceKeys) {
+        locators.add(AuthorizeKeyLocator.from(key, parameter));
       }
     }
     return locators;
   }
 
   private static Method findServiceMethod(HttpService httpService) throws ClassNotFoundException {
-    if (httpService.unwrap() instanceof SimpleDecoratingHttpService decoratingService &&
-            decoratingService.unwrap() instanceof AnnotatedService service) {
+    if (httpService.unwrap() instanceof SimpleDecoratingHttpService decoratingService
+        && decoratingService.unwrap() instanceof AnnotatedService service) {
 
-      LOGGER.debug("serviceName = {}, methodName = {}", service.serviceName(), service.methodName());
+      LOGGER.debug("serviceName = {}, methodName = {}",
+          service.serviceName(),
+          service.methodName());
 
       Class<?> clazz = Class.forName(service.serviceName());
       List<Method> methods = findMethodsByName(clazz, service.methodName());
@@ -285,14 +420,20 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // the method call directly and extract the payload data from the method arguments.
 
     private final MediaType contentType;
-    private final List<KeyLocator> payloadLocators;
+    private final List<AuthorizeKeyLocator> payloadLocators;
     private final Map<SecurableType, Object> resourceKeys;
+    private final Map<String, Object> nonResourceValues;
     private final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
 
-    private PeekDataHandler(MediaType contentType, List<KeyLocator> payloadLocators, Map<SecurableType, Object> resourceKeys) {
+    private PeekDataHandler(
+        MediaType contentType,
+        List<AuthorizeKeyLocator> payloadLocators,
+        Map<SecurableType, Object> resourceKeys,
+        Map<String, Object> nonResourceValues) {
       this.contentType = contentType;
       this.payloadLocators = payloadLocators;
       this.resourceKeys = resourceKeys;
+      this.nonResourceValues = nonResourceValues;
     }
 
     private boolean processPeekData(HttpData data) {
@@ -311,10 +452,25 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         // TODO: try to optimize this using Jackson streaming or something else.
         if (data.array()[data.array().length - 1] == '}') {
           try {
-            Map<String, Object> payload = MAPPER.readValue(dataStream.toByteArray(), new TypeReference<>() {
-            });
+            Map<String, Object> payload = MAPPER.readValue(
+                dataStream.toByteArray(),
+                new TypeReference<>() {
+                });
 
-            payloadLocators.forEach(l -> resourceKeys.put(l.getType(), findPayloadValue(l.getKey(), payload)));
+            payloadLocators.forEach(
+                l -> {
+                  Object value = findPayloadValue(l.getKey(), payload);
+                  if (l.getType().isPresent()) {
+                    resourceKeys.put(l.getType().get(), value);
+                  } else {
+                    if (value != null && value.getClass().isEnum()) {
+                      // Convert enums to their string representation
+                      value = value.toString();
+                    }
+                    nonResourceValues.put(l.getVariableName(), value);
+                  }
+                });
+
             return true;
           } catch (IOException e) {
             // This is probably because we read partial data.
@@ -328,6 +484,5 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
       return false;
     }
-
   }
 }

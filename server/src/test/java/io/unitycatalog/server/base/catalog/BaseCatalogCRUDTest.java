@@ -1,6 +1,12 @@
 package io.unitycatalog.server.base.catalog;
 
-import static io.unitycatalog.server.utils.TestUtils.*;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NEW_COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NEW_NAME;
+import static io.unitycatalog.server.utils.TestUtils.COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.COMMON_ENTITY_NAME;
+import static io.unitycatalog.server.utils.TestUtils.NEW_PROPERTIES;
+import static io.unitycatalog.server.utils.TestUtils.PROPERTIES;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;

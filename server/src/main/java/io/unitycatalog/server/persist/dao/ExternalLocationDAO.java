@@ -3,15 +3,24 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.ExternalLocationInfo;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
-import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 @Entity
-@Table(name = "uc_external_locations")
+@Table(
+    name = "uc_external_locations",
+    indexes = {
+      @Index(name = "idx_url", columnList = "url"),
+      @Index(name = "idx_credential_id", columnList = "credential_id"),
+    })
 // Lombok
 @Getter
 @Setter
@@ -45,36 +54,15 @@ public class ExternalLocationDAO extends IdentifiableDAO {
   @Column(name = "updated_by")
   private String updatedBy;
 
-  public static ExternalLocationDAO from(ExternalLocationInfo externalLocationInfo) {
-    return ExternalLocationDAO.builder()
-        .name(externalLocationInfo.getName())
-        .url(externalLocationInfo.getUrl())
-        .comment(externalLocationInfo.getComment())
-        .owner(externalLocationInfo.getOwner())
-        .credentialId(
-            externalLocationInfo.getCredentialId() != null
-                ? UUID.fromString(externalLocationInfo.getCredentialId())
-                : null)
-        .createdAt(
-            externalLocationInfo.getCreatedAt() != null
-                ? Date.from(Instant.ofEpochMilli(externalLocationInfo.getCreatedAt()))
-                : new Date())
-        .createdBy(externalLocationInfo.getCreatedBy())
-        .updatedAt(
-            externalLocationInfo.getUpdatedAt() != null
-                ? Date.from(Instant.ofEpochMilli(externalLocationInfo.getUpdatedAt()))
-                : null)
-        .updatedBy(externalLocationInfo.getUpdatedBy())
-        .build();
-  }
-
-  public ExternalLocationInfo toExternalLocationInfo() {
+  public ExternalLocationInfo toExternalLocationInfo(String credentialName) {
     return new ExternalLocationInfo()
         .name(getName())
         .url(getUrl())
         .comment(getComment())
         .owner(getOwner())
+        .id(getId() != null ? getId().toString() : null)
         .credentialId(getCredentialId() != null ? getCredentialId().toString() : null)
+        .credentialName(credentialName)
         .createdAt(getCreatedAt().getTime())
         .createdBy(getCreatedBy())
         .updatedAt(getUpdatedAt() != null ? getUpdatedAt().getTime() : null)

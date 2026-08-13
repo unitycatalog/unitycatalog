@@ -1,7 +1,24 @@
 package io.unitycatalog.server.persist.utils;
 
-import io.unitycatalog.server.persist.dao.*;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
+import io.unitycatalog.server.persist.dao.DependencyDAO;
+import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
+import io.unitycatalog.server.persist.dao.FunctionParameterInfoDAO;
+import io.unitycatalog.server.persist.dao.MetastoreDAO;
+import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.UserDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -30,7 +47,15 @@ public class HibernateConfigurator {
   private final Properties hibernateProperties;
 
   public HibernateConfigurator(ServerProperties serverProperties) {
-    this.hibernateProperties = setupHibernateProperties(serverProperties);
+    this(setupHibernateProperties(serverProperties));
+  }
+
+  /**
+   * Builds a session factory from explicit hibernate properties. Lets tests customize the
+   * properties (e.g. point at PostgreSQL via Testcontainers) before construction.
+   */
+  public HibernateConfigurator(Properties hibernateProperties) {
+    this.hibernateProperties = hibernateProperties;
     this.sessionFactory = createSessionFactory(hibernateProperties);
   }
 
@@ -42,6 +67,7 @@ public class HibernateConfigurator {
       configuration.addAnnotatedClass(CatalogInfoDAO.class);
       configuration.addAnnotatedClass(SchemaInfoDAO.class);
       configuration.addAnnotatedClass(TableInfoDAO.class);
+      configuration.addAnnotatedClass(StagingTableDAO.class);
       configuration.addAnnotatedClass(ColumnInfoDAO.class);
       configuration.addAnnotatedClass(PropertyDAO.class);
       configuration.addAnnotatedClass(FunctionInfoDAO.class);
@@ -53,6 +79,8 @@ public class HibernateConfigurator {
       configuration.addAnnotatedClass(MetastoreDAO.class);
       configuration.addAnnotatedClass(CredentialDAO.class);
       configuration.addAnnotatedClass(ExternalLocationDAO.class);
+      configuration.addAnnotatedClass(DeltaCommitDAO.class);
+      configuration.addAnnotatedClass(DependencyDAO.class);
 
       ServiceRegistry serviceRegistry =
           new StandardServiceRegistryBuilder().applySettings(configuration.getProperties()).build();
@@ -73,17 +101,14 @@ public class HibernateConfigurator {
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
       hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "update");
     } else {
-      InputStream input;
-      try {
-        input = Files.newInputStream(hibernatePropertiesPath);
+      try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
         hibernateProperties.load(input);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
     }
 
-    // TODO: use dependency injection for test hibernate properties
-    if ("test".equals(serverProperties.getProperty("server.env"))) {
+    if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");

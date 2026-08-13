@@ -14,7 +14,7 @@ import com.unboundid.scim2.common.exceptions.BadRequestException;
 import com.unboundid.scim2.common.types.UserResource;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.Repositories;
@@ -35,7 +35,7 @@ public class Scim2SelfService {
   @Produces("application/scim+json")
   @StatusCode(200)
   @AuthorizeExpression("#principal != null")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public UserResource getCurrentUser() {
     // TODO: will make this a util method in the access control PR
     ServiceRequestContext ctx = ServiceRequestContext.current();

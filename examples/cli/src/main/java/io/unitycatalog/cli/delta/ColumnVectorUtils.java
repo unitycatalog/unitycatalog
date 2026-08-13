@@ -10,7 +10,7 @@ import java.util.function.Function;
 
 /**
  * Utility class to create ColumnVector objects for testing purposes. The input data is a list of
- * values, the corresponding delta data type and a getter function to fetch the value at a given
+ * values, the corresponding Delta data type and a getter function to fetch the value at a given
  * index. We can also create a single repeated value ColumnVector of a given size. The code has
  * evolved from examples provided in <a
  * href="https://github.com/delta-io/delta/blob/master/kernel/examples/kernel-examples/src/main/java/io/delta/kernel/examples/BaseTableWriter.java">BaseTableWriter.java</a>

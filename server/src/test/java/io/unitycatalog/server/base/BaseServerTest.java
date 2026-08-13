@@ -4,29 +4,73 @@ import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
-import io.unitycatalog.server.utils.TestUtils;
+import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Properties;
+import lombok.SneakyThrows;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.io.TempDir;
 
 public abstract class BaseServerTest {
 
-  public static ServerConfig serverConfig = new ServerConfig("http://localhost", "");
-  protected static UnityCatalogServer unityCatalogServer;
-  protected static Properties serverProperties;
-  protected static HibernateConfigurator hibernateConfigurator;
-  protected static CloudCredentialVendor cloudCredentialVendor;
+  public static final ServerConfig serverConfig = new ServerConfig("http://localhost", "");
+  protected UnityCatalogServer unityCatalogServer;
+  protected Properties serverProperties;
+  protected HibernateConfigurator hibernateConfigurator;
+  protected CloudCredentialVendor cloudCredentialVendor;
+
+  // All test data should be written under this directory. It will be cleaned up.
+  @TempDir protected Path testDirectoryRoot;
+  // The storage root URL for managed tables to be set in server properties.
+  protected String tableStorageRoot;
+
+  /**
+   * This function should be overriden if the test wants to start UC server to take emulated cloud
+   * path as managed storage. The emulated cloud FS is provided by subclasses of
+   * CredentialTestFileSystem.
+   */
+  protected String managedStorageCloudScheme() {
+    // By default, just use local FS for managed storage.
+    return "file";
+  }
+
+  /** Returns string of the emulated cloud URL (or just the absolute local path) for a local path */
+  protected String getManagedStorageCloudPath(Path localPath) {
+    String localPathString;
+    localPathString = localPath.toAbsolutePath().normalize().toString();
+    String scheme = managedStorageCloudScheme();
+    if (scheme.equals("file")) {
+      return "file://" + localPathString;
+    } else {
+      return scheme + "://test-bucket0" + localPathString;
+    }
+  }
 
   protected void setUpProperties() {
     serverProperties = new Properties();
-    serverProperties.setProperty("server.env", "test");
+    serverProperties.setProperty(Property.SERVER_ENV.getKey(), "test");
+    serverProperties.setProperty(Property.INCLUDE_STACK_TRACE_IN_ERROR.getKey(), "true");
+    tableStorageRoot = getManagedStorageCloudPath(testDirectoryRoot);
+    serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
   }
 
-  protected void setUpCredentialOperations() {}
+  protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
+  /**
+   * Subclasses can override this to customize the hibernate properties before the session factory
+   * is created, e.g. to point the server at an external database such as PostgreSQL via
+   * Testcontainers. Defaults to the H2 in-memory test configuration.
+   */
+  protected void setUpHibernateProperties(Properties hibernateProperties) {}
+
+  @SneakyThrows
   @BeforeEach
   public void setUp() {
     if (serverConfig == null) {
@@ -41,19 +85,32 @@ public abstract class BaseServerTest {
     if (serverConfig.getServerUrl().contains("localhost")) {
       System.out.println("Running tests on localhost..");
       // start the server on a random port
-      int port = TestUtils.getRandomPort();
+      int port = findAvailablePort();
+      Files.createDirectories(testDirectoryRoot);
+
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
-      setUpCredentialOperations();
-      hibernateConfigurator = new HibernateConfigurator(initServerProperties);
+      setUpCredentialOperations(initServerProperties);
+      Properties hibernateProperties =
+          HibernateConfigurator.setupHibernateProperties(initServerProperties);
+      setUpHibernateProperties(hibernateProperties);
+      hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
       unityCatalogServer =
           UnityCatalogServer.builder()
               .port(port)
               .serverProperties(initServerProperties)
+              .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
+    }
+  }
+
+  /** Finds an available port for the UC server. */
+  private int findAvailablePort() throws IOException {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
     }
   }
 
@@ -70,13 +127,25 @@ public abstract class BaseServerTest {
       session.createMutationQuery("delete from VolumeInfoDAO").executeUpdate();
       session.createMutationQuery("delete from ColumnInfoDAO").executeUpdate();
       session.createMutationQuery("delete from TableInfoDAO").executeUpdate();
+      session.createMutationQuery("delete from StagingTableDAO").executeUpdate();
       session.createMutationQuery("delete from SchemaInfoDAO").executeUpdate();
       session.createMutationQuery("delete from CatalogInfoDAO").executeUpdate();
       session.createMutationQuery("delete from UserDAO").executeUpdate();
+      session.createMutationQuery("delete from ExternalLocationDAO").executeUpdate();
+      session.createMutationQuery("delete from CredentialDAO").executeUpdate();
       tx.commit();
       session.close();
 
-      unityCatalogServer.stop();
+      // close() rather than stop() so a server that built its own SessionFactory releases it;
+      // this harness injects one, so the server leaves it open and we close it below.
+      unityCatalogServer.close();
+      // Release the factory this harness built and injected in setUp(). setUp() builds a fresh
+      // one per test, so leaked factories would otherwise accumulate for the whole JVM run. In
+      // test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
+      // cleanup queries above.
+      sessionFactory.close();
+      // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
+      unityCatalogServer = null;
     }
   }
 }

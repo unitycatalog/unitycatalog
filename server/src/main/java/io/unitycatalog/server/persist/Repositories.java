@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist;
 
-import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.auth.decorator.KeyMapper;
+import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
@@ -12,11 +13,12 @@ import org.hibernate.SessionFactory;
 @Getter
 public class Repositories {
   private final SessionFactory sessionFactory;
-  private final FileOperations fileOperations;
+  private final ExternalLocationUtils externalLocationUtils;
 
   private final CatalogRepository catalogRepository;
   private final SchemaRepository schemaRepository;
   private final TableRepository tableRepository;
+  private final StagingTableRepository stagingTableRepository;
   private final VolumeRepository volumeRepository;
   private final UserRepository userRepository;
   private final MetastoreRepository metastoreRepository;
@@ -24,20 +26,31 @@ public class Repositories {
   private final ModelRepository modelRepository;
   private final CredentialRepository credentialRepository;
   private final ExternalLocationRepository externalLocationRepository;
+  private final DeltaCommitRepository deltaCommitRepository;
+  private final DependencyRepository dependencyRepository;
+
+  private final KeyMapper keyMapper;
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
-    this.fileOperations = new FileOperations(serverProperties);
+    this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
 
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
-    this.tableRepository = new TableRepository(this, sessionFactory);
+    this.tableRepository = new TableRepository(this, sessionFactory, serverProperties);
+    this.stagingTableRepository =
+        new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);
     this.userRepository = new UserRepository(this, sessionFactory);
     this.metastoreRepository = new MetastoreRepository(this, sessionFactory);
     this.functionRepository = new FunctionRepository(this, sessionFactory);
-    this.modelRepository = new ModelRepository(this, sessionFactory);
-    this.credentialRepository = new CredentialRepository(this, sessionFactory);
+    this.modelRepository = new ModelRepository(this, sessionFactory, serverProperties);
+    this.credentialRepository = new CredentialRepository(this, sessionFactory, serverProperties);
     this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
+    this.deltaCommitRepository = new DeltaCommitRepository(sessionFactory, serverProperties);
+    this.dependencyRepository = new DependencyRepository();
+
+    // KeyMapper uses all the repositories above.
+    this.keyMapper = new KeyMapper(this);
   }
 }

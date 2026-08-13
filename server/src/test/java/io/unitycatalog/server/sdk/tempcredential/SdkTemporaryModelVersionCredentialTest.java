@@ -1,13 +1,26 @@
 package io.unitycatalog.server.sdk.tempcredential;
 
-import static io.unitycatalog.server.utils.TestUtils.*;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.MODEL_FULL_NAME;
 import static io.unitycatalog.server.utils.TestUtils.MODEL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.MV_COMMENT;
+import static io.unitycatalog.server.utils.TestUtils.MV_RUNID;
+import static io.unitycatalog.server.utils.TestUtils.MV_RUNID2;
+import static io.unitycatalog.server.utils.TestUtils.MV_SOURCE;
+import static io.unitycatalog.server.utils.TestUtils.MV_SOURCE2;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.CreateModelVersion;
+import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.GenerateTemporaryModelVersionCredential;
+import io.unitycatalog.client.model.ModelVersionOperation;
+import io.unitycatalog.client.model.RegisteredModelInfo;
+import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -18,23 +31,22 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ModelVersionInfo;
 import io.unitycatalog.server.model.ModelVersionStatus;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
-import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
+import java.nio.file.Path;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMockCredentials {
-  private SchemaOperations schemaOperations;
   private ModelOperations modelOperations;
   private TemporaryCredentialsApi temporaryCredentialsApi;
 
@@ -43,6 +55,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
     return new SdkCatalogOperations(TestUtils.createApiClient(config));
   }
 
+  @Override
   protected SchemaOperations createSchemaOperations(ServerConfig config) {
     return new SdkSchemaOperations(TestUtils.createApiClient(config));
   }
@@ -51,31 +64,20 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
     return new SdkModelOperations(TestUtils.createApiClient(config));
   }
 
-  String rootBase = "/tmp/" + UUID.randomUUID();
+  @TempDir Path rootBase;
 
   @Override
   public void setUpProperties() {
     super.setUpProperties();
-    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase);
+    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase.toString());
   }
 
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
-    schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
     temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
-  }
-
-  @AfterEach
-  public void afterEachTest() {
-    try {
-      // Clean up the newly created storage root
-      UriUtils.deleteStorageLocationPath("file:" + rootBase);
-    } catch (Exception e) {
-      // Ignore
-    }
   }
 
   protected void createNonFileModelVersion(
@@ -120,9 +122,6 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
   }
 
   protected void createCommonResources(String storageLocation) throws ApiException {
-    CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
-    catalogOperations.createCatalog(createCatalog);
-    schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
     CreateRegisteredModel createRm =
         new CreateRegisteredModel()
             .name(MODEL_NAME)
@@ -274,7 +273,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
     if (isConfiguredPath) {
       TemporaryCredentials temporaryCredentials =
           temporaryCredentialsApi.generateTemporaryModelVersionCredentials(generateCloudReadyCreds);
-      assertTemporaryCredentials(temporaryCredentials, scheme);
+      assertTemporaryCredentials(temporaryCredentials, scheme, url);
     } else {
       assertThatThrownBy(
               () ->
@@ -282,5 +281,22 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
                       generateCloudReadyCreds))
           .isInstanceOf(ApiException.class);
     }
+  }
+
+  @Test
+  public void testGenerateAwsTemporaryCredentialsFromMasterRole() throws ApiException {
+    String modelVersionLocation = AWS_EXTERNAL_LOCATION_PATH + "/model";
+    createCommonResources(modelVersionLocation);
+    GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredential =
+        new GenerateTemporaryModelVersionCredential()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .modelName(MODEL_NAME)
+            .version(2L)
+            .operation(ModelVersionOperation.READ_WRITE_MODEL_VERSION);
+    TemporaryCredentials temporaryCredentials =
+        temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
+            generateTemporaryModelVersionCredential);
+    EchoAwsStsClient.assertAwsCredential(temporaryCredentials);
   }
 }

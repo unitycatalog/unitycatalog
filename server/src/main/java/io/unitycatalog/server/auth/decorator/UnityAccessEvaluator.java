@@ -6,10 +6,8 @@ import io.unitycatalog.server.persist.model.Privileges;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.expression.ExpressionParser;
@@ -75,8 +73,19 @@ public class UnityAccessEvaluator {
     return authorizer.authorizeAll(principalId, resource, privileges);
   }
 
+  /**
+   * Evaluate authorization expression with resource IDs and parameter values.
+   *
+   * @param principal The principal UUID
+   * @param expression The SpEL authorization expression
+   * @param resourceIds Map of resource types to their UUIDs
+   * @param nonResourceValues Map of parameter names to their values (from @AuthorizeKey)
+   */
   public boolean evaluate(
-      UUID principal, String expression, Map<SecurableType, Object> resourceIds) {
+      UUID principal,
+      String expression,
+      Map<SecurableType, UUID> resourceIds,
+      Map<String, Object> nonResourceValues) {
 
     StandardEvaluationContext context = new StandardEvaluationContext(Privileges.class);
 
@@ -86,23 +95,13 @@ public class UnityAccessEvaluator {
 
     context.setVariable("deny", Boolean.FALSE);
     context.setVariable("permit", Boolean.TRUE);
-    context.setVariable("defer", Boolean.TRUE);
     context.setVariable("principal", principal);
 
     resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
+    nonResourceValues.forEach(context::setVariable);
 
     Boolean result = parser.parseExpression(expression).getValue(context, Boolean.class);
 
-    LOGGER.debug("evaluating {} = {}", expression, result);
-
     return result != null ? result : false;
-  }
-
-  public <T> void filter(
-      UUID principalId,
-      String expression,
-      List<T> entries,
-      Function<T, Map<SecurableType, Object>> resolver) {
-    entries.removeIf(c -> !evaluate(principalId, expression, resolver.apply(c)));
   }
 }

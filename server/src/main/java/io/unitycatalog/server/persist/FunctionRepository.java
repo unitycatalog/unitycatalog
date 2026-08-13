@@ -2,7 +2,10 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CreateFunction;
+import io.unitycatalog.server.model.CreateFunctionRequest;
+import io.unitycatalog.server.model.FunctionInfo;
+import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -83,13 +86,13 @@ public class FunctionRepository {
           String catalogName = createFunction.getCatalogName();
           String schemaName = createFunction.getSchemaName();
           SchemaInfoDAO schemaInfo =
-              repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-          if (schemaInfo == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-          }
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaDaoOrThrow(session, catalogName, schemaName);
           if (getFunctionDAO(session, catalogName, schemaName, createFunction.getName()) != null) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS, "Function already exists: " + createFunction.getName());
+                ErrorCode.RESOURCE_ALREADY_EXISTS,
+                "Function already exists: " + createFunction.getName());
           }
           FunctionInfoDAO dao = FunctionInfoDAO.from(functionInfo);
           dao.setSchemaId(schemaInfo.getId());
@@ -118,15 +121,6 @@ public class FunctionRepository {
     functionInfo.setFullName(catalogName + "." + schemaName + "." + functionInfo.getName());
   }
 
-  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
-    SchemaInfoDAO schemaInfo =
-        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-    }
-    return schemaInfo.getId();
-  }
-
   /**
    * Return the list of functions in ascending order of function name.
    *
@@ -144,7 +138,10 @@ public class FunctionRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID schemaId = getSchemaId(session, catalogName, schemaName);
+          UUID schemaId =
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
           return listFunctions(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         },
         "Failed to list functions",
@@ -202,7 +199,8 @@ public class FunctionRepository {
 
   public FunctionInfoDAO getFunctionDAO(
       Session session, String catalogName, String schemaName, String functionName) {
-    UUID schemaId = getSchemaId(session, catalogName, schemaName);
+    UUID schemaId =
+        repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
     return getFunctionDAO(session, schemaId, functionName);
   }
 
@@ -226,12 +224,11 @@ public class FunctionRepository {
             throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
           }
           String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
-          SchemaInfoDAO schemaInfo =
-              repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-          if (schemaInfo == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-          }
-          deleteFunction(session, schemaInfo.getId(), functionName);
+          UUID schemaId =
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
+          deleteFunction(session, schemaId, functionName);
           LOGGER.info("Deleted function: {}", functionName);
           return null;
         },

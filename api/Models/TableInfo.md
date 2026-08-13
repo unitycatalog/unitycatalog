@@ -18,6 +18,8 @@
 | **updated\_at** | **Long** | Time at which this table was last modified, in epoch milliseconds. | [optional] [default to null] |
 | **updated\_by** | **String** | Username of user who last modified the table. | [optional] [default to null] |
 | **table\_id** | **String** | Unique identifier for the table. | [optional] [default to null] |
+| **view\_definition** | **String** | Definition text for view-like table types such as VIEW, MATERIALIZED_VIEW, STREAMING_TABLE, and METRIC_VIEW. The format depends on the table type (SQL for views, YAML for metric views). | [optional] [default to null] |
+| **view\_dependencies** | [**DependencyList**](DependencyList.md) |  | [optional] [default to null] |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

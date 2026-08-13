@@ -1,0 +1,383 @@
+package io.unitycatalog.server.sdk.access;
+
+import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
+import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.SchemasApi;
+import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.delta.api.DeltaTablesApi;
+import io.unitycatalog.client.delta.api.DeltaTemporaryCredentialsApi;
+import io.unitycatalog.client.delta.model.DeltaCreateTableRequest;
+import io.unitycatalog.client.delta.model.DeltaCredentialOperation;
+import io.unitycatalog.client.delta.model.DeltaCredentialsResponse;
+import io.unitycatalog.client.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.client.delta.model.DeltaPrimitiveType;
+import io.unitycatalog.client.delta.model.DeltaProtocol;
+import io.unitycatalog.client.delta.model.DeltaRenameTableRequest;
+import io.unitycatalog.client.delta.model.DeltaStructField;
+import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
+import io.unitycatalog.client.delta.model.DeltaStructType;
+import io.unitycatalog.client.delta.model.DeltaTableType;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.TestUtils;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import lombok.SneakyThrows;
+import org.junit.jupiter.api.Test;
+
+/**
+ * SDK-based access control tests for Table CRUD operations.
+ *
+ * <p>This test class verifies:
+ *
+ * <ul>
+ *   <li>Table creation requires ownership or CREATE TABLE permission
+ *   <li>Table listing is filtered based on permissions
+ *   <li>Table get requires SELECT or ownership
+ *   <li>Table delete requires ownership
+ *   <li>Proper handling of USE CATALOG and USE SCHEMA permissions
+ * </ul>
+ */
+public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest {
+
+  @Test
+  @SneakyThrows
+  public void testTableAccess() {
+    createCommonTestUsers();
+    setupCommonCatalogAndSchema();
+
+    // Create API clients for different users
+    ServerConfig principal1Config = createTestUserServerConfig(PRINCIPAL_1);
+    ServerConfig regular1Config = createTestUserServerConfig(REGULAR_1);
+    ServerConfig regular2Config = createTestUserServerConfig("regular-2@localhost");
+
+    TablesApi adminTablesApi = new TablesApi(adminApiClient);
+    TablesApi principal1TablesApi = new TablesApi(TestUtils.createApiClient(principal1Config));
+    TablesApi regular1TablesApi = new TablesApi(TestUtils.createApiClient(regular1Config));
+    TablesApi regular2TablesApi = new TablesApi(TestUtils.createApiClient(regular2Config));
+    SchemasApi regular2SchemasApi = new SchemasApi(TestUtils.createApiClient(regular2Config));
+
+    // UC Delta API clients for loadTable and delete tests
+    DeltaTablesApi adminDeltaApi = new DeltaTablesApi(adminApiClient);
+    DeltaTablesApi principal1DeltaApi =
+        new DeltaTablesApi(TestUtils.createApiClient(principal1Config));
+    DeltaTablesApi regular1DeltaApi = new DeltaTablesApi(TestUtils.createApiClient(regular1Config));
+    DeltaTablesApi regular2DeltaApi = new DeltaTablesApi(TestUtils.createApiClient(regular2Config));
+
+    // Delta REST credential clients for getTableCredentials tests
+    DeltaTemporaryCredentialsApi principal1DeltaCredsApi =
+        new DeltaTemporaryCredentialsApi(TestUtils.createApiClient(principal1Config));
+    DeltaTemporaryCredentialsApi regular1DeltaCredsApi =
+        new DeltaTemporaryCredentialsApi(TestUtils.createApiClient(regular1Config));
+    DeltaTemporaryCredentialsApi regular2DeltaCredsApi =
+        new DeltaTemporaryCredentialsApi(TestUtils.createApiClient(regular2Config));
+
+    // Grant USE CATALOG and USE SCHEMA to principal-1
+    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.USE_SCHEMA);
+
+    // Grant USE CATALOG and CREATE SCHEMA to regular-1
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, "cat_pr1", Privileges.CREATE_SCHEMA);
+
+    // create table (principal-1) -> owner, use catalog, USE SCHEMA -> allowed
+    CreateTable createTable1 =
+        new CreateTable()
+            .name("tbl_pr1")
+            .catalogName("cat_pr1")
+            .schemaName("sch_pr1")
+            .columns(TEST_COLUMNS)
+            .storageLocation("/tmp/tbl_pr1")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA);
+    TableInfo table1Info = principal1TablesApi.createTable(createTable1);
+    assertThat(table1Info).isNotNull();
+    assertThat(table1Info.getName()).isEqualTo("tbl_pr1");
+
+    // Grant USE CATALOG and USE SCHEMA to regular-1
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.USE_SCHEMA);
+
+    // TEST: Create table as regular-1 (not owner, no CREATE TABLE) - should fail
+    CreateTable createTableRg1 =
+        new CreateTable()
+            .name("tab_rg1")
+            .catalogName("cat_pr1")
+            .schemaName("sch_pr1")
+            .columns(TEST_COLUMNS)
+            .storageLocation("/tmp/tab_rg1")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA);
+    assertPermissionDenied(() -> regular1TablesApi.createTable(createTableRg1));
+
+    // grant CREATE TABLE permission to regular-1
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.CREATE_TABLE);
+
+    // create table (regular-1) -> not owner, use catalog, USE SCHEMA, create table -> allowed
+    TableInfo tableRg1Info = regular1TablesApi.createTable(createTableRg1);
+    assertThat(tableRg1Info).isNotNull();
+    assertThat(tableRg1Info.getName()).isEqualTo("tab_rg1");
+
+    // list tables (admin) -> metastore admin -> allowed - list all
+    List<TableInfo> adminTables = listAllTables(adminTablesApi, "cat_pr1", "sch_pr1");
+    assertThat(adminTables).hasSize(2);
+
+    // list tables (principal-1) -> owner -> allowed - list all
+    List<TableInfo> principal1Tables = listAllTables(principal1TablesApi, "cat_pr1", "sch_pr1");
+    assertThat(principal1Tables).hasSize(2);
+
+    // grant permissions to regular-2
+    grantPermissions(
+        "regular-2@localhost", SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(
+        "regular-2@localhost", SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.USE_SCHEMA);
+    grantPermissions(
+        "regular-2@localhost", SecurableType.TABLE, "cat_pr1.sch_pr1.tbl_pr1", Privileges.SELECT);
+
+    // list tables (regular-2) -> use catalog, use schema, select -> allowed -> filtered list
+    List<TableInfo> regular2Tables = listAllTables(regular2TablesApi, "cat_pr1", "sch_pr1");
+    assertThat(regular2Tables).hasSize(1);
+    assertThat(regular2Tables.get(0).getName()).isEqualTo("tbl_pr1");
+
+    // list tables (regular-1) -> -- -> owner table only
+    List<TableInfo> regular1Tables = listAllTables(regular1TablesApi, "cat_pr1", "sch_pr1");
+    assertThat(regular1Tables).hasSize(1);
+    assertThat(regular1Tables.get(0).getName()).isEqualTo("tab_rg1");
+
+    // get, table (admin) -> metastore admin -> allowed
+    TableInfo tableInfoAdmin = getTable(adminTablesApi, "cat_pr1.sch_pr1.tbl_pr1");
+    assertThat(tableInfoAdmin).isNotNull();
+
+    // get, table (principal-1) -> owner [catalog] -> allowed
+    TableInfo tableInfoOwner = getTable(principal1TablesApi, "cat_pr1.sch_pr1.tbl_pr1");
+    assertThat(tableInfoOwner).isNotNull();
+
+    // get, table (regular-2) -> use schema, use catalog, select [table] -> allowed
+    TableInfo tableInfoRegular2 = getTable(regular2TablesApi, "cat_pr1.sch_pr1.tbl_pr1");
+    assertThat(tableInfoRegular2).isNotNull();
+
+    // Delta loadTable follows the same authz as getTable
+    // loadTable (admin) -> metastore admin -> allowed
+    assertThat(adminDeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1")).isNotNull();
+
+    // loadTable (regular-1) -> use catalog, use schema, but no SELECT -> denied
+    assertPermissionDenied(() -> regular1DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1"));
+
+    // loadTable (regular-2) -> use schema, use catalog, select -> allowed
+    assertThat(regular2DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1")).isNotNull();
+
+    // tableExists (admin) -> metastore admin -> allowed (204)
+    assertThat(
+            adminDeltaApi.tableExistsWithHttpInfo("cat_pr1", "sch_pr1", "tbl_pr1").getStatusCode())
+        .isEqualTo(204);
+
+    // tableExists (regular-1) -> use catalog, use schema, but no SELECT -> denied (403).
+    assertApiExceptionStatusOnly(
+        () -> regular1DeltaApi.tableExists("cat_pr1", "sch_pr1", "tbl_pr1"), 403);
+
+    // tableExists (regular-2) -> use schema, use catalog, select -> allowed (204)
+    assertThat(
+            regular2DeltaApi
+                .tableExistsWithHttpInfo("cat_pr1", "sch_pr1", "tbl_pr1")
+                .getStatusCode())
+        .isEqualTo(204);
+
+    // Delta getTableCredentials authz: READ requires SELECT, READ_WRITE requires MODIFY
+    // getTableCredentials READ (regular-1) -> use catalog, use schema, but no SELECT -> denied
+    assertPermissionDenied(
+        () ->
+            regular1DeltaCredsApi.getTableCredentials(
+                DeltaCredentialOperation.READ, "cat_pr1", "sch_pr1", "tbl_pr1"));
+
+    // getTableCredentials READ_WRITE (regular-2) -> has SELECT but not MODIFY -> denied
+    assertPermissionDenied(
+        () ->
+            regular2DeltaCredsApi.getTableCredentials(
+                DeltaCredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1"));
+
+    // Grant MODIFY to regular-2 so the READ_WRITE path passes authz.
+    grantPermissions(
+        "regular-2@localhost", SecurableType.TABLE, "cat_pr1.sch_pr1.tbl_pr1", Privileges.MODIFY);
+
+    // getTableCredentials READ_WRITE (regular-2) -> SELECT + MODIFY -> authz passes, call
+    // returns. The table's storage location is a local filesystem path; CloudCredentialVendor
+    // returns an empty TemporaryCredentials for file:// which flows through the mapper to a
+    // well-formed response with one storage credential whose config fields are all null.
+    assertReadWriteCredentialsVended(regular2DeltaCredsApi);
+
+    // getTableCredentials READ_WRITE (principal-1) -> TABLE OWNER (no explicit MODIFY) -> authz
+    // passes via the OWNER arm of the OR in the READ_WRITE rule. Covers the other branch of
+    // `OWNER || (SELECT && MODIFY)` so the expression gets full branch coverage.
+    assertReadWriteCredentialsVended(principal1DeltaCredsApi);
+
+    // grant CREATE SCHEMA to regular-2
+    grantPermissions(
+        "regular-2@localhost", SecurableType.CATALOG, "cat_pr1", Privileges.CREATE_SCHEMA);
+
+    // create schema as regular-2
+    CreateSchema createSchemaRg2 = new CreateSchema().name("sch_rg2").catalogName("cat_pr1");
+    regular2SchemasApi.createSchema(createSchemaRg2);
+
+    // grant USE SCHEMA to regular-2
+    grantPermissions(
+        "regular-2@localhost", SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
+
+    // create, table (regular-2) -> owner [schema], USE CATALOG -> allowed
+    CreateTable createTableRg2 =
+        new CreateTable()
+            .name("tab_rg2")
+            .catalogName("cat_pr1")
+            .schemaName("sch_rg2")
+            .columns(TEST_COLUMNS)
+            .storageLocation("/tmp/tab_rg2")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA);
+    TableInfo tableRg2Info = regular2TablesApi.createTable(createTableRg2);
+    assertThat(tableRg2Info).isNotNull();
+
+    // Delta createTable for an EXTERNAL table must wire the new table into the auth
+    // hierarchy (mirrors TableService.createTable). regular-1 has only USE_CATALOG, USE_SCHEMA,
+    // CREATE_TABLE -- under GET_TABLE the only OR-branch this user can satisfy is the
+    // table-OWNER one, which only holds if initializeBasicAuthorization granted it. The
+    // subsequent loadTable proves the wiring. (MANAGED skips re-init: its UUID was already
+    // wired at createStagingTable time.)
+    String deltaExternalName = "tbl_delta_authz";
+    String deltaExternalLocation = "/tmp/" + deltaExternalName + "_" + UUID.randomUUID();
+    DeltaLoadTableResponse deltaCreated =
+        regular1DeltaApi.createTable(
+            "cat_pr1",
+            "sch_pr1",
+            new DeltaCreateTableRequest()
+                .name(deltaExternalName)
+                .location(deltaExternalLocation)
+                .tableType(DeltaTableType.EXTERNAL)
+                .columns(
+                    new DeltaStructType()
+                        .type("struct")
+                        .fields(
+                            List.of(
+                                new DeltaStructField()
+                                    .name("id")
+                                    .type(new DeltaPrimitiveType().type("long"))
+                                    .nullable(false)
+                                    .metadata(new DeltaStructFieldMetadata()))))
+                .protocol(
+                    new DeltaProtocol()
+                        .minReaderVersion(3)
+                        .minWriterVersion(7)
+                        .readerFeatures(List.of("deletionVectors"))
+                        .writerFeatures(List.of("deletionVectors")))
+                .properties(Map.of("delta.enableDeletionVectors", "true"))
+                .lastCommitTimestampMs(1700000000000L));
+    assertThat(
+            regular1DeltaApi
+                .loadTable("cat_pr1", "sch_pr1", deltaExternalName)
+                .getMetadata()
+                .getTableUuid())
+        .isEqualTo(deltaCreated.getMetadata().getTableUuid());
+
+    // delete table (regular-1) -> -- -> denied via UC REST and Delta REST
+    assertPermissionDenied(() -> regular1TablesApi.deleteTable("cat_pr1.sch_rg2.tab_rg2"));
+    assertPermissionDenied(() -> regular1DeltaApi.deleteTable("cat_pr1", "sch_rg2", "tab_rg2"));
+
+    // delete table (principal-1) -> owner [catalog] -> allowed (UC REST)
+    principal1TablesApi.deleteTable("cat_pr1.sch_rg2.tab_rg2");
+
+    // Delta REST delete also allows the owner
+    CreateTable createTableRg2Delta =
+        new CreateTable()
+            .name("tab_rg2_delta")
+            .catalogName("cat_pr1")
+            .schemaName("sch_rg2")
+            .columns(TEST_COLUMNS)
+            .storageLocation("/tmp/tab_rg2_delta")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA);
+    regular2TablesApi.createTable(createTableRg2Delta);
+
+    // Delta delete (regular-1) -> -- -> denied
+    assertPermissionDenied(
+        () -> regular1DeltaApi.deleteTable("cat_pr1", "sch_rg2", "tab_rg2_delta"));
+
+    // Delta delete (principal-1) -> owner [catalog] -> allowed
+    assertThat(
+            principal1DeltaApi
+                .deleteTableWithHttpInfo("cat_pr1", "sch_rg2", "tab_rg2_delta")
+                .getStatusCode())
+        .isEqualTo(204);
+
+    // Delta REST rename requires both DELETE_TABLE and permission to create the new table name.
+    CreateTable createTableRg2Rename =
+        new CreateTable()
+            .name("tab_rg2_rename")
+            .catalogName("cat_pr1")
+            .schemaName("sch_rg2")
+            .columns(TEST_COLUMNS)
+            .storageLocation("/tmp/tab_rg2_rename")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA);
+    regular2TablesApi.createTable(createTableRg2Rename);
+
+    // Missing DELETE_TABLE: regular-1 can create a new name in the schema but does not own the
+    // source table (or its parent schema/catalog).
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.CREATE_TABLE);
+    assertPermissionDenied(
+        () ->
+            regular1DeltaApi.renameTable(
+                "cat_pr1",
+                "sch_rg2",
+                "tab_rg2_rename",
+                new DeltaRenameTableRequest().newName("tab_rg2_renamed")));
+
+    // Missing create permission: principal-1 satisfies DELETE_TABLE through catalog ownership but
+    // has neither schema ownership nor USE_SCHEMA + CREATE_TABLE for the new name.
+    assertPermissionDenied(
+        () ->
+            principal1DeltaApi.renameTable(
+                "cat_pr1",
+                "sch_rg2",
+                "tab_rg2_rename",
+                new DeltaRenameTableRequest().newName("tab_rg2_renamed")));
+
+    // Both sides: add the create permissions to principal-1; catalog ownership already satisfies
+    // DELETE_TABLE.
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
+    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.CREATE_TABLE);
+
+    assertThat(
+            principal1DeltaApi
+                .renameTableWithHttpInfo(
+                    "cat_pr1",
+                    "sch_rg2",
+                    "tab_rg2_rename",
+                    new DeltaRenameTableRequest().newName("tab_rg2_renamed"))
+                .getStatusCode())
+        .isEqualTo(204);
+  }
+
+  /**
+   * Asserts that the given client can vend READ_WRITE credentials for {@code cat_pr1.sch_pr1
+   * .tbl_pr1}. Used to pin the "authz passes, call returns a well-formed response" behavior for
+   * both the {@code SELECT && MODIFY} and {@code OWNER} branches of the READ_WRITE policy.
+   */
+  private static void assertReadWriteCredentialsVended(DeltaTemporaryCredentialsApi api)
+      throws ApiException {
+    DeltaCredentialsResponse vended =
+        api.getTableCredentials(
+            DeltaCredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1");
+    assertThat(vended.getStorageCredentials()).hasSize(1);
+    assertThat(vended.getStorageCredentials().get(0).getOperation())
+        .isEqualTo(DeltaCredentialOperation.READ_WRITE);
+  }
+}

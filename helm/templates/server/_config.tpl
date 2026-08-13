@@ -12,6 +12,9 @@ server.client-id=${OAUTH_CLIENT_ID}
 server.client-secret=${OAUTH_CLIENT_SECRET}
 server.redirect-port={{ .Values.auth.redirectPort }}
 server.cookie-timeout={{ .Values.auth.cookieTimeout }}
+server.access-token-timeout={{ .Values.auth.accessTokenTimeout }}
+server.allowed-issuers={{ .Values.auth.allowedIssuers }}
+server.audiences={{ .Values.auth.audiences }}
 {{- end }}
 
 storage-root.models={{ .Values.storage.modelStorageRoot }}

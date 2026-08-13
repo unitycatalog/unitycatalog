@@ -1,11 +1,8 @@
 package io.unitycatalog.cli.function;
 
-import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
-
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.cli.BaseCliOperations;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateFunctionRequest;
 import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.server.base.ServerConfig;
@@ -15,16 +12,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class CliFunctionOperations implements FunctionOperations {
-  private final ServerConfig config;
-  private final ObjectMapper objectMapper = new ObjectMapper();
+public class CliFunctionOperations extends BaseCliOperations implements FunctionOperations {
 
   public CliFunctionOperations(ServerConfig config) {
-    this.config = config;
+    super("function", config);
   }
 
   @Override
-  public FunctionInfo createFunction(CreateFunctionRequest createFunctionRequest) {
+  public FunctionInfo createFunction(CreateFunctionRequest createFunctionRequest)
+      throws ApiException {
     String fullName =
         createFunctionRequest.getFunctionInfo().getCatalogName()
             + "."
@@ -38,8 +34,6 @@ public class CliFunctionOperations implements FunctionOperations {
     List<String> argsList =
         new ArrayList<>(
             List.of(
-                "function",
-                "create",
                 "--full_name",
                 fullName,
                 "--input_params",
@@ -56,39 +50,28 @@ public class CliFunctionOperations implements FunctionOperations {
     }
     argsList.add("--def");
     argsList.add(createFunctionRequest.getFunctionInfo().getRoutineDefinition());
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode jsonNode = executeCLICommand(args);
-    return objectMapper.convertValue(jsonNode, FunctionInfo.class);
+    return execute(FunctionInfo.class, "create", argsList);
   }
 
   @Override
   public List<FunctionInfo> listFunctions(
-      String catalogName, String schemaName, Optional<String> pageToken) {
+      String catalogName, String schemaName, Optional<String> pageToken) throws ApiException {
     List<String> argsList =
-        new ArrayList<>(
-            List.of("function", "list", "--catalog", catalogName, "--schema", schemaName));
+        new ArrayList<>(List.of("--catalog", catalogName, "--schema", schemaName));
     if (pageToken.isPresent()) {
       argsList.add("--page_token");
       argsList.add(pageToken.get());
     }
-    String[] args = addServerAndAuthParams(argsList, config);
-    JsonNode jsonNode = executeCLICommand(args);
-    return objectMapper.convertValue(jsonNode, new TypeReference<List<FunctionInfo>>() {});
+    return execute(new TypeReference<>() {}, "list", argsList);
   }
 
   @Override
-  public FunctionInfo getFunction(String functionFullName) {
-    String[] args =
-        addServerAndAuthParams(List.of("function", "get", "--full_name", functionFullName), config);
-    JsonNode jsonNode = executeCLICommand(args);
-    return objectMapper.convertValue(jsonNode, FunctionInfo.class);
+  public FunctionInfo getFunction(String functionFullName) throws ApiException {
+    return execute(FunctionInfo.class, "get", List.of("--full_name", functionFullName));
   }
 
   @Override
-  public void deleteFunction(String functionFullName, boolean force) {
-    String[] args =
-        addServerAndAuthParams(
-            List.of("function", "delete", "--full_name", functionFullName), config);
-    executeCLICommand(args);
+  public void deleteFunction(String functionFullName, boolean force) throws ApiException {
+    execute(Void.class, "delete", List.of("--full_name", functionFullName));
   }
 }

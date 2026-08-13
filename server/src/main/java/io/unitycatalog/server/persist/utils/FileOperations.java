@@ -1,228 +1,182 @@
 package io.unitycatalog.server.persist.utils;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.ListObjectsRequest;
-import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.model.AwsCredentials;
+import io.unitycatalog.server.model.AzureUserDelegationSAS;
+import io.unitycatalog.server.model.GcpOauthToken;
+import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
-import io.unitycatalog.server.utils.ServerProperties.Property;
-import java.io.ByteArrayInputStream;
+import io.unitycatalog.server.utils.UriScheme;
 import java.io.IOException;
-import java.net.URI;
-import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Comparator;
-import java.util.stream.Stream;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.apache.iceberg.aws.AwsClientProperties;
+import org.apache.iceberg.aws.s3.S3FileIOProperties;
+import org.apache.iceberg.azure.AzureProperties;
+import org.apache.iceberg.gcp.GCPProperties;
+import org.apache.iceberg.io.FileIO;
+import org.apache.iceberg.io.ResolvingFileIO;
 
+/**
+ * Single entry point for all storage/file access in the server. Covers both directory lifecycle
+ * management for managed storage locations (create/delete) and credential-vended Iceberg {@link
+ * FileIO} construction used by the Iceberg REST catalog.
+ */
 public class FileOperations {
-  private static final Logger LOGGER = LoggerFactory.getLogger(FileOperations.class);
-  private final ServerProperties serverProperties;
-  private static String modelStorageRootCached;
-  private static String modelStorageRootPropertyCached;
 
-  public FileOperations(ServerProperties serverProperties) {
-    this.serverProperties = serverProperties;
+  private final StorageCredentialVendor storageCredentialVendor;
+  private final Map<NormalizedURL, String> s3BucketRegionMap;
+
+  public FileOperations(
+      StorageCredentialVendor storageCredentialVendor, ServerProperties serverProperties) {
+    this.storageCredentialVendor = storageCredentialVendor;
+    this.s3BucketRegionMap =
+        serverProperties.getS3Configurations().entrySet().stream()
+            .filter(entry -> entry.getValue().getRegion() != null)
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getRegion()));
+  }
+
+  /** Delete entire directory recursively. Note that currently it does nothing for cloud FS */
+  public static void deleteDirectory(NormalizedURL url) {
+    switch (UriScheme.fromURI(url.toUri())) {
+      // Directory deletion for local paths is handled by SimpleLocalFileIO.
+      case FILE, NULL -> SimpleLocalFileIO.deleteDirectory(url.toString());
+      // Currently we can NOT delete the path in cloud storage. We will update this in future
+      // when UC OSS begins using the hadoopfs libraries.
+      case S3 -> {}
+      case GS -> {}
+      case ABFS, ABFSS -> {}
+    }
+  }
+
+  /** Create a directory for storage location. Note that currently it does nothing for cloud FS */
+  public static void createStorageLocationDir(NormalizedURL url) {
+    switch (UriScheme.fromURI(url.toUri())) {
+      case FILE, NULL -> createLocalDirectory(url);
+      // Currently we can NOT create the directory in cloud storage. We will update this in future
+      // when UC OSS begins using the hadoopfs libraries.
+      case S3 -> {}
+      case GS -> {}
+      case ABFS, ABFSS -> {}
+    }
+  }
+
+  private static void createLocalDirectory(NormalizedURL url) {
+    Path dirPath = Paths.get(url.toUri());
+    // Check if directory already exists
+    if (Files.exists(dirPath)) {
+      throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + dirPath);
+    }
+    // Create the directory
+    try {
+      Files.createDirectories(dirPath);
+    } catch (IOException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + dirPath, e);
+    }
   }
 
   /**
-   * TODO: Deprecate this method once unit tests are self contained and this class gets
-   * re-instantiated with each test. Property updates shouldn't affect the instantiated class and we
-   * should require a server restart if the properties file is updated.
+   * Returns an Iceberg {@link FileIO} for reading the given location. Local paths use {@link
+   * SimpleLocalFileIO}; cloud paths use a credential-vended {@link ResolvingFileIO}.
    */
-  private static void reset() {
-    modelStorageRootPropertyCached = null;
-    modelStorageRootCached = null;
-  }
-
-  // Model specific storage root handlers and convenience methods
-  private String getModelStorageRoot() {
-    String currentModelStorageRoot = serverProperties.get(Property.MODEL_STORAGE_ROOT);
-    if (modelStorageRootPropertyCached != currentModelStorageRoot) {
-      // This means the property has been updated from the previous read, or this is the first time
-      // reading it
-      reset();
-    }
-    if (modelStorageRootCached != null) {
-      return modelStorageRootCached;
-    }
-    String modelStorageRoot = currentModelStorageRoot;
-    if (modelStorageRoot == null) {
-      // If the model storage root is empty, use the CWD
-      modelStorageRoot = System.getProperty("user.dir");
-    }
-    // If the model storage root is not a valid URI, make it one
-    if (!UriUtils.isValidURI(modelStorageRoot)) {
-      // Convert to an absolute path
-      modelStorageRoot = Paths.get(modelStorageRoot).toUri().toString();
-    }
-    // Check if the modelStorageRoot ends with a slash and remove it if it does
-    while (modelStorageRoot.endsWith("/")) {
-      modelStorageRoot = modelStorageRoot.substring(0, modelStorageRoot.length() - 1);
-    }
-    modelStorageRootCached = modelStorageRoot;
-    modelStorageRootPropertyCached = currentModelStorageRoot;
-    return modelStorageRoot;
-  }
-
-  private String getModelDirectoryURI(String entityFullName) {
-    return getModelStorageRoot() + "/" + entityFullName.replace(".", "/");
-  }
-
-  public String getModelStorageLocation(String catalogId, String schemaId, String modelId) {
-    return getModelDirectoryURI(catalogId + "." + schemaId + ".models." + modelId);
-  }
-
-  public String getModelVersionStorageLocation(
-      String catalogId, String schemaId, String modelId, String versionId) {
-    return getModelDirectoryURI(
-        catalogId + "." + schemaId + ".models." + modelId + ".versions." + versionId);
-  }
-
-  private static URI createURI(String uri) {
-    if (uri.startsWith("s3://") || uri.startsWith("file:")) {
-      return URI.create(uri);
-    } else {
-      return Paths.get(uri).toUri();
-    }
-  }
-
-  public void deleteDirectory(String path) {
-    URI directoryUri = createURI(path);
-    validateURI(directoryUri);
-    if (directoryUri.getScheme() == null || directoryUri.getScheme().equals("file")) {
-      try {
-        deleteLocalDirectory(Paths.get(directoryUri));
-      } catch (RuntimeException | IOException e) {
-        throw new BaseException(ErrorCode.INTERNAL, "Failed to delete directory: " + path, e);
+  // TODO: Cache fileIOs
+  public FileIO getFileIO(NormalizedURL path) {
+    return switch (UriScheme.fromURI(path.toUri())) {
+      // Local paths are served by SimpleLocalFileIO (backed by java.nio + iceberg-core). We
+      // deliberately do NOT route these through ResolvingFileIO: it resolves the file:// scheme to
+      // Iceberg's HadoopFileIO, which requires hadoop-client-runtime on the classpath. The server
+      // only depends on hadoop-client-api, and SimpleLocalFileIO covers the local read and
+      // directory operations we need without that heavy runtime dependency.
+      case FILE, NULL -> new SimpleLocalFileIO();
+      case S3, GS, ABFS, ABFSS -> {
+        ResolvingFileIO fileio = new ResolvingFileIO();
+        fileio.initialize(getFileIOConfig(path));
+        yield fileio;
       }
-    } else if (directoryUri.getScheme().equals("s3")) {
-      modifyS3Directory(directoryUri, false);
+    };
+  }
+
+  /**
+   * Builds the Iceberg FileIO configuration (credentials, region, token expiry) for the given
+   * location by vending temporary storage credentials for it. Returns an empty map for local
+   * (file://) paths, which need no cloud credentials.
+   *
+   * @param path the normalized storage location to vend credentials and build config for
+   */
+  public Map<String, String> getFileIOConfig(NormalizedURL path) {
+    UriScheme scheme = UriScheme.fromURI(path.toUri());
+    if (scheme == UriScheme.FILE || scheme == UriScheme.NULL) {
+      // Local (file://) paths need no cloud credentials, so short-circuit before vending: the
+      // scheme is known here and vending would do a needless external-location lookup for local
+      // tables.
+      return Map.of();
+    }
+
+    // FIXME!! privileges are defaulted to READ only here for now as Iceberg REST impl doesn't
+    //  support write
+    TemporaryCredentials cred =
+        storageCredentialVendor.vendCredential(path, Set.of(CredentialContext.Privilege.SELECT));
+    if (cred.getAzureUserDelegationSas() != null) {
+      return getADLSConfig(path, cred.getAzureUserDelegationSas());
+    } else if (cred.getGcpOauthToken() != null) {
+      return getGCSConfig(cred.getGcpOauthToken(), cred.getExpirationTime());
+    } else if (cred.getAwsTempCredentials() != null) {
+      return getS3Config(path, cred.getAwsTempCredentials());
     } else {
+      // Cloud vend returned no recognized credential type. This should not happen for a cloud
+      // scheme, so fail loudly rather than silently returning an empty (credential-less) config
+      // that would later surface as an opaque access-denied error.
       throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + directoryUri.getScheme());
+          ErrorCode.INTERNAL,
+          "No recognized storage credential was vended for location: " + path);
     }
   }
 
-  private static void deleteLocalDirectory(Path dirPath) throws IOException {
-    if (Files.exists(dirPath)) {
-      try (Stream<Path> walk = Files.walk(dirPath, FileVisitOption.FOLLOW_LINKS)) {
-        walk.sorted(Comparator.reverseOrder())
-            .forEach(
-                path -> {
-                  try {
-                    Files.delete(path);
-                  } catch (IOException e) {
-                    throw new RuntimeException("Failed to delete " + path, e);
-                  }
-                });
-      }
+  private Map<String, String> getADLSConfig(
+      NormalizedURL path, AzureUserDelegationSAS azureUserDelegationSAS) {
+    ADLSLocationUtils.ADLSLocationParts locationParts = ADLSLocationUtils.parseLocation(path);
+    // NOTE: when fileio caching is implemented, need to set/deal with expiry here
+    return Map.of(
+        AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(),
+        azureUserDelegationSAS.getSasToken());
+  }
+
+  private Map<String, String> getGCSConfig(GcpOauthToken gcpOauthToken, Long expirationTime) {
+    if (expirationTime != null) {
+      return Map.of(
+          GCPProperties.GCS_OAUTH2_TOKEN,
+          gcpOauthToken.getOauthToken(),
+          GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT,
+          Long.toString(expirationTime));
     } else {
-      throw new IOException("Directory does not exist: " + dirPath);
+      return Map.of(GCPProperties.GCS_OAUTH2_TOKEN, gcpOauthToken.getOauthToken());
     }
   }
 
-  private URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
-    String bucketName = parsedUri.getHost();
-    String path = parsedUri.getPath().substring(1); // Remove leading '/'
-    String accessKey = serverProperties.getProperty("aws.s3.accessKey");
-    String secretKey = serverProperties.getProperty("aws.s3.secretKey");
-    String sessionToken = serverProperties.getProperty("aws.s3.sessionToken");
-    String region = serverProperties.getProperty("aws.region");
-
-    BasicSessionCredentials sessionCredentials =
-        new BasicSessionCredentials(accessKey, secretKey, sessionToken);
-    AmazonS3 s3Client =
-        AmazonS3ClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(sessionCredentials))
-            .withRegion(region)
-            .build();
-
-    if (createOrDelete) {
-
-      if (!path.endsWith("/")) {
-        path += "/";
-      }
-      if (s3Client.doesObjectExist(bucketName, path)) {
-        throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + path);
-      }
-      try {
-        // Create empty content
-        byte[] emptyContent = new byte[0];
-        ByteArrayInputStream emptyContentStream = new ByteArrayInputStream(emptyContent);
-
-        // Set metadata for the empty content
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength(0);
-        s3Client.putObject(new PutObjectRequest(bucketName, path, emptyContentStream, metadata));
-        LOGGER.debug("Directory created successfully: {}", path);
-        return URI.create(String.format("s3://%s/%s", bucketName, path));
-      } catch (Exception e) {
-        throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
-      }
-    } else {
-      ObjectListing listing;
-      ListObjectsRequest req = new ListObjectsRequest().withBucketName(bucketName).withPrefix(path);
-      do {
-        listing = s3Client.listObjects(req);
-        listing
-            .getObjectSummaries()
-            .forEach(
-                object -> {
-                  s3Client.deleteObject(bucketName, object.getKey());
-                });
-        req.setMarker(listing.getNextMarker());
-      } while (listing.isTruncated());
-      return URI.create(String.format("s3://%s/%s", bucketName, path));
+  private Map<String, String> getS3Config(NormalizedURL path, AwsCredentials awsCredentials) {
+    // TODO: if region isn't configured, use HEAD bucket to figure out
+    String s3Region = s3BucketRegionMap.get(path.getStorageBase());
+    if (s3Region == null) {
+      // s3BucketRegionMap has no entry for this bucket (Map.get returns null on a miss). Guard
+      // here with a clear message rather than letting Map.of throw an opaque NullPointerException
+      // below.
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "No S3 region configured for bucket: " + path.getStorageBase());
     }
-  }
-
-  private static URI adjustFileUri(URI fileUri) {
-    String uriString = fileUri.toString();
-    // Ensure the URI starts with "file:///" for absolute paths
-    if (uriString.startsWith("file:/") && !uriString.startsWith("file:///")) {
-      uriString = "file://" + uriString.substring(5);
-    }
-    return URI.create(uriString);
-  }
-
-  public static String convertRelativePathToURI(String url) {
-    if (url == null) {
-      return null;
-    }
-    if (isSupportedCloudStorageUri(url)) {
-      return url;
-    } else {
-      return adjustFileUri(createURI(url)).toString();
-    }
-  }
-
-  public static boolean isSupportedCloudStorageUri(String url) {
-    String scheme = URI.create(url).getScheme();
-    return scheme != null && Constants.SUPPORTED_SCHEMES.contains(scheme);
-  }
-
-  private static void validateURI(URI uri) {
-    if (uri.getScheme() == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid path: " + uri.getPath());
-    }
-    URI normalized = uri.normalize();
-    if (!normalized.getPath().startsWith(uri.getPath())) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Normalization failed: " + uri.getPath());
-    }
-  }
-
-  public static void assertValidLocation(String location) {
-    validateURI(URI.create(location));
+    return Map.of(
+        S3FileIOProperties.ACCESS_KEY_ID, awsCredentials.getAccessKeyId(),
+        S3FileIOProperties.SECRET_ACCESS_KEY, awsCredentials.getSecretAccessKey(),
+        S3FileIOProperties.SESSION_TOKEN, awsCredentials.getSessionToken(),
+        AwsClientProperties.CLIENT_REGION, s3Region);
   }
 }

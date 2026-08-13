@@ -2,6 +2,8 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.TransactionRollbackException;
+import java.util.Optional;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -37,10 +39,51 @@ public class TransactionManager {
       DatabaseOperation<R> operation,
       String errorMessage,
       boolean readOnly) {
+    return executeWithTransaction(
+        sessionFactory, operation, errorMessage, readOnly, Optional.empty());
+  }
+
+  /**
+   * Executes a database operation with transaction management and optional custom isolation level.
+   *
+   * @param sessionFactory the Hibernate session factory
+   * @param operation the database operation to execute
+   * @param errorMessage the error message to use if the operation fails
+   * @param readOnly whether the session should be read-only
+   * @param isolationLevel optional transaction isolation level (e.g.,
+   *     Connection.TRANSACTION_REPEATABLE_READ). If present, the original isolation level will be
+   *     saved and restored after the transaction to avoid affecting pooled connections.
+   * @param <R> the result type
+   * @return the result of the operation
+   */
+  public static <R> R executeWithTransaction(
+      SessionFactory sessionFactory,
+      DatabaseOperation<R> operation,
+      String errorMessage,
+      boolean readOnly,
+      Optional<Integer> isolationLevel) {
     try (Session session = sessionFactory.openSession()) {
       if (readOnly) {
         session.setDefaultReadOnly(true);
       }
+
+      // Save and set custom isolation level if specified.
+      // IMPORTANT: With autocommit=false (Hibernate default), pooled connections may have an
+      // open implicit transaction from their prior use. H2's setTransactionIsolation() takes
+      // effect for the NEXT transaction, not the current implicit one. We must end the
+      // implicit transaction first so the new isolation level applies to a fresh MVCC snapshot.
+      // Without this, REPEATABLE_READ reads can see stale data from before the connection was
+      // returned to the pool.
+      final int[] originalIsolation = new int[1];
+      if (isolationLevel.isPresent()) {
+        session.doWork(
+            connection -> {
+              connection.rollback(); // End any stale implicit transaction from pool reuse
+              originalIsolation[0] = connection.getTransactionIsolation();
+              connection.setTransactionIsolation(isolationLevel.get());
+            });
+      }
+
       Transaction tx = session.beginTransaction();
       try {
         R result = operation.execute(session);
@@ -48,11 +91,25 @@ public class TransactionManager {
         return result;
       } catch (Exception e) {
         tx.rollback();
-        LOGGER.error(errorMessage, e);
+        // A control-flow signal (e.g. an idempotent-replay short-circuit) is not an error: rethrow
+        // it as-is, without error logging, so the caller can catch its specific type. The rollback
+        // above has already undone its work.
+        if (e instanceof TransactionRollbackException) {
+          throw (TransactionRollbackException) e;
+        }
+        LOGGER.debug(errorMessage, e);
         if (e instanceof BaseException) {
           throw (BaseException) e;
         }
         throw new BaseException(ErrorCode.INTERNAL, errorMessage + ": " + e.getMessage());
+      } finally {
+        // Restore original isolation level to avoid polluting connection pool
+        if (isolationLevel.isPresent()) {
+          session.doWork(
+              connection -> {
+                connection.setTransactionIsolation(originalIsolation[0]);
+              });
+        }
       }
     }
   }

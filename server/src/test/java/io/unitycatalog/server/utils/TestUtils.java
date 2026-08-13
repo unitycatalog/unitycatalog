@@ -1,10 +1,25 @@
 package io.unitycatalog.server.utils;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiClientBuilder;
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.auth.TokenProvider;
+import io.unitycatalog.client.delta.DeltaApiException;
+import io.unitycatalog.client.delta.model.DeltaErrorType;
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.exception.ErrorCode;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
   public static final String CATALOG_NAME = "uc_testcatalog";
@@ -12,7 +27,6 @@ public class TestUtils {
   public static final String CATALOG_NAME2 = "uc_testcatalog2";
   public static final String SCHEMA_NAME2 = "uc_testschema2";
   public static final String TABLE_NAME = "uc_testtable";
-  public static final String STORAGE_LOCATION = "/tmp/stagingLocation";
   public static final String VOLUME_NAME = "uc_testvolume";
   public static final String FUNCTION_NAME = "uc_testfunction";
   public static final String MODEL_NAME = "uc_testmodel";
@@ -42,6 +56,11 @@ public class TestUtils {
   public static final String MV_RUNID = "model version runId";
   public static final String MV_SOURCE2 = "model version source 2";
   public static final String MV_RUNID2 = "model version runId 2";
+  public static final String TEST_AWS_MASTER_ROLE_ARN =
+      "arn:aws:iam::1234567:role/UCMasterRole-EXAMPLE";
+  public static final String TEST_AWS_MASTER_ROLE_ACCESS_KEY = "masterRoleAccessKey";
+  public static final String TEST_AWS_MASTER_ROLE_SECRET_KEY = "masterRoleSecretKey";
+  public static final String TEST_AWS_REGION = "us-west-2";
 
   public static final Map<String, String> PROPERTIES =
       new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));
@@ -49,21 +68,97 @@ public class TestUtils {
       new HashMap<>(Map.of("prop2", "value22", "prop3", "value33"));
   public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
 
-  public static int getRandomPort() {
-    return (int) (Math.random() * 1000) + 9000;
+  public static ApiClient createApiClient(ServerConfig serverConfig) {
+    URI uri = URI.create(serverConfig.getServerUrl());
+    String token = serverConfig.getAuthToken() != null ? serverConfig.getAuthToken() : "";
+    return ApiClientBuilder.create()
+        .uri(uri)
+        .tokenProvider(TokenProvider.create(Map.of("type", "static", "token", token)))
+        .retryPolicy(JitterDelayRetryPolicy.builder().maxAttempts(1).build())
+        .build();
   }
 
-  public static ApiClient createApiClient(ServerConfig serverConfig) {
-    ApiClient apiClient = new ApiClient();
-    URI uri = URI.create(serverConfig.getServerUrl());
-    int port = uri.getPort();
-    apiClient.setHost(uri.getHost());
-    apiClient.setPort(port);
-    apiClient.setScheme(uri.getScheme());
-    if (serverConfig.getAuthToken() != null && !serverConfig.getAuthToken().isEmpty()) {
-      apiClient.setRequestInterceptor(
-          request -> request.header("Authorization", "Bearer " + serverConfig.getAuthToken()));
+  public static void assertApiException(
+      Executable executable, ErrorCode errorCode, String containsMessage) {
+    ApiException ex = assertThrows(ApiException.class, executable);
+    // Check the message first. When tests fail due to mismatching error, the message can tell us
+    // more.
+    assertThat(ex.getMessage()).contains(containsMessage);
+    assertThat(ex.getCode()).isEqualTo(errorCode.getHttpStatus().code());
+  }
+
+  /**
+   * Asserts the call fails by checking the HTTP status code is {@code expectedStatus}. Use for
+   * body-less responses; otherwise use {@link #assertApiException} / {@link
+   * #assertDeltaApiException}.
+   */
+  public static void assertApiExceptionStatusOnly(Executable executable, int expectedStatus) {
+    ApiException ex = assertThrows(ApiException.class, executable);
+    assertThat(ex.getCode()).isEqualTo(expectedStatus);
+  }
+
+  public static void assertDeltaApiException(
+      Executable executable, DeltaErrorType expectedType, String expectedMessageSubstring) {
+    int expectedCode = ErrorCode.getDeltaHttpStatus(expectedType.getValue()).code();
+    ApiException ex = assertThrows(ApiException.class, executable);
+    // Check message first for better diagnostics on failure (includes the full response body)
+    assertThat(ex.getMessage()).contains(expectedMessageSubstring);
+    assertThat(ex.getCode()).isEqualTo(expectedCode);
+    Optional<DeltaApiException> deltaExOpt = DeltaApiException.from(ex);
+    assertThat(deltaExOpt)
+        .as("Failed to parse Delta error response: " + ex.getResponseBody())
+        .isPresent();
+    DeltaApiException delta = deltaExOpt.get();
+    assertThat(delta.getErrorCode()).isEqualTo(expectedCode);
+    assertThat(delta.getErrorType()).isEqualTo(expectedType);
+    assertThat(delta.getErrorMessage()).contains(expectedMessageSubstring);
+  }
+
+  /**
+   * Asserts the call fails with PERMISSION_DENIED (HTTP 403) and the exception message contains
+   * {@code containsMessage}. Use this when the test cares that a specific authz check fired -- e.g.
+   * a staging-table ownership check -- rather than just that something produced a 403.
+   */
+  public static void assertPermissionDenied(Executable executable, String containsMessage) {
+    assertApiException(executable, ErrorCode.PERMISSION_DENIED, containsMessage);
+  }
+
+  /**
+   * Asserts the call fails with PERMISSION_DENIED (HTTP 403). Only checks the error code and the
+   * generic {@code "PERMISSION_DENIED"} marker in the message; use {@link
+   * #assertPermissionDenied(Executable, String)} when the specific cause matters.
+   */
+  public static void assertPermissionDenied(Executable executable) {
+    assertPermissionDenied(executable, "PERMISSION_DENIED");
+  }
+
+  /**
+   * Raw-HTTP counterpart to {@link #assertApiException}. Use when the generated SDK can't reach the
+   * failure mode (e.g. the SDK always serializes a body, so you can't exercise body-less
+   * authorization paths with it).
+   */
+  public static void assertHttpApiException(
+      HttpResponse<String> response, ErrorCode errorCode, String containsMessage) {
+    // Check the body first. When tests fail due to mismatching error, the body can tell us more.
+    assertThat(response.body()).contains(containsMessage).contains(errorCode.name());
+    assertThat(response.statusCode()).isEqualTo(errorCode.getHttpStatus().code());
+  }
+
+  /**
+   * Sends a body-less POST to the given path. The SDK always attaches a serialized body, so raw
+   * HTTP is the only way to reach the body-less code path (used to exercise {@link
+   * io.unitycatalog.server.auth.decorator.AuthorizationGateConverter}'s silent-skip denial).
+   */
+  public static HttpResponse<String> sendRawEmptyPost(ServerConfig config, String path)
+      throws Exception {
+    HttpRequest.Builder reqBuilder =
+        HttpRequest.newBuilder()
+            .uri(URI.create(config.getServerUrl() + path))
+            .POST(HttpRequest.BodyPublishers.noBody());
+    if (config.getAuthToken() != null && !config.getAuthToken().isEmpty()) {
+      reqBuilder.header("Authorization", "Bearer " + config.getAuthToken());
     }
-    return apiClient;
+    return HttpClient.newHttpClient()
+        .send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
   }
 }

@@ -18,5 +18,5 @@ public interface ExternalLocationOperations {
   ExternalLocationInfo updateExternalLocation(
       String name, UpdateExternalLocation updateExternalLocation) throws ApiException;
 
-  void deleteExternalLocation(String name) throws ApiException;
+  void deleteExternalLocation(String name, Optional<Boolean> force) throws ApiException;
 }

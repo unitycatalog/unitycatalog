@@ -11,11 +11,15 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 public class AwsPolicyGeneratorTest {
 
@@ -36,7 +40,7 @@ public class AwsPolicyGeneratorTest {
   public void testPolicySubstitution() {
     String bucket = "test-bucket";
     String prefix = "%s/%s".formatted(UUID.randomUUID(), UUID.randomUUID());
-    String location = "s3://%s/%s".formatted(bucket, prefix);
+    NormalizedURL location = NormalizedURL.from("s3://%s/%s".formatted(bucket, prefix));
 
     String policy = AwsPolicyGenerator.generatePolicy(Set.of(SELECT), List.of(location));
 
@@ -48,12 +52,95 @@ public class AwsPolicyGeneratorTest {
   }
 
   @Test
+  public void testWildcardPathDoesNotProduceBucketWidePolicy() throws Exception {
+    String bucket = "victim-bucket";
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE), List.of(NormalizedURL.from("s3://%s/*".formatted(bucket))));
+
+    JsonNode node = JSON_MAPPER.readTree(policy);
+    assertThat(node.get("Statement").get(0).get("Resource"))
+        .map(JsonNode::asText)
+        .containsExactly(
+            "arn:aws:s3:::%s/${*}/*".formatted(bucket), "arn:aws:s3:::%s/${*}".formatted(bucket))
+        .doesNotContain(
+            "arn:aws:s3:::%s/*/*".formatted(bucket), "arn:aws:s3:::%s/*".formatted(bucket));
+    assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
+        .map(JsonNode::asText)
+        .containsExactly("${*}", "${*}/", "${*}/*")
+        .doesNotContain("*", "*/", "*/*");
+  }
+
+  @ParameterizedTest(name = "{index}: {0} becomes {1}")
+  @CsvSource({
+    "%2A, ${*}",
+    "%2a, ${*}",
+    "%3F, ${?}",
+    "%3f, ${?}",
+    "prefix*middle, prefix${*}middle",
+    "prefix%3Fmiddle, prefix${?}middle",
+    "%24%7Baws:username%7D, ${$}{aws:username}",
+    "$%7B*%7D, ${$}{${*}}"
+  })
+  public void testPolicyEscapesIamSpecialCharacters(String encodedPath, String expectedPath)
+      throws Exception {
+    String bucket = "victim-bucket";
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE),
+            List.of(NormalizedURL.from("s3://%s/%s".formatted(bucket, encodedPath))));
+
+    JsonNode node = JSON_MAPPER.readTree(policy);
+    assertThat(node.get("Statement").get(0).get("Resource"))
+        .map(JsonNode::asText)
+        .containsExactly(
+            "arn:aws:s3:::%s/%s/*".formatted(bucket, expectedPath),
+            "arn:aws:s3:::%s/%s".formatted(bucket, expectedPath));
+    assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
+        .map(JsonNode::asText)
+        .containsExactly(expectedPath, expectedPath + "/", expectedPath + "/*");
+  }
+
+  @Test
+  public void testPolicyLeavesOrdinaryPathUnchanged() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode node = JSON_MAPPER.readTree(policy);
+    assertThat(node.get("Statement").get(0).get("Resource"))
+        .map(JsonNode::asText)
+        .containsExactly(
+            "arn:aws:s3:::my-bucket/path1/table1/*", "arn:aws:s3:::my-bucket/path1/table1");
+    assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
+        .map(JsonNode::asText)
+        .containsExactly("path1/table1", "path1/table1/", "path1/table1/*");
+  }
+
+  @Test
+  public void testPolicyPreservesIntentionalBucketRootWildcard() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket")));
+
+    JsonNode node = JSON_MAPPER.readTree(policy);
+    assertThat(node.get("Statement").get(0).get("Resource"))
+        .map(JsonNode::asText)
+        .containsExactly("arn:aws:s3:::my-bucket/*");
+    assertThat(node.get("Statement").get(1).findPath("s3:prefix"))
+        .map(JsonNode::asText)
+        .containsExactly("*");
+  }
+
+  @Test
   public void testPolicyWithStorageProfileLocations() {
     String updatePolicy =
         AwsPolicyGenerator.generatePolicy(
             Set.of(SELECT, UPDATE),
-            List.of(
-                "s3://my-bucket1/path1/table1", "s3://profile-bucket2/", "s3://profile-bucket3"));
+            Stream.of(
+                    "s3://my-bucket1/path1/table1", "s3://profile-bucket2/", "s3://profile-bucket3")
+                .map(NormalizedURL::from)
+                .toList());
 
     assertThat(updatePolicy)
         .contains("s3:PutO*")
@@ -65,10 +152,12 @@ public class AwsPolicyGeneratorTest {
     String selectPolicy =
         AwsPolicyGenerator.generatePolicy(
             Set.of(SELECT),
-            List.of(
-                "s3://my-bucket1/path1/table1",
-                "s3://my-bucket2/path2/table2",
-                "s3://my-bucket1/path3/table3"));
+            Stream.of(
+                    "s3://my-bucket1/path1/table1",
+                    "s3://my-bucket2/path2/table2",
+                    "s3://my-bucket1/path3/table3")
+                .map(NormalizedURL::from)
+                .toList());
 
     assertThat(selectPolicy)
         .doesNotContain("s3:PutO*")

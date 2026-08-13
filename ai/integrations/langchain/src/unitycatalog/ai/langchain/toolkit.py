@@ -1,17 +1,9 @@
 import json
 import logging
-import warnings
 from typing import Any, Dict, List, Optional
 
-from langchain_core._api.deprecation import LangChainDeprecationWarning
-
-warnings.filterwarnings(
-    "ignore",
-    message=r".*As of langchain-core 0\.3\.0, LangChain uses pydantic v2 internally.*",
-    category=LangChainDeprecationWarning,
-)
-from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
 from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, Field, model_validator
 
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
@@ -58,22 +50,22 @@ class UCFunctionToolkit(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    @root_validator(skip_on_failure=True)
-    def validate_toolkit(cls, values) -> Dict[str, Any]:
-        client = validate_or_set_default_client(values.get("client"))
-        values["client"] = client
+    @model_validator(mode="after")
+    def validate_toolkit(self) -> "UCFunctionToolkit":
+        client = validate_or_set_default_client(self.client)
+        self.client = client
 
-        function_names = values["function_names"]
-        tools_dict = values.get("tools_dict", {})
+        function_names = self.function_names
+        tools_dict = self.tools_dict
 
-        values["tools_dict"] = process_function_names(
+        self.tools_dict = process_function_names(
             function_names=function_names,
             tools_dict=tools_dict,
             client=client,
-            filter_accessible_functions=values["filter_accessible_functions"],
-            uc_function_to_tool_func=cls.uc_function_to_langchain_tool,
+            filter_accessible_functions=self.filter_accessible_functions,
+            uc_function_to_tool_func=self.uc_function_to_langchain_tool,
         )
-        return values
+        return self
 
     @staticmethod
     def uc_function_to_langchain_tool(

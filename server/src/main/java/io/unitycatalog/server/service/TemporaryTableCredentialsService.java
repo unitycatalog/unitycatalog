@@ -3,28 +3,24 @@ package io.unitycatalog.server.service;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
-import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
-import io.unitycatalog.server.auth.decorator.KeyMapper;
-import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
-import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryTableCredential;
-import io.unitycatalog.server.model.SecurableType;
-import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
-import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.TableRepository.TableStorageLocationInfo;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.CloudCredentialVendor;
-import lombok.SneakyThrows;
+import io.unitycatalog.server.service.credential.StorageCredentialVendor;
+import io.unitycatalog.server.utils.ServerProperties;
 
 import java.util.Collections;
-import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
@@ -32,65 +28,40 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryTableCredentialsService {
   private final TableRepository tableRepository;
-  private final UserRepository userRepository;
+  private final StorageCredentialVendor storageCredentialVendor;
+  private final ServerProperties serverProperties;
 
-  private final UnityAccessEvaluator evaluator;
-  private final CloudCredentialVendor cloudCredentialVendor;
-  private final KeyMapper keyMapper;
-
-  @SneakyThrows
-  public TemporaryTableCredentialsService(UnityCatalogAuthorizer authorizer, CloudCredentialVendor cloudCredentialVendor, Repositories repositories) {
-    this.evaluator = new UnityAccessEvaluator(authorizer);
-    this.cloudCredentialVendor = cloudCredentialVendor;
-    this.keyMapper = new KeyMapper(repositories);
+  public TemporaryTableCredentialsService(StorageCredentialVendor storageCredentialVendor,
+                                          Repositories repositories,
+                                          ServerProperties serverProperties) {
+    this.storageCredentialVendor = storageCredentialVendor;
     this.tableRepository = repositories.getTableRepository();
-    this.userRepository = repositories.getUserRepository();
+    this.serverProperties = serverProperties;
   }
 
   @Post("")
-  public HttpResponse generateTemporaryTableCredential(GenerateTemporaryTableCredential generateTemporaryTableCredential) {
-    authorizeForOperation(generateTemporaryTableCredential);
-
+  @AuthorizeExpression(AuthorizeExpressions.VEND_TABLE_CREDENTIAL)
+  public HttpResponse generateTemporaryTableCredential(
+      @AuthorizeResourceKey(value = TABLE, key = "table_id")
+      @AuthorizeKey(key = "operation")
+      GenerateTemporaryTableCredential generateTemporaryTableCredential) {
     String tableId = generateTemporaryTableCredential.getTableId();
-    TableInfo tableInfo = tableRepository.getTableById(tableId);
-    return HttpResponse.ofJson(cloudCredentialVendor
-            .vendCredential(tableInfo.getStorageLocation(),
-                    tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
+    TableStorageLocationInfo info =
+        tableRepository.getStorageLocationForTableOrStagingTable(UUID.fromString(tableId));
+    serverProperties.checkDeltaApiOnlyForManagedTable(
+        info.tableType(),
+        "GET /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/credentials"
+            + " (or /delta/v1/staging-tables/{table_id}/credentials for unfinalized staging)");
+    return HttpResponse.ofJson(storageCredentialVendor.vendCredential(info.url(),
+            tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
   }
 
-  private Set<CredentialContext.Privilege> tableOperationToPrivileges(TableOperation tableOperation) {
+  private Set<CredentialContext.Privilege> tableOperationToPrivileges(
+      TableOperation tableOperation) {
     return switch (tableOperation) {
       case READ -> Set.of(SELECT);
       case READ_WRITE -> Set.of(SELECT, UPDATE);
       case UNKNOWN_TABLE_OPERATION -> Collections.emptySet();
     };
   }
-
-  private void authorizeForOperation(GenerateTemporaryTableCredential generateTemporaryTableCredential) {
-
-    // TODO: This is a short term solution to conditional expression evaluation based on additional request parameters.
-    // This should be replaced with more direct annotations and syntax in the future.
-
-    String readExpression = """
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT)
-          """;
-
-    String writeExpression = """
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-          (#authorize(#principal, #table, OWNER) || #authorizeAll(#principal, #table, SELECT, MODIFY))
-          """;
-
-    String authorizeExpression =
-            generateTemporaryTableCredential.getOperation() ==  TableOperation.READ ?
-                    readExpression : writeExpression;
-
-    Map<SecurableType, Object> resourceKeys = keyMapper.mapResourceKeys(
-            Map.of(METASTORE, "metastore",
-                    TABLE, generateTemporaryTableCredential.getTableId()));
-
-    if (!evaluator.evaluate(userRepository.findPrincipalId(), authorizeExpression, resourceKeys)) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
-    }
-  }
-
 }

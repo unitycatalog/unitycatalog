@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableOperation;
+import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -15,16 +19,16 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
-import java.io.IOException;
 import java.net.URI;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredentials {
   private TemporaryCredentialsApi temporaryCredentialsApi;
   private TableOperations tableOperations;
-  private SchemaOperations schemaOperations;
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
@@ -35,6 +39,7 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
     return new SdkTableOperations(TestUtils.createApiClient(serverConfig));
   }
 
+  @Override
   protected SchemaOperations createSchemaOperations(ServerConfig serverConfig) {
     return new SdkSchemaOperations(TestUtils.createApiClient(serverConfig));
   }
@@ -45,28 +50,19 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
     super.setUp();
     temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
     tableOperations = createTableOperations(serverConfig);
-    schemaOperations = createSchemaOperations(serverConfig);
-  }
-
-  protected void createCatalogAndSchema() throws ApiException {
-    CreateCatalog createCatalog =
-        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
-    catalogOperations.createCatalog(createCatalog);
-
-    schemaOperations.createSchema(
-        new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NAME));
   }
 
   @ParameterizedTest
   @MethodSource("getArgumentsForParameterizedTests")
   public void testGenerateTemporaryCredentialsWhereConfIsProvided(
-      String scheme, boolean isConfiguredPath) throws ApiException, IOException {
-    createCatalogAndSchema();
+      String scheme, boolean isConfiguredPath) throws ApiException {
     String url = getTestCloudPath(scheme, isConfiguredPath);
     URI uri = URI.create(url);
     String tableName = "testtable-" + uri.getScheme();
+    String tableLocation = url + "/" + tableName;
     TableInfo tableInfo =
-        BaseTableCRUDTest.createTestingTable(tableName, url + "/" + tableName, tableOperations);
+        BaseTableCRUDTest.createTestingTable(
+            tableName, TableType.EXTERNAL, Optional.of(tableLocation), tableOperations);
 
     GenerateTemporaryTableCredential generateTemporaryTableCredential =
         new GenerateTemporaryTableCredential()
@@ -76,7 +72,7 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
       TemporaryCredentials temporaryCredentials =
           temporaryCredentialsApi.generateTemporaryTableCredentials(
               generateTemporaryTableCredential);
-      assertTemporaryCredentials(temporaryCredentials, scheme);
+      assertTemporaryCredentials(temporaryCredentials, scheme, tableLocation);
     } else {
       assertThatThrownBy(
               () ->
@@ -84,5 +80,21 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
                       generateTemporaryTableCredential))
           .isInstanceOf(ApiException.class);
     }
+  }
+
+  @Test
+  public void testGenerateAwsTemporaryCredentialsFromMasterRole() throws ApiException {
+    String tableLocation = AWS_EXTERNAL_LOCATION_PATH + "/table";
+    String tableName = "testtable-" + tableLocation.hashCode();
+    TableInfo tableInfo =
+        BaseTableCRUDTest.createTestingTable(
+            tableName, TableType.EXTERNAL, Optional.of(tableLocation), tableOperations);
+    GenerateTemporaryTableCredential generateTemporaryTableCredential =
+        new GenerateTemporaryTableCredential()
+            .tableId(tableInfo.getTableId())
+            .operation(TableOperation.READ_WRITE);
+    TemporaryCredentials temporaryCredentials =
+        temporaryCredentialsApi.generateTemporaryTableCredentials(generateTemporaryTableCredential);
+    EchoAwsStsClient.assertAwsCredential(temporaryCredentials);
   }
 }

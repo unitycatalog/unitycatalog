@@ -43,7 +43,7 @@ public class SdkExternalLocationOperations implements ExternalLocationOperations
   }
 
   @Override
-  public void deleteExternalLocation(String name) throws ApiException {
-    externalLocationsApi.deleteExternalLocation(name, true);
+  public void deleteExternalLocation(String name, Optional<Boolean> force) throws ApiException {
+    externalLocationsApi.deleteExternalLocation(name, force.orElse(false));
   }
 }

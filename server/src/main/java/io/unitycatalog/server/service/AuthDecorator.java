@@ -71,6 +71,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
     String issuer = decodedJWT.getIssuer();
     String keyId = decodedJWT.getKeyId();
+    String alg = decodedJWT.getAlgorithm();
 
     LOGGER.debug("Validating access-token for issuer: {} and keyId: {}", issuer, keyId);
 
@@ -78,7 +79,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
       throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "Invalid access token.");
     }
 
-    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
+    // Internal tokens don't need audience validation
+    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
     decodedJWT = jwtVerifier.verify(decodedJWT);
 
     String subject = decodedJWT.getSubject();

@@ -57,7 +57,7 @@ async def test_volume_create(volumes_api):
         assert volume_info.catalog_name == "unity"
         assert volume_info.schema_name == "default"
         assert volume_info.volume_type == VolumeType.EXTERNAL
-        assert volume_info.storage_location == "file:///tmp/uc/myVolume/"
+        assert volume_info.storage_location == "file:///tmp/uc/myVolume"
 
         result = subprocess.run(
             "bin/uc volume read --full_name unity.default.myVolume",

@@ -1,65 +1,146 @@
 package io.unitycatalog.cli.delta;
 
-import static io.unitycatalog.cli.utils.CliUtils.EMPTY;
-
 import de.vandermeer.asciitable.AsciiTable;
-import io.delta.kernel.*;
+import io.delta.kernel.ScanBuilder;
+import io.delta.kernel.Snapshot;
+import io.delta.kernel.Table;
+import io.delta.kernel.TableManager;
+import io.delta.kernel.TransactionCommitResult;
 import io.delta.kernel.data.Row;
 import io.delta.kernel.defaults.engine.DefaultEngine;
 import io.delta.kernel.engine.Engine;
-import io.delta.kernel.types.*;
+import io.delta.kernel.internal.SnapshotImpl;
+import io.delta.kernel.types.BasePrimitiveType;
+import io.delta.kernel.types.DataType;
+import io.delta.kernel.types.IntegerType;
+import io.delta.kernel.types.StructType;
+import io.delta.kernel.types.VariantType;
+import io.delta.kernel.unitycatalog.UCCatalogManagedClient;
+import io.delta.kernel.unitycatalog.UnityCatalogUtils;
 import io.delta.kernel.utils.CloseableIterable;
+import io.delta.storage.commit.uccommitcoordinator.UCTokenBasedRestClient;
+import io.unitycatalog.cli.utils.Constants;
+import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.TemporaryCredentials;
 import java.net.URI;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.stream.IntStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Utility class to create and read Delta tables. The create method creates a Delta table with the
- * given schema at the given path. The create method just initializes the delta log and does not
+ * given schema at the given path. The create method just initializes the Delta log and does not
  * write any data to the table. The read method reads the data from the Delta table The code has
  * evolved from examples provided in <a
  * href="https://github.com/delta-io/delta/tree/master/kernel/examples/kernel-examples/src/main/java/io/delta/kernel/examples">Delta
  * examples</a>
  */
 public class DeltaKernelUtils {
+  private static final Logger LOGGER = LoggerFactory.getLogger(DeltaKernelUtils.class);
+  private static final String ENGINE_INFO = "UnityCatalogCli";
 
-  public static String createDeltaTable(
-      String tablePath, List<ColumnInfo> columns, AwsCredentials awsTempCredentials) {
+  public static Map<String, String> createDeltaTable(
+      String tablePath,
+      List<ColumnInfo> columns,
+      TemporaryCredentials temporaryCredentials,
+      String tableId,
+      String serverUrl,
+      String authToken,
+      Map<String, String> userProperties) {
     try {
       URI tablePathUri = URI.create(tablePath);
-      Engine engine = getEngine(tablePathUri, awsTempCredentials);
-      Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
+      Engine engine = getEngine(tablePathUri, temporaryCredentials);
       // construct the schema
       StructType tableSchema = getSchema(columns);
-      TransactionBuilder txnBuilder =
-          table.createTransactionBuilder(engine, "UnityCatalogCli", Operation.CREATE_TABLE);
-      // Set the schema of the new table on the transaction builder
-      txnBuilder = txnBuilder.withSchema(engine, tableSchema);
-      // Build the transaction
-      Transaction txn = txnBuilder.build(engine);
-      // create an empty table
-      TransactionCommitResult commitResult = txn.commit(engine, CloseableIterable.emptyIterable());
-      if (commitResult.getVersion() >= 0) {
-        System.out.println("Table created successfully at: " + tablePath);
+
+      TransactionCommitResult commitResult;
+      if (tableId != null) {
+        // Catalog-managed table: use UCCatalogManagedClient for coordinated commits.
+        // "type"="static" means a pre-configured bearer token; see TokenProvider.create() javadoc.
+        TokenProvider tokenProvider =
+            TokenProvider.create(
+                Map.of("type", "static", "token", authToken != null ? authToken : ""));
+        UCTokenBasedRestClient ucClient =
+            new UCTokenBasedRestClient(serverUrl, tokenProvider, Map.of());
+        UCCatalogManagedClient ucCatalogManagedClient = new UCCatalogManagedClient(ucClient);
+        commitResult =
+            ucCatalogManagedClient
+                .buildCreateTableTransaction(
+                    tableId, substituteSchemeForS3(tablePath), tableSchema, ENGINE_INFO)
+                // TODO: temporary workaround — Delta Kernel should auto-enable all features
+                // required by catalogManaged. Remove once that is fixed in the kernel.
+                // User-specified properties are also passed here so the kernel writes them into
+                // the Delta log; the returned deltaTableProperties will reflect the actual state.
+                .withTableProperties(
+                    mergeProperties(
+                        userProperties, Map.of("delta.feature.vacuumProtocolCheck", "supported")))
+                .build(engine)
+                .commit(engine, CloseableIterable.emptyIterable() /* dataActions */);
+        LOGGER.info(
+            "Table created successfully at version {}: {}",
+            commitResult.getVersion(),
+            tablePathUri);
+        // UnityCatalogUtils.getPropertiesForCreate requires SnapshotImpl (an internal Delta
+        // Kernel class) to access protocol/table-property internals not exposed on the public
+        // Snapshot interface. The cast is safe here because the post-commit snapshot returned
+        // by Delta Kernel is always a SnapshotImpl at runtime. This should be fixed in the
+        // kernel by exposing the needed accessors on the public Snapshot interface.
+        SnapshotImpl postCreateSnapshot =
+            (SnapshotImpl)
+                commitResult
+                    .getPostCommitSnapshot()
+                    .orElseThrow(
+                        () ->
+                            new IllegalStateException(
+                                "Post-commit snapshot unavailable after table creation"));
+        return UnityCatalogUtils.getPropertiesForCreate(engine, postCreateSnapshot);
       } else {
-        throw new RuntimeException("Table creation failed");
+        // External table: write Delta log directly to storage, no UC commit coordination needed.
+        // commit() throws on failure, so no explicit version check is needed.
+        commitResult =
+            TableManager.buildCreateTableTransaction(
+                    substituteSchemeForS3(tablePath), tableSchema, ENGINE_INFO)
+                .build(engine)
+                .commit(engine, CloseableIterable.emptyIterable() /* dataActions */);
+        LOGGER.info(
+            "Table created successfully at version {}: {}",
+            commitResult.getVersion(),
+            tablePathUri);
+        return Map.of();
       }
     } catch (Exception e) {
-      throw new IllegalArgumentException("Failed to create delta table", e);
+      String errorMsg = String.format("Failed to create Delta table at '%s'", tablePath);
+      throw new IllegalArgumentException(errorMsg, e);
     }
-    return EMPTY;
+  }
+
+  /** Merges two property maps, with the second map taking precedence on key conflicts. */
+  private static Map<String, String> mergeProperties(
+      Map<String, String> base, Map<String, String> overrides) {
+    Map<String, String> merged = new HashMap<>();
+    if (base != null) {
+      merged.putAll(base);
+    }
+    if (overrides != null) {
+      merged.putAll(overrides);
+    }
+    return merged;
   }
 
   public static String substituteSchemeForS3(String tablePath) {
     return tablePath.replace("s3://", "s3a://");
   }
 
-  public static Engine getEngine(URI tablePathUri, AwsCredentials awsTempCredentials) {
-    return DefaultEngine.create(getHDFSConfiguration(tablePathUri, awsTempCredentials));
+  public static Engine getEngine(URI tablePathUri, TemporaryCredentials temporaryCredentials) {
+    return DefaultEngine.create(getHDFSConfiguration(tablePathUri, temporaryCredentials));
   }
 
   public static FileSystem getFileSystem(URI tablePathURI, Configuration conf) {
@@ -71,30 +152,33 @@ public class DeltaKernelUtils {
   }
 
   public static Configuration getHDFSConfiguration(
-      URI tablePathUri, AwsCredentials awsTempCredentials) {
+      URI tablePathUri, TemporaryCredentials temporaryCredentials) {
     Configuration conf = new Configuration();
-    if (tablePathUri.getScheme() != null
-        && tablePathUri.getScheme().equals("s3")
-        && awsTempCredentials == null) {
-      throw new IllegalArgumentException("AWS temporary credentials are missing");
+    String scheme = tablePathUri.getScheme();
+    if (scheme == null) {
+      throw new IllegalArgumentException("URI scheme is missing");
     }
-    if (tablePathUri.getScheme().equals("s3")) {
+    if (scheme.equals(Constants.URI_SCHEME_S3)) {
+      AwsCredentials awsTempCredentials = temporaryCredentials.getAwsTempCredentials();
+      if (awsTempCredentials == null) {
+        throw new IllegalArgumentException("AWS temporary credentials are missing");
+      }
       conf.set("fs.s3a.access.key", awsTempCredentials.getAccessKeyId());
       conf.set("fs.s3a.secret.key", awsTempCredentials.getSecretAccessKey());
       conf.set("fs.s3a.session.token", awsTempCredentials.getSessionToken());
       conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
       conf.set("fs.s3a.path.style.access", "true");
-    } else if (tablePathUri.getScheme().equals("file")) {
+    } else if (scheme.equals(Constants.URI_SCHEME_FILE)) {
       conf.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
     } else {
-      throw new IllegalArgumentException("Unsupported URI scheme: " + tablePathUri.getScheme());
+      throw new IllegalArgumentException("Unsupported URI scheme: " + scheme);
     }
     return conf;
   }
 
   public static String readDeltaTable(
-      String tablePath, AwsCredentials awsCredentials, int maxResults) {
-    Engine engine = getEngine(URI.create(tablePath), awsCredentials);
+      String tablePath, TemporaryCredentials temporaryCredentials, int maxResults) {
+    Engine engine = getEngine(URI.create(tablePath), temporaryCredentials);
     try {
       Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       Snapshot snapshot = table.getLatestSnapshot(engine);
@@ -121,7 +205,7 @@ public class DeltaKernelUtils {
       }
       return at.render();
     } catch (Exception e) {
-      throw new IllegalArgumentException("Failed to read delta table", e);
+      throw new IllegalArgumentException("Failed to read Delta table", e);
     }
   }
 
@@ -161,6 +245,9 @@ public class DeltaKernelUtils {
       case "BINARY":
       case "DECIMAL":
         dataType = BasePrimitiveType.createPrimitive(typeText.toLowerCase(Locale.ROOT));
+        break;
+      case "VARIANT":
+        dataType = VariantType.VARIANT;
         break;
       default:
         throw new IllegalArgumentException("Unsupported basic data type: " + typeText);

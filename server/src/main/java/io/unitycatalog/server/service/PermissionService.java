@@ -1,14 +1,20 @@
 package io.unitycatalog.server.service;
 
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Patch;
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
+import static io.unitycatalog.server.model.SecurableType.FUNCTION;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
+import static io.unitycatalog.server.model.SecurableType.VOLUME;
+
 import io.unitycatalog.control.model.User;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -18,9 +24,18 @@ import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.model.PrivilegeAssignment;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdatePermissions;
-import io.unitycatalog.server.persist.*;
+import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.CredentialRepository;
+import io.unitycatalog.server.persist.ExternalLocationRepository;
+import io.unitycatalog.server.persist.FunctionRepository;
+import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.ModelRepository;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.persist.model.Privileges;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,14 +44,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.FUNCTION;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
-import static io.unitycatalog.server.model.SecurableType.TABLE;
-import static io.unitycatalog.server.model.SecurableType.VOLUME;
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class PermissionService {
@@ -50,6 +62,8 @@ public class PermissionService {
   private final FunctionRepository functionRepository;
   private final VolumeRepository volumeRepository;
   private final ModelRepository modelRepository;
+  private final ExternalLocationRepository externalLocationRepository;
+  private final CredentialRepository credentialRepository;
 
   public PermissionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
@@ -61,49 +75,72 @@ public class PermissionService {
     this.functionRepository = repositories.getFunctionRepository();
     this.volumeRepository = repositories.getVolumeRepository();
     this.modelRepository = repositories.getModelRepository();
+    this.externalLocationRepository = repositories.getExternalLocationRepository();
+    this.credentialRepository = repositories.getCredentialRepository();
   }
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Get("/metastore/{name}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getMetastoreAuthorization(
       @Param("name") String name) {
     return getAuthorization(METASTORE, name);
   }
 
   @Get("/catalog/{name}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getCatalogAuthorization(
       @Param("name") String name) {
     return getAuthorization(CATALOG, name);
   }
 
   @Get("/schema/{name}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getSchemaAuthorization(
       @Param("name") String name) {
     return getAuthorization(SCHEMA, name);
   }
 
   @Get("/table/{name}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getTableAuthorization(
       @Param("name") String name) {
     return getAuthorization(TABLE, name);
   }
 
   @Get("/function/{name}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getFunctionAuthorization(
       @Param("name") String name) {
     return getAuthorization(FUNCTION, name);
   }
 
   @Get("/volume/{name}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getVolumeAuthorization(
       @Param("name") String name) {
     return getAuthorization(VOLUME, name);
   }
 
   @Get("/registered_model/{name}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
   public HttpResponse getRegisteredModelAuthorization(
       @Param("name") String name) {
     return getAuthorization(REGISTERED_MODEL, name);
+  }
+
+  @Get("/external_location/{name}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
+  public HttpResponse getExternalLocationAuthorization(
+      @Param("name") String name) {
+    return getAuthorization(EXTERNAL_LOCATION, name);
+  }
+
+  @Get("/credential/{name}")
+  @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
+  public HttpResponse getCredentialAuthorization(
+      @Param("name") String name) {
+    return getAuthorization(CREDENTIAL, name);
   }
 
   private HttpResponse getAuthorization(
@@ -122,16 +159,16 @@ public class PermissionService {
     UUID grandparentId = (parentId != null) ? authorizer.getHierarchyParent(parentId) : null;
 
     boolean isOwner =
-            authorizer.authorize(principalId, metastoreRepository.getMetastoreId(), Privileges.OWNER) ||
-            authorizer.authorize(principalId, resourceId, Privileges.OWNER) ||
-            (parentId != null && authorizer.authorize(principalId, parentId, Privileges.OWNER)) ||
-            (grandparentId != null && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
+        authorizer.authorize(principalId, metastoreRepository.getMetastoreId(), Privileges.OWNER)
+            || authorizer.authorize(principalId, resourceId, Privileges.OWNER)
+            || (parentId != null && authorizer.authorize(principalId, parentId, Privileges.OWNER))
+            || (grandparentId != null
+                && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
 
     Map<UUID, List<Privileges>> authorizations =
-            isOwner ?
-                    authorizer.listAuthorizations(resourceId)
-                    :
-                    Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
+        isOwner
+            ? authorizer.listAuthorizations(resourceId)
+            : Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
 
     List<PrivilegeAssignment> privilegeAssignments =
         authorizations.entrySet().stream()
@@ -139,7 +176,7 @@ public class PermissionService {
                 entry -> {
                   List<Privilege> privileges =
                       entry.getValue().stream()
-                          .map(Privileges::toPrivilege)
+                          .<Privilege>map(Privileges::toPrivilege)
                           // mapping to Privilege may result in nulls since Privilege is a subset of
                           // Privileges, so filter them out.
                           .filter(Objects::nonNull)
@@ -157,7 +194,7 @@ public class PermissionService {
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Patch("/metastore/{name}")
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateMetastoreAuthorization(
       @Param("name") String name, UpdatePermissions request) {
     return updateAuthorization(METASTORE, name, request);
@@ -166,9 +203,9 @@ public class PermissionService {
   @Patch("/catalog/{name}")
   @AuthorizeExpression(
       "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #catalog, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalogAuthorization(
-      @Param("name") @AuthorizeKey(CATALOG) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name, UpdatePermissions request) {
     return updateAuthorization(CATALOG, name, request);
   }
 
@@ -178,9 +215,9 @@ public class PermissionService {
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchemaAuthorization(
-      @Param("name") @AuthorizeKey(SCHEMA) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(SCHEMA) String name, UpdatePermissions request) {
     return updateAuthorization(SCHEMA, name, request);
   }
 
@@ -189,11 +226,13 @@ public class PermissionService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #table, OWNER))
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #table, OWNER))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateTableAuthorization(
-      @Param("name") @AuthorizeKey(TABLE) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(TABLE) String name, UpdatePermissions request) {
     return updateAuthorization(TABLE, name, request);
   }
 
@@ -202,11 +241,13 @@ public class PermissionService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #function, OWNER))
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #function, OWNER))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateFunctionAuthorization(
-      @Param("name") @AuthorizeKey(FUNCTION) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(FUNCTION) String name, UpdatePermissions request) {
     return updateAuthorization(FUNCTION, name, request);
   }
 
@@ -215,21 +256,43 @@ public class PermissionService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #volume, OWNER))
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #volume, OWNER))
       """)
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateVolumeAuthorization(
-      @Param("name") @AuthorizeKey(VOLUME) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(VOLUME) String name, UpdatePermissions request) {
     return updateAuthorization(VOLUME, name, request);
   }
 
   @Patch("/registered_model/{name}")
   @AuthorizeExpression(
       "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #registered_model, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModelAuthorization(
-      @Param("name") @AuthorizeKey(REGISTERED_MODEL) String name, UpdatePermissions request) {
+      @Param("name") @AuthorizeResourceKey(REGISTERED_MODEL) String name,
+      UpdatePermissions request) {
     return updateAuthorization(REGISTERED_MODEL, name, request);
+  }
+
+  @Patch("/external_location/{name}")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #external_location, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse updateExternalLocationAuthorization(
+      @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
+      UpdatePermissions request) {
+    return updateAuthorization(EXTERNAL_LOCATION, name, request);
+  }
+
+  @Patch("/credential/{name}")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #credential, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse updateCredentialAuthorization(
+      @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name, UpdatePermissions request) {
+    return updateAuthorization(CREDENTIAL, name, request);
   }
 
   private HttpResponse updateAuthorization(
@@ -269,7 +332,7 @@ public class PermissionService {
                 entry -> {
                   List<Privilege> privileges =
                       entry.getValue().stream()
-                          .map(Privileges::toPrivilege)
+                          .<Privilege>map(Privileges::toPrivilege)
                           // mapping to Privilege may result in nulls since Privilege is a subset of
                           // Privileges, so filter them out.
                           .filter(Objects::nonNull)
@@ -294,6 +357,8 @@ public class PermissionService {
       case FUNCTION -> functionRepository.getFunction(name).getFunctionId();
       case VOLUME -> volumeRepository.getVolume(name).getVolumeId();
       case REGISTERED_MODEL -> modelRepository.getRegisteredModel(name).getId();
+      case EXTERNAL_LOCATION -> externalLocationRepository.getExternalLocation(name).getId();
+      case CREDENTIAL -> credentialRepository.getCredential(name).getId();
       default -> throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
     };
 

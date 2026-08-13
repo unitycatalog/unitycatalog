@@ -6,7 +6,15 @@ import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.*;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
+import com.linecorp.armeria.server.annotation.Produces;
+import com.linecorp.armeria.server.annotation.Put;
+import com.linecorp.armeria.server.annotation.StatusCode;
 import com.unboundid.scim2.common.exceptions.BadRequestException;
 import com.unboundid.scim2.common.exceptions.PreconditionFailedException;
 import com.unboundid.scim2.common.exceptions.ResourceConflictException;
@@ -25,7 +33,7 @@ import com.unboundid.scim2.common.utils.Parser;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -68,13 +76,14 @@ public class Scim2UserService {
   @Get("")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#principal != null")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public ListResponse<UserResource> getScimUsers(
       @Param("filter") Optional<String> filter,
       @Param("startIndex") Optional<Integer> startIndex,
       @Param("count") Optional<Integer> count) {
-    final Filter userFilter = filter.filter(f -> !f.isEmpty()).map(this::parseFilter).orElse(null);
+    final Filter userFilter =
+        filter.filter(f -> !f.isEmpty()).<Filter>map(this::parseFilter).orElse(null);
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
     List<UserResource> userResourcesList =
@@ -107,7 +116,7 @@ public class Scim2UserService {
   @Produces("application/scim+json")
   @StatusCode(201)
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public UserResource createScimUser(UserResource userResource) {
     // Get primary email address
     Email primaryEmail =
@@ -146,8 +155,8 @@ public class Scim2UserService {
   @Get("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#principal != null")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public UserResource getUser(@Param("id") String id) {
     return asUserResource(userRepository.getUser(id));
   }
@@ -156,7 +165,7 @@ public class Scim2UserService {
   @Produces("application/scim+json")
   @StatusCode(200)
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
     UserResource user = asUserResource(userRepository.getUser(id));
     if (!id.equals(userResource.getId())) {
@@ -175,7 +184,7 @@ public class Scim2UserService {
 
   @Delete("/{id}")
   @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
-  @AuthorizeKey(METASTORE)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = userRepository.getUser(id);
     authorizer.clearAuthorizationsForPrincipal(
@@ -186,7 +195,6 @@ public class Scim2UserService {
 
   @Patch("/{id}")
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
-
     return patchRequest.getOperations().stream()
         .filter(
             op ->

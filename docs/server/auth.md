@@ -47,7 +47,59 @@ server.authorization-url=https://accounts.google.com/o/oauth2/auth
 server.token-url=https://oauth2.googleapis.com/token
 server.client-id=<Client ID provided earlier>
 server.client-secret=<Client secret provided earlier>
+server.allowed-issuers=https://accounts.google.com
+server.audiences=<Client ID provided earlier>
 ```
+
+### Issuer and Audience Validation
+
+When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
+
+- **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
+- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values.
+
+#### Multiple Identity Providers
+
+You can configure multiple issuers and audiences by separating them with commas:
+
+```properties
+server.allowed-issuers=https://accounts.google.com,https://login.microsoftonline.com/{tenant-id}/v2.0
+server.audiences=your-google-client-id,your-azure-client-id
+```
+
+Wildcard issuers match a single DNS label per `*`:
+
+```properties
+server.allowed-issuers=https://*.dev.example.com
+```
+
+Wildcard audience patterns use the same `*` rules. For example, `https://*.dev.example.com`
+accepts tokens whose `aud` includes `https://dev.dev.example.com` or
+`https://backend.dev.example.com`:
+
+```properties
+server.audiences=unity-catalog-local,https://*.dev.example.com
+```
+
+When the identity provider issues per-client UUID audiences that cannot be pre-listed (for example
+dynamic OAuth client IDs in `id_token.aud`), use `*` alone to skip audience validation while still
+enforcing issuer and user checks:
+
+```properties
+server.audiences=*
+server.allowed-issuers=https://*.dev.example.com
+```
+
+#### Wildcard issuer security
+
+With exact-match issuers, the server only fetches JWKS from a fixed set of identity providers.
+Wildcard issuer patterns such as `https://*.dev.example.com` are evaluated **before** signature
+verification: a token whose `iss` matches the pattern determines which host the server contacts
+for OIDC discovery and JWKS. An unauthenticated caller who can mint tokens with arbitrary `iss`
+values under that pattern can steer JWKS fetches (an SSRF-style surface).
+
+Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
+cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
 
 ### Restart the UC Server
 
@@ -270,15 +322,19 @@ To solve this issue, ensure that the configuration spark.sql.catalog.unity.token
 step.
 
 ```sh
+export CATALOG_NAME=unity
+export UC_URI=http://localhost:8080
+export UC_TOKEN=$token
+
 bin/spark-sql --name "local-uc-test" \
     --master "local[*]" \
-    --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+    --packages "io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0" \
     --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-    --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-    --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-    --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-    --conf "spark.sql.catalog.unity.token=$token" \
-    --conf "spark.sql.defaultCatalog=unity"
+    --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+    --conf "spark.sql.catalog.$CATALOG_NAME=io.unitycatalog.spark.UCSingleCatalog" \
+    --conf "spark.sql.catalog.$CATALOG_NAME.uri=$UC_URI" \
+    --conf "spark.sql.catalog.$CATALOG_NAME.token=$UC_TOKEN" \
+    --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
 ```
 
 With this set, now you can continue your [Using Spark SQL to query Unity Catalog schemas and tables](../integrations/unity-catalog-spark.md#using-spark-sql-to-query-unity-catalog-schemas-and-tables)

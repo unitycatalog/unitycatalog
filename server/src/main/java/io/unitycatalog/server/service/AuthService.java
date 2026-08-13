@@ -2,12 +2,21 @@ package io.unitycatalog.server.service;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
+import com.auth0.jwt.exceptions.JWTDecodeException;
+import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linecorp.armeria.common.*;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
+import com.linecorp.armeria.common.Cookie;
+import com.linecorp.armeria.common.HttpData;
+import com.linecorp.armeria.common.HttpHeaderNames;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.QueryParams;
+import com.linecorp.armeria.common.ResponseHeaders;
+import com.linecorp.armeria.common.ResponseHeadersBuilder;
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
@@ -22,6 +31,7 @@ import io.unitycatalog.control.model.OAuthTokenExchangeInfo;
 import io.unitycatalog.control.model.TokenEndpointExtensionType;
 import io.unitycatalog.control.model.TokenType;
 import io.unitycatalog.control.model.User;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
@@ -82,19 +92,19 @@ public class AuthService {
    *   <li>scope: Not supported
    * </ul>
    *
-   * <p>Currently the issuer for the incoming token to validate is not constrained to a specific
-   * identity provider, rather as long as the token is signed by the matching issuer the validation
-   * succeeds.
-   *
-   * <p>Eventually this should be constrained to a specific identity provider and even require that
-   * the incoming identity (email, subject) matches a specific user in the system, once a user
-   * management system is in place.
+   * <p>The issuer of the incoming token must be in the configured allowlist
+   * (server.allowed-issuers) and the token must contain a valid audience claim matching the
+   * configured audiences (server.audiences). Audience entries support exact match or wildcard
+   * patterns with {@code *} (same rules as server.allowed-issuers). A single value of {@code *}
+   * disables audience validation. Both configurations are required when token exchange runs with
+   * authorization enabled.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
    * @return The token exchange response
    */
   @Post("/tokens")
+  @com.linecorp.armeria.server.annotation.Blocking
   public HttpResponse grantToken(
       @Param("ext") Optional<TokenEndpointExtensionType> ext,
       @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form) {
@@ -127,34 +137,63 @@ public class AuthService {
           ErrorCode.INVALID_ARGUMENT, "Authorization is disabled");
     }
 
-    DecodedJWT decodedJWT = JWT.decode(form.getSubjectToken());
+    DecodedJWT decodedJWT;
+    try {
+      decodedJWT = JWT.decode(form.getSubjectToken());
+    } catch (JWTDecodeException e) {
+      LOGGER.error("Token rejected: malformed token", e);
+      throw new OAuthInvalidRequestException(
+          ErrorCode.UNAUTHENTICATED, "Invalid token: " + e.getMessage(), e);
+    }
+
     String issuer = decodedJWT.getIssuer();
+
+    // Validate issuer is in allowlist BEFORE fetching JWKS
+    if (!serverProperties.getIssuerAllowlist().isAllowed(issuer)) {
+      LOGGER.error("Token rejected: invalid issuer '{}'", issuer);
+      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid issuer");
+    }
+
     String keyId = decodedJWT.getKeyId();
+    String alg = decodedJWT.getAlgorithm();
 
     LOGGER.debug("Validating token for issuer: {} and keyId: {}", issuer, keyId);
 
-    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
-    decodedJWT = jwtVerifier.verify(decodedJWT);
+    try {
+      JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
+      decodedJWT = jwtVerifier.verify(decodedJWT);
+    } catch (JWTVerificationException e) {
+      LOGGER.error("Token rejected: verification failed", e);
+      throw new OAuthInvalidRequestException(
+          ErrorCode.UNAUTHENTICATED, "Token verification failed: " + e.getMessage(), e);
+    }
+
+    if (!serverProperties.isAudienceValidationDisabled()
+        && !serverProperties.getAudienceAllowlist().isAnyAllowed(decodedJWT.getAudience())) {
+      LOGGER.error("Token rejected: audience {} not in allowlist", decodedJWT.getAudience());
+      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
+    }
+
     verifyPrincipal(decodedJWT);
 
     LOGGER.debug("Validated. Creating access token.");
 
-    String accessToken = securityContext.createAccessToken(decodedJWT);
+    Duration accessTokenTimeout = serverProperties.getAccessTokenTimeout();
+    String accessToken = securityContext.createAccessToken(decodedJWT, accessTokenTimeout);
 
     OAuthTokenExchangeInfo tokenExchangeInfo =
         new OAuthTokenExchangeInfo()
             .accessToken(accessToken)
             .issuedTokenType(TokenType.ACCESS_TOKEN)
-            .tokenType(AccessTokenType.BEARER);
+            .tokenType(AccessTokenType.BEARER)
+            .expiresIn(accessTokenTimeout.getSeconds());
 
     // Set token as cookie if ext param is set to cookie
     ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
     ext.ifPresent(
         e -> {
           if (e.equals(TokenEndpointExtensionType.COOKIE)) {
-            // Set cookie timeout to 5 days by default if not present in server.properties
-            String cookieTimeout =
-                this.serverProperties.getProperty("server.cookie-timeout", "P5D");
+            Duration cookieTimeout = serverProperties.getEffectiveCookieTimeout();
             Cookie cookie =
                 createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
             responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
@@ -165,6 +204,7 @@ public class AuthService {
   }
 
   @Post("/logout")
+  @AuthorizeExpression("#principal != null")
   public HttpResponse logout(HttpRequest request) {
     return request.headers().cookies().stream()
         .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
@@ -212,11 +252,12 @@ public class AuthService {
         ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
   }
 
+  private Cookie createCookie(String key, String value, String path, Duration maxAge) {
+    return Cookie.secureBuilder(key, value).path(path).maxAge(maxAge.getSeconds()).build();
+  }
+
   private Cookie createCookie(String key, String value, String path, String maxAge) {
-    return Cookie.secureBuilder(key, value)
-        .path(path)
-        .maxAge(Duration.parse(maxAge).getSeconds())
-        .build();
+    return createCookie(key, value, path, Duration.parse(maxAge));
   }
 
   // NOTE:
