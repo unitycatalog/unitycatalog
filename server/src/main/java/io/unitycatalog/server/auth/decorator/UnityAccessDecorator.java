@@ -89,8 +89,6 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private final UnityAccessEvaluator evaluator;
 
-  private final UnityCatalogAuthorizer authorizer;
-
   // Context attribute key for passing ResultFilter to service methods
   public static final AttributeKey<ResultFilter> RESULT_FILTER_ATTR =
       AttributeKey.valueOf(ResultFilter.class, "RESULT_FILTER");
@@ -102,7 +100,6 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
     }
-    this.authorizer = authorizer;
     keyMapper = repositories.getKeyMapper();
     userRepository = repositories.getUserRepository();
   }
@@ -255,11 +252,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         Map<SecurableType, UUID> resourceIds,
         Map<String, Object> nonResourceValues) {
       if (!evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
-        if (!authorizer.refreshAuthorizations()
-            || !evaluator.evaluate(principal, expression, resourceIds, nonResourceValues)) {
-          throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
-        }
-        LOGGER.debug("Access allowed after refreshing authorizations for principal {}", principal);
+        throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
       }
     }
 

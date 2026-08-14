@@ -191,8 +191,7 @@ public class ServerProperties {
     SERVER_ENV("server.env", "dev", new EnumValidator(true, "dev", "prod", "test")),
     AUTHORIZATION_ENABLED(
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
-    POLICY_REFRESH_ENABLED(
-        "server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
+    POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_INTERVAL(
         "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
     POLICY_REFRESH_DEBOUNCE(
