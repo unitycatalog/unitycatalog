@@ -86,20 +86,22 @@ public class CasbinPolicyRefresher implements AutoCloseable {
           version[1]);
     }
     reloader.run();
-    synchronized (this) {
-      recordVersion(version[0], version[1]);
-    }
+    recordLatestVersion();
     return true;
   }
 
   /** Unconditional reload for callers that cannot wait for the next poll. */
   public void forceReload() {
     reloader.run();
+    recordLatestVersion();
+  }
+
+  private void recordLatestVersion() {
     readVersion()
         .ifPresent(
-            version -> {
+            latest -> {
               synchronized (this) {
-                recordVersion(version[0], version[1]);
+                recordVersion(latest[0], latest[1]);
               }
             });
   }

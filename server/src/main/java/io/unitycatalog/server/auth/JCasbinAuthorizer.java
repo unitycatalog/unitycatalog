@@ -81,7 +81,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     if (refreshEnabled) {
       refresher.start(serverProperties.getPolicyRefreshInterval());
     } else {
-      LOGGER.warn(
+      LOGGER.info(
           "Casbin policy refresh is disabled. Authorization changes made through another server"
               + " instance will not be seen by this one, so running more than one instance against"
               + " this database is unsafe.");
@@ -260,5 +260,12 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
   CasbinPolicyRefresher getRefresher() {
     return refresher;
+  }
+
+  /** Runs {@code action} while holding the write lock. Used to test that reads do not take it. */
+  void withWriteLock(Runnable action) {
+    synchronized (writeLock) {
+      action.run();
+    }
   }
 }

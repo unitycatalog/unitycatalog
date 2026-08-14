@@ -12,6 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -235,6 +238,71 @@ public class JCasbinAuthorizerMultiInstanceTest {
 
     assertThat(replicaA.authorize(principal, resource, Privileges.CREATE_CATALOG)).isTrue();
     assertThat(replicaB.authorize(principal, resource, Privileges.CREATE_CATALOG)).isFalse();
+  }
+
+  @Test
+  void authorizeDoesNotWaitForTheWriteLock() throws Exception {
+    JCasbinAuthorizer replica = startReplicaWithoutRefresh();
+    UUID principal = UUID.randomUUID();
+    UUID resource = UUID.randomUUID();
+    replica.grantAuthorization(principal, resource, Privileges.SELECT);
+
+    CountDownLatch holdingWriteLock = new CountDownLatch(1);
+    CountDownLatch releaseWriteLock = new CountDownLatch(1);
+    Thread holder =
+        new Thread(
+            () ->
+                replica.withWriteLock(
+                    () -> {
+                      holdingWriteLock.countDown();
+                      awaitLatch(releaseWriteLock, "the write lock to be released");
+                    }),
+            "write-lock-holder");
+    holder.start();
+    assertThat(holdingWriteLock.await(2, TimeUnit.SECONDS))
+        .as("the write lock should be held")
+        .isTrue();
+
+    AtomicBoolean grantFinished = new AtomicBoolean(false);
+    Thread writer =
+        new Thread(
+            () -> {
+              try {
+                replica.grantAuthorization(
+                    UUID.randomUUID(), UUID.randomUUID(), Privileges.CREATE_CATALOG);
+              } catch (Exception e) {
+                fail("grantAuthorization failed", e);
+              }
+              grantFinished.set(true);
+            },
+            "blocked-writer");
+    writer.start();
+    await(
+        "the writer to block on the write lock",
+        () -> {
+          Thread.State state = writer.getState();
+          return state == Thread.State.BLOCKED || state == Thread.State.WAITING;
+        });
+    assertThat(grantFinished.get()).as("a write should wait for the write lock").isFalse();
+
+    assertThat(replica.authorize(principal, resource, Privileges.SELECT)).isTrue();
+
+    releaseWriteLock.countDown();
+    writer.join(2000);
+    holder.join(2000);
+    assertThat(grantFinished.get()).isTrue();
+    assertThat(holder.isAlive()).isFalse();
+  }
+
+  private static void awaitLatch(CountDownLatch latch, String description) {
+    try {
+      if (!latch.await(5, TimeUnit.SECONDS)) {
+        fail(description + " did not happen within 5s");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      fail("Interrupted while waiting for " + description);
+    }
   }
 
   @Test
