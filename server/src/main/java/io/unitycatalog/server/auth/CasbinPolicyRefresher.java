@@ -5,7 +5,6 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.casbin.jcasbin.main.SyncedEnforcer;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
 import org.slf4j.Logger;
@@ -21,8 +20,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Change detection uses {@code select count(*), coalesce(max(id), 0) from casbin_rule}. The JDBC
  * adapter only inserts and deletes rows with auto-incrementing ids, so any write changes at least
- * one of the two values. Requires a {@link SyncedEnforcer} so {@code loadPolicy()} is safe under
- * concurrent {@code enforce()} calls.
+ * one of the two values. Reload is delegated to {@link JCasbinAuthorizer} so a fresh enforcer can
+ * be built and swapped without blocking {@code enforce()} on the live instance.
  */
 public class CasbinPolicyRefresher implements AutoCloseable {
 
@@ -31,7 +30,7 @@ public class CasbinPolicyRefresher implements AutoCloseable {
   private static final String VERSION_QUERY =
       "select count(*), coalesce(max(id), 0) from casbin_rule";
 
-  private final SyncedEnforcer enforcer;
+  private final Runnable reloader;
   private final SessionFactory sessionFactory;
 
   // Initial -1 forces a reload on first check (see recordVersion).
@@ -40,8 +39,8 @@ public class CasbinPolicyRefresher implements AutoCloseable {
 
   private ScheduledExecutorService executor;
 
-  public CasbinPolicyRefresher(SyncedEnforcer enforcer, SessionFactory sessionFactory) {
-    this.enforcer = enforcer;
+  public CasbinPolicyRefresher(Runnable reloader, SessionFactory sessionFactory) {
+    this.reloader = reloader;
     this.sessionFactory = sessionFactory;
   }
 
@@ -71,8 +70,6 @@ public class CasbinPolicyRefresher implements AutoCloseable {
 
   /** @return true if a reload happened */
   public boolean checkAndReload() {
-    // Read the DB version outside the monitor so poller/deny-path callers do not contend on
-    // JDBC latency. Only the compare / loadPolicy / cached-version update need the lock.
     long[] version = readVersion().orElse(null);
     if (version == null) {
       return false;
@@ -87,15 +84,17 @@ public class CasbinPolicyRefresher implements AutoCloseable {
           version[0],
           lastMaxId,
           version[1]);
-      enforcer.loadPolicy();
-      recordVersion(version[0], version[1]);
-      return true;
     }
+    reloader.run();
+    synchronized (this) {
+      recordVersion(version[0], version[1]);
+    }
+    return true;
   }
 
   /** Unconditional reload for callers that cannot wait for the next poll. */
   public void forceReload() {
-    enforcer.loadPolicy();
+    reloader.run();
     readVersion()
         .ifPresent(
             version -> {
