@@ -309,6 +309,12 @@ public class TableRepository {
       // Idempotent replay: the transaction rolled back to a no-op. Return the current table state
       // (a fresh read, since the rolled-back transaction produced no response).
       return loadTableForDelta(catalog, schema, table);
+    } catch (DeltaCommitRepository.CommitContentCheckRequiredException e) {
+      // Version was purged, so the DB couldn't decide: settle it out of the (rolled-back)
+      // transaction by comparing file content. A match is a no-op success (return current state);
+      // a difference throws a conflict.
+      DeltaCommitRepository.verifyContentReplayOrThrowConflict(repositories.getFileOperations(), e);
+      return loadTableForDelta(catalog, schema, table);
     }
   }
 
