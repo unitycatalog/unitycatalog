@@ -10,6 +10,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
@@ -78,6 +79,39 @@ public abstract class AuthorizedService {
   protected void removeHierarchicalAuthorizations(String resourceId, String parentId) {
     removeAuthorizations(resourceId);
     authorizer.removeHierarchyChild(UUID.fromString(parentId), UUID.fromString(resourceId));
+  }
+
+  /**
+   * Clears Casbin policies and hierarchy for resources removed by a repository cascade delete.
+   *
+   * @param deleted resources returned from {@code CatalogRepository#deleteCatalog} or {@code
+   *     SchemaRepository#deleteSchema}
+   */
+  protected void clearDeletedResourceAuthorizations(List<DeletedResource> deleted) {
+    if (deleted.isEmpty()) {
+      return;
+    }
+
+    for (DeletedResource resource : deleted) {
+      switch (resource.type()) {
+        case TABLE, VOLUME, FUNCTION, REGISTERED_MODEL ->
+            removeHierarchicalAuthorizations(resource.id(), resource.parentId());
+        default -> {}
+      }
+    }
+
+    for (DeletedResource resource : deleted) {
+      if (resource.type() == SecurableType.SCHEMA) {
+        authorizer.removeHierarchyChildren(UUID.fromString(resource.id()));
+        removeHierarchicalAuthorizations(resource.id(), resource.parentId());
+      }
+    }
+
+    for (DeletedResource resource : deleted) {
+      if (resource.type() == SecurableType.CATALOG) {
+        removeAuthorizations(resource.id());
+      }
+    }
   }
 
   /**

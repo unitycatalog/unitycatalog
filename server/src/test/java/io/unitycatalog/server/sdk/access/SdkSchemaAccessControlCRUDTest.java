@@ -3,11 +3,14 @@ package io.unitycatalog.server.sdk.access;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
+import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.UpdateSchema;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.persist.model.Privileges;
@@ -185,5 +188,43 @@ public class SdkSchemaAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
             .catalogName("cat_pr1")
             .storageRoot("file:///tmp/external_location/ext_table");
     assertPermissionDenied(() -> principal1SchemasApi.createSchema(schemaWithLoc2));
+  }
+
+  @Test
+  @SneakyThrows
+  public void forceDeleteSchemaClearsChildAuthorizations() {
+    createCommonTestUsers();
+
+    CatalogsApi adminCatalogsApi = new CatalogsApi(adminApiClient);
+    SchemasApi adminSchemasApi = new SchemasApi(adminApiClient);
+    TablesApi adminTablesApi = new TablesApi(adminApiClient);
+
+    adminCatalogsApi.createCatalog(
+        new CreateCatalog()
+            .name("force_delete_schema_cat")
+            .comment("force delete schema auth cleanup test"));
+    adminSchemasApi.createSchema(
+        new CreateSchema().name("default").catalogName("force_delete_schema_cat"));
+    SchemaInfo schemaInfo = adminSchemasApi.getSchema("force_delete_schema_cat.default");
+    TableInfo tableInfo =
+        createExternalTable(
+            adminTablesApi,
+            "force_delete_schema_cat",
+            "default",
+            "tbl",
+            testDirectoryRoot.resolve("force_delete_schema_tbl").toUri().toString());
+
+    grantPermissions(
+        REGULAR_1, SecurableType.SCHEMA, "force_delete_schema_cat.default", Privileges.USE_SCHEMA);
+    grantPermissions(
+        REGULAR_1, SecurableType.TABLE, "force_delete_schema_cat.default.tbl", Privileges.SELECT);
+
+    assertThat(countCasbinRulesReferencing(schemaInfo.getSchemaId(), tableInfo.getTableId()))
+        .isPositive();
+
+    adminSchemasApi.deleteSchema("force_delete_schema_cat.default", true);
+
+    assertThat(countCasbinRulesReferencing(schemaInfo.getSchemaId(), tableInfo.getTableId()))
+        .isZero();
   }
 }
