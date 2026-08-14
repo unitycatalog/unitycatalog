@@ -105,9 +105,9 @@ public class AuthService implements RegisteredService {
    * TokenExchangeSubjectTokenHandler}. For {@code id_token} subjects, resolution order is {@code
    * email} (or {@code sub}) then OAuth client id from {@code azp} or {@code client_id} mapped to
    * {@code externalId}. For {@code access_token} subjects without an {@code email} claim, {@code
-   * externalId} is tried before {@code sub}. Audience validation uses {@code server.audiences},
-   * with additional acceptance when the subject token's {@code azp} or {@code client_id} matches a
-   * registered {@code externalId}.
+   * externalId} is tried before {@code sub}. Audience validation uses {@code server.audiences}
+   * only; a matching {@code azp} or {@code client_id} does not skip the allowlist. Use {@code *} to
+   * disable audience checks.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.

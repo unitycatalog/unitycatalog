@@ -2,7 +2,6 @@ package io.unitycatalog.server.security;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -69,15 +68,6 @@ public class SecurityContext {
 
     LOGGER.info("--- Internal Certs Configuration --");
     LOGGER.info(getInternalCertsFile());
-  }
-
-  public String createAccessToken(DecodedJWT decodedJWT, Duration ttl) {
-    String subject =
-        decodedJWT
-            .getClaims()
-            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
-            .asString();
-    return createAccessToken(subject, ttl);
   }
 
   public String createAccessToken(String principalEmail, Duration ttl) {

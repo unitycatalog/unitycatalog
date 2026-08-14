@@ -45,7 +45,12 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
   public void testIdTokenExchangeResolvesPrincipalByEmailBeforeExternalId() throws IOException {
     String token =
         createIdentityToken(
-            testIssuer, OAUTH_CLIENT_ID, SERVICE_EMAIL, testIssuerAlgorithm, testIssuerKeyId);
+            testIssuer,
+            TEST_AUDIENCE,
+            OAUTH_CLIENT_ID,
+            SERVICE_EMAIL,
+            testIssuerAlgorithm,
+            testIssuerKeyId);
 
     AggregatedHttpResponse response =
         exchangeToken(token, "urn:ietf:params:oauth:token-type:id_token");
@@ -60,6 +65,7 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
     String token =
         createIdentityToken(
             testIssuer,
+            TEST_AUDIENCE,
             OAUTH_CLIENT_ID,
             "wrong-email@example.com",
             testIssuerAlgorithm,
@@ -109,8 +115,27 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
     String token =
         createIdentityToken(
             testIssuer,
+            TEST_AUDIENCE,
             "unknown-client-id",
             "unknown-email@example.com",
+            testIssuerAlgorithm,
+            testIssuerKeyId);
+
+    AggregatedHttpResponse response =
+        exchangeToken(token, "urn:ietf:params:oauth:token-type:id_token");
+
+    assertThat(response.status()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.contentUtf8()).contains("User not allowed");
+  }
+
+  @Test
+  public void testSubjectTokenRejectsMismatchedAudienceEvenWhenExternalIdMatches() {
+    String token =
+        createIdentityToken(
+            testIssuer,
+            "wrong-audience",
+            OAUTH_CLIENT_ID,
+            SERVICE_EMAIL,
             testIssuerAlgorithm,
             testIssuerKeyId);
 
@@ -165,7 +190,12 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
   }
 
   private static String createIdentityToken(
-      String issuer, String audience, String email, Algorithm algorithm, String keyId) {
+      String issuer,
+      String audience,
+      String clientId,
+      String email,
+      Algorithm algorithm,
+      String keyId) {
     var builder =
         JWT.create()
             .withSubject("subject-uuid")
@@ -176,7 +206,9 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
             .withJWTId(UUID.randomUUID().toString());
     if (audience != null) {
       builder.withAudience(audience);
-      builder.withClaim("azp", audience);
+    }
+    if (clientId != null) {
+      builder.withClaim("azp", clientId);
     }
     return builder.sign(algorithm);
   }
@@ -186,7 +218,7 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
     return JWT.create()
         .withSubject("subject-uuid")
         .withClaim("azp", clientId)
-        .withAudience(clientId, "https://dev.dev.example.com")
+        .withAudience(TEST_AUDIENCE, "https://dev.dev.example.com")
         .withIssuer(issuer)
         .withIssuedAt(new Date())
         .withKeyId(keyId)
@@ -199,7 +231,7 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
     return JWT.create()
         .withSubject(subject)
         .withClaim("azp", clientId)
-        .withAudience(clientId, "https://dev.dev.example.com")
+        .withAudience(TEST_AUDIENCE, "https://dev.dev.example.com")
         .withIssuer(issuer)
         .withIssuedAt(new Date())
         .withKeyId(keyId)
