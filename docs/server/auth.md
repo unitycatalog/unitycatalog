@@ -56,7 +56,7 @@ server.audiences=<Client ID provided earlier>
 When authorization is enabled, the server validates incoming identity tokens against configured issuers and audiences:
 
 - **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
-- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values. Tokens whose `azp` or `client_id` matches a registered UC user's `externalId` are also accepted even when the client UUID is not listed in `server.audiences`.
+- **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values.
 
 #### Programmatic exchange (service principals)
 
@@ -92,10 +92,9 @@ accepts tokens whose `aud` includes `https://dev.dev.example.com` or
 server.audiences=unity-catalog-local,https://*.dev.example.com
 ```
 
-When email-based exchange cannot list dynamic OAuth client UUID audiences, tokens whose `azp` or
-`client_id` matches a registered UC user's `externalId` are accepted even when the client UUID is
-not listed in `server.audiences`. As a fallback for human login only, `*` alone skips audience
-allowlist validation:
+When the identity provider issues per-client UUID audiences that cannot be pre-listed (for example
+dynamic OAuth client IDs in `id_token.aud`), use `*` alone to skip audience validation while still
+enforcing issuer and user checks:
 
 ```properties
 server.audiences=*
@@ -112,7 +111,6 @@ values under that pattern can steer JWKS fetches (an SSRF-style surface).
 
 Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
 cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
-Prefer the subject-token `externalId` flow for per-tenant service principals instead of `audiences=*`.
 
 ### Restart the UC Server
 

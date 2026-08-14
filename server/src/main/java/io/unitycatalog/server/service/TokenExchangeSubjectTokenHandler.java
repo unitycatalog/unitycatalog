@@ -35,9 +35,10 @@ public class TokenExchangeSubjectTokenHandler {
    * <p>For {@code id_token} subjects, resolution order is email (or {@code sub}) then OAuth client
    * id from {@code azp} or {@code client_id} mapped to {@code externalId}. For {@code access_token}
    * subjects without an {@code email} claim, {@code externalId} is tried before {@code sub}.
+   * Audience validation uses {@code server.audiences} only.
    */
   public String resolvePrincipalEmail(TokenType subjectTokenType, DecodedJWT decodedJWT) {
-    validateAudience(subjectTokenType, decodedJWT);
+    validateAudience(decodedJWT);
 
     PrincipalResolutionOrder order =
         subjectTokenType == TokenType.ACCESS_TOKEN && !hasEmailClaim(decodedJWT)
@@ -94,22 +95,11 @@ public class TokenExchangeSubjectTokenHandler {
     return Optional.empty();
   }
 
-  private void validateAudience(TokenType subjectTokenType, DecodedJWT decodedJWT) {
+  private void validateAudience(DecodedJWT decodedJWT) {
     List<String> audiences = serverProperties.getAudiences();
-    Optional<String> tokenClientId = extractOAuthClientId(decodedJWT);
-
-    if (audiences.isEmpty() && tokenClientId.isEmpty()) {
-      LOGGER.error("No audiences configured");
-      throw new OAuthInvalidRequestException(
-          ErrorCode.INVALID_ARGUMENT,
-          "No audiences configured. Set server.audiences in server.properties");
-    }
 
     if (audiences.isEmpty()) {
-      if (tokenClientId.isPresent()
-          && findEnabledUserByExternalId(tokenClientId.get()).isPresent()) {
-        return;
-      }
+      LOGGER.error("No audiences configured");
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT,
           "No audiences configured. Set server.audiences in server.properties");
@@ -120,18 +110,6 @@ public class TokenExchangeSubjectTokenHandler {
     }
 
     if (serverProperties.getAudienceAllowlist().isAnyAllowed(decodedJWT.getAudience())) {
-      return;
-    }
-
-    if (subjectTokenType == TokenType.ID_TOKEN) {
-      String configuredClientId = serverProperties.get(ServerProperties.Property.CLIENT_ID);
-      if (configuredClientId != null
-          && subjectTokenReferencesClient(decodedJWT, configuredClientId)) {
-        return;
-      }
-    }
-
-    if (tokenClientId.isPresent() && findEnabledUserByExternalId(tokenClientId.get()).isPresent()) {
       return;
     }
 
@@ -149,15 +127,6 @@ public class TokenExchangeSubjectTokenHandler {
       // IGNORE
     }
     return Optional.empty();
-  }
-
-  private static boolean subjectTokenReferencesClient(DecodedJWT decodedJWT, String clientId) {
-    Claim azp = decodedJWT.getClaim("azp");
-    if (!azp.isNull() && clientId.equals(azp.asString())) {
-      return true;
-    }
-    List<String> audiences = decodedJWT.getAudience();
-    return audiences != null && audiences.contains(clientId);
   }
 
   private Optional<String> tryResolvePrincipalEmailForClient(String clientId) {
