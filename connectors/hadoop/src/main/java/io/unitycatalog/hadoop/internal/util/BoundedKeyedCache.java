@@ -37,6 +37,9 @@ public final class BoundedKeyedCache<K, V> {
     this.isFresh = isFresh == null ? value -> true : isFresh;
   }
 
+  /**
+   * Returns the cached value as-is, without applying the freshness policy; {@code null} if absent.
+   */
   public V getIfPresent(K key) {
     synchronized (cacheLock) {
       return cache.get(key);
@@ -46,12 +49,17 @@ public final class BoundedKeyedCache<K, V> {
   /**
    * Returns the cached value for {@code key}, loading and caching one when the key is absent or
    * when the cache's freshness policy rejects what is cached. A value the policy accepts is
-   * returned without taking the key lock. Loads are single-flight per key: the thread holding the
-   * key lock loads while same-key waiters block for the duration of the load and reuse its result;
-   * threads on different keys never block each other. A freshly loaded value is cached and returned
-   * even if the freshness policy would reject it -- the loader's output is trusted. Loaders must
-   * not call back into this cache: a loader that loads other keys can form a lock cycle and
-   * deadlock.
+   * returned without taking the key lock; threads on different keys never block each other.
+   *
+   * <p>Loads are single-flight per key in the common case: same-key waiters block for the duration
+   * of the load and then reuse the loaded value. A waiter re-applies the policy, so if the loader
+   * produced a value the policy already rejects (e.g. a credential vended with less remaining
+   * lifetime than the renewal lead time) the waiter loads again rather than returning it. The
+   * loading thread itself always gets its own result.
+   *
+   * <p>Loaders must not call back into this cache: a loader that loads other keys can form a lock
+   * cycle and deadlock. The policy must be a pure function of the value -- it is applied both
+   * outside and inside the key lock.
    */
   public <E extends Exception> V getOrLoad(K key, CheckedSupplier<V, E> loader) throws E {
     V cached = getIfPresent(key);

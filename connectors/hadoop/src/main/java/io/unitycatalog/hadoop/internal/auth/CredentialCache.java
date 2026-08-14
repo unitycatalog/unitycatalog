@@ -48,9 +48,9 @@ public class CredentialCache<K, T> {
    *   <li>Not cached: create it via {@code factory}, cache it, return it.
    * </ul>
    *
-   * <p>Locking is per key: concurrent accessors of the same key are single-flight, so one invokes
-   * {@code factory} while the others wait and reuse its result. Accessors of other keys are never
-   * blocked by an in-flight creation, and a valid cached value is returned without locking at all.
+   * <p>Locking is per key: accessors of the same key are single-flight, so one invokes {@code
+   * factory} while the others wait and reuse its result. Accessors of other keys are never blocked
+   * by an in-flight creation, and a valid cached value is returned without taking the key lock.
    */
   public T access(K key, RenewableCredentialFactory<T> factory) throws ApiException {
     return cache.getOrLoad(key, factory::create).credential();
