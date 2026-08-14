@@ -251,12 +251,15 @@ public class JCasbinAuthorizerMultiInstanceTest {
     CountDownLatch releaseWriteLock = new CountDownLatch(1);
     Thread holder =
         new Thread(
-            () ->
-                replica.withWriteLock(
-                    () -> {
-                      holdingWriteLock.countDown();
-                      awaitLatch(releaseWriteLock, "the write lock to be released");
-                    }),
+            () -> {
+              replica.reloadLock.writeLock().lock();
+              try {
+                holdingWriteLock.countDown();
+                awaitLatch(releaseWriteLock, "the write lock to be released");
+              } finally {
+                replica.reloadLock.writeLock().unlock();
+              }
+            },
             "write-lock-holder");
     holder.start();
     assertThat(holdingWriteLock.await(2, TimeUnit.SECONDS))

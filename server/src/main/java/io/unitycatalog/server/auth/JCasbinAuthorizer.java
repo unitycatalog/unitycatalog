@@ -12,6 +12,9 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.casbin.adapter.JDBCAdapter;
@@ -34,15 +37,16 @@ import org.slf4j.LoggerFactory;
  *
  * <p>{@link CasbinPolicyRefresher} polls the shared {@code casbin_rule} table so grants and
  * revocations made through other instances are picked up. Reload builds a fresh enforcer and swaps
- * it under {@code writeLock} so {@code enforce()} keeps using the previous instance. Local writes
- * take the same lock so they are not lost across the swap.
+ * it under the exclusive side of {@code reloadLock} so {@code enforce()} keeps using the previous
+ * instance. Local writes take the shared side so they are not lost across the swap, but do not wait
+ * for each other.
  */
 public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JCasbinAuthorizer.class);
 
   private final AtomicReference<SyncedEnforcer> current = new AtomicReference<>();
-  private final Object writeLock = new Object();
+  final ReadWriteLock reloadLock = new ReentrantReadWriteLock();
   private final JDBCAdapter adapter;
   private final String modelText;
   private final CasbinPolicyRefresher refresher;
@@ -119,65 +123,66 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   }
 
   /**
-   * Rebuilds policy from {@code casbin_rule} on a new enforcer and swaps it in. Holds {@code
-   * writeLock} for the whole load so local grants are not applied to the outgoing instance.
+   * Rebuilds policy from {@code casbin_rule} on a new enforcer and swaps it in. Holds the exclusive
+   * lock for the whole load so local grants are not applied to the outgoing instance.
    */
   void reloadFromStore() {
-    synchronized (writeLock) {
+    reloadLock.writeLock().lock();
+    try {
       current.set(newEnforcer());
+    } finally {
+      reloadLock.writeLock().unlock();
+    }
+  }
+
+  private <T> T mutate(Function<SyncedEnforcer, T> action) {
+    reloadLock.readLock().lock();
+    try {
+      return action.apply(live());
+    } finally {
+      reloadLock.readLock().unlock();
     }
   }
 
   @Override
   public boolean grantAuthorization(UUID principal, UUID resource, Privileges action) {
-    synchronized (writeLock) {
-      return live().addPolicy(principal.toString(), resource.toString(), action.toString());
-    }
+    return mutate(e -> e.addPolicy(principal.toString(), resource.toString(), action.toString()));
   }
 
   @Override
   public boolean revokeAuthorization(UUID principal, UUID resource, Privileges action) {
-    synchronized (writeLock) {
-      return live().removePolicy(principal.toString(), resource.toString(), action.toString());
-    }
+    return mutate(
+        e -> e.removePolicy(principal.toString(), resource.toString(), action.toString()));
   }
 
   @Override
   public boolean clearAuthorizationsForPrincipal(UUID principal) {
-    synchronized (writeLock) {
-      return live().removeFilteredPolicy(PRINCIPAL_INDEX, principal.toString());
-    }
+    return mutate(e -> e.removeFilteredPolicy(PRINCIPAL_INDEX, principal.toString()));
   }
 
   @Override
   public boolean clearAuthorizationsForResource(UUID resource) {
-    synchronized (writeLock) {
-      return live().removeFilteredPolicy(RESOURCE_INDEX, resource.toString());
-    }
+    return mutate(e -> e.removeFilteredPolicy(RESOURCE_INDEX, resource.toString()));
   }
 
   @Override
   public boolean addHierarchyChild(UUID parent, UUID child) {
-    synchronized (writeLock) {
-      return live().addNamedGroupingPolicy(HIERARCHY_POLICY, parent.toString(), child.toString());
-    }
+    return mutate(
+        e -> e.addNamedGroupingPolicy(HIERARCHY_POLICY, parent.toString(), child.toString()));
   }
 
   @Override
   public boolean removeHierarchyChild(UUID parent, UUID child) {
-    synchronized (writeLock) {
-      return live()
-          .removeNamedGroupingPolicy(HIERARCHY_POLICY, parent.toString(), child.toString());
-    }
+    return mutate(
+        e -> e.removeNamedGroupingPolicy(HIERARCHY_POLICY, parent.toString(), child.toString()));
   }
 
   @Override
   public boolean removeHierarchyChildren(UUID resource) {
-    synchronized (writeLock) {
-      return live()
-          .removeFilteredNamedGroupingPolicy(
-              HIERARCHY_POLICY, HIERARCHY_PARENT_INDEX, resource.toString());
-    }
+    return mutate(
+        e ->
+            e.removeFilteredNamedGroupingPolicy(
+                HIERARCHY_POLICY, HIERARCHY_PARENT_INDEX, resource.toString()));
   }
 
   @Override
@@ -260,12 +265,5 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
   CasbinPolicyRefresher getRefresher() {
     return refresher;
-  }
-
-  /** Runs {@code action} while holding the write lock. Used to test that reads do not take it. */
-  void withWriteLock(Runnable action) {
-    synchronized (writeLock) {
-      action.run();
-    }
   }
 }
