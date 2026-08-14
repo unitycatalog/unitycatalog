@@ -31,6 +31,7 @@ import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, 
 import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.sparkproject.guava.base.Preconditions
@@ -132,6 +133,35 @@ class UCSingleCatalog
   private def shouldUseDeltaAPI: Boolean =
     DeltaVersionUtils.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
 
+  /** Session default format (`spark.sql.sources.default`). */
+  private def sessionDefaultProvider: String =
+    SQLConf.get.getConf(SQLConf.DEFAULT_DATA_SOURCE_NAME)
+
+  /**
+   * Returns true when the effective provider is `delta` -- i.e. `USING delta`, or no `USING`
+   * clause while `spark.sql.sources.default` resolves to delta. Unlike Spark's built-in
+   * `V2SessionCatalog`, a named V2 catalog receives no `provider` property when `USING` is
+   * omitted, so we apply the same default-source fallback Spark itself uses.
+   */
+  private def hasDeltaProvider(properties: util.Map[String, String]): Boolean =
+    Option(properties.get(TableCatalog.PROP_PROVIDER))
+      .getOrElse(sessionDefaultProvider)
+      .equalsIgnoreCase("delta")
+
+  /** Ensures `provider` is present using the same resolution as {@link #hasDeltaProvider}. */
+  private def withMaterializedProvider(
+      properties: util.Map[String, String]): util.Map[String, String] = {
+    if (properties.containsKey(TableCatalog.PROP_PROVIDER)) {
+      properties
+    } else {
+      val augmented = new util.HashMap[String, String](properties)
+      augmented.put(
+        TableCatalog.PROP_PROVIDER,
+        Option(properties.get(TableCatalog.PROP_PROVIDER)).getOrElse(sessionDefaultProvider))
+      augmented
+    }
+  }
+
   /**
    * REPLACE / CREATE OR REPLACE delegation gate.
    *
@@ -140,9 +170,8 @@ class UCSingleCatalog
    *     Delta-side `buildReplaceProps` after loading; we do not pre-check it here.
    *   - Non-Delta REPLACE stays on the legacy path; its rejection error is unchanged.
    */
-  private def shouldDelegateReplaceToDeltaApi(properties: util.Map[String, String]): Boolean = {
-    shouldUseDeltaAPI && UCSingleCatalog.hasDeltaProvider(properties)
-  }
+  private def shouldDelegateReplaceToDeltaApi(properties: util.Map[String, String]): Boolean =
+    shouldUseDeltaAPI && hasDeltaProvider(properties)
 
   /**
    * Returns the properties UC should pass to the Delta catalog delegate for a managed Delta
@@ -155,7 +184,10 @@ class UCSingleCatalog
   private def managedDeltaCreatePropsForDelegate(
       ident: Identifier,
       properties: util.Map[String, String]): util.Map[String, String] = {
-    val validated = validateAndDefaultManagedDeltaCreateProperties(properties)
+    // Materialize the effective provider (same resolution as `hasDeltaProvider`) so the Delta
+    // delegate and `UCProxy.createTable`'s `requireProviderSpecified` see an explicit `provider`.
+    val withProvider = withMaterializedProvider(properties)
+    val validated = validateAndDefaultManagedDeltaCreateProperties(withProvider)
     if (shouldUseDeltaAPI) validated
     else stageManagedDeltaTableAndGetProps(ident, validated)
   }
@@ -190,7 +222,7 @@ class UCSingleCatalog
     }
 
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
-      if (UCSingleCatalog.hasDeltaProvider(properties)) {
+      if (hasDeltaProvider(properties)) {
         // Managed Delta table
         val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
         delegate.createTable(ident, schema, partitions, newProps)
@@ -553,7 +585,7 @@ class UCSingleCatalog
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val stagingCatalog = requireStagingCatalog("CREATE TABLE AS SELECT (CTAS)")
     if (UCSingleCatalog.isManagedTable(properties, ident)) {
-      if (UCSingleCatalog.hasDeltaProvider(properties)) {
+      if (hasDeltaProvider(properties)) {
         // Managed Delta table
         val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
         stagingCatalog.stageCreate(ident, schema, partitions, newProps)
@@ -629,11 +661,6 @@ object UCSingleCatalog {
     val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
     !hasExternalClause && !hasLocationClause && !isPathTable
   }
-
-  /** Returns true when `USING <format>` is `delta`. */
-  def hasDeltaProvider(properties: util.Map[String, String]): Boolean =
-    Option(properties.get(TableCatalog.PROP_PROVIDER))
-      .exists(_.equalsIgnoreCase("delta"))
 
   def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
     if (namespace.length > 1) {

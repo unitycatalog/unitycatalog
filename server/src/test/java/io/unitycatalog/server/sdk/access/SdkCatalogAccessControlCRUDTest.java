@@ -146,6 +146,12 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     // delete a catalog -> denied
     assertPermissionDenied(() -> principal1CatalogsApi.deleteCatalog("admincatalog2", null));
 
+    // force delete a catalog -> USE CATALOG -> denied
+    grantPermissions(REGULAR_1, SecurableType.CATALOG, "admincatalog1", Privileges.USE_CATALOG);
+    assertPermissionDenied(() -> regular1CatalogsApi.deleteCatalog("admincatalog1", true));
+    assertThat(adminCatalogsApi.getCatalog("admincatalog1").getName()).isEqualTo("admincatalog1");
+    assertThat(adminSchemasApi.getSchema("admincatalog1.default").getName()).isEqualTo("default");
+
     // delete a catalog -> metastore admin -> allowed
     adminCatalogsApi.deleteCatalog("admincatalog2", null);
 
@@ -157,6 +163,8 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     // create a catalog -> CREATE CATALOG -> allowed
     CreateCatalog catalog4 = new CreateCatalog().name("catalog4").comment("(created from scratch)");
     principal1CatalogsApi.createCatalog(catalog4);
+
+    // delete a catalog -> catalog owner -> allowed
     principal1CatalogsApi.deleteCatalog("catalog4", null);
 
     // managed storage with external location

@@ -14,10 +14,13 @@ import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
@@ -139,6 +142,56 @@ abstract class CredPropsBaseTest {
             expected(kind, renew, credScoped, conf, expiration, appVersions));
   }
 
+  @ParameterizedTest(
+      name = "{0} renew={1} credScoped={2} customImpl={3} expiring={4} appVersions={5}")
+  @MethodSource("testCaseMatrix")
+  void multipleCredPropsMatchExactlyAcrossMatrix(
+      CredKind kind,
+      boolean renew,
+      boolean credScoped,
+      boolean customImpl,
+      boolean expiring,
+      Map<String, String> appVersions)
+      throws Exception {
+    for (int prefixCount : List.of(2, 3, 5)) {
+      List<String> prefixes = createPrefixes(prefixCount);
+      setupMockFetcher(expiring, prefixes);
+      Configuration conf = createConf(customImpl);
+      Map<String, String> created = createCredPropsFor(kind, renew, credScoped, conf, appVersions);
+      Map<String, String> expected =
+          expectedForMultipleCredentials(kind, renew, credScoped, conf, prefixes, appVersions);
+      assertThat(created).containsExactlyInAnyOrderEntriesOf(expected);
+    }
+  }
+
+  @ParameterizedTest(
+      name = "{0} renew={1} credScoped={2} customImpl={3} expiring={4} appVersions={5}")
+  @MethodSource("testCaseMatrix")
+  void malformedCredentialPrefixesSkippedDoesNotThrow(
+      CredKind kind,
+      boolean renew,
+      boolean credScoped,
+      boolean customImpl,
+      boolean expiring,
+      Map<String, String> appVersions)
+      throws Exception {
+    for (List<String> prefixes : malformedPrefixLists()) {
+      setupMockFetcher(expiring, prefixes);
+      Configuration conf = createConf(customImpl);
+      Map<String, String> created = createCredPropsFor(kind, renew, credScoped, conf, appVersions);
+      List<String> expectedPrefixes = nonEmptyPrefixes(prefixes);
+      Map<String, String> expected =
+          expectedForMultipleCredentials(
+              kind,
+              renew,
+              credScoped,
+              conf,
+              expectedPrefixes.isEmpty() ? null : expectedPrefixes,
+              appVersions);
+      assertThat(created).containsExactlyInAnyOrderEntriesOf(expected);
+    }
+  }
+
   static Stream<Arguments> testCaseMatrix() {
     Stream.Builder<Arguments> cases = Stream.builder();
     for (CredKind kind : CredKind.values()) {
@@ -189,10 +242,17 @@ abstract class CredPropsBaseTest {
         (apiClient, credId) -> mockGenericCredentialFetcher(vendedCred(null, prefix));
 
     Map<String, String> props = createCredPropsFor(CredKind.TABLE, true, false);
-    if (prefix == null) {
-      assertThat(props).doesNotContainKey(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY);
+    if (prefix == null || prefix.isEmpty()) {
+      assertThat(props)
+          .doesNotContainKeys(
+              UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY,
+              UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY);
     } else {
-      assertThat(props).containsEntry(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, prefix);
+      assertThat(props)
+          .doesNotContainKey(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY)
+          .containsEntry(
+              UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+              CredentialUtil.encodeCredPrefixes(List.of(prefix))[0]);
     }
   }
 
@@ -277,6 +337,29 @@ abstract class CredPropsBaseTest {
 
   // ---- expected-map composition --------------------------------------------------------------
 
+  private Map<String, String> expectedForMultipleCredentials(
+      CredKind kind,
+      boolean renew,
+      boolean credScoped,
+      Configuration conf,
+      List<String> prefixes,
+      Map<String, String> appVersions) {
+    Map<String, String> expected = new HashMap<>(defaultKeys());
+    if (renew) {
+      expected.putAll(renewableProviderKeys());
+      expected.putAll(requestContext(kind, appVersions));
+    }
+    if (prefixes != null) {
+      expected.put(
+          UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+          String.join(",", CredentialUtil.encodeCredPrefixes(prefixes)));
+    }
+    if (credScoped) {
+      expected.putAll(customImplKeys(conf));
+    }
+    return expected;
+  }
+
   private Map<String, String> expected(
       CredKind kind,
       boolean renew,
@@ -292,7 +375,9 @@ abstract class CredPropsBaseTest {
     } else {
       expected.putAll(staticCredKeys(expiration));
     }
-    expected.put(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, location());
+    expected.put(
+        UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+        CredentialUtil.encodeCredPrefixes(List.of(location()))[0]);
     if (credScoped) {
       expected.putAll(customImplKeys(conf));
     }
@@ -354,6 +439,40 @@ abstract class CredPropsBaseTest {
   }
 
   // ---- entry-point dispatch ------------------------------------------------------------------
+
+  private List<String> createPrefixes(int count) {
+    return IntStream.range(0, count)
+        .mapToObj(index -> location() + "/" + index)
+        .collect(Collectors.toList());
+  }
+
+  private List<List<String>> malformedPrefixLists() {
+    String validPrefix = location() + "/valid";
+    return List.of(
+        List.of(validPrefix, ""),
+        List.of("", validPrefix),
+        Arrays.asList(validPrefix, null),
+        Arrays.asList(null, validPrefix),
+        List.of("", ""),
+        Arrays.asList(null, null));
+  }
+
+  private static List<String> nonEmptyPrefixes(List<String> prefixes) {
+    return prefixes.stream()
+        .filter(prefix -> prefix != null && !prefix.isEmpty())
+        .collect(Collectors.toList());
+  }
+
+  private void setupMockFetcher(boolean expiring, List<String> prefixes) {
+    Long expiration = expiring ? EXPIRATION_MILLIS : null;
+    CredPropsUtil.initialCredCache.clear();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) ->
+            mockGenericCredentialFetcher(
+                prefixes.stream()
+                    .map(prefix -> vendedCred(expiration, prefix))
+                    .toArray(GenericCredential[]::new));
+  }
 
   /** A fresh conf, pre-seeded with this cloud's custom impl keys iff {@code customImpl}. */
   private Configuration createConf(boolean customImpl) {
@@ -457,10 +576,10 @@ abstract class CredPropsBaseTest {
     return TokenProvider.create(Map.of("type", "static", "token", "tok"));
   }
 
-  static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential creds) {
+  static GenericCredentialFetcher mockGenericCredentialFetcher(GenericCredential... creds) {
     GenericCredentialFetcher api = mock(GenericCredentialFetcher.class);
     try {
-      when(api.createCredential()).thenReturn(creds);
+      when(api.createCredentials()).thenReturn(List.of(creds));
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

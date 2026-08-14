@@ -46,6 +46,8 @@ public class UCHadoopConfConstants {
   public static final String UC_AUTH_PREFIX = "fs.unitycatalog.auth.";
   public static final String UC_AUTH_TYPE = "fs.unitycatalog.auth.type";
   public static final String UC_AUTH_TOKEN_KEY = "fs.unitycatalog.auth.token";
+
+  /** The storage prefix covered by a file system or a UC credential. */
   public static final String UC_CREDENTIAL_PREFIX_KEY = "fs.unitycatalog.credential.prefix";
   /**
    * Stable id derived from the credential context ({@code catalogUri}, storage {@code scheme}, and
@@ -55,6 +57,9 @@ public class UCHadoopConfConstants {
    * table option handling, which lowercases option keys, so a mixed-case key would not round-trip.
    */
   public static final String UC_CRED_CONTEXT_ID_KEY = "fs.unitycatalog.cred.context.id";
+
+  /** The list of storage prefixes that are served by the vended credentials. */
+  public static final String UC_CREDENTIAL_PREFIXES_KEY = "fs.unitycatalog.cred.prefixes";
 
   // Prefix for engine version metadata (e.g. fs.unitycatalog.engine.version.Spark=4.0.0). Values
   // stored under this prefix are propagated to the User-Agent header on UC API calls so the

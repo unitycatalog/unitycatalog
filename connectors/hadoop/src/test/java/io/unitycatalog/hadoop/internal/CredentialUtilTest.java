@@ -26,6 +26,28 @@ import org.junit.jupiter.params.provider.MethodSource;
 class CredentialUtilTest {
   private static final long EXPIRATION = 123L;
 
+  @Test
+  void credPrefixesRoundTripInOrder() {
+    List<String> prefixes =
+        List.of(
+            "s3://bucket/table",
+            "s3://bucket/table,archive",
+            "s3://bucket/table/%20/${credential}",
+            "s3://bucket/table/%2C/%25/%2F",
+            "s3://bucket/table with spaces",
+            "s3://bucket/table\twith\ttabs",
+            "s3://bucket/table-name_with.parts~",
+            "s3://bucket/table?key=value&other=a+b#fragment",
+            "s3://bucket/café");
+
+    String[] encodedPrefixes = CredentialUtil.encodeCredPrefixes(prefixes);
+
+    assertThat(encodedPrefixes).doesNotContainAnyElementsOf(prefixes);
+    assertThat(encodedPrefixes).allMatch(prefix -> !prefix.contains(","));
+    assertThat(CredentialUtil.decodeCredPrefixes(encodedPrefixes))
+        .containsExactlyElementsOf(prefixes);
+  }
+
   @ParameterizedTest(name = "{0}")
   @MethodSource("validCredentials")
   void convertsTemporaryCredentials(
@@ -101,35 +123,31 @@ class CredentialUtilTest {
   void selectorRejectsMissingResponse() {
     assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", null))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("has no storage credentials");
+        .hasMessageContaining("requires multiple storage credentials");
     assertThatThrownBy(
             () -> CredentialUtil.selectForLocation("s3://bucket/t", Collections.emptyList()))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("has no storage credentials");
+        .hasMessageContaining("requires multiple storage credentials");
   }
 
   @Test
-  void selectorRejectsSingleWithoutPrefixMatch() {
-    DeltaStorageCredential only = credAt("s3://other-bucket");
-    assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", List.of(only)))
+  void selectorRequiresMultipleCreds() {
+    assertThatThrownBy(
+            () -> CredentialUtil.selectForLocation("s3://bucket/t", List.of(credAt("s3://bucket"))))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("No UC Delta credential matched");
-  }
-
-  @Test
-  void selectorRejectsSingleNull() {
+        .hasMessageContaining("requires multiple storage credentials");
     assertThatThrownBy(
             () ->
                 CredentialUtil.selectForLocation("s3://bucket/t", Collections.singletonList(null)))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("contains null");
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("requires multiple storage credentials");
   }
 
   @Test
   void selectorPicksLongestMatchingPrefix() {
-    DeltaStorageCredential bucket = credAt("s3://bucket");
-    DeltaStorageCredential table = credAt("s3://bucket/t");
-    DeltaStorageCredential child = credAt("s3://bucket/t/child");
+    GenericCredential bucket = credAt("s3://bucket");
+    GenericCredential table = credAt("s3://bucket/t");
+    GenericCredential child = credAt("s3://bucket/t/child");
     assertThat(
             CredentialUtil.selectForLocation(
                 "s3://bucket/t/child/file", Arrays.asList(bucket, table, child)))
@@ -151,19 +169,26 @@ class CredentialUtilTest {
 
   @Test
   void selectorIgnoresNullAndPrefixlessInMultiResponse() {
-    List<DeltaStorageCredential> creds =
-        Arrays.asList(null, new DeltaStorageCredential(), credAt("s3://bucket/t"));
-    assertThat(CredentialUtil.selectForLocation("s3://bucket/t", creds).getPrefix())
+    List<GenericCredential> creds = Arrays.asList(null, credAt(null), credAt("s3://bucket/t"));
+    assertThat(CredentialUtil.selectForLocation("s3://bucket/t", creds).prefix())
         .isEqualTo("s3://bucket/t");
   }
 
   @Test
   void selectorThrowsWhenMultiResponseHasNoMatch() {
-    List<DeltaStorageCredential> creds =
+    List<GenericCredential> creds =
         Arrays.asList(credAt("s3://other"), credAt("s3://bucket/sibling"));
     assertThatThrownBy(() -> CredentialUtil.selectForLocation("s3://bucket/t", creds))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("No UC Delta credential matched");
+        .hasMessageContaining("No vended credential covers location");
+    // Scheme aliases are not normalized; otherwise, the s3 prefix would cover the s3a location.
+    assertThatThrownBy(
+            () ->
+                CredentialUtil.selectForLocation(
+                    "s3a://bucket/t",
+                    Arrays.asList(credAt("s3://bucket"), credAt("s3://bucket/t"))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("No vended credential covers location");
   }
 
   @Test
@@ -246,7 +271,62 @@ class CredentialUtilTest {
         .hasMessageContaining("AWS access key is missing");
   }
 
-  private static DeltaStorageCredential credAt(String prefix) {
-    return new DeltaStorageCredential().prefix(prefix);
+  @ParameterizedTest
+  @MethodSource("coveringPrefixCases")
+  void longestCoveringIndexMatchesLocationToPrefix(
+      List<String> prefixes, String location, int expectedIndex) {
+    assertThat(CredentialUtil.longestCoveringIndex(location, prefixes)).isEqualTo(expectedIndex);
+  }
+
+  private static Stream<Arguments> coveringPrefixCases() {
+    List<String> nested =
+        Arrays.asList("s3://bucket/table", "s3://bucket/table/child", "s3://bucket");
+    return Stream.of(
+        // Longest (most specific) covering prefix wins over shorter ancestors.
+        Arguments.of(nested, "s3://bucket/table/child/data", 1),
+        // A location under only the broader prefix selects it, not the deeper sibling.
+        Arguments.of(nested, "s3://bucket/table/x", 0),
+        // Trailing slashes on the prefix are normalized away.
+        Arguments.of(List.of("s3://bucket/t///"), "s3://bucket/t/data", 0),
+        // Null and empty prefixes are skipped; the covering one is chosen.
+        Arguments.of(Arrays.asList(null, "", "s3://bucket/t"), "s3://bucket/t/data", 2),
+        // On equal-length normalized prefixes, the first covering one wins.
+        Arguments.of(
+            Arrays.asList("s3://bucket/table/", "s3://bucket/table"), "s3://bucket/table/data", 0));
+  }
+
+  @ParameterizedTest
+  @MethodSource("nonCoveringPrefixCases")
+  void longestCoveringIndexReturnsNegativeOneWhenNoPrefixMatches(
+      List<String> prefixes, String location) {
+    assertThat(CredentialUtil.longestCoveringIndex(location, prefixes)).isEqualTo(-1);
+  }
+
+  private static Stream<Arguments> nonCoveringPrefixCases() {
+    return Stream.of(
+        Arguments.of(List.of(), "s3://bucket/table"),
+        Arguments.of(Arrays.asList(null, ""), "s3://bucket/table"),
+        // Scheme aliases are compared literally.
+        Arguments.of(List.of("s3://bucket/table"), "s3a://bucket/table/data"),
+        Arguments.of(List.of("abfs://c@a/t"), "abfss://c@a/t"),
+        // Scheme comparison is case-sensitive.
+        Arguments.of(List.of("s3://bucket/t"), "S3://bucket/t"),
+        // Different clouds never match, even with the same bucket/path.
+        Arguments.of(List.of("s3://bucket/t"), "gs://bucket/t"),
+        // Unknown schemes are compared literally (case-sensitive), so a case mismatch fails.
+        Arguments.of(List.of("hdfs://nn/t"), "HDFS://nn/t"),
+        // No prefix covers the location.
+        Arguments.of(Arrays.asList("s3://other", "s3://bucket/sibling"), "s3://bucket/t"));
+  }
+
+  @Test
+  void longestCoveringIndexRejectsNullPrefixList() {
+    assertThatThrownBy(() -> CredentialUtil.longestCoveringIndex("s3://bucket/table", null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("List of prefixes cannot be null.");
+  }
+
+  private static GenericCredential credAt(String location) {
+    return new AwsCredential("ak", "sk", "st", 1L, location);
   }
 }
