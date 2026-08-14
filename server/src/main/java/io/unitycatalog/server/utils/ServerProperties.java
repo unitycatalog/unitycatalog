@@ -193,10 +193,10 @@ public class ServerProperties {
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
     POLICY_REFRESH_ENABLED(
         "server.authorization.policy-refresh",
-        "enable",
+        "disable",
         new EnumValidator(true, "enable", "disable")),
     POLICY_REFRESH_INTERVAL(
-        "server.authorization.policy-refresh-interval", "PT1S", DURATION_VALIDATOR),
+        "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
     POLICY_REFRESH_DEBOUNCE(
         "server.authorization.policy-refresh-debounce", "PT1S", DURATION_VALIDATOR),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
