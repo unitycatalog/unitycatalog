@@ -26,29 +26,26 @@ public final class BoundedKeyedCache<K, V> {
   }
 
   /**
-   * A cache whose {@link #getOrLoad} treats a cached value rejected by {@code isFresh} as a miss
-   * and reloads it. The predicate must be a pure function of the value.
+   * @param evictionListener notified for each value dropped by eviction, replacement or {@link
+   *     #clear}; use {@link #noOpListener()} when evicted values need no disposal.
+   * @param isFresh applied by {@link #getOrLoad} to a cached value; one it rejects is treated as a
+   *     miss and reloaded. Must be a pure function of the value. Use {@link #alwaysFresh()} to keep
+   *     every cached value usable until it is evicted.
    */
-  public static <K, V> BoundedKeyedCache<K, V> withFreshnessPolicy(
-      int maxSize, Predicate<V> isFresh) {
-    return new BoundedKeyedCache<>(
-        maxSize, noOpListener(), Objects.requireNonNull(isFresh, "isFresh"));
-  }
-
-  private BoundedKeyedCache(int maxSize, Consumer<V> evictionListener, Predicate<V> isFresh) {
+  public BoundedKeyedCache(int maxSize, Consumer<V> evictionListener, Predicate<V> isFresh) {
     Preconditions.checkArgument(maxSize > 0, "maxSize must be positive, got %s", maxSize);
     this.maxSize = maxSize;
-    this.evictionListener = evictionListener;
-    this.isFresh = isFresh;
+    this.evictionListener = Objects.requireNonNull(evictionListener, "evictionListener");
+    this.isFresh = Objects.requireNonNull(isFresh, "isFresh");
   }
 
-  /** Default policy: every cached value stays usable until it is evicted. */
-  private static <V> Predicate<V> alwaysFresh() {
+  /** Freshness policy keeping every cached value usable until it is evicted. */
+  public static <V> Predicate<V> alwaysFresh() {
     return value -> true;
   }
 
-  /** Default listener: evicted values need no disposal. */
-  private static <V> Consumer<V> noOpListener() {
+  /** Eviction listener for caches whose evicted values need no disposal. */
+  public static <V> Consumer<V> noOpListener() {
     return value -> {};
   }
 
