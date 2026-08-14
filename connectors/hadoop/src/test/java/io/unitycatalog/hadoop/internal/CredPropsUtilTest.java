@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
-import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
@@ -39,16 +38,10 @@ class CredPropsUtilTest {
         .isNotEqualTo(base);
   }
 
-  // TODO: Remove this test once CredPropsBuilder supports multiple vended credentials.
   @Test
-  void multipleDeltaCredentialsAreRejected() {
+  void noVendedCredentialsIsRejected() {
     CredPropsUtil.genericCredFetcherFactory =
-        (apiClient, credId) ->
-            CredPropsBaseTest.mockGenericCredentialFetcher(
-                new AwsCredential(
-                    "parent-ak", "parent-sk", "parent-st", Long.MAX_VALUE, "s3://bucket"),
-                new AwsCredential(
-                    "child-ak", "child-sk", "child-st", Long.MAX_VALUE, "s3://bucket/table"));
+        (apiClient, credId) -> CredPropsBaseTest.mockGenericCredentialFetcher();
 
     assertThatThrownBy(
             () ->
@@ -65,7 +58,7 @@ class CredPropsUtilTest {
                     UCCredentialHadoopConfs.TableOperation.READ,
                     Map.of()))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessage("Only single credential responses are supported, got 2");
+        .hasMessageContaining("Initial credentials cannot be null or empty");
   }
 
   private static TokenProvider tokenProvider() {

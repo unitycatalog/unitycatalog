@@ -27,7 +27,7 @@ class CredentialUtilTest {
   private static final long EXPIRATION = 123L;
 
   @Test
-  void multiCredPrefixesRoundTripInOrder() {
+  void credPrefixesRoundTripInOrder() {
     List<String> prefixes =
         List.of(
             "s3://bucket/table",

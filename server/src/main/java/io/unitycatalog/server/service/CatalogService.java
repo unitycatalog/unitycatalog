@@ -22,9 +22,11 @@ import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.utils.ServerProperties;
 import lombok.SneakyThrows;
 
+import java.util.List;
 import java.util.Optional;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
@@ -124,10 +126,9 @@ public class CatalogService extends AuthorizedService {
   public HttpResponse deleteCatalog(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,
       @Param("force") Optional<Boolean> force) {
-    CatalogInfo catalogInfo = catalogRepository.getCatalog(name);
-    catalogRepository.deleteCatalog(name, force.orElse(false));
-    removeAuthorizations(catalogInfo.getId());
+    List<DeletedResource> deleted =
+        catalogRepository.deleteCatalog(name, force.orElse(false));
+    clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }
-
 }
