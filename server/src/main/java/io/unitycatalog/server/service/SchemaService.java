@@ -22,9 +22,10 @@ import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
@@ -151,16 +152,10 @@ public class SchemaService extends AuthorizedService {
   public HttpResponse deleteSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       @Param("force") Optional<Boolean> force) {
-    SchemaInfo schemaInfo = schemaRepository.getSchema(fullName);
-    schemaRepository.deleteSchema(fullName, force.orElse(false));
-
-    CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
-
-    // First remove any child table links
-    authorizer.removeHierarchyChildren(UUID.fromString(schemaInfo.getSchemaId()));
-    // Then remove schema from catalog and clear authorizations
-    removeHierarchicalAuthorizations(schemaInfo.getSchemaId(), catalogInfo.getId());
-
+    schemaRepository.getSchema(fullName);
+    List<DeletedResource> deleted =
+        schemaRepository.deleteSchema(fullName, force.orElse(false));
+    clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }
 
