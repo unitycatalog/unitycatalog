@@ -41,6 +41,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -67,7 +68,7 @@ public class AuthService {
     this.jwksOperations = new JwksOperations(securityContext);
     this.serverProperties = serverProperties;
     this.tokenExchangeSubjectTokenHandler =
-        new TokenExchangeSubjectTokenHandler(serverProperties, repositories.getUserRepository());
+        new TokenExchangeSubjectTokenHandler(repositories.getUserRepository());
   }
 
   /**
@@ -97,13 +98,13 @@ public class AuthService {
    * disables audience validation. Both configurations are required when token exchange runs with
    * authorization enabled.
    *
-   * <p>Subject-token audience validation and principal resolution are delegated to {@link
-   * TokenExchangeSubjectTokenHandler}. For {@code id_token} subjects, resolution order is {@code
-   * email} (or {@code sub}) then OAuth client id from {@code azp} or {@code client_id} mapped to
-   * {@code externalId}. For {@code access_token} subjects without an {@code email} claim, {@code
-   * externalId} is tried before {@code sub}. Audience validation uses {@code server.audiences}
-   * only; a matching {@code azp} or {@code client_id} does not skip the allowlist. Use {@code *} to
-   * disable audience checks.
+   * <p>Audience validation uses {@code server.audiences} only and runs here with issuer and
+   * signature checks; a matching {@code azp} or {@code client_id} does not skip the allowlist. Use
+   * {@code *} to disable audience checks. Principal resolution is then delegated to {@link
+   * TokenExchangeSubjectTokenHandler} on the already-validated token. For {@code id_token}
+   * subjects, resolution order is {@code email} (or {@code sub}) then OAuth client id from {@code
+   * azp} or {@code client_id} mapped to {@code externalId}. For {@code access_token} subjects
+   * without an {@code email} claim, {@code externalId} is tried before {@code sub}.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.
@@ -174,6 +175,8 @@ public class AuthService {
           ErrorCode.UNAUTHENTICATED, "Token verification failed: " + e.getMessage(), e);
     }
 
+    validateAudience(decodedJWT);
+
     String principalEmail =
         tokenExchangeSubjectTokenHandler.resolvePrincipalEmail(
             form.getSubjectTokenType(), decodedJWT);
@@ -203,6 +206,28 @@ public class AuthService {
         });
 
     return HttpResponse.ofJson(responseHeaders.build(), tokenExchangeInfo);
+  }
+
+  private void validateAudience(DecodedJWT decodedJWT) {
+    List<String> audiences = serverProperties.getAudiences();
+
+    if (audiences.isEmpty()) {
+      LOGGER.error("No audiences configured");
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT,
+          "No audiences configured. Set server.audiences in server.properties");
+    }
+
+    if (serverProperties.isAudienceValidationDisabled()) {
+      return;
+    }
+
+    if (serverProperties.getAudienceAllowlist().isAnyAllowed(decodedJWT.getAudience())) {
+      return;
+    }
+
+    LOGGER.error("Token rejected: audience {} not in allowlist", decodedJWT.getAudience());
+    throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
   }
 
   @Post("/logout")

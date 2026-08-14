@@ -8,38 +8,31 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
-import io.unitycatalog.server.utils.ServerProperties;
-import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Validates subject token audiences and resolves UC principals during token exchange. */
+/** Resolves UC principals from an already validated subject token during token exchange. */
 public class TokenExchangeSubjectTokenHandler {
 
   private static final Logger LOGGER =
       LoggerFactory.getLogger(TokenExchangeSubjectTokenHandler.class);
 
-  private final ServerProperties serverProperties;
   private final UserRepository userRepository;
 
-  public TokenExchangeSubjectTokenHandler(
-      ServerProperties serverProperties, UserRepository userRepository) {
-    this.serverProperties = serverProperties;
+  public TokenExchangeSubjectTokenHandler(UserRepository userRepository) {
     this.userRepository = userRepository;
   }
 
   /**
-   * Validates audience rules and returns the UC principal email for the issued access token.
+   * Returns the UC principal email for the issued access token.
    *
-   * <p>For {@code id_token} subjects, resolution order is email (or {@code sub}) then OAuth client
-   * id from {@code azp} or {@code client_id} mapped to {@code externalId}. For {@code access_token}
-   * subjects without an {@code email} claim, {@code externalId} is tried before {@code sub}.
-   * Audience validation uses {@code server.audiences} only.
+   * <p>The subject token must already be issuer-, signature-, and audience-validated. For {@code
+   * id_token} subjects, resolution order is email (or {@code sub}) then OAuth client id from {@code
+   * azp} or {@code client_id} mapped to {@code externalId}. For {@code access_token} subjects
+   * without an {@code email} claim, {@code externalId} is tried before {@code sub}.
    */
   public String resolvePrincipalEmail(TokenType subjectTokenType, DecodedJWT decodedJWT) {
-    validateAudience(decodedJWT);
-
     PrincipalResolutionOrder order =
         subjectTokenType == TokenType.ACCESS_TOKEN && !hasEmailClaim(decodedJWT)
             ? PrincipalResolutionOrder.CLIENT_THEN_CLAIMS
@@ -93,28 +86,6 @@ public class TokenExchangeSubjectTokenHandler {
     }
 
     return Optional.empty();
-  }
-
-  private void validateAudience(DecodedJWT decodedJWT) {
-    List<String> audiences = serverProperties.getAudiences();
-
-    if (audiences.isEmpty()) {
-      LOGGER.error("No audiences configured");
-      throw new OAuthInvalidRequestException(
-          ErrorCode.INVALID_ARGUMENT,
-          "No audiences configured. Set server.audiences in server.properties");
-    }
-
-    if (serverProperties.isAudienceValidationDisabled()) {
-      return;
-    }
-
-    if (serverProperties.getAudienceAllowlist().isAnyAllowed(decodedJWT.getAudience())) {
-      return;
-    }
-
-    LOGGER.debug("Token rejected: audience not in allowlist");
-    throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Invalid audience");
   }
 
   private Optional<User> findEnabledUserByExternalId(String externalId) {
