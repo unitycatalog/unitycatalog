@@ -18,23 +18,38 @@ public final class BoundedKeyedCache<K, V> {
   private final IdLockMap<K> keyLocks = new IdLockMap<>();
 
   public BoundedKeyedCache(int maxSize) {
-    this(maxSize, null, null);
+    this(maxSize, noOpListener(), alwaysFresh());
   }
 
   public BoundedKeyedCache(int maxSize, Consumer<V> evictionListener) {
-    this(maxSize, evictionListener, null);
+    this(maxSize, Objects.requireNonNull(evictionListener, "evictionListener"), alwaysFresh());
   }
 
   /**
-   * @param isFresh freshness policy applied to cached values by {@link #getOrLoad}; a value it
-   *     rejects is treated as a miss and reloaded. {@code null} keeps every cached value usable
-   *     until it is evicted.
+   * A cache whose {@link #getOrLoad} treats a cached value rejected by {@code isFresh} as a miss
+   * and reloads it. The predicate must be a pure function of the value.
    */
-  public BoundedKeyedCache(int maxSize, Consumer<V> evictionListener, Predicate<V> isFresh) {
+  public static <K, V> BoundedKeyedCache<K, V> withFreshnessPolicy(
+      int maxSize, Predicate<V> isFresh) {
+    return new BoundedKeyedCache<>(
+        maxSize, noOpListener(), Objects.requireNonNull(isFresh, "isFresh"));
+  }
+
+  private BoundedKeyedCache(int maxSize, Consumer<V> evictionListener, Predicate<V> isFresh) {
     Preconditions.checkArgument(maxSize > 0, "maxSize must be positive, got %s", maxSize);
     this.maxSize = maxSize;
-    this.evictionListener = evictionListener == null ? value -> {} : evictionListener;
-    this.isFresh = isFresh == null ? value -> true : isFresh;
+    this.evictionListener = evictionListener;
+    this.isFresh = isFresh;
+  }
+
+  /** Default policy: every cached value stays usable until it is evicted. */
+  private static <V> Predicate<V> alwaysFresh() {
+    return value -> true;
+  }
+
+  /** Default listener: evicted values need no disposal. */
+  private static <V> Consumer<V> noOpListener() {
+    return value -> {};
   }
 
   /**
