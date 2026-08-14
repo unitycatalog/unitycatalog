@@ -19,7 +19,7 @@ public class CredentialCache<K, T> {
   private final BoundedKeyedCache<K, RenewableCredential<T>> cache;
 
   public CredentialCache(int maxSize) {
-    this.cache = new BoundedKeyedCache<>(maxSize, null, cached -> !cached.readyToRenew());
+    this.cache = BoundedKeyedCache.withFreshnessPolicy(maxSize, cached -> !cached.readyToRenew());
   }
 
   /**
