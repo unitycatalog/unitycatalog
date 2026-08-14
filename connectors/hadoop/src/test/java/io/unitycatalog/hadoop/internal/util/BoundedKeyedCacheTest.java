@@ -242,7 +242,8 @@ class BoundedKeyedCacheTest {
   @Test
   void getOrLoadReloadsWhenFreshnessPolicyRejectsCachedValue() throws Exception {
     BoundedKeyedCache<String, String> cache =
-        BoundedKeyedCache.withFreshnessPolicy(2, value -> !value.equals("stale"));
+        new BoundedKeyedCache<>(
+            2, BoundedKeyedCache.noOpListener(), value -> !value.equals("stale"));
     AtomicInteger loadCount = new AtomicInteger();
     cache.put("k", "stale");
 
@@ -262,7 +263,7 @@ class BoundedKeyedCacheTest {
   @Test
   void getOrLoadSkipsLoaderWhenFreshnessPolicyAcceptsCachedValue() throws Exception {
     BoundedKeyedCache<String, String> cache =
-        BoundedKeyedCache.withFreshnessPolicy(2, value -> true);
+        new BoundedKeyedCache<>(2, BoundedKeyedCache.noOpListener(), value -> true);
     cache.put("k", "valid");
 
     String value = cache.getOrLoad("k", () -> "other");
@@ -274,7 +275,8 @@ class BoundedKeyedCacheTest {
   @Test
   void staleValueReloadedOnlyOnceAcrossThreads() throws Exception {
     Predicate<String> isFresh = value -> value.equals("fresh");
-    BoundedKeyedCache<String, String> cache = BoundedKeyedCache.withFreshnessPolicy(2, isFresh);
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, BoundedKeyedCache.noOpListener(), isFresh);
     cache.put("key", "stale");
     CountDownLatch reloadStarted = new CountDownLatch(1);
     CountDownLatch releaseReload = new CountDownLatch(1);
@@ -318,7 +320,8 @@ class BoundedKeyedCacheTest {
   @Test
   void freshCachedValueIsReturnedWhileTheSameKeyIsLoading() throws Exception {
     BoundedKeyedCache<String, String> cache =
-        BoundedKeyedCache.withFreshnessPolicy(2, value -> value.equals("fresh"));
+        new BoundedKeyedCache<>(
+            2, BoundedKeyedCache.noOpListener(), value -> value.equals("fresh"));
     cache.put("key", "stale");
     CountDownLatch loadStarted = new CountDownLatch(1);
     CountDownLatch releaseLoad = new CountDownLatch(1);
