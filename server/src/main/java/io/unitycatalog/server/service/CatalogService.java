@@ -10,9 +10,9 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateCatalog;
@@ -24,9 +24,10 @@ import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.utils.ServerProperties;
+import lombok.SneakyThrows;
+
 import java.util.List;
 import java.util.Optional;
-import lombok.SneakyThrows;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
@@ -73,8 +74,8 @@ public class CatalogService extends AuthorizedService {
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createCatalog(
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
-          @AuthorizeKey(key = "storage_root")
-          CreateCatalog createCatalog) {
+      @AuthorizeKey(key = "storage_root")
+      CreateCatalog createCatalog) {
     CatalogInfo catalogInfo = catalogRepository.addCatalog(createCatalog);
     initializeBasicAuthorization(catalogInfo.getId());
     return HttpResponse.ofJson(catalogInfo);
@@ -92,8 +93,8 @@ public class CatalogService extends AuthorizedService {
   public HttpResponse listCatalogs(
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
-    ListCatalogsResponse listCatalogsResponse =
-        catalogRepository.listCatalogs(maxResults, pageToken);
+    ListCatalogsResponse listCatalogsResponse = catalogRepository.listCatalogs(
+        maxResults, pageToken);
     applyResponseFilter(SecurableType.CATALOG, listCatalogsResponse.getCatalogs());
     return HttpResponse.ofJson(listCatalogsResponse);
   }
@@ -125,7 +126,6 @@ public class CatalogService extends AuthorizedService {
   public HttpResponse deleteCatalog(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,
       @Param("force") Optional<Boolean> force) {
-    catalogRepository.getCatalog(name);
     List<DeletedResource> deleted =
         catalogRepository.deleteCatalog(name, force.orElse(false));
     clearDeletedResourceAuthorizations(deleted);
