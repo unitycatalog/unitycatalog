@@ -47,7 +47,7 @@ public class JCasbinAuthorizerMultiInstanceTest {
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
     properties.setProperty(
-        Property.POLICY_REFRESH_ENABLED.getKey(), refreshEnabled ? "enable" : "disable");
+        Property.POLICY_REFRESH_ENABLED.getKey(), Boolean.toString(refreshEnabled));
     properties.setProperty(Property.POLICY_REFRESH_INTERVAL.getKey(), interval);
     return new ServerProperties(properties);
   }

@@ -23,7 +23,7 @@ public class JCasbinAuthorizerTest {
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
     // Single-instance tests do not need background polling.
-    properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "disable");
+    properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
     ServerProperties serverProperties = new ServerProperties(properties);
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
     authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
