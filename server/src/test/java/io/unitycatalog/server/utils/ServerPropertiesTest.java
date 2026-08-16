@@ -207,6 +207,15 @@ public class ServerPropertiesTest {
   }
 
   @Test
+  public void testManagedTableLifecycleValidators() {
+    testValidProperty(Property.MANAGED_TABLE_RETENTION_DURATION, "PT0S");
+    testValidProperty(Property.MANAGED_TABLE_RETENTION_DURATION, "PT24H");
+
+    testInvalidProperty(
+        Property.MANAGED_TABLE_RETENTION_DURATION, "-PT1S", "Expected a duration between");
+  }
+
+  @Test
   public void testEffectiveCookieTimeout() {
     ServerProperties serverProperties = new ServerProperties();
     assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));

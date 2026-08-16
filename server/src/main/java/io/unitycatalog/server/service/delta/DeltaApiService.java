@@ -42,6 +42,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.TableRepository.TableDeletionResult;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.AuthorizedService;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -149,9 +150,8 @@ public class DeltaApiService extends AuthorizedService {
   /**
    * Delete a table by three-part name. Mirrors {@link
    * io.unitycatalog.server.service.TableService#deleteTable}, but returns 204 No Content per {@code
-   * delta.yaml} (the UC counterpart returns 200). {@code deleteTable} returns the deleted table's
-   * DAO, so the table and schema UUIDs for the authorization cleanup come from the same lookup that
-   * removed the table.
+   * delta.yaml} (the UC counterpart returns 200). Managed table authorization is retained while
+   * the table is restorable and is removed by the lifecycle worker after physical cleanup.
    */
   @Delete("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
   @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
@@ -159,8 +159,11 @@ public class DeltaApiService extends AuthorizedService {
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
       @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
       @Param("table") @AuthorizeResourceKey(TABLE) String table) {
-    TableInfoDAO deleted = tableRepository.deleteTable(catalog, schema, table);
-    removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
+    TableDeletionResult deletion = tableRepository.deleteTable(catalog, schema, table);
+    if (!deletion.softDeleted()) {
+      removeHierarchicalAuthorizations(
+          deletion.tableId().toString(), deletion.schemaId().toString());
+    }
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 

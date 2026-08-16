@@ -40,6 +40,8 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import jakarta.persistence.LockModeType;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -62,6 +64,7 @@ public class TableRepository {
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
   private final ServerProperties serverProperties;
+  private final Duration managedTableRetention;
   private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(TableInfoDAO.class);
 
@@ -70,6 +73,7 @@ public class TableRepository {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
+    this.managedTableRetention = serverProperties.getManagedTableRetentionDuration();
   }
 
   /**
@@ -78,6 +82,9 @@ public class TableRepository {
    * always finalize to MANAGED Delta.
    */
   public record TableStorageLocationInfo(NormalizedURL url, TableType tableType) {}
+
+  /** Result of a logical DROP, used by services to defer authorization cleanup when necessary. */
+  public record TableDeletionResult(UUID tableId, UUID schemaId, boolean softDeleted) {}
 
   /**
    * Retrieves the storage location for a table or staging table by its ID, plus the table type.
@@ -101,6 +108,10 @@ public class TableRepository {
           LOGGER.debug("Getting storage location of table by id: {}", tableId);
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
           if (tableInfoDAO != null) {
+            if (tableInfoDAO.getDeletedAt() != null) {
+              throw new BaseException(
+                  ErrorCode.TABLE_NOT_FOUND, "Table not found with id: " + tableId);
+            }
             return new TableStorageLocationInfo(
                 NormalizedURL.from(tableInfoDAO.getUrl()),
                 TableType.fromValue(tableInfoDAO.getType()));
@@ -108,7 +119,7 @@ public class TableRepository {
 
           LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
           StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
-          if (stagingTableDAO != null) {
+          if (stagingTableDAO != null && !stagingTableDAO.isStageCommitted()) {
             // Staging rows always become MANAGED Delta on finalize, so project them as MANAGED.
             return new TableStorageLocationInfo(
                 NormalizedURL.from(stagingTableDAO.getStagingLocation()), TableType.MANAGED);
@@ -168,7 +179,7 @@ public class TableRepository {
         session -> {
           LOGGER.debug("Getting storage location of staging table by id: {}", stagingTableId);
           StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, stagingTableId);
-          if (stagingTableDAO == null) {
+          if (stagingTableDAO == null || stagingTableDAO.isStageCommitted()) {
             throw new BaseException(
                 ErrorCode.TABLE_NOT_FOUND, "Staging table not found with id: " + stagingTableId);
           }
@@ -201,11 +212,15 @@ public class TableRepository {
 
           UUID schemaId;
           if (tableInfoDAO != null) {
+            if (tableInfoDAO.getDeletedAt() != null) {
+              throw new BaseException(
+                  ErrorCode.TABLE_NOT_FOUND, "Table not found with id: " + tableId);
+            }
             schemaId = tableInfoDAO.getSchemaId();
           } else {
             // Table not found, try to find a staging table instead
             StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
-            if (stagingTableDAO == null) {
+            if (stagingTableDAO == null || stagingTableDAO.isStageCommitted()) {
               throw new BaseException(
                   ErrorCode.TABLE_NOT_FOUND,
                   "Neither table nor staging table found with id: " + tableId);
@@ -568,7 +583,7 @@ public class TableRepository {
       Session session, String catalogName, String schemaName, String tableName) {
     UUID schemaId =
         repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
-    TableInfoDAO dao = findBySchemaIdAndName(session, schemaId, tableName);
+    TableInfoDAO dao = findActiveBySchemaIdAndName(session, schemaId, tableName);
     if (dao == null) {
       throw new BaseException(
           ErrorCode.TABLE_NOT_FOUND,
@@ -644,9 +659,10 @@ public class TableRepository {
                   .getSchemaRepository()
                   .getSchemaIdOrThrow(session, catalogName, schemaName);
 
-          // Check if table already exists
+          // A tombstone reserves its name during retention so name-based restore stays
+          // unambiguous. Atomic cleanup handoff removes the row and releases the name.
           TableInfoDAO existingTable =
-              findBySchemaIdAndName(session, schemaId, createTable.getName());
+              findAnyBySchemaIdAndName(session, schemaId, createTable.getName());
           if (existingTable != null) {
             throw new BaseException(
                 ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
@@ -818,7 +834,7 @@ public class TableRepository {
               .getSchemaIdOrThrow(session, dep.getDependencyCatalog(), dep.getDependencySchema());
       switch (dep.getDependencyType()) {
         case TABLE:
-          if (findBySchemaIdAndName(session, schemaId, dep.getDependencyName()) == null) {
+          if (findActiveBySchemaIdAndName(session, schemaId, dep.getDependencyName()) == null) {
             throw new BaseException(
                 ErrorCode.NOT_FOUND, "View dependency table does not exist: " + fullName);
           }
@@ -840,11 +856,46 @@ public class TableRepository {
     }
   }
 
-  public TableInfoDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
+  private TableInfoDAO findActiveBySchemaIdAndName(Session session, UUID schemaId, String name) {
+    return findActiveBySchemaIdAndName(session, schemaId, name, false);
+  }
+
+  private TableInfoDAO findActiveBySchemaIdAndNameForUpdate(
+      Session session, UUID schemaId, String name) {
+    return findActiveBySchemaIdAndName(session, schemaId, name, true);
+  }
+
+  private TableInfoDAO findActiveBySchemaIdAndName(
+      Session session, UUID schemaId, String name, boolean forUpdate) {
+    String hql =
+        "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name"
+            + " AND t.deletedAt IS NULL";
+    return findBySchemaIdAndName(session, schemaId, name, hql, forUpdate);
+  }
+
+  TableInfoDAO findAnyBySchemaIdAndName(Session session, UUID schemaId, String name) {
+    return findAnyBySchemaIdAndName(session, schemaId, name, false);
+  }
+
+  private TableInfoDAO findAnyBySchemaIdAndNameForUpdate(
+      Session session, UUID schemaId, String name) {
+    return findAnyBySchemaIdAndName(session, schemaId, name, true);
+  }
+
+  private TableInfoDAO findAnyBySchemaIdAndName(
+      Session session, UUID schemaId, String name, boolean forUpdate) {
     String hql = "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
+    return findBySchemaIdAndName(session, schemaId, name, hql, forUpdate);
+  }
+
+  private TableInfoDAO findBySchemaIdAndName(
+      Session session, UUID schemaId, String name, String hql, boolean forUpdate) {
     Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
     query.setParameter("schemaId", schemaId);
     query.setParameter("name", name);
+    if (forUpdate) {
+      query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
+    }
     LOGGER.debug("Finding table by schemaId: {} and name: {}", schemaId, name);
     return query.uniqueResult(); // Returns null if no result is found
   }
@@ -905,8 +956,42 @@ public class TableRepository {
       Optional<String> pageToken,
       Boolean omitProperties,
       Boolean omitColumns) {
+    return listTables(
+        session,
+        schemaId,
+        catalogName,
+        schemaName,
+        maxResults,
+        pageToken,
+        omitProperties,
+        omitColumns,
+        false);
+  }
+
+  /** Internal listing used by parent cascades, where tombstoned rows must also be removed. */
+  ListTablesResponse listTablesIncludingDeleted(
+      Session session,
+      UUID schemaId,
+      String catalogName,
+      String schemaName,
+      Optional<Integer> maxResults,
+      Optional<String> pageToken) {
+    return listTables(
+        session, schemaId, catalogName, schemaName, maxResults, pageToken, true, true, true);
+  }
+
+  private ListTablesResponse listTables(
+      Session session,
+      UUID schemaId,
+      String catalogName,
+      String schemaName,
+      Optional<Integer> maxResults,
+      Optional<String> pageToken,
+      Boolean omitProperties,
+      Boolean omitColumns,
+      boolean includeDeleted) {
     List<TableInfoDAO> tableInfoDAOList =
-        LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
+        listTableDaos(session, schemaId, maxResults, pageToken, includeDeleted);
     String nextPageToken = LISTING_HELPER.getNextPageToken(tableInfoDAOList, maxResults);
     List<TableInfo> result = new ArrayList<>();
     for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
@@ -922,11 +1007,35 @@ public class TableRepository {
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
   }
 
+  private List<TableInfoDAO> listTableDaos(
+      Session session,
+      UUID schemaId,
+      Optional<Integer> maxResults,
+      Optional<String> pageToken,
+      boolean includeDeleted) {
+    if (maxResults.isPresent() && maxResults.get() < 0) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "maxResults must be greater than or equal to 0");
+    }
+    StringBuilder hql = new StringBuilder("FROM TableInfoDAO t WHERE t.schemaId = :schemaId");
+    if (!includeDeleted) {
+      hql.append(" AND t.deletedAt IS NULL");
+    }
+    pageToken.ifPresent(ignored -> hql.append(" AND t.name > :pageToken"));
+    hql.append(" ORDER BY t.name");
+
+    Query<TableInfoDAO> query = session.createQuery(hql.toString(), TableInfoDAO.class);
+    query.setParameter("schemaId", schemaId);
+    pageToken.ifPresent(token -> query.setParameter("pageToken", token));
+    query.setMaxResults(PagedListingHelper.getPageSize(maxResults));
+    return query.getResultList();
+  }
+
   /**
    * Variant of {@link #deleteTable(String, String, String)} taking the table's three-part name as a
    * single dotted string.
    */
-  public TableInfoDAO deleteTable(String fullName) {
+  public TableDeletionResult deleteTable(String fullName) {
     String[] parts = fullName.split("\\.");
     if (parts.length != 3) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
@@ -934,33 +1043,58 @@ public class TableRepository {
     return deleteTable(parts[0], parts[1], parts[2]);
   }
 
-  /**
-   * Deletes a table and returns the deleted table's DAO. The DAO is detached; do not access its
-   * lazy fields.
-   */
-  public TableInfoDAO deleteTable(String catalog, String schema, String table) {
+  /** Logically drops a managed table, or immediately removes metadata for other table types. */
+  public TableDeletionResult deleteTable(String catalog, String schema, String table) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          return deleteTable(session, schemaId, table);
+          return dropTable(session, schemaId, table);
         },
         "Failed to delete table",
         /* readOnly = */ false);
   }
 
+  private TableDeletionResult dropTable(Session session, UUID schemaId, String tableName) {
+    TableInfoDAO tableInfoDAO = findActiveBySchemaIdAndNameForUpdate(session, schemaId, tableName);
+    if (tableInfoDAO == null) {
+      throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
+    }
+    UUID tableId = tableInfoDAO.getId();
+    if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
+      Date deletedAt = new Date();
+      tableInfoDAO.setDeletedAt(deletedAt);
+      tableInfoDAO.setPurgeAfter(Date.from(deletedAt.toInstant().plus(managedTableRetention)));
+      return new TableDeletionResult(tableId, schemaId, true);
+    }
+
+    purgeTableMetadata(session, tableInfoDAO);
+    return new TableDeletionResult(tableId, schemaId, false);
+  }
+
+  /**
+   * Permanently removes a table during a forced parent cascade. This retains the pre-lifecycle
+   * synchronous behavior until durable cleanup handoff is introduced.
+   */
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
-    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
+    TableInfoDAO tableInfoDAO = findAnyBySchemaIdAndNameForUpdate(session, schemaId, tableName);
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {
         FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
-      } catch (Throwable e) {
+      } catch (RuntimeException e) {
         LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }
+    }
+    purgeTableMetadata(session, tableInfoDAO);
+    return tableInfoDAO;
+  }
+
+  private void purgeTableMetadata(Session session, TableInfoDAO tableInfoDAO) {
+    if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       repositories
           .getDeltaCommitRepository()
           .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
@@ -973,7 +1107,40 @@ public class TableRepository {
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
         .forEach(session::remove);
     session.remove(tableInfoDAO);
-    return tableInfoDAO;
+  }
+
+  /**
+   * Restores a soft-deleted managed table while its metadata still exists. The row lock serializes
+   * restore with other lifecycle mutations.
+   */
+  public TableInfo restoreTable(String fullName) {
+    String[] parts = fullName.split("\\.");
+    if (parts.length != 3) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaIdOrThrow(session, parts[0], parts[1]);
+          TableInfoDAO tableInfoDAO =
+              findAnyBySchemaIdAndNameForUpdate(session, schemaId, parts[2]);
+          if (tableInfoDAO == null || tableInfoDAO.getDeletedAt() == null) {
+            throw new BaseException(
+                ErrorCode.TABLE_NOT_FOUND, "Dropped table not found: " + fullName);
+          }
+          tableInfoDAO.setDeletedAt(null);
+          tableInfoDAO.setPurgeAfter(null);
+
+          TableInfo restored = tableInfoDAO.toTableInfo(true, parts[0], parts[1]);
+          RepositoryUtils.attachProperties(
+              restored, restored.getTableId(), Constants.TABLE, session);
+          RepositoryUtils.attachDependencies(
+              restored, tableInfoDAO, session, repositories.getDependencyRepository());
+          return restored;
+        },
+        "Failed to restore table " + fullName,
+        /* readOnly = */ false);
   }
 
   /**
@@ -991,7 +1158,8 @@ public class TableRepository {
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
+          TableInfoDAO tableInfoDAO =
+              findActiveBySchemaIdAndNameForUpdate(session, schemaId, table);
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
           }
@@ -1000,7 +1168,7 @@ public class TableRepository {
           if (table.equals(newName)) {
             return null;
           }
-          if (findBySchemaIdAndName(session, schemaId, newName) != null) {
+          if (findAnyBySchemaIdAndName(session, schemaId, newName) != null) {
             throw new BaseException(
                 ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + newName);
           }
