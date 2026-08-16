@@ -156,14 +156,14 @@ To use the Unity Catalog UI, start a new terminal and ensure you have already st
 **Prerequisites**
 
 - Node: https://nodejs.org/en/download/package-manager
-- Yarn: https://classic.yarnpkg.com/lang/en/docs/install
+- Bun: https://bun.com/docs/installation
 
-**How to start the UI through yarn**
+**How to start the UI through bun**
 
 ```
 cd /ui
-yarn install
-yarn start
+bun install
+bun run start
 ```
 
 ## CLI tutorial
