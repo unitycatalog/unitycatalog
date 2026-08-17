@@ -34,6 +34,7 @@ public class Repositories {
   private final DeltaCommitRepository deltaCommitRepository;
   private final DependencyRepository dependencyRepository;
   private final StorageCleanupTaskRepository storageCleanupTaskRepository;
+  private final TokenRevocationRepository tokenRevocationRepository;
 
   private final KeyMapper keyMapper;
 
@@ -77,6 +78,7 @@ public class Repositories {
         new DeltaCommitRepository(sessionFactory, serverProperties, fileOperations);
     this.dependencyRepository = new DependencyRepository();
     this.storageCleanupTaskRepository = new StorageCleanupTaskRepository(sessionFactory);
+    this.tokenRevocationRepository = new TokenRevocationRepository(this, sessionFactory);
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);

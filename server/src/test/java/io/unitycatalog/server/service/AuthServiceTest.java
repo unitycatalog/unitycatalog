@@ -28,6 +28,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.UUID;
@@ -74,6 +75,33 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
   }
 
+  @Test
+  public void testLogoutRevokesAccessTokenButNotServiceToken() {
+    // Logout revokes the presented ACCESS token: the first request (which logs out) is accepted,
+    // and the same token is then rejected on any further request.
+    String accessToken = createAccessToken();
+    assertThat(logout(accessToken).status())
+        .as("access token before logout")
+        .isEqualTo(HttpStatus.OK);
+    assertThat(logout(accessToken).status())
+        .as("access token after logout")
+        .isEqualTo(HttpStatus.FORBIDDEN);
+
+    // SERVICE tokens are long-lived machine credentials, not login sessions: logout must leave them
+    // usable so it cannot brick the shipped admin credential.
+    String serviceToken = securityContext.getServiceToken();
+    assertThat(logout(serviceToken).status())
+        .as("service token before logout")
+        .isEqualTo(HttpStatus.OK);
+    assertThat(logout(serviceToken).status())
+        .as("service token after logout")
+        .isEqualTo(HttpStatus.OK);
+  }
+
+  private AggregatedHttpResponse logout(String token) {
+    return client.execute(buildLogoutRequestHeaderWithToken(token)).aggregate().join();
+  }
+
   private RequestHeaders buildLogoutRequestHeader(boolean includeCookie) {
     RequestHeadersBuilder builder =
         RequestHeaders.builder()
@@ -97,10 +125,17 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         .build();
   }
 
-  private String createExpiredAccessToken() {
-    Date issuedAt = new Date(System.currentTimeMillis() - Duration.ofHours(2).toMillis());
-    Date expiresAt = new Date(System.currentTimeMillis() - Duration.ofHours(1).toMillis());
+  private String createAccessToken() {
+    return signedAccessToken(new Date(), Date.from(Instant.now().plus(Duration.ofHours(1))));
+  }
 
+  private String createExpiredAccessToken() {
+    return signedAccessToken(
+        Date.from(Instant.now().minus(Duration.ofHours(2))),
+        Date.from(Instant.now().minus(Duration.ofHours(1))));
+  }
+
+  private String signedAccessToken(Date issuedAt, Date expiresAt) {
     return JWT.create()
         .withSubject(securityContext.getServiceName())
         .withIssuer(INTERNAL)
