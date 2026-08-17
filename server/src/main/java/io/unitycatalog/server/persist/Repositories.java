@@ -42,6 +42,7 @@ public class Repositories {
   private final DeltaCommitRepository deltaCommitRepository;
   private final DependencyRepository dependencyRepository;
   private final CleanupTaskRepository storageCleanupTaskRepository;
+  private final TokenRevocationRepository tokenRevocationRepository;
 
   private final KeyMapper keyMapper;
 
@@ -138,6 +139,7 @@ public class Repositories {
     this.dependencyRepository = new DependencyRepository();
     CleanupTaskRepository cleanupTasks = new StorageCleanupTaskRepository(sessionFactory);
     this.storageCleanupTaskRepository = auditor.map(a -> a.wrap(cleanupTasks)).orElse(cleanupTasks);
+    this.tokenRevocationRepository = new TokenRevocationRepository(sessionFactory);
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);
