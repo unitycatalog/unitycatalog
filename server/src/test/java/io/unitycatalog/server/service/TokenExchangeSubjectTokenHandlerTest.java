@@ -88,6 +88,26 @@ class TokenExchangeSubjectTokenHandlerTest {
   }
 
   @Test
+  void emailClaimResolvingToBootstrapAdminIsRejected() {
+    DecodedJWT jwt = decode(identityToken("admin", CLIENT_ID));
+    when(userRepository.getUserByEmail("admin")).thenReturn(enabledUser("admin"));
+
+    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ID_TOKEN, jwt))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining("User not allowed");
+  }
+
+  @Test
+  void oauthClientResolvingToBootstrapAdminIsRejected() {
+    DecodedJWT jwt = decode(tokenWithAzpAndAud(CLIENT_ID, "https://dev.dev.example.com"));
+    when(userRepository.getUserByExternalId(CLIENT_ID)).thenReturn(enabledUser("admin"));
+
+    assertThatThrownBy(() -> handler.resolvePrincipalEmail(TokenType.ACCESS_TOKEN, jwt))
+        .isInstanceOf(OAuthInvalidRequestException.class)
+        .hasMessageContaining("User not allowed");
+  }
+
+  @Test
   void missingUserIsAuthDenialNotServerError() {
     DecodedJWT jwt = decode(identityToken(USER_EMAIL, CLIENT_ID));
     when(userRepository.getUserByEmail(USER_EMAIL))
