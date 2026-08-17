@@ -214,7 +214,7 @@ public class JCasbinAuthorizerMultiInstanceTest {
   void denyTriggeredRefreshIsDebounced() throws Exception {
     JCasbinAuthorizer replica = startReplica();
 
-    assertThat(replica.refreshAuthorizations()).isTrue();
+    replica.refreshAuthorizations();
     assertThat(replica.refreshAuthorizations()).isFalse();
   }
 

@@ -116,23 +116,6 @@ public class CasbinPolicyRefresher implements AutoCloseable {
     }
   }
 
-  /**
-   * Unconditional reload for callers that cannot wait for the next poll. Takes the same monitor as
-   * {@link #checkAndReload()} before rebuilding so it cannot deadlock with a concurrent check
-   * (monitor then {@code reloadLock.writeLock()}).
-   */
-  public void forceReload() {
-    synchronized (this) {
-      reloader.run();
-      recordLatestVersion();
-    }
-  }
-
-  /** Must be called while holding {@code this}'s monitor. */
-  private void recordLatestVersion() {
-    readVersion().ifPresent(latest -> recordVersion(latest[0], latest[1]));
-  }
-
   private void recordVersion(long count, long maxId) {
     lastCount = count;
     lastMaxId = maxId;

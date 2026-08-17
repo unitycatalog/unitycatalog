@@ -240,7 +240,11 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
                     l -> Privileges.fromValue(l.get(PRIVILEGE_INDEX)), Collectors.toList())));
   }
 
-  /** Rate-limited reload before returning 403, for cross-instance create-then-read. */
+  /**
+   * Rate-limited policy check before returning 403, for cross-instance create-then-read.
+   *
+   * @return true if the live enforcer was replaced (by this call or a coalesced concurrent check)
+   */
   @Override
   public boolean refreshAuthorizations() {
     if (!refreshEnabled) {
@@ -254,8 +258,9 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     if (!lastRefreshNanos.compareAndSet(last, now)) {
       return false;
     }
-    refresher.forceReload();
-    return true;
+    SyncedEnforcer before = live();
+    refresher.checkAndReload();
+    return live() != before;
   }
 
   @Override
