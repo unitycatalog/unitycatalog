@@ -29,6 +29,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
@@ -40,6 +41,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   private static final String LOGOUT_ENDPOINT = "/api/1.0/unity-control/auth/logout";
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
+  private static final String CATALOGS_ENDPOINT = "/api/2.1/unity-catalog/catalogs";
   private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final String EMPTY_RESPONSE = "{}";
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -50,6 +52,11 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   protected void setUpProperties() {
     super.setUpProperties();
     observabilityEnabled = true;
+    // Also accept this server's own tokens for exchange, so a test can check that a logged-out
+    // token cannot be exchanged for a fresh one.
+    serverProperties.setProperty(
+        "server.allowed-issuers",
+        serverProperties.getProperty("server.allowed-issuers") + "," + INTERNAL);
   }
 
   @BeforeEach
@@ -82,19 +89,71 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testExpiredAccessTokenIsRejected() throws Exception {
-    // Request with expired access token should return 401
-    RequestHeaders headers = buildLogoutRequestHeaderWithToken(createExpiredAccessToken());
-
-    AggregatedHttpResponse response = client.execute(headers).aggregate().join();
-    assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+  public void testInvalidAccessTokenIsRejected() throws Exception {
+    // A correctly signed access token is still rejected with 401 when it is expired, or when it
+    // lacks the UUID jti that every token this server issues carries.
+    Date inOneHour = Date.from(Instant.now().plus(Duration.ofHours(1)));
+    String validJti = UUID.randomUUID().toString();
+    List<String> tokens =
+        List.of(
+            signedAccessToken(
+                "admin", Date.from(Instant.now().minus(Duration.ofHours(1))), validJti),
+            signedAccessToken("admin", inOneHour, null),
+            signedAccessToken("admin", inOneHour, "not-a-uuid"));
+    for (String token : tokens) {
+      assertThat(logout(token).status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
     TestUtils.assertHttpRequestMetric(
         serverConfig,
         observabilityServerConfig,
         "io.unitycatalog.server.service.AuthService",
         "logout",
         HttpStatus.UNAUTHORIZED.code(),
-        1.0);
+        3.0);
+  }
+
+  @Test
+  public void testLogoutRevokesAccessTokenButNotServiceToken() throws IOException {
+    // Logout (sent as a cookie) revokes the presented ACCESS token. Afterwards the token is
+    // rejected both on an ordinary endpoint (sent as a bearer header) and by token exchange, which
+    // is not behind the auth decorator and accepts this server's tokens (see setUpProperties).
+    createEnabledUser(ENABLED_USER_EMAIL);
+    String accessToken =
+        signedAccessToken(
+            ENABLED_USER_EMAIL,
+            Date.from(Instant.now().plus(Duration.ofHours(1))),
+            UUID.randomUUID().toString());
+    assertThat(listCatalogs(accessToken).status()).as("list before").isEqualTo(HttpStatus.OK);
+    assertThat(exchangeToken(accessToken).status()).as("exchange before").isEqualTo(HttpStatus.OK);
+    assertThat(logout(accessToken).status()).as("logout").isEqualTo(HttpStatus.OK);
+    assertThat(listCatalogs(accessToken).status())
+        .as("list after")
+        .isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(exchangeToken(accessToken).status())
+        .as("exchange after")
+        .isEqualTo(HttpStatus.UNAUTHORIZED);
+
+    // SERVICE tokens are long-lived machine credentials, not login sessions: logout must leave them
+    // usable so it cannot brick the shipped admin credential.
+    String serviceToken = securityContext.getServiceToken();
+    assertThat(logout(serviceToken).status()).as("service logout").isEqualTo(HttpStatus.OK);
+    assertThat(listCatalogs(serviceToken).status())
+        .as("service list after")
+        .isEqualTo(HttpStatus.OK);
+  }
+
+  private AggregatedHttpResponse logout(String token) {
+    return client.execute(buildLogoutRequestHeaderWithToken(token)).aggregate().join();
+  }
+
+  private AggregatedHttpResponse listCatalogs(String token) {
+    RequestHeaders headers =
+        RequestHeaders.builder()
+            .method(HttpMethod.GET)
+            .path(CATALOGS_ENDPOINT)
+            .add(HttpHeaderNames.AUTHORIZATION, "Bearer " + token)
+            .build();
+    return client.execute(headers).aggregate().join();
   }
 
   private RequestHeaders buildLogoutRequestHeader(boolean includeCookie) {
@@ -120,19 +179,25 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
         .build();
   }
 
-  private String createExpiredAccessToken() {
-    Date issuedAt = new Date(System.currentTimeMillis() - Duration.ofHours(2).toMillis());
-    Date expiresAt = new Date(System.currentTimeMillis() - Duration.ofHours(1).toMillis());
-
+  /**
+   * Creates an ACCESS token signed with this server's key. It carries the test audience so it can
+   * also be used as a token-exchange subject.
+   *
+   * @param subject the {@code sub} claim
+   * @param expiresAt the {@code exp} claim
+   * @param jti the {@code jti} claim, or {@code null} to omit it
+   * @return signed JWT string
+   */
+  private String signedAccessToken(String subject, Date expiresAt, String jti) {
     return JWT.create()
-        .withSubject(securityContext.getServiceName())
+        .withSubject(subject)
         .withIssuer(INTERNAL)
-        .withIssuedAt(issuedAt)
+        .withAudience(TEST_AUDIENCE)
+        .withIssuedAt(new Date())
         .withExpiresAt(expiresAt)
         .withKeyId(securityContext.getKeyId())
-        .withJWTId(UUID.randomUUID().toString())
+        .withJWTId(jti)
         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
-        .withClaim(JwtClaim.SUBJECT.key(), "admin")
         .sign(securityContext.getAlgorithm());
   }
 

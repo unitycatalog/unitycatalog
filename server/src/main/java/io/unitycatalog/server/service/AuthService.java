@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.exceptions.JWTDecodeException;
@@ -35,6 +37,9 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.TokenRevocationRepository;
+import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -56,6 +61,7 @@ public class AuthService implements RegisteredService {
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
   private final ServerProperties serverProperties;
+  private final TokenRevocationRepository tokenRevocationRepository;
 
   private static final String EMPTY_RESPONSE = "{}";
 
@@ -73,6 +79,7 @@ public class AuthService implements RegisteredService {
     this.serverProperties = serverProperties;
     this.tokenExchangeSubjectTokenHandler =
         new TokenExchangeSubjectTokenHandler(repositories.getUserRepository());
+    this.tokenRevocationRepository = repositories.getTokenRevocationRepository();
   }
 
   /**
@@ -179,6 +186,14 @@ public class AuthService implements RegisteredService {
           ErrorCode.UNAUTHENTICATED, "Token verification failed: " + e.getMessage(), e);
     }
 
+    // This endpoint is not behind the auth decorator, so check revocation here. Otherwise, when the
+    // issuer allowlist matches the internal issuer (for example "*"), a logged-out access token
+    // could be exchanged for a fresh one.
+    if (INTERNAL.equals(issuer)
+        && tokenRevocationRepository.isRevoked(AuthDecorator.parseJti(decodedJWT))) {
+      throw new OAuthInvalidRequestException(ErrorCode.UNAUTHENTICATED, "Token has been revoked");
+    }
+
     validateAudience(decodedJWT);
 
     String principalEmail =
@@ -235,8 +250,24 @@ public class AuthService implements RegisteredService {
   }
 
   @Post("/logout")
+  @com.linecorp.armeria.server.annotation.Blocking
   @AuthorizeExpression("#principal != null")
-  public HttpResponse logout(HttpRequest request) {
+  public HttpResponse logout(ServiceRequestContext ctx, HttpRequest request) {
+    // Revoke the presented access token so it cannot be reused after logout. The auth decorator has
+    // already verified this token and stored the decoded form on the request context. Only ACCESS
+    // tokens represent a login session; the server's SERVICE token (the admin bootstrap credential
+    // in token.txt) is not a session and is shared across callers, so logout leaves it untouched.
+    DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
+    if (decodedJWT != null
+        && JwtTokenType.ACCESS
+            .name()
+            .equals(decodedJWT.getClaim(JwtClaim.TOKEN_TYPE.key()).asString())) {
+      // Retain the denylist entry until the token would have expired anyway. A null exp means the
+      // token never expires, so revoke it permanently (the repository keeps a null-expiry row).
+      tokenRevocationRepository.revoke(
+          AuthDecorator.parseJti(decodedJWT), decodedJWT.getExpiresAt());
+    }
+
     return request.headers().cookies().stream()
         .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
         .findFirst()
