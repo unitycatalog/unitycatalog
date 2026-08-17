@@ -209,6 +209,13 @@ Clients that use `Authorization: Bearer <token>` do not need this header.
 Cross-origin browser requests with this header need CORS preflight approval.
 The server does not enable cross-origin access.
 
+#### Logout
+
+`POST /auth/logout` revokes the access token it is called with, sent as a Bearer token or the `UC_TOKEN` cookie, and clears the cookie if present.
+A revoked token is rejected with HTTP 401 `UNAUTHENTICATED`, both on API requests and when exchanged on `POST /auth/tokens`.
+The revocation is stored in the database, so it holds across server restarts and all servers that share the database.
+Logout does not revoke the server's admin token in `etc/conf/token.txt`, which is a service token rather than a login session.
+
 #### Multiple Identity Providers
 
 You can configure multiple issuers and audiences by separating them with commas:
