@@ -373,7 +373,8 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     // backfilled version has one; a missing file models log truncation, deletion, or a transient
     // storage read error). The content check cannot read it, so the outcome is unknown and surfaces
     // as a retriable 500 rather than a false conflict.
-    assertApiException(() -> deltaCommitsApi.commit(commit3), ErrorCode.INTERNAL, "retry");
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit3), ErrorCode.COMMIT_STATE_UNKNOWN, "retry");
 
     // Commit one more version before deleting the table
     DeltaCommit commit5 =

@@ -1231,6 +1231,17 @@ public class DeltaCommitRepository {
         commitInfo.getFileName() != null && !commitInfo.getFileName().isEmpty(),
         "Field can not be empty: %s",
         DeltaCommitInfo.JSON_PROPERTY_FILE_NAME);
+    // The file name is client-supplied and the server later builds the staged-commit path it reads
+    // from it (_delta_log/_staged_commits/<fileName>). Require a single path segment so a name like
+    // "../<v>.json" cannot traverse out of that directory.
+    String fileName = commitInfo.getFileName();
+    ValidationUtils.checkArgument(
+        !fileName.contains("/")
+            && !fileName.contains("\\")
+            && !fileName.equals(".")
+            && !fileName.equals(".."),
+        "Field must be a single file name without path separators: %s",
+        DeltaCommitInfo.JSON_PROPERTY_FILE_NAME);
     ValidationUtils.checkArgument(
         commitInfo.getFileSize() != null && commitInfo.getFileSize() > 0,
         "Field must be positive: %s",

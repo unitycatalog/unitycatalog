@@ -1337,6 +1337,22 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
           () -> updateTable(h3, commits[1]),
           DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
           "already accepted");
+
+      // The published file is absent (deleted here): the outcome cannot be determined, so the whole
+      // request fails open to a retriable COMMIT_STATE_UNKNOWN (500), never a false conflict.
+      deleteTablePath(loc, "_delta_log/00000000000000000002.json");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h3, commits[1]),
+          DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION,
+          "retry");
+
+      // The published path exists but cannot be read as a file (a directory stands in for a
+      // permission / non-not-found IO error): still COMMIT_STATE_UNKNOWN, not a false conflict.
+      createTableDir(loc, "_delta_log/00000000000000000002.json");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h3, commits[1]),
+          DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION,
+          "retry");
     }
   }
 
@@ -1346,6 +1362,16 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
     Path path = Path.of(URI.create(storageLocation + "/" + relativePath));
     Files.createDirectories(path.getParent());
     Files.write(path, content);
+  }
+
+  /** Delete {@code relativePath} under the table's (file://) storage location. */
+  private void deleteTablePath(String storageLocation, String relativePath) throws IOException {
+    Files.delete(Path.of(URI.create(storageLocation + "/" + relativePath)));
+  }
+
+  /** Create {@code relativePath} as a directory under the table's (file://) storage location. */
+  private void createTableDir(String storageLocation, String relativePath) throws IOException {
+    Files.createDirectories(Path.of(URI.create(storageLocation + "/" + relativePath)));
   }
 
   // ---------------------------------------------------------------- helpers
