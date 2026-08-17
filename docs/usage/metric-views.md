@@ -44,8 +44,10 @@ bin/spark-sql --name "metric-view-test" \
     page, this command deliberately omits the `delta-spark` package and the
     `spark.sql.catalog.spark_catalog=...DeltaCatalog` conf, because the walkthrough below uses a
     parquet source table. The connector logs a benign `WARN ... DeltaCatalog is not available in
-    the classpath`, which is expected. A Delta source table is not an option on Spark 4.2
-    yet, since no `delta-spark_4.2_2.13` artifact is published.
+    the classpath`, which is expected. To use a Delta source table instead, add the
+    `io.delta:delta-spark_4.2_2.13:4.4.0` package and the
+    `spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog` conf, as shown
+    on the [Apache Spark integration](../integrations/unity-catalog-spark.md) page.
 
 ## Create a source table
 
