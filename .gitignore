@@ -40,6 +40,8 @@ integration-tests/etc/conf/*.der
 .pytest_cache/
 mlruns/
 mlartifacts/
+# JaCoCo coverage data
+*.exec
 
 # Local server / demo artifacts
 **/derby.log

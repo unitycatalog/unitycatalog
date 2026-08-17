@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,7 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.AlgorithmMismatchException;
 import com.auth0.jwt.exceptions.SignatureVerificationException;
+import com.auth0.jwt.exceptions.TokenExpiredException;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpRequest;
@@ -26,7 +28,9 @@ import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.TokenRevocationRepository;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
 import io.unitycatalog.server.security.SecurityConfiguration;
@@ -37,91 +41,116 @@ import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
-import java.util.stream.Stream;
+import java.time.Instant;
+import java.util.Date;
+import java.util.UUID;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * How {@link AuthDecorator} answers a valid internal token whose user lookup fails or finds no
- * enabled user, and an internal token signed with another key. The token is real, signed with keys
- * generated in a temp folder; only the user repository is mocked.
+ * How {@link AuthDecorator} answers a valid internal token whose revocation check or user lookup
+ * fails, or finds no enabled user, and an internal token signed with another key. The token is
+ * real, signed with keys generated in a temp folder; only the database is mocked.
  */
 class AuthDecoratorTest {
 
   private static final String EMAIL = "user@example.com";
 
   private final UserRepository userRepository = mock();
+  private final TokenRevocationRepository tokenRevocationRepository = mock();
   private final HttpService delegate = mock();
   private AuthDecorator decorator;
+  private SecurityContext securityContext;
   private String token;
   // Shared by all tests, so the signing keys are generated once.
   @TempDir static Path configurationFolder;
 
   @BeforeEach
   void setUp() {
-    SecurityContext securityContext =
+    securityContext =
         new SecurityContext(
             configurationFolder,
             new SecurityConfiguration(configurationFolder),
             "server",
             INTERNAL);
+    SessionFactory sessionFactory = mock();
+    Session session = mock();
+    when(sessionFactory.openSession()).thenReturn(session);
+    when(session.beginTransaction()).thenReturn(mock(Transaction.class));
     Repositories repositories = mock();
     when(repositories.getUserRepository()).thenReturn(userRepository);
+    when(repositories.getTokenRevocationRepository()).thenReturn(tokenRevocationRepository);
+    when(repositories.getSessionFactory()).thenReturn(sessionFactory);
     decorator = new AuthDecorator(securityContext, repositories);
     token = securityContext.createAccessToken(EMAIL, Duration.ofMinutes(5));
   }
 
-  static Stream<Arguments> lookupFailures() {
-    BaseException notFound = new BaseException(ErrorCode.NOT_FOUND, "User not found: " + EMAIL);
-    BaseException internal = new BaseException(ErrorCode.INTERNAL, "Failed to get user by email");
-    IllegalStateException unexpected = new IllegalStateException("unexpected");
-    return Stream.of(
-        // A missing user is a denial.
-        Arguments.of(notFound, AuthorizationException.class, ErrorCode.PERMISSION_DENIED),
-        // A database failure is not the caller's fault: it keeps its error code, not a 403.
-        Arguments.of(internal, BaseException.class, ErrorCode.INTERNAL),
-        // Anything else is not a lookup result at all and propagates as is.
-        Arguments.of(unexpected, IllegalStateException.class, null));
+  @Test
+  void missingUserIsDenied() {
+    assertDenied(ErrorCode.PERMISSION_DENIED, "User not allowed: " + EMAIL);
   }
 
-  @ParameterizedTest
-  @MethodSource("lookupFailures")
-  void lookupFailureIsDeniedOnlyWhenTheUserIsMissing(
-      RuntimeException failure, Class<? extends Throwable> expectedType, ErrorCode expectedCode) {
-    when(userRepository.getUserByEmail(EMAIL)).thenThrow(failure);
+  @Test
+  void revokedTokenIsUnauthenticated() {
+    when(tokenRevocationRepository.isRevoked(any(), any())).thenReturn(true);
 
-    var thrown = assertThatThrownBy(this::serve).isInstanceOf(expectedType);
-    if (expectedCode == null) {
-      thrown.isSameAs(failure);
-    } else {
-      thrown.extracting(e -> ((BaseException) e).getErrorCode()).isEqualTo(expectedCode);
-    }
+    assertDenied(ErrorCode.UNAUTHENTICATED, "Access token has been revoked.");
+    verify(userRepository, never()).getUserByEmail(any(), any());
+  }
+
+  @Test
+  void databaseFailureKeepsItsMessageOutOfTheResponse() {
+    // A database failure is not the caller's fault: it is a 500, not a 403, and its message stays
+    // in the server log (the cause) rather than in the response.
+    RuntimeException failure = new RuntimeException("database detail");
+    when(userRepository.getUserByEmail(any(), eq(EMAIL))).thenThrow(failure);
+
+    assertThatThrownBy(this::serve)
+        .isExactlyInstanceOf(BaseException.class)
+        .hasMessage("Failed to authorize request")
+        .hasRootCause(failure)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(ErrorCode.INTERNAL);
+    verifyNotDelegated();
+  }
+
+  @Test
+  void tokenExpiringDuringTheLookupIsRejected() {
+    // The cleanup may purge an expired token's revocation row while the lookup runs, so a token
+    // that expires by then must be rejected even though no row was found.
+    token = securityContext.createAccessToken(EMAIL, Duration.ofSeconds(2));
+    Instant expiresAt = JWT.decode(token).getExpiresAtAsInstant();
+    when(userRepository.getUserByEmail(any(), eq(EMAIL)))
+        .thenAnswer(
+            invocation -> {
+              Thread.sleep(Duration.between(Instant.now(), expiresAt).plusMillis(100).toMillis());
+              return user(User.StateEnum.ENABLED);
+            });
+
+    assertThatThrownBy(this::serve).isInstanceOf(TokenExpiredException.class);
+    // The lookup ran, so the check after it rejected the token, not the first verify.
+    verify(userRepository).getUserByEmail(any(), eq(EMAIL));
     verifyNotDelegated();
   }
 
   @Test
   void disabledUserIsDenied() {
-    when(userRepository.getUserByEmail(EMAIL))
-        .thenReturn(new User().email(EMAIL).state(User.StateEnum.DISABLED));
+    when(userRepository.getUserByEmail(any(), eq(EMAIL))).thenReturn(user(User.StateEnum.DISABLED));
 
-    assertThatThrownBy(this::serve)
-        .isInstanceOf(AuthorizationException.class)
-        .extracting(e -> ((BaseException) e).getErrorCode())
-        .isEqualTo(ErrorCode.PERMISSION_DENIED);
-    verifyNotDelegated();
+    assertDenied(ErrorCode.PERMISSION_DENIED, "User not allowed: " + EMAIL);
   }
 
   @Test
   void enabledUserIsServed() throws Exception {
-    when(userRepository.getUserByEmail(EMAIL))
-        .thenReturn(new User().email(EMAIL).state(User.StateEnum.ENABLED));
+    when(userRepository.getUserByEmail(any(), eq(EMAIL))).thenReturn(user(User.StateEnum.ENABLED));
     HttpResponse response = HttpResponse.of(200);
     when(delegate.serve(any(), any())).thenReturn(response);
 
@@ -130,8 +159,7 @@ class AuthDecoratorTest {
 
   @Test
   void tokenSignedWithAnotherKeyIsRejected() throws Exception {
-    when(userRepository.getUserByEmail(EMAIL))
-        .thenReturn(new User().email(EMAIL).state(User.StateEnum.ENABLED));
+    when(userRepository.getUserByEmail(any(), eq(EMAIL))).thenReturn(user(User.StateEnum.ENABLED));
     KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
     generator.initialize(2048);
     KeyPair otherKey = generator.generateKeyPair();
@@ -155,8 +183,7 @@ class AuthDecoratorTest {
   @ParameterizedTest
   @ValueSource(strings = {"RS256", "RS384", "HS512", "none"})
   void tokenSignedWithAnotherAlgorithmIsRejected(String algorithm) throws Exception {
-    when(userRepository.getUserByEmail(EMAIL))
-        .thenReturn(new User().email(EMAIL).state(User.StateEnum.ENABLED));
+    when(userRepository.getUserByEmail(any(), eq(EMAIL))).thenReturn(user(User.StateEnum.ENABLED));
     SecurityConfiguration keys = new SecurityConfiguration(configurationFolder);
     Algorithm signer =
         switch (algorithm) {
@@ -174,6 +201,24 @@ class AuthDecoratorTest {
             .sign(signer);
 
     assertThatThrownBy(this::serve).isInstanceOf(AlgorithmMismatchException.class);
+    verifyNotDelegated();
+  }
+
+  private static UserDAO user(User.StateEnum state) {
+    return UserDAO.builder()
+        .id(UUID.randomUUID())
+        .email(EMAIL)
+        .state(state.name())
+        .createdAt(new Date())
+        .build();
+  }
+
+  private void assertDenied(ErrorCode errorCode, String message) {
+    assertThatThrownBy(this::serve)
+        .isInstanceOf(AuthorizationException.class)
+        .hasMessage(message)
+        .extracting(e -> ((BaseException) e).getErrorCode())
+        .isEqualTo(errorCode);
     verifyNotDelegated();
   }
 
