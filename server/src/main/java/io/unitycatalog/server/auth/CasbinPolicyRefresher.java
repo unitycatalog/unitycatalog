@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
 import org.slf4j.Logger;
@@ -37,6 +38,12 @@ public class CasbinPolicyRefresher implements AutoCloseable {
   private long lastCount = -1;
   private long lastMaxId = -1;
 
+  /**
+   * Advanced only after a consistent check (no-op or successful reload). Callers that wait on the
+   * monitor while another thread finishes can skip by comparing against a pre-lock snapshot.
+   */
+  private final AtomicLong checkSeq = new AtomicLong();
+
   private ScheduledExecutorService executor;
 
   public CasbinPolicyRefresher(Runnable reloader, SessionFactory sessionFactory) {
@@ -68,42 +75,62 @@ public class CasbinPolicyRefresher implements AutoCloseable {
     }
   }
 
-  /** @return true if a reload happened */
+  /**
+   * Probes {@code casbin_rule} and reloads when the version changed.
+   *
+   * <p>Probe, reload, and version stamp run under one lock so concurrent callers coalesce: a waiter
+   * that blocked while another thread completed a consistent check skips. The stamped version is
+   * the one probed before reload, so the cache matches what was loaded.
+   *
+   * @return true if a reload happened
+   */
   public boolean checkAndReload() {
-    long[] version = readVersion().orElse(null);
-    if (version == null) {
-      return false;
-    }
+    long seenCheck = checkSeq.get();
     synchronized (this) {
-      if (version[0] == lastCount && version[1] == lastMaxId) {
+      if (checkSeq.get() != seenCheck) {
         return false;
       }
+
+      long[] db = readVersion().orElse(null);
+      if (db == null) {
+        // Probe failed: do not advance checkSeq so waiters retry.
+        return false;
+      }
+      if (db[0] == lastCount && db[1] == lastMaxId) {
+        checkSeq.incrementAndGet();
+        return false;
+      }
+
       LOGGER.debug(
           "Casbin policy changed (count {} -> {}, maxId {} -> {}); reloading",
           lastCount,
-          version[0],
+          db[0],
           lastMaxId,
-          version[1]);
+          db[1]);
+
+      // May throw: leave checkSeq alone so waiters retry.
+      reloader.run();
+      recordVersion(db[0], db[1]);
+      checkSeq.incrementAndGet();
+      return true;
     }
-    reloader.run();
-    recordLatestVersion();
-    return true;
   }
 
-  /** Unconditional reload for callers that cannot wait for the next poll. */
+  /**
+   * Unconditional reload for callers that cannot wait for the next poll. Takes the same monitor as
+   * {@link #checkAndReload()} before rebuilding so it cannot deadlock with a concurrent check
+   * (monitor then {@code reloadLock.writeLock()}).
+   */
   public void forceReload() {
-    reloader.run();
-    recordLatestVersion();
+    synchronized (this) {
+      reloader.run();
+      recordLatestVersion();
+    }
   }
 
+  /** Must be called while holding {@code this}'s monitor. */
   private void recordLatestVersion() {
-    readVersion()
-        .ifPresent(
-            latest -> {
-              synchronized (this) {
-                recordVersion(latest[0], latest[1]);
-              }
-            });
+    readVersion().ifPresent(latest -> recordVersion(latest[0], latest[1]));
   }
 
   private void recordVersion(long count, long maxId) {
