@@ -30,6 +30,7 @@ import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   private static final String LOGOUT_ENDPOINT = "/api/1.0/unity-control/auth/logout";
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
+  private static final String SCIM_USERS_ENDPOINT = "/api/1.0/unity-control/scim2/Users";
+  private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final String EMPTY_RESPONSE = "{}";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -116,6 +119,7 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   /**
    * Creates a signed identity token.
    *
+   * @param subject the principal asserted by the token (used as the {@code sub} claim)
    * @param issuer the token issuer
    * @param audience the token audience (may be null)
    * @param algorithm the signing algorithm
@@ -123,10 +127,10 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
    * @return signed JWT string
    */
   private String createIdentityToken(
-      String issuer, String audience, Algorithm algorithm, String keyId) {
+      String subject, String issuer, String audience, Algorithm algorithm, String keyId) {
     var builder =
         JWT.create()
-            .withSubject("admin")
+            .withSubject(subject)
             .withIssuer(issuer)
             .withIssuedAt(new Date())
             .withKeyId(keyId)
@@ -135,6 +139,24 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
       builder.withAudience(audience);
     }
     return builder.sign(algorithm);
+  }
+
+  /** Creates an ENABLED user via the SCIM endpoint using the internal service token. */
+  private void createEnabledUser(String email) {
+    String userJson =
+        String.format(
+            "{\"displayName\":\"Test User\",\"emails\":[{\"value\":\"%s\",\"primary\":true}]}",
+            email);
+    RequestHeaders headers =
+        RequestHeaders.builder()
+            .method(HttpMethod.POST)
+            .path(SCIM_USERS_ENDPOINT)
+            .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+            .build();
+    AggregatedHttpResponse response =
+        client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
+    assertThat(response.status().code()).isEqualTo(201);
   }
 
   private AggregatedHttpResponse exchangeToken(String identityToken) {
@@ -157,8 +179,10 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
   @Test
   public void testTokenExchangeWithCorrectIssuerAndAudience() throws IOException {
+    createEnabledUser(ENABLED_USER_EMAIL);
     String token =
-        createIdentityToken(testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
 
     AggregatedHttpResponse response = exchangeToken(token);
 
@@ -185,7 +209,8 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   @Test
   public void testTokenExchangeWithCorrectIssuerAndWrongAudience() {
     String token =
-        createIdentityToken(testIssuer, "wrong-audience", testIssuerAlgorithm, testIssuerKeyId);
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, "wrong-audience", testIssuerAlgorithm, testIssuerKeyId);
 
     AggregatedHttpResponse response = exchangeToken(token);
 
@@ -206,12 +231,30 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
 
     String token =
         createIdentityToken(
-            "https://evil-issuer.example.com", TEST_AUDIENCE, foreignAlgorithm, foreignKeyId);
+            ENABLED_USER_EMAIL,
+            "https://evil-issuer.example.com",
+            TEST_AUDIENCE,
+            foreignAlgorithm,
+            foreignKeyId);
 
     AggregatedHttpResponse response = exchangeToken(token);
 
     // The issuer is not in the allowlist → 403 Forbidden
     assertThat(response.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+  }
+
+  @Test
+  public void testTokenExchangeRejectsDisallowedPrincipals() {
+    // The reserved "admin" principal must never be exchangeable (it is the internal service-token,
+    // metastore-OWNER identity), and a correctly-signed token for any non-enabled user must fail
+    // closed. Both return the same generic 400 so "admin" is indistinguishable as a reserved name.
+    for (String subject : List.of("admin", "nobody@example.com")) {
+      String token =
+          createIdentityToken(
+              subject, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+      AggregatedHttpResponse response = exchangeToken(token);
+      assertThat(response.status()).as("subject=%s", subject).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
   }
 
   @Test

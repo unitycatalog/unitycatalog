@@ -25,9 +25,12 @@ import org.junit.jupiter.api.Test;
 
 public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
+  private static final String ENABLED_USER_EMAIL = "test-user@example.com";
+
   /**
    * Creates a signed identity token for token exchange tests.
    *
+   * @param subject the principal asserted by the token (used as the {@code sub} claim)
    * @param issuer the token issuer
    * @param audience the token audience (may be null)
    * @param algorithm the signing algorithm to use
@@ -35,10 +38,10 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
    * @return signed JWT string
    */
   private String createIdentityToken(
-      String issuer, String audience, Algorithm algorithm, String keyId) {
+      String subject, String issuer, String audience, Algorithm algorithm, String keyId) {
     var builder =
         JWT.create()
-            .withSubject("admin")
+            .withSubject(subject)
             .withIssuer(issuer)
             .withIssuedAt(new Date())
             .withKeyId(keyId)
@@ -50,11 +53,21 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testAuthLoginExchangeWithCorrectIssuerAndAudience() {
+  public void testAuthLoginExchangeWithCorrectIssuerAndAudience() throws IOException {
     System.out.println("Testing login exchange with correct issuer and audience..");
 
+    // The exchanged principal must be an enabled user, so create one with the bootstrap admin
+    // token before exchanging as that user.
+    String adminToken = Files.readString(Path.of("etc", "conf", "token.txt"));
+    serverConfig.setAuthToken(adminToken);
+    executeCliCommand(
+        serverConfig,
+        List.of("user", "create", "--email", ENABLED_USER_EMAIL, "--name", "Test User"));
+    serverConfig.setAuthToken("");
+
     String token =
-        createIdentityToken(testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
 
     List<String> argsList = List.of("auth", "login", "--identity_token", token);
 
@@ -67,7 +80,8 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     System.out.println("Testing login exchange with correct issuer but wrong audience..");
 
     String token =
-        createIdentityToken(testIssuer, "wrong-audience", testIssuerAlgorithm, testIssuerKeyId);
+        createIdentityToken(
+            ENABLED_USER_EMAIL, testIssuer, "wrong-audience", testIssuerAlgorithm, testIssuerKeyId);
 
     List<String> argsList = List.of("auth", "login", "--identity_token", token);
     assertThatThrownBy(() -> executeCliCommand(serverConfig, argsList))
@@ -92,7 +106,11 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
     String token =
         createIdentityToken(
-            "https://evil-issuer.example.com", TEST_AUDIENCE, foreignAlgorithm, foreignKeyId);
+            ENABLED_USER_EMAIL,
+            "https://evil-issuer.example.com",
+            TEST_AUDIENCE,
+            foreignAlgorithm,
+            foreignKeyId);
 
     List<String> argsList = List.of("auth", "login", "--identity_token", token);
     assertThatThrownBy(() -> executeCliCommand(serverConfig, argsList))

@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpData;
+import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
@@ -27,6 +28,8 @@ import org.junit.jupiter.api.Test;
 public class AuthServiceAllowlistTest {
 
   private static final String TOKEN_ENDPOINT = "/api/1.0/unity-control/auth/tokens";
+  private static final String SCIM_USERS_ENDPOINT = "/api/1.0/unity-control/scim2/Users";
+  private static final String ENABLED_USER_EMAIL = "test-user@example.com";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   abstract static class TokenExchangeTestBase extends BaseAuthCRUDTest {
@@ -38,11 +41,30 @@ public class AuthServiceAllowlistTest {
     public void setUp() {
       super.setUp();
       client = WebClient.builder(serverConfig.getServerUrl()).build();
+      createEnabledUser(ENABLED_USER_EMAIL);
+    }
+
+    /** Creates an ENABLED user via the SCIM endpoint using the internal service token. */
+    protected void createEnabledUser(String email) {
+      String userJson =
+          String.format(
+              "{\"displayName\":\"Test User\",\"emails\":[{\"value\":\"%s\",\"primary\":true}]}",
+              email);
+      RequestHeaders headers =
+          RequestHeaders.builder()
+              .method(HttpMethod.POST)
+              .path(SCIM_USERS_ENDPOINT)
+              .contentType(MediaType.JSON)
+              .add(HttpHeaderNames.COOKIE, "UC_TOKEN=" + securityContext.getServiceToken())
+              .build();
+      AggregatedHttpResponse response =
+          client.execute(headers, HttpData.ofUtf8(userJson)).aggregate().join();
+      assertThat(response.status().code()).isEqualTo(201);
     }
 
     protected String createIdentityToken(
         String issuer, String audience, Algorithm algorithm, String keyId) {
-      return createIdentityTokenForSubject(issuer, audience, "admin", algorithm, keyId);
+      return createIdentityTokenForSubject(issuer, audience, ENABLED_USER_EMAIL, algorithm, keyId);
     }
 
     protected String createIdentityTokenForSubject(

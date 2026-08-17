@@ -233,9 +233,12 @@ public class AuthService {
 
     LOGGER.debug("Validating principal: {}", subject);
 
+    // "admin" is the internal service-token principal (metastore OWNER) and must not be
+    // assumable via external token exchange. An explicit reject is required because "admin" is a
+    // real ENABLED user that would otherwise pass the lookup below.
     if (subject.equals("admin")) {
-      LOGGER.debug("admin always allowed");
-      return;
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
     }
 
     try {
