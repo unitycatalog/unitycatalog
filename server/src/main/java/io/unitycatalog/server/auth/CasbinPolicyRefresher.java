@@ -110,6 +110,8 @@ public class CasbinPolicyRefresher implements AutoCloseable {
 
       // May throw: leave checkSeq alone so waiters retry.
       reloader.run();
+      // Stamp the probed version, not a post-reload re-read: a fresher DB stamp would claim we
+      // loaded state the new enforcer may not contain.
       recordVersion(db[0], db[1]);
       checkSeq.incrementAndGet();
       return true;

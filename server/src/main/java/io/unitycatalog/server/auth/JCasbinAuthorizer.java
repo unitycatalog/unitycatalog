@@ -135,6 +135,14 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     }
   }
 
+  /**
+   * Runs a policy mutation on the live enforcer.
+   *
+   * <p>Takes the <em>read</em> side of {@code reloadLock} on purpose: many grants may proceed
+   * together (SyncedEnforcer still serializes mutations on one instance), while reload takes the
+   * write side so a mutation cannot land on an enforcer that is about to be discarded. The lock
+   * names refer to the live-enforcer pointer, not to Casbin read vs write.
+   */
   private <T> T mutate(Function<SyncedEnforcer, T> action) {
     reloadLock.readLock().lock();
     try {
