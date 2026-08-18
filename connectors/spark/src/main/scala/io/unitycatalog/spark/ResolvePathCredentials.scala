@@ -39,6 +39,13 @@ import scala.collection.JavaConverters._
  * therefore registered by [[UCSparkSessionExtensions]] as a hint resolution rule, whose batch runs
  * ahead of the analyzer's Resolution batch. The parser stays side-effect free.
  *
+ * '''Idempotence''': the analyzer runs its batches to a fixed point, so this rule is applied
+ * repeatedly to the same plan. Nodes that already carry `fs.*` options are therefore left
+ * untouched: credentials are vended at most once per path per query, and the plan converges even
+ * when the credential cache (`fs.unitycatalog.credential.cache.enabled`) is disabled and every
+ * vend would otherwise return a fresh session token. It also means explicit user-supplied `fs.*`
+ * options win over vended ones.
+ *
  * The rule is a no-op unless the session's current catalog is a [[UCSingleCatalog]]. It can be
  * disabled with `spark.sql.catalog.<catalog>.vendPathCredentials.enabled=false`.
  *
@@ -79,6 +86,7 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
           // Write: INSERT OVERWRITE DIRECTORY '<cloud path>' USING <format> ...
           case i: InsertIntoDir
               if !isDeltaProvider(i.provider) &&
+                !hasCredentialOptions(i.storage.properties.keys) &&
                 i.storage.locationUri.exists(u => isCloudPath(u.toString)) =>
             val location = i.storage.locationUri.get.toString
             val conf =
@@ -133,8 +141,16 @@ object ResolvePathCredentials {
   private def isEligibleBarePathRelation(relation: UnresolvedRelation): Boolean = {
     relation.multipartIdentifier.length == 2 &&
     !isDeltaProvider(Some(relation.multipartIdentifier.head)) &&
-    isCloudPath(relation.multipartIdentifier.last)
+    isCloudPath(relation.multipartIdentifier.last) &&
+    !hasCredentialOptions(relation.options.keySet.asScala)
   }
+
+  /**
+   * True when the option map already carries Hadoop filesystem credentials, either vended by an
+   * earlier pass of this rule or supplied explicitly by the user.
+   */
+  private def hasCredentialOptions(keys: Iterable[String]): Boolean =
+    keys.exists(_.toLowerCase.startsWith("fs."))
 
   /** True when `pathStr` is an absolute URI whose scheme is one UC can vend credentials for. */
   private def isCloudPath(pathStr: String): Boolean = {
