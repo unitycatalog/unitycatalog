@@ -31,9 +31,8 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 /**
  * Tests for {@link ResolvePathCredentials}: Unity Catalog credentials are vended for cloud paths
- * referenced directly in a query (e.g. {@code parquet.`s3://bucket/dir`}), without a pre-registered
- * external table. Bare {@code delta.`s3://...`} paths are excluded and continue to use ambient
- * storage credentials until Delta execution support lands separately.
+ * referenced directly in a query (e.g. {@code parquet.`s3://bucket/dir`} or {@code
+ * delta.`s3://bucket/dir`}), without a pre-registered external table.
  *
  * <p>Unlike the other Spark integration tests, these register {@code UCSparkSessionExtensions} (the
  * home of the analyzer hint resolution rule), and use the {@link S3CredentialTestFileSystem} fake
@@ -282,7 +281,16 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
 
   /** Applies the analyzer path-credential rule to a parsed plan (parser is side-effect free). */
   private LogicalPlan injectPathCredentials(LogicalPlan plan) {
-    return new ResolvePathCredentials(session).apply(plan);
+    return injectPathCredentials(plan, true);
+  }
+
+  /**
+   * {@code resolveDeltaPathRelations} is the hint-batch path: when true, a credentialed {@code
+   * delta.`path`} may be rewritten to {@code DataSourceV2Relation}. Tests that still inspect the
+   * {@code UnresolvedRelation} pass {@code false}.
+   */
+  private LogicalPlan injectPathCredentials(LogicalPlan plan, boolean resolveDeltaPathRelations) {
+    return new ResolvePathCredentials(session, resolveDeltaPathRelations).apply(plan);
   }
 
   /** Finds a bare {@code format.`cloud-path`} relation anywhere in a parsed plan tree. */
@@ -348,9 +356,9 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    * <p>Local storage: end-to-end CREATE + read (mirrors {@link
    * DeltaExternalTableReadWriteTest#testDeltaPathTable()} under the path-cred session layout).
    *
-   * <p>Cloud storage: seeds data via a UC catalog table, then asserts {@link
-   * ResolvePathCredentials} does not inject credentials into {@code delta.`s3://...`} (Delta
-   * bare-path execution with UC-vended credentials is tracked in a follow-up PR).
+   * <p>Cloud storage: seeds data via a UC catalog table, then reads {@code delta.`s3://...`}
+   * end-to-end with vended credentials. Plan inspection uses the resolution-batch form of the rule
+   * so the target stays an {@code UnresolvedRelation}.
    */
   @Test
   public void testWriteAndReadBareDeltaPath() throws IOException, ParseException {
@@ -371,10 +379,12 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
             session
                 .sessionState()
                 .sqlParser()
-                .parsePlan(String.format("SELECT * FROM delta.`%s`", s3Location)));
+                .parsePlan(String.format("SELECT * FROM delta.`%s`", s3Location)),
+            false);
     UnresolvedRelation relation = findBareCloudPathRelation(readPlan);
     assertThat(relation).isNotNull();
-    assertThat(relation.options().get("fs.s3a.access.key")).isNull();
+    assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+    assertSingleRow(sql("SELECT * FROM delta.`%s`", s3Location));
   }
 
   /**
@@ -479,6 +489,47 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
               .parsePlan(String.format("SELECT * FROM parquet.`%s`", location));
       LogicalPlan first = injectPathCredentials(parsed);
       LogicalPlan second = injectPathCredentials(first);
+
+      assertThat(vends.get()).isEqualTo(1);
+      assertThat(second.fastEquals(first)).as("rule must reach a fixed point: %s", second).isTrue();
+      assertThat(findBareCloudPathRelation(first).options().get("fs.s3a.session.token"))
+          .isEqualTo("sessionToken1");
+    } finally {
+      CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
+    }
+  }
+
+  /**
+   * Same fixed-point contract as {@link #testRepeatedApplicationVendsOnceAndLeavesPlanUnchanged()}
+   * for a bare {@code delta.`path`}. Uses the resolution-batch form so the relation stays an {@code
+   * UnresolvedRelation}.
+   */
+  @Test
+  public void testRepeatedApplicationOnBareDeltaPathVendsOnce() throws IOException, ParseException {
+    session = createDeltaSparkCatalogSession(CATALOG_NAME, false);
+    sql("SET CATALOG %s", CATALOG_NAME);
+    session.conf().set(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, "false");
+    String location = bucketPath("repeated_delta_rule_application");
+
+    AtomicInteger vends = new AtomicInteger();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) ->
+            () ->
+                List.of(
+                    new AwsCredential(
+                        "accessKey0",
+                        "secretKey0",
+                        "sessionToken" + vends.incrementAndGet(),
+                        Long.MAX_VALUE,
+                        null));
+    try {
+      LogicalPlan parsed =
+          session
+              .sessionState()
+              .sqlParser()
+              .parsePlan(String.format("SELECT * FROM delta.`%s`", location));
+      LogicalPlan first = injectPathCredentials(parsed, false);
+      LogicalPlan second = injectPathCredentials(first, false);
 
       assertThat(vends.get()).isEqualTo(1);
       assertThat(second.fastEquals(first)).as("rule must reach a fixed point: %s", second).isTrue();
