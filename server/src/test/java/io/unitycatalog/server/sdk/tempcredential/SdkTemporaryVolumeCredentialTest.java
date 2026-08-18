@@ -80,7 +80,7 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
       TemporaryCredentials temporaryCredentials =
           temporaryCredentialsApi.generateTemporaryVolumeCredentials(
               generateTemporaryVolumeCredential);
-      assertTemporaryCredentials(temporaryCredentials, scheme);
+      assertTemporaryCredentials(temporaryCredentials, scheme, url);
     } else {
       assertThatThrownBy(
               () ->

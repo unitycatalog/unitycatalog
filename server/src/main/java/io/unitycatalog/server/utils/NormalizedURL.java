@@ -64,6 +64,16 @@ public final class NormalizedURL {
   }
 
   /**
+   * Creates a normalized URL from the given URI. Returns null if the input is null. Convenience
+   * overload of {@link #from(String)} for callers that already hold a {@link URI}.
+   *
+   * @param uri the URI to normalize
+   */
+  public static NormalizedURL from(URI uri) {
+    return uri == null ? null : new NormalizedURL(uri.toString());
+  }
+
+  /**
    * Returns the normalized URL as a string.
    *
    * @return the normalized URL string, never null
@@ -81,6 +91,23 @@ public final class NormalizedURL {
    */
   public URI toUri() {
     return URI.create(url);
+  }
+
+  /**
+   * Returns whether this URL identifies an entire cloud storage bucket or container.
+   *
+   * <p>The decoded path is checked so equivalent root forms such as a trailing slash, normalized
+   * dot segments, and encoded slashes are treated consistently.
+   */
+  public boolean isCloudStorageRoot() {
+    URI uri = toUri();
+    return switch (UriScheme.fromURI(uri)) {
+      case S3, GS, ABFS, ABFSS -> {
+        String path = uri.getPath();
+        yield path == null || path.chars().allMatch(character -> character == '/');
+      }
+      default -> false;
+    };
   }
 
   /**

@@ -8,6 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
@@ -69,17 +71,19 @@ public class SecurityContext {
     LOGGER.info(getInternalCertsFile());
   }
 
-  public String createAccessToken(DecodedJWT decodedJWT) {
+  public String createAccessToken(DecodedJWT decodedJWT, Duration ttl) {
     String subject =
         decodedJWT
             .getClaims()
             .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
             .asString();
 
+    Instant expiresAt = Instant.now().plus(ttl);
     return JWT.create()
         .withSubject(serviceName)
         .withIssuer(localIssuer)
         .withIssuedAt(new Date())
+        .withExpiresAt(Date.from(expiresAt))
         .withKeyId(keyId)
         .withJWTId(UUID.randomUUID().toString())
         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())

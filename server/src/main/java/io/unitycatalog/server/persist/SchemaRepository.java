@@ -11,12 +11,14 @@ import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.ListVolumesResponseContent;
 import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.UpdateSchema;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
@@ -112,7 +114,8 @@ public class SchemaRepository {
         .orElseThrow(
             () ->
                 new BaseException(
-                    ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName));
+                    ErrorCode.SCHEMA_NOT_FOUND,
+                    "Schema not found: " + catalogName + "." + schemaName));
   }
 
   public SchemaInfoDAO getSchemaDaoOrThrow(Session session, String catalogName, String schemaName) {
@@ -123,6 +126,18 @@ public class SchemaRepository {
   public UUID getSchemaIdOrThrow(Session session, String catalogName, String schemaName) {
     SchemaInfoDAO schemaInfo = getSchemaDaoOrThrow(session, catalogName, schemaName);
     return schemaInfo.getId();
+  }
+
+  /**
+   * Returns the UUID of the named schema. Opens its own transaction, so callers that already have a
+   * {@code Session} should use {@link #getSchemaIdOrThrow(Session, String, String)} directly.
+   */
+  public UUID getSchemaIdOrThrow(String catalogName, String schemaName) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> getSchemaIdOrThrow(session, catalogName, schemaName),
+        "Failed to get schema id",
+        /* readOnly = */ true);
   }
 
   private void validateSchemaNotExistInCatalog(
@@ -138,7 +153,7 @@ public class SchemaRepository {
         .ifPresent(
             schemaInfoDAO -> {
               throw new BaseException(
-                  ErrorCode.ALREADY_EXISTS, "Schema already exists: " + schemaName);
+                  ErrorCode.SCHEMA_ALREADY_EXISTS, "Schema already exists: " + schemaName);
             });
   }
 
@@ -243,8 +258,8 @@ public class SchemaRepository {
         /* readOnly = */ false);
   }
 
-  public void deleteSchema(String fullName, boolean force) {
-    TransactionManager.executeWithTransaction(
+  public List<DeletedResource> deleteSchema(String fullName, boolean force) {
+    return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           CatalogAndSchemaNames names = splitSchemaFullName(fullName);
@@ -252,15 +267,16 @@ public class SchemaRepository {
               repositories
                   .getCatalogRepository()
                   .getCatalogDaoOrThrow(session, names.catalogName());
-          deleteSchema(session, catalog.getId(), names.catalogName(), names.schemaName(), force);
-          return null;
+          return deleteSchema(
+              session, catalog.getId(), names.catalogName(), names.schemaName(), force);
         },
         "Failed to delete schema",
         /* readOnly = */ false);
   }
 
-  private void deleteChildTables(
+  private List<DeletedResource> deleteChildTables(
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
+    List<DeletedResource> deleted = new ArrayList<>();
     // first check if there are any child tables
     List<TableInfo> tables =
         repositories
@@ -294,15 +310,20 @@ public class SchemaRepository {
                     true,
                     true);
         for (TableInfo tableInfo : listTablesResponse.getTables()) {
+          deleted.add(
+              new DeletedResource(
+                  SecurableType.TABLE, tableInfo.getTableId(), schemaId.toString()));
           repositories.getTableRepository().deleteTable(session, schemaId, tableInfo.getName());
         }
         nextToken = listTablesResponse.getNextPageToken();
       } while (nextToken != null);
     }
+    return deleted;
   }
 
-  private void deleteChildVolumes(
+  private List<DeletedResource> deleteChildVolumes(
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
+    List<DeletedResource> deleted = new ArrayList<>();
     // first check if there are any child volumes
     List<VolumeInfo> volumes =
         repositories
@@ -327,15 +348,20 @@ public class SchemaRepository {
                     Optional.empty(),
                     Optional.ofNullable(nextToken));
         for (VolumeInfo volumeInfo : listVolumesResponse.getVolumes()) {
+          deleted.add(
+              new DeletedResource(
+                  SecurableType.VOLUME, volumeInfo.getVolumeId(), schemaId.toString()));
           repositories.getVolumeRepository().deleteVolume(session, schemaId, volumeInfo.getName());
         }
         nextToken = listVolumesResponse.getNextPageToken();
       } while (nextToken != null);
     }
+    return deleted;
   }
 
-  private void deleteChildFunctions(
+  private List<DeletedResource> deleteChildFunctions(
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
+    List<DeletedResource> deleted = new ArrayList<>();
     // first check if there are any child functions
     List<FunctionInfo> functions =
         repositories
@@ -361,6 +387,9 @@ public class SchemaRepository {
                     Optional.empty(),
                     Optional.ofNullable(nextToken));
         for (FunctionInfo functionInfo : listFunctionsResponse.getFunctions()) {
+          deleted.add(
+              new DeletedResource(
+                  SecurableType.FUNCTION, functionInfo.getFunctionId(), schemaId.toString()));
           repositories
               .getFunctionRepository()
               .deleteFunction(session, schemaId, functionInfo.getName());
@@ -368,10 +397,12 @@ public class SchemaRepository {
         nextToken = listFunctionsResponse.getNextPageToken();
       } while (nextToken != null);
     }
+    return deleted;
   }
 
-  private void deleteChildModels(
+  private List<DeletedResource> deleteChildModels(
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
+    List<DeletedResource> deleted = new ArrayList<>();
     // first check if there are any child Models
     List<RegisteredModelInfo> registeredModels =
         repositories
@@ -397,6 +428,11 @@ public class SchemaRepository {
                     Optional.ofNullable(nextToken));
         for (RegisteredModelInfo registeredModelInfo :
             listRegisteredModelsResponse.getRegisteredModels()) {
+          deleted.add(
+              new DeletedResource(
+                  SecurableType.REGISTERED_MODEL,
+                  registeredModelInfo.getId(),
+                  schemaId.toString()));
           repositories
               .getModelRepository()
               .deleteRegisteredModel(session, schemaId, registeredModelInfo.getName(), true);
@@ -404,18 +440,23 @@ public class SchemaRepository {
         nextToken = listRegisteredModelsResponse.getNextPageToken();
       } while (nextToken != null);
     }
+    return deleted;
   }
 
-  public void deleteSchema(
+  public List<DeletedResource> deleteSchema(
       Session session, UUID catalogId, String catalogName, String schemaName, boolean force) {
     SchemaInfoDAO schemaInfo = getSchemaDaoOrThrow(session, catalogId, catalogName, schemaName);
-    deleteChildTables(session, schemaInfo.getId(), catalogName, schemaName, force);
-    deleteChildVolumes(session, schemaInfo.getId(), catalogName, schemaName, force);
-    deleteChildFunctions(session, schemaInfo.getId(), catalogName, schemaName, force);
-    deleteChildModels(session, schemaInfo.getId(), catalogName, schemaName, force);
+    UUID schemaId = schemaInfo.getId();
+    List<DeletedResource> deleted = new ArrayList<>();
+    deleted.addAll(deleteChildTables(session, schemaId, catalogName, schemaName, force));
+    deleted.addAll(deleteChildVolumes(session, schemaId, catalogName, schemaName, force));
+    deleted.addAll(deleteChildFunctions(session, schemaId, catalogName, schemaName, force));
+    deleted.addAll(deleteChildModels(session, schemaId, catalogName, schemaName, force));
+    PropertyRepository.findProperties(session, schemaId, Constants.SCHEMA).forEach(session::remove);
+    deleted.add(
+        new DeletedResource(SecurableType.SCHEMA, schemaId.toString(), catalogId.toString()));
     session.remove(schemaInfo);
-    PropertyRepository.findProperties(session, schemaInfo.getId(), Constants.SCHEMA)
-        .forEach(session::remove);
+    return deleted;
   }
 
   public CatalogAndSchemaNames splitSchemaFullName(String fullName) {

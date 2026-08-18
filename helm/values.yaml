@@ -83,6 +83,7 @@ auth:
   users:
 
   # -- (string) OAuth provider
+  # @default -- google
   # @raw
   #
   # Supported values: `google`, `other`
@@ -92,7 +93,7 @@ auth:
   provider: google
 
   # -- (string) OAuth authorization URL
-  # @default -- not set
+  # @default -- https://accounts.google.com/o/oauth2/auth
   # @raw
   #
   # Example: `https://accounts.google.com/o/oauth2/auth`
@@ -100,7 +101,7 @@ auth:
   authorizationUrl: https://accounts.google.com/o/oauth2/auth
 
   # -- (string) OAuth token URL
-  # @default -- not set
+  # @default -- https://oauth2.googleapis.com/token
   # @raw
   #
   # Example: `https://oauth2.googleapis.com/token`
@@ -117,6 +118,30 @@ auth:
   #
   clientSecretName:
 
+  # -- (string) Comma-separated list of allowed token issuers
+  # @default -- https://accounts.google.com
+  # @raw
+  #
+  # When authorization is enabled, tokens will only be accepted from issuers in this list.
+  # Supports exact match or wildcard patterns with * (single DNS label per wildcard).
+  # Cannot be "*" alone. Wildcard issuers are evaluated before signature verification;
+  # see docs/server/auth.md.
+  #
+  # Example for Google: `https://accounts.google.com`
+  # Example for Microsoft Entra ID: `https://login.microsoftonline.com/{tenant-id}/v2.0`
+  #
+  allowedIssuers: https://accounts.google.com
+
+  # -- (string) Comma-separated list of expected JWT audience values
+  # @default -- not set
+  # @raw
+  #
+  # When authorization is enabled, tokens must contain an aud value matching one of these entries.
+  # Supports exact match or wildcard patterns with * (same rules as allowedIssuers).
+  # Use "*" alone to disable audience validation (issuer and user checks still apply).
+  #
+  audiences:
+
   # -- (int) OAuth redirect port
   # @default -- not set
   redirectPort:
@@ -127,6 +152,14 @@ auth:
   # Example: `P5D` (5 days)
   #
   cookieTimeout: P5D
+
+  # -- (string) UC access token lifetime for token exchange
+  # @default -- PT24H
+  # @raw
+  #
+  # Example: `PT24H` (24 hours), `P7D` (7 days)
+  #
+  accessTokenTimeout: PT24H
 
 server:
   # -- (bool) Enable the server deployment

@@ -85,6 +85,45 @@ public class GcpCredentialVendor {
     return new ServiceAccountCredentialGenerator(jsonKeyFilePath);
   }
 
+  /**
+   * Converts text into a double-quoted CEL string literal.
+   *
+   * <p>GCS object names may contain characters, such as quotation marks and backslashes, that CEL
+   * uses as part of its syntax. Escaping each character while building the literal keeps the object
+   * name inside the string instead of letting it change the credential access boundary condition.
+   *
+   * <p>The literal uses double quotes because this method escapes double quotes. Changing the
+   * delimiter to single quotes without also changing the escape rules would make apostrophes
+   * unsafe.
+   *
+   * @see <a
+   *     href="https://github.com/cel-expr/cel-spec/blob/master/doc/langdef.md#string-and-bytes-values">
+   *     CEL string and bytes values</a>
+   * @see <a
+   *     href="https://github.com/cel-expr/cel-java/blob/d4c891326ebcccb632a813c4a3b3f08ca032889b/extensions/src/main/java/dev/cel/extensions/CelStringExtensions.java#L471-L512">
+   *     CEL Java string quoting implementation</a>
+   */
+  private static String celStringLiteral(String value) {
+    StringBuilder literal = new StringBuilder(value.length() + 2).append('"');
+    for (int offset = 0; offset < value.length(); ) {
+      int codePoint = value.codePointAt(offset);
+      offset += Character.charCount(codePoint);
+      switch (codePoint) {
+        case '\u0007' -> literal.append("\\a");
+        case '\b' -> literal.append("\\b");
+        case '\f' -> literal.append("\\f");
+        case '\n' -> literal.append("\\n");
+        case '\r' -> literal.append("\\r");
+        case '\t' -> literal.append("\\t");
+        case '\u000B' -> literal.append("\\v");
+        case '\\' -> literal.append("\\\\");
+        case '"' -> literal.append("\\\"");
+        default -> literal.appendCodePoint(codePoint);
+      }
+    }
+    return literal.append('"').toString();
+  }
+
   OAuth2Credentials downscopeGcpCreds(GoogleCredentials credentials, CredentialContext context) {
     CredentialAccessBoundary.Builder boundaryBuilder = CredentialAccessBoundary.newBuilder();
     List<String> roles = resolvePrivilegesToRoles(context.getPrivileges());
@@ -102,14 +141,15 @@ public class GcpCredentialVendor {
               // for reading/writing objects
               String resourceNameStartsWithExpr =
                   format(
-                      "resource.name.startsWith('projects/_/buckets/%s/objects/%s')",
-                      locationUri.getHost(), path);
+                      "resource.name.startsWith(%s)",
+                      celStringLiteral(
+                          format("projects/_/buckets/%s/objects/%s", locationUri.getHost(), path)));
 
               // for listing objects
               String objectListPrefixStartsWithExpr =
                   format(
-                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith('%s')",
-                      path);
+                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith(%s)",
+                      celStringLiteral(path));
 
               String combinedExpr =
                   resourceNameStartsWithExpr + " || " + objectListPrefixStartsWithExpr;

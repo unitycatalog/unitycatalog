@@ -9,7 +9,10 @@ import io.unitycatalog.client.model.StagingTableInfo;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -32,6 +35,16 @@ public class SdkTableOperations implements TableOperations {
               .name(createTableRequest.getName());
       StagingTableInfo stagingTableInfo = tablesApi.createStagingTable(createStagingTableRequest);
       createTableRequest.setStorageLocation(stagingTableInfo.getStagingLocation());
+      // MANAGED Delta tables must carry the staging UUID in properties[UC_TABLE_ID]; the server
+      // cross-checks this against the staging table's actual UUID to catch buggy/malicious
+      // clients claiming the wrong table id. The test helper injects it so individual test
+      // fixtures don't have to thread the staging UUID through manually.
+      Map<String, String> props =
+          createTableRequest.getProperties() != null
+              ? new HashMap<>(createTableRequest.getProperties())
+              : new HashMap<>();
+      props.put(TableProperties.UC_TABLE_ID, stagingTableInfo.getId());
+      createTableRequest.setProperties(props);
     }
     return tablesApi.createTable(createTableRequest);
   }

@@ -1,29 +1,40 @@
 package io.unitycatalog.spark
 
-import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
+import java.net.URI
+import java.util
+import java.util.Locale
+
+import scala.collection.JavaConverters._
+import scala.collection.convert.ImplicitConversions._
+import scala.collection.mutable.ArrayBuffer
+import scala.language.existentials
+
+import io.unitycatalog.client.api.{SchemasApi, TablesApi}
 import io.unitycatalog.client.auth.TokenProvider
-import io.unitycatalog.client.model._
+import io.unitycatalog.client.model.{
+  TableInfo => UCTableInfo,
+  _
+}
 import io.unitycatalog.client.retry.JitterDelayRetryPolicy
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.spark.auth.{AuthConfigUtils, CredPropsUtil}
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs.{PathOperation, TableOperation}
+import io.unitycatalog.spark.auth.AuthConfigUtils
+import io.unitycatalog.spark.compat.SparkCatalogCompatibility
 import io.unitycatalog.spark.utils.OptionsUtil
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.catalyst.TableIdentifier
+import org.apache.spark.sql.catalyst.analysis.{NamespaceAlreadyExistsException, NoSuchNamespaceException, NoSuchTableException, TableAlreadyExistsException, ViewAlreadyExistsException}
+import org.apache.spark.sql.catalyst.catalog.{CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.sparkproject.guava.base.Preconditions
-
-import java.net.URI
-import java.util
-import scala.collection.JavaConverters._
-import scala.collection.convert.ImplicitConversions._
-import scala.language.existentials
 
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
@@ -31,16 +42,43 @@ import scala.language.existentials
 class UCSingleCatalog
   extends StagingTableCatalog
   with SupportsNamespaces
+  with UCSingleCatalogViewSupport
   with Logging {
 
   private[this] var uri: URI = null
   private[this] var tokenProvider: TokenProvider = null
   private[this] var renewCredEnabled: Boolean = false
+  private[this] var credScopedFsEnabled: Boolean = true
   private[this] var apiClient: ApiClient = null;
-  private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
   private[this] var tablesApi: TablesApi = null
 
-  @volatile private var delegate: TableCatalog = null
+  // TODO: move this Delta loading logic into a separate base class DeltaSupport
+
+  // When true, callers that target managed Delta tables skip the legacy UC staging step here and
+  // let the Delta catalog stage the table via the UC Delta API instead.
+  private[this] var deltaRestApiEnabled: Boolean = false
+
+  // Set to true after the bundled Delta library successfully loads in `initialize`. Used
+  // (alongside `deltaRestApiEnabled` and a Delta version check) to decide whether managed
+  // Delta creates can take the new path.
+  private[this] var deltaCatalogLoaded: Boolean = false
+
+  // The connector keeps two references to the catalog underneath:
+  //
+  //   - `delegate` is the *outermost* `TableCatalog` the connector exposes for table
+  //     operations. When DeltaCatalog is on the classpath it wraps `ucProxy` via
+  //     `DelegatingCatalogExtension`, so Delta can intercept managed / external Delta-table
+  //     create / load paths and add Delta-specific behavior. When DeltaCatalog is not on the
+  //     classpath, `delegate` is set to `ucProxy` itself so non-Delta table paths still work.
+  //
+  //   - `ucProxy` is the underlying UC REST client wrapped as a Spark `RelationCatalog`. It
+  //     is always the real `UCProxy` instance so we can route view operations directly. Delta
+  //     has no role in view handling, so view-side methods (`createView` / `loadView` /
+  //     `dropView` / `listViews`) bypass `delegate` and call `ucProxy` directly, avoiding the
+  //     need to unwrap the `DelegatingCatalogExtension` chain.
+  // Protected so the per-Spark-version `UCSingleCatalogViewSupport` trait can read them.
+  @volatile protected[spark] var delegate: TableCatalog = null
+  @volatile protected[spark] var ucProxy: UCProxy = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get(OptionsUtil.URI)
@@ -48,35 +86,110 @@ class UCSingleCatalog
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
     tokenProvider = TokenProvider.create(AuthConfigUtils.buildAuthConfigs(options));
-    renewCredEnabled = OptionsUtil.getBoolean(options,
-      OptionsUtil.RENEW_CREDENTIAL_ENABLED,
-      OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
-    val serverSidePlanningEnabled = OptionsUtil.getBoolean(options,
-      OptionsUtil.SERVER_SIDE_PLANNING_ENABLED,
-      OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
+    renewCredEnabled = options.getBoolean(
+      OptionsUtil.RENEW_CREDENTIAL_ENABLED, OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+    credScopedFsEnabled = options.getBoolean(
+      OptionsUtil.CRED_SCOPED_FS_ENABLED, OptionsUtil.DEFAULT_CRED_SCOPED_FS_ENABLED)
+    val serverSidePlanningEnabled = options.getBoolean(
+      OptionsUtil.SERVER_SIDE_PLANNING_ENABLED, OptionsUtil.DEFAULT_SERVER_SIDE_PLANNING_ENABLED)
+    deltaRestApiEnabled = options.getBoolean(
+      OptionsUtil.DELTA_API_ENABLED, OptionsUtil.DEFAULT_DELTA_API_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(
       JitterDelayRetryPolicy.builder().build(),uri, tokenProvider)
-    temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     tablesApi = new TablesApi(apiClient)
-    val proxy = new UCProxy(uri, tokenProvider, renewCredEnabled, serverSidePlanningEnabled,
-      apiClient, tablesApi, temporaryCredentialsApi)
-    proxy.initialize(name, options)
+    ucProxy = new UCProxy(uri, tokenProvider, renewCredEnabled, credScopedFsEnabled,
+      serverSidePlanningEnabled, apiClient, tablesApi)
+    ucProxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
           .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
-        delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
+        delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(ucProxy)
         delegate.initialize(name, options)
         UCSingleCatalog.DELTA_CATALOG_LOADED.set(true)
+        deltaCatalogLoaded = true
       } catch {
         case e: ClassNotFoundException =>
           logWarning("DeltaCatalog is not available in the classpath", e)
-          delegate = proxy
+          delegate = ucProxy
       }
     } else {
-      delegate = proxy
+      delegate = ucProxy
     }
+  }
+
+  /**
+   * The catalog to route `SupportsNamespaces` operations to.
+   *
+   * Both possible values of `delegate` are a `SupportsNamespaces`: when DeltaCatalog is on the
+   * classpath `delegate` is a `DelegatingCatalogExtension` (a `SupportsNamespaces` via
+   * `CatalogExtension`), and when it is absent `delegate` is `ucProxy` itself (a plain
+   * `TableCatalog with SupportsNamespaces`). So we can cast unconditionally.
+   */
+  private def namespaceCatalog: SupportsNamespaces = delegate.asInstanceOf[SupportsNamespaces]
+
+  /** See [[DeltaVersionUtils.isDeltaRestApiReady]] for the predicate. */
+  private def shouldUseDeltaAPI: Boolean =
+    DeltaVersionUtils.isDeltaRestApiReady(deltaCatalogLoaded, deltaRestApiEnabled)
+
+  /** Session default format (`spark.sql.sources.default`). */
+  private def sessionDefaultProvider: String =
+    SQLConf.get.getConf(SQLConf.DEFAULT_DATA_SOURCE_NAME)
+
+  /**
+   * Returns true when the effective provider is `delta` -- i.e. `USING delta`, or no `USING`
+   * clause while `spark.sql.sources.default` resolves to delta. Unlike Spark's built-in
+   * `V2SessionCatalog`, a named V2 catalog receives no `provider` property when `USING` is
+   * omitted, so we apply the same default-source fallback Spark itself uses.
+   */
+  private def hasDeltaProvider(properties: util.Map[String, String]): Boolean =
+    Option(properties.get(TableCatalog.PROP_PROVIDER))
+      .getOrElse(sessionDefaultProvider)
+      .equalsIgnoreCase("delta")
+
+  /** Ensures `provider` is present using the same resolution as {@link #hasDeltaProvider}. */
+  private def withMaterializedProvider(
+      properties: util.Map[String, String]): util.Map[String, String] = {
+    if (properties.containsKey(TableCatalog.PROP_PROVIDER)) {
+      properties
+    } else {
+      val augmented = new util.HashMap[String, String](properties)
+      augmented.put(
+        TableCatalog.PROP_PROVIDER,
+        Option(properties.get(TableCatalog.PROP_PROVIDER)).getOrElse(sessionDefaultProvider))
+      augmented
+    }
+  }
+
+  /**
+   * REPLACE / CREATE OR REPLACE delegation gate.
+   *
+   *   - Delegate when: UC Delta API is wired in AND request specifies Delta provider.
+   *   - Existing-table validation (MANAGED, Delta, catalog-managed) is enforced by the
+   *     Delta-side `buildReplaceProps` after loading; we do not pre-check it here.
+   *   - Non-Delta REPLACE stays on the legacy path; its rejection error is unchanged.
+   */
+  private def shouldDelegateReplaceToDeltaApi(properties: util.Map[String, String]): Boolean =
+    shouldUseDeltaAPI && hasDeltaProvider(properties)
+
+  /**
+   * Returns the properties UC should pass to the Delta catalog delegate for a managed Delta
+   * CREATE / CTAS. Runs {@link #validateAndDefaultManagedDeltaCreateProperties} on the input
+   * first. When the UC Delta API path is ready, we skip UC's legacy `createStagingTable` and
+   * pass the validated properties through untouched -- the Delta catalog stages and finalizes
+   * via the UC Delta API. Otherwise we fall back to the legacy staging path so older Delta
+   * builds keep working.
+   */
+  private def managedDeltaCreatePropsForDelegate(
+      ident: Identifier,
+      properties: util.Map[String, String]): util.Map[String, String] = {
+    // Materialize the effective provider (same resolution as `hasDeltaProvider`) so the Delta
+    // delegate and `UCProxy.createTable`'s `requireProviderSpecified` see an explicit `provider`.
+    val withProvider = withMaterializedProvider(properties)
+    val validated = validateAndDefaultManagedDeltaCreateProperties(withProvider)
+    if (shouldUseDeltaAPI) validated
+    else stageManagedDeltaTableAndGetProps(ident, validated)
   }
 
   override def name(): String = delegate.name()
@@ -93,11 +206,14 @@ class UCSingleCatalog
     delegate.tableExists(ident)
   }
 
+  override def capabilities(): util.Set[TableCatalogCapability] = delegate.capabilities()
+
   override def createTable(
       ident: Identifier,
       columns: Array[Column],
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
+    val schema = CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns)
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
@@ -105,41 +221,24 @@ class UCSingleCatalog
       throw new ApiException("Cannot create EXTERNAL TABLE without location.")
     }
 
-    if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
-      // Check that caller shouldn't set some properties
-      List(UCTableProperties.UC_TABLE_ID_KEY, UCTableProperties.UC_TABLE_ID_KEY_OLD,
-        TableCatalog.PROP_IS_MANAGED_LOCATION)
-        .filter(properties.containsKey(_))
-        .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
-      // Setting the catalogManaged table feature is required for creating a managed table.
-      if (!properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) &&
-        !properties.containsKey(UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)) {
-        throw new ApiException(
-          s"Managed table creation requires table property " +
-            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW}'=" +
-            s"'${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'" +
-            s" to be set.")
+    if (UCSingleCatalog.isManagedTable(properties, ident)) {
+      if (hasDeltaProvider(properties)) {
+        // Managed Delta table
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
+        delegate.createTable(ident, schema, partitions, newProps)
+      } else {
+        // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
+        // tables. Surface the same friendly error the legacy staging path used to produce.
+        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
       }
-      // Caller should not set these two table properties to values other than "supported". This is
-      // the only documented value.
-      List(UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
-        UCTableProperties.DELTA_CATALOG_MANAGED_KEY_NEW)
-        .foreach(k => {
-          Option(properties.get(k))
-            .filter(_ != UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
-            .foreach(v => throw new ApiException(
-              s"Invalid property value '$v' for '$k'."))
-        })
-
-      val newProps = stageManagedDeltaTableAndGetProps(ident, properties)
-      delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
       val newProps = prepareExternalTableProperties(properties)
-      delegate.createTable(ident, columns, partitions, newProps)
+      delegate.createTable(ident, schema, partitions, newProps)
     } else {
+      // Path-based identifiers (e.g. `delta`.`/tmp/foo`) fall through to the delegate.
       // TODO: for path-based tables, Spark should generate a location property using the qualified
       //       path string.
-      delegate.createTable(ident, columns, partitions, properties)
+      delegate.createTable(ident, schema, partitions, properties)
     }
   }
 
@@ -159,26 +258,142 @@ class UCSingleCatalog
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
     newProps.put(TableCatalog.PROP_LOCATION, stagingTableInfo.getStagingLocation)
-    // Sets both the new and old table ID property while it's being renamed.
+    // Set the UC-assigned table ID so Delta can preserve table identity.
     newProps.put(UCTableProperties.UC_TABLE_ID_KEY, stagingTableInfo.getId)
-    newProps.put(UCTableProperties.UC_TABLE_ID_KEY_OLD, stagingTableInfo.getId)
     // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
     // user-specified but system-generated, which is exactly the case here.
     newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
 
-    val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
-      new GenerateTemporaryTableCredential().tableId(stagingTableId).operation(TableOperation.READ_WRITE))
-    val credentialProps = CredPropsUtil.createTableCredProps(
-      renewCredEnabled,
-      CatalogUtils.stringToURI(stagingLocation).getScheme,
-      uri.toString,
-      tokenProvider,
-      stagingTableId,
-      TableOperation.READ_WRITE,
-      temporaryCredentials,
-    )
+    val credentialProps = UCCredentialHadoopConfs
+      .builder(uri.toString, CatalogUtils.stringToURI(stagingLocation).getScheme)
+      .addAppVersions(ApiClientFactory.appEngineVersions())
+      .tokenProvider(tokenProvider)
+      .apiClient(apiClient)
+      .enableCredentialRenewal(renewCredEnabled)
+      .enableCredentialScopedFs(credScopedFsEnabled)
+      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+      .buildForTable(stagingTableId, TableOperation.READ_WRITE)
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     newProps
+  }
+
+  /**
+   * Validates and normalizes the user-supplied table properties for creating a new UC-managed
+   * Delta table, returning the properties to pass downstream.
+   *
+   * In this path, UC expects the caller to provide only user-controlled properties. It rejects
+   * properties that UC itself assigns during staging, such as the UC table ID and the
+   * managed-location marker. The catalog-managed Delta feature flag is automatically turned on.
+   */
+  private def validateAndDefaultManagedDeltaCreateProperties(
+      properties: util.Map[String, String]): util.Map[String, String] = {
+    rejectSystemManagedProperties(properties)
+    Option(properties.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY)) match {
+      case None =>
+        val augmented = new util.HashMap[String, String](properties)
+        augmented.put(
+          UCTableProperties.DELTA_CATALOG_MANAGED_KEY,
+          UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
+        augmented
+      case Some(v) if v == UCTableProperties.DELTA_CATALOG_MANAGED_VALUE =>
+        properties
+      case Some(v) =>
+        throw new ApiException(
+          s"Invalid property value '$v' for '${UCTableProperties.DELTA_CATALOG_MANAGED_KEY}'. " +
+            s"Must be '${UCTableProperties.DELTA_CATALOG_MANAGED_VALUE}'.")
+    }
+  }
+
+  /**
+   * Builds the property map for replacing an existing UC-managed Delta table.
+   *
+   * Instead of staging a brand-new managed table, this path starts from the current table metadata
+   * returned by UC and prepares the properties needed to write back to that same managed table. It
+   * preserves the catalog-managed marker, marks the location as system-managed, and vends fresh
+   * READ_WRITE credentials for the existing table. It does not re-send the UC table ID as a
+   * caller-provided property; Delta is expected to preserve the existing table identity from the
+   * current snapshot during replace.
+   */
+  private def loadExistingManagedTablePropsForReplace(
+      ident: Identifier,
+      tableInfo: UCTableInfo,
+      properties: util.Map[String, String],
+      operation: String): util.Map[String, String] = {
+    val fullTableName = UCSingleCatalog.fullTableNameForApi(name(), ident)
+
+    // First, ensure the caller is not trying to override system-managed properties. Called
+    // explicitly here (and again inside validateAndDefault below) so a system-managed override on
+    // a REPLACE against a non-managed-Delta table still surfaces the precise error rather than
+    // tripping the more generic "only supported for catalog-managed UC Delta tables" gate.
+    rejectSystemManagedProperties(properties)
+    if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
+      throw new ApiException(
+        s"$operation cannot specify property '${TableCatalog.PROP_LOCATION}' " +
+          s"on an existing UC-managed Delta table.")
+    }
+    // Second, make sure UC says this is an existing catalog-managed Delta table and that the
+    // metadata we need to reuse it for replace (storage location and table ID) is present.
+    if (!isCatalogManagedDeltaTable(tableInfo)) {
+      throw new UnsupportedOperationException(
+        s"$operation is only supported for catalog-managed UC Delta tables")
+    }
+    val tableLocation = tableInfo.getStorageLocation
+    val tableId = tableInfo.getTableId
+    if (tableLocation == null || tableLocation.isEmpty) {
+      throw new ApiException(
+        s"Invalid table metadata for $fullTableName: storageLocation must be set")
+    }
+    if (tableId == null || tableId.isEmpty) {
+      throw new ApiException(
+        s"Invalid table metadata for $fullTableName: tableId must be set")
+    }
+    // Third, build the properties Delta needs in order to write back to the current managed table.
+    val existingProvider = tableInfo.getDataSourceFormat.getValue.toLowerCase(Locale.ROOT)
+    Option(properties.get(TableCatalog.PROP_PROVIDER))
+      .filterNot(_.equalsIgnoreCase(existingProvider))
+      .foreach(provider => throw new ApiException(
+        s"$operation is only supported for Unity Catalog managed Delta tables and requires " +
+          s"USING DELTA. Cannot change table format from " +
+          s"${existingProvider.toUpperCase(Locale.ROOT)} to " +
+          s"${provider.toUpperCase(Locale.ROOT)} for $fullTableName."))
+    // Deferred to here so the existing-table gate above can short-circuit for non-managed-Delta
+    // REPLACE without paying the validate-default cost (and without auto-adding a Delta-only
+    // property to a non-Delta property map).
+    val validated = validateAndDefaultManagedDeltaCreateProperties(properties)
+    val newProps = new util.HashMap[String, String]
+    newProps.putAll(validated)
+    newProps.put(TableCatalog.PROP_PROVIDER, existingProvider)
+    // Location intentionally omitted; Delta resolves it from the existing table snapshot.
+    newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+
+    // Finally, vend fresh READ_WRITE credentials for the existing table location.
+    val tableUriScheme = new Path(tableLocation).toUri.getScheme
+    val credentialProps = UCCredentialHadoopConfs
+      .builder(uri.toString, tableUriScheme)
+      .addAppVersions(ApiClientFactory.appEngineVersions())
+      .tokenProvider(tokenProvider)
+      .apiClient(apiClient)
+      .enableCredentialRenewal(renewCredEnabled)
+      .enableCredentialScopedFs(credScopedFsEnabled)
+      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+      .buildForTable(tableId, TableOperation.READ_WRITE)
+    UCSingleCatalog.setCredentialProps(newProps, credentialProps)
+    newProps
+  }
+
+  private def rejectSystemManagedProperties(properties: util.Map[String, String]): Unit = {
+    List(UCTableProperties.UC_TABLE_ID_KEY, TableCatalog.PROP_IS_MANAGED_LOCATION)
+      .filter(properties.containsKey(_))
+      .foreach(p => throw new ApiException(s"Cannot specify property '$p'."))
+  }
+
+  private def isCatalogManagedDeltaTable(tableInfo: UCTableInfo): Boolean = {
+    val tableProperties = Option(tableInfo.getProperties)
+    tableInfo.getTableType == TableType.MANAGED &&
+    tableInfo.getDataSourceFormat == DataSourceFormat.DELTA &&
+    tableProperties.exists(
+      _.get(UCTableProperties.DELTA_CATALOG_MANAGED_KEY) ==
+        UCTableProperties.DELTA_CATALOG_MANAGED_VALUE)
   }
 
   /** Prepares properties for external table creation (path credentials). */
@@ -186,19 +401,18 @@ class UCSingleCatalog
       properties: util.Map[String, String]): util.Map[String, String] = {
     val location = properties.get(TableCatalog.PROP_LOCATION)
     assert(location != null)
-    val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
-      new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
     val newProps = new util.HashMap[String, String]
     newProps.putAll(properties)
 
-    val credentialProps = CredPropsUtil.createPathCredProps(
-      renewCredEnabled,
-      CatalogUtils.stringToURI(location).getScheme,
-      uri.toString,
-      tokenProvider,
-      location,
-      PathOperation.PATH_CREATE_TABLE,
-      cred)
+    val credentialProps = UCCredentialHadoopConfs
+      .builder(uri.toString, CatalogUtils.stringToURI(location).getScheme)
+      .addAppVersions(ApiClientFactory.appEngineVersions())
+      .tokenProvider(tokenProvider)
+      .apiClient(apiClient)
+      .enableCredentialRenewal(renewCredEnabled)
+      .enableCredentialScopedFs(credScopedFsEnabled)
+      .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+      .buildForPath(location, PathOperation.PATH_CREATE_TABLE)
 
     UCSingleCatalog.setCredentialProps(newProps, credentialProps)
     newProps
@@ -209,7 +423,12 @@ class UCSingleCatalog
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet")
+    // Spark represents ALTER TABLE ... RENAME COLUMN as a structured TableChange here.
+    if (changes.exists(_.isInstanceOf[TableChange.RenameColumn])) {
+      throw new UnsupportedOperationException(
+        "ALTER TABLE RENAME COLUMN is not supported for Unity Catalog tables yet")
+    }
+    delegate.alterTable(ident, changes: _*)
   }
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
@@ -219,62 +438,162 @@ class UCSingleCatalog
   }
 
   override def listNamespaces(): Array[Array[String]] = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
+    namespaceCatalog.listNamespaces()
   }
 
   override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].listNamespaces(namespace)
+    namespaceCatalog.listNamespaces(namespace)
   }
 
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].loadNamespaceMetadata(namespace)
+    namespaceCatalog.loadNamespaceMetadata(namespace)
   }
 
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].createNamespace(namespace, metadata)
+    namespaceCatalog.createNamespace(namespace, metadata)
   }
 
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].alterNamespace(namespace, changes: _*)
+    namespaceCatalog.alterNamespace(namespace, changes: _*)
   }
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
-    delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
+    namespaceCatalog.dropNamespace(namespace, cascade)
   }
 
   /** Only called for REPLACE TABLE and RTAS */
   override def stageReplace(
       ident: Identifier,
+      columns: Array[Column],
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    stageReplace(
+      ident,
+      CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns),
+      partitions,
+      properties)
+  }
+
+  override def stageReplace(
+      ident: Identifier,
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    throw new UnsupportedOperationException("REPLACE TABLE is not supported")
+    val stagingCatalog = requireStagingCatalog("REPLACE TABLE")
+    if (shouldDelegateReplaceToDeltaApi(properties)) {
+      // Defer load + augment to the Delta-side `buildReplaceProps`. UCSingleCatalog no longer
+      // loads the existing table and prepare the properties for replace as this will be done by
+      // Delta instead.
+      return stagingCatalog.stageReplace(ident, schema, partitions, properties)
+    }
+    // The following becomes dead code when Delta API is turned on
+    val existingTable = resolveExistingTableForReplace(ident, allowMissingTable = false)
+    val newProps = loadExistingManagedTablePropsForReplace(
+      ident,
+      existingTable.get,
+      properties,
+      "REPLACE TABLE")
+    UCSingleCatalog.requireProviderSpecified("REPLACE TABLE", newProps)
+    stagingCatalog.stageReplace(ident, schema, partitions, newProps)
   }
 
   /** Only called for CREATE OR REPLACE TABLE ... [AS SELECT] */
   override def stageCreateOrReplace(
       ident: Identifier,
+      columns: Array[Column],
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    stageCreateOrReplace(
+      ident,
+      CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns),
+      partitions,
+      properties)
+  }
+
+  override def stageCreateOrReplace(
+      ident: Identifier,
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
-    throw new UnsupportedOperationException("REPLACE TABLE AS SELECT (RTAS) is not supported")
+    val stagingCatalog = requireStagingCatalog("CREATE OR REPLACE TABLE")
+    if (shouldDelegateReplaceToDeltaApi(properties)) {
+      // Defer existence-probe + branch (create-staging vs replace) to the Delta catalog.
+      // UCSingleCatalog no longer loads the existing table and prepare the properties for replace,
+      // or create a staging table if table doesn't exist yet, as this will be done by Delta catalog
+      // instead.
+      return stagingCatalog.stageCreateOrReplace(ident, schema, partitions, properties)
+    }
+    // The following becomes dead code when Delta API is turned on
+    val existingTable = resolveExistingTableForReplace(ident, allowMissingTable = true)
+    val newProps = existingTable.map { tableInfo =>
+      // Replacing existing table.
+      loadExistingManagedTablePropsForReplace(
+        ident,
+        tableInfo,
+        properties,
+        "CREATE OR REPLACE TABLE")
+    }.getOrElse {
+      // Creating a new table -- route through the same gate as `createTable` so a fresh
+      // CREATE OR REPLACE picks up the UC Delta API path when it's available.
+      managedDeltaCreatePropsForDelegate(ident, properties)
+    }
+    UCSingleCatalog.requireProviderSpecified("CREATE OR REPLACE TABLE", newProps)
+    stagingCatalog.stageCreateOrReplace(ident, schema, partitions, newProps)
+  }
+
+  /**
+   * Resolves the existing UC table metadata for REPLACE / CREATE OR REPLACE.
+   */
+  private def resolveExistingTableForReplace(
+      ident: Identifier,
+      allowMissingTable: Boolean): Option[UCTableInfo] = {
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    val fullTableName = UCSingleCatalog.fullTableNameForApi(name(), ident)
+    try {
+      Some(tablesApi.getTable(fullTableName,
+        /* readStreamingTableAsManaged = */ false,
+        /* readMaterializedViewAsManaged = */ false))
+    } catch {
+      case e: ApiException if e.getCode == 404 && allowMissingTable => None
+      case e: ApiException if e.getCode == 404 => throw new NoSuchTableException(ident)
+    }
+  }
+
+  private def requireStagingCatalog(operation: String): StagingTableCatalog = delegate match {
+    case catalog: StagingTableCatalog => catalog
+    case _ => throw new UnsupportedOperationException(s"$operation is not supported")
   }
 
   /** Only called for CTAS */
+  override def stageCreate(
+      ident: Identifier,
+      columns: Array[Column],
+      partitions: Array[Transform],
+      properties: util.Map[String, String]): StagedTable = {
+    stageCreate(
+      ident,
+      CatalogV2UtilWithColumnMetadata.v2ColumnsToStructType(columns),
+      partitions,
+      properties)
+  }
+
   override def stageCreate(
       ident: Identifier,
       schema: StructType,
       partitions: Array[Transform],
       properties: util.Map[String, String]): StagedTable = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    if (!delegate.isInstanceOf[StagingTableCatalog]) {
-      throw new UnsupportedOperationException("CREATE TABLE AS SELECT (CTAS) is not supported")
-    }
-
-    val stagingCatalog = delegate.asInstanceOf[StagingTableCatalog]
-    if (UCSingleCatalog.isManagedDeltaTable(properties, ident)) {
-      val newProps = stageManagedDeltaTableAndGetProps(ident, properties)
-      stagingCatalog.stageCreate(ident, schema, partitions, newProps)
+    val stagingCatalog = requireStagingCatalog("CREATE TABLE AS SELECT (CTAS)")
+    if (UCSingleCatalog.isManagedTable(properties, ident)) {
+      if (hasDeltaProvider(properties)) {
+        // Managed Delta table
+        val newProps = managedDeltaCreatePropsForDelegate(ident, properties)
+        stagingCatalog.stageCreate(ident, schema, partitions, newProps)
+      } else {
+        // Managed (no LOCATION, no EXTERNAL) but not Delta: UC doesn't support non-Delta managed
+        // tables. Surface the same friendly error the legacy staging path used to produce.
+        throw new ApiException("Unity Catalog does not support non-Delta managed table.")
+      }
     } else if (properties.containsKey(TableCatalog.PROP_LOCATION)) {
       val newProps = prepareExternalTableProperties(properties)
       stagingCatalog.stageCreate(ident, schema, partitions, newProps)
@@ -285,8 +604,26 @@ class UCSingleCatalog
 }
 
 object UCSingleCatalog {
+  // DeltaCatalog loading status for testing purpose.
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
+
+  /**
+   * Returns the current session's Hadoop configuration, blended with any session-scoped
+   * SQLConf overrides (this is what Spark SQL itself uses; see SPARK-23514).
+   *
+   * Passed to {@code UCCredentialHadoopConfs.Builder#hadoopConf} so that the builder can look up
+   * any existing {@code fs.<scheme>.impl} values before overriding them with the credential-scoped
+   * filesystem wrapper. Using {@code sessionState.newHadoopConf()} (instead of
+   * {@code sparkContext.hadoopConfiguration}) ensures the lookup also sees Hadoop properties set
+   * directly via {@code SparkSession.Builder.config("fs.<scheme>.impl", ...)} or {@code SET}
+   * commands, not only those prefixed with {@code spark.hadoop.}.
+   */
+  def sessionHadoopConf(): Configuration = {
+    SparkSession.getActiveSession
+      .map(_.sessionState.newHadoopConf())
+      .getOrElse(new Configuration())
+  }
 
   def setCredentialProps(props: util.HashMap[String, String],
                          credentialProps: util.Map[String, String]): Unit = {
@@ -299,6 +636,15 @@ object UCSingleCatalog {
     }.asJava)
   }
 
+  def requireProviderSpecified(
+      operation: String,
+      properties: util.Map[String, String]): Unit = {
+    Preconditions.checkArgument(
+      properties.get(TableCatalog.PROP_PROVIDER) != null,
+      "%s requires USING <format> (for example, USING DELTA)",
+      operation)
+  }
+
   /**
    * Determines whether a table should be created as a managed table.
    *
@@ -309,7 +655,7 @@ object UCSingleCatalog {
    * @param ident the table identifier
    * @return true if the table should be managed, false otherwise
    */
-  private def isManagedDeltaTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
+  private def isManagedTable(properties: util.Map[String, String], ident: Identifier): Boolean = {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     val isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
@@ -345,17 +691,28 @@ object UCSingleCatalog {
     checkUnsupportedNestedNamespace(ident.namespace())
     Seq(catalogName, ident.namespace()(0), ident.name()).mkString(".")
   }
+
 }
 
+/** Internal signal that preserves a view row rejected by the table-only catalog surface. */
+private[spark] final class ViewFoundDuringTableLoadException(
+    ident: Identifier,
+    val tableInfo: UCTableInfo)
+  extends NoSuchTableException(ident)
+
 // An internal proxy to talk to the UC client.
-private class UCProxy(
+private[spark] class UCProxy(
     uri: URI,
     tokenProvider: TokenProvider,
     renewCredEnabled: Boolean,
+    credScopedFsEnabled: Boolean,
     serverSidePlanningEnabled: Boolean,
     apiClient: ApiClient,
-    tablesApi: TablesApi,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with Logging {
+    protected[spark] val tablesApi: TablesApi)
+  extends TableCatalog
+  with UCProxyViewSupport
+  with SupportsNamespaces
+  with Logging {
   private[this] var name: String = null
   private[this] var schemasApi: SchemasApi = null
 
@@ -371,82 +728,108 @@ private class UCProxy(
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(namespace)
-
-    val catalogName = this.name
-    val schemaName = namespace.head
-    val maxResults = 0
-    val pageToken = null
-    val response: ListTablesResponse = tablesApi.listTables(catalogName, schemaName, maxResults, pageToken)
-    response.getTables.toSeq.map(table => Identifier.of(namespace, table.getName)).toArray
+    // Which view-like rows to hide from the table surface is version-specific: on Spark 4.2 all
+    // view-like types are served via listViews, while on 4.0/4.1 plain views remain here so they
+    // stay readable without a v2 view catalog.
+    listUCTableLikes(namespace)
+      .filterNot(t => hideFromTableListing(t.getTableType))
+      .map(table => Identifier.of(namespace, table.getName))
+      .toArray
   }
 
-  override def loadTable(ident: Identifier): Table = {
-    val t = try {
-      tablesApi.getTable(
-        UCSingleCatalog.fullTableNameForApi(this.name, ident),
+  private[spark] def listUCTableLikes(namespace: Array[String]): Seq[UCTableInfo] = {
+    val catalogName = this.name
+    val schemaName = namespace.head
+    val tables = ArrayBuffer.empty[UCTableInfo]
+    var pageToken: String = null
+    do {
+      val response = tablesApi.listTables(catalogName, schemaName, /* limit */ 0, pageToken)
+      tables ++= response.getTables.asScala
+      pageToken = response.getNextPageToken
+    } while (pageToken != null && pageToken.nonEmpty)
+    tables.toSeq
+  }
+
+  // Returns `None` on a 404 so callers can branch on presence/absence without catching an
+  // exception. `loadTable` re-raises `NoSuchTableException` on `None` (Spark's resolver expects
+  // that); the passive-filter paths (`dropTable`, `dropView`) and `loadView` map `None` to their
+  // own not-found result.
+  private[spark] def getUCTableLike(ident: Identifier): Option[UCTableInfo] = {
+    val fullName = UCSingleCatalog.fullTableNameForApi(this.name, ident)
+    try {
+      Some(tablesApi.getTable(
+        fullName,
         /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true)
+        /* readMaterializedViewAsManaged = */ true))
     } catch {
-      case e: ApiException if e.getCode == 404 =>
-        throw new NoSuchTableException(ident)
+      case e: ApiException if e.getCode == 404 => None
     }
+  }
+
+  // Single-RPC table path. Calls UC `getTable` once and routes view-like rows through a
+  // version-specific hook (rejected from the table surface on 4.2; plain views resolved as
+  // read-only V1 views on 4.0/4.1).
+  override def loadTable(ident: Identifier): Table = {
+    val t = getUCTableLike(ident).getOrElse(throw new NoSuchTableException(ident))
+    if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
+      loadViewLikeFromTableSurface(t, ident)
+    } else {
+      loadV1Table(t)
+    }
+  }
+
+  private[spark] def loadV1Table(t: UCTableInfo): Table = {
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
     val partitionCols = scala.collection.mutable.ArrayBuffer.empty[(String, Int)]
     val fields = t.getColumns.asScala.map { col =>
       Option(col.getPartitionIndex).foreach { index =>
         partitionCols += col.getName -> index
       }
-      StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
-        .withComment(col.getComment)
+      toStructField(col)
     }.toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
-    var tableOp = TableOperation.READ_WRITE
-    val temporaryCredentials = {
-      try {
-        temporaryCredentialsApi
-          .generateTemporaryTableCredentials(
-            // TODO: at this time, we don't know if the table will be read or written. For now we always
-            //       request READ_WRITE credentials as the server doesn't distinguish between READ and
-            //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
-            //       for read or write, we can request the proper credential after fixing Spark.
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-          )
-      }       catch {
-        case e: ApiException =>
-          logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
-          try {
-            tableOp = TableOperation.READ
-            temporaryCredentialsApi
-              .generateTemporaryTableCredentials(
-                new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
-              )
-          } catch {
-            case e: ApiException =>
-              logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
-              if (serverSidePlanningEnabled) null else throw e
-          }
-      }
+
+    val credBuilder =
+      UCCredentialHadoopConfs
+        .builder(uri.toString, locationUri.getScheme)
+        .addAppVersions(ApiClientFactory.appEngineVersions())
+        .tokenProvider(tokenProvider)
+        .apiClient(apiClient)
+        .enableCredentialRenewal(renewCredEnabled)
+        .enableCredentialScopedFs(credScopedFsEnabled)
+        .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+
+    // TODO: at this time, we don't know if the table will be read or written. For now we always
+    //       request READ_WRITE credentials as the server doesn't distinguish between READ and
+    //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
+    //       for read or write, we can request the proper credential after fixing Spark.
+    val extraSerdeProps = try {
+      credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
+    } catch {
+      case e: ApiException =>
+        logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
+        try {
+          credBuilder.buildForTable(tableId, TableOperation.READ)
+        } catch {
+          case e: ApiException =>
+            logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
+            if (serverSidePlanningEnabled) {
+              enableServerSidePlanningConfig(identifier)
+              Map.empty[String, String].asJava
+            } else {
+              throw e
+            }
+        }
     }
 
-    if (serverSidePlanningEnabled && temporaryCredentials == null) {
+    // For unrecognized schemes (e.g. file://) the credential switch returns empty without props;
+    // treat that the same as a failed fetch so SSP-enabled tables on unsupported schemes still work.
+    if (extraSerdeProps.isEmpty && serverSidePlanningEnabled) {
       enableServerSidePlanningConfig(identifier)
     }
 
-    val extraSerdeProps = if (temporaryCredentials == null) {
-      Map.empty[String, String].asJava
-    } else {
-      CredPropsUtil.createTableCredProps(
-        renewCredEnabled,
-        locationUri.getScheme,
-        uri.toString,
-        tokenProvider,
-        tableId,
-        tableOp,
-        temporaryCredentials,
-      )
-    }
-
+    val storageProperties = (t.getProperties.asScala.toMap ++ extraSerdeProps).asJava
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -454,10 +837,8 @@ private class UCProxy(
       } else {
         CatalogTableType.EXTERNAL
       },
-      storage = CatalogStorageFormat.empty.copy(
-        locationUri = Some(locationUri),
-        properties = t.getProperties.asScala.toMap ++ extraSerdeProps
-      ),
+      storage = SparkCatalogCompatibility.catalogStorageFormatWithLocation(
+        locationUri, storageProperties),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
       createTime = t.getCreatedAt,
@@ -467,15 +848,29 @@ private class UCProxy(
     // Spark separates table lookup and data source resolution. To support Spark native data
     // sources, here we return the `V1Table` which only contains the table metadata. Spark will
     // resolve the data source and create scan node later.
+    asV1Table(sparkTable)
+  }
+
+  private[spark] def toStructField(col: ColumnInfo): StructField =
+    StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
+      .withComment(col.getComment)
+
+  private[spark] def asV1Table(catalogTable: CatalogTable): Table = {
     Class.forName("org.apache.spark.sql.connector.catalog.V1Table")
       .getDeclaredConstructor(classOf[CatalogTable])
-      .newInstance(sparkTable)
+      .newInstance(catalogTable)
       .asInstanceOf[Table]
   }
 
+  /**
+   * Spark 4.2's `TableCatalog` made `createTable(ident, TableInfo)` the canonical entry
+   * point; this legacy 4-arg method carries all the create-table logic, which keeps the diff
+   * vs. main scoped to "add the new overload + 409 -> TableAlreadyExistsException catch required
+   * by the relation catalog's active-rejection contract".
+   */
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-    assert(properties.get(TableCatalog.PROP_PROVIDER) != null)
+    UCSingleCatalog.requireProviderSpecified("CREATE TABLE", properties)
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())
@@ -499,6 +894,8 @@ private class UCProxy(
     }
     createTable.setStorageLocation(storageLocation)
 
+    val partitionColNames: Seq[String] =
+      UCColumnConversions.partitionColumnNames(partitions).asScala.toSeq
     val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
       val column = new ColumnInfo()
       column.setName(field.name)
@@ -506,10 +903,12 @@ private class UCProxy(
         column.setComment(field.getComment.get)
       }
       column.setNullable(field.nullable)
-      column.setTypeText(field.dataType.simpleString)
+      column.setTypeText(field.dataType.catalogString)
       column.setTypeName(convertDataTypeToTypeName(field.dataType))
-      column.setTypeJson(field.dataType.json)
+      column.setTypeJson(UCColumnConversions.toStructFieldJson(field))
       column.setPosition(i)
+      val partitionIdx = partitionColNames.indexWhere(_.equalsIgnoreCase(field.name))
+      if (partitionIdx >= 0) column.setPartitionIndex(partitionIdx)
       column
     }
     val comment = Option(properties.get(TableCatalog.PROP_COMMENT))
@@ -520,9 +919,18 @@ private class UCProxy(
     val propertiesToServer =
       properties.view.filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_)).toMap
     createTable.setProperties(propertiesToServer)
-    tablesApi.createTable(createTable)
+    try {
+      tablesApi.createTable(createTable)
+    } catch {
+      // RelationCatalog's active-rejection contract: createTable must throw
+      // TableAlreadyExistsException when a view (or another table, race) already sits at
+      // `ident`. UC returns 409 in both cases.
+      case e: ApiException if e.getCode == 409 =>
+        throw new TableAlreadyExistsException(ident)
+    }
     loadTable(ident)
   }
+
 
   private def convertDatasourceFormat(format: String): DataSourceFormat = {
     format.toUpperCase match {
@@ -537,20 +945,31 @@ private class UCProxy(
     }
   }
 
-  private def convertDataTypeToTypeName(dataType: DataType): ColumnTypeName = {
+  private[spark] def convertDataTypeToTypeName(dataType: DataType): ColumnTypeName = {
     dataType match {
-      case StringType => ColumnTypeName.STRING
-      case BooleanType => ColumnTypeName.BOOLEAN
-      case ShortType => ColumnTypeName.SHORT
-      case IntegerType => ColumnTypeName.INT
-      case LongType => ColumnTypeName.LONG
-      case FloatType => ColumnTypeName.FLOAT
-      case DoubleType => ColumnTypeName.DOUBLE
-      case ByteType => ColumnTypeName.BYTE
-      case BinaryType => ColumnTypeName.BINARY
-      case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
-      case TimestampType => ColumnTypeName.TIMESTAMP
-      case _ => throw new ApiException("DataType not supported: " + dataType.simpleString)
+      case _: BooleanType => ColumnTypeName.BOOLEAN
+      case _: ByteType => ColumnTypeName.BYTE
+      case _: ShortType => ColumnTypeName.SHORT
+      case _: IntegerType => ColumnTypeName.INT
+      case _: LongType => ColumnTypeName.LONG
+      case _: FloatType => ColumnTypeName.FLOAT
+      case _: DoubleType => ColumnTypeName.DOUBLE
+      case _: DateType => ColumnTypeName.DATE
+      case _: TimestampType => ColumnTypeName.TIMESTAMP
+      case _: TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
+      case _: CharType => ColumnTypeName.CHAR
+      case _: StringType | _: VarcharType => ColumnTypeName.STRING
+      case _: BinaryType => ColumnTypeName.BINARY
+      case _: DecimalType => ColumnTypeName.DECIMAL
+      case _: DayTimeIntervalType | _: YearMonthIntervalType =>
+        ColumnTypeName.INTERVAL
+      case _: ArrayType => ColumnTypeName.ARRAY
+      case _: StructType => ColumnTypeName.STRUCT
+      case _: MapType => ColumnTypeName.MAP
+      case _: NullType => ColumnTypeName.NULL
+      case _: UserDefinedType[_] => ColumnTypeName.USER_DEFINED_TYPE
+      case _: VariantType => ColumnTypeName.VARIANT
+      case _ => ColumnTypeName.UNKNOWN_DEFAULT_OPEN_API
     }
   }
 
@@ -581,18 +1000,41 @@ private class UCProxy(
   }
 
   override def dropTable(ident: Identifier): Boolean = {
-    val ret = tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
-    if (ret == 200) true else false
+    // Spark's `DROP TABLE` always lands in `TableCatalog.dropTable`, regardless of what kind
+    // of object actually sits at `ident`. `RelationCatalog` puts tables and views in a
+    // shared identifier namespace, and the spec requires `dropTable` to passive-filter
+    // view-like rows -- a `DROP TABLE <view>` must look like "nothing here" and return false
+    // rather than delete the view. (`dropView` is symmetric: returns false for a table.)
+    // We resolve the kind via UC `getTable` first so a view-like row never reaches
+    // `tablesApi.deleteTable`.
+    val t = getUCTableLike(ident) match {
+      case Some(t) => t
+      case None => return false
+    }
+    if (UCViewTypes.isViewLikeTableType(t.getTableType)) {
+      return false
+    }
+    // `deleteTable` returns the (empty) response body, not an HTTP status; a real failure throws
+    // ApiException. Issue the delete for its side effect and report success.
+    tablesApi.deleteTable(UCSingleCatalog.fullTableNameForApi(this.name, ident))
+    true
   }
 
+  // UC OSS does not currently expose a rename endpoint for tables or views; stub until UC adds
+  // a rename API. `UCProxyViewSupport.renameView` mirrors this stub.
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
     throw new UnsupportedOperationException("Renaming a table is not supported yet")
   }
 
   override def listNamespaces(): Array[Array[String]] = {
-    schemasApi.listSchemas(name, 0, null).getSchemas.asScala.map { schema =>
-      Array(schema.getName)
-    }.toArray
+    val schemas = ArrayBuffer.empty[Array[String]]
+    var pageToken: String = null
+    do {
+      val response = schemasApi.listSchemas(name, /* limit */ 0, pageToken)
+      schemas ++= response.getSchemas.asScala.map(schema => Array(schema.getName))
+      pageToken = response.getNextPageToken
+    } while (pageToken != null && pageToken.nonEmpty)
+    schemas.toArray
   }
 
   override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
@@ -627,7 +1069,17 @@ private class UCProxy(
     createSchema.setCatalogName(this.name)
     createSchema.setName(namespace.head)
     createSchema.setProperties(metadata)
-    schemasApi.createSchema(createSchema)
+    // Spark 4.2 removed the namespaceExists() pre-check from CreateNamespaceExec. It relies on the
+    // catalog throwing NamespaceAlreadyExistsException for IF NOT EXISTS handling. On Spark 4.0/4.1
+    // the pre-check prevents this path.
+    try {
+      schemasApi.createSchema(createSchema)
+    } catch {
+      case e: ApiException if (e.getCode == 400 || e.getCode == 409) &&
+        e.getResponseBody != null &&
+        e.getResponseBody.contains("SCHEMA_ALREADY_EXISTS") =>
+        throw new NamespaceAlreadyExistsException(namespace)
+    }
   }
 
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {

@@ -51,7 +51,7 @@ public class SdkTemporaryPathCredentialTest extends BaseCRUDTestWithMockCredenti
     if (isConfiguredPath) {
       TemporaryCredentials temporaryCredentials =
           temporaryCredentialsApi.generateTemporaryPathCredentials(generateTemporaryPathCredential);
-      assertTemporaryCredentials(temporaryCredentials, scheme);
+      assertTemporaryCredentials(temporaryCredentials, scheme, url);
     } else {
       assertThatThrownBy(
               () ->

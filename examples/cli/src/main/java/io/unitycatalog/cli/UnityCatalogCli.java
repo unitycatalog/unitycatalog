@@ -137,7 +137,7 @@ public class UnityCatalogCli {
           VolumeCli.handle(cmd, apiClient);
           break;
         case CliUtils.TABLE:
-          TableCli.handle(cmd, apiClient);
+          TableCli.handle(cmd, apiClient, loadProperty(CliUtils.AUTH_TOKEN, cmd));
           break;
         case CliUtils.FUNCTION:
           FunctionCli.handle(cmd, apiClient);

@@ -1,7 +1,8 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
@@ -10,15 +11,20 @@ import com.linecorp.armeria.server.annotation.Head;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
+import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +38,7 @@ import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.Endpoint;
+import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
@@ -39,9 +46,13 @@ import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @ExceptionHandler(IcebergRestExceptionHandler.class)
 public class IcebergRestCatalogService {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(IcebergRestCatalogService.class);
 
   private static final String PREFIX_BASE = "catalogs/";
 
@@ -55,24 +66,19 @@ public class IcebergRestCatalogService {
           Endpoint.V1_REPORT_METRICS,
           Endpoint.V1_LIST_TABLES);
 
-  private final CatalogService catalogService;
   private final SchemaService schemaService;
-  private final TableService tableService;
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
   private final TableRepository tableRepository;
   private final SessionFactory sessionFactory;
 
   public IcebergRestCatalogService(
-      CatalogService catalogService,
       SchemaService schemaService,
-      TableService tableService,
       TableConfigService tableConfigService,
       MetadataService metadataService,
       Repositories repositories) {
-    this.catalogService = catalogService;
+    // TODO: avoid this service to service dependency
     this.schemaService = schemaService;
-    this.tableService = tableService;
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
     this.tableRepository = repositories.getTableRepository();
@@ -83,6 +89,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/config")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public ConfigResponse config(@Param("warehouse") Optional<String> catalogOpt) {
     String catalog =
         catalogOpt.orElseThrow(
@@ -100,6 +108,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public ListNamespacesResponse listNamespaces(
       @Param("catalog") String catalog, @Param("parent") Optional<String> parent)
       throws JsonProcessingException {
@@ -128,6 +138,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public GetNamespaceResponse getNamespace(
       @Param("catalog") String catalog, @Param("namespace") String namespace)
       throws JsonProcessingException {
@@ -142,6 +154,8 @@ public class IcebergRestCatalogService {
   // Table APIs
 
   @Head("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse tableExists(
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
@@ -160,13 +174,17 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public LoadTableResponse loadTable(
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
       @Param("table") String table) {
     String metadataLocation;
+    NormalizedURL tableLocation;
     try (Session session = sessionFactory.openSession()) {
-      tableRepository.getTable(catalog + "." + namespace + "." + table);
+      TableInfo tableInfo = tableRepository.getTable(catalog + "." + namespace + "." + table);
+      tableLocation = NormalizedURL.from(tableInfo.getStorageLocation());
       metadataLocation =
           tableRepository.getTableUniformMetadataLocation(session, catalog, namespace, table);
     }
@@ -175,8 +193,12 @@ public class IcebergRestCatalogService {
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
 
-    TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
-    Map<String, String> config = tableConfigService.getTableConfig(tableMetadata);
+    TableMetadata tableMetadata =
+        metadataService.readTableMetadata(NormalizedURL.from(metadataLocation));
+    ValidationUtils.checkArgument(
+        tableLocation.equals(NormalizedURL.from(tableMetadata.location())),
+        "Iceberg table location must match the registered table location.");
+    Map<String, String> config = tableConfigService.getTableConfig(tableLocation);
 
     return LoadTableResponse.builder()
         .withTableMetadata(tableMetadata)
@@ -186,6 +208,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public LoadViewResponse loadView(
       @Param("namespace") String namespace, @Param("view") String view) {
     // this is not supported yet, but Iceberg REST client tries to load
@@ -195,36 +219,48 @@ public class IcebergRestCatalogService {
     throw new NoSuchViewException("View does not exist: %s", namespace + "." + view);
   }
 
+  /**
+   * Accept a scan or commit report from an Iceberg client. Clients report after every scan and
+   * commit as long as the server advertises {@code V1_REPORT_METRICS}, which this service does. The
+   * report is acknowledged and discarded -- UC does not persist client telemetry today -- but the
+   * table is still resolved so that a report naming a table UC doesn't serve is answered with a
+   * 404, as the REST spec requires.
+   */
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse reportMetrics(
-      @Param("namespace") String namespace, @Param("table") String table) {
-    return HttpResponse.of(HttpStatus.OK);
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("table") String table,
+      ReportMetricsRequest request) {
+    try (Session session = sessionFactory.openSession()) {
+      tableRepository.getTable(catalog + "." + namespace + "." + table);
+      String metadataLocation =
+          tableRepository.getTableUniformMetadataLocation(session, catalog, namespace, table);
+      if (metadataLocation == null) {
+        throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
+      }
+    }
+
+    LOGGER.debug("Received {} for table {}.{}.{}", request.reportType(), catalog, namespace, table);
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables")
   @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
       @Param("catalog") String catalog, @Param("namespace") String namespace)
       throws JsonProcessingException {
-    AggregatedHttpResponse resp =
-        tableService
-            .listTables(
-                catalog,
-                namespace,
-                Optional.of(Integer.MAX_VALUE),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty())
-            .aggregate()
-            .join();
+    ListTablesResponse tables =
+        tableRepository.listTables(
+            catalog, namespace, Optional.of(Integer.MAX_VALUE), Optional.empty(), false, false);
     List<TableIdentifier> filteredTables;
     try (Session session = sessionFactory.openSession()) {
       filteredTables =
-          Objects.requireNonNull(
-                  JsonUtils.getInstance()
-                      .readValue(resp.contentUtf8(), ListTablesResponse.class)
-                      .getTables())
-              .stream()
+          Objects.requireNonNull(tables.getTables()).stream()
               .filter(
                   tableInfo -> {
                     String metadataLocation =

@@ -8,15 +8,15 @@ import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
-import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateVolumeRequestContent;
 import io.unitycatalog.server.model.ListVolumesResponseContent;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
@@ -24,10 +24,8 @@ import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
-import java.util.List;
-import java.util.Map;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
-import java.util.UUID;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
@@ -45,16 +43,16 @@ public class VolumeService extends AuthorizedService {
   private final CatalogRepository catalogRepository;
   private final MetastoreRepository metastoreRepository;
 
-  private final UnityAccessEvaluator evaluator;
-
   @SneakyThrows
-  public VolumeService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories);
+  public VolumeService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
     this.volumeRepository = repositories.getVolumeRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.catalogRepository = repositories.getCatalogRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
-    this.evaluator = new UnityAccessEvaluator(authorizer);
   }
 
   /**
@@ -112,38 +110,33 @@ public class VolumeService extends AuthorizedService {
     return HttpResponse.ofJson(volumeInfo);
   }
 
-  @Get("")
-  @AuthorizeExpression("#defer")
-  public HttpResponse listVolumes(
-      @Param("catalog_name") String catalogName,
-      @Param("schema_name") String schemaName,
-      @Param("max_results") Optional<Integer> maxResults,
-      @Param("page_token") Optional<String> pageToken,
-      @Param("include_browse") Optional<Boolean> includeBrowse) {
-    ListVolumesResponseContent listVolumesResponse = volumeRepository.listVolumes(
-        catalogName, schemaName, maxResults, pageToken, includeBrowse);
-
-    filterVolumes("""
-        #authorize(#principal, #metastore, OWNER) ||
-        #authorize(#principal, #catalog, OWNER) ||
-        (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-        (#authorize(#principal, #schema, USE_SCHEMA) &&
-            #authorize(#principal, #catalog, USE_CATALOG) &&
-            #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
-        """, listVolumesResponse.getVolumes());
-
-    return HttpResponse.ofJson(listVolumesResponse);
-  }
-
-  @Get("/{full_name}")
-  @AuthorizeExpression("""
+  private static final String LIST_AND_GET_AUTH_EXPRESSION = """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
       (#authorize(#principal, #schema, USE_SCHEMA) &&
           #authorize(#principal, #catalog, USE_CATALOG) &&
           #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
-      """)
+      """;
+
+  @Get("")
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse listVolumes(
+      @Param("catalog_name") @AuthorizeResourceKey(CATALOG) String catalogName,
+      @Param("schema_name") @AuthorizeResourceKey(SCHEMA) String schemaName,
+      @Param("max_results") Optional<Integer> maxResults,
+      @Param("page_token") Optional<String> pageToken,
+      @Param("include_browse") Optional<Boolean> includeBrowse) {
+    ListVolumesResponseContent listVolumesResponse = volumeRepository.listVolumes(
+        catalogName, schemaName, maxResults, pageToken, includeBrowse);
+    applyResponseFilter(SecurableType.VOLUME, listVolumesResponse.getVolumes());
+    return HttpResponse.ofJson(listVolumesResponse);
+  }
+
+  @Get("/{full_name}")
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getVolume(
       @Param("full_name") @AuthorizeResourceKey(VOLUME) String fullName,
@@ -185,28 +178,5 @@ public class VolumeService extends AuthorizedService {
     return HttpResponse.of(HttpStatus.OK);
   }
 
-  public void filterVolumes(String expression, List<VolumeInfo> entries) {
-    // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = userRepository.findPrincipalId();
-
-    evaluator.filter(
-        principalId,
-        expression,
-        entries,
-        vi -> {
-          CatalogInfo catalogInfo = catalogRepository.getCatalog(vi.getCatalogName());
-          SchemaInfo schemaInfo =
-              schemaRepository.getSchema(vi.getCatalogName() + "." + vi.getSchemaName());
-          return Map.of(
-              METASTORE,
-              metastoreRepository.getMetastoreId(),
-              CATALOG,
-              UUID.fromString(catalogInfo.getId()),
-              SCHEMA,
-              UUID.fromString(schemaInfo.getSchemaId()),
-              VOLUME,
-              UUID.fromString(vi.getVolumeId()));
-        });
-  }
 }
 

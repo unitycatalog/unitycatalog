@@ -12,10 +12,14 @@ public class S3DeltaManagedTableReadWriteTest extends DeltaManagedTableReadWrite
    * This function provides a set of test parameters that cloud-aware tests should run for this
    * class.
    *
-   * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled)
+   * @return A stream of Arguments.of(String scheme, boolean renewCredEnabled, boolean
+   *     credScopedFsEnabled)
    */
   protected static Stream<Arguments> cloudParameters() {
-    return Stream.of(Arguments.of("s3", false), Arguments.of("s3", true));
+    return Stream.of(
+        Arguments.of("s3", false, false),
+        Arguments.of("s3", true, false),
+        Arguments.of("s3", false, true));
   }
 
   @Override

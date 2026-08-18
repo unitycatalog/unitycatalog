@@ -7,9 +7,11 @@ import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.ListCatalogsResponse;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
@@ -71,7 +73,8 @@ public class CatalogRepository {
         session -> {
           if (RepositoryUtils.getCatalogDaoOpt(session, createCatalog.getName()).isPresent()) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS, "Catalog already exists: " + createCatalog.getName());
+                ErrorCode.CATALOG_ALREADY_EXISTS,
+                "Catalog already exists: " + createCatalog.getName());
           }
           CatalogInfoDAO catalogInfoDAO = CatalogInfoDAO.from(catalogInfo);
           PropertyDAO.from(catalogInfo.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
@@ -130,7 +133,8 @@ public class CatalogRepository {
 
   public CatalogInfoDAO getCatalogDaoOrThrow(Session session, String name) {
     return RepositoryUtils.getCatalogDaoOpt(session, name)
-        .orElseThrow(() -> new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name));
+        .orElseThrow(
+            () -> new BaseException(ErrorCode.CATALOG_NOT_FOUND, "Catalog not found: " + name));
   }
 
   public UUID getCatalogIdOrThrow(Session session, String catalogName) {
@@ -160,7 +164,8 @@ public class CatalogRepository {
               && RepositoryUtils.getCatalogDaoOpt(session, updateCatalog.getNewName())
                   .isPresent()) {
             throw new BaseException(
-                ErrorCode.ALREADY_EXISTS, "Catalog already exists: " + updateCatalog.getNewName());
+                ErrorCode.CATALOG_ALREADY_EXISTS,
+                "Catalog already exists: " + updateCatalog.getNewName());
           }
           if (updateCatalog.getNewName() != null) {
             catalogInfoDAO.setName(updateCatalog.getNewName());
@@ -187,11 +192,12 @@ public class CatalogRepository {
         /* readOnly = */ false);
   }
 
-  public void deleteCatalog(String name, boolean force) {
-    TransactionManager.executeWithTransaction(
+  public List<DeletedResource> deleteCatalog(String name, boolean force) {
+    return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           CatalogInfoDAO catalogInfo = getCatalogDaoOrThrow(session, name);
+          List<DeletedResource> deleted = new ArrayList<>();
 
           // First, check if there are any schemas in the catalog (to determine if force is needed)
           ListSchemasResponse initialSchemaCheck =
@@ -226,14 +232,15 @@ public class CatalogRepository {
 
               // Process this page of schemas
               for (SchemaInfo schema : schemaResponse.getSchemas()) {
-                repositories
-                    .getSchemaRepository()
-                    .deleteSchema(
-                        session,
-                        catalogInfo.getId(),
-                        catalogInfo.getName(),
-                        schema.getName(),
-                        force);
+                deleted.addAll(
+                    repositories
+                        .getSchemaRepository()
+                        .deleteSchema(
+                            session,
+                            catalogInfo.getId(),
+                            catalogInfo.getName(),
+                            schema.getName(),
+                            force));
               }
 
               // Get the token for the next page
@@ -245,10 +252,13 @@ public class CatalogRepository {
           PropertyRepository.findProperties(session, catalogInfo.getId(), Constants.CATALOG)
               .forEach(session::remove);
 
+          deleted.add(
+              new DeletedResource(SecurableType.CATALOG, catalogInfo.getId().toString(), null));
+
           // Remove the catalog
           session.remove(catalogInfo);
           LOGGER.info("Deleted catalog: {}", name);
-          return null;
+          return deleted;
         },
         "Failed to delete catalog",
         /* readOnly = */ false);

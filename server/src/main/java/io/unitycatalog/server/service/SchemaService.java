@@ -7,22 +7,25 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateSchema;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.model.DeletedResource;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
@@ -40,8 +43,11 @@ public class SchemaService extends AuthorizedService {
   private final MetastoreRepository metastoreRepository;
 
   @SneakyThrows
-  public SchemaService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories);
+  public SchemaService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
     this.schemaRepository = repositories.getSchemaRepository();
     this.catalogRepository = repositories.getCatalogRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
@@ -73,8 +79,10 @@ public class SchemaService extends AuthorizedService {
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createSchema(
-      @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
-      @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
+      @AuthorizeResourceKeys({
+        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
+        @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
+      })
       @AuthorizeKey(key = "storage_root")
       CreateSchema createSchema) {
     SchemaInfo schemaInfo = schemaRepository.createSchema(createSchema);
@@ -86,20 +94,21 @@ public class SchemaService extends AuthorizedService {
   }
 
   @Get("")
-  @AuthorizeExpression("#defer")
+  @AuthorizeExpression("""
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      """)
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse listSchemas(
-      @Param("catalog_name") String catalogName,
+      @Param("catalog_name") @AuthorizeResourceKey(CATALOG) String catalogName,
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
     ListSchemasResponse listSchemasResponse =
         schemaRepository.listSchemas(catalogName, maxResults, pageToken);
-    filterSchemas("""
-        #authorize(#principal, #metastore, OWNER) ||
-        #authorize(#principal, #catalog, OWNER) ||
-        (#authorize(#principal, #schema, USE_SCHEMA) &&
-            #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
-        """,
-        listSchemasResponse.getSchemas());
+    applyResponseFilter(SecurableType.SCHEMA, listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);
   }
 
@@ -143,37 +152,12 @@ public class SchemaService extends AuthorizedService {
   public HttpResponse deleteSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       @Param("force") Optional<Boolean> force) {
-    SchemaInfo schemaInfo = schemaRepository.getSchema(fullName);
-    schemaRepository.deleteSchema(fullName, force.orElse(false));
-
-    CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
-
-    // First remove any child table links
-    authorizer.removeHierarchyChildren(UUID.fromString(schemaInfo.getSchemaId()));
-    // Then remove schema from catalog and clear authorizations
-    removeHierarchicalAuthorizations(schemaInfo.getSchemaId(), catalogInfo.getId());
-
+    schemaRepository.getSchema(fullName);
+    List<DeletedResource> deleted =
+        schemaRepository.deleteSchema(fullName, force.orElse(false));
+    clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }
 
-  public void filterSchemas(String expression, List<SchemaInfo> entries) {
-    // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = userRepository.findPrincipalId();
-
-    evaluator.filter(
-        principalId,
-        expression,
-        entries,
-        si -> {
-          CatalogInfo catalogInfo = catalogRepository.getCatalog(si.getCatalogName());
-          return Map.of(
-              METASTORE,
-              metastoreRepository.getMetastoreId(),
-              CATALOG,
-              UUID.fromString(catalogInfo.getId()),
-              SCHEMA,
-              UUID.fromString(si.getSchemaId()));
-        });
-  }
 }
 

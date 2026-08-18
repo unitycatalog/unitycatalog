@@ -2,8 +2,9 @@ package io.unitycatalog.spark.auth.storage;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.auth.AwsVendedTokenProvider;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialGenerator;
-import io.unitycatalog.spark.UCHadoopConf;
 import java.time.Instant;
 import java.util.Map;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -34,7 +35,9 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
 
   @Override
   protected Map<String, String> catalogExtraProps() {
-    return Map.of("fs.s3.impl", S3CredFileSystem.class.getName());
+    return Map.of(
+        "spark.hadoop.fs.s3.impl", S3CredFileSystem.class.getName(),
+        "spark.hadoop.fs.s3a.impl", S3CredFileSystem.class.getName());
   }
 
   public static class AwsCredGenerator extends TimeBasedCredGenerator<Credentials>
@@ -58,7 +61,7 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
 
     @Override
     protected AwsCredentialsProvider createProvider() {
-      String clazz = getConf().get(UCHadoopConf.S3A_CREDENTIALS_PROVIDER);
+      String clazz = getConf().get(UCHadoopConfConstants.S3A_CREDENTIALS_PROVIDER);
       assertThat(clazz).isEqualTo(AwsVendedTokenProvider.class.getName());
 
       // This will validate if the hadoop configuration is correct or not, since it will fail the

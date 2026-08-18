@@ -27,6 +27,7 @@ import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -35,7 +36,7 @@ public class TableCli {
   private static final ObjectMapper objectMapper = CliUtils.getObjectMapper();
   private static ObjectWriter objectWriter;
 
-  public static void handle(CommandLine cmd, ApiClient apiClient)
+  public static void handle(CommandLine cmd, ApiClient apiClient, String authToken)
       throws JsonProcessingException, ApiException {
     TablesApi tablesApi = new TablesApi(apiClient);
     TemporaryCredentialsApi temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient);
@@ -44,9 +45,10 @@ public class TableCli {
     objectWriter = CliUtils.getObjectWriter(cmd);
     JSONObject json = CliUtils.createJsonFromOptions(cmd);
     String output = EMPTY;
+    String serverUrl = apiClient.getBaseUri();
     switch (subCommand) {
       case CliUtils.CREATE:
-        output = createTable(tablesApi, temporaryCredentialsApi, json);
+        output = createTable(tablesApi, temporaryCredentialsApi, json, serverUrl, authToken);
         break;
       case CliUtils.LIST:
         output = listTables(tablesApi, json);
@@ -70,7 +72,11 @@ public class TableCli {
   }
 
   private static String createTable(
-      TablesApi tablesApi, TemporaryCredentialsApi temporaryCredentialsApi, JSONObject json)
+      TablesApi tablesApi,
+      TemporaryCredentialsApi temporaryCredentialsApi,
+      JSONObject json,
+      String serverUrl,
+      String authToken)
       throws JsonProcessingException, ApiException {
     CliUtils.resolveFullNameToThreeLevelNamespace(json);
     try {
@@ -99,6 +105,7 @@ public class TableCli {
                     json.getString(CliParams.TABLE_TYPE.getServerParam()).toUpperCase()))
             .dataSourceFormat(DataSourceFormat.valueOf(format.toUpperCase()));
     TemporaryCredentials temporaryCredentials;
+    String stagingTableId = null;
     if (createTable.getTableType() == TableType.EXTERNAL) {
       if (!json.has(CliParams.STORAGE_LOCATION.getServerParam())) {
         throw new CliException("Storage location is required for external tables");
@@ -131,7 +138,7 @@ public class TableCli {
               .schemaName(json.getString(CliParams.SCHEMA_NAME.getServerParam()))
               .name(json.getString(CliParams.NAME.getServerParam()));
       StagingTableInfo stagingTableInfo = tablesApi.createStagingTable(createStagingTable);
-      String stagingTableId = stagingTableInfo.getId();
+      stagingTableId = stagingTableInfo.getId();
       String stagingLocation = stagingTableInfo.getStagingLocation();
       if (stagingTableId == null || stagingLocation == null) {
         throw new CliException("Failed to create staging table");
@@ -148,8 +155,20 @@ public class TableCli {
 
     // try and initialize the directory and initiate Delta log at the location
     try {
-      DeltaKernelUtils.createDeltaTable(
-          createTable.getStorageLocation(), columnInfoList, temporaryCredentials);
+      Map<String, String> deltaTableProperties =
+          DeltaKernelUtils.createDeltaTable(
+              createTable.getStorageLocation(),
+              columnInfoList,
+              temporaryCredentials,
+              stagingTableId,
+              serverUrl,
+              authToken,
+              createTable.getProperties());
+      if (createTable.getTableType() == TableType.MANAGED) {
+        // Use properties read back from the post-commit snapshot as the source of truth.
+        // They reflect what the kernel actually wrote (including user-specified properties).
+        createTable.setProperties(deltaTableProperties);
+      }
     } catch (Exception e) {
       if ((e instanceof TableAlreadyExistsException
               || e.getCause() instanceof TableAlreadyExistsException)

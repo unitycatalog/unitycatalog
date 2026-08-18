@@ -58,4 +58,22 @@ public class ValidationUtils {
           ErrorCode.INVALID_ARGUMENT, String.format(messageTemplate, messageArgs));
     }
   }
+
+  /**
+   * Checks that {@code value} is non-null. If null, throws a BaseException with INVALID_ARGUMENT
+   * error code and the specified message. Returns the (non-null) value, mirroring Guava's {@code
+   * Preconditions.checkNotNull}, so callers can write {@code Foo f = checkNotNull(...)} with the
+   * null-check inline.
+   *
+   * @param value the value to check
+   * @param message the exception message to use if {@code value} is null
+   * @return {@code value}, guaranteed non-null
+   * @throws BaseException with INVALID_ARGUMENT if {@code value} is null
+   */
+  public static <T> T checkNotNull(T value, String message) {
+    if (value == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
+    }
+    return value;
+  }
 }

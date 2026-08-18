@@ -8,7 +8,11 @@ import static org.mockito.Mockito.verify;
 
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.auth.TokenProviderUtils;
+import io.unitycatalog.client.internal.ApiClientUtils;
+import io.unitycatalog.client.retry.JitterDelayRetryPolicy;
+import java.net.URI;
 import java.net.http.HttpRequest;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -87,6 +91,19 @@ public class UserAgentTest {
     String userAgent = extractUserAgent(client);
     assertThat(userAgent)
         .contains("UnityCatalog-Java-Client", "MyApp", "1.0.0", "MyWrapper", "2.5.1", "Java", "17");
+  }
+
+  @Test
+  public void testApiClientUtilsCreateAddsAppVersions() {
+    ApiClient client =
+        ApiClientUtils.create(
+            URI.create(TEST_URI),
+            TOKEN_PROVIDER,
+            JitterDelayRetryPolicy.builder().build(),
+            Map.of("Spark", "4.0.0", "Delta", "3.3.0"));
+
+    String userAgent = extractUserAgent(client);
+    assertThat(userAgent).contains("UnityCatalog-Java-Client", "Spark/4.0.0", "Delta/3.3.0");
   }
 
   @Test

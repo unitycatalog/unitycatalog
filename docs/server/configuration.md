@@ -32,9 +32,14 @@ should see:
 # | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #
 #  \____/|_| |_|_|\__|\__, |  \_____\__,_|\__\__,_|_|\___/ \__, | #
 #                      __/ |                                __/ | #
-#                     |___/               v0.2.0           |___/  #
+#                     |___/           v<version>           |___/  #
 ###################################################################
 ```
+
+!!! note "Server version string"
+    `<version>` is the version you are running. Released builds display the release version (for
+    example `v0.5.0`), while builds from the `main` branch append `-SNAPSHOT` (for example
+    `v0.5.0-SNAPSHOT`).
 
 The server can be started by issuing the below command from the project root directory:
 
@@ -60,23 +65,6 @@ The server config file is at the location `etc/conf/server.properties` (relative
     the server will instantiate an empty in-memory h2 database for storing metadata. If set to `dev`, the server will
     use the file `etc/db/h2db.mv.db` as the metadata store. Any changes made to the metadata will be persisted in this
     file.
-
-For enabling server to vend AWS temporary credentials to access S3 buckets (for accessing External tables/volumes),
-the following parameters need to be set:
-
-- `s3.bucketPath.i`: The S3 path of the bucket where the data is stored. Should be in the format `s3://<bucket-name>`.
-- `s3.accessKey.i`: The AWS access key, an identifier of temp credentials.
-- `s3.secretKey.i`: The AWS secret key used to sign API requests to AWS.
-- `s3.sessionToken.i`: THE AWS session token, used to verify that the request is coming from a trusted source.
-
-You can configure multiple buckets by incrementing the index *i* in the above parameters. The starting index should
-be 0.
-
-All the above parameters are required for each index. For vending temporary credentials, the server matches the bucket
-path in the table/volume storage_location with the bucket path in the configuration and returns the corresponding
-access key, secret key, and session token.
-
-Any params that are not required can be left empty.
 
 ## Logging
 

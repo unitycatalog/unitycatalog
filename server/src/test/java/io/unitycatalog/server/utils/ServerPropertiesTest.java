@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.time.Duration;
 import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
@@ -189,12 +191,31 @@ public class ServerPropertiesTest {
     testValidProperty(Property.COOKIE_TIMEOUT, "P5D");
     testValidProperty(Property.COOKIE_TIMEOUT, "PT2H");
     testValidProperty(Property.COOKIE_TIMEOUT, "P1DT12H30M");
+    testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT24H");
+    testValidProperty(Property.ACCESS_TOKEN_TIMEOUT, "PT1H");
 
     // Invalid values
     testInvalidProperty(
         Property.COOKIE_TIMEOUT, "5 days", "Invalid value '5 days'", "server.cookie-timeout");
     testInvalidProperty(
         Property.COOKIE_TIMEOUT, "P5X", "Invalid value 'P5X'", "server.cookie-timeout");
+    testInvalidProperty(
+        Property.ACCESS_TOKEN_TIMEOUT,
+        "24 hours",
+        "Invalid value '24 hours'",
+        "server.access-token-timeout");
+  }
+
+  @Test
+  public void testEffectiveCookieTimeout() {
+    ServerProperties serverProperties = new ServerProperties();
+    assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT24H"));
+
+    serverProperties.set(Property.COOKIE_TIMEOUT, "PT1H");
+    assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT1H"));
+
+    serverProperties.set(Property.ACCESS_TOKEN_TIMEOUT, "PT48H");
+    assertThat(serverProperties.getEffectiveCookieTimeout()).isEqualTo(Duration.parse("PT1H"));
   }
 
   @Test
@@ -216,6 +237,83 @@ public class ServerPropertiesTest {
       assertThat(serverPropertiesFromConf.get(property))
           .as("Property %s from etc/conf/server.properties should match default", property.getKey())
           .isEqualTo(serverProperties.get(property));
+    }
+  }
+
+  @Test
+  public void testCheckDeltaApiOnlyForManagedTable() {
+    ServerProperties serverProperties1 = new ServerProperties();
+    serverProperties1.checkDeltaApiOnlyForManagedTable(TableType.MANAGED, "endpoint_name");
+    serverProperties1.checkDeltaApiOnlyForManagedTable(TableType.EXTERNAL, "endpoint_name");
+    serverProperties1.checkDeltaApiOnlyForManagedTable(TableType.METRIC_VIEW, "endpoint_name");
+    serverProperties1.checkDeltaApiOnlyEnabled("endpoint_name");
+
+    Properties props = new Properties();
+    props.setProperty(Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey(), "true");
+    ServerProperties serverProperties2 = new ServerProperties(props);
+    serverProperties2.checkDeltaApiOnlyForManagedTable(TableType.EXTERNAL, "endpoint_name");
+    serverProperties2.checkDeltaApiOnlyForManagedTable(TableType.METRIC_VIEW, "endpoint_name");
+    assertThatThrownBy(
+            () ->
+                serverProperties2.checkDeltaApiOnlyForManagedTable(
+                    TableType.MANAGED, "endpoint_name"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("endpoint is disabled for MANAGED Delta tables when");
+    assertThatThrownBy(() -> serverProperties2.checkDeltaApiOnlyEnabled("endpoint_name"))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("endpoint is disabled when");
+  }
+
+  @Test
+  public void testWildcardAudienceConfiguration() {
+    Properties wildcardOnly = new Properties();
+    wildcardOnly.setProperty("server.audiences", "*");
+    ServerProperties props = new ServerProperties(wildcardOnly);
+    assertThat(props.isAudienceValidationDisabled()).isTrue();
+
+    Properties mixed = new Properties();
+    mixed.setProperty("server.audiences", "*,unity-catalog-local");
+    assertThatThrownBy(() -> new ServerProperties(mixed))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("cannot combine '*' with other values");
+  }
+
+  @Test
+  public void testRejectsLoneWildcardAllowedIssuers() {
+    Properties props = new Properties();
+    props.setProperty("server.allowed-issuers", "*");
+    assertThatThrownBy(() -> new ServerProperties(props))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining("server.allowed-issuers cannot be '*'");
+  }
+
+  @Test
+  public void testAllowlistCaching() {
+    Properties props = new Properties();
+    props.setProperty("server.allowed-issuers", "https://a.example.com");
+    ServerProperties serverProperties = new ServerProperties(props);
+
+    WildcardAllowlist first = serverProperties.getIssuerAllowlist();
+    WildcardAllowlist second = serverProperties.getIssuerAllowlist();
+    assertThat(first).isSameAs(second);
+    assertThat(first.isAllowed("https://a.example.com")).isTrue();
+  }
+
+  @Test
+  public void testAllowlistRebuildsWhenPropertyChanges() {
+    Properties props = new Properties();
+    props.setProperty("server.allowed-issuers", "https://a.example.com");
+    ServerProperties serverProperties = new ServerProperties(props);
+    WildcardAllowlist original = serverProperties.getIssuerAllowlist();
+
+    System.setProperty("server.allowed-issuers", "https://b.example.com");
+    try {
+      WildcardAllowlist rebuilt = serverProperties.getIssuerAllowlist();
+      assertThat(rebuilt).isNotSameAs(original);
+      assertThat(rebuilt.isAllowed("https://b.example.com")).isTrue();
+      assertThat(rebuilt.isAllowed("https://a.example.com")).isFalse();
+    } finally {
+      System.clearProperty("server.allowed-issuers");
     }
   }
 }

@@ -6,12 +6,14 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.CatalogsApi;
 import io.unitycatalog.client.api.CredentialsApi;
 import io.unitycatalog.client.api.ExternalLocationsApi;
 import io.unitycatalog.client.api.FunctionsApi;
 import io.unitycatalog.client.api.GrantsApi;
 import io.unitycatalog.client.api.ModelVersionsApi;
 import io.unitycatalog.client.api.RegisteredModelsApi;
+import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.VolumesApi;
 import io.unitycatalog.client.model.AwsIamRoleRequest;
@@ -57,6 +59,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
@@ -450,10 +454,9 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
   @SneakyThrows
   protected void setupCommonCatalogAndSchema() {
     ServerConfig principal1Config = createTestUserServerConfig(PRINCIPAL_1);
-    io.unitycatalog.client.api.CatalogsApi principal1CatalogsApi =
-        new io.unitycatalog.client.api.CatalogsApi(TestUtils.createApiClient(principal1Config));
-    io.unitycatalog.client.api.SchemasApi principal1SchemasApi =
-        new io.unitycatalog.client.api.SchemasApi(TestUtils.createApiClient(principal1Config));
+    CatalogsApi principal1CatalogsApi =
+        new CatalogsApi(TestUtils.createApiClient(principal1Config));
+    SchemasApi principal1SchemasApi = new SchemasApi(TestUtils.createApiClient(principal1Config));
 
     // give user CREATE CATALOG
     grantPermissions(
@@ -481,7 +484,7 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
           new ColumnInfo()
               .name("id")
               .typeText("INT")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson("{\"name\":\"id\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .nullable(true));
@@ -540,5 +543,22 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
             .tableType(TableType.EXTERNAL)
             .dataSourceFormat(DataSourceFormat.DELTA);
     return tablesApi.createTable(createTable);
+  }
+
+  protected long countCasbinRulesReferencing(String... resourceIds) {
+    SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
+    try (Session session = sessionFactory.openSession()) {
+      long total = 0;
+      for (String resourceId : resourceIds) {
+        total +=
+            session
+                .createNativeQuery(
+                    "select count(*) from casbin_rule where v0 = :id or v1 = :id or v2 = :id",
+                    Long.class)
+                .setParameter("id", resourceId)
+                .uniqueResult();
+      }
+      return total;
+    }
   }
 }

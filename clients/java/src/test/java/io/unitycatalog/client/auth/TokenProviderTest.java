@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 
 public class TokenProviderTest {
@@ -24,11 +25,12 @@ public class TokenProviderTest {
     TokenProvider oauthProvider = TokenProviderUtils.create(OAUTH_URI, CLIENT_ID, CLIENT_SECRET);
     assertThat(oauthProvider).isInstanceOf(OAuthTokenProvider.class);
     assertThat(oauthProvider.configs())
-        .hasSize(4)
+        .hasSize(5)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
 
     // Test with incomplete OAuth config - should throw
     Map<String, String> incompleteOAuthOptions =
@@ -81,11 +83,104 @@ public class TokenProviderTest {
     assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
 
     assertThat(provider.configs())
-        .hasSize(4)
+        .hasSize(5)
         .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
         .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
         .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
-        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+  }
+
+  @Test
+  public void testOAuthScopeIsConfigurableAndRoundTrips() {
+    Map<String, String> configs = new HashMap<>();
+    configs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
+    configs.put(AuthConfigs.OAUTH_URI, OAUTH_URI);
+    configs.put(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID);
+    configs.put(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET);
+    configs.put(AuthConfigs.OAUTH_SCOPE, "https://example.com/.default");
+
+    // A configured scope is honored and round-trips through configs().
+    assertThat(TokenProvider.create(configs).configs())
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, "https://example.com/.default");
+
+    // When unset, it falls back to the default scope.
+    configs.remove(AuthConfigs.OAUTH_SCOPE);
+    assertThat(TokenProvider.create(configs).configs())
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+
+    // An explicitly empty scope is rejected rather than silently changing its meaning.
+    configs.put(AuthConfigs.OAUTH_SCOPE, "");
+    assertThatThrownBy(() -> TokenProvider.create(configs))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
+
+    // A scope that is empty after trimming is rejected as well.
+    configs.put(AuthConfigs.OAUTH_SCOPE, "   ");
+    assertThatThrownBy(() -> TokenProvider.create(configs))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Configuration key 'oauth.scope' must not be empty");
+
+    // Leading, trailing, and repeated interior whitespace is normalized.
+    configs.put(AuthConfigs.OAUTH_SCOPE, "  scope-a  \t scope-b  ");
+    assertThat(TokenProvider.create(configs).configs())
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, "scope-a scope-b");
+  }
+
+  @Test
+  public void testCreateResolvesOAuthConfigCaseInsensitively() {
+    // Keys can arrive lower-cased when catalog options pass through a
+    // case-insensitive map (e.g. Spark's CaseInsensitiveStringMap in the
+    // Delta UC integration). create() must still resolve them.
+    Map<String, String> lowerCasedConfigs = new HashMap<>();
+    lowerCasedConfigs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
+    lowerCasedConfigs.put("oauth.uri", OAUTH_URI);
+    lowerCasedConfigs.put("oauth.clientid", CLIENT_ID); // lower-cased on purpose
+    lowerCasedConfigs.put("oauth.clientsecret", CLIENT_SECRET); // lower-cased on purpose
+
+    TokenProvider provider = TokenProvider.create(lowerCasedConfigs);
+
+    assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
+    assertThat(provider.configs())
+        .hasSize(5)
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
+        .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+  }
+
+  @Test
+  public void testCreatePassesThroughAlreadyCaseInsensitiveMap() {
+    // A map whose simple class name is "CaseInsensitiveStringMap" is treated as already
+    // case-insensitive and passed through as-is. Backing it with a
+    // case-insensitive map and using lower-cased keys verifies lookups still resolve.
+    CaseInsensitiveStringMap configs = new CaseInsensitiveStringMap();
+    configs.put(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE);
+    configs.put("oauth.uri", OAUTH_URI);
+    configs.put("oauth.clientid", CLIENT_ID);
+    configs.put("oauth.clientsecret", CLIENT_SECRET);
+
+    TokenProvider provider = TokenProvider.create(configs);
+
+    assertThat(provider).isInstanceOf(OAuthTokenProvider.class);
+    assertThat(provider.configs())
+        .hasSize(5)
+        .containsEntry(AuthConfigs.TYPE, AuthConfigs.OAUTH_TYPE_VALUE)
+        .containsEntry(AuthConfigs.OAUTH_URI, OAUTH_URI)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_ID, CLIENT_ID)
+        .containsEntry(AuthConfigs.OAUTH_CLIENT_SECRET, CLIENT_SECRET)
+        .containsEntry(AuthConfigs.OAUTH_SCOPE, AuthConfigs.DEFAULT_OAUTH_SCOPE);
+  }
+
+  /**
+   * Minimal stand-in named to match the class-simple-name check in {@code TokenProvider.create};
+   * backed by a case-insensitive map so lookups are case-insensitive.
+   */
+  private static class CaseInsensitiveStringMap extends TreeMap<String, String> {
+    CaseInsensitiveStringMap() {
+      super(String.CASE_INSENSITIVE_ORDER);
+    }
   }
 
   @Test

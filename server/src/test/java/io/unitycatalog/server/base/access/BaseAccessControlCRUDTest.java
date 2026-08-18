@@ -40,16 +40,23 @@ public abstract class BaseAccessControlCRUDTest extends BaseCRUDTest {
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
   }
 
+  // Part of the tearDown() override chain (not a separate @AfterEach) so the casbin cleanup is
+  // guaranteed to run before super.tearDown() closes the SessionFactory. casbin_rule is created
+  // by the casbin JDBCAdapter outside Hibernate's create-drop, so it survives across tests and
+  // must be cleared explicitly.
   @AfterEach
-  public void cleanUp() {
+  @Override
+  public void tearDown() {
     System.clearProperty("server.authorization");
 
-    SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
-    Session session = sessionFactory.openSession();
-    Transaction tx = session.beginTransaction();
-    session.createNativeMutationQuery("delete from casbin_rule").executeUpdate();
-    tx.commit();
-    session.close();
+    if (unityCatalogServer != null) {
+      SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
+      Session session = sessionFactory.openSession();
+      Transaction tx = session.beginTransaction();
+      session.createNativeMutationQuery("delete from casbin_rule").executeUpdate();
+      tx.commit();
+      session.close();
+    }
 
     super.tearDown();
   }

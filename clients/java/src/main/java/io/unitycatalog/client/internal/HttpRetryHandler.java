@@ -5,8 +5,6 @@ import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Set;
 
 /** Retry handler that retries on common recoverable HTTP errors and network exceptions. */
@@ -37,15 +35,17 @@ class HttpRetryHandler {
       HttpClient delegate, HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler)
       throws IOException, InterruptedException {
     IOException lastException = null;
-    Instant startTime = clock.now();
+    HttpResponse<T> lastResponse = null;
 
     for (int attempt = 1; attempt <= retryPolicy.maxAttempts(); attempt++) {
-      HttpResponse<T> response;
+      // Reset per attempt so the post-loop branch only sees the final attempt's state.
+      lastException = null;
+      lastResponse = null;
       boolean shouldRetry = true;
       try {
-        response = delegate.send(request, responseBodyHandler);
-        if (!isRetryable(response.statusCode())) {
-          return response;
+        lastResponse = delegate.send(request, responseBodyHandler);
+        if (!isRetryable(lastResponse.statusCode())) {
+          return lastResponse;
         }
       } catch (IOException e) {
         lastException = e;
@@ -64,15 +64,19 @@ class HttpRetryHandler {
       }
     }
 
+    // Return the last retryable response if available, so the caller sees the original error
+    // (e.g., 429) instead of a generic IOException.
+    if (lastResponse != null) {
+      return lastResponse;
+    }
     if (lastException != null) {
       throw lastException;
-    } else {
-      long elapsedMs = Duration.between(startTime, clock.now()).toMillis();
-      throw new IOException(
-          String.format(
-              "Failed HTTP request after %s attempts with elapsed time %s ms",
-              retryPolicy.maxAttempts(), elapsedMs));
     }
+    // Unreachable when maxAttempts >= 1: every iteration either returns, sets lastResponse, or
+    // sets lastException. Only reachable with a misconfigured maxAttempts == 0.
+    throw new IllegalStateException(
+        "HttpRetryHandler reached unreachable state; maxAttempts must be >= 1, got "
+            + retryPolicy.maxAttempts());
   }
 
   private static boolean isRetryable(int statusCode) {

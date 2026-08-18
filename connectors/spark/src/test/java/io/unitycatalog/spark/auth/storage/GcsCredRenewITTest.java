@@ -4,6 +4,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import com.google.auth.oauth2.AccessToken;
 import com.google.cloud.hadoop.util.AccessTokenProvider;
+import io.unitycatalog.hadoop.internal.auth.GcsVendedTokenProvider;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialGenerator;
 import java.time.Instant;
 import java.util.Date;
@@ -30,9 +31,7 @@ public class GcsCredRenewITTest extends BaseCredRenewITTest {
 
   @Override
   protected Map<String, String> catalogExtraProps() {
-    // Override fs.gs.impl to use our testing filesystem that tracks credential renewals
-    // Note: fs.gs.impl.disable.cache is already set by CredPropsUtil.GcsPropsBuilder
-    return Map.of("fs.gs.impl", GcsCredFileSystem.class.getName());
+    return Map.of("spark.hadoop.fs.gs.impl", GcsCredFileSystem.class.getName());
   }
 
   public static class GcsCredGenerator extends TimeBasedCredGenerator<AccessToken>

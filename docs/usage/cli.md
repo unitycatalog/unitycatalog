@@ -15,6 +15,118 @@ The CLI tool allows users to interact with a Unity Catalog server to create and 
 
     where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md) documentation.
 
+## Credential Management CLI Usage
+
+You can use the Unity Catalog CLI to manage Credentials within your system. The `bin/uc` script
+supports various operations such as creating, retrieving, listing, updating and deleting
+Credentials.
+Before creating a Credential, make sure the server is properly configured to support Credentials.
+Please refer to [Deploy for AWS](../server/aws.md) for how to configure server for AWS. 
+
+Let's take a look at each operation.
+
+### Create a Credential
+
+Here's how to create a Credential to access AWS cloud storage (assuming the server is already 
+configured according to [Deploy for AWS](../server/aws.md)).
+
+```sh
+bin/uc credential create \
+  --name <name> # (1) \
+  --aws_iam_role_arn arn:aws:iam::987654321:role/UCDbRole-EXAMPLE # (2)
+```
+
+1. `name`: The name of the Credential.
+2. `aws_iam_role_arn`: The storage accessing IAM role ARN.
+
+This will output:
+```console
+┌────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐
+│        KEY         │                                          VALUE                                           │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+│NAME                │my_aws_cred                                                                               │
+├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+│AWS_IAM_ROLE        │{"role_arn":"arn:aws:iam::987654321:role/UCDbRole-EXAMPLE","unity_catalog_iam_arn":"arn:aw│
+│                    │s:iam::1234567:role/UCMasterRole-EXAMPLE","external_id":"1862cf4e-5e90-4f96-9125-8ea8928cc│
+│                    │405"}                                                                                     │
+├────────────────────┼────────────────────────────────────────────────...
+```
+
+In the `AWS_IAM_ROLE` of the response, the server notifies the user which master role should the 
+storage access role trust in `unity_catalog_iam_arn`, additionally with an `external_id` that the
+trust relationship must check. Please refer to [Deploy for AWS](../server/aws.md) on how to properly
+configure both roles to make it working.
+
+### List Credentials
+
+Here's how to list Credentials contained in a Unity Catalog instance.
+
+```sh
+bin/uc credential list \
+  [--max_results <max_results>] # (1)
+```
+
+1. `max_results`: optional flag to set the maximum number of results to return.
+
+### Get details of a Credential
+
+Here's how to retrieve the details of a credential:
+
+```sh
+bin/uc credential get \
+  --name <name> # (1)
+```
+
+1. `name`: The name of the credential.
+
+This should output the same content as [Create a credential](#create-a-credential)
+
+## External Location Management CLI Usage
+
+You can use the Unity Catalog CLI to manage external locations within your system. The `bin/uc` 
+script supports various operations such as creating, retrieving, listing, updating and deleting 
+external locations. The external location maps storage locations of data entities to the 
+credentials, including external and managed tables, volumes etc. 
+
+Let's take a look at each operation.
+
+### Create an External Location
+
+Here's how to create an external location, after having the credential created.
+
+```sh
+bin/uc external_location create \
+  --name <name> # (1) \
+  --url <URL> # (2) \
+  --credential_name <credential_name> # (3)
+```
+
+1. `name`: The name of the credential.
+2. `url`: The URL of the storage location. Example: s3://my-bucket/path
+3. `credential_name`: The name of the credential to be associated with.
+
+### List External Location
+
+Here's how to list credentials contained in a Unity Catalog instance.
+
+```sh
+bin/uc external_location list \
+  [--max_results <max_results>] # (1)
+```
+
+1. `max_results`: optional flag to set the maximum number of results to return.
+
+### Get details of an External Location
+
+Here's how to retrieve the details of an External Location:
+
+```sh
+bin/uc external_location get \
+  --name <name> # (1)
+```
+
+1. `name`: The name of the External Location.
+
 ## Catalog Management CLI Usage
 
 You can use the Unity Catalog CLI to manage catalogs within your system. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting catalogs. Let's take a look at each operation.
@@ -89,7 +201,8 @@ You can create a new catalog using:
 bin/uc catalog create \
   --name <name> \ # (1)
   [--comment <comment>] \ # (2)
-  [--properties <properties>] # (3)
+  [--properties <properties>] \ # (3)
+  [--storage_root <storage-root>] # (4)
 ```
 
 1. `name`: The name of the catalog.
@@ -97,6 +210,10 @@ bin/uc catalog create \
 3. `properties`: _\[Optional\]_ The properties of the catalog in JSON format
    (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
    properties string or just use single quotes(`''`) around the same.
+4. `storage_root`: _\[Optional\]_ The storage root of the managed storage. It will be used for
+   allocating storage location for its children managed tables and managed volumes etc. For example,
+   if it's set as `s3://my-bucket/path` then managed tables will be allocated a storage location
+   like `s3://my-bucket/path/__unitystorage/catalogs/{catalog-uuid}/tables/{table-uuid}`.
 
 Here's an example:
 
@@ -184,6 +301,7 @@ bin/uc schema create \
   --name <name> \ # (2)
   [--comment <comment>] \ # (3)
   [--properties <properties>] # (4)
+  [--storage_root <storage-root>] # (5)
 ```
 
 1. `catalog`: The name of the catalog.
@@ -192,6 +310,10 @@ bin/uc schema create \
 4. `properties`: _\[Optional\]_ The properties of the schema in JSON format
    (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
    properties string or just use single quotes(`''`) around the same.
+5. `storage_root`: _\[Optional\]_ The storage root of the managed storage. It will be used for
+   allocating storage location for its children managed tables and managed volumes etc. For example,
+   if it's set as `s3://my-bucket/path` then managed tables will be allocated a storage location
+   like `s3://my-bucket/path/__unitystorage/schemas/{schema-uuid}/tables/{table-uuid}`.
 
 Here's an example:
 

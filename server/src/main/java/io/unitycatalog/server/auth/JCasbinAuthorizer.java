@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
+import org.casbin.jcasbin.main.SyncedEnforcer;
 import org.casbin.jcasbin.model.Model;
 
 /**
@@ -21,10 +22,13 @@ import org.casbin.jcasbin.model.Model;
  * <p>This class is an implementation of UnityCatalogAuthorizor that uses JCasbin as the back end to
  * both store and enforce access control policies.
  *
- * <p>The implementation stores the policies in a database using the JDBCAdapter class.
+ * <p>The implementation stores the policies in a database using the JDBCAdapter class. A {@link
+ * SyncedEnforcer} is used because the UC server shares one authorizer across concurrent REST
+ * requests; jCasbin's plain {@link Enforcer} is not thread-safe for concurrent {@code enforce()}
+ * and policy mutations.
  */
 public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
-  private final Enforcer enforcer;
+  private final SyncedEnforcer enforcer;
 
   private static final int PRINCIPAL_INDEX = 0;
   private static final int RESOURCE_INDEX = 1;
@@ -38,7 +42,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
     Properties properties = hibernateConfigurator.getHibernateProperties();
     String driver = properties.getProperty("hibernate.connection.driver_class");
     String url = properties.getProperty("hibernate.connection.url");
-    String user = properties.getProperty("hibernate.connection.user");
+    String user = resolveConnectionUsername(properties);
     String password = properties.getProperty("hibernate.connection.password");
     JDBCAdapter adapter = new JDBCAdapter(driver, url, user, password);
 
@@ -47,8 +51,26 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
     Model model = new Model();
     model.loadModelFromText(string);
 
-    enforcer = new Enforcer(model, adapter);
+    enforcer = new SyncedEnforcer(model, adapter);
     enforcer.enableAutoSave(true);
+  }
+
+  /**
+   * Resolves the database connection username from the Hibernate properties.
+   *
+   * <p>Prefers the standard Hibernate key {@code hibernate.connection.username} (used by the main
+   * session factory configuration and by the project's own tests) and falls back to the
+   * non-standard {@code hibernate.connection.user} that the deployment docs and Helm chart
+   * document. Reading only {@code hibernate.connection.user} left the casbin JDBC adapter with a
+   * null username for any standard configuration, which the JDBC driver then silently replaced with
+   * a process default.
+   */
+  static String resolveConnectionUsername(Properties properties) {
+    String username = properties.getProperty("hibernate.connection.username");
+    if (username == null) {
+      username = properties.getProperty("hibernate.connection.user");
+    }
+    return username;
   }
 
   @Override

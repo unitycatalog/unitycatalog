@@ -396,7 +396,9 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
                     new ColumnInfo()
                         .name("id")
                         .typeText("INTEGER")
-                        .typeJson("{\"type\": \"integer\"}")
+                        .typeJson(
+                            "{\"name\":\"id\",\"type\":\"integer\","
+                                + "\"nullable\":false,\"metadata\":{}}")
                         .typeName(ColumnTypeName.INT)
                         .position(0)
                         .nullable(false)))

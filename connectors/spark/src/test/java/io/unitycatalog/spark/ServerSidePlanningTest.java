@@ -3,6 +3,7 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
+import static io.unitycatalog.spark.DeltaVersionUtils.MIN_DELTA_VERSION_FOR_UC_DELTA_API;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
@@ -54,9 +55,9 @@ public class ServerSidePlanningTest extends BaseSparkIntegrationTest {
     }
 
     // Use fake file system for cloud storage so that we can test credentials.
-    builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());
-    builder.config("fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
-    builder.config("fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
+    builder.config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName());
+    builder.config("spark.hadoop.fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
+    builder.config("spark.hadoop.fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
     return builder.getOrCreate();
   }
 
@@ -96,16 +97,32 @@ public class ServerSidePlanningTest extends BaseSparkIntegrationTest {
     }
 
     if (!sspEnabled) {
-      // SSP disabled (default): loadTable() throws ApiException because credential API fails
-      assertThat(caughtException).isInstanceOf(ApiException.class);
+      // SSP disabled (default): loadTable() throws because the credential API fails. Delta
+      // < 4.3.0 surfaces UC's ApiException directly. Delta >= 4.3.0 ships
+      // UCDeltaTokenBasedRestClient, which wraps the credential-API failure in
+      // io.delta.storage.commit.uccommitcoordinator.exceptions.CredentialFetchFailedException
+      // (matched by short class name to avoid taking a hard dependency on a Delta-internal
+      // exception type).
+      if (DeltaVersionUtils.isDeltaAtLeast(MIN_DELTA_VERSION_FOR_UC_DELTA_API)) {
+        assertThat(caughtException)
+            .isNotNull()
+            .satisfies(
+                e -> assertThat(e.getClass().getName()).endsWith("CredentialFetchFailedException"));
+      } else {
+        assertThat(caughtException).isInstanceOf(ApiException.class);
+      }
     } else {
-      // SSP enabled: loadTable() succeeds with empty credentials (no ApiException)
-      assertThat(caughtException).isNull();
-      assertThat(loadedTable).isNotNull();
-
-      // Verify that the Delta SSP Spark config was set by the connector
+      // SSP enabled: the connector sets the Delta SSP Spark config regardless of Delta version, so
+      // verify that first.
       assertThat(session.conf().get("spark.databricks.delta.catalog.enableServerSidePlanning"))
           .isEqualTo("true");
+
+      // SSP is the fallback for tables with no vended credentials, so on this load path Delta must
+      // not force a credentialed `_delta_log` read while deciding to use it. It therefore does not
+      // read table properties here for any supported Delta version, and loadTable() succeeds with
+      // empty credentials (no exception) rather than throwing.
+      assertThat(caughtException).isNull();
+      assertThat(loadedTable).isNotNull();
     }
   }
 }

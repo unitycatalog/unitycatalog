@@ -10,22 +10,24 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.ListCatalogsResponse;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.model.DeletedResource;
+import io.unitycatalog.server.utils.ServerProperties;
 import lombok.SneakyThrows;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
@@ -37,8 +39,11 @@ public class CatalogService extends AuthorizedService {
   private final MetastoreRepository metastoreRepository;
 
   @SneakyThrows
-  public CatalogService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    super(authorizer, repositories);
+  public CatalogService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
     this.catalogRepository = repositories.getCatalogRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
   }
@@ -76,28 +81,26 @@ public class CatalogService extends AuthorizedService {
     return HttpResponse.ofJson(catalogInfo);
   }
 
+  private static final String LIST_AND_GET_AUTH_EXPRESSION = """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+      """;
+
   @Get("")
-  @AuthorizeExpression("#defer")
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse listCatalogs(
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
     ListCatalogsResponse listCatalogsResponse = catalogRepository.listCatalogs(
         maxResults, pageToken);
-
-    filterCatalogs("""
-        #authorize(#principal, #metastore, OWNER) ||
-        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
-        """,
-        listCatalogsResponse.getCatalogs());
-
+    applyResponseFilter(SecurableType.CATALOG, listCatalogsResponse.getCatalogs());
     return HttpResponse.ofJson(listCatalogsResponse);
   }
 
   @Get("/{name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
-      """)
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getCatalog(@Param("name") @AuthorizeResourceKey(CATALOG) String name) {
     return HttpResponse.ofJson(catalogRepository.getCatalog(name));
@@ -117,30 +120,15 @@ public class CatalogService extends AuthorizedService {
   @Delete("/{name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+      #authorize(#principal, #catalog, OWNER)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCatalog(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,
       @Param("force") Optional<Boolean> force) {
-    CatalogInfo catalogInfo = catalogRepository.getCatalog(name);
-    catalogRepository.deleteCatalog(name, force.orElse(false));
-    removeAuthorizations(catalogInfo.getId());
+    List<DeletedResource> deleted =
+        catalogRepository.deleteCatalog(name, force.orElse(false));
+    clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
-  }
-
-  public void filterCatalogs(String expression, List<CatalogInfo> entries) {
-    // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = userRepository.findPrincipalId();
-
-    evaluator.filter(
-        principalId,
-        expression,
-        entries,
-        ci -> Map.of(
-            METASTORE,
-            metastoreRepository.getMetastoreId(),
-            CATALOG,
-            UUID.fromString(ci.getId())));
   }
 }

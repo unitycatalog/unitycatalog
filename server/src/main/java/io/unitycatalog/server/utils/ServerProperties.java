@@ -2,6 +2,7 @@ package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
@@ -18,6 +19,7 @@ import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -194,8 +196,15 @@ public class ServerProperties {
     CLIENT_ID("server.client-id"),
     CLIENT_SECRET("server.client-secret"),
     REDIRECT_PORT("server.redirect-port", POSITIVE_INTEGER_VALIDATOR),
+    ALLOWED_ISSUERS("server.allowed-issuers"),
+    AUDIENCES("server.audiences"),
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
-    MANAGED_TABLE_ENABLED("server.managed-table.enabled", "false", BOOLEAN_VALIDATOR),
+    ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
+    MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
+    MANAGED_TABLE_USE_DELTA_API_ONLY(
+        "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
+    UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV(
+        "server.managed-table.uniform-iceberg-v2.allow-missing-dv", "false", BOOLEAN_VALIDATOR),
     // `storage-root.*` are replaced by managed storage locations of catalog and schema.
     MODEL_STORAGE_ROOT("storage-root.models", STORAGE_PATH_VALIDATOR), // Deprecated
     TABLE_STORAGE_ROOT("storage-root.tables", STORAGE_PATH_VALIDATOR), // Deprecated
@@ -203,7 +212,8 @@ public class ServerProperties {
     AWS_ACCESS_KEY("aws.accessKey"),
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
-    AWS_REGION("aws.region");
+    AWS_REGION("aws.region"),
+    INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
     // getS3Configurations.
@@ -260,6 +270,25 @@ public class ServerProperties {
         continue;
       }
       property.validator.validate(property.key, value);
+    }
+    validateAuthAllowlistConfiguration();
+  }
+
+  private void validateAuthAllowlistConfiguration() {
+    List<String> audiences = getAudiences();
+    if (audiences.contains("*") && audiences.size() > 1) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.audiences cannot combine '*' with other values; use '*' alone to disable"
+              + " audience validation");
+    }
+
+    List<String> allowedIssuers = getAllowedIssuers();
+    if (allowedIssuers.contains("*")) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "server.allowed-issuers cannot be '*'; use explicit issuers or wildcard patterns such"
+              + " as https://*.dev.example.com");
     }
   }
 
@@ -434,6 +463,25 @@ public class ServerProperties {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
   }
 
+  public boolean isIncludeStackTraceInError() {
+    return isTrueOrEnable(get(Property.INCLUDE_STACK_TRACE_IN_ERROR));
+  }
+
+  /** Lifetime of UC access tokens issued by token exchange. Defaults to 24 hours. */
+  public Duration getAccessTokenTimeout() {
+    return Duration.parse(get(Property.ACCESS_TOKEN_TIMEOUT));
+  }
+
+  /**
+   * Cookie max-age for UC access tokens, capped by {@link #getAccessTokenTimeout()} so the cookie
+   * does not outlive the JWT it contains.
+   */
+  public Duration getEffectiveCookieTimeout() {
+    Duration cookieTimeout = Duration.parse(get(Property.COOKIE_TIMEOUT));
+    Duration accessTokenTimeout = getAccessTokenTimeout();
+    return cookieTimeout.compareTo(accessTokenTimeout) > 0 ? accessTokenTimeout : cookieTimeout;
+  }
+
   /**
    * Check if experimental MANAGED table feature is enabled. This method throws BaseException with
    * ErrorCode.INVALID_ARGUMENT if it's disabled.
@@ -442,8 +490,145 @@ public class ServerProperties {
     if (!isTrueOrEnable(get(Property.MANAGED_TABLE_ENABLED))) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "MANAGED table is an experimental feature and is currently disabled. "
-              + "To enable it, set 'server.managed-table.enabled=true' in server.properties");
+          "MANAGED table is an is currently disabled. To enable it, set "
+              + "'server.managed-table.enabled=true' in server.properties");
     }
+  }
+
+  /**
+   * Reject the UC request when MANAGED_TABLES_USE_DELTA_API_ONLY is on and the targeted table is
+   * MANAGED. Call from UC endpoints whose Delta equivalent should be used instead. Any non-MANAGED
+   * table would continue to work: EXTERNAL, METRIC_VIEW etc.
+   *
+   * @param tableType the table type to check; only {@link TableType#MANAGED} triggers the gate.
+   * @param deltaEndpoint full Delta endpoint to suggest in the error, e.g. {@code "POST
+   *     /delta/v1/catalogs/{catalog}/schemas/{schema}/tables"}.
+   */
+  public void checkDeltaApiOnlyForManagedTable(TableType tableType, String deltaEndpoint) {
+    if (tableType == TableType.MANAGED
+        && isTrueOrEnable(get(Property.MANAGED_TABLE_USE_DELTA_API_ONLY))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "This Unity Catalog endpoint is disabled for MANAGED Delta tables when "
+              + Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey()
+              + "=true. Use the Delta endpoint "
+              + deltaEndpoint
+              + " instead.");
+    }
+  }
+
+  /**
+   * Returns true when the server is configured to allow creation and writing of IcebergCompatV2
+   * tables ({@code delta.enableIcebergCompatV2=true}) without requiring deletion vectors. Set
+   * {@code server.managed-table.uniform-iceberg-v2.allow-missing-dv=true} in server.properties to
+   * enable.
+   */
+  public boolean isUniformIcebergV2AllowMissingDv() {
+    return isTrueOrEnable(get(Property.UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV));
+  }
+
+  /**
+   * Similar to checkDeltaApiOnlyForManagedTable, reject the UC request when
+   * MANAGED_TABLES_USE_DELTA_API_ONLY is on and the target endpoint is for MANAGED tables only. In
+   * this case it doesn't need to check table type. Call from UC endpoints whose Delta equivalent
+   * should be used instead.
+   *
+   * @param deltaEndpoint full Delta endpoint to suggest in the error, e.g. {@code "POST
+   *     /delta/v1/catalogs/{catalog}/schemas/{schema}/staging-tables"}.
+   */
+  public void checkDeltaApiOnlyEnabled(String deltaEndpoint) {
+    if (isTrueOrEnable(get(Property.MANAGED_TABLE_USE_DELTA_API_ONLY))) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "This Unity Catalog endpoint is disabled when "
+              + Property.MANAGED_TABLE_USE_DELTA_API_ONLY.getKey()
+              + "=true. Use the Delta endpoint "
+              + deltaEndpoint
+              + " instead.");
+    }
+  }
+
+  private volatile WildcardAllowlist cachedIssuerAllowlist;
+  private volatile WildcardAllowlist cachedAudienceAllowlist;
+
+  /**
+   * Returns a compiled allowlist for {@code server.allowed-issuers}, rebuilding when the raw
+   * property value changes.
+   */
+  public WildcardAllowlist getIssuerAllowlist() {
+    String current = getProperty(Property.ALLOWED_ISSUERS.key);
+    String normalized = current == null ? "" : current;
+    WildcardAllowlist cached = cachedIssuerAllowlist;
+    if (cached == null || !cached.source().equals(normalized)) {
+      cached = WildcardAllowlist.forAllowedIssuers(normalized);
+      cachedIssuerAllowlist = cached;
+    }
+    return cached;
+  }
+
+  /**
+   * Returns a compiled allowlist for {@code server.audiences}, rebuilding when the raw property
+   * value changes.
+   */
+  public WildcardAllowlist getAudienceAllowlist() {
+    String current = getProperty(Property.AUDIENCES.key);
+    String normalized = current == null ? "" : current;
+    WildcardAllowlist cached = cachedAudienceAllowlist;
+    if (cached == null || !cached.source().equals(normalized)) {
+      cached = WildcardAllowlist.forAudiences(normalized);
+      cachedAudienceAllowlist = cached;
+    }
+    return cached;
+  }
+
+  /**
+   * Get the list of allowed token issuers.
+   *
+   * <p>When authorization is enabled, tokens will only be accepted from issuers in this list. This
+   * prevents attackers from using their own identity provider to forge tokens.
+   *
+   * @return List of allowed issuer URLs (exact match or wildcard with {@code *})
+   */
+  public List<String> getAllowedIssuers() {
+    return getCommaSeparatedList(Property.ALLOWED_ISSUERS.key);
+  }
+
+  /**
+   * Get the list of expected JWT audience values.
+   *
+   * <p>When authorization is enabled, tokens must contain an {@code aud} value matching one of
+   * these entries (exact match or wildcard with {@code *}, same rules as {@link
+   * #getAllowedIssuers()}).
+   *
+   * <p>A single entry of {@code *} disables audience validation (issuer and user checks still
+   * apply). That sentinel cannot be combined with other values.
+   *
+   * @return List of expected audience values
+   */
+  public List<String> getAudiences() {
+    return getCommaSeparatedList(Property.AUDIENCES.key);
+  }
+
+  /**
+   * Returns true when {@code server.audiences} is exactly {@code *}, disabling JWT audience checks
+   * during token exchange.
+   */
+  public boolean isAudienceValidationDisabled() {
+    List<String> audiences = getAudiences();
+    return audiences.size() == 1 && "*".equals(audiences.get(0));
+  }
+
+  /**
+   * Parse a comma-separated property value into a list of trimmed, non-empty strings.
+   *
+   * @param key the property key to look up
+   * @return List of trimmed values, or empty list if the property is null or blank
+   */
+  private List<String> getCommaSeparatedList(String key) {
+    String value = getProperty(key);
+    if (value == null || value.isBlank()) {
+      return List.of();
+    }
+    return Arrays.stream(value.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
   }
 }

@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 from io import StringIO
@@ -11,6 +12,10 @@ from typing_extensions import override
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
+    UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT,
+    UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT,
+    UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT,
+    UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT,
 )
 from unitycatalog.ai.core.executor.local_subprocess import run_in_sandbox_subprocess
 from unitycatalog.ai.core.paged_list import PagedList
@@ -47,7 +52,7 @@ if TYPE_CHECKING:
         FunctionInfo,
         FunctionParameterInfo,
     )
-    from databricks.sdk.service.sql import StatementState
+    from databricks.sdk.service.sql import StatementParameterListItem, StatementState
 
 DATABRICKS_CONNECT_SUPPORTED_VERSION = "15.1.0"
 DATABRICKS_CONNECT_IMPORT_ERROR_MESSAGE = (
@@ -62,15 +67,6 @@ DATABRICKS_CONNECT_VERSION_NOT_SUPPORTED_ERROR_MESSAGE = (
     f"`pip install databricks-connect>={DATABRICKS_CONNECT_SUPPORTED_VERSION}` "
     "to use serverless compute in Databricks. Please note this requires python>=3.10."
 )
-WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
-    "The argument `warehouse_id` was specified, which is no longer supported with "
-    "the `DatabricksFunctionClient`. Please omit this argument as it is no longer used. "
-    "This API only functions with a serverless compute resource."
-    "serverless compute resource for interfacing with Unity Catalog."
-    "Visit https://docs.unitycatalog.io/ai/client/#databricks-function-client for more details."
-)
-
-
 _logger = logging.getLogger(__name__)
 
 
@@ -105,11 +101,6 @@ def _is_in_databricks_notebook_environment() -> bool:
         return False
 
 
-def _warn_if_workspace_provided(**kwargs):
-    if "warehouse_id" in kwargs:
-        _logger.warning(WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE)
-
-
 class DatabricksFunctionClient(BaseFunctionClient):
     """
     Databricks UC function calling client
@@ -132,12 +123,15 @@ class DatabricksFunctionClient(BaseFunctionClient):
             profile: The configuration profile to use for databricks connect. Defaults to None.
             execution_mode: The execution mode of the client. Defaults to "serverless".
         """
-        _warn_if_workspace_provided(**kwargs)
+        # warehouse_id is intentionally undocumented. It enables routing function execution
+        # through a SQL warehouse instead of serverless compute, for use cases that require it.
+        # This is not recommended for general use.
+        self.warehouse_id: Optional[str] = kwargs.pop("warehouse_id", None)
         self.client = client or get_default_databricks_workspace_client(profile=profile)
         self.profile = profile
         self.execution_mode = ExecutionModeDatabricks.validate(execution_mode)
         self.spark = None
-        if self.execution_mode == ExecutionModeDatabricks.SERVERLESS:
+        if self.execution_mode == ExecutionModeDatabricks.SERVERLESS and not self.warehouse_id:
             self.set_spark_session()
         self._is_default_client = client is None
         super().__init__()
@@ -598,13 +592,101 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
         check_function_info(function_info)
-        if self.execution_mode == ExecutionModeDatabricks.SERVERLESS:
+        if self.warehouse_id:
+            return self._execute_uc_functions_with_warehouse(function_info, parameters)
+        elif self.execution_mode == ExecutionModeDatabricks.SERVERLESS:
             return self._execute_uc_functions_with_serverless(function_info, parameters)
         elif self.execution_mode == ExecutionModeDatabricks.LOCAL:
             return self._execute_uc_functions_with_local(function_info, parameters)
         else:
             raise NotImplementedError(
                 f"Execution mode {self.execution_mode} is not supported for function execution."
+            )
+
+    def _execute_uc_functions_with_warehouse(
+        self, function_info: "FunctionInfo", parameters: Dict[str, Any]
+    ) -> "FunctionExecutionResult":
+        from databricks.sdk.service.sql import StatementState
+
+        _logger.info("Executing function using SQL warehouse (warehouse_id=%s).", self.warehouse_id)
+
+        parametrized_statement = get_execute_function_sql_stmt(function_info, parameters)
+        response = self.client.statement_execution.execute_statement(
+            statement=parametrized_statement.statement,
+            warehouse_id=self.warehouse_id,
+            parameters=parametrized_statement.parameters,
+            wait_timeout=UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT.get(),
+            row_limit=int(UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT.get()),
+            byte_limit=int(UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT.get()),
+        )
+        if response.status and job_pending(response.status.state) and response.statement_id:
+            statement_id = response.statement_id
+            _logger.info("Statement still pending; polling for completion...")
+            wait_time = 0
+            retry_cnt = 0
+            client_execution_timeout = int(UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.get())
+            while wait_time < client_execution_timeout:
+                wait = min(2**retry_cnt, client_execution_timeout - wait_time)
+                time.sleep(wait)
+                response = self.client.statement_execution.get_statement(statement_id)
+                if response.status is None or not job_pending(response.status.state):
+                    break
+                wait_time += wait
+                retry_cnt += 1
+            if response.status and job_pending(response.status.state):
+                return FunctionExecutionResult(
+                    error=f"Statement execution is still {response.status.state.value.lower()} after "
+                    f"{wait_time} seconds. Increase {UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.name} "
+                    f"(default: {UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.default_value}s) to wait longer."
+                )
+        if response.status is None:
+            return FunctionExecutionResult(error=f"Statement execution failed: {response}")
+        if response.status.state != StatementState.SUCCEEDED:
+            error = response.status.error
+            if error is None:
+                return FunctionExecutionResult(
+                    error=f"Statement execution failed but no error message was provided: {response}"
+                )
+            return FunctionExecutionResult(error=f"{error.error_code}: {error.message}")
+
+        manifest = response.manifest
+        if manifest is None:
+            return FunctionExecutionResult(
+                error="Statement execution succeeded but no manifest was returned."
+            )
+        truncated = manifest.truncated
+        if response.result is None:
+            return FunctionExecutionResult(
+                error="Statement execution succeeded but no result was provided."
+            )
+        data_array = response.result.data_array
+        if is_scalar(function_info):
+            value = None
+            if data_array and len(data_array) > 0 and len(data_array[0]) > 0:
+                value = data_array[0][0]
+            return FunctionExecutionResult(format="SCALAR", value=value, truncated=truncated)
+        else:
+            try:
+                import pandas as pd
+            except ImportError as e:
+                raise ImportError(
+                    "Could not import pandas python package. "
+                    "Please install it with `pip install pandas`."
+                ) from e
+
+            schema = manifest.schema
+            if schema is None or schema.columns is None:
+                return FunctionExecutionResult(
+                    error="Statement execution succeeded but no schema was provided for table function."
+                )
+            columns = [c.name for c in schema.columns]
+            if data_array is None:
+                data_array = []
+            pdf = pd.DataFrame(data_array, columns=columns)
+            csv_buffer = StringIO()
+            pdf.to_csv(csv_buffer, index=False)
+            return FunctionExecutionResult(
+                format="CSV", value=csv_buffer.getvalue(), truncated=truncated
             )
 
     @retry_on_session_expiration
@@ -680,11 +762,12 @@ class DatabricksFunctionClient(BaseFunctionClient):
         return {
             # TODO: workspaceClient related config
             "profile": self.profile,
+            "warehouse_id": self.warehouse_id,
         }
 
     @classmethod
     def from_dict(cls, config: Dict[str, Any]):
-        accept_keys = ["profile"]
+        accept_keys = ["profile", "warehouse_id"]
         return cls(**{k: v for k, v in config.items() if k in accept_keys})
 
     @override
@@ -813,3 +896,97 @@ def get_execute_function_sql_command(
         sql_query += ",".join(args)
     sql_query += ")"
     return SparkSqlCommand(sql_query=sql_query, args=params_dict)
+
+
+@dataclass
+class ParameterizedStatement:
+    statement: str
+    parameters: List["StatementParameterListItem"]
+
+
+def get_execute_function_sql_stmt(
+    function: "FunctionInfo", parameters: Dict[str, Any]
+) -> ParameterizedStatement:
+    from databricks.sdk.service.catalog import ColumnTypeName
+    from databricks.sdk.service.sql import StatementParameterListItem
+
+    parts: List[str] = []
+    output_params: List[StatementParameterListItem] = []
+    if is_scalar(function):
+        parts.append("SELECT IDENTIFIER(:function_name)(")
+        output_params.append(
+            StatementParameterListItem(name="function_name", value=function.full_name)
+        )
+    else:
+        parts.append(f"SELECT * FROM {function.full_name}(")
+
+    if parameters and function.input_params and function.input_params.parameters:
+        args: List[str] = []
+        use_named_args = False
+        for param_info in function.input_params.parameters:
+            if param_info.name not in parameters:
+                use_named_args = True
+            else:
+                arg_clause = ""
+                if use_named_args:
+                    arg_clause += f"{param_info.name} => "
+                param_value = parameters[param_info.name]
+                if param_info.type_name in (
+                    ColumnTypeName.ARRAY,
+                    ColumnTypeName.MAP,
+                    ColumnTypeName.STRUCT,
+                ):
+                    json_value_str = json.dumps(param_value)
+                    arg_clause += f"from_json(:{param_info.name}, :{param_info.name}_type)"
+                    output_params.append(
+                        StatementParameterListItem(name=param_info.name, value=json_value_str)
+                    )
+                    output_params.append(
+                        StatementParameterListItem(
+                            name=f"{param_info.name}_type", value=param_info.type_text
+                        )
+                    )
+                elif param_info.type_name == ColumnTypeName.BINARY:
+                    if isinstance(param_value, bytes):
+                        param_value = base64.b64encode(param_value).decode("utf-8")
+                    arg_clause += f"unbase64(:{param_info.name})"
+                    output_params.append(
+                        StatementParameterListItem(name=param_info.name, value=param_value)
+                    )
+                elif is_time_type(param_info.type_name.value):
+                    date_str = (
+                        param_value if isinstance(param_value, str) else param_value.isoformat()
+                    )
+                    arg_clause += f":{param_info.name}"
+                    output_params.append(
+                        StatementParameterListItem(
+                            name=param_info.name, value=date_str, type=param_info.type_text
+                        )
+                    )
+                elif param_info.type_name == ColumnTypeName.INTERVAL:
+                    arg_clause += f":{param_info.name}"
+                    output_params.append(
+                        StatementParameterListItem(
+                            name=param_info.name,
+                            value=convert_timedelta_to_interval_str(param_value)
+                            if not isinstance(param_value, str)
+                            else param_value,
+                            type=param_info.type_text,
+                        )
+                    )
+                else:
+                    if param_info.type_name == ColumnTypeName.DECIMAL and isinstance(
+                        param_value, Decimal
+                    ):
+                        param_value = float(param_value)
+                    arg_clause += f":{param_info.name}"
+                    output_params.append(
+                        StatementParameterListItem(
+                            name=param_info.name, value=param_value, type=param_info.type_text
+                        )
+                    )
+                args.append(arg_clause)
+        parts.append(",".join(args))
+    parts.append(")")
+    statement = "".join(parts)
+    return ParameterizedStatement(statement=statement, parameters=output_params)

@@ -24,7 +24,14 @@ OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
 OpenJDK 64-Bit Server VM Homebrew (build 17.0.12+0, mixed mode, sharing)
 ```
 
-Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server. Here is what you
+From the repository root, build the server artifacts. The startup script can trigger this automatically on first run,
+but building explicitly is recommended:
+
+```sh
+build/sbt package
+```
+
+From the repository root, run `bin/start-uc-server` to instantiate the server. Here is what you
 should see:
 
 ```console
@@ -36,9 +43,13 @@ should see:
 # | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #
 #  \____/|_| |_|_|\__|\__, |  \_____\__,_|\__\__,_|_|\___/ \__, | #
 #                      __/ |                                __/ | #
-#                     |___/               v0.2.0           |___/  #
+#                     |___/      v0.5.0-SNAPSHOT           |___/  #
 ###################################################################
 ```
+
+!!! note "Server version string"
+    Released builds display `v0.5.0`. When you build from the `main` branch, the banner shows
+    `v0.5.0-SNAPSHOT`.
 
 Well, that was pretty easy!
 
@@ -221,11 +232,8 @@ bin/uc table create --full_name unity.default.mytable \
 ├──────────────────────┼───────────────────────────────────────────┤
 │DATA_SOURCE_FORMAT    │DELTA                                      │
 ├──────────────────────┼───────────────────────────────────────────┤
-│COLUMNS               │{"name":"as_int","type_text":"int","type_js│
-│                      │NT","type_precision":0,"type_scale":0,"type│
-│                      │{"name":"as_double","type_text":"double","t│
-│                      │name":"DOUBLE","type_precision":0,"type_sca│
-│                      │column","nullable":false,"partition_index":│
+│COLUMNS               │{"name":"col1","type_text":"int","type_json"│
+│                      │{"name":"col2","type_text":"double","type_js│
 ├──────────────────────┼───────────────────────────────────────────┤
 │...                   │...                                        │
 ├──────────────────────┼───────────────────────────────────────────┤
@@ -286,7 +294,7 @@ To use the Unity Catalog UI, start a new terminal and ensure you have already st
 To start the UI locally, run the following commands to start `yarn`
 
 ```console
-cd /ui
+cd ui
 yarn install
 yarn start
 ```
@@ -299,6 +307,17 @@ backing resource for the MLflow model registry.  What this means is that with th
 interact directly with your Unity Catalog service for the creation and access of registered models.
 
 ### Setup MLflow for usage with Unity Catalog
+
+Before registering models, configure managed model storage in `etc/conf/server.properties` and restart the UC server
+if it is already running:
+
+```properties
+storage-root.models=file:/tmp/ucroot
+```
+
+```sh
+mkdir -p /tmp/ucroot
+```
 
 In your desired development environment, install MLflow 2.16.1 or higher:
 
@@ -370,10 +389,10 @@ result["predicted_class"] = predictions
 result[:4]
 ```
 
-This code snippet will create a registered model `default.unity.iris` and log the trained model as model version 1. It
+This code snippet will create a registered model `unity.default.iris` and log the trained model as model version 1. It
 then loads the model from the Unity Catalog server, and performs batch inference on the test set using the loaded model.
 
-The results can be seen in the Unity Catalog UI at [http://localhost:3000,](http://localhost:3000) per the instructions
+The results can be seen in the Unity Catalog UI at [http://localhost:3000](http://localhost:3000), per the instructions
 in the [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui).
 
 ![UC UI models](./assets/images/uc_ui_models.png)

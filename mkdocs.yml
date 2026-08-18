@@ -22,6 +22,7 @@ nav:
           - Volumes: usage/api/volumes.md
           - Functions: usage/api/functions.md
           - Models: usage/api/models.md
+          - UC Delta API: usage/api/delta.md
       - Tables:
           - Delta Lake: usage/tables/deltalake.md
           - Formats: usage/tables/formats.md
@@ -29,10 +30,13 @@ nav:
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Models: usage/models.md
+      - Metric Views: usage/metric-views.md
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
       - Users and Privileges: server/users-privileges.md
+      - Deployment: server/deployment.md
+      - Deploy for AWS: server/aws.md
   - Integrations:
       - Overview: integrations/index.md
       - Apache Spark: integrations/unity-catalog-spark.md
@@ -44,7 +48,6 @@ nav:
       - SpiceAI: integrations/unity-catalog-spiceai.md
       - Trino: integrations/unity-catalog-trino.md
       - XTable: integrations/unity-catalog-xtable.md
-  - Deployment: deployment.md
   - AI:
       - Quickstart: ai/quickstart.md
       - Usage: ai/usage.md

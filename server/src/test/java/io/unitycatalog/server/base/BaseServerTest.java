@@ -56,13 +56,19 @@ public abstract class BaseServerTest {
   protected void setUpProperties() {
     serverProperties = new Properties();
     serverProperties.setProperty(Property.SERVER_ENV.getKey(), "test");
-    // Enable managed table creation for tests
-    serverProperties.setProperty(Property.MANAGED_TABLE_ENABLED.getKey(), "true");
+    serverProperties.setProperty(Property.INCLUDE_STACK_TRACE_IN_ERROR.getKey(), "true");
     tableStorageRoot = getManagedStorageCloudPath(testDirectoryRoot);
     serverProperties.setProperty(Property.TABLE_STORAGE_ROOT.getKey(), tableStorageRoot);
   }
 
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
+
+  /**
+   * Subclasses can override this to customize the hibernate properties before the session factory
+   * is created, e.g. to point the server at an external database such as PostgreSQL via
+   * Testcontainers. Defaults to the H2 in-memory test configuration.
+   */
+  protected void setUpHibernateProperties(Properties hibernateProperties) {}
 
   @SneakyThrows
   @BeforeEach
@@ -85,11 +91,15 @@ public abstract class BaseServerTest {
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       setUpCredentialOperations(initServerProperties);
-      hibernateConfigurator = new HibernateConfigurator(initServerProperties);
+      Properties hibernateProperties =
+          HibernateConfigurator.setupHibernateProperties(initServerProperties);
+      setUpHibernateProperties(hibernateProperties);
+      hibernateConfigurator = new HibernateConfigurator(hibernateProperties);
       unityCatalogServer =
           UnityCatalogServer.builder()
               .port(port)
               .serverProperties(initServerProperties)
+              .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
               .build();
       unityCatalogServer.start();
@@ -126,7 +136,16 @@ public abstract class BaseServerTest {
       tx.commit();
       session.close();
 
-      unityCatalogServer.stop();
+      // close() rather than stop() so a server that built its own SessionFactory releases it;
+      // this harness injects one, so the server leaves it open and we close it below.
+      unityCatalogServer.close();
+      // Release the factory this harness built and injected in setUp(). setUp() builds a fresh
+      // one per test, so leaked factories would otherwise accumulate for the whole JVM run. In
+      // test env hbm2ddl is create-drop, so closing also drops the schema — keep this after the
+      // cleanup queries above.
+      sessionFactory.close();
+      // Null out so tearDown is idempotent if a subclass @AfterEach also invokes it.
+      unityCatalogServer = null;
     }
   }
 }

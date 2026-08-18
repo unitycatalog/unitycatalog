@@ -2,6 +2,7 @@ package io.unitycatalog.client.auth;
 
 import io.unitycatalog.client.internal.Preconditions;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Interface for providing access tokens to authenticate with Unity Catalog.
@@ -107,7 +108,11 @@ public interface TokenProvider {
    *     not found, no default constructor, or instantiation failure)
    */
   static TokenProvider create(Map<String, String> configs) {
-    String authType = configs.get(AuthConfigs.TYPE);
+    // Try normalizing to a case-insensitive view if possible so downstream lookups regardless of
+    // casing
+    Map<String, String> normalizedConfigs = toCaseInsensitiveMap(configs);
+
+    String authType = normalizedConfigs.get(AuthConfigs.TYPE);
     Preconditions.checkArgument(
         authType != null && !authType.trim().isEmpty(),
         "Required configuration key '%s' is missing or empty. "
@@ -140,7 +145,22 @@ public interface TokenProvider {
     }
 
     // Initialize the TokenProvider with configs.
-    tokenProvider.initialize(configs);
+    tokenProvider.initialize(normalizedConfigs);
     return tokenProvider;
+  }
+
+  /**
+   * Returns a case-insensitive view of {@code configs} so key lookups succeed regardless of key
+   * casing (some callers pass keys that were lower-cased upstream). If the map is already
+   * case-insensitive it is returned as-is to avoid an unnecessary copy. The check is by simple
+   * class name.
+   */
+  private static Map<String, String> toCaseInsensitiveMap(Map<String, String> configs) {
+    if (configs == null || configs.getClass().getSimpleName().equals("CaseInsensitiveStringMap")) {
+      return configs;
+    }
+    Map<String, String> caseInsensitive = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    caseInsensitive.putAll(configs);
+    return caseInsensitive;
   }
 }

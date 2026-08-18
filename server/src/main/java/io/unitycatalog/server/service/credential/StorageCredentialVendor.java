@@ -6,6 +6,7 @@ import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Optional;
 import java.util.Set;
 
@@ -37,13 +38,18 @@ public class StorageCredentialVendor {
    * @param path the normalized storage location URL (e.g., s3://bucket/path)
    * @param privileges the set of privileges required (SELECT, UPDATE)
    * @return temporary credentials scoped to the requested path and privileges
-   * @throws BaseException if the path is null or credentials cannot be generated
+   * @throws BaseException if the path is null or a cloud storage root, or credentials cannot be
+   *     generated
    */
   public TemporaryCredentials vendCredential(
       NormalizedURL path, Set<CredentialContext.Privilege> privileges) {
     if (path == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Storage location is null.");
     }
+    ValidationUtils.checkArgument(
+        !path.isCloudStorageRoot(),
+        "Storage location must include a non-empty path prefix before credentials can be vended: %s",
+        path);
     if (privileges == null || privileges.isEmpty()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Privileges cannot be null or empty.");
     }
@@ -52,6 +58,6 @@ public class StorageCredentialVendor {
     Optional<CredentialDAO> credentialDAO =
         externalLocationUtils.getExternalLocationCredentialDaoForPath(path);
     CredentialContext credentialContext = CredentialContext.create(path, privileges, credentialDAO);
-    return cloudCredentialVendor.vendCredential(credentialContext);
+    return cloudCredentialVendor.vendCredential(credentialContext).url(path.toString());
   }
 }

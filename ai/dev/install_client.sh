@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+export UV_EXCLUDE_NEWER="${UV_EXCLUDE_NEWER:-2026-03-10T00:00:00Z}"
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 cd "${SCRIPT_DIR}/../.." || exit 1
@@ -15,7 +17,7 @@ if [ ! -d "$CLIENT_TARGET_DIR" ]; then
 fi
 
 # Install the current branch's unitycatalog-client package
-pip install "$CLIENT_TARGET_DIR/.[dev]"
+uv pip install --system "$CLIENT_TARGET_DIR/.[dev]"
 
 # Install unitycatalog-ai core dev package from the current branch
-pip install "./ai/core/.[dev]"
+uv pip install --system "./ai/core/.[dev]"

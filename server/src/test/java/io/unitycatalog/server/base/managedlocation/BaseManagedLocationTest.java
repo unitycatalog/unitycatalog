@@ -58,7 +58,9 @@ public abstract class BaseManagedLocationTest extends BaseCRUDTest {
           new ColumnInfo()
               .name("as_int")
               .typeText("INTEGER")
-              .typeJson("{\"type\": \"integer\"}")
+              .typeJson(
+                  "{\"name\":\"as_int\",\"type\":\"integer\","
+                      + "\"nullable\":true,\"metadata\":{}}")
               .typeName(ColumnTypeName.INT)
               .position(0)
               .comment("Integer column")
@@ -235,7 +237,7 @@ public abstract class BaseManagedLocationTest extends BaseCRUDTest {
       TestUtils.assertApiException(
           () -> volumeOperations.createVolume(createManagedVolume),
           ErrorCode.FAILED_PRECONDITION,
-          "Neither catalog nor schema has managed location configured");
+          "None of catalog, schema or storage-root.tables server property has managed location configured.");
     }
 
     // Managed volume must not specify a location
@@ -304,7 +306,7 @@ public abstract class BaseManagedLocationTest extends BaseCRUDTest {
       TestUtils.assertApiException(
           () -> tableOperations.createTable(createManagedTable),
           ErrorCode.FAILED_PRECONDITION,
-          "Neither catalog nor schema has managed location configured");
+          "None of catalog, schema or storage-root.tables server property has managed location configured.");
     }
 
     // Testing failure cases of external table creation
@@ -382,7 +384,7 @@ public abstract class BaseManagedLocationTest extends BaseCRUDTest {
       TestUtils.assertApiException(
           () -> modelOperations.createRegisteredModel(createModel),
           ErrorCode.FAILED_PRECONDITION,
-          "Neither catalog nor schema has managed location configured");
+          "None of catalog, schema or storage-root.tables server property has managed location configured.");
     }
   }
 }
