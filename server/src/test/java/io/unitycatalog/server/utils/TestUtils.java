@@ -305,8 +305,8 @@ public class TestUtils {
 
   /**
    * Sends a body-less POST to the given path. The SDK always attaches a serialized body, so raw
-   * HTTP is the only way to reach the body-less code path (used to exercise {@link
-   * io.unitycatalog.server.auth.decorator.AuthorizationGateConverter}'s silent-skip denial).
+   * HTTP is the only way to reach the body-less code path -- where the body cannot bind and the
+   * request fails as a 400 during binding, before authorization runs.
    */
   public static HttpResponse<String> sendRawEmptyPost(ServerConfig config, String path)
       throws Exception {
