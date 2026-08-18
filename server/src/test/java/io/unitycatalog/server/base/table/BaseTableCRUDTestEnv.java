@@ -19,8 +19,11 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.params.provider.Arguments;
 
 /**
  * Abstract base class that provides the test environment setup for table CRUD operations.
@@ -60,6 +63,17 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
               .position(1)
               .comment("String column")
               .nullable(true));
+
+  /**
+   * Shared {@code @MethodSource} for view-like create tests: CreateTable.columns is optional, so a
+   * null columns field and an empty list must both be accepted (schema comes from view_definition).
+   */
+  protected static Stream<Arguments> optionalColumnsCases() {
+    return Stream.of(
+        Arguments.of("null columns", (UnaryOperator<CreateTable>) request -> request.columns(null)),
+        Arguments.of(
+            "empty columns", (UnaryOperator<CreateTable>) request -> request.columns(List.of())));
+  }
 
   @BeforeEach
   @Override
