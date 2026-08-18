@@ -15,7 +15,8 @@ import scala.collection.JavaConverters._
 
 /**
  * Injects Unity Catalog path credentials for cloud storage paths referenced directly in a query
- * (e.g. ``SELECT * FROM parquet.`s3://bucket/dir` `` or
+ * (e.g. ``SELECT * FROM parquet.`s3://bucket/dir` ``,
+ * ``SELECT * FROM delta.`s3://bucket/dir` ``, or
  * ``INSERT OVERWRITE DIRECTORY 's3://bucket/dir' USING parquet ...``).
  *
  * Such path-based relations are resolved by Spark's built-in `ResolveSQLOnFile`, which bypasses
@@ -34,17 +35,23 @@ import scala.collection.JavaConverters._
  * provider pick them up — the same mechanism catalog tables use via
  * [[UCSingleCatalog.setCredentialProps]].
  *
+ * Delta path tables may rewrite bare-path relations during analysis without copying those options
+ * into `DeltaLog`. [[DeltaPathCredentialSupport]] early-resolves credentialed `delta.`path``
+ * relations (preserving options) and re-injects on Delta-specific plan nodes if Delta already
+ * rewrote the tree.
+ *
  * '''Ordering''': `ResolveSQLOnFile` lists the path (for schema inference) as soon as it resolves
  * the relation, and it is ordered ahead of rules injected via `injectResolutionRule`. This rule is
  * therefore registered by [[UCSparkSessionExtensions]] as a hint resolution rule, whose batch runs
- * ahead of the analyzer's Resolution batch. The parser stays side-effect free.
+ * ahead of the analyzer's Resolution batch. A second registration via `injectResolutionRule`
+ * patches Delta nodes after Delta's own rewrite. The parser stays side-effect free.
  *
  * '''Idempotence''': the analyzer runs its batches to a fixed point, so this rule is applied
- * repeatedly to the same plan. Nodes that already carry `fs.*` options are therefore left
- * untouched: credentials are vended at most once per path per query, and the plan converges even
- * when the credential cache (`fs.unitycatalog.credential.cache.enabled`) is disabled and every
- * vend would otherwise return a fresh session token. It also means explicit user-supplied `fs.*`
- * options win over vended ones.
+ * repeatedly to the same plan. Nodes that already carry `fs.*` (or Delta's `option.fs.*`)
+ * options are therefore left untouched: credentials are vended at most once per path per query,
+ * and the plan converges even when the credential cache
+ * (`fs.unitycatalog.credential.cache.enabled`) is disabled and every vend would otherwise return
+ * a fresh session token. It also means explicit user-supplied `fs.*` options win over vended ones.
  *
  * The rule is a no-op unless the session's current catalog is a [[UCSingleCatalog]]. It can be
  * disabled with `spark.sql.catalog.<catalog>.vendPathCredentials.enabled=false`.
@@ -53,11 +60,12 @@ import scala.collection.JavaConverters._
  * node is left unchanged so Spark can use ambient storage credentials (e.g.
  * `spark.hadoop.fs.s3a.*`, instance profile) configured on the session.
  *
- * Bare `delta.`path`` cloud relations are excluded: Delta's analysis path does not propagate
- * relation options into `DeltaLog`, so vended credentials would not reach execution and can
- * interfere with ambient credentials. Delta bare-path support is tracked separately.
+ * Bare `INSERT OVERWRITE DIRECTORY ... USING delta` is still excluded: Delta directory writes do
+ * not pick up storage properties the way parquet does.
  */
-case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan] {
+case class ResolvePathCredentials(
+    spark: SparkSession,
+    resolveDeltaPathRelations: Boolean = true) extends Rule[LogicalPlan] {
 
   import ResolvePathCredentials._
 
@@ -66,10 +74,18 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
       case None => plan
       case Some(uc) if !uc.vendPathCredentialsEnabled => plan
       case Some(uc) =>
-        plan.resolveOperators {
+        val withCore = plan.resolveOperators {
           // Bare `format`.`<cloud path>` — used for reads and in query FROM clauses.
           case u: UnresolvedRelation if isEligibleBarePathRelation(u) =>
-            injectUnresolvedRelationCredentials(u, uc)
+            val injected = injectUnresolvedRelationCredentials(u, uc)
+            if (resolveDeltaPathRelations &&
+              DeltaPathCredentialSupport.isDeltaPathRelation(injected) &&
+              PathCredentialOptions.hasCredentialKeys(injected.options.keySet.asScala)) {
+              DeltaPathCredentialSupport.tryResolveDeltaPathRelation(injected, spark)
+                .getOrElse(injected)
+            } else {
+              injected
+            }
 
           // `InsertIntoStatement.table` is not a tree child (only `query` is), so the generic
           // `UnresolvedRelation` case above never visits bare-path INSERT targets such as
@@ -86,7 +102,7 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
           // Write: INSERT OVERWRITE DIRECTORY '<cloud path>' USING <format> ...
           case i: InsertIntoDir
               if !isDeltaProvider(i.provider) &&
-                !hasCredentialOptions(i.storage.properties.keys) &&
+                !PathCredentialOptions.hasCredentialKeys(i.storage.properties.keys) &&
                 i.storage.locationUri.exists(u => isCloudPath(u.toString)) =>
             val location = i.storage.locationUri.get.toString
             val conf =
@@ -99,6 +115,7 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
                 i.storage.copy(properties = i.storage.properties ++ conf.asScala))
             }
         }
+        DeltaPathCredentialSupport.apply(withCore, spark, uc, isCloudPath)
     }
   }
 
@@ -107,7 +124,14 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
       uc: UCSingleCatalog): UnresolvedRelation = {
     val path = relation.multipartIdentifier.last
     val conf = uc.vendPathCredentialConfWithFallback(spark, path)
-    if (conf.isEmpty) relation else relation.copy(options = mergeOptions(relation.options, conf))
+    if (conf.isEmpty) {
+      relation
+    } else if (DeltaPathCredentialSupport.isDeltaPathRelation(relation)) {
+      relation.copy(
+        options = PathCredentialOptions.mergeCredentialOptions(relation.options, conf))
+    } else {
+      relation.copy(options = mergeOptions(relation.options, conf))
+    }
   }
 
   private def currentUcCatalog: Option[UCSingleCatalog] = {
@@ -140,20 +164,12 @@ object ResolvePathCredentials {
   /** True for bare `format.`cloud-path`` relations that should receive UC path credentials. */
   private def isEligibleBarePathRelation(relation: UnresolvedRelation): Boolean = {
     relation.multipartIdentifier.length == 2 &&
-    !isDeltaProvider(Some(relation.multipartIdentifier.head)) &&
     isCloudPath(relation.multipartIdentifier.last) &&
-    !hasCredentialOptions(relation.options.keySet.asScala)
+    !PathCredentialOptions.hasCredentialKeys(relation.options.keySet.asScala)
   }
 
-  /**
-   * True when the option map already carries Hadoop filesystem credentials, either vended by an
-   * earlier pass of this rule or supplied explicitly by the user.
-   */
-  private def hasCredentialOptions(keys: Iterable[String]): Boolean =
-    keys.exists(_.toLowerCase.startsWith("fs."))
-
   /** True when `pathStr` is an absolute URI whose scheme is one UC can vend credentials for. */
-  private def isCloudPath(pathStr: String): Boolean = {
+  private[spark] def isCloudPath(pathStr: String): Boolean = {
     val scheme = try {
       new Path(pathStr).toUri.getScheme
     } catch {
