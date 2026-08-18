@@ -26,7 +26,7 @@ import scala.collection.JavaConverters._
  * This rule closes that gap. For each bare cloud path it finds, it asks the active
  * [[UCSingleCatalog]] to vend credentials via [[UCSingleCatalog.vendPathCredentialConf]] and
  * attaches the resulting `fs.*` Hadoop options to the relation or write target. For bare
- * `format.`path`` relations, read vs write is ambiguous at parse time, so credentials use
+ * `format.`path`` relations, read vs write is ambiguous at analysis time, so credentials use
  * [[UCSingleCatalog.vendPathCredentialConfWithFallback]] (PATH_READ_WRITE with PATH_READ fallback,
  * mirroring loadTable). `INSERT OVERWRITE DIRECTORY` always requests [[PathOperation.PATH_READ_WRITE]].
  * Spark folds these per-relation options into the Hadoop
@@ -34,10 +34,10 @@ import scala.collection.JavaConverters._
  * provider pick them up — the same mechanism catalog tables use via
  * [[UCSingleCatalog.setCredentialProps]].
  *
- * '''Ordering''': this must run before the analyzer, because `ResolveSQLOnFile` lists the path
- * (for schema inference) as soon as it resolves the relation, and it is ordered ahead of injected
- * resolution rules. It is therefore invoked from [[UCSparkSqlExtensionsParser]] on the freshly
- * parsed plan via [[UCSparkSessionExtensions]].
+ * '''Ordering''': `ResolveSQLOnFile` lists the path (for schema inference) as soon as it resolves
+ * the relation, and it is ordered ahead of rules injected via `injectResolutionRule`. This rule is
+ * therefore registered by [[UCSparkSessionExtensions]] as a hint resolution rule, whose batch runs
+ * ahead of the analyzer's Resolution batch. The parser stays side-effect free.
  *
  * The rule is a no-op unless the session's current catalog is a [[UCSingleCatalog]]. It can be
  * disabled with `spark.sql.catalog.<catalog>.vendPathCredentials.enabled=false`.
@@ -67,8 +67,8 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
           // `InsertIntoStatement.table` is not a tree child (only `query` is), so the generic
           // `UnresolvedRelation` case above never visits bare-path INSERT targets such as
           // INSERT INTO parquet.`s3://...`. On Spark 4.0–4.2, executed INSERT INTO on a bare path
-          // still fails at analysis (TABLE_OR_VIEW_NOT_FOUND); this branch is exercised at parse
-          // time and kept for future Spark versions.
+          // still fails at analysis (TABLE_OR_VIEW_NOT_FOUND); this branch is kept for future
+          // Spark versions.
           case i: InsertIntoStatement =>
             i.table match {
               case u: UnresolvedRelation if isEligibleBarePathRelation(u) =>

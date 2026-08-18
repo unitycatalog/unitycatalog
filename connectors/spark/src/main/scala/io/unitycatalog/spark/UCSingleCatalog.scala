@@ -488,7 +488,7 @@ class UCSingleCatalog
   }
 
   /**
-   * Vends path credentials when read vs write is unknown at parse time (e.g. bare
+   * Vends path credentials when read vs write is unknown at analysis time (e.g. bare
    * `parquet.`s3://...`` in SELECT or INSERT INTO). Tries PATH_READ_WRITE first,
    * falls back to PATH_READ, then to an empty map for ambient credentials — same ambiguity
    * handling as loadTable.
