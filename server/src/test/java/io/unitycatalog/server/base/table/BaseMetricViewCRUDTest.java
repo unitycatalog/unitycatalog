@@ -111,7 +111,7 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   private CreateTable validMetricViewRequest() {
-    // columns intentionally omitted: metric views derive schema from view_definition.
+    // columns left empty: metric views derive schema from view_definition.
     return new CreateTable()
         .name(METRIC_VIEW_NAME)
         .catalogName(TestUtils.CATALOG_NAME)
@@ -209,13 +209,6 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
         // best-effort cleanup if create failed
       }
     }
-  }
-
-  private static Stream<Arguments> optionalColumnsCases() {
-    return Stream.of(
-        Arguments.of("null columns", (UnaryOperator<CreateTable>) request -> request.columns(null)),
-        Arguments.of(
-            "empty columns", (UnaryOperator<CreateTable>) request -> request.columns(List.of())));
   }
 
   private static Stream<Arguments> negativeCreateCases() {

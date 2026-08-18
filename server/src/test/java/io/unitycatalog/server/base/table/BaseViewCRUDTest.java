@@ -144,13 +144,6 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     }
   }
 
-  private static Stream<Arguments> optionalColumnsCases() {
-    return Stream.of(
-        Arguments.of("null columns", (UnaryOperator<CreateTable>) request -> request.columns(null)),
-        Arguments.of(
-            "empty columns", (UnaryOperator<CreateTable>) request -> request.columns(List.of())));
-  }
-
   private static Stream<Arguments> negativeCreateCases() {
     return Stream.of(
         Arguments.of(
