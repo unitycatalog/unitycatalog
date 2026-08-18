@@ -122,11 +122,12 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
           ErrorCode.INVALID_ARGUMENT, "Must supply a proper catalog in catalog parameter.");
     }
 
+    String protocolVersion = DeltaProtocolVersionNegotiator.negotiate(protocolVersions);
+
     // Verify catalog exists
     catalogRepository.getCatalog(catalog);
 
-    // For now, we only have 1.0 as the first protocol version. Input protocolVersions is ignored.
-    return new DeltaCatalogConfig().endpoints(ENDPOINTS).protocolVersion("1.0");
+    return new DeltaCatalogConfig().endpoints(ENDPOINTS).protocolVersion(protocolVersion);
   }
 
   // ==================== Load Table API ====================

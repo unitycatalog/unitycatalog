@@ -65,4 +65,30 @@ public class SdkDeltaConfigTest extends BaseServerTest {
         DeltaErrorType.NO_SUCH_CATALOG_EXCEPTION,
         "nonexistent");
   }
+
+  @Test
+  public void testProtocolVersionNegotiation() throws Exception {
+    // A client that supports newer minors / other majors still negotiates down to 1.0.
+    DeltaCatalogConfig config = configApi.getConfig(TestUtils.CATALOG_NAME, "1.3,2.0");
+    assertThat(config.getProtocolVersion()).isEqualTo("1.0");
+    assertThat(config.getEndpoints()).isNotEmpty();
+
+    // Error: missing protocol-versions returns 400 with InvalidParameterValueException
+    TestUtils.assertDeltaApiException(
+        () -> configApi.getConfig(TestUtils.CATALOG_NAME, ""),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "protocol-versions");
+
+    // Error: malformed protocol-versions returns 400 with InvalidParameterValueException
+    TestUtils.assertDeltaApiException(
+        () -> configApi.getConfig(TestUtils.CATALOG_NAME, "1"),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "is not of the form <major>.<minor>");
+
+    // Error: no shared protocol version returns 400 naming the versions the server supports
+    TestUtils.assertDeltaApiException(
+        () -> configApi.getConfig(TestUtils.CATALOG_NAME, "2.0"),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "Server supports protocol versions: 1.0");
+  }
 }
