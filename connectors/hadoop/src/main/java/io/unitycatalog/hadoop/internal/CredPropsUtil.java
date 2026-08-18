@@ -5,14 +5,19 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.ApiClientUtils;
 import io.unitycatalog.client.internal.Clock;
+import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs;
+import io.unitycatalog.hadoop.internal.auth.AwsCredential;
+import io.unitycatalog.hadoop.internal.auth.AzureCredential;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache.RenewableCredential;
+import io.unitycatalog.hadoop.internal.auth.GcsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import io.unitycatalog.hadoop.internal.id.DeltaStagingTableCredId;
 import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
+import io.unitycatalog.hadoop.internal.id.IcebergPlanCredId;
 import io.unitycatalog.hadoop.internal.id.PathCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import io.unitycatalog.hadoop.internal.props.CredPropsBuilder;
@@ -25,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 
 /**
@@ -145,6 +151,32 @@ public class CredPropsUtil {
             credContextId(catalogUri, scheme, tokenProvider), stagingTableId, location));
   }
 
+  /** Fetches credentials scoped to an Iceberg REST server-side scan plan. */
+  public static Map<String, String> createIcebergPlanCredProps(
+      boolean renewCredEnabled,
+      boolean credScopedFsEnabled,
+      Configuration hadoopConf,
+      String scheme,
+      ApiClient apiClient,
+      String catalogUri,
+      TokenProvider tokenProvider,
+      String credentialsEndpoint,
+      String planId,
+      Map<String, String> appVersions)
+      throws ApiException {
+    return createCredProps(
+        renewCredEnabled,
+        credScopedFsEnabled,
+        hadoopConf,
+        scheme,
+        apiClient,
+        catalogUri,
+        tokenProvider,
+        appVersions,
+        new IcebergPlanCredId(
+            credContextId(catalogUri, scheme, tokenProvider), credentialsEndpoint, planId));
+  }
+
   /** Fetches path credentials from the UC REST API and builds Hadoop configuration properties. */
   public static Map<String, String> createPathCredProps(
       boolean renewCredEnabled,
@@ -191,9 +223,15 @@ public class CredPropsUtil {
       // Unsupported scheme: skip the credential fetch entirely and return no props.
       return Collections.emptyMap();
     }
-    List<GenericCredential> credentials =
+    List<GenericCredential> fetchedCredentials =
         fetchGenericCredentials(
             hadoopConf, apiClient, catalogUri, tokenProvider, appVersions, credId);
+    List<GenericCredential> credentials =
+        fetchedCredentials.stream()
+            .filter(credential -> matchesCloud(cloudType.get(), credential))
+            .collect(Collectors.toList());
+    Preconditions.checkState(
+        !credentials.isEmpty(), "No vended credential matched storage scheme '%s'.", scheme);
     CredPropsBuilder builder =
         CredPropsBuilder.forCloud(cloudType.get(), hadoopConf)
             .credScopedFsEnabled(credScopedFsEnabled)
@@ -204,6 +242,18 @@ public class CredPropsUtil {
     }
 
     return builder.build();
+  }
+
+  private static boolean matchesCloud(CloudType cloudType, GenericCredential credential) {
+    switch (cloudType) {
+      case S3:
+        return credential instanceof AwsCredential;
+      case ABFS:
+        return credential instanceof AzureCredential;
+      case GCS:
+        return credential instanceof GcsCredential;
+    }
+    throw new IllegalStateException("Unhandled cloud type: " + cloudType);
   }
 
   /**
