@@ -2,6 +2,10 @@
 FROM node:18@sha256:c6ae79e38498325db67193d391e6ec1d224d96c693a8a4d943498556716d3783
 
 ARG PROXY_HOST=server
+
+# Optional corporate npm mirror, e.g. --build-arg NPM_PROXY_URL=https://npm-proxy.example.com/
+ARG NPM_PROXY_URL
+
 WORKDIR /ui
 
 COPY package.json yarn.lock ./
@@ -12,6 +16,10 @@ RUN <<EOF
 set -ex
 apt-get update
 apt-get install -y jq
+if [ -n "$NPM_PROXY_URL" ]; then
+  origin=$(printf '%s' "$NPM_PROXY_URL" | sed -E 's|/*$||')
+  sed -i -E "s#https://registry\.(yarnpkg|npmjs)\.(com|org)#${origin}#g" yarn.lock
+fi
 jq --arg proxy "http://$PROXY_HOST:8080" '.proxy = $proxy' package.json > temp.json
 mv temp.json package.json
 # '--network-timeout 1000000' is workaround for yarn install to work in github actions

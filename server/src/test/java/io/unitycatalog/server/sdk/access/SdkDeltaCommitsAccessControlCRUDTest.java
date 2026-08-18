@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
+import static io.unitycatalog.server.utils.TestUtils.assertDeltaPermissionDenied;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -239,7 +240,7 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
                                 .fileName("00000003.json")
                                 .fileSize(1024L)
                                 .fileModificationTimestamp(1700000003L))));
-    assertPermissionDenied(
+    assertDeltaPermissionDenied(
         () ->
             readUserDeltaApi.updateTable(
                 TestUtils.CATALOG_NAME,

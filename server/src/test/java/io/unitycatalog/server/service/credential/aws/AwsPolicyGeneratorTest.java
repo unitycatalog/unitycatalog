@@ -3,6 +3,8 @@ package io.unitycatalog.server.service.credential.aws;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.BUCKET_STATEMENT;
+import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.KMS_ENCRYPTION_CONTEXT_KEY;
+import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.KMS_STATEMENT;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.OPERATION_STATEMENT;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.POLICY_STATEMENT;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,6 +35,8 @@ public class AwsPolicyGeneratorTest {
     assertThatNoException().isThrownBy(() -> YAML_MAPPER.readTree(BUCKET_STATEMENT));
 
     assertThatNoException().isThrownBy(() -> YAML_MAPPER.readTree(OPERATION_STATEMENT));
+
+    assertThatNoException().isThrownBy(() -> YAML_MAPPER.readTree(KMS_STATEMENT));
   }
 
   @SneakyThrows
@@ -163,5 +167,113 @@ public class AwsPolicyGeneratorTest {
         .doesNotContain("s3:PutO*")
         .doesNotContain("s3:DeleteO*")
         .contains("s3:GetO*");
+  }
+
+  @Test
+  public void testSelectPolicyGrantsKmsDecrypt() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement).isNotNull();
+    assertThat(statement.path("Action")).map(JsonNode::asText).containsExactly("kms:Decrypt");
+    assertThat(statement.path("Resource")).map(JsonNode::asText).containsExactly("*");
+    assertThat(statement.findPath("kms:ViaService").asText()).isEqualTo("s3.*.amazonaws.com");
+  }
+
+  @Test
+  public void testUpdatePolicyGrantsKmsDecryptAndGenerateDataKey() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement).isNotNull();
+    assertThat(statement.path("Action"))
+        .map(JsonNode::asText)
+        .containsExactlyInAnyOrder("kms:Decrypt", "kms:GenerateDataKey*");
+    assertThat(statement.path("Resource")).map(JsonNode::asText).containsExactly("*");
+    assertThat(statement.findPath("kms:ViaService").asText()).isEqualTo("s3.*.amazonaws.com");
+  }
+
+  @Test
+  public void testKmsStatementIsScopedToGrantedS3Arns() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement.findPath(KMS_ENCRYPTION_CONTEXT_KEY))
+        .map(JsonNode::asText)
+        .containsExactly(
+            "arn:aws:s3:::my-bucket",
+            "arn:aws:s3:::my-bucket/path1/table1/*",
+            "arn:aws:s3:::my-bucket/path1/table1");
+  }
+
+  @Test
+  public void testKmsStatementCoversEveryBucket() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE),
+            Stream.of("s3://my-bucket1/path1/table1", "s3://my-bucket2")
+                .map(NormalizedURL::from)
+                .toList());
+
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement.findPath(KMS_ENCRYPTION_CONTEXT_KEY))
+        .map(JsonNode::asText)
+        .containsExactlyInAnyOrder(
+            "arn:aws:s3:::my-bucket1",
+            "arn:aws:s3:::my-bucket1/path1/table1/*",
+            "arn:aws:s3:::my-bucket1/path1/table1",
+            "arn:aws:s3:::my-bucket2",
+            "arn:aws:s3:::my-bucket2/*");
+  }
+
+  @Test
+  public void testKmsEncryptionContextEscapesIamSpecialCharacters() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE), List.of(NormalizedURL.from("s3://victim-bucket/*")));
+
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement.findPath(KMS_ENCRYPTION_CONTEXT_KEY))
+        .map(JsonNode::asText)
+        .containsExactly(
+            "arn:aws:s3:::victim-bucket",
+            "arn:aws:s3:::victim-bucket/${*}/*",
+            "arn:aws:s3:::victim-bucket/${*}")
+        .doesNotContain("arn:aws:s3:::victim-bucket/*", "arn:aws:s3:::victim-bucket/*/*");
+  }
+
+  @Test
+  public void testKmsStatementDoesNotShiftS3Statements() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode statements = JSON_MAPPER.readTree(policy).get("Statement");
+    assertThat(statements.get(0).path("Action")).map(JsonNode::asText).containsExactly("s3:GetO*");
+    assertThat(statements.get(1).path("Action"))
+        .map(JsonNode::asText)
+        .containsExactly("s3:ListBucket");
+  }
+
+  /**
+   * Returns the statement that carries the KMS actions, or {@code null} when the policy has none.
+   * Located by action prefix rather than by index so that the S3 statements the other tests assert
+   * on by index stay where they are.
+   */
+  private static JsonNode findKmsStatement(JsonNode policyRoot) {
+    for (JsonNode statement : policyRoot.path("Statement")) {
+      for (JsonNode action : statement.path("Action")) {
+        if (action.asText().startsWith("kms:")) {
+          return statement;
+        }
+      }
+    }
+    return null;
   }
 }

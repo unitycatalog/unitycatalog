@@ -44,7 +44,7 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setRenewableCredKeys(GenericCredential cred) {
+  protected void setInitRenewableCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AzureCredential,
         "Expected AzureCredential, but got %s",
@@ -60,7 +60,7 @@ final class AbfsCredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setFixedCredKeys(GenericCredential cred) {
+  protected void setInitFixedCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AzureCredential,
         "Expected AzureCredential, but got %s",

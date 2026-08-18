@@ -3,6 +3,7 @@ package io.unitycatalog.hadoop.internal.props;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Preconditions;
 import io.unitycatalog.hadoop.internal.CloudType;
+import io.unitycatalog.hadoop.internal.CredentialUtil;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import io.unitycatalog.hadoop.internal.auth.GenericCredential;
 import io.unitycatalog.hadoop.internal.fs.CredScopedFileSystem;
@@ -10,7 +11,9 @@ import io.unitycatalog.hadoop.internal.fs.CredScopedFs;
 import io.unitycatalog.hadoop.internal.id.CredId;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 
 /** Builds the cloud-provider specific Hadoop configuration credential properties. */
@@ -29,7 +32,7 @@ public abstract class CredPropsBuilder {
   private TokenProvider tokenProvider;
   private CredId credId;
   private Map<String, String> appVersions;
-  private GenericCredential initialCredential;
+  private List<GenericCredential> initialCredentials;
 
   protected CredPropsBuilder(Configuration hadoopConf) {
     Preconditions.checkNotNull(hadoopConf, "hadoopConf is required");
@@ -73,20 +76,19 @@ public abstract class CredPropsBuilder {
     return this;
   }
 
-  /** Records the fetched credential whose secrets are written by {@link #build()}. */
-  public CredPropsBuilder initialCredential(GenericCredential initialCredential) {
-    this.initialCredential = initialCredential;
+  /** Records the fetched credentials used by {@link #build()}. */
+  public CredPropsBuilder initialCredentials(List<GenericCredential> initialCredentials) {
+    this.initialCredentials = initialCredentials;
     return this;
   }
 
   public Map<String, String> build() {
-    Preconditions.checkNotNull(initialCredential, "initialCredential is required");
+    // Set the props when credential scoped filesystem enabled.
     if (credScopedFsEnabled) {
       setCredScopedFsKeys();
     }
-    if (initialCredential.prefix() != null) {
-      set(UCHadoopConfConstants.UC_CREDENTIAL_PREFIX_KEY, initialCredential.prefix());
-    }
+
+    // Set the props when renewal credential enabled.
     if (renewCredEnabled) {
       setVendedProviderKeys();
       set(UCHadoopConfConstants.UC_URI_KEY, catalogUri);
@@ -97,10 +99,35 @@ public abstract class CredPropsBuilder {
       credId.props().forEach(this::set);
       appVersions.forEach(
           (key, value) -> set(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + key, value));
-      setRenewableCredKeys(initialCredential);
-    } else {
-      setFixedCredKeys(initialCredential);
     }
+
+    // Set the props for initial credentials.
+    Preconditions.checkState(
+        initialCredentials != null && !initialCredentials.isEmpty(),
+        "Initial credentials cannot be null or empty");
+    if (initialCredentials.size() == 1) {
+      // Seed the initial credential only in the common single-credential case. In the uncommon
+      // multiple-credential case, skip this optimization to keep the code and configuration simple.
+      GenericCredential credential = initialCredentials.get(0);
+      if (renewCredEnabled) {
+        setInitRenewableCredKeys(credential);
+      } else {
+        setInitFixedCredKeys(credential);
+      }
+    }
+
+    // Set the props for initial credential prefixes.
+    List<String> credPrefixes =
+        initialCredentials.stream()
+            .map(GenericCredential::prefix)
+            .filter(prefix -> prefix != null && !prefix.isEmpty())
+            .collect(Collectors.toList());
+    if (!credPrefixes.isEmpty()) {
+      set(
+          UCHadoopConfConstants.UC_CREDENTIAL_PREFIXES_KEY,
+          String.join(",", CredentialUtil.encodeCredPrefixes(credPrefixes)));
+    }
+
     return Collections.unmodifiableMap(new HashMap<>(props));
   }
 
@@ -128,8 +155,8 @@ public abstract class CredPropsBuilder {
   protected abstract void setVendedProviderKeys();
 
   /** Writes the renewable-path credential secrets (the {@code init.*} keys) for this cloud. */
-  protected abstract void setRenewableCredKeys(GenericCredential cred);
+  protected abstract void setInitRenewableCredKeys(GenericCredential cred);
 
   /** Writes the fixed-path credential secrets for this cloud. */
-  protected abstract void setFixedCredKeys(GenericCredential cred);
+  protected abstract void setInitFixedCredKeys(GenericCredential cred);
 }

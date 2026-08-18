@@ -2,7 +2,6 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.ServerProperties;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
@@ -14,7 +13,6 @@ import org.hibernate.SessionFactory;
 @Getter
 public class Repositories {
   private final SessionFactory sessionFactory;
-  private final FileOperations fileOperations;
   private final ExternalLocationUtils externalLocationUtils;
 
   private final CatalogRepository catalogRepository;
@@ -35,7 +33,6 @@ public class Repositories {
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
-    this.fileOperations = new FileOperations(serverProperties);
     this.externalLocationUtils = new ExternalLocationUtils(sessionFactory);
 
     this.catalogRepository = new CatalogRepository(this, sessionFactory);

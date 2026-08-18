@@ -36,20 +36,27 @@ trait UCProxyViewSupport { self: UCProxy =>
     // Spark 4.2 surfaces these through the View API (withQueryColumnNames / withSchemaMode); on v1
     // they are read from properties (viewQueryColumnNames / viewSchemaModeFromProperties), so
     // populate them here for parity. The `view.sqlConfig.*` keys are already carried in `base`.
+    // Query-output names can differ from declared names (e.g. `CREATE VIEW v(a,b) AS SELECT x,y`),
+    // and Spark matches by them; prefer the persisted `view.query.out.*` in `base`, synthesizing
+    // from declared columns only when absent (deriving would risk INCOMPATIBLE_VIEW_SCHEMA_CHANGE).
     val queryOut =
-      if (fields.nonEmpty) {
+      if (base.contains(CatalogTable.VIEW_QUERY_OUTPUT_NUM_COLUMNS) || fields.isEmpty) {
+        Map.empty[String, String]
+      } else {
         Map(CatalogTable.VIEW_QUERY_OUTPUT_NUM_COLUMNS -> fields.length.toString) ++
           fields.zipWithIndex.map { case (f, i) =>
             s"${CatalogTable.VIEW_QUERY_OUTPUT_COLUMN_NAME_PREFIX}$i" -> f.name
           }
-      } else {
-        Map.empty[String, String]
       }
     val schemaModeDefault =
       if (base.contains(CatalogTable.VIEW_SCHEMA_MODE)) Map.empty[String, String]
       else Map(CatalogTable.VIEW_SCHEMA_MODE -> SchemaCompensation.toString)
+    // Unqualified refs resolve against the creation-time catalog/namespace, which can differ from
+    // the view's location; prefer the persisted `view.catalogAndNamespace.*` in `base`, falling
+    // back to the view's location only when absent (`self.name()` is a same-namespace fallback).
     val viewNamespaceProps =
-      CatalogTable.catalogAndNamespaceToProps(self.name(), Seq(t.getSchemaName))
+      if (base.contains(CatalogTable.VIEW_CATALOG_AND_NAMESPACE)) Map.empty[String, String]
+      else CatalogTable.catalogAndNamespaceToProps(self.name(), Seq(t.getSchemaName))
     val viewTable = CatalogTable(
       identifier = identifier,
       tableType = CatalogTableType.VIEW,

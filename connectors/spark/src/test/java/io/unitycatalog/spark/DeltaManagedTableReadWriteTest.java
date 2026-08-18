@@ -111,6 +111,97 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
     sql("DROP TABLE IF EXISTS %s", fullTableName);
   }
 
+  /**
+   * A managed CREATE TABLE with no USING clause honors `spark.sql.sources.default`: when it
+   * resolves to delta, UC treats the table as a managed Delta table (mirroring Spark's built-in
+   * session catalog) instead of rejecting it as non-Delta. Unlike Spark's `V2SessionCatalog`, a
+   * named V2 catalog receives no `provider` property when USING is omitted, so this relies on the
+   * default-source fallback in {@code UCSingleCatalog}'s {@code hasDeltaProvider}.
+   */
+  @Test
+  public void testCreateManagedTableDefaultsToDeltaWhenDefaultSourceIsDelta() throws ApiException {
+    prepareSessionForDefaultSourceTests();
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE + "_defaultsrc";
+    runWithDefaultSourceDelta(
+        () -> {
+          sql("CREATE TABLE %s(name STRING)", fullTableName); // no USING clause
+          sql("INSERT INTO %s VALUES ('a')", fullTableName);
+          assertThat(sql("SELECT name FROM %s", fullTableName)).hasSize(1);
+          assertManagedDeltaTableMetadata(fullTableName);
+        },
+        fullTableName);
+  }
+
+  /** Provider-less CTAS (`stageCreate`) with `spark.sql.sources.default=delta`. */
+  @Test
+  public void testCtasManagedTableDefaultsToDeltaWhenDefaultSourceIsDelta() throws ApiException {
+    prepareSessionForDefaultSourceTests();
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE + "_ctas";
+    runWithDefaultSourceDelta(
+        () -> {
+          sql("CREATE TABLE %s AS SELECT 'a' AS name", fullTableName); // CTAS, no USING
+          assertThat(sql("SELECT name FROM %s", fullTableName)).hasSize(1);
+          assertManagedDeltaTableMetadata(fullTableName);
+        },
+        fullTableName);
+  }
+
+  /** Provider-less CREATE OR REPLACE on a missing table (`stageCreateOrReplace`). */
+  @Test
+  public void testCreateOrReplaceManagedTableDefaultsToDeltaWhenDefaultSourceIsDelta()
+      throws ApiException {
+    prepareSessionForDefaultSourceTests();
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE + "_cor";
+    runWithDefaultSourceDelta(
+        () -> {
+          sql("CREATE OR REPLACE TABLE %s(name STRING)", fullTableName); // no USING
+          sql("INSERT INTO %s VALUES ('a')", fullTableName);
+          assertThat(sql("SELECT name FROM %s", fullTableName)).hasSize(1);
+          assertManagedDeltaTableMetadata(fullTableName);
+        },
+        fullTableName);
+  }
+
+  /**
+   * Provider-less REPLACE on an existing managed Delta table (`stageReplace`) materializes delta
+   * and round-trips through UC metadata.
+   */
+  @Test
+  public void testReplaceManagedTableDefaultsToDeltaWhenDefaultSourceIsDelta() throws ApiException {
+    prepareSessionForDefaultSourceTests();
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE + "_replace";
+    sql("CREATE TABLE %s(name STRING) USING delta", fullTableName);
+    sql("INSERT INTO %s VALUES ('before')", fullTableName);
+    runWithDefaultSourceDelta(
+        () -> {
+          sql("REPLACE TABLE %s(name STRING)", fullTableName); // no USING
+          sql("INSERT INTO %s VALUES ('after')", fullTableName);
+          assertThat(sql("SELECT name FROM %s", fullTableName)).hasSize(1);
+          assertManagedDeltaTableMetadata(fullTableName);
+        },
+        fullTableName);
+  }
+
+  /**
+   * With the default source left as a non-Delta format, a provider-less managed CREATE TABLE is
+   * still rejected -- confirming no regression to Spark's out-of-the-box behavior
+   * (`spark.sql.sources.default` defaults to `parquet`).
+   */
+  @Test
+  public void testCreateManagedTableWithNonDeltaDefaultSourceRejected() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE + "_parquetdefault";
+    String originalDefault = session.conf().get("spark.sql.sources.default", "parquet");
+    session.conf().set("spark.sql.sources.default", "parquet");
+    try {
+      assertThatThrownBy(() -> sql("CREATE TABLE %s(name STRING)", fullTableName))
+          .hasMessageContaining("not support non-Delta managed table");
+    } finally {
+      session.conf().set("spark.sql.sources.default", originalDefault);
+    }
+  }
+
   @ParameterizedTest
   @MethodSource("cloudParameters")
   public void testCreateManagedDeltaTable(
@@ -277,6 +368,44 @@ public abstract class DeltaManagedTableReadWriteTest extends BaseTableReadWriteT
 
   private TableInfo loadTableInfo(String fullTableName) throws ApiException {
     return tableOperations.getTable(fullTableName);
+  }
+
+  /** SPARK_CATALOG + CATALOG_NAME session used by default-source integration tests. */
+  private void prepareSessionForDefaultSourceTests() {
+    session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    ensureSparkCatalogSchemaExists();
+  }
+
+  /**
+   * Runs {@code action} with {@code spark.sql.sources.default=delta}, then drops {@code
+   * fullTableName} and restores the prior default.
+   */
+  private void runWithDefaultSourceDelta(ThrowingRunnable action, String fullTableName)
+      throws ApiException {
+    String originalDefault = session.conf().get("spark.sql.sources.default", "parquet");
+    session.conf().set("spark.sql.sources.default", "delta");
+    try {
+      action.run();
+    } catch (ApiException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    } finally {
+      sql("DROP TABLE IF EXISTS %s", fullTableName);
+      session.conf().set("spark.sql.sources.default", originalDefault);
+    }
+  }
+
+  private void assertManagedDeltaTableMetadata(String fullTableName) throws ApiException {
+    TableInfo info = loadTableInfo(fullTableName);
+    assertThat(info.getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(info.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
+    assertManagedTableHasUcProperties(fullTableName, null);
+  }
+
+  @FunctionalInterface
+  private interface ThrowingRunnable {
+    void run() throws Exception;
   }
 
   private void assertManagedTableHasUcProperties(String fullTableName, String expectedTableId)

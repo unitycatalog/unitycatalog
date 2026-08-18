@@ -116,7 +116,7 @@ public class SdkDeltaCredentialsTest extends BaseCRUDTestWithMockCredentials {
     // -------- getTableCredentials: missing `operation` param (SDK-side required check) --------
     // This ApiException is thrown locally by the generated client before the server is reached,
     // so there is no Delta-format response body to verify -- use the generic assertApiException.
-    TestUtils.assertApiException(
+    TestUtils.assertClientException(
         () ->
             deltaCredentialsApi.getTableCredentials(
                 /* operation= */ null,
