@@ -6,12 +6,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.hadoop.internal.CredPropsUtil;
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
+import io.unitycatalog.hadoop.internal.auth.AwsCredential;
+import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.spark.utils.OptionsUtil;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation;
@@ -419,6 +424,48 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
         .isNotNull();
     assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
+  }
+
+  /**
+   * The analyzer runs its batches to a fixed point, so the rule is applied to the same plan more
+   * than once. Credentials must be vended only on the first pass: re-vending would issue a UC
+   * request per iteration and, with the credential cache off, hand back a fresh session token every
+   * time, so the plan would never stabilize and the batch would hit its iteration limit.
+   */
+  @Test
+  public void testRepeatedApplicationVendsOnceAndLeavesPlanUnchanged()
+      throws IOException, ParseException {
+    session = createPathCredSession(SPARK_CATALOG);
+    session.conf().set(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, "false");
+    String location = bucketPath("repeated_rule_application");
+
+    AtomicInteger vends = new AtomicInteger();
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) ->
+            () ->
+                List.of(
+                    new AwsCredential(
+                        "accessKey0",
+                        "secretKey0",
+                        "sessionToken" + vends.incrementAndGet(),
+                        Long.MAX_VALUE,
+                        null));
+    try {
+      LogicalPlan parsed =
+          session
+              .sessionState()
+              .sqlParser()
+              .parsePlan(String.format("SELECT * FROM parquet.`%s`", location));
+      LogicalPlan first = injectPathCredentials(parsed);
+      LogicalPlan second = injectPathCredentials(first);
+
+      assertThat(vends.get()).isEqualTo(1);
+      assertThat(second.fastEquals(first)).as("rule must reach a fixed point: %s", second).isTrue();
+      assertThat(findBareCloudPathRelation(first).options().get("fs.s3a.session.token"))
+          .isEqualTo("sessionToken1");
+    } finally {
+      CredPropsUtil.genericCredFetcherFactory = GenericCredentialFetcher::create;
+    }
   }
 
   /**
