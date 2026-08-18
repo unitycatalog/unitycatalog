@@ -101,19 +101,20 @@ public class CasbinPolicyRefresher implements AutoCloseable {
         return false;
       }
 
-      LOGGER.debug(
-          "Casbin policy changed (count {} -> {}, maxId {} -> {}); reloading",
-          lastCount,
-          db[0],
-          lastMaxId,
-          db[1]);
-
+      long previousCount = lastCount;
+      long previousMaxId = lastMaxId;
       // May throw: leave checkSeq alone so waiters retry.
       reloader.run();
       // Stamp the probed version, not a post-reload re-read: a fresher DB stamp would claim we
       // loaded state the new enforcer may not contain.
       recordVersion(db[0], db[1]);
       checkSeq.incrementAndGet();
+      LOGGER.info(
+          "Reloaded Casbin policy from casbin_rule (count {} -> {}, maxId {} -> {})",
+          previousCount,
+          db[0],
+          previousMaxId,
+          db[1]);
       return true;
     }
   }

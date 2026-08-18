@@ -45,7 +45,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JCasbinAuthorizer.class);
 
-  private final AtomicReference<SyncedEnforcer> current = new AtomicReference<>();
+  private final AtomicReference<SyncedEnforcer> currentEnforcer = new AtomicReference<>();
   final ReadWriteLock reloadLock = new ReentrantReadWriteLock();
   private final JDBCAdapter adapter;
   private final String modelText;
@@ -76,9 +76,9 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
     InputStream modelStream = this.getClass().getResourceAsStream("/jcasbin_auth_model.conf");
     this.modelText = IOUtils.toString(modelStream, StandardCharsets.UTF_8);
-    current.set(newEnforcer());
+    currentEnforcer.set(newEnforcer());
 
-    this.refreshDebounceNanos = serverProperties.getPolicyRefreshDebounce().toNanos();
+    this.refreshDebounceNanos = serverProperties.getPolicyRefreshDebounceInterval().toNanos();
     this.refreshEnabled = serverProperties.isPolicyRefreshEnabled();
     this.refresher =
         new CasbinPolicyRefresher(this::reloadFromStore, hibernateConfigurator.getSessionFactory());
@@ -110,10 +110,6 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     return username;
   }
 
-  private SyncedEnforcer live() {
-    return current.get();
-  }
-
   private SyncedEnforcer newEnforcer() {
     Model model = new Model();
     model.loadModelFromText(modelText);
@@ -129,7 +125,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   void reloadFromStore() {
     reloadLock.writeLock().lock();
     try {
-      current.set(newEnforcer());
+      currentEnforcer.set(newEnforcer());
     } finally {
       reloadLock.writeLock().unlock();
     }
@@ -146,7 +142,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   private <T> T mutate(Function<SyncedEnforcer, T> action) {
     reloadLock.readLock().lock();
     try {
-      return action.apply(live());
+      return action.apply(currentEnforcer.get());
     } finally {
       reloadLock.readLock().unlock();
     }
@@ -196,7 +192,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   @Override
   public UUID getHierarchyParent(UUID resource) {
     List<List<String>> policy =
-        live()
+        currentEnforcer
+            .get()
             .getFilteredNamedGroupingPolicy(
                 HIERARCHY_POLICY, HIERARCHY_CHILD_INDEX, resource.toString());
     if (policy.isEmpty() || policy.get(0).isEmpty()) {
@@ -207,12 +204,14 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
   @Override
   public boolean authorize(UUID principal, UUID resource, Privileges action) {
-    return live().enforce(principal.toString(), resource.toString(), action.toString());
+    return currentEnforcer
+        .get()
+        .enforce(principal.toString(), resource.toString(), action.toString());
   }
 
   @Override
   public boolean authorizeAny(UUID principal, UUID resource, Privileges... actions) {
-    SyncedEnforcer enforcer = live();
+    SyncedEnforcer enforcer = currentEnforcer.get();
     return Arrays.stream(actions)
         .anyMatch(
             action ->
@@ -221,7 +220,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
   @Override
   public boolean authorizeAll(UUID principal, UUID resource, Privileges... actions) {
-    SyncedEnforcer enforcer = live();
+    SyncedEnforcer enforcer = currentEnforcer.get();
     return Arrays.stream(actions)
         .allMatch(
             action ->
@@ -231,7 +230,9 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   @Override
   public List<Privileges> listAuthorizations(UUID principal, UUID resource) {
     List<List<String>> list =
-        live().getPermissionsForUserInDomain(principal.toString(), resource.toString());
+        currentEnforcer
+            .get()
+            .getPermissionsForUserInDomain(principal.toString(), resource.toString());
     return list.stream()
         .map(l -> l.get(PRIVILEGE_INDEX))
         .map(Privileges::fromValue)
@@ -240,7 +241,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
 
   @Override
   public Map<UUID, List<Privileges>> listAuthorizations(UUID resource) {
-    return live().getFilteredPolicy(RESOURCE_INDEX, resource.toString()).stream()
+    return currentEnforcer.get().getFilteredPolicy(RESOURCE_INDEX, resource.toString()).stream()
         .collect(
             Collectors.groupingBy(
                 l -> UUID.fromString(l.get(PRINCIPAL_INDEX)),
@@ -251,7 +252,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
   /**
    * Rate-limited policy check before returning 403, for cross-instance create-then-read.
    *
-   * @return true if the live enforcer was replaced (by this call or a coalesced concurrent check)
+   * @return true if the current enforcer was replaced (this call or a coalesced concurrent check)
    */
   @Override
   public boolean refreshAuthorizations() {
@@ -266,9 +267,9 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer, AutoCloseable 
     if (!lastRefreshNanos.compareAndSet(last, now)) {
       return false;
     }
-    SyncedEnforcer before = live();
+    SyncedEnforcer before = currentEnforcer.get();
     refresher.checkAndReload();
-    return live() != before;
+    return currentEnforcer.get() != before;
   }
 
   @Override

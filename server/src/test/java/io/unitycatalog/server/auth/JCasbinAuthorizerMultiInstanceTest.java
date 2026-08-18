@@ -47,11 +47,18 @@ public class JCasbinAuthorizerMultiInstanceTest {
   }
 
   private ServerProperties properties(boolean refreshEnabled, String interval) {
+    return properties(refreshEnabled, interval, null);
+  }
+
+  private ServerProperties properties(boolean refreshEnabled, String interval, String debounce) {
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
     properties.setProperty(
         Property.POLICY_REFRESH_ENABLED.getKey(), Boolean.toString(refreshEnabled));
     properties.setProperty(Property.POLICY_REFRESH_INTERVAL.getKey(), interval);
+    if (debounce != null) {
+      properties.setProperty(Property.POLICY_REFRESH_DEBOUNCE_INTERVAL.getKey(), debounce);
+    }
     return new ServerProperties(properties);
   }
 
@@ -212,10 +219,23 @@ public class JCasbinAuthorizerMultiInstanceTest {
 
   @Test
   void denyTriggeredRefreshIsDebounced() throws Exception {
-    JCasbinAuthorizer replica = startReplica();
+    JCasbinAuthorizer replica =
+        register(
+            new JCasbinAuthorizer(
+                hibernateConfigurator, properties(true, "PT1H", TEST_REFRESH_INTERVAL)));
+    JCasbinAuthorizer writer = startReplicaWithoutRefresh();
 
     replica.refreshAuthorizations();
-    assertThat(replica.refreshAuthorizations()).isFalse();
+    assertThat(replica.refreshAuthorizations())
+        .as("a second check inside the debounce window is skipped")
+        .isFalse();
+
+    writer.grantAuthorization(UUID.randomUUID(), UUID.randomUUID(), Privileges.SELECT);
+    Thread.sleep(Duration.parse(TEST_REFRESH_INTERVAL).toMillis() + 50);
+
+    assertThat(replica.refreshAuthorizations())
+        .as("after the debounce window a changed policy is reloaded")
+        .isTrue();
   }
 
   @Test

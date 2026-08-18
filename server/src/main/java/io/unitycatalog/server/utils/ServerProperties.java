@@ -194,8 +194,8 @@ public class ServerProperties {
     POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_INTERVAL(
         "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
-    POLICY_REFRESH_DEBOUNCE(
-        "server.authorization.policy-refresh-debounce", "PT1S", DURATION_VALIDATOR),
+    POLICY_REFRESH_DEBOUNCE_INTERVAL(
+        "server.authorization.policy-refresh-debounce-interval", "PT1S", DURATION_VALIDATOR),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
@@ -477,8 +477,8 @@ public class ServerProperties {
     return Duration.parse(get(Property.POLICY_REFRESH_INTERVAL));
   }
 
-  public Duration getPolicyRefreshDebounce() {
-    return Duration.parse(get(Property.POLICY_REFRESH_DEBOUNCE));
+  public Duration getPolicyRefreshDebounceInterval() {
+    return Duration.parse(get(Property.POLICY_REFRESH_DEBOUNCE_INTERVAL));
   }
 
   public boolean isIncludeStackTraceInError() {
