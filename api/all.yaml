@@ -1768,7 +1768,11 @@ components:
         data_source_format:
           $ref: '#/components/schemas/DataSourceFormat'
         columns:
-          description: The array of __ColumnInfo__ definitions of the table's columns.
+          description: >-
+            The array of __ColumnInfo__ definitions of the table's columns.
+            Optional for METRIC_VIEW (and other view-like types whose schema is
+            derived from view_definition); required for MANAGED and EXTERNAL
+            tables.
           type: array
           items:
             $ref: '#/components/schemas/ColumnInfo'
@@ -1793,7 +1797,6 @@ components:
         - catalog_name
         - schema_name
         - table_type
-        - columns
     StagingTableInfo:
       type: object
       properties:
