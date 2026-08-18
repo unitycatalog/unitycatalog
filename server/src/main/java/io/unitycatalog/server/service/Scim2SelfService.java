@@ -6,7 +6,6 @@ import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.server.ServiceRequestContext;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Produces;
 import com.linecorp.armeria.server.annotation.StatusCode;
@@ -15,14 +14,12 @@ import com.unboundid.scim2.common.types.UserResource;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class Scim2SelfService {
+public class Scim2SelfService implements ScimService {
   private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
 

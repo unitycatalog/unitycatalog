@@ -10,6 +10,7 @@ import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 /**
  * Access control tests for staging tables that require authorization to be enabled.
@@ -51,6 +52,20 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
    * surface; each subclass implements this against its own RPC.
    */
   protected abstract void fetchTempCreds(ServerConfig config, String tableId) throws Exception;
+
+  /**
+   * Asserts {@code executable} is denied in this surface's error dialect. UC and Delta endpoints
+   * render the same denial differently, so each subclass asserts its own envelope rather than the
+   * test body accepting either.
+   */
+  protected abstract void assertDeniedInSurfaceFormat(Executable executable);
+
+  /**
+   * As {@link #assertDeniedInSurfaceFormat(Executable)}, and additionally asserts the denial
+   * reason. Use when the test cares which authorization check rejected the request.
+   */
+  protected abstract void assertDeniedInSurfaceFormat(
+      Executable executable, String containsMessage);
 
   /**
    * Test that attempting to create a managed table from another user's staging table fails with
@@ -99,7 +114,7 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
     // getStagingTableCredentials).
     // Owner allowed; non-owner denied.
     fetchTempCreds(userAConfig, staging.id());
-    TestUtils.assertPermissionDenied(() -> fetchTempCreds(userBConfig, staging.id()));
+    assertDeniedInSurfaceFormat(() -> fetchTempCreds(userBConfig, staging.id()));
 
     // createStagingTable authz (catalog USE_CATALOG/OWNER + schema USE_SCHEMA+CREATE_TABLE OR
     // schema OWNER). Both surfaces share the same SpEL constant
@@ -145,7 +160,7 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
     grantPermissions(
         userCEmail, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
     ServerConfig userCConfig = createTestUserServerConfig(userCEmail);
-    TestUtils.assertPermissionDenied(
+    assertDeniedInSurfaceFormat(
         () ->
             createStaging(
                 userCConfig, TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, "staging_denied"));
@@ -153,7 +168,7 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
     // Steps 3+4: User B's createTable on User A's staging is rejected at commitStagingTable;
     // User A's same request succeeds and produces a regular table that reuses the staging UUID
     // and storage location.
-    TestUtils.assertPermissionDenied(
+    assertDeniedInSurfaceFormat(
         () -> finalizeManagedTable(userBConfig, staging, TestUtils.TABLE_NAME),
         "User attempts to create table on a staging location without ownership");
     FinalizedTable finalized = finalizeManagedTable(userAConfig, staging, TestUtils.TABLE_NAME);
@@ -168,6 +183,6 @@ public abstract class SdkStagingTableAccessControlTest extends SdkAccessControlB
     // {@code generateTemporaryTableCredentials} reaches the same 403 via its own ownership check.
     // Either subclass's surface must exhibit the fail-closed 403; we don't pin which one wins for
     // an owner-with-regular-UUID call here.
-    TestUtils.assertPermissionDenied(() -> fetchTempCreds(userBConfig, finalized.tableId()));
+    assertDeniedInSurfaceFormat(() -> fetchTempCreds(userBConfig, finalized.tableId()));
   }
 }

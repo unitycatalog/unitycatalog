@@ -17,7 +17,6 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.PermissionsChange;
 import io.unitycatalog.server.model.PermissionsList;
 import io.unitycatalog.server.model.Privilege;
@@ -45,13 +44,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class PermissionService {
+public class PermissionService implements UnityCatalogRestService {
 
   private final UnityCatalogAuthorizer authorizer;
   private final MetastoreRepository metastoreRepository;

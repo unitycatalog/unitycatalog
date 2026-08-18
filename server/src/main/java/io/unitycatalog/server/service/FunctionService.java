@@ -10,7 +10,6 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateFunctionRequest;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.FunctionInfo;
@@ -26,14 +25,12 @@ import java.util.Optional;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import lombok.SneakyThrows;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class FunctionService extends AuthorizedService {
+public class FunctionService extends AuthorizedService implements UnityCatalogRestService {
 
   private final FunctionRepository functionRepository;
   private final SchemaRepository schemaRepository;

@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.server.utils.TestUtils.assertApiExceptionStatusOnly;
+import static io.unitycatalog.server.utils.TestUtils.assertDeltaPermissionDenied;
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -171,7 +172,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     assertThat(adminDeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1")).isNotNull();
 
     // loadTable (regular-1) -> use catalog, use schema, but no SELECT -> denied
-    assertPermissionDenied(() -> regular1DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1"));
+    assertDeltaPermissionDenied(() -> regular1DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1"));
 
     // loadTable (regular-2) -> use schema, use catalog, select -> allowed
     assertThat(regular2DeltaApi.loadTable("cat_pr1", "sch_pr1", "tbl_pr1")).isNotNull();
@@ -194,13 +195,13 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
 
     // Delta getTableCredentials authz: READ requires SELECT, READ_WRITE requires MODIFY
     // getTableCredentials READ (regular-1) -> use catalog, use schema, but no SELECT -> denied
-    assertPermissionDenied(
+    assertDeltaPermissionDenied(
         () ->
             regular1DeltaCredsApi.getTableCredentials(
                 DeltaCredentialOperation.READ, "cat_pr1", "sch_pr1", "tbl_pr1"));
 
     // getTableCredentials READ_WRITE (regular-2) -> has SELECT but not MODIFY -> denied
-    assertPermissionDenied(
+    assertDeltaPermissionDenied(
         () ->
             regular2DeltaCredsApi.getTableCredentials(
                 DeltaCredentialOperation.READ_WRITE, "cat_pr1", "sch_pr1", "tbl_pr1"));
@@ -288,7 +289,8 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
 
     // delete table (regular-1) -> -- -> denied via UC REST and Delta REST
     assertPermissionDenied(() -> regular1TablesApi.deleteTable("cat_pr1.sch_rg2.tab_rg2"));
-    assertPermissionDenied(() -> regular1DeltaApi.deleteTable("cat_pr1", "sch_rg2", "tab_rg2"));
+    assertDeltaPermissionDenied(
+        () -> regular1DeltaApi.deleteTable("cat_pr1", "sch_rg2", "tab_rg2"));
 
     // delete table (principal-1) -> owner [catalog] -> allowed (UC REST)
     principal1TablesApi.deleteTable("cat_pr1.sch_rg2.tab_rg2");
@@ -306,7 +308,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     regular2TablesApi.createTable(createTableRg2Delta);
 
     // Delta delete (regular-1) -> -- -> denied
-    assertPermissionDenied(
+    assertDeltaPermissionDenied(
         () -> regular1DeltaApi.deleteTable("cat_pr1", "sch_rg2", "tab_rg2_delta"));
 
     // Delta delete (principal-1) -> owner [catalog] -> allowed
@@ -332,7 +334,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     // source table (or its parent schema/catalog).
     grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.USE_SCHEMA);
     grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_rg2", Privileges.CREATE_TABLE);
-    assertPermissionDenied(
+    assertDeltaPermissionDenied(
         () ->
             regular1DeltaApi.renameTable(
                 "cat_pr1",
@@ -342,7 +344,7 @@ public class SdkTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
 
     // Missing create permission: principal-1 satisfies DELETE_TABLE through catalog ownership but
     // has neither schema ownership nor USE_SCHEMA + CREATE_TABLE for the new name.
-    assertPermissionDenied(
+    assertDeltaPermissionDenied(
         () ->
             principal1DeltaApi.renameTable(
                 "cat_pr1",

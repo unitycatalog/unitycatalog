@@ -10,15 +10,19 @@ import com.linecorp.armeria.common.SessionProtocol;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
+import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.annotation.RequestConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
 import io.unitycatalog.server.auth.decorator.AuthorizationGateConverter;
-import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.exception.GlobalExceptionHandlingDecorator;
+import io.unitycatalog.server.exception.ServiceExceptionHandlingDecorator;
 import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
+import io.unitycatalog.server.service.RegisteredService;
+import io.unitycatalog.server.service.ScimService;
+import io.unitycatalog.server.service.UnityCatalogRestService;
 import io.unitycatalog.server.service.delta.DeltaApiMappers;
 import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
@@ -27,13 +31,14 @@ import java.util.Objects;
 
 /**
  * Wraps Armeria's {@link ServerBuilder} with Unity-Catalog-aware registration. Callers register
- * each annotated service through a protocol-specific {@code annotate*} method ({@link
- * #annotateUc}, {@link #annotateAuth}, {@link #annotateScim}, {@link #annotateIceberg},
- * {@link #annotateDelta}). Those methods funnel through the single private {@link #register}, the
- * only place this class registers an annotated service, and it always installs the PAYLOAD-source
- * authorization gate in front of the body converter -- so no annotated service can reach the server
- * ungated. {@link #withSecurityDecorators} attaches caller-supplied access/auth decorators to the
- * API path prefixes, and {@link #build()} builds the server.
+ * each annotated service with {@code annotate}, overloaded per service type so the argument picks
+ * the {@link ServiceProtocol} and with it the base path, body mapper, and response converter. The
+ * error dialect is not chosen here: the service supplies its own via {@link
+ * RegisteredService#exceptionHandler()}. Those overloads funnel through the single private {@link
+ * #register}, the only place this class registers an annotated service, so every route is wired the
+ * same way, including the PAYLOAD-source gate in front of body binding. {@link
+ * #withSecurityDecorators} attaches caller-supplied access/auth decorators to the API path
+ * prefixes, and {@link #build()} builds the server.
  *
  * <p>{@link UnityCatalogServer} bootstraps the collaborators (Hibernate, authorizer, repositories),
  * constructs the service handlers, and decides whether authorization is enabled; this class turns
@@ -80,33 +85,31 @@ public class ArmeriaServerBuilder {
   }
 
   /** Registers a control-plane auth service at {@code controlPath + relativePath}. */
-  ArmeriaServerBuilder annotateAuth(String relativePath, AuthService service) {
+  ArmeriaServerBuilder annotate(String relativePath, AuthService service) {
     register(ServiceProtocol.AUTH, relativePath, service);
     return this;
   }
 
-  // TODO: introduce an interface for the two SCIM services and replace Object here with it.
   /** Registers a SCIM2 service (UC body + SCIM response converter) under the control path. */
-  ArmeriaServerBuilder annotateScim(String relativePath, Object service) {
+  ArmeriaServerBuilder annotate(String relativePath, ScimService service) {
     register(ServiceProtocol.SCIM, relativePath, service);
     return this;
   }
 
-  // TODO: introduce an interface for all UC REST services and replace Object here with it.
   /** Registers a standard Unity Catalog REST service at {@code basePath + relativePath}. */
-  ArmeriaServerBuilder annotateUc(String relativePath, Object service) {
+  ArmeriaServerBuilder annotate(String relativePath, UnityCatalogRestService service) {
     register(ServiceProtocol.UC, relativePath, service);
     return this;
   }
 
   /** Registers an Iceberg REST catalog service (Iceberg mapper) under the base path. */
-  ArmeriaServerBuilder annotateIceberg(String relativePath, IcebergRestCatalogService service) {
+  ArmeriaServerBuilder annotate(String relativePath, IcebergRestCatalogService service) {
     register(ServiceProtocol.ICEBERG, relativePath, service);
     return this;
   }
 
   /** Registers a UC Delta REST service (Delta mapper) under the base path. */
-  ArmeriaServerBuilder annotateDelta(String relativePath, DeltaApiService service) {
+  ArmeriaServerBuilder annotate(String relativePath, DeltaApiService service) {
     register(ServiceProtocol.DELTA, relativePath, service);
     return this;
   }
@@ -139,7 +142,9 @@ public class ArmeriaServerBuilder {
           .build(decorator);
     }
 
-    armeriaServerBuilder.decorator(new ExceptionHandlingDecorator(new GlobalExceptionHandler()));
+    // Also registered globally, where it is outermost and can catch what the route decorators above
+    // throw. This instance carries no dialect: it finds the per-service one for the matched route.
+    armeriaServerBuilder.decorator(GlobalExceptionHandlingDecorator::new);
     return this;
   }
 
@@ -172,30 +177,43 @@ public class ArmeriaServerBuilder {
   }
 
   /**
-   * The single registration point behind every {@code annotate*} method, and the only place this
-   * class calls {@code annotatedService}. It selects the protocol-specific body mapper and response
-   * converter, wraps the request converter with {@link AuthorizationGateConverter} (so the
-   * PAYLOAD-source authorization gate fires before body binding for every route without exception),
-   * and registers the service at {@code basePath + relativePath} ({@code ""} mounts at the base
-   * path root). Because this is the sole registration path and it always wraps with the gate, no
-   * annotated service can reach the server ungated.
+   * The single registration point behind every {@code annotate} overload, and the only place this
+   * class calls {@code annotatedService}. It selects the protocol-specific body and response
+   * converters and registers the service at {@code basePath + relativePath} ({@code ""} mounts at
+   * the base path root). Because this is the sole registration path and every arm gets its body
+   * converter from {@link #gatedJackson}, no annotated service can reach the server ungated while
+   * authorization is enabled.
    *
    * <p>The per-protocol converter selection is a switch expression with no default, so it is
    * checked for exhaustiveness: adding a {@link ServiceProtocol} constant without a corresponding
    * arm is a compile error, and a new service kind cannot be registered without also deciding its
-   * (still gated) converters.
+   * converters.
    */
-  private void register(ServiceProtocol protocol, String relativePath, Object service) {
-    List<Object> converters = switch (protocol) {
-      // Auth and UC services do not have response converter. They return HttpResponse.ofJson
-      // directly.
-      case AUTH, UC -> List.of(gatedJackson(ucMapper));
-      case SCIM -> List.of(gatedJackson(ucMapper), scimResponseConverter);
-      case ICEBERG -> List.of(gatedJackson(icebergMapper), icebergResponseConverter);
-      case DELTA -> List.of(gatedJackson(deltaMapper), deltaResponseConverter);
+  private void register(ServiceProtocol protocol, String relativePath, RegisteredService service) {
+    RequestConverterFunction requestConverter = switch (protocol) {
+      case AUTH, UC, SCIM -> gatedJackson(ucMapper);
+      case ICEBERG -> gatedJackson(icebergMapper);
+      case DELTA -> gatedJackson(deltaMapper);
     };
-    armeriaServerBuilder.annotatedService(
-        protocol.basePath(basePath, controlPath) + relativePath, service, converters.toArray());
+    // Auth and UC services have no response converter; they return HttpResponse.ofJson directly.
+    List<JacksonResponseConverterFunction> responseConverters = switch (protocol) {
+      case AUTH, UC -> List.of();
+      case SCIM -> List.of(scimResponseConverter);
+      case ICEBERG -> List.of(icebergResponseConverter);
+      case DELTA -> List.of(deltaResponseConverter);
+    };
+    // The service names its own dialect, so both paths use the same value: exceptionHandlers()
+    // covers exceptions thrown inside the handler, the per-service decorator covers those thrown by
+    // decorators sitting outside it.
+    ExceptionHandlerFunction handler = service.exceptionHandler();
+    armeriaServerBuilder
+        .annotatedService()
+        .pathPrefix(protocol.basePath(basePath, controlPath) + relativePath)
+        .requestConverters(requestConverter)
+        .responseConverters(responseConverters)
+        .exceptionHandlers(handler)
+        .decorator(delegate -> new ServiceExceptionHandlingDecorator(delegate, handler))
+        .build(service);
   }
 
   /**

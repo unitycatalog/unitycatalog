@@ -5,7 +5,7 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Head;
 import com.linecorp.armeria.server.annotation.Param;
@@ -49,8 +49,7 @@ import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@ExceptionHandler(IcebergRestExceptionHandler.class)
-public class IcebergRestCatalogService {
+public class IcebergRestCatalogService implements RegisteredService {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(IcebergRestCatalogService.class);
 
@@ -71,6 +70,11 @@ public class IcebergRestCatalogService {
   private final MetadataService metadataService;
   private final TableRepository tableRepository;
   private final SessionFactory sessionFactory;
+
+  @Override
+  public ExceptionHandlerFunction exceptionHandler() {
+    return IcebergRestExceptionHandler.INSTANCE;
+  }
 
   public IcebergRestCatalogService(
       SchemaService schemaService,

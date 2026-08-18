@@ -1,12 +1,10 @@
 package io.unitycatalog.server.service;
 
 import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -21,8 +19,7 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class TemporaryPathCredentialsService {
+public class TemporaryPathCredentialsService implements UnityCatalogRestService {
   private final StorageCredentialVendor storageCredentialVendor;
 
   public TemporaryPathCredentialsService(StorageCredentialVendor storageCredentialVendor) {
