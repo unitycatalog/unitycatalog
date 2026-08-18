@@ -26,6 +26,7 @@ import io.unitycatalog.server.service.UnityCatalogRestService;
 import io.unitycatalog.server.service.delta.DeltaApiMappers;
 import io.unitycatalog.server.service.delta.DeltaApiService;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Objects;
 
@@ -51,9 +52,16 @@ public class ArmeriaServerBuilder {
   private final String basePath;
   private final String controlPath;
 
-  // Body mappers and response converters, created once and reused across registrations. The
-  // request converter is always the gated wrapper (see gatedJackson); only the wrapped mapper and
-  // the response converter vary by protocol.
+  /**
+   * Whether to install the PAYLOAD-source authorization gate in front of body binding. Tied to the
+   * same flag that installs the access decorator the gate depends on, so the gate is never left
+   * waiting on an authorizer that nothing will produce.
+   */
+  private final boolean authorizationEnabled;
+
+  // Body mappers and response converters, created once and reused across registrations. Only the
+  // body mapper and the (optional) response converter vary by protocol; see bodyConverter for how
+  // the request converter is chosen.
   private final ObjectMapper ucMapper;
   private final JacksonResponseConverterFunction scimResponseConverter;
   private final ObjectMapper icebergMapper;
@@ -61,7 +69,8 @@ public class ArmeriaServerBuilder {
   private final ObjectMapper deltaMapper;
   private final JacksonResponseConverterFunction deltaResponseConverter;
 
-  ArmeriaServerBuilder(int port, String basePath, String controlPath) {
+  ArmeriaServerBuilder(
+      int port, String basePath, String controlPath, ServerProperties serverProperties) {
     this.armeriaServerBuilder =
         Server.builder()
             .localPort(port, SessionProtocol.HTTP)
@@ -70,6 +79,7 @@ public class ArmeriaServerBuilder {
         "/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
     this.basePath = basePath;
     this.controlPath = controlPath;
+    this.authorizationEnabled = serverProperties.isAuthorizationEnabled();
     this.ucMapper =
         JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     this.scimResponseConverter =
@@ -181,7 +191,7 @@ public class ArmeriaServerBuilder {
    * class calls {@code annotatedService}. It selects the protocol-specific body and response
    * converters and registers the service at {@code basePath + relativePath} ({@code ""} mounts at
    * the base path root). Because this is the sole registration path and every arm gets its body
-   * converter from {@link #gatedJackson}, no annotated service can reach the server ungated while
+   * converter from {@link #bodyConverter}, no annotated service can reach the server ungated while
    * authorization is enabled.
    *
    * <p>The per-protocol converter selection is a switch expression with no default, so it is
@@ -191,9 +201,9 @@ public class ArmeriaServerBuilder {
    */
   private void register(ServiceProtocol protocol, String relativePath, RegisteredService service) {
     RequestConverterFunction requestConverter = switch (protocol) {
-      case AUTH, UC, SCIM -> gatedJackson(ucMapper);
-      case ICEBERG -> gatedJackson(icebergMapper);
-      case DELTA -> gatedJackson(deltaMapper);
+      case AUTH, UC, SCIM -> bodyConverter(ucMapper);
+      case ICEBERG -> bodyConverter(icebergMapper);
+      case DELTA -> bodyConverter(deltaMapper);
     };
     // Auth and UC services have no response converter; they return HttpResponse.ofJson directly.
     List<JacksonResponseConverterFunction> responseConverters = switch (protocol) {
@@ -217,11 +227,12 @@ public class ArmeriaServerBuilder {
   }
 
   /**
-   * Wraps a Jackson body converter with {@link AuthorizationGateConverter}. Every annotated
-   * service's request converter goes through this (via {@link #register}) so the PAYLOAD-source
-   * auth check fires before body binding.
+   * The request converter for a service's body parameters: the authorization gate wrapping Jackson
+   * when authorization is enabled, plain Jackson when it is not. With authorization disabled
+   * nothing produces a {@code PayloadAuthorizer}, so a gate would wait on a value never produced.
    */
-  private static RequestConverterFunction gatedJackson(ObjectMapper mapper) {
-    return new AuthorizationGateConverter(new JacksonRequestConverterFunction(mapper));
+  private RequestConverterFunction bodyConverter(ObjectMapper mapper) {
+    JacksonRequestConverterFunction jackson = new JacksonRequestConverterFunction(mapper);
+    return authorizationEnabled ? new AuthorizationGateConverter(jackson, mapper) : jackson;
   }
 }

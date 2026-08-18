@@ -18,9 +18,13 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Flow;
 import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
@@ -291,16 +295,96 @@ public class TestUtils {
   }
 
   /**
+   * As {@link #assertHttpApiException(HttpResponse, ErrorCode, String)}, but asserts only the code
+   * and envelope shape. Use when the message is framework-generated and not part of the contract
+   * (e.g. Armeria's own body-binding errors), so pinning its wording would be brittle.
+   */
+  public static void assertHttpApiException(HttpResponse<String> response, ErrorCode errorCode) {
+    assertUcErrorEnvelope(response.statusCode(), response.body(), errorCode, Optional.empty());
+  }
+
+  /**
    * Sends a body-less POST to the given path. The SDK always attaches a serialized body, so raw
-   * HTTP is the only way to reach the body-less code path (used to exercise {@link
-   * io.unitycatalog.server.auth.decorator.AuthorizationGateConverter}'s silent-skip denial).
+   * HTTP is the only way to reach the body-less code path -- where the body cannot bind and the
+   * request fails as a 400 during binding, before authorization runs.
    */
   public static HttpResponse<String> sendRawEmptyPost(ServerConfig config, String path)
       throws Exception {
+    return sendRawPost(config, path, HttpRequest.BodyPublishers.noBody(), null);
+  }
+
+  /**
+   * Sends a raw POST with the given JSON body and {@code Content-Type}. Use to exercise body and
+   * content-type shapes the generated SDK can't produce (e.g. a trailing newline, or a
+   * charset-qualified content-type) against authorization paths that read the request body.
+   */
+  public static HttpResponse<String> sendRawJsonPost(
+      ServerConfig config, String path, String body, String contentType) throws Exception {
+    return sendRawPost(config, path, HttpRequest.BodyPublishers.ofString(body), contentType);
+  }
+
+  /**
+   * Sends a raw POST whose body arrives as two {@code Transfer-Encoding: chunked} chunks, split at
+   * the halfway byte so the break falls mid-token. Authorization reads the reassembled body, so
+   * this must behave exactly like the equivalent fixed-length request.
+   */
+  public static HttpResponse<String> sendTwoChunkJsonPost(
+      ServerConfig config, String path, String body, String contentType) throws Exception {
+    byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+    int mid = bytes.length / 2;
+    HttpRequest.BodyPublisher twoChunks =
+        HttpRequest.BodyPublishers.fromPublisher(
+            new BufferSequencePublisher(
+                ByteBuffer.wrap(Arrays.copyOfRange(bytes, 0, mid)),
+                ByteBuffer.wrap(Arrays.copyOfRange(bytes, mid, bytes.length))));
+    return sendRawPost(config, path, twoChunks, contentType);
+  }
+
+  /**
+   * Publishes a fixed sequence of buffers, one per unit of requested demand, reporting unknown
+   * length so {@code HttpRequest.BodyPublishers.fromPublisher} chunks the request.
+   *
+   * <p>Both properties are needed and neither comes for free. A publisher of known length (e.g.
+   * {@code concat}) sends {@code Content-Length} and is not chunked at all; one of unknown length
+   * but a single buffer (e.g. {@code ofInputStream}) is chunked but emits the body as one chunk.
+   * Honouring demand rather than pushing every buffer at once matters too: the JDK client corrupts
+   * the body if a publisher emits more than it asked for.
+   */
+  private record BufferSequencePublisher(ByteBuffer... buffers)
+      implements Flow.Publisher<ByteBuffer> {
+
+    @Override
+    public void subscribe(Flow.Subscriber<? super ByteBuffer> subscriber) {
+      subscriber.onSubscribe(
+          new Flow.Subscription() {
+            private int next = 0;
+            private boolean completed = false;
+
+            @Override
+            public void request(long n) {
+              while (n-- > 0 && next < buffers.length) {
+                subscriber.onNext(buffers[next++]);
+              }
+              if (next == buffers.length && !completed) {
+                completed = true;
+                subscriber.onComplete();
+              }
+            }
+
+            @Override
+            public void cancel() {}
+          });
+    }
+  }
+
+  private static HttpResponse<String> sendRawPost(
+      ServerConfig config, String path, HttpRequest.BodyPublisher body, String contentType)
+      throws Exception {
     HttpRequest.Builder reqBuilder =
-        HttpRequest.newBuilder()
-            .uri(URI.create(config.getServerUrl() + path))
-            .POST(HttpRequest.BodyPublishers.noBody());
+        HttpRequest.newBuilder().uri(URI.create(config.getServerUrl() + path)).POST(body);
+    if (contentType != null) {
+      reqBuilder.header("Content-Type", contentType);
+    }
     if (config.getAuthToken() != null && !config.getAuthToken().isEmpty()) {
       reqBuilder.header("Authorization", "Bearer " + config.getAuthToken());
     }

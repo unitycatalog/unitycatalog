@@ -14,10 +14,12 @@ import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.SecurableType;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.UpdateCatalog;
+import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
+import java.net.http.HttpResponse;
 import java.util.List;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
@@ -210,19 +212,71 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     assertPermissionDenied(() -> principal1CatalogsApi.createCatalog(catalogWithLoc2));
   }
 
+  private static final String CATALOGS_PATH = "/api/2.1/unity-catalog/catalogs";
+
   /**
-   * POST /catalogs has a PAYLOAD-source authorization locator (@AuthorizeResourceKey on the
-   * CreateCatalog body). A body-less request never triggers UnityAccessDecorator's peekData
-   * callback, so checkAuthorization is silently skipped. AuthorizationGateConverter catches this at
-   * body-binding time and denies the request before the handler sees it.
+   * Body shapes the generated SDK cannot produce, exercised against POST /catalogs -- which reads
+   * its authorization key from the CreateCatalog body, so every case here goes through the
+   * PAYLOAD-source gate.
+   *
+   * <p>The cases share one setup because each is a single request with no state of its own. They
+   * cover the two failure modes the gate must keep distinct -- a body that cannot bind is a client
+   * error (400) raised before authorization, while a bound body that carries no usable key is a
+   * denial (403) -- plus the valid shapes that must not be mistaken for either.
    */
   @Test
   @SneakyThrows
-  public void bodylessPostDeniedByAuthorizationGate() {
+  public void rawBodyShapesAtThePayloadAuthorizationGate() {
+    // Body-less: fails in binding before authorization runs, so 400 rather than 403.
     assertHttpApiException(
-        TestUtils.sendRawEmptyPost(adminConfig, "/api/2.1/unity-catalog/catalogs"),
+        TestUtils.sendRawEmptyPost(adminConfig, CATALOGS_PATH), ErrorCode.INVALID_ARGUMENT);
+
+    // Non-JSON content-type: also cannot bind, so also 400 before authorization.
+    assertHttpApiException(
+        TestUtils.sendRawJsonPost(
+            adminConfig, CATALOGS_PATH, "{\"name\":\"cat_text\"}", "text/plain"),
+        ErrorCode.INVALID_ARGUMENT);
+
+    // JSON literal null: binds to null, so it carries no authorization keys. The gate must fail
+    // closed with 403 rather than NPE.
+    assertHttpApiException(
+        TestUtils.sendRawJsonPost(adminConfig, CATALOGS_PATH, "null", "application/json"),
         ErrorCode.PERMISSION_DENIED,
-        "Authorization could not be verified for this request");
+        UnityAccessDecorator.ERR_AUTH_NOT_EXECUTED);
+
+    // Malformed JSON: parsing fails during binding, so this is a client error before authorization
+    // rather than a denial.
+    assertHttpApiException(
+        TestUtils.sendRawJsonPost(adminConfig, CATALOGS_PATH, "{\"name\":", "application/json"),
+        ErrorCode.INVALID_ARGUMENT);
+
+    // Trailing whitespace after the JSON object must not be rejected by the gate.
+    HttpResponse<String> trailingNewline =
+        TestUtils.sendRawJsonPost(
+            adminConfig,
+            CATALOGS_PATH,
+            "{\"name\":\"cat_trailing_newline\"}\n",
+            "application/json");
+    assertThat(trailingNewline.statusCode()).isEqualTo(200);
+    assertThat(trailingNewline.body()).contains("cat_trailing_newline");
+
+    // A charset-qualified JSON content-type must not be rejected by the gate either.
+    HttpResponse<String> charset =
+        TestUtils.sendRawJsonPost(
+            adminConfig,
+            CATALOGS_PATH,
+            "{\"name\":\"cat_charset\"}",
+            "application/json; charset=utf-8");
+    assertThat(charset.statusCode()).isEqualTo(200);
+    assertThat(charset.body()).contains("cat_charset");
+
+    // Body split across two chunks, mid-token: the gate authorizes the reassembled body, so this
+    // must succeed exactly like the fixed-length case above.
+    HttpResponse<String> chunked =
+        TestUtils.sendTwoChunkJsonPost(
+            adminConfig, CATALOGS_PATH, "{\"name\":\"cat_chunked\"}", "application/json");
+    assertThat(chunked.statusCode()).isEqualTo(200);
+    assertThat(chunked.body()).contains("cat_chunked");
   }
 
   @Test

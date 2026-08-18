@@ -155,6 +155,11 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
     return client.execute(headers, HttpData.ofUtf8(formBody)).aggregate().join();
   }
 
+  /**
+   * Also covers the token endpoint's interaction with the authorization gate: it is excluded from
+   * the access decorators, so nothing sets a PayloadAuthorizer, and it binds its body with its own
+   * {@code @RequestConverter} rather than the gate. Both together are why it still succeeds.
+   */
   @Test
   public void testTokenExchangeWithCorrectIssuerAndAudience() throws IOException {
     String token =
