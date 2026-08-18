@@ -2,11 +2,6 @@ package io.unitycatalog.server.service.delta;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -17,18 +12,19 @@ import java.util.regex.Pattern;
  * version it supports per major version (e.g. {@code "1.1,2.3"} means it supports 1.0-1.1 and
  * 2.0-2.3). The server picks the highest version both sides support, or rejects the request with
  * {@code INVALID_PARAMETER_VALUE} naming the versions it supports.
+ *
+ * <p>The server implements exactly one protocol version today, so negotiation reduces to: every
+ * entry is well-formed, and some entry covers {@link #CURRENT_VERSION}. If a second version is
+ * added, this class is the single place that must learn to compare minors within a major.
  */
 final class DeltaProtocolVersionNegotiator {
 
-  /** Protocol versions this server implements, in ascending order. */
-  static final List<String> SUPPORTED_VERSIONS = List.of("1.0");
+  /** The only protocol version this server implements. */
+  static final String CURRENT_VERSION = "1.0";
+
+  private static final int CURRENT_MAJOR = 1;
 
   private static final Pattern VERSION_PATTERN = Pattern.compile("(\\d+)\\.(\\d+)");
-
-  private static final List<Version> SUPPORTED =
-      SUPPORTED_VERSIONS.stream()
-          .map(v -> Version.tryParse(v).orElseThrow(IllegalArgumentException::new))
-          .toList();
 
   private DeltaProtocolVersionNegotiator() {}
 
@@ -48,59 +44,34 @@ final class DeltaProtocolVersionNegotiator {
               + supportedVersionsMessage());
     }
 
-    Map<Integer, Integer> clientMaxMinorByMajor = new HashMap<>();
+    boolean clientSupportsCurrentVersion = false;
     for (String token : clientProtocolVersions.split(",", -1)) {
-      Version version =
-          Version.tryParse(token.trim())
-              .orElseThrow(
-                  () ->
-                      new BaseException(
-                          ErrorCode.INVALID_ARGUMENT,
-                          String.format(
-                              "Invalid protocol-versions parameter \"%s\": entry \"%s\" is not "
-                                  + "of the form <major>.<minor>. %s",
-                              clientProtocolVersions, token.trim(), supportedVersionsMessage())));
-      clientMaxMinorByMajor.merge(version.major(), version.minor(), Math::max);
+      String entry = token.trim();
+      Matcher matcher = VERSION_PATTERN.matcher(entry);
+      if (!matcher.matches()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Invalid protocol-versions parameter \"%s\": entry \"%s\" is not of the form "
+                    + "<major>.<minor>. %s",
+                clientProtocolVersions, entry, supportedVersionsMessage()));
+      }
+      // The entry is the client's highest supported minor for that major, so any 1.x entry
+      // covers 1.0 (minors are non-negative).
+      clientSupportsCurrentVersion |= Integer.parseInt(matcher.group(1)) == CURRENT_MAJOR;
     }
 
-    return SUPPORTED.stream()
-        .filter(v -> clientMaxMinorByMajor.getOrDefault(v.major(), -1) >= v.minor())
-        .max(Comparator.naturalOrder())
-        .map(Version::toString)
-        .orElseThrow(
-            () ->
-                new BaseException(
-                    ErrorCode.INVALID_ARGUMENT,
-                    String.format(
-                        "No mutually supported protocol version: client supports \"%s\". %s",
-                        clientProtocolVersions.trim(), supportedVersionsMessage())));
+    if (!clientSupportsCurrentVersion) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "No mutually supported protocol version: client supports \"%s\". %s",
+              clientProtocolVersions.trim(), supportedVersionsMessage()));
+    }
+    return CURRENT_VERSION;
   }
 
   private static String supportedVersionsMessage() {
-    return "Server supports protocol versions: " + String.join(", ", SUPPORTED_VERSIONS) + ".";
-  }
-
-  private record Version(int major, int minor) implements Comparable<Version> {
-    private static final Comparator<Version> ORDER =
-        Comparator.comparingInt(Version::major).thenComparingInt(Version::minor);
-
-    static Optional<Version> tryParse(String value) {
-      Matcher matcher = VERSION_PATTERN.matcher(value);
-      if (!matcher.matches()) {
-        return Optional.empty();
-      }
-      return Optional.of(
-          new Version(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2))));
-    }
-
-    @Override
-    public int compareTo(Version other) {
-      return ORDER.compare(this, other);
-    }
-
-    @Override
-    public String toString() {
-      return major + "." + minor;
-    }
+    return "Server supports protocol versions: " + CURRENT_VERSION + ".";
   }
 }
