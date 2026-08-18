@@ -3,6 +3,7 @@ package io.unitycatalog.server.base.table;
 import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.Dependency;
 import io.unitycatalog.client.model.DependencyList;
@@ -116,6 +117,38 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(createdWithoutDeps.getTableType()).isEqualTo(TableType.VIEW);
     assertThat(tableOperations.getTable(VIEW_FULL_NAME).getName()).isEqualTo(VIEW_NAME);
     tableOperations.deleteTable(VIEW_FULL_NAME);
+  }
+
+  /**
+   * Explicit coverage for CreateTable.columns being optional on VIEW: both a null columns field and
+   * an empty list must succeed (a view's schema is derived from view_definition).
+   */
+  @ParameterizedTest(name = "create view with {0}")
+  @MethodSource("optionalColumnsCases")
+  public void testCreateViewWithOptionalColumns(String label, UnaryOperator<CreateTable> mutator)
+      throws Exception {
+    createSourceTable();
+    CreateTable request = mutator.apply(validViewRequest());
+
+    try {
+      TableInfo created = tableOperations.createTable(request);
+      assertThat(created.getTableType()).isEqualTo(TableType.VIEW);
+      assertThat(created.getColumns()).isNullOrEmpty();
+      assertThat(tableOperations.getTable(VIEW_FULL_NAME).getTableType()).isEqualTo(TableType.VIEW);
+    } finally {
+      try {
+        tableOperations.deleteTable(VIEW_FULL_NAME);
+      } catch (ApiException ignored) {
+        // best-effort cleanup if create failed
+      }
+    }
+  }
+
+  private static Stream<Arguments> optionalColumnsCases() {
+    return Stream.of(
+        Arguments.of("null columns", (UnaryOperator<CreateTable>) request -> request.columns(null)),
+        Arguments.of(
+            "empty columns", (UnaryOperator<CreateTable>) request -> request.columns(List.of())));
   }
 
   private static Stream<Arguments> negativeCreateCases() {
