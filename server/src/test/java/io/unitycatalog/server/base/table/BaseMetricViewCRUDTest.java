@@ -111,6 +111,7 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   private CreateTable validMetricViewRequest() {
+    // columns intentionally omitted: metric views derive schema from view_definition.
     return new CreateTable()
         .name(METRIC_VIEW_NAME)
         .catalogName(TestUtils.CATALOG_NAME)
@@ -143,6 +144,9 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(created.getStorageLocation())
         .as("Metric views should have no storage location")
         .isNull();
+    assertThat(created.getColumns())
+        .as("Metric views created without columns should persist an empty column list")
+        .isNullOrEmpty();
 
     // --- Get and verify dependencies round-trip ---
     TableInfo fetched = tableOperations.getTable(METRIC_VIEW_FULL_NAME);
@@ -152,6 +156,7 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(fetched.getComment()).isEqualTo("Daily event counts by day");
     assertThat(fetched.getCreatedAt()).isNotNull();
     assertThat(fetched.getTableId()).isNotNull();
+    assertThat(fetched.getColumns()).isNullOrEmpty();
     assertThat(fetched.getViewDependencies()).isNotNull();
     assertThat(fetched.getViewDependencies().getDependencies()).hasSize(1);
     assertThat(fetched.getViewDependencies().getDependencies().get(0).getTable().getTableFullName())
@@ -178,6 +183,39 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
         () -> tableOperations.getTable(METRIC_VIEW_FULL_NAME),
         ErrorCode.TABLE_NOT_FOUND,
         METRIC_VIEW_FULL_NAME);
+  }
+
+  /**
+   * Explicit coverage for CreateTable.columns being optional on METRIC_VIEW: both a null columns
+   * field and an empty list must succeed (clients may omit the field or send []).
+   */
+  @ParameterizedTest(name = "create metric view with {0}")
+  @MethodSource("optionalColumnsCases")
+  public void testCreateMetricViewWithOptionalColumns(
+      String label, UnaryOperator<CreateTable> mutator) throws Exception {
+    createSourceTable();
+    CreateTable request = mutator.apply(validMetricViewRequest());
+
+    try {
+      TableInfo created = tableOperations.createTable(request);
+      assertThat(created.getTableType()).isEqualTo(TableType.METRIC_VIEW);
+      assertThat(created.getColumns()).isNullOrEmpty();
+      assertThat(tableOperations.getTable(METRIC_VIEW_FULL_NAME).getTableType())
+          .isEqualTo(TableType.METRIC_VIEW);
+    } finally {
+      try {
+        tableOperations.deleteTable(METRIC_VIEW_FULL_NAME);
+      } catch (ApiException ignored) {
+        // best-effort cleanup if create failed
+      }
+    }
+  }
+
+  private static Stream<Arguments> optionalColumnsCases() {
+    return Stream.of(
+        Arguments.of("null columns", (UnaryOperator<CreateTable>) request -> request.columns(null)),
+        Arguments.of(
+            "empty columns", (UnaryOperator<CreateTable>) request -> request.columns(List.of())));
   }
 
   private static Stream<Arguments> negativeCreateCases() {

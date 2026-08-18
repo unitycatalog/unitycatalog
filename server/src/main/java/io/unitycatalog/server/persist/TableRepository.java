@@ -622,8 +622,9 @@ public class TableRepository {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     DataSourceFormat format = createTable.getDataSourceFormat();
+    // columns is optional for METRIC_VIEW / view-like types (schema comes from view_definition).
     List<ColumnInfo> columnInfos =
-        createTable.getColumns().stream()
+        Optional.ofNullable(createTable.getColumns()).orElse(List.of()).stream()
             .map(
                 c -> {
                   ColumnUtils.validateTypeJson(c, format);
