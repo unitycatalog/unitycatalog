@@ -110,9 +110,15 @@ public class TestUtils {
     assertThat(body.path("error_code").asText())
         .as("UC envelope error_code in: %s", bodyText)
         .isEqualTo(errorCode.name());
-    assertThat(body.path("details").path(0).path("reason").asText())
+    JsonNode errorInfo = body.path("details").path(0);
+    assertThat(errorInfo.path("reason").asText())
         .as("UC envelope details[0].reason in: %s", bodyText)
         .isEqualTo(errorCode.name());
+    // The detail is a google.rpc.ErrorInfo packed as a protobuf Any, so its @type must be the full
+    // type URL (with the type.googleapis.com/ prefix), not a bare message name.
+    assertThat(errorInfo.path("@type").asText())
+        .as("UC envelope details[0].@type in: %s", bodyText)
+        .isEqualTo("type.googleapis.com/google.rpc.ErrorInfo");
     assertThat(body.has("error"))
         .as("expected the UC envelope, but the body is nested Delta-style: %s", bodyText)
         .isFalse();

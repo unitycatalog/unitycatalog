@@ -9,7 +9,7 @@ import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
  * can catch a denial thrown by a route decorator, before the service is reached at all.
  *
  * <p>It tries to delegate to the {@link ServiceExceptionHandlingDecorator} of the calling service,
- * or falls back to the default {@link GlobalExceptionHandler} it it finds none.
+ * or falls back to the default {@link GlobalExceptionHandler} if it finds none.
  */
 public final class GlobalExceptionHandlingDecorator extends ExceptionHandlingDecorator {
 
