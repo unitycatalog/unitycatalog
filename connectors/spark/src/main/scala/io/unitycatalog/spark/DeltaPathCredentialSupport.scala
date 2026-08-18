@@ -19,8 +19,9 @@ import scala.util.control.NonFatal
  * (and on resolved `DataSourceV2Relation` / `ResolvedTable` wrappers) via reflection so the
  * connector JAR does not need a compile-time dependency on delta-spark.
  *
- * All injection paths skip nodes that already carry `fs.*` / `option.fs.*` keys so the analyzer's
- * fixed-point batches do not re-vend credentials.
+ * All injection paths skip nodes that already carry a successful UC vend or the allowed-miss
+ * markers for the same path, so the analyzer's fixed-point batches do not re-vend credentials.
+ * Ambient filesystem options do not suppress UC vending.
  */
 private[spark] object DeltaPathCredentialSupport {
 
@@ -108,19 +109,18 @@ private[spark] object DeltaPathCredentialSupport {
     val path = node.getClass.getMethod("path").invoke(node).asInstanceOf[String]
     val existing =
       node.getClass.getMethod("options").invoke(node).asInstanceOf[CaseInsensitiveStringMap]
-    if (!isCloudPath(path) || PathCredentialOptions.hasCredentialKeys(existing.keySet.asScala)) {
+    if (!isCloudPath(path) ||
+      ResolvePathCredentials.hasUcPathCredentials(existing.asCaseSensitiveMap().asScala, path)) {
       node
     } else {
-      val creds = uc.vendPathCredentialConfWithFallback(spark, path)
-      if (creds.isEmpty) {
-        node
-      } else {
-        val merged = PathCredentialOptions.mergeCredentialOptions(existing, creds)
-        node.getClass
-          .getMethod("copy", classOf[String], classOf[CaseInsensitiveStringMap])
-          .invoke(node, path, merged)
-          .asInstanceOf[LogicalPlan]
-      }
+      val creds = ResolvePathCredentials.optionsAfterLookup(
+        path,
+        uc.vendPathCredentialConfWithFallback(spark, path))
+      val merged = PathCredentialOptions.mergeCredentialOptions(existing, creds)
+      node.getClass
+        .getMethod("copy", classOf[String], classOf[CaseInsensitiveStringMap])
+        .invoke(node, path, merged)
+        .asInstanceOf[LogicalPlan]
     }
   }
 
@@ -134,25 +134,23 @@ private[spark] object DeltaPathCredentialSupport {
       .getMethod("options")
       .invoke(node)
       .asInstanceOf[Map[String, String]]
-    if (!isCloudPath(path) || PathCredentialOptions.hasCredentialKeys(existing.keys)) {
+    if (!isCloudPath(path) || ResolvePathCredentials.hasUcPathCredentials(existing, path)) {
       node
     } else {
-      val creds = uc.vendPathCredentialConfWithFallback(spark, path)
-      if (creds.isEmpty) {
-        node
-      } else {
-        val commandName =
-          node.getClass.getMethod("commandName").invoke(node).asInstanceOf[String]
-        val merged = mergeStringMapOptions(existing, creds)
-        node.getClass
-          .getMethod(
-            "copy",
-            classOf[String],
-            classOf[scala.collection.immutable.Map[_, _]],
-            classOf[String])
-          .invoke(node, path, merged, commandName)
-          .asInstanceOf[LogicalPlan]
-      }
+      val creds = ResolvePathCredentials.optionsAfterLookup(
+        path,
+        uc.vendPathCredentialConfWithFallback(spark, path))
+      val commandName =
+        node.getClass.getMethod("commandName").invoke(node).asInstanceOf[String]
+      val merged = mergeStringMapOptions(existing, creds)
+      node.getClass
+        .getMethod(
+          "copy",
+          classOf[String],
+          classOf[scala.collection.immutable.Map[_, _]],
+          classOf[String])
+        .invoke(node, path, merged, commandName)
+        .asInstanceOf[LogicalPlan]
     }
   }
 
@@ -203,21 +201,19 @@ private[spark] object DeltaPathCredentialSupport {
               .getMethod("options")
               .invoke(table)
               .asInstanceOf[Map[String, String]]
-            if (PathCredentialOptions.hasCredentialKeys(tableOptions.keys) ||
-              PathCredentialOptions.hasCredentialKeys(table.properties().keySet().asScala)) {
+            if (ResolvePathCredentials.hasUcPathCredentials(tableOptions, path) ||
+              ResolvePathCredentials.hasUcPathCredentials(table.properties().asScala, path)) {
               None
             } else {
-              val creds = uc.vendPathCredentialConfWithFallback(spark, path)
-              if (creds.isEmpty) {
-                None
-              } else {
-                val mergedTableOptions = mergeStringMapOptions(tableOptions, creds)
-                val patchedTable = table.getClass
-                  .getMethod("withOptions", classOf[scala.collection.immutable.Map[_, _]])
-                  .invoke(table, mergedTableOptions)
-                  .asInstanceOf[Table]
-                Some((path, patchedTable, creds))
-              }
+              val creds = ResolvePathCredentials.optionsAfterLookup(
+                path,
+                uc.vendPathCredentialConfWithFallback(spark, path))
+              val mergedTableOptions = mergeStringMapOptions(tableOptions, creds)
+              val patchedTable = table.getClass
+                .getMethod("withOptions", classOf[scala.collection.immutable.Map[_, _]])
+                .invoke(table, mergedTableOptions)
+                .asInstanceOf[Table]
+              Some((path, patchedTable, creds))
             }
           }
         }

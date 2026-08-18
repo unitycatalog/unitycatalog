@@ -356,9 +356,10 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
    * <p>Local storage: end-to-end CREATE + read (mirrors {@link
    * DeltaExternalTableReadWriteTest#testDeltaPathTable()} under the path-cred session layout).
    *
-   * <p>Cloud storage: seeds data via a UC catalog table, then reads {@code delta.`s3://...`}
-   * end-to-end with vended credentials. Plan inspection uses the resolution-batch form of the rule
-   * so the target stays an {@code UnresolvedRelation}.
+   * <p>Cloud storage: writes a bare {@code delta.`s3://...`} path table (CREATE TABLE AS SELECT,
+   * then INSERT OVERWRITE) and reads it back with vended credentials — the Delta analog of {@link
+   * #testWriteAndReadBarePath()}. Plan inspection uses the resolution-batch form of the rule so the
+   * read target stays an {@code UnresolvedRelation}.
    */
   @Test
   public void testWriteAndReadBareDeltaPath() throws IOException, ParseException {
@@ -370,9 +371,14 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     assertSingleRow(sql("SELECT * FROM delta.`%s`", localPath));
 
     String s3Location = bucketPath("delta_path");
-    String seedTable = String.format("%s.%s.path_cred_delta_seed", CATALOG_NAME, SCHEMA_NAME);
-    sql("CREATE TABLE %s (i INT, s STRING) USING delta LOCATION '%s'", seedTable, s3Location);
-    sql("INSERT INTO %s SELECT 1 AS i, 'a' AS s", seedTable);
+    sql("CREATE TABLE delta.`%s` USING delta AS SELECT 1 AS i, 'a' AS s", s3Location);
+    assertSingleRow(sql("SELECT * FROM delta.`%s`", s3Location));
+
+    sql("INSERT OVERWRITE delta.`%s` SELECT 2 AS i, 'b' AS s", s3Location);
+    List<Row> overwritten = sql("SELECT * FROM delta.`%s`", s3Location);
+    assertThat(overwritten).hasSize(1);
+    assertThat(overwritten.get(0).getInt(0)).isEqualTo(2);
+    assertThat(overwritten.get(0).getString(1)).isEqualTo("b");
 
     LogicalPlan readPlan =
         injectPathCredentials(
@@ -384,7 +390,6 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     UnresolvedRelation relation = findBareCloudPathRelation(readPlan);
     assertThat(relation).isNotNull();
     assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
-    assertSingleRow(sql("SELECT * FROM delta.`%s`", s3Location));
   }
 
   /**
