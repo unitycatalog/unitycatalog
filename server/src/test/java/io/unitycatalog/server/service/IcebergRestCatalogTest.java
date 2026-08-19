@@ -25,6 +25,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
@@ -35,6 +36,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -69,6 +71,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   private static final String TEST_BASE_PREFIX = "/v1/catalogs/" + TestUtils.CATALOG_NAME;
   private static final String TEST_BASE_NON_PREFIX = "/v1";
+  private static final int PAGE_SIZE = PagedListingHelper.DEFAULT_PAGE_SIZE;
 
   @TempDir private Path icebergTableLocation;
 
@@ -423,6 +426,55 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(resp.status().code()).isEqualTo(404);
   }
 
+  @Test
+  public void testListNamespacesReturnsEveryNamespace() throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    // One namespace more than the repository returns in a single page
+    List<String> created = new ArrayList<>();
+    for (int i = 0; i <= PAGE_SIZE; i++) {
+      String name = "schema_%03d".formatted(i);
+      schemaOperations.createSchema(
+          new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(name));
+      created.add(name);
+    }
+
+    AggregatedHttpResponse resp = client.get(TEST_BASE_PREFIX + "/namespaces").aggregate().join();
+
+    assertThat(resp.status().code()).isEqualTo(200);
+    ListNamespacesResponse listed =
+        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class);
+    assertThat(listed.namespaces()).map(Namespace::toString).containsExactlyElementsOf(created);
+  }
+
+  @Test
+  public void testListTablesReturnsTablesBeyondTheFirstPage()
+      throws ApiException, IOException, URISyntaxException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+
+    // Fill the first page with tables the Iceberg endpoints don't serve, so that the only uniform
+    // table sorts onto the second page
+    for (int i = 0; i < PAGE_SIZE; i++) {
+      createTable("delta_%03d".formatted(i));
+    }
+    setUniformMetadata(createTable("uniform_table"), writeIcebergMetadata());
+
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables")
+            .aggregate()
+            .join();
+
+    assertThat(resp.status().code()).isEqualTo(200);
+    ListTablesResponse listed =
+        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
+    assertThat(listed.identifiers())
+        .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
+  }
+
   private AggregatedHttpResponse postJson(String path, String json) {
     return client
         .execute(
@@ -465,8 +517,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
     schemaOperations.createSchema(
         new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
-    TableInfo tableInfo = createTable(TestUtils.TABLE_NAME);
+    setUniformMetadata(createTable(TestUtils.TABLE_NAME), metadataFile);
+  }
 
+  /** Makes a table visible to the Iceberg endpoints by giving it uniform Iceberg metadata. */
+  private void setUniformMetadata(TableInfo tableInfo, Path metadataFile) {
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();
       UUID tableId = UUID.fromString(Objects.requireNonNull(tableInfo.getTableId()));

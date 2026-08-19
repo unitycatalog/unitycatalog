@@ -25,6 +25,7 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -122,19 +123,24 @@ public class IcebergRestCatalogService implements RegisteredService {
       // nested namespaces is not supported, so child namespaces will be empty
       namespaces = Collections.emptyList();
     } else {
-      String respContent =
-          schemaService
-              .listSchemas(catalog, Optional.of(Integer.MAX_VALUE), Optional.empty())
-              .aggregate()
-              .join()
-              .contentUtf8();
-      ListSchemasResponse resp =
-          JsonUtils.getInstance().readValue(respContent, ListSchemasResponse.class);
-      assert resp.getSchemas() != null;
-      namespaces =
-          resp.getSchemas().stream()
-              .map(schemaInfo -> Namespace.of(schemaInfo.getName()))
-              .collect(Collectors.toList());
+      namespaces = new ArrayList<>();
+      // This endpoint returns the whole listing, so follow the repository's page token to the end
+      Optional<String> pageToken = Optional.empty();
+      do {
+        String respContent =
+            schemaService
+                .listSchemas(catalog, Optional.empty(), pageToken)
+                .aggregate()
+                .join()
+                .contentUtf8();
+        ListSchemasResponse resp =
+            JsonUtils.getInstance().readValue(respContent, ListSchemasResponse.class);
+        assert resp.getSchemas() != null;
+        resp.getSchemas().stream()
+            .map(schemaInfo -> Namespace.of(schemaInfo.getName()))
+            .forEach(namespaces::add);
+        pageToken = nextPageToken(resp.getNextPageToken());
+      } while (pageToken.isPresent());
     }
 
     return ListNamespacesResponse.builder().addAll(namespaces).build();
@@ -258,13 +264,20 @@ public class IcebergRestCatalogService implements RegisteredService {
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
       @Param("catalog") String catalog, @Param("namespace") String namespace)
       throws JsonProcessingException {
-    ListTablesResponse tables =
-        tableRepository.listTables(
-            catalog, namespace, Optional.of(Integer.MAX_VALUE), Optional.empty(), false, false);
+    List<TableInfo> tables = new ArrayList<>();
+    // This endpoint returns the whole listing, so follow the repository's page token to the end
+    Optional<String> pageToken = Optional.empty();
+    do {
+      ListTablesResponse page =
+          tableRepository.listTables(catalog, namespace, Optional.empty(), pageToken, false, false);
+      tables.addAll(Objects.requireNonNull(page.getTables()));
+      pageToken = nextPageToken(page.getNextPageToken());
+    } while (pageToken.isPresent());
+
     List<TableIdentifier> filteredTables;
     try (Session session = sessionFactory.openSession()) {
       filteredTables =
-          Objects.requireNonNull(tables.getTables()).stream()
+          tables.stream()
               .filter(
                   tableInfo -> {
                     String metadataLocation =
@@ -282,5 +295,12 @@ public class IcebergRestCatalogService implements RegisteredService {
     return org.apache.iceberg.rest.responses.ListTablesResponse.builder()
         .addAll(filteredTables)
         .build();
+  }
+
+  /**
+   * Wraps the page token a listing returned, treating a missing or empty token as "no more pages".
+   */
+  private static Optional<String> nextPageToken(String token) {
+    return Optional.ofNullable(token).filter(t -> !t.isEmpty());
   }
 }
