@@ -17,6 +17,7 @@ import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.function.Executable;
 
 /**
  * Runs the staging-table access-control suite against the UC REST createStagingTable / createTable.
@@ -61,6 +62,16 @@ public class SdkUCStagingTableAccessControlTest extends SdkStagingTableAccessCon
                     .storageLocation(staging.location())
                     .properties(Map.of(TableProperties.UC_TABLE_ID, staging.id())));
     return new FinalizedTable(info.getTableId(), info.getStorageLocation());
+  }
+
+  @Override
+  protected void assertDeniedInSurfaceFormat(Executable executable) {
+    TestUtils.assertPermissionDenied(executable);
+  }
+
+  @Override
+  protected void assertDeniedInSurfaceFormat(Executable executable, String containsMessage) {
+    TestUtils.assertPermissionDenied(executable, containsMessage);
   }
 
   @Override

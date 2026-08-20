@@ -8,7 +8,6 @@ import com.linecorp.armeria.common.HttpResponse;
 import io.unitycatalog.server.model.SecurableType;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
@@ -17,7 +16,6 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.ExternalLocationInfo;
 import io.unitycatalog.server.model.ListExternalLocationsResponse;
@@ -30,8 +28,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
 import lombok.SneakyThrows;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class ExternalLocationService extends AuthorizedService {
+public class ExternalLocationService extends AuthorizedService implements UnityCatalogRestService {
   private final ExternalLocationRepository externalLocationRepository;
   private final MetastoreRepository metastoreRepository;
 

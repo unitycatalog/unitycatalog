@@ -37,12 +37,14 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.function.Consumer;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Singular;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
@@ -331,7 +333,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
             new TablesApi(apiClient)
                 .createTable(createExternalTableRequest(name, location))
                 .getStorageLocation(),
-      "PERMISSION_DENIED");
+        TestUtils::assertPermissionDenied);
   }
 
   /**
@@ -349,7 +351,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
                     deltaExternalTableRequest(name, location))
                 .getMetadata()
                 .getLocation(),
-      "PermissionDeniedException");
+        TestUtils::assertDeltaPermissionDenied);
   }
 
   @FunctionalInterface
@@ -359,7 +361,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   private void runExternalTableVolumePermissionsTest(
-      ExternalTableCreator tableCreator, String createTablePermissionDeniedMessage)
+      ExternalTableCreator tableCreator, Consumer<Executable> assertCreateTableDenied)
       throws Exception {
     // Create external location as userC
     String externalLocationName = "test_external_loc";
@@ -467,14 +469,12 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
 
         // Verify that we can not create another under the same path, or subdir, or parent
         for (String url : List.of(tableLocation, tableLocation + "/subdir", storageRoot)) {
-          TestUtils.assertPermissionDenied(
-              () -> tableCreator.create(apiClient, tableName + "_another", url),
-              createTablePermissionDeniedMessage);
+          assertCreateTableDenied.accept(
+              () -> tableCreator.create(apiClient, tableName + "_another", url));
         }
       } else {
-        TestUtils.assertPermissionDenied(
-            () -> tableCreator.create(apiClient, tableName, tableLocation),
-            createTablePermissionDeniedMessage);
+        assertCreateTableDenied.accept(
+            () -> tableCreator.create(apiClient, tableName, tableLocation));
       }
 
       // Verify that the Volume creation is as expected
@@ -506,9 +506,8 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
             () ->
                 volumesApi.createVolume(
                     createExternalVolumeRequest(volumeName + "_another", tableLocation)));
-        TestUtils.assertPermissionDenied(
-            () -> tableCreator.create(apiClient, tableName + "_another", volumeLocation),
-            createTablePermissionDeniedMessage);
+        assertCreateTableDenied.accept(
+            () -> tableCreator.create(apiClient, tableName + "_another", volumeLocation));
       }
     }
   }

@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.function.Executable;
 
 /**
  * Runs the staging-table access-control suite against the Delta REST createStagingTable /
@@ -64,6 +65,16 @@ public class SdkDeltaStagingTableAccessControlTest extends SdkStagingTableAccess
                 TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, buildCreateRequest(staging, name));
     return new FinalizedTable(
         resp.getMetadata().getTableUuid().toString(), resp.getMetadata().getLocation());
+  }
+
+  @Override
+  protected void assertDeniedInSurfaceFormat(Executable executable) {
+    TestUtils.assertDeltaPermissionDenied(executable);
+  }
+
+  @Override
+  protected void assertDeniedInSurfaceFormat(Executable executable, String containsMessage) {
+    TestUtils.assertDeltaPermissionDenied(executable, containsMessage);
   }
 
   @Override
