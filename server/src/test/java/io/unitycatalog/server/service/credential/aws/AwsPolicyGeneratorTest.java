@@ -261,6 +261,128 @@ public class AwsPolicyGeneratorTest {
         .containsExactly("s3:ListBucket");
   }
 
+  @ParameterizedTest(name = "{index}: region {0} -> partition {1}")
+  @CsvSource({
+    "us-east-1, aws",
+    "us-west-2, aws",
+    "us-gov-west-1, aws-us-gov",
+    "us-gov-east-1, aws-us-gov",
+    "cn-north-1, aws-cn",
+    "cn-northwest-1, aws-cn",
+    "'', aws"
+  })
+  public void testPartitionFromRegion(String region, String expectedPartition) {
+    assertThat(AwsPolicyGenerator.partitionFromRegion(region)).isEqualTo(expectedPartition);
+  }
+
+  @Test
+  public void testNullRegionDefaultsToAwsPartition() {
+    assertThat(AwsPolicyGenerator.partitionFromRegion(null)).isEqualTo("aws");
+  }
+
+  @ParameterizedTest(name = "{index}: {0} -> {1}")
+  @CsvSource({
+    "arn:aws:iam::123456789012:role/r, aws",
+    "arn:aws-us-gov:iam::123456789012:role/r, aws-us-gov",
+    "arn:aws-cn:iam::123456789012:role/r, aws-cn"
+  })
+  public void testPartitionFromArn(String roleArn, String expectedPartition) {
+    assertThat(AwsPolicyGenerator.partitionFromArn(roleArn)).isEqualTo(expectedPartition);
+  }
+
+  @Test
+  public void testMissingOrMalformedRoleArnHasNoPartition() {
+    assertThat(AwsPolicyGenerator.partitionFromArn(null)).isNull();
+    assertThat(AwsPolicyGenerator.partitionFromArn("")).isNull();
+    assertThat(AwsPolicyGenerator.partitionFromArn("not-an-arn")).isNull();
+    assertThat(AwsPolicyGenerator.partitionFromArn("arn:")).isNull();
+  }
+
+  @Test
+  public void testRoleArnPartitionWinsOverMismatchedRegion() {
+    assertThat(
+            AwsPolicyGenerator.iamPartitionId(
+                "arn:aws-us-gov:iam::123456789012:role/gov-role", "us-east-1"))
+        .isEqualTo("aws-us-gov");
+  }
+
+  @Test
+  public void testRegionPartitionUsedWhenRoleArnMissing() {
+    assertThat(AwsPolicyGenerator.iamPartitionId(null, "us-gov-west-1")).isEqualTo("aws-us-gov");
+    assertThat(AwsPolicyGenerator.iamPartitionId("not-an-arn", "cn-north-1")).isEqualTo("aws-cn");
+  }
+
+  @Test
+  public void testBlankRoleAndRegionDefaultToAwsPartition() {
+    assertThat(AwsPolicyGenerator.iamPartitionId(null, null)).isEqualTo("aws");
+    assertThat(AwsPolicyGenerator.iamPartitionId("", "")).isEqualTo("aws");
+  }
+
+  @ParameterizedTest(name = "{index}: {0} uses {1}")
+  @CsvSource({
+    "us-east-1, arn:aws:s3:::my-bucket, s3.*.amazonaws.com",
+    "us-gov-west-1, arn:aws-us-gov:s3:::my-bucket, s3.*.amazonaws.com",
+    "cn-north-1, arn:aws-cn:s3:::my-bucket, s3.*.amazonaws.com.cn",
+    "'', arn:aws:s3:::my-bucket, s3.*.amazonaws.com"
+  })
+  public void testSessionPolicyUsesRegionPartition(
+      String region, String expectedBucketArn, String expectedViaService) throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT),
+            List.of(NormalizedURL.from("s3://my-bucket/path1/table1")),
+            null,
+            region);
+
+    JsonNode root = JSON_MAPPER.readTree(policy);
+    assertThat(root.get("Statement").get(0).get("Resource"))
+        .map(JsonNode::asText)
+        .containsExactly(
+            expectedBucketArn + "/path1/table1/*", expectedBucketArn + "/path1/table1");
+    assertThat(root.get("Statement").get(1).get("Resource").get(0).asText())
+        .isEqualTo(expectedBucketArn);
+    JsonNode kmsStatement = findKmsStatement(root);
+    assertThat(kmsStatement.findPath(KMS_ENCRYPTION_CONTEXT_KEY))
+        .map(JsonNode::asText)
+        .containsExactly(
+            expectedBucketArn,
+            expectedBucketArn + "/path1/table1/*",
+            expectedBucketArn + "/path1/table1");
+    assertThat(kmsStatement.findPath("kms:ViaService").asText()).isEqualTo(expectedViaService);
+  }
+
+  @Test
+  public void testGovCloudRoleArnDrivesPartitionWithoutRegion() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE),
+            List.of(NormalizedURL.from("s3://gov-bucket/path/table")),
+            "arn:aws-us-gov:iam::123456789012:role/gov-role",
+            null);
+
+    assertThat(policy)
+        .contains("arn:aws-us-gov:s3:::gov-bucket")
+        .doesNotContain("arn:aws:s3:::gov-bucket");
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement.findPath("kms:ViaService").asText()).isEqualTo("s3.*.amazonaws.com");
+  }
+
+  @Test
+  public void testChinaPolicyUsesCnDnsSuffixForKmsViaService() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT),
+            List.of(NormalizedURL.from("s3://cn-bucket/path/table")),
+            "arn:aws-cn:iam::123456789012:role/cn-role",
+            "us-east-1");
+
+    assertThat(policy)
+        .contains("arn:aws-cn:s3:::cn-bucket")
+        .doesNotContain("arn:aws:s3:::cn-bucket");
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement.findPath("kms:ViaService").asText()).isEqualTo("s3.*.amazonaws.com.cn");
+  }
+
   /**
    * Returns the statement that carries the KMS actions, or {@code null} when the policy has none.
    * Located by action prefix rather than by index so that the S3 statements the other tests assert

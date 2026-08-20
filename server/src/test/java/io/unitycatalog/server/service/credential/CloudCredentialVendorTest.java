@@ -320,4 +320,62 @@ public class CloudCredentialVendorTest {
       assertThat(capturedRequest.externalId()).isEqualTo(expectedExternalId);
     }
   }
+
+  @Test
+  public void testGovCloudRoleArnUsesAwsUsGovS3ArnsInSessionPolicy() {
+    final String CREDENTIAL_ROLE_ARN =
+        "arn:aws-us-gov:iam::123456789012:role/external-location-role";
+    final String S3_PATH = "s3://gov-bucket/path/to/data";
+
+    CredentialDAO credentialDAO =
+        CredentialDAO.from(
+            new CreateCredentialRequest()
+                .name("test-credential")
+                .purpose(CredentialPurpose.STORAGE)
+                .awsIamRole(new AwsIamRoleRequest().roleArn(CREDENTIAL_ROLE_ARN)),
+            "test-user");
+
+    reset(externalLocationUtils);
+    doReturn(Optional.of(credentialDAO))
+        .when(externalLocationUtils)
+        .getExternalLocationCredentialDaoForPath(any());
+
+    when(serverProperties.getS3Configurations()).thenReturn(Map.of());
+    // Master region intentionally commercial: the assumed role ARN must still select aws-us-gov.
+    doReturn(S3StorageConfig.builder().region("us-east-1").build())
+        .when(serverProperties)
+        .getS3MasterRoleConfiguration();
+
+    StsClient mockStsClient = Mockito.mock(StsClient.class);
+    ArgumentCaptor<AssumeRoleRequest> requestCaptor =
+        ArgumentCaptor.forClass(AssumeRoleRequest.class);
+    Credentials stsCredentials =
+        Credentials.builder()
+            .accessKeyId("vendedAccessKey")
+            .secretAccessKey("vendedSecretKey")
+            .sessionToken("vendedSessionToken")
+            .build();
+    when(mockStsClient.assumeRole(requestCaptor.capture()))
+        .thenReturn(AssumeRoleResponse.builder().credentials(stsCredentials).build());
+
+    StsClientBuilder mockBuilder = Mockito.mock(StsClientBuilder.class);
+    when(mockBuilder.region(any())).thenReturn(mockBuilder);
+    when(mockBuilder.credentialsProvider(any())).thenReturn(mockBuilder);
+    when(mockBuilder.build()).thenReturn(mockStsClient);
+
+    try (MockedStatic<StsClient> mockedStsClient = Mockito.mockStatic(StsClient.class)) {
+      mockedStsClient.when(StsClient::builder).thenReturn(mockBuilder);
+
+      AwsCredentialVendor awsCredentialVendor = new AwsCredentialVendor(serverProperties);
+      credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
+
+      vendCredential(S3_PATH, Set.of(CredentialContext.Privilege.SELECT));
+
+      AssumeRoleRequest capturedRequest = requestCaptor.getValue();
+      assertThat(capturedRequest.policy())
+          .contains("arn:aws-us-gov:s3:::gov-bucket")
+          .doesNotContain("arn:aws:s3:::gov-bucket")
+          .contains("kms:ViaService");
+    }
+  }
 }
