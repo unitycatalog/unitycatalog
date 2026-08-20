@@ -310,7 +310,7 @@ public class TestUtils {
    */
   public static HttpResponse<String> sendRawEmptyPost(ServerConfig config, String path)
       throws Exception {
-    return sendRawPost(config, path, HttpRequest.BodyPublishers.noBody(), null);
+    return sendRawRequest(config, "POST", path, HttpRequest.BodyPublishers.noBody(), null);
   }
 
   /**
@@ -320,7 +320,8 @@ public class TestUtils {
    */
   public static HttpResponse<String> sendRawJsonPost(
       ServerConfig config, String path, String body, String contentType) throws Exception {
-    return sendRawPost(config, path, HttpRequest.BodyPublishers.ofString(body), contentType);
+    return sendRawRequest(
+        config, "POST", path, HttpRequest.BodyPublishers.ofString(body), contentType);
   }
 
   /**
@@ -337,7 +338,7 @@ public class TestUtils {
             new BufferSequencePublisher(
                 ByteBuffer.wrap(Arrays.copyOfRange(bytes, 0, mid)),
                 ByteBuffer.wrap(Arrays.copyOfRange(bytes, mid, bytes.length))));
-    return sendRawPost(config, path, twoChunks, contentType);
+    return sendRawRequest(config, "POST", path, twoChunks, contentType);
   }
 
   /**
@@ -377,11 +378,22 @@ public class TestUtils {
     }
   }
 
-  private static HttpResponse<String> sendRawPost(
-      ServerConfig config, String path, HttpRequest.BodyPublisher body, String contentType)
+  /**
+   * Core raw-HTTP sender shared by every raw test helper below: builds a request to {@code
+   * config.getServerUrl() + path} with the given method and body, attaching the bearer token when
+   * one is configured and {@code Content-Type} when non-null, and sending on a fresh client.
+   */
+  private static HttpResponse<String> sendRawRequest(
+      ServerConfig config,
+      String method,
+      String path,
+      HttpRequest.BodyPublisher body,
+      String contentType)
       throws Exception {
     HttpRequest.Builder reqBuilder =
-        HttpRequest.newBuilder().uri(URI.create(config.getServerUrl() + path)).POST(body);
+        HttpRequest.newBuilder()
+            .uri(URI.create(config.getServerUrl() + path))
+            .method(method, body);
     if (contentType != null) {
       reqBuilder.header("Content-Type", contentType);
     }
@@ -390,5 +402,28 @@ public class TestUtils {
     }
     return HttpClient.newHttpClient()
         .send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+  }
+
+  /**
+   * Raw HTTP request with an explicit method and optional JSON body, bypassing the generated SDK,
+   * for cross-channel authorization probes. Pass {@link Optional#empty()} for a body-less request;
+   * otherwise the body is sent with {@code Content-Type: application/json}. The {@code path} may
+   * include a query string. Used to place a parameter on the "wrong" channel (URL path, URL query,
+   * or request body) relative to where the endpoint's authorization decorator reads it.
+   */
+  public static HttpResponse<String> sendRaw(
+      ServerConfig config, String method, String path, Optional<String> jsonBody) throws Exception {
+    HttpRequest.BodyPublisher body =
+        jsonBody
+            .map(HttpRequest.BodyPublishers::ofString)
+            .orElseGet(HttpRequest.BodyPublishers::noBody);
+    return sendRawRequest(
+        config, method, path, body, jsonBody.isPresent() ? "application/json" : null);
+  }
+
+  /** Convenience wrapper over {@link #sendRaw} for GET probes. */
+  public static HttpResponse<String> sendRawGet(
+      ServerConfig config, String path, Optional<String> jsonBody) throws Exception {
+    return sendRaw(config, "GET", path, jsonBody);
   }
 }
