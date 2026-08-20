@@ -15,6 +15,7 @@ import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.TokenRevocationDAO;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -81,6 +82,7 @@ public class HibernateConfigurator {
       configuration.addAnnotatedClass(ExternalLocationDAO.class);
       configuration.addAnnotatedClass(DeltaCommitDAO.class);
       configuration.addAnnotatedClass(DependencyDAO.class);
+      configuration.addAnnotatedClass(TokenRevocationDAO.class);
 
       ServiceRegistry serviceRegistry =
           new StandardServiceRegistryBuilder().applySettings(configuration.getProperties()).build();
