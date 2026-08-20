@@ -35,6 +35,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -851,8 +852,13 @@ public class DeltaCommitRepository {
     }
     return new BaseException(
         ErrorCode.COMMIT_VERSION_CONFLICT,
-        "Commit version already accepted. Current table version is "
-            + lastCommitDAO.getCommitVersion());
+        "Commit version already accepted. Version "
+            + version
+            + " was accepted with commit file "
+            + existing.getCommitFilename()
+            + ", but the request carried "
+            + fileName
+            + ".");
   }
 
   /**
@@ -888,8 +894,11 @@ public class DeltaCommitRepository {
   static void verifyContentReplayOrThrowConflict(
       FileOperations fileOperations, CommitContentCheckRequiredException check) {
     String logDir = check.tableLocation + "/_delta_log";
-    String publishedPath = logDir + "/" + String.format("%020d.json", check.version);
-    String stagedPath = logDir + "/_staged_commits/" + check.stagedFileName;
+    // Locale.ROOT: the published file name is ASCII digits regardless of the server's locale, so it
+    // matches the actual _delta_log/<v>.json path (some locales render %d with non-ASCII digits).
+    String publishedPath = String.format(Locale.ROOT, "%s/%020d.json", logDir, check.version);
+    String stagedPath =
+        String.format(Locale.ROOT, "%s/_staged_commits/%s", logDir, check.stagedFileName);
     boolean sameContent;
     // getFileIO can vend credentials (cloud paths) and open resources, so it is acquired inside the
     // guarded block (and closed): a vend or read failure is equally "cannot determine" and must

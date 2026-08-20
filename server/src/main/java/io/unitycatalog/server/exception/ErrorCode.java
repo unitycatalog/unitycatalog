@@ -48,9 +48,6 @@ public enum ErrorCode {
   UNIMPLEMENTED(12, 501, DeltaErrorType.NOT_IMPLEMENTED_EXCEPTION),
   INTERNAL(13, 500, DeltaErrorType.INTERNAL_SERVER_ERROR_EXCEPTION),
   DATA_LOSS(15, 500, DeltaErrorType.INTERNAL_SERVER_ERROR_EXCEPTION),
-  // CCv2 commit whose idempotency the server could not determine (e.g. the published or staged
-  // commit file could not be read for a content comparison). Retriable.
-  COMMIT_STATE_UNKNOWN(22, 500, DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION),
   // UC-specific "already exists" error codes for backwards compatibility (all HTTP 400). But new
   // Delta API returns 409 as it has no backwards compatibility concern.
   RESOURCE_ALREADY_EXISTS(16, 400, DeltaErrorType.ALREADY_EXISTS_EXCEPTION, 409),
@@ -58,7 +55,10 @@ public enum ErrorCode {
   SCHEMA_ALREADY_EXISTS(18, 400, DeltaErrorType.ALREADY_EXISTS_EXCEPTION, 409),
   TABLE_ALREADY_EXISTS(19, 400, DeltaErrorType.ALREADY_EXISTS_EXCEPTION, 409),
   STORAGE_CREDENTIAL_ALREADY_EXISTS(20, 400, DeltaErrorType.ALREADY_EXISTS_EXCEPTION, 409),
-  EXTERNAL_LOCATION_ALREADY_EXISTS(21, 400, DeltaErrorType.ALREADY_EXISTS_EXCEPTION, 409);
+  EXTERNAL_LOCATION_ALREADY_EXISTS(21, 400, DeltaErrorType.ALREADY_EXISTS_EXCEPTION, 409),
+  // CCv2 commit whose idempotency the server could not determine (e.g. the published or staged
+  // commit file could not be read for a content comparison). Retriable.
+  COMMIT_STATE_UNKNOWN(22, 500, DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION);
 
   // Canonical mapping from DeltaErrorType to HTTP status. Built at class-load time and validated
   // to ensure every ErrorCode that shares the same deltaErrorType also agrees on deltaHttpStatus.
