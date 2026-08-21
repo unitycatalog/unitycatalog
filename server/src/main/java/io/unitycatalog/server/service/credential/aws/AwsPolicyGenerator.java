@@ -22,6 +22,8 @@ import software.amazon.awssdk.regions.Region;
 
 public class AwsPolicyGenerator {
 
+  static final String AWS_PARTITION = "aws";
+
   static final List<String> SELECT_ACTIONS = List.of("s3:GetO*");
   static final List<String> UPDATE_ACTIONS = List.of(
       "s3:GetO*", "s3:PutO*", "s3:DeleteO*", "s3:*Multipart*");
@@ -66,8 +68,6 @@ public class AwsPolicyGenerator {
       Action: []
       Resource:
         - "*"
-      Condition:
-        StringLike: {}
       """;
 
   private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
@@ -75,8 +75,12 @@ public class AwsPolicyGenerator {
 
   // This can support generating a policy across multiple buckets and paths, however, the assumed
   // role the policy is applied to for a scoped-session needs to have access across those buckets
+  /**
+   * Test helper: commercial {@link #AWS_PARTITION} (no role ARN or region). Production always
+   * calls {@link #generatePolicy(Set, List, String, Region)}.
+   */
   @SneakyThrows
-  public static String generatePolicy(
+  static String generatePolicy(
       Set<CredentialContext.Privilege> privileges,
       List<NormalizedURL> locations) {
     return generatePolicy(privileges, locations, null, null);
@@ -102,10 +106,10 @@ public class AwsPolicyGenerator {
     JsonNode operationsStatement = loadYaml(OPERATION_STATEMENT);
     policyStatement.add(operationsStatement);
     JsonNode kmsStatement = loadYaml(KMS_STATEMENT);
-    JsonNode stringLike = kmsStatement.findPath("StringLike");
-    if (stringLike instanceof ObjectNode stringLikeNode) {
-      stringLikeNode.put("kms:ViaService", kmsViaService(partition));
-    }
+    ((ObjectNode) kmsStatement)
+        .putObject("Condition")
+        .putObject("StringLike")
+        .put("kms:ViaService", kmsViaService(partition));
 
     // Add the appropriate S3 and KMS operations for the privileges requested
     ArrayNode actions = (ArrayNode) operationsStatement.findPath("Action");
@@ -209,7 +213,7 @@ public class AwsPolicyGenerator {
   }
 
   private static PartitionMetadata commercialPartition() {
-    return PartitionMetadata.of("aws");
+    return PartitionMetadata.of(AWS_PARTITION);
   }
 
   private static String s3Arn(PartitionMetadata partition, String resource) {
