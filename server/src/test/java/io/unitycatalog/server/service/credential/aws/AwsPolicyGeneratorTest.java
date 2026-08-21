@@ -2,6 +2,7 @@ package io.unitycatalog.server.service.credential.aws;
 
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
+import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.AWS_PARTITION;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.BUCKET_STATEMENT;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.KMS_STATEMENT;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.OPERATION_STATEMENT;
@@ -261,7 +262,7 @@ public class AwsPolicyGeneratorTest {
 
   @Test
   public void testNullRegionDefaultsToAwsPartition() {
-    assertThat(AwsPolicyGenerator.partitionFromRegion(null).id()).isEqualTo("aws");
+    assertThat(AwsPolicyGenerator.partitionFromRegion(null).id()).isEqualTo(AWS_PARTITION);
   }
 
   @ParameterizedTest(name = "{index}: {0} -> {1}")
@@ -301,8 +302,8 @@ public class AwsPolicyGeneratorTest {
 
   @Test
   public void testBlankRoleAndRegionDefaultToAwsPartition() {
-    assertThat(AwsPolicyGenerator.iamPartition(null, null).id()).isEqualTo("aws");
-    assertThat(AwsPolicyGenerator.iamPartition("", null).id()).isEqualTo("aws");
+    assertThat(AwsPolicyGenerator.iamPartition(null, null).id()).isEqualTo(AWS_PARTITION);
+    assertThat(AwsPolicyGenerator.iamPartition("", null).id()).isEqualTo(AWS_PARTITION);
   }
 
   @ParameterizedTest(name = "{index}: {0} uses {1}")
