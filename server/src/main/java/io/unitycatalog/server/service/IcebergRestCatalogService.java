@@ -265,11 +265,19 @@ public class IcebergRestCatalogService implements RegisteredService {
       @Param("catalog") String catalog, @Param("namespace") String namespace)
       throws JsonProcessingException {
     List<TableInfo> tables = new ArrayList<>();
-    // This endpoint returns the whole listing, so follow the repository's page token to the end
+    // This endpoint returns the whole listing, so follow the repository's page token to the end.
+    // Only the table names are used below, so the columns and properties the repository would
+    // otherwise attach to every table are omitted rather than fetched and discarded.
     Optional<String> pageToken = Optional.empty();
     do {
       ListTablesResponse page =
-          tableRepository.listTables(catalog, namespace, Optional.empty(), pageToken, false, false);
+          tableRepository.listTables(
+              catalog,
+              namespace,
+              Optional.empty(),
+              pageToken,
+              /* omitProperties = */ true,
+              /* omitColumns = */ true);
       tables.addAll(Objects.requireNonNull(page.getTables()));
       pageToken = nextPageToken(page.getNextPageToken());
     } while (pageToken.isPresent());
