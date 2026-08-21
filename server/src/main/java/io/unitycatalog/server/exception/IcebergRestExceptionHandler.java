@@ -8,15 +8,20 @@ import lombok.SneakyThrows;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.ForbiddenException;
 import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
+import org.apache.iceberg.exceptions.NotAuthorizedException;
+import org.apache.iceberg.exceptions.NotFoundException;
+import org.apache.iceberg.exceptions.RESTException;
+import org.apache.iceberg.exceptions.ServiceFailureException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 
 /**
  * Exception handler for the Iceberg REST Catalog API. Formats errors using Iceberg's {@link
- * ErrorResponse} with the original exception's class name as the error type (e.g.,
+ * ErrorResponse}, whose error type is named in Iceberg's own vocabulary (e.g.,
  * "NoSuchTableException"). Uses {@link IcebergObjectMapper} for Iceberg-specific serialization.
  */
 public class IcebergRestExceptionHandler extends BaseExceptionHandler {
@@ -37,6 +42,64 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
       current = current.getCause();
     }
     return current;
+  }
+
+  /**
+   * Names the error type in the vocabulary the Iceberg REST spec and its clients use.
+   *
+   * <p>An exception that came from Iceberg already carries such a name, so it is reported as it
+   * stands. A {@link BaseException} raised by Unity Catalog itself does not: reporting its class
+   * name would put "BaseException" on the wire, which is both an internal name and a type no client
+   * recognizes. Iceberg's own client reads the type to tell one 404 from another -- {@code
+   * ErrorHandlers.TableErrorHandler} raises {@code NoSuchNamespaceException} only when the type
+   * says so, and {@code NoSuchTableException} otherwise -- so an unrecognized type makes a missing
+   * catalog or schema surface at the client as a missing table. Those exceptions are named from
+   * their error code instead, which is also what the response status is derived from.
+   *
+   * <p>{@link #toBaseException} already re-raises four codes as the Iceberg exception that stands
+   * for them, which is what moves the two already-exists codes off their legacy 400; those arrive
+   * here carrying an Iceberg exception and keep naming themselves. This names what that switch does
+   * not reach, so no error code can reach a client as "BaseException".
+   */
+  private static String errorType(BaseException exception) {
+    Throwable original = getOriginalException(exception);
+    if (original instanceof BaseException) {
+      return icebergExceptionFor(exception.getErrorCode()).getSimpleName();
+    }
+    return original.getClass().getSimpleName();
+  }
+
+  /**
+   * The Iceberg exception that stands for a Unity Catalog error code, chosen as the one Iceberg's
+   * client raises for that code's HTTP status; {@code RESTException} covers the statuses the client
+   * has no exception of its own for. The switch is exhaustive so that a new error code has to name
+   * its Iceberg counterpart rather than silently inherit a misleading one.
+   */
+  private static Class<? extends Exception> icebergExceptionFor(ErrorCode errorCode) {
+    return switch (errorCode) {
+      case CATALOG_NOT_FOUND, SCHEMA_NOT_FOUND -> NoSuchNamespaceException.class;
+      case TABLE_NOT_FOUND -> NoSuchTableException.class;
+      case NOT_FOUND -> NotFoundException.class;
+      case ALREADY_EXISTS,
+          RESOURCE_ALREADY_EXISTS,
+          CATALOG_ALREADY_EXISTS,
+          SCHEMA_ALREADY_EXISTS,
+          TABLE_ALREADY_EXISTS,
+          STORAGE_CREDENTIAL_ALREADY_EXISTS,
+          EXTERNAL_LOCATION_ALREADY_EXISTS ->
+          AlreadyExistsException.class;
+      case COMMIT_VERSION_CONFLICT, UPDATE_REQUIREMENT_CONFLICT -> CommitFailedException.class;
+      // ABORTED is the generic abort, raised by callers that have nothing to do with a commit
+      // (token verification, model registration), so it must not claim a commit failed.
+      case ABORTED -> RESTException.class;
+      case INVALID_ARGUMENT, UNSUPPORTED_TABLE_FORMAT, FAILED_PRECONDITION, OUT_OF_RANGE ->
+          BadRequestException.class;
+      case UNAUTHENTICATED -> NotAuthorizedException.class;
+      case PERMISSION_DENIED -> ForbiddenException.class;
+      case UNIMPLEMENTED -> UnsupportedOperationException.class;
+      case INTERNAL, DATA_LOSS, COMMIT_STATE_UNKNOWN -> ServiceFailureException.class;
+      case RESOURCE_EXHAUSTED -> RESTException.class;
+    };
   }
 
   @Override
@@ -79,6 +142,15 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
     if (cause instanceof BadRequestException) {
       return wrapException(ErrorCode.INVALID_ARGUMENT, cause);
     }
+    if (cause instanceof IllegalArgumentException) {
+      // Iceberg's own request parsers reject a request they cannot read with
+      // IllegalArgumentException, and their message is already in Iceberg's terms; only the name is
+      // not. The status is the 400 the base handler would have chosen for it either way.
+      String message = cause.getMessage() != null ? cause.getMessage() : "Bad request";
+      BadRequestException badRequest = new BadRequestException("%s", message);
+      badRequest.initCause(cause);
+      return wrapException(ErrorCode.INVALID_ARGUMENT, message, badRequest);
+    }
     return super.toBaseException(cause);
   }
 
@@ -93,7 +165,7 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
             .writeValueAsString(
                 ErrorResponse.builder()
                     .responseCode(status.code())
-                    .withType(getOriginalException(exception).getClass().getSimpleName())
+                    .withType(errorType(exception))
                     .withMessage(exception.getErrorMessage())
                     .build()));
   }
