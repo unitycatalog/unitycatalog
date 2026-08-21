@@ -2,7 +2,6 @@ package io.unitycatalog.server.security;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -71,13 +70,7 @@ public class SecurityContext {
     LOGGER.info(getInternalCertsFile());
   }
 
-  public String createAccessToken(DecodedJWT decodedJWT, Duration ttl) {
-    String subject =
-        decodedJWT
-            .getClaims()
-            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
-            .asString();
-
+  public String createAccessToken(String principalEmail, Duration ttl) {
     Instant expiresAt = Instant.now().plus(ttl);
     return JWT.create()
         .withSubject(serviceName)
@@ -87,7 +80,7 @@ public class SecurityContext {
         .withKeyId(keyId)
         .withJWTId(UUID.randomUUID().toString())
         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
-        .withClaim(JwtClaim.SUBJECT.key(), subject)
+        .withClaim(JwtClaim.SUBJECT.key(), principalEmail)
         .sign(algorithm);
   }
 

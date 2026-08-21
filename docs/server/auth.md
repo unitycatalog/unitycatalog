@@ -58,6 +58,17 @@ When authorization is enabled, the server validates incoming identity tokens aga
 - **server.allowed-issuers**: Comma-separated list of allowed token issuers (exact match or wildcard with `*`). Tokens from issuers not in this list will be rejected. This prevents attackers from using their own identity provider to forge tokens.
 - **server.audiences**: Comma-separated list of expected JWT audience values. Tokens must contain an `aud` value matching one of these entries (exact match or wildcard with `*`). A single value of `*` disables audience validation (issuer and user checks still apply); that sentinel cannot be combined with other values.
 
+#### Programmatic exchange (service principals)
+
+Service integrations exchange an upstream OAuth access token on `POST /auth/tokens` without client credentials on the UC request. UC resolves the principal in two steps:
+
+1. **Email mode** — look up the user by the token `email` claim (or `sub` fallback for `id_token`).
+2. **External id mode** — look up the user by OAuth client id from the subject token (`azp`, or `client_id`) mapped to `externalId`. For `access_token` subjects without an `email` claim, this is tried before `sub`.
+
+Create UC users with a human-readable `email` for grants and set `externalId` to the OAuth client id for programmatic exchange. The issued UC access token always uses the resolved user's `email`.
+
+CLI and browser login flows use email mode only.
+
 #### Multiple Identity Providers
 
 You can configure multiple issuers and audiences by separating them with commas:
