@@ -45,6 +45,7 @@ import java.util.UUID;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.BadRequestException;
+import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.metrics.CommitMetrics;
@@ -473,6 +474,65 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
     assertThat(listed.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
+  }
+
+  @Test
+  public void testErrorsAreNamedInIcebergTerms()
+      throws ApiException, IOException, URISyntaxException {
+    createUniformIcebergTable();
+    String namespacePath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME;
+
+    // A catalog or a schema Unity Catalog doesn't have is a namespace Iceberg doesn't have,
+    // whichever endpoint asked for it.
+    assertErrorType(
+        client.get("/v1/catalogs/noSuchCatalog/namespaces").aggregate().join(),
+        404,
+        NoSuchNamespaceException.class);
+    assertErrorType(
+        client.get(TEST_BASE_PREFIX + "/namespaces/noSuchSchema").aggregate().join(),
+        404,
+        NoSuchNamespaceException.class);
+    assertErrorType(
+        client.get(TEST_BASE_PREFIX + "/namespaces/noSuchSchema/tables").aggregate().join(),
+        404,
+        NoSuchNamespaceException.class);
+    assertErrorType(
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces/noSuchSchema/tables/" + TestUtils.TABLE_NAME)
+            .aggregate()
+            .join(),
+        404,
+        NoSuchNamespaceException.class);
+
+    // A table Unity Catalog doesn't have is a missing table on every endpoint that resolves one.
+    assertErrorType(
+        client.get(namespacePath + "/tables/noSuchTable").aggregate().join(),
+        404,
+        NoSuchTableException.class);
+    assertErrorType(
+        postJson(namespacePath + "/tables/noSuchTable/metrics", scanReportJson()),
+        404,
+        NoSuchTableException.class);
+
+    // A namespace name Unity Catalog rejects outright, such as the multi-level name a nested
+    // namespace arrives as, is a bad request.
+    assertErrorType(
+        client.get(TEST_BASE_PREFIX + "/namespaces/nested.namespace").aggregate().join(),
+        400,
+        BadRequestException.class);
+  }
+
+  /**
+   * Asserts the response is an Iceberg error whose type is the given Iceberg exception. The type is
+   * what Iceberg's client reads to decide which exception to raise, so it has to be a name the
+   * client knows, never an internal Unity Catalog one.
+   */
+  private static void assertErrorType(
+      AggregatedHttpResponse resp, int expectedCode, Class<? extends Exception> expectedType) {
+    assertThat(resp.status().code()).isEqualTo(expectedCode);
+    ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(error.type()).isEqualTo(expectedType.getSimpleName());
+    assertThat(error.code()).isEqualTo(expectedCode);
   }
 
   private AggregatedHttpResponse postJson(String path, String json) {
