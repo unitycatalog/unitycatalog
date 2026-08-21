@@ -16,9 +16,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import software.amazon.awssdk.arns.Arn;
 import software.amazon.awssdk.regions.PartitionMetadata;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.regions.RegionMetadata;
 
 public class AwsPolicyGenerator {
 
@@ -69,7 +69,6 @@ public class AwsPolicyGenerator {
         - "*"
       Condition:
         StringLike:
-          "kms:ViaService": "s3.*.amazonaws.com"
           "%s": []
       """.formatted(KMS_ENCRYPTION_CONTEXT_KEY);
 
@@ -98,8 +97,8 @@ public class AwsPolicyGenerator {
       Set<CredentialContext.Privilege> privileges,
       List<NormalizedURL> locations,
       String roleArn,
-      String awsRegion) {
-    String partition = iamPartitionId(roleArn, awsRegion);
+      Region awsRegion) {
+    PartitionMetadata partition = iamPartition(roleArn, awsRegion);
     JsonNode policyRoot = loadYaml(POLICY_STATEMENT);
     ArrayNode policyStatement = (ArrayNode) policyRoot.findPath("Statement");
     JsonNode operationsStatement = loadYaml(OPERATION_STATEMENT);
@@ -187,60 +186,57 @@ public class AwsPolicyGenerator {
    * IAM partition for S3 ARNs and KMS conditions. Prefers the assumed role ARN (the session is
    * bound to that role's partition), then the STS region catalog, then commercial {@code aws}.
    */
-  static String iamPartitionId(String roleArn, String awsRegion) {
-    String fromRole = partitionFromArn(roleArn);
+  static PartitionMetadata iamPartition(String roleArn, Region awsRegion) {
+    PartitionMetadata fromRole = partitionFromArn(roleArn);
     if (fromRole != null) {
       return fromRole;
     }
     return partitionFromRegion(awsRegion);
   }
 
-  static String partitionFromArn(String arn) {
+  static PartitionMetadata partitionFromArn(String arn) {
     if (arn == null || arn.isBlank()) {
       return null;
     }
-    // arn:partition:service:region:account:resource
-    String[] parts = arn.split(":", 6);
-    if (parts.length < 2 || !"arn".equalsIgnoreCase(parts[0]) || parts[1].isBlank()) {
+    try {
+      String partition = Arn.fromString(arn).partition();
+      if (partition == null || partition.isBlank()) {
+        return null;
+      }
+      return PartitionMetadata.of(partition);
+    } catch (RuntimeException e) {
       return null;
     }
-    return parts[1];
   }
 
-  static String partitionFromRegion(String awsRegion) {
-    if (awsRegion == null || awsRegion.isBlank()) {
-      return "aws";
+  static PartitionMetadata partitionFromRegion(Region awsRegion) {
+    if (awsRegion == null) {
+      return commercialPartition();
     }
     try {
-      RegionMetadata metadata = Region.of(awsRegion).metadata();
-      if (metadata == null || metadata.partition() == null) {
-        return "aws";
-      }
-      String partitionId = metadata.partition().id();
-      return partitionId == null || partitionId.isBlank() ? "aws" : partitionId;
-    } catch (RuntimeException e) {
-      return "aws";
-    }
-  }
-
-  static String kmsViaService(String partition) {
-    return "s3.*." + partitionDnsSuffix(partition);
-  }
-
-  private static String partitionDnsSuffix(String partition) {
-    try {
-      PartitionMetadata metadata = PartitionMetadata.of(partition);
-      if (metadata != null && metadata.dnsSuffix() != null && !metadata.dnsSuffix().isBlank()) {
-        return metadata.dnsSuffix();
+      if (awsRegion.metadata() != null && awsRegion.metadata().partition() != null) {
+        return awsRegion.metadata().partition();
       }
     } catch (RuntimeException ignored) {
-      // Unknown partitions fall through to the commercial/China suffix map.
+      // Unknown regions fall through to commercial aws.
     }
-    return "aws-cn".equals(partition) ? "amazonaws.com.cn" : "amazonaws.com";
+    return commercialPartition();
   }
 
-  private static String s3Arn(String partition, String resource) {
-    return String.format("arn:%s:s3:::%s", partition, resource);
+  private static String kmsViaService(PartitionMetadata partition) {
+    String dnsSuffix = partition.dnsSuffix();
+    if (dnsSuffix == null || dnsSuffix.isBlank()) {
+      dnsSuffix = "aws-cn".equals(partition.id()) ? "amazonaws.com.cn" : "amazonaws.com";
+    }
+    return "s3.*." + dnsSuffix;
+  }
+
+  private static PartitionMetadata commercialPartition() {
+    return PartitionMetadata.of("aws");
+  }
+
+  private static String s3Arn(PartitionMetadata partition, String resource) {
+    return String.format("arn:%s:s3:::%s", partition.id(), resource);
   }
 
   /**

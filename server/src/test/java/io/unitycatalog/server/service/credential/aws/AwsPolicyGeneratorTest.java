@@ -22,6 +22,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import software.amazon.awssdk.regions.Region;
 
 public class AwsPolicyGeneratorTest {
 
@@ -272,12 +273,13 @@ public class AwsPolicyGeneratorTest {
     "'', aws"
   })
   public void testPartitionFromRegion(String region, String expectedPartition) {
-    assertThat(AwsPolicyGenerator.partitionFromRegion(region)).isEqualTo(expectedPartition);
+    assertThat(AwsPolicyGenerator.partitionFromRegion(regionOrNull(region)).id())
+        .isEqualTo(expectedPartition);
   }
 
   @Test
   public void testNullRegionDefaultsToAwsPartition() {
-    assertThat(AwsPolicyGenerator.partitionFromRegion(null)).isEqualTo("aws");
+    assertThat(AwsPolicyGenerator.partitionFromRegion(null).id()).isEqualTo("aws");
   }
 
   @ParameterizedTest(name = "{index}: {0} -> {1}")
@@ -287,7 +289,7 @@ public class AwsPolicyGeneratorTest {
     "arn:aws-cn:iam::123456789012:role/r, aws-cn"
   })
   public void testPartitionFromArn(String roleArn, String expectedPartition) {
-    assertThat(AwsPolicyGenerator.partitionFromArn(roleArn)).isEqualTo(expectedPartition);
+    assertThat(AwsPolicyGenerator.partitionFromArn(roleArn).id()).isEqualTo(expectedPartition);
   }
 
   @Test
@@ -301,21 +303,24 @@ public class AwsPolicyGeneratorTest {
   @Test
   public void testRoleArnPartitionWinsOverMismatchedRegion() {
     assertThat(
-            AwsPolicyGenerator.iamPartitionId(
-                "arn:aws-us-gov:iam::123456789012:role/gov-role", "us-east-1"))
+            AwsPolicyGenerator.iamPartition(
+                    "arn:aws-us-gov:iam::123456789012:role/gov-role", Region.US_EAST_1)
+                .id())
         .isEqualTo("aws-us-gov");
   }
 
   @Test
   public void testRegionPartitionUsedWhenRoleArnMissing() {
-    assertThat(AwsPolicyGenerator.iamPartitionId(null, "us-gov-west-1")).isEqualTo("aws-us-gov");
-    assertThat(AwsPolicyGenerator.iamPartitionId("not-an-arn", "cn-north-1")).isEqualTo("aws-cn");
+    assertThat(AwsPolicyGenerator.iamPartition(null, Region.of("us-gov-west-1")).id())
+        .isEqualTo("aws-us-gov");
+    assertThat(AwsPolicyGenerator.iamPartition("not-an-arn", Region.of("cn-north-1")).id())
+        .isEqualTo("aws-cn");
   }
 
   @Test
   public void testBlankRoleAndRegionDefaultToAwsPartition() {
-    assertThat(AwsPolicyGenerator.iamPartitionId(null, null)).isEqualTo("aws");
-    assertThat(AwsPolicyGenerator.iamPartitionId("", "")).isEqualTo("aws");
+    assertThat(AwsPolicyGenerator.iamPartition(null, null).id()).isEqualTo("aws");
+    assertThat(AwsPolicyGenerator.iamPartition("", null).id()).isEqualTo("aws");
   }
 
   @ParameterizedTest(name = "{index}: {0} uses {1}")
@@ -332,7 +337,7 @@ public class AwsPolicyGeneratorTest {
             Set.of(SELECT),
             List.of(NormalizedURL.from("s3://my-bucket/path1/table1")),
             null,
-            region);
+            regionOrNull(region));
 
     JsonNode root = JSON_MAPPER.readTree(policy);
     assertThat(root.get("Statement").get(0).get("Resource"))
@@ -374,13 +379,17 @@ public class AwsPolicyGeneratorTest {
             Set.of(SELECT),
             List.of(NormalizedURL.from("s3://cn-bucket/path/table")),
             "arn:aws-cn:iam::123456789012:role/cn-role",
-            "us-east-1");
+            Region.US_EAST_1);
 
     assertThat(policy)
         .contains("arn:aws-cn:s3:::cn-bucket")
         .doesNotContain("arn:aws:s3:::cn-bucket");
     JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
     assertThat(statement.findPath("kms:ViaService").asText()).isEqualTo("s3.*.amazonaws.com.cn");
+  }
+
+  private static Region regionOrNull(String regionId) {
+    return regionId == null || regionId.isBlank() ? null : Region.of(regionId);
   }
 
   /**

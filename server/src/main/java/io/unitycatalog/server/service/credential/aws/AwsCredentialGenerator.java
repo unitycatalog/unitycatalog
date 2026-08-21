@@ -61,7 +61,7 @@ public interface AwsCredentialGenerator {
     // contains a CredentialDAO and it will assume the role ARN in CredentialDAO instead.
     private final String staticAwsRoleArn;
     // Same region the STS client uses; used when the assumed role ARN does not carry a partition.
-    private final String awsRegion;
+    private final Region awsRegion;
 
     public StsAwsCredentialGenerator(StsClientBuilder builder, S3StorageConfig config) {
       // Get STS region
@@ -89,7 +89,7 @@ public interface AwsCredentialGenerator {
 
       this.stsClient = builder.region(region).credentialsProvider(credentialsProvider).build();
       this.staticAwsRoleArn = config.getAwsRoleArn();
-      this.awsRegion = region.id();
+      this.awsRegion = region;
     }
 
     @Override

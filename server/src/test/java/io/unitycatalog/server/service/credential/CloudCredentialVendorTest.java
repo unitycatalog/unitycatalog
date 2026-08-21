@@ -8,6 +8,7 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
@@ -322,7 +323,7 @@ public class CloudCredentialVendorTest {
   }
 
   @Test
-  public void testGovCloudRoleArnUsesAwsUsGovS3ArnsInSessionPolicy() {
+  public void testGovCloudRoleArnUsesAwsUsGovS3ArnsInSessionPolicy() throws Exception {
     final String CREDENTIAL_ROLE_ARN =
         "arn:aws-us-gov:iam::123456789012:role/external-location-role";
     final String S3_PATH = "s3://gov-bucket/path/to/data";
@@ -374,8 +375,13 @@ public class CloudCredentialVendorTest {
       AssumeRoleRequest capturedRequest = requestCaptor.getValue();
       assertThat(capturedRequest.policy())
           .contains("arn:aws-us-gov:s3:::gov-bucket")
-          .doesNotContain("arn:aws:s3:::gov-bucket")
-          .contains("kms:ViaService");
+          .doesNotContain("arn:aws:s3:::gov-bucket");
+      assertThat(
+              new ObjectMapper()
+                  .readTree(capturedRequest.policy())
+                  .findPath("kms:ViaService")
+                  .asText())
+          .isEqualTo("s3.*.amazonaws.com");
     }
   }
 }
