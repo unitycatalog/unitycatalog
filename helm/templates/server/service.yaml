@@ -5,8 +5,11 @@ metadata:
   name: {{ include "unitycatalog.server.fullname" . | quote }}
   labels:
     {{- include "unitycatalog.server.labels" . | nindent 4 }}
+  {{- with .Values.server.service.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  type: {{ .Values.server.service.type | quote }}
+  type: {{ .Values.server.service.type }}
   ports:
     - port: {{ .Values.server.service.port }}
       targetPort: api
