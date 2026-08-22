@@ -120,7 +120,10 @@ public class IcebergRestCatalogService implements RegisteredService {
       throws JsonProcessingException {
     List<Namespace> namespaces;
     if (parent.isPresent() && !parent.get().isEmpty()) {
-      // nested namespaces is not supported, so child namespaces will be empty
+      // Unity Catalog has no nested namespaces, so a namespace that does exist has no children. The
+      // parent is still resolved rather than assumed: per the REST spec, listing under a namespace
+      // that does not exist is a 404, which an empty list would hide from the client.
+      schemaService.getSchema(String.join(".", catalog, parent.get())).aggregate().join();
       namespaces = Collections.emptyList();
     } else {
       namespaces = new ArrayList<>();
@@ -177,7 +180,9 @@ public class IcebergRestCatalogService implements RegisteredService {
       if (metadataLocation == null) {
         throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
       } else {
-        return HttpResponse.of(HttpStatus.OK);
+        // The REST spec answers this HEAD with 204 and no content. Answering 200 also had Armeria
+        // describe a body ("200 OK", Content-Length: 6) that a HEAD response must not carry.
+        return HttpResponse.of(HttpStatus.NO_CONTENT);
       }
     }
   }

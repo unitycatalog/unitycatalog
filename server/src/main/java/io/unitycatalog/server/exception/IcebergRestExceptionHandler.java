@@ -1,5 +1,6 @@
 package io.unitycatalog.server.exception;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
@@ -54,7 +55,30 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
     if (cause instanceof BadRequestException) {
       return wrapException(ErrorCode.INVALID_ARGUMENT, cause);
     }
+    JsonProcessingException jsonFailure = findJsonFailure(cause);
+    if (jsonFailure != null) {
+      // A body the request converter cannot read arrives here as a failure whose message names the
+      // Jackson exception class and quotes the reader's source location. Report what was wrong with
+      // the request instead of the internals of the JSON reader.
+      return wrapException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Malformed request body: " + jsonFailure.getOriginalMessage(),
+          cause);
+    }
     return super.toBaseException(cause);
+  }
+
+  /** The Jackson failure behind a thrown exception, or null if the failure was something else. */
+  private static JsonProcessingException findJsonFailure(Throwable cause) {
+    for (Throwable current = cause; current != null; current = current.getCause()) {
+      if (current instanceof JsonProcessingException jsonProcessingException) {
+        return jsonProcessingException;
+      }
+      if (current.getCause() == current) {
+        break;
+      }
+    }
+    return null;
   }
 
   @SneakyThrows
