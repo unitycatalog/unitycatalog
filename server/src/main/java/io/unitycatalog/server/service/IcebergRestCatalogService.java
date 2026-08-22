@@ -15,11 +15,11 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.ListSchemasResponse;
-import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.TableRepository.UniformIcebergTablePage;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
@@ -29,9 +29,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -264,45 +262,21 @@ public class IcebergRestCatalogService implements RegisteredService {
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
       @Param("catalog") String catalog, @Param("namespace") String namespace)
       throws JsonProcessingException {
-    List<TableInfo> tables = new ArrayList<>();
     // This endpoint returns the whole listing, so follow the repository's page token to the end.
-    // Only the table names are used below, so the columns and properties the repository would
-    // otherwise attach to every table are omitted rather than fetched and discarded.
+    // Each page already says which of its tables are uniform, so no listed table is resolved a
+    // second time: doing that made a table dropped mid-listing fail the entire request.
+    List<TableIdentifier> tables = new ArrayList<>();
     Optional<String> pageToken = Optional.empty();
     do {
-      ListTablesResponse page =
-          tableRepository.listTables(
-              catalog,
-              namespace,
-              Optional.empty(),
-              pageToken,
-              /* omitProperties = */ true,
-              /* omitColumns = */ true);
-      tables.addAll(Objects.requireNonNull(page.getTables()));
-      pageToken = nextPageToken(page.getNextPageToken());
+      UniformIcebergTablePage page =
+          tableRepository.listUniformIcebergTables(catalog, namespace, pageToken);
+      page.tableNames().stream()
+          .map(tableName -> TableIdentifier.of(Namespace.of(namespace), tableName))
+          .forEach(tables::add);
+      pageToken = page.nextPageToken();
     } while (pageToken.isPresent());
 
-    List<TableIdentifier> filteredTables;
-    try (Session session = sessionFactory.openSession()) {
-      filteredTables =
-          tables.stream()
-              .filter(
-                  tableInfo -> {
-                    String metadataLocation =
-                        tableRepository.getTableUniformMetadataLocation(
-                            session, catalog, namespace, tableInfo.getName());
-                    return metadataLocation != null;
-                  })
-              .map(
-                  tableInfo ->
-                      TableIdentifier.of(
-                          Namespace.of(tableInfo.getSchemaName()), tableInfo.getName()))
-              .collect(Collectors.toList());
-    }
-
-    return org.apache.iceberg.rest.responses.ListTablesResponse.builder()
-        .addAll(filteredTables)
-        .build();
+    return org.apache.iceberg.rest.responses.ListTablesResponse.builder().addAll(tables).build();
   }
 
   /**
