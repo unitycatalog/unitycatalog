@@ -164,8 +164,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   public ListNamespacesResponse listNamespaces(
       @Param("catalog") String catalog, @Param("parent") Optional<String> parent) {
     List<Namespace> namespaces = new ArrayList<>();
-    // Nested namespaces are not supported, so a parent yields no child namespaces.
-    if (parent.isEmpty() || parent.get().isEmpty()) {
+    if (parent.isPresent() && !parent.get().isEmpty()) {
+      // Nested namespaces are not supported, so a parent yields no child namespaces. The parent is
+      // still resolved rather than assumed: per the REST spec, listing under a namespace that does
+      // not exist is a 404, which an empty list would hide from the client.
+      schemaRepository.getSchema(String.join(".", catalog, parent.get()));
+    } else {
       // This endpoint returns the whole listing, so follow the repository's page token to the end.
       Optional<String> pageToken = Optional.empty();
       do {
@@ -233,7 +237,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     if (state.metadataLocation() == null) {
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
-    return HttpResponse.of(HttpStatus.OK);
+    // The REST spec answers this HEAD with 204 and no content. Answering 200 also had Armeria
+    // describe a body ("200 OK", Content-Length: 6) that a HEAD response must not carry.
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
