@@ -128,7 +128,9 @@ public class UnityCatalogServer implements AutoCloseable {
     // Init all repositories
     Repositories repositories =
         new Repositories(
-            hibernateConfigurator.getSessionFactory(), unityCatalogServerBuilder.serverProperties);
+            hibernateConfigurator.getSessionFactory(),
+            unityCatalogServerBuilder.serverProperties,
+            unityCatalogServerBuilder.cloudCredentialVendor);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer
@@ -173,13 +175,10 @@ public class UnityCatalogServer implements AutoCloseable {
       Repositories repositories) {
     LOGGER.info("Adding Unity Catalog API services...");
     ServerProperties serverProperties = unityCatalogServerBuilder.serverProperties;
-    CloudCredentialVendor cloudCredentialVendor =
-        unityCatalogServerBuilder.cloudCredentialVendor != null
-            ? unityCatalogServerBuilder.cloudCredentialVendor
-            : new CloudCredentialVendor(serverProperties);
-    StorageCredentialVendor storageCredentialVendor =
-        new StorageCredentialVendor(cloudCredentialVendor, repositories.getExternalLocationUtils());
-    FileOperations fileOperations = new FileOperations(storageCredentialVendor, serverProperties);
+    // The credential/file-IO chain is built and owned by Repositories (so repositories can read
+    // table storage); reuse those instances here rather than rebuilding them.
+    StorageCredentialVendor storageCredentialVendor = repositories.getStorageCredentialVendor();
+    FileOperations fileOperations = repositories.getFileOperations();
 
     SchemaService schemaService = new SchemaService(authorizer, repositories, serverProperties);
 

@@ -36,7 +36,11 @@ import io.unitycatalog.server.service.delta.DeltaConsts;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.DeltaUniformUtils;
 import io.unitycatalog.server.utils.TestUtils;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -246,7 +250,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   @Test
-  public void testBasicCoordinatedCommitsCRUD() throws ApiException {
+  public void testBasicCoordinatedCommitsCRUD() throws ApiException, IOException {
     // Get commits on a table with no commits
     verifyDeltaCommits(
         /* expectedLatestTableVersion= */ 0);
@@ -346,14 +350,31 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     verifyDeltaCommits(
         /* expectedLatestTableVersion= */ 4);
 
-    // Known limitation (see DeltaCommitRepository idempotency TODO): once a version is backfilled
-    // and purged, its file name is no longer tracked, so an idempotent replay of that same commit
-    // can no longer be recognized and surfaces as a conflict. Here versions 2 and 3 were purged by
-    // the backfill above, so replaying the identical commit2 conflicts rather than no-op'ing.
+    // Replay of a backfilled-and-purged version (v1/v2/v3 are purged; only the v4 marker remains)
+    // can no longer be matched by file name, so it is settled by comparing the incoming staged file
+    // against the published _delta_log/<v>.json.
+    String loc = tableInfo.getStorageLocation();
+    // Publish v2 and stage a byte-identical file -> replay recognized by content: idempotent no-op.
+    byte[] v2Content = "delta-commit-v2\n".getBytes(StandardCharsets.UTF_8);
+    writeTableFile(loc, "_delta_log/00000000000000000002.json", v2Content);
+    writeTableFile(loc, "_delta_log/_staged_commits/file2", v2Content);
+    deltaCommitsApi.commit(commit2);
+    verifyDeltaCommits(/* expectedLatestTableVersion= */ 4);
+
+    // A staged file that differs from the published commit means another writer won v2: 409.
+    byte[] otherContent = "different\n".getBytes(StandardCharsets.UTF_8);
+    writeTableFile(loc, "_delta_log/_staged_commits/file2", otherContent);
     assertApiException(
         () -> deltaCommitsApi.commit(commit2),
         ErrorCode.COMMIT_VERSION_CONFLICT,
         "Commit version already accepted.");
+
+    // v3 is purged too. Its published _delta_log/<v>.json is absent here (in normal operation a
+    // backfilled version has one; a missing file models log truncation, deletion, or a transient
+    // storage read error). The content check cannot read it, so the outcome is unknown and surfaces
+    // as a retriable 500 rather than a false conflict.
+    assertApiException(
+        () -> deltaCommitsApi.commit(commit3), ErrorCode.COMMIT_STATE_UNKNOWN, "retry");
 
     // Commit one more version before deleting the table
     DeltaCommit commit5 =
@@ -395,6 +416,14 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     List<DeltaCommitDAO> remaining = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(remaining.size()).isEqualTo(2);
     verifyDeltaCommits(/* expectedLatestTableVersion= */ 2, /* expectedCommits= */ 2L, 1L);
+  }
+
+  /** Write {@code content} to {@code relativePath} under the table's (file://) storage location. */
+  private void writeTableFile(String storageLocation, String relativePath, byte[] content)
+      throws IOException {
+    Path path = Path.of(URI.create(storageLocation + "/" + relativePath));
+    Files.createDirectories(path.getParent());
+    Files.write(path, content);
   }
 
   private void checkCommitInvalidParameter(
