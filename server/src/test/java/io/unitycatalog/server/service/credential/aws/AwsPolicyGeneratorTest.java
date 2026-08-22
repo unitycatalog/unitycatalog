@@ -2,8 +2,8 @@ package io.unitycatalog.server.service.credential.aws;
 
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
+import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.AWS_PARTITION;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.BUCKET_STATEMENT;
-import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.KMS_ENCRYPTION_CONTEXT_KEY;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.KMS_STATEMENT;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.OPERATION_STATEMENT;
 import static io.unitycatalog.server.service.credential.aws.AwsPolicyGenerator.POLICY_STATEMENT;
@@ -22,6 +22,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import software.amazon.awssdk.regions.Region;
 
 public class AwsPolicyGeneratorTest {
 
@@ -198,54 +199,37 @@ public class AwsPolicyGeneratorTest {
   }
 
   @Test
-  public void testKmsStatementIsScopedToGrantedS3Arns() throws Exception {
+  public void testKmsStatementOmitsEncryptionContext() throws Exception {
     String policy =
         AwsPolicyGenerator.generatePolicy(
-            Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+            Set.of(UPDATE), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
 
     JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
-    assertThat(statement.findPath(KMS_ENCRYPTION_CONTEXT_KEY))
-        .map(JsonNode::asText)
-        .containsExactly(
-            "arn:aws:s3:::my-bucket",
-            "arn:aws:s3:::my-bucket/path1/table1/*",
-            "arn:aws:s3:::my-bucket/path1/table1");
+    assertThat(statement.findPath("kms:ViaService").asText()).isEqualTo("s3.*.amazonaws.com");
+    assertThat(policy).doesNotContain("kms:EncryptionContext");
   }
 
   @Test
-  public void testKmsStatementCoversEveryBucket() throws Exception {
+  public void testLongManagedTablePathFitsStsSessionPolicyLimit() {
+    String location =
+        "s3://example-managed-bucket/"
+            + "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee_catalog/"
+            + "__unitystorage/schemas/11111111-2222-3333-4444-555555555555/"
+            + "tables/66666666-7777-8888-9999-000000000000";
     String policy =
         AwsPolicyGenerator.generatePolicy(
             Set.of(UPDATE),
-            Stream.of("s3://my-bucket1/path1/table1", "s3://my-bucket2")
-                .map(NormalizedURL::from)
-                .toList());
+            List.of(NormalizedURL.from(location)),
+            "arn:aws-us-gov:iam::123456789012:role/gov-role",
+            Region.of("us-gov-west-1"));
 
-    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
-    assertThat(statement.findPath(KMS_ENCRYPTION_CONTEXT_KEY))
-        .map(JsonNode::asText)
-        .containsExactlyInAnyOrder(
-            "arn:aws:s3:::my-bucket1",
-            "arn:aws:s3:::my-bucket1/path1/table1/*",
-            "arn:aws:s3:::my-bucket1/path1/table1",
-            "arn:aws:s3:::my-bucket2",
-            "arn:aws:s3:::my-bucket2/*");
-  }
-
-  @Test
-  public void testKmsEncryptionContextEscapesIamSpecialCharacters() throws Exception {
-    String policy =
-        AwsPolicyGenerator.generatePolicy(
-            Set.of(UPDATE), List.of(NormalizedURL.from("s3://victim-bucket/*")));
-
-    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
-    assertThat(statement.findPath(KMS_ENCRYPTION_CONTEXT_KEY))
-        .map(JsonNode::asText)
-        .containsExactly(
-            "arn:aws:s3:::victim-bucket",
-            "arn:aws:s3:::victim-bucket/${*}/*",
-            "arn:aws:s3:::victim-bucket/${*}")
-        .doesNotContain("arn:aws:s3:::victim-bucket/*", "arn:aws:s3:::victim-bucket/*/*");
+    // STS rejects AssumeRole when the packed session policy hits 100%. The plaintext limit is
+    // 2048 characters; staying well under that keeps packed size in budget on long paths.
+    // GovCloud ARNs are used here because they are longer; commercial paths of the same length
+    // can overflow too when encryption-context ARNs duplicate every S3 resource.
+    assertThat(policy.length()).isLessThan(1600);
+    assertThat(policy).doesNotContain("kms:EncryptionContext");
+    assertThat(policy).contains("arn:aws-us-gov:s3:::example-managed-bucket");
   }
 
   @Test
@@ -259,6 +243,131 @@ public class AwsPolicyGeneratorTest {
     assertThat(statements.get(1).path("Action"))
         .map(JsonNode::asText)
         .containsExactly("s3:ListBucket");
+  }
+
+  @ParameterizedTest(name = "{index}: region {0} -> partition {1}")
+  @CsvSource({
+    "us-east-1, aws",
+    "us-west-2, aws",
+    "us-gov-west-1, aws-us-gov",
+    "us-gov-east-1, aws-us-gov",
+    "cn-north-1, aws-cn",
+    "cn-northwest-1, aws-cn",
+    "'', aws"
+  })
+  public void testPartitionFromRegion(String region, String expectedPartition) {
+    assertThat(AwsPolicyGenerator.partitionFromRegion(regionOrNull(region)).id())
+        .isEqualTo(expectedPartition);
+  }
+
+  @Test
+  public void testNullRegionDefaultsToAwsPartition() {
+    assertThat(AwsPolicyGenerator.partitionFromRegion(null).id()).isEqualTo(AWS_PARTITION);
+  }
+
+  @ParameterizedTest(name = "{index}: {0} -> {1}")
+  @CsvSource({
+    "arn:aws:iam::123456789012:role/r, aws",
+    "arn:aws-us-gov:iam::123456789012:role/r, aws-us-gov",
+    "arn:aws-cn:iam::123456789012:role/r, aws-cn"
+  })
+  public void testPartitionFromArn(String roleArn, String expectedPartition) {
+    assertThat(AwsPolicyGenerator.partitionFromArn(roleArn).id()).isEqualTo(expectedPartition);
+  }
+
+  @Test
+  public void testMissingOrMalformedRoleArnHasNoPartition() {
+    assertThat(AwsPolicyGenerator.partitionFromArn(null)).isNull();
+    assertThat(AwsPolicyGenerator.partitionFromArn("")).isNull();
+    assertThat(AwsPolicyGenerator.partitionFromArn("not-an-arn")).isNull();
+    assertThat(AwsPolicyGenerator.partitionFromArn("arn:")).isNull();
+  }
+
+  @Test
+  public void testRoleArnPartitionWinsOverMismatchedRegion() {
+    assertThat(
+            AwsPolicyGenerator.iamPartition(
+                    "arn:aws-us-gov:iam::123456789012:role/gov-role", Region.US_EAST_1)
+                .id())
+        .isEqualTo("aws-us-gov");
+  }
+
+  @Test
+  public void testRegionPartitionUsedWhenRoleArnMissing() {
+    assertThat(AwsPolicyGenerator.iamPartition(null, Region.of("us-gov-west-1")).id())
+        .isEqualTo("aws-us-gov");
+    assertThat(AwsPolicyGenerator.iamPartition("not-an-arn", Region.of("cn-north-1")).id())
+        .isEqualTo("aws-cn");
+  }
+
+  @Test
+  public void testBlankRoleAndRegionDefaultToAwsPartition() {
+    assertThat(AwsPolicyGenerator.iamPartition(null, null).id()).isEqualTo(AWS_PARTITION);
+    assertThat(AwsPolicyGenerator.iamPartition("", null).id()).isEqualTo(AWS_PARTITION);
+  }
+
+  @ParameterizedTest(name = "{index}: {0} uses {1}")
+  @CsvSource({
+    "us-east-1, arn:aws:s3:::my-bucket, s3.*.amazonaws.com",
+    "us-gov-west-1, arn:aws-us-gov:s3:::my-bucket, s3.*.amazonaws.com",
+    "cn-north-1, arn:aws-cn:s3:::my-bucket, s3.*.amazonaws.com.cn",
+    "'', arn:aws:s3:::my-bucket, s3.*.amazonaws.com"
+  })
+  public void testSessionPolicyUsesRegionPartition(
+      String region, String expectedBucketArn, String expectedViaService) throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT),
+            List.of(NormalizedURL.from("s3://my-bucket/path1/table1")),
+            null,
+            regionOrNull(region));
+
+    JsonNode root = JSON_MAPPER.readTree(policy);
+    assertThat(root.get("Statement").get(0).get("Resource"))
+        .map(JsonNode::asText)
+        .containsExactly(
+            expectedBucketArn + "/path1/table1/*", expectedBucketArn + "/path1/table1");
+    assertThat(root.get("Statement").get(1).get("Resource").get(0).asText())
+        .isEqualTo(expectedBucketArn);
+    JsonNode kmsStatement = findKmsStatement(root);
+    assertThat(kmsStatement.findPath("kms:ViaService").asText()).isEqualTo(expectedViaService);
+    assertThat(policy).doesNotContain("kms:EncryptionContext");
+  }
+
+  @Test
+  public void testGovCloudRoleArnDrivesPartitionWithoutRegion() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE),
+            List.of(NormalizedURL.from("s3://gov-bucket/path/table")),
+            "arn:aws-us-gov:iam::123456789012:role/gov-role",
+            null);
+
+    assertThat(policy)
+        .contains("arn:aws-us-gov:s3:::gov-bucket")
+        .doesNotContain("arn:aws:s3:::gov-bucket");
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement.findPath("kms:ViaService").asText()).isEqualTo("s3.*.amazonaws.com");
+  }
+
+  @Test
+  public void testChinaPolicyUsesCnDnsSuffixForKmsViaService() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(SELECT),
+            List.of(NormalizedURL.from("s3://cn-bucket/path/table")),
+            "arn:aws-cn:iam::123456789012:role/cn-role",
+            Region.US_EAST_1);
+
+    assertThat(policy)
+        .contains("arn:aws-cn:s3:::cn-bucket")
+        .doesNotContain("arn:aws:s3:::cn-bucket");
+    JsonNode statement = findKmsStatement(JSON_MAPPER.readTree(policy));
+    assertThat(statement.findPath("kms:ViaService").asText()).isEqualTo("s3.*.amazonaws.com.cn");
+  }
+
+  private static Region regionOrNull(String regionId) {
+    return regionId == null || regionId.isBlank() ? null : Region.of(regionId);
   }
 
   /**
