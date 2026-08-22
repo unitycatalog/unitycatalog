@@ -277,19 +277,11 @@ public class SchemaRepository {
   private List<DeletedResource> deleteChildTables(
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
     List<DeletedResource> deleted = new ArrayList<>();
-    // first check if there are any child tables
     List<TableInfo> tables =
         repositories
             .getTableRepository()
-            .listTables(
-                session,
-                schemaId,
-                catalogName,
-                schemaName,
-                Optional.of(1),
-                Optional.empty(),
-                true,
-                true)
+            .listTablesIncludingDeleted(
+                session, schemaId, catalogName, schemaName, Optional.of(1), Optional.empty())
             .getTables();
     if (tables != null && !tables.isEmpty()) {
       if (!force) {
@@ -300,15 +292,13 @@ public class SchemaRepository {
         ListTablesResponse listTablesResponse =
             repositories
                 .getTableRepository()
-                .listTables(
+                .listTablesIncludingDeleted(
                     session,
                     schemaId,
                     catalogName,
                     schemaName,
                     Optional.empty(),
-                    Optional.ofNullable(nextToken),
-                    true,
-                    true);
+                    Optional.ofNullable(nextToken));
         for (TableInfo tableInfo : listTablesResponse.getTables()) {
           deleted.add(
               new DeletedResource(

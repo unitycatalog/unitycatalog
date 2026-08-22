@@ -170,6 +170,30 @@ public class ServerProperties {
     }
   }
 
+  /** Validator for durations in an inclusive operational range. */
+  private static class DurationRangeValidator extends DurationValidator {
+    private final Duration minimum;
+    private final Duration maximum;
+
+    DurationRangeValidator(Duration minimum, Duration maximum) {
+      this.minimum = minimum;
+      this.maximum = maximum;
+    }
+
+    @Override
+    public void validate(String key, String value) {
+      super.validate(key, value);
+      Duration duration = Duration.parse(value);
+      if (duration.compareTo(minimum) < 0 || duration.compareTo(maximum) > 0) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Invalid value '%s' for property '%s'. Expected a duration between %s and %s",
+                value, key, minimum, maximum));
+      }
+    }
+  }
+
   /** No-op validator that accepts any value */
   private static class NoOpValidator implements PropertyValidator {
     @Override
@@ -185,6 +209,8 @@ public class ServerProperties {
       new PositiveIntegerValidator();
   private static final NoOpValidator NOOP_VALIDATOR = new NoOpValidator();
   private static final DurationValidator DURATION_VALIDATOR = new DurationValidator();
+  private static final DurationRangeValidator RETENTION_DURATION_VALIDATOR =
+      new DurationRangeValidator(Duration.ZERO, Duration.ofDays(3650));
 
   @Getter
   public enum Property {
@@ -203,6 +229,8 @@ public class ServerProperties {
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
     MANAGED_TABLE_USE_DELTA_API_ONLY(
         "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
+    MANAGED_TABLE_RETENTION_DURATION(
+        "server.managed-table.retention-duration", "PT0S", RETENTION_DURATION_VALIDATOR),
     UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV(
         "server.managed-table.uniform-iceberg-v2.allow-missing-dv", "false", BOOLEAN_VALIDATOR),
     // `storage-root.*` are replaced by managed storage locations of catalog and schema.
@@ -493,6 +521,11 @@ public class ServerProperties {
           "MANAGED table is an is currently disabled. To enable it, set "
               + "'server.managed-table.enabled=true' in server.properties");
     }
+  }
+
+  /** Retention between a managed table's logical drop and cleanup eligibility. */
+  public Duration getManagedTableRetentionDuration() {
+    return Duration.parse(get(Property.MANAGED_TABLE_RETENTION_DURATION));
   }
 
   /**
