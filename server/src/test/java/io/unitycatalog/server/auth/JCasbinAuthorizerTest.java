@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,9 +22,22 @@ public class JCasbinAuthorizerTest {
   void setUp() throws Exception {
     Properties properties = new Properties();
     properties.setProperty(Property.SERVER_ENV.getKey(), "test");
+    // Single-instance tests do not need background polling.
+    properties.setProperty(Property.POLICY_REFRESH_ENABLED.getKey(), "false");
     ServerProperties serverProperties = new ServerProperties(properties);
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
-    authenticator = new JCasbinAuthorizer(hibernateConfigurator);
+    authenticator = new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
+  }
+
+  @AfterEach
+  void tearDown() {
+    if (authenticator instanceof AutoCloseable closeable) {
+      try {
+        closeable.close();
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    }
   }
 
   @Test

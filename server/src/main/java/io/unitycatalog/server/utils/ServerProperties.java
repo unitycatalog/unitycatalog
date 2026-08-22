@@ -191,6 +191,11 @@ public class ServerProperties {
     SERVER_ENV("server.env", "dev", new EnumValidator(true, "dev", "prod", "test")),
     AUTHORIZATION_ENABLED(
         "server.authorization", "disable", new EnumValidator(true, "enable", "disable")),
+    POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
+    POLICY_REFRESH_INTERVAL(
+        "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
+    POLICY_REFRESH_DEBOUNCE_INTERVAL(
+        "server.authorization.policy-refresh-debounce-interval", "PT1S", DURATION_VALIDATOR),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
@@ -461,6 +466,19 @@ public class ServerProperties {
 
   public boolean isAuthorizationEnabled() {
     return isTrueOrEnable(get(Property.AUTHORIZATION_ENABLED));
+  }
+
+  /** Whether cross-instance policy refresh is enabled (poll and deny-path reload). */
+  public boolean isPolicyRefreshEnabled() {
+    return isTrueOrEnable(get(Property.POLICY_REFRESH_ENABLED));
+  }
+
+  public Duration getPolicyRefreshInterval() {
+    return Duration.parse(get(Property.POLICY_REFRESH_INTERVAL));
+  }
+
+  public Duration getPolicyRefreshDebounceInterval() {
+    return Duration.parse(get(Property.POLICY_REFRESH_DEBOUNCE_INTERVAL));
   }
 
   public boolean isIncludeStackTraceInError() {
