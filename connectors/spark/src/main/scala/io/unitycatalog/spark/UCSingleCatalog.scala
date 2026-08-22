@@ -916,8 +916,14 @@ private[spark] class UCProxy(
     createTable.setColumns(columns)
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
     // Do not send the V2 table properties as they are made part of the `createTable` already.
-    val propertiesToServer =
-      properties.view.filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_)).toMap
+    // Also strip the vended filesystem credential properties (fs.* and their option.-prefixed
+    // duplicates, e.g. fs.s3a.session.token): they are session-scoped Hadoop configs injected by
+    // UCSingleCatalog for the local write path, not table metadata, and must never be persisted
+    // in the catalog.
+    val propertiesToServer = properties.view
+      .filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_))
+      .filterKeys(k => !k.startsWith("fs.") && !k.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
+      .toMap
     createTable.setProperties(propertiesToServer)
     try {
       tablesApi.createTable(createTable)

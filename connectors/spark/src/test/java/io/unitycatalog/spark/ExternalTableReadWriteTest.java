@@ -16,12 +16,15 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIf;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest {
   @TempDir protected File dataDir;
@@ -138,6 +141,36 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
         }
       }
     }
+  }
+
+  /**
+   * The connector injects vended filesystem credentials (fs.s3a.access.key, fs.s3a.session.token,
+   * fs.unitycatalog.*, and their option.-prefixed duplicates) into the table property map so the
+   * local Spark session can write to the table location. None of them -- nor the reserved Spark V2
+   * markers -- may be forwarded to the UC server as table properties: they are session-scoped
+   * credentials, and values like an STS session token (~1100 chars) also overflow the server
+   * property store. Create the table via Spark SQL, then fetch it back through the SDK and assert
+   * the server kept none of those keys.
+   */
+  @ParameterizedTest
+  @MethodSource("cloudParameters")
+  public void testCreateExternalTableSendsNoCredentialProperties(
+      String scheme, boolean renewCredEnabled, boolean credScopedFsEnabled) throws ApiException {
+    session =
+        createSparkSessionWithCatalogs(
+            renewCredEnabled, credScopedFsEnabled, SPARK_CATALOG, CATALOG_NAME);
+
+    String fullTableName = setupTable(scheme, CATALOG_NAME, TEST_TABLE);
+    sql("INSERT INTO %s VALUES (1, 'a')", fullTableName);
+    validateRows(sql("SELECT * FROM %s", fullTableName), Pair.of(1, "a"));
+
+    TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    java.util.Map<String, String> serverProperties =
+        tableInfo.getProperties() == null ? java.util.Map.of() : tableInfo.getProperties();
+    assertThat(serverProperties.keySet())
+        .noneMatch(key -> key.startsWith("fs."))
+        .noneMatch(key -> key.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
+        .noneMatch(UCTableProperties.V2_TABLE_PROPERTIES::contains);
   }
 
   @Test
