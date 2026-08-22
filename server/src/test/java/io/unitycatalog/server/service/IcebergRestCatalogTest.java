@@ -62,6 +62,8 @@ import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.exceptions.NotFoundException;
+import org.apache.iceberg.exceptions.RESTException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.metrics.CommitMetrics;
 import org.apache.iceberg.metrics.CommitMetricsResult;
@@ -951,6 +953,65 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
     assertThat(listed.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
+  }
+
+  @Test
+  public void testUnroutedIcebergRequestsAnswerWithAnIcebergError() throws Exception {
+    createUniformIcebergTable();
+
+    // A path the Iceberg API does not serve is answered before any service is reached, so the
+    // service's own handler never sees it. The response still has to be an error document Iceberg's
+    // parser can read.
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/views")
+            .aggregate()
+            .join();
+    assertIcebergStatusDocument(resp, 404, NotFoundException.class, "Not Found");
+
+    // Same for a method a served path does not accept, such as the namespace drop Iceberg's client
+    // sends to a path this server only serves GET on. Iceberg has no exception of its own for 405.
+    resp =
+        client.delete(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME).aggregate().join();
+    assertIcebergStatusDocument(resp, 405, RESTException.class, "Method Not Allowed");
+
+    // The mount point itself belongs to the Iceberg API too, even though nothing is served there,
+    // so the prefix has to match it as well as the paths under it.
+    WebClient rootClient =
+        WebClient.builder(serverConfig.getServerUrl())
+            .auth(AuthToken.ofOAuth2(serverConfig.getAuthToken()))
+            .build();
+    resp = rootClient.get("/api/2.1/unity-catalog/iceberg").aggregate().join();
+    assertIcebergStatusDocument(resp, 404, NotFoundException.class, "Not Found");
+
+    // Paths outside the Iceberg API keep Armeria's own rendering, whether they are another UC API
+    // or the server root.
+    AggregatedHttpResponse outside =
+        rootClient.get("/api/2.1/unity-catalog/no_such_endpoint").aggregate().join();
+    assertThat(outside.status().code()).isEqualTo(404);
+    assertThat(outside.contentType()).isNotEqualTo(MediaType.JSON);
+
+    outside = rootClient.get("/").aggregate().join();
+    assertThat(outside.status().code()).isEqualTo(200);
+    assertThat(outside.contentUtf8()).isEqualTo("Hello, Unity Catalog!");
+  }
+
+  /**
+   * Asserts the response is the Iceberg error document a status raised before any service was
+   * reached has to be rendered as: Iceberg's own media type, the status in the body as well as on
+   * the response, and a type Iceberg's client knows.
+   */
+  private static void assertIcebergStatusDocument(
+      AggregatedHttpResponse resp,
+      int expectedCode,
+      Class<?> expectedType,
+      String expectedMessage) {
+    assertThat(resp.status().code()).isEqualTo(expectedCode);
+    assertThat(resp.contentType()).isEqualTo(MediaType.JSON);
+    ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(error.code()).isEqualTo(expectedCode);
+    assertThat(error.type()).isEqualTo(expectedType.getSimpleName());
+    assertThat(error.message()).isEqualTo(expectedMessage);
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
