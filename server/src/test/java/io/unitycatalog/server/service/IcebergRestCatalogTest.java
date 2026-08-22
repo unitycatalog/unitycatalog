@@ -953,6 +953,42 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
   }
 
+  @Test
+  public void testUnroutedIcebergRequestsAnswerWithAnIcebergError() throws Exception {
+    createUniformIcebergTable();
+
+    // A path the Iceberg API does not serve is answered before any service is reached, so the
+    // service's own handler never sees it. The response still has to be an error document Iceberg's
+    // parser can read.
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/views")
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(404);
+    assertThat(resp.contentType()).isEqualTo(MediaType.JSON);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).code()).isEqualTo(404);
+
+    // Same for a method a served path does not accept, such as the namespace drop Iceberg's client
+    // sends to a path this server only serves GET on.
+    resp =
+        client.delete(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(405);
+    assertThat(resp.contentType()).isEqualTo(MediaType.JSON);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).code()).isEqualTo(405);
+
+    // Paths outside the Iceberg API keep Armeria's own rendering.
+    AggregatedHttpResponse outside =
+        WebClient.builder(serverConfig.getServerUrl())
+            .auth(AuthToken.ofOAuth2(serverConfig.getAuthToken()))
+            .build()
+            .get("/api/2.1/unity-catalog/no_such_endpoint")
+            .aggregate()
+            .join();
+    assertThat(outside.status().code()).isEqualTo(404);
+    assertThat(outside.contentType()).isNotEqualTo(MediaType.JSON);
+  }
+
   private AggregatedHttpResponse postJson(String path, String body) {
     return client
         .execute(
