@@ -11,17 +11,25 @@ This document walks through how to use [PuppyGraph](https://www.puppygraph.com) 
 
 ## Build the Unity Server and Spark support
 
-Run the command From the cloned repository root directory
+Run one of the following from the cloned repository root directory, depending on your Spark version:
 
-```shell
-build/sbt clean package publishLocal spark/publishLocal
-```
+=== "Spark 4.0.x"
+
+    ```sh
+    build/sbt -DsparkVersion=4.0 clean package publishLocal spark/publishLocal
+    ```
+
+=== "Spark 4.1.x"
+
+    ```sh
+    build/sbt -DsparkVersion=4.1 clean package publishLocal spark/publishLocal
+    ```
 
 ## Run the Unity Catalog Server
 
 Run the command to start a Unity Server.
 
-```shell
+```sh
 ./bin/start-uc-server
 ```
 
@@ -31,7 +39,7 @@ For the remaining steps, continue in a different terminal.
 
 Create a catalog `puppygraph` and several Delta tables under the schema `modern` in that catalog.
 
-```shell
+```sh
 ./bin/uc catalog create --name puppygraph
 ./bin/uc schema create --name modern --catalog puppygraph
 ./bin/uc table create --full_name puppygraph.modern.person --columns "id STRING, name STRING, age INT" --storage_location /tmp/puppygraph/person/ --format DELTA
@@ -42,17 +50,32 @@ Create a catalog `puppygraph` and several Delta tables under the schema `modern`
 
 ## Load Data into the Tables
 
-Run the command from the Spark folder to start a Spark SQL shell .
+Run the command from the Spark folder to start a Spark SQL shell. Use the `--packages` coordinates that match your
+Spark version:
 
-```shell
-./bin/spark-sql \
-  --packages \
-    io.delta:delta-spark_2.12:3.2.0,io.unitycatalog:unitycatalog-spark:0.2.0-SNAPSHOT \
-  --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
-  --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
-  --conf spark.sql.catalog.puppygraph=io.unitycatalog.connectors.spark.UCSingleCatalog \
-  --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
-```
+=== "Spark 4.0.x"
+
+    ```sh
+    ./bin/spark-sql \
+      --packages \
+        io.delta:delta-spark_4.0_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.0_2.13:0.5.0 \
+      --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
+      --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
+      --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+    ```
+
+=== "Spark 4.1.x"
+
+    ```sh
+    ./bin/spark-sql \
+      --packages \
+        io.delta:delta-spark_4.1_2.13:4.3.1,io.unitycatalog:unitycatalog-spark_4.1_2.13:0.5.0 \
+      --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
+      --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
+      --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
+      --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
+    ```
 
 Run the following SQL to insert data into the Delta tables.
 
@@ -81,7 +104,7 @@ Exit the Spark SQL shell after data insertion is done.
 
 Start PuppyGraph using Docker. Here we map the PuppyGraph port `8081` to `9081` on the host.
 
-```shell
+```sh
 docker run -p 9081:8081 -p 8182:8182 -p 7687:7687 \
 -v /tmp/puppygraph:/tmp/puppygraph \
 --name puppy --rm -itd puppygraph/puppygraph:stable
@@ -162,13 +185,13 @@ Create the schema.json and replace `<host-name>` with your host ip address.
 
 Upload the schema to PuppyGraph. Note here port is 9081 as 8081 is used by Unity Catalog.
 
-```shell
+```sh
 curl -XPOST -H "content-type: application/json" --data-binary @./schema.json --user "puppygraph:puppygraph123" localhost:9081/schema
 ```
 
 Start a PuppyGraph Gremlin Console to query the graph.
 
-```shell
+```sh
 docker exec -it puppygraph ./bin/console
 ```
 
@@ -192,4 +215,4 @@ You can also use [Web UI](https://docs.puppygraph.com/user-interface/puppygraph-
 ## See Also
 
 - [Querying Unity Catalog Data as a Graph](https://docs.puppygraph.com/getting-started/querying-unity-catalog-data-as-a-graph)
-- [The Internals of Unity Catalog | Spark Integration](https://books.japila.pl/unity-catalog-internals/spark-integration/)
+- [The Internals of Unity Catalog | Spark Connector](https://books.japila.pl/unity-catalog-internals/spark-connector/)

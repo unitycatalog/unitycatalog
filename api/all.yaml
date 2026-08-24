@@ -29,6 +29,18 @@ tags:
     description: |
       Model versions contain all artifact files associated with an individual machine learning model. They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
       Model versions are referenced via model URI's using the Unity Catalog three-level namespace of the registered model and the version identifier.
+  - name: TemporaryCredentials
+    description: |
+      Temporary credentials are used to access storage locations or assets for a limited lifetime.
+  - name: Permissions
+    description: |
+      In Unity Catalog, data is secure by default. Access can be granted.
+  - name: Metastores
+    description: |
+      A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
+  - name: DeltaCommits
+    description: |
+      "Delta commits" is a Delta tables feature that allows Delta tables to designate a coordinator to coordinate commits. This is Unity Catalog's API to allow Unity Catalog be the commit coordinator for managed tables. (See https://github.com/delta-io/delta/blob/master/protocol_rfcs/catalog-managed.md for more details)
 paths:
   /catalogs:
     post:
@@ -267,6 +279,39 @@ paths:
           content:
             application/json:
               schema: {}
+  /staging-tables:
+    post:
+      operationId: createStagingTable
+      summary: Create a staging table
+      tags:
+        - Tables
+      description: |
+        Creates a new staging table instance. Staging tables are used during managed table creation. Creating a managed
+        table requires performing two actions – initializing the table data in cloud storage and creating the named
+        table entry in the catalog – and these should appear as an atomic operation to other operations on catalog
+        tables. A staging table is used to allocate storage for the managed table, and the catalog_name.schema_name.name
+        parameters provided in this request are used to initialize any required storage properties and determine the
+        storage URL that should be used for the data contained by this table.
+
+        Temporary credentials can be obtained as though the staging table were a regular table to get access to the
+        staging table’s storage. After the table’s data is initialized, the staging table is “promoted” to a managed
+        table by creating a managed table with the same location as the staging table. This allows for the atomic
+        creation of a managed table that already has full data written to its storage location. Note: the name provided
+        must match the name used to initialize the staging table originally.
+
+        WARNING: This API is experimental and may change in future versions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStagingTable'
+      responses:
+        '200':
+          description: The new staging table was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StagingTableInfo'
   /tables:
     post:
       operationId: createTable
@@ -351,6 +396,23 @@ paths:
       summary: Get a table
       description: |
         Gets a table for a specific catalog and schema.
+      parameters:
+        - name: read_streaming_table_as_managed
+          in: query
+          description: |
+            Whether to read Streaming Tables as Managed tables.
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: read_materialized_view_as_managed
+          in: query
+          description: |
+            Whether to read Materialized Views as Managed tables.
+          required: false
+          schema:
+            type: boolean
+            default: true
       responses:
         '200':
           description: The table was successfully retrieved.
@@ -594,25 +656,25 @@ paths:
     post:
       operationId: generateTemporaryModelVersionCredentials
       tags:
-        - TemporaryModelVersionCredentials
+        - TemporaryCredentials
       summary: Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentials'
+              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredential'
       responses:
         '200':
           description: Successful response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentialsResponse'
+                $ref: '#/components/schemas/TemporaryCredentials'
   /temporary-table-credentials:
     post:
       operationId: generateTemporaryTableCredentials
       tags:
-        - TemporaryTableCredentials
+        - TemporaryCredentials
       summary: Generate temporary table credentials.
       requestBody:
         content:
@@ -625,12 +687,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryTableCredentialResponse'
+                $ref: '#/components/schemas/TemporaryCredentials'
   /temporary-volume-credentials:
     post:
       operationId: generateTemporaryVolumeCredentials
       tags:
-        - TemporaryVolumeCredentials
+        - TemporaryCredentials
       summary: Generate temporary volume credentials.
       requestBody:
         content:
@@ -643,7 +705,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryVolumeCredentialResponse'
+                $ref: '#/components/schemas/TemporaryCredentials'
   "/functions":
     post:
       tags:
@@ -1035,6 +1097,409 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
+  /temporary-path-credentials:
+    post:
+      operationId: generateTemporaryPathCredentials
+      tags:
+        - TemporaryCredentials
+      summary: Generate temporary path credentials.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateTemporaryPathCredential'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryCredentials'
+  /permissions/{securable_type}/{full_name}:
+    parameters:
+      - name: securable_type
+        in: path
+        description: Type of securable.
+        required: true
+        schema:
+          $ref: '#/components/schemas/SecurableType'
+      - name: full_name
+        in: path
+        description: Full name of securable.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Grants
+      parameters:
+        - name: principal
+          in: query
+          description: |
+            If provided, only the permissions for the specified principal (user or group) are returned.
+          schema:
+            type: string
+          required: false
+      operationId: get
+      summary: Get permissions
+      description: |
+        Gets the permissions for a securable.
+      responses:
+        '200':
+          description: The permissions list for securable was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsList'
+    patch:
+      tags:
+        - Grants
+      operationId: update
+      summary: Update a permission
+      description: |
+        Updates the permissions for a securable.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissions'
+      responses:
+        '200':
+          description: The permissions list for securable was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsList'
+  /metastore_summary:
+    get:
+      tags:
+        - Metastores
+      operationId: summary
+      summary: Get metastore summary
+      description: |
+        Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore)
+      responses:
+        '200':
+          description: The metastore summary was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMetastoreSummaryResponse'
+  /credentials:
+    post:
+      tags:
+        - Credentials
+      operationId: createCredential
+      summary: Create a credential
+      description: Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCredentialRequest"
+      responses:
+        200:
+          description: The new credential was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialInfo"
+    get:
+      tags:
+        - Credentials
+      operationId: listCredentials
+      summary: List credentials
+      description: |
+        Gets an array of credentials (as __CredentialInfo__ objects).
+        The array is limited to only those credentials the caller has permission to access.
+        If the caller is a metastore admin, retrieval of credentials is unrestricted.
+        There is no guarantee of a specific ordering of the elements in the array.
+      parameters:
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of credentials to return.
+              - If not set, the default max page size is used.
+              - When set to a value greater than 0, the page length is the minimum of
+                this value and a server-configured value.
+              - When set to 0, the page length is set to a server-configured value
+                (recommended).
+              - When set to a value less than 0, an invalid parameter error is
+                returned.
+          schema:
+            type: integer
+            format: int32
+            maximum: 1000
+          required: false
+        - name: page_token
+          in: query
+          description: Opaque pagination token to go to next page based on previous query.
+          schema:
+            type: string
+          required: false
+        - name: purpose
+          in: query
+          description: Return only credentials for the specified purpose.
+          schema:
+            $ref: "#/components/schemas/CredentialPurpose"
+      responses:
+        200:
+          description: The credentials list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListCredentialsResponse"
+  /credentials/{name}:
+    parameters:
+      - name: name
+        in: path
+        description: Name of the credential.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Credentials
+      operationId: getCredential
+      summary: Get a credential
+      description: |
+        Gets a credential from the metastore.
+        The caller must be a metastore admin, the owner of the credential, or have some permission on the credential.
+      responses:
+        200:
+          description: The credential was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialInfo"
+    patch:
+      tags:
+        - Credentials
+      operationId: updateCredential
+      summary: Update a credential
+      description: Updates a credential.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCredentialRequest"
+      responses:
+        200:
+          description: The credential was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialInfo"
+    delete:
+      tags:
+        - Credentials
+      operationId: deleteCredential
+      summary: Delete a credential
+      description: Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if there are dependent external locations.
+          required: false
+          schema:
+            type: boolean
+      responses:
+        200:
+          description: The credential was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /external-locations:
+    post:
+      tags:
+        - External Locations
+      summary: Create an external location
+      description: |
+        Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
+      operationId: createExternalLocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExternalLocation"
+      responses:
+        '200':
+          description: The new external location was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalLocationInfo"
+    get:
+      tags:
+        - External Locations
+      summary: List external locations
+      description: |
+        Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+      operationId: listExternalLocations
+      parameters:
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of external locations to return. If not set, all external locations are returned.
+          schema:
+            type: integer
+            format: int32
+            maximum: 1000
+          required: false
+        - name: page_token
+          in: query
+          description: Opaque pagination token to go to the next page.
+          schema:
+            type: string
+          required: false
+      responses:
+        '200':
+          description: The external location list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListExternalLocationsResponse"
+  /external-locations/{name}:
+    parameters:
+      - name: name
+        in: path
+        description: Name of the external location.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - External Locations
+      summary: Get an external location
+      description: |
+        Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+      operationId: getExternalLocation
+      responses:
+        '200':
+          description: The external location was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalLocationInfo"
+    delete:
+      tags:
+        - External Locations
+      summary: Delete an external location
+      description: Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+      operationId: deleteExternalLocation
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if there are dependent external tables or mounts.
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: The external location was successfully deleted.
+    patch:
+      tags:
+        - External Locations
+      summary: Update an external location
+      description: |
+        Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin.
+      operationId: updateExternalLocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExternalLocation"
+      responses:
+        '200':
+          description: The external location was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalLocationInfo"
+  /delta/preview/commits:
+    get:
+      operationId: getCommits
+      tags:
+        - DeltaCommits
+      summary: |
+        List unbackfilled Delta table commits.
+        WARNING: This API is experimental and may change in future versions.
+      description: |
+        List all the unbackfilled Delta commits that are currently being tracked by the UC coordinator.
+        If no commits are being tracked in the specific version range (from start_version to an optional end_version),
+        it will return an empty list.
+        WARNING: This API is experimental and may change in future versions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeltaGetCommits'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaGetCommitsResponse'
+        '400':
+          description: |
+            Bad request or Invalid Argument. Example: table_uri in the request doesn't match the existing table_uri for the table.
+        '401':
+          description: Unauthorized. Authentication credentials are missing or incorrect.
+        '403':
+          description: Forbidden. The user does not have the necessary permissions to perform this action.
+        '404':
+          description: Not Found. The specified table does not exist.
+        '500':
+          description: Internal Server Error. An unexpected error occurred on the server.
+    post:
+      tags:
+        - DeltaCommits
+      summary: |
+        Commit changes to a specified Delta table.
+        The server has a limit defined in config on how many unbackfilled commits it can hold.
+        Clients are expected to do active backfill of the commit after committing to UC. So in
+        most cases the number of unbackfilled commits should be close to zero or one. But if
+        clients misbehave and unbackfilled commits accumulate beyond the limit, server will
+        reject further commits until more backfill is done.
+        Replaying an already-accepted commit (same version and file-name) is an idempotent no-op
+        that returns 200, so a client that lost the response can safely resend.
+        WARNING: This API is experimental and may change in future versions.
+      operationId: commit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeltaCommit'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaCommitResponse'
+        '400':
+          description: |
+            Bad request or Invalid Argument. Example: Commit version is not expected (e.g., latest_table_version +1) 
+            or Latest backfilled version exceeds the last commit version or table_uri in the request doesn't match the 
+            existing table_uri for the table.
+        '401':
+          description: Unauthorized. Authentication credentials are missing or incorrect.
+        '403':
+          description: Forbidden. The user does not have the necessary permissions to perform this action.
+        '404':
+          description: Not Found. The specified table does not exist.
+        '409':
+          description: Conflict. Indicates that a different commit with the same version already exists.
+        '429':
+          description: The maximum number of unbackfilled commits per table has been reached. Please backfill some commits before retrying.
+        '500':
+          description: Internal Server Error. An unexpected error occurred on the server.
+        '501':
+          description: Not Implemented. The requested functionality is not supported.
 components:
   schemas:
     SecurablePropertiesMap:
@@ -1060,7 +1525,7 @@ components:
         name:
           type: string
           description: The name of the volume
-        "volume_type":
+        volume_type:
           "$ref": "#/components/schemas/VolumeType"
         comment:
           type: string
@@ -1075,7 +1540,6 @@ components:
         - schema_name
         - name
         - volume_type
-        - storage_location
     ListVolumesResponseContent:
       type: object
       properties:
@@ -1116,18 +1580,27 @@ components:
           maxLength: 65536
           minLength: 1
           description: The comment attached to the volume
+        owner:
+          description: The identifier of the user who owns the volume
+          type: string
         created_at:
           type: integer
           format: int64
           description: Time at which this volume was created, in epoch milliseconds.
+        created_by:
+          description: TThe identifier of the user who created the volume
+          type: string
         updated_at:
           type: integer
           format: int64
           description: Time at which this volume was last modified, in epoch milliseconds.
+        updated_by:
+          description: The identifier of the user who updated the volume last time
+          type: string
         volume_id:
           type: string
-          description: Unique identifier for the volume
-        "volume_type":
+          description: Unique identifier of the volume
+        volume_type:
           "$ref": "#/components/schemas/VolumeType"
         storage_location:
           type: string
@@ -1156,6 +1629,7 @@ components:
         - ARRAY
         - STRUCT
         - MAP
+        - VARIANT
         - CHAR
         - 'NULL'
         - USER_DEFINED_TYPE
@@ -1205,11 +1679,16 @@ components:
       enum:
         - MANAGED
         - EXTERNAL
+        - STREAMING_TABLE # Not yet fully implemented
+        - MATERIALIZED_VIEW # Not yet fully implemented
+        - METRIC_VIEW
+        - VIEW
     DataSourceFormat:
       description: Data source format
       type: string
       enum:
         - DELTA
+        - ICEBERG
         - CSV
         - JSON
         - AVRO
@@ -1245,17 +1724,34 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: Username of current owner of table.
+          type: string
         created_at:
           description: Time at which this table was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of table creator.
+          type: string
         updated_at:
           description: Time at which this table was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified the table.
+          type: string
         table_id:
           description: Unique identifier for the table.
           type: string
+        view_definition:
+          description: >-
+            Definition text for view-like table types such as VIEW,
+            MATERIALIZED_VIEW, STREAMING_TABLE, and METRIC_VIEW. The format
+            depends on the table type (SQL for views, YAML for metric views).
+          type: string
+        view_dependencies:
+          "$ref": "#/components/schemas/DependencyList"
     CreateTable:
       type: object
       properties:
@@ -1285,14 +1781,54 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        view_definition:
+          description: >-
+            Definition text for view-like table types such as VIEW,
+            MATERIALIZED_VIEW, STREAMING_TABLE, and METRIC_VIEW. The format
+            depends on the table type (SQL for views, YAML for metric views).
+          type: string
+        view_dependencies:
+          "$ref": "#/components/schemas/DependencyList"
       required:
         - name
         - catalog_name
         - schema_name
         - table_type
-        - data_source_format
         - columns
-        - storage_location
+    StagingTableInfo:
+      type: object
+      properties:
+        name:
+          description: Name of table, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        id:
+          description: Unique identifier for the table.
+          type: string
+        staging_location:
+          description: URI generated for the staging table
+          type: string
+    CreateStagingTable:
+      type: object
+      properties:
+        name:
+          description: Name of table, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+      required:
+        - name
+        - catalog_name
+        - schema_name
     ListTablesResponse:
       type: object
       properties:
@@ -1323,16 +1859,37 @@ components:
         full_name:
           description: Full name of schema, in form of __catalog_name__.__schema_name__.
           type: string
+        owner:
+          description: Username of current owner of schema.
+          type: string
         created_at:
           description: Time at which this schema was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of schema creator.
+          type: string
         updated_at:
           description: Time at which this schema was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified schema.
+          type: string
         schema_id:
           description: Unique identifier for the schema.
+          type: string
+        storage_root:
+          description: |
+            Storage root URL for managed storage location of schema. This can be set when creating a
+            schema. Example: s3://bucket/ucroot
+          type: string
+        storage_location:
+          description: |
+            Storage Location URL (full path) for managed storage location of schema. This is an
+            automatically generated unique path under storage_root. If it is absent, managed
+            securables under this schema will try to use storage_location of the parent catalog
+            instead. Example: s3://bucket/ucroot/__unitystorage/schemas/{schema_id}
           type: string
     CreateSchema:
       type: object
@@ -1348,6 +1905,12 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        storage_root:
+          description: |
+            Storage root URL for managed storage location of schema. If not set, managed securables
+            under this schema will try to use the storage_location of the parent catalog instead.
+            Example: s3://bucket/ucroot
+          type: string
       required:
         - name
         - catalog_name
@@ -1386,16 +1949,36 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: Username of current owner of catalog.
+          type: string
         created_at:
           description: Time at which this catalog was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of catalog creator.
+          type: string
         updated_at:
           description: Time at which this catalog was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified catalog.
+          type: string
         id:
           description: Unique identifier for the catalog.
+          type: string
+        storage_root:
+          description: |
+            Storage root URL for managed storage location of catalog. This can be set when creating
+            a catalog. Example: s3://bucket/ucroot
+          type: string
+        storage_location:
+          description: |
+            Storage Location URL (full path) for managed storage location of catalog. This is an
+            automatically generated unique path under storage_root.
+            Example: s3://bucket/ucroot/__unitystorage/catalogs/{catalog_id}
           type: string
     CreateCatalog:
       type: object
@@ -1408,6 +1991,10 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        storage_root:
+          description: |
+            Storage root URL for managed storage location of catalog. Example: s3://bucket/ucroot
+          type: string
       required:
         - name
     UpdateCatalog:
@@ -1559,7 +2146,6 @@ components:
         - is_null_call
         - security_type
         - specific_name
-        - properties
       properties:
         name:
           description: Name of function, relative to parent schema.
@@ -1701,14 +2287,23 @@ components:
         full_name:
           description: Full name of function, in form of __catalog_name__.__schema_name__.__function__name__
           type: string
+        owner:
+          description: Username of current owner of function.
+          type: string
         created_at:
           description: Time at which this function was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of function creator.
+          type: string
         updated_at:
           description: Time at which this function was last updated, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified function.
+          type: string
         function_id:
           description: Id of Function, relative to parent schema.
           type: string
@@ -1728,7 +2323,7 @@ components:
           description: |
             Opaque token to retrieve the next page of results. Absent if there are no more pages.
             __page_token__ should be set to this value for the next request (for the next page of results).
-    GenerateTemporaryModelVersionCredentials:
+    GenerateTemporaryModelVersionCredential:
       example:
         catalog_name: catalog_name
         schema_name: schema_name
@@ -1765,24 +2360,6 @@ components:
         - model_name
         - version
         - operation
-    GenerateTemporaryModelVersionCredentialsResponse:
-      properties:
-        aws_temp_credentials:
-          $ref: '#/components/schemas/AwsCredentials'
-        azure_user_delegation_sas:
-          $ref: '#/components/schemas/AzureUserDelegationSAS'
-        gcp_oauth_token:
-          $ref: '#/components/schemas/GcpOauthToken'
-        expiration_time:
-          description: |
-            Server time when the credential will expire, in epoch milliseconds.
-            The API client is advised to cache the credential given this expiration time.
-          type: integer
-          format: int64
-        url:
-          description: The URL of the storage path accessible by the temporary credential.
-          type: string
-      type: object
     ModelVersionOperation:
       enum:
         - UNKNOWN_MODEL_VERSION_OPERATION
@@ -1805,21 +2382,6 @@ components:
       required:
         - table_id
         - operation
-    GenerateTemporaryTableCredentialResponse:
-      properties:
-        aws_temp_credentials:
-          $ref: '#/components/schemas/AwsCredentials'
-        azure_user_delegation_sas:
-          $ref: '#/components/schemas/AzureUserDelegationSAS'
-        gcp_oauth_token:
-          $ref: '#/components/schemas/GcpOauthToken'
-        expiration_time:
-          description: |
-            Server time when the credential will expire, in epoch milliseconds.
-            The API client is advised to cache the credential given this expiration time.
-          type: integer
-          format: int64
-      type: object
     TableOperation:
       enum:
         - UNKNOWN_TABLE_OPERATION
@@ -1864,21 +2426,6 @@ components:
       required:
         - volume_id
         - operation
-    GenerateTemporaryVolumeCredentialResponse:
-      properties:
-        aws_temp_credentials:
-          $ref: '#/components/schemas/AwsCredentials'
-        azure_user_delegation_sas:
-          $ref: '#/components/schemas/AzureUserDelegationSAS'
-        gcp_oauth_token:
-          $ref: '#/components/schemas/GcpOauthToken'
-        expiration_time:
-          description: |
-            Server time when the credential will expire, in epoch milliseconds.
-            The API client is advised to cache the credential given this expiration time.
-          type: integer
-          format: int64
-      type: object
     VolumeOperation:
       enum:
         - UNKNOWN_VOLUME_OPERATION
@@ -1889,58 +2436,61 @@ components:
       type: object
       properties:
         name:
-          description: Name of registered model, relative to parent schema.
+          description: The name of the registered model
           type: string
         catalog_name:
-          description: Name of parent catalog.
+          description: The name of the catalog where the schema and the registered model reside
           type: string
         schema_name:
-          description: Name of parent schema relative to its parent catalog.
+          description: The name of the schema where the registered model resides
           type: string
         storage_location:
-          description: The storage location on the cloud under which registered model data files are stored.
+          description: The storage location on the cloud under which model version data files are stored
           type: string
         full_name:
-          description: The full 3 tiered UC identifier for this registered model.
+          description: The three-level (fully qualified) name of the registered model
           type: string
         comment:
-          description: User-provided free-form text description.
+          description: The comment attached to the registered model
+          type: string
+        owner:
+          description: The identifier of the user who owns the registered model
           type: string
         created_at:
-          description: Time at which this registered model was created, in epoch milliseconds.
+          description: Creation timestamp of the registered model in milliseconds since the Unix epoch
           type: integer
           format: int64
         created_by:
-          description: The user that created the model
+          description: The identifier of the user who created the registered model
           type: string
         updated_at:
-          description: Time at which this registered model was last modified, in epoch milliseconds.
+          description: Last-update timestamp of the registered model in milliseconds since the Unix epoch
           type: integer
           format: int64
         updated_by:
-          description: The user that last updated the model
+          description: The identifier of the user who updated the registered model last time
           type: string
-        model_id:
+        id:
           description: Unique identifier for the registered model.
           type: string
     ModelVersionInfo:
       type: object
       properties:
         model_name:
-          description: Name of registered model, relative to parent schema.
+          description: The name of the parent registered model of the model version, relative to parent schema
           type: string
         catalog_name:
-          description: Name of parent catalog.
+          description: The name of the catalog containing the model version
           type: string
         schema_name:
-          description: Name of parent schema relative to its parent catalog.
+          description: The name of the schema containing the model version, relative to parent catalog
           type: string
         version:
-          description: The version number of the model version.
+          description: Integer model version number, used to reference the model version in API requests.
           type: integer
           format: int64
         source:
-          description: URI indicating the location of the source model artifacts.
+          description: URI indicating the location of the source artifacts (files) for the model version
           type: string
         run_id:
           description: The run id used by the ML package that generated the model.
@@ -1948,40 +2498,44 @@ components:
         status:
           $ref: '#/components/schemas/ModelVersionStatus'
         storage_location:
-          description: The storage location on the cloud under which model version data files are stored.
+          description: The storage location on the cloud under which model version data files are stored
           type: string
         comment:
-          description: User-provided free-form text description.
+          description: The comment attached to the model version
           type: string
         created_at:
           description: Time at which this model version was created, in epoch milliseconds.
           type: integer
           format: int64
         created_by:
-          description: The user that created the model version
+          description: The identifier of the user who created the model version
           type: string
         updated_at:
           description: Time at which this model version was last modified, in epoch milliseconds.
           type: integer
           format: int64
         updated_by:
-          description: The user that last updated the model version
+          description: The identifier of the user who updated the model version last time
           type: string
-        model_version_id:
+        id:
           description: Unique identifier for the model version.
           type: string
     ModelVersionStatus:
-      description: |
-        All possible model version statuses (MODEL_VERSION_STATUS_UNKNOWN, PENDING_REGISTRATION, FAILED_REGISTRATION, READY).
-        PENDING_REGISTRATION status indicates that the client has not completely written all model artifacts to external storage.
-        FAILED_REGISTRATION status indicates that the client has failed to write all model artifacts to external storage.
-        READY status indicates that the client has successfully written all model artifacts to external storage.
+      description: All possible model version statuses.
       type: string
       enum:
         - MODEL_VERSION_STATUS_UNKNOWN
         - PENDING_REGISTRATION
         - FAILED_REGISTRATION
         - READY
+      # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
+      #  corresponding description at the end of the description list. Both list must have the same
+      #  order.
+      x-enum-descriptions:
+        - 'MODEL_VERSION_STATUS_UNKNOWN: Unknown'
+        - 'PENDING_REGISTRATION: Indicates that the client has not completely written all model artifacts to external storage.'
+        - 'FAILED_REGISTRATION: Indicates that the client has failed to write all model artifacts to external storage.'
+        - 'READY: Indicates that the client has successfully written all model artifacts to external storage.'
     CreateRegisteredModel:
       type: object
       properties:
@@ -2004,9 +2558,6 @@ components:
     UpdateRegisteredModel:
       type: object
       properties:
-        full_name:
-          description: The full name of the registered model to update.
-          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2051,16 +2602,10 @@ components:
         - model_name
         - catalog_name
         - schema_name
+        - source
     UpdateModelVersion:
       type: object
       properties:
-        full_name:
-          description: The full name of the registered model to update.
-          type: string
-        version:
-          description: Version number of the version to update.
-          type: integer
-          format:  int64
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2090,6 +2635,553 @@ components:
       required:
         - full_name
         - version
+    GenerateTemporaryPathCredential:
+      type: object
+      properties:
+        url:
+          description: The URL of the storage path for which temporary credentials need to be generated.
+          type: string
+        operation:
+          $ref: '#/components/schemas/PathOperation'
+      required:
+        - url
+        - operation
+    TemporaryCredentials:
+      type: object
+      properties:
+        aws_temp_credentials:
+          $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
+        expiration_time:
+          description: |
+            Server time when the credential will expire, in epoch milliseconds.
+            The API client is advised to cache the credential given this expiration time.
+          type: integer
+          format: int64
+        url:
+          description: The normalized URL of the storage path the temporary credential was generated for.
+          type: string
+    PathOperation:
+      enum:
+        - UNKNOWN_PATH_OPERATION
+        - PATH_READ
+        - PATH_READ_WRITE
+        - PATH_CREATE_TABLE
+      type: string
+    PrincipalType:
+      type: string
+      enum:
+        - USER
+        - GROUP
+      description: The type of the principal.
+    SecurableType:
+      type: string
+      enum:
+        - metastore
+        - catalog
+        - schema
+        - table
+        - function
+        - volume
+        - registered_model
+        - external_location
+        - credential
+      description: The type of the resource.
+    Privilege:
+      description: The privilege to grant.
+      type: string
+      enum:
+        - CREATE CATALOG
+        - USE CATALOG
+        - CREATE SCHEMA
+        - USE SCHEMA
+        - CREATE TABLE
+        - SELECT
+        - MODIFY
+        - CREATE FUNCTION
+        - EXECUTE
+        - CREATE VOLUME
+        - READ VOLUME
+        - CREATE MODEL
+        - CREATE EXTERNAL LOCATION
+        - READ FILES
+        - WRITE FILES
+        - CREATE EXTERNAL TABLE
+        - CREATE EXTERNAL VOLUME
+        - CREATE MANAGED STORAGE
+        - CREATE STORAGE CREDENTIAL
+      # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
+      #  corresponding description at the end of the description list. Both list must have the same
+      #  order.
+      x-enum-descriptions:
+        - 'CREATE CATALOG: Enables users to create new catalogs in a metastore.'
+        - 'USE CATALOG: Required to interact with any object within a catalog.'
+        - 'CREATE SCHEMA: Enables users to create new schemas in a catalog.'
+        - 'USE SCHEMA: Required to interact with any object within a schema.'
+        - 'CREATE TABLE: Allows creating tables or views in a schema.'
+        - 'SELECT: Enables querying tables, views, materialized views.'
+        - 'MODIFY: Enables adding, updating, and deleting data within tables (requires SELECT privilege also).'
+        - 'CREATE FUNCTION: Allows users to create functions or procedures within a schema.'
+        - 'EXECUTE: Permits invoking user-defined functions or loading models for inference.'
+        - 'CREATE VOLUME: Enables creating volumes in a schema.'
+        - 'READ VOLUME: Permits reading files and directories within volumes.'
+        - 'CREATE MODEL: Permits establishing MLflow registered models in a schema.'
+        - 'CREATE EXTERNAL LOCATION: Required privilege on both the metastore and referenced storage credential to create external locations.'
+        - 'READ FILES: Grants direct read access to files in cloud storage configured as external locations.'
+        - 'WRITE FILES: Grants direct write access to files in cloud storage configured as external locations.'
+        - 'CREATE EXTERNAL TABLE: Enables creating external tables through external locations.'
+        - 'CREATE EXTERNAL VOLUME: Enables creating external volumes through external locations.'
+        - 'CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.'
+        - 'CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.'
+    UpdatePermissions:
+      type: object
+      properties:
+        changes:
+          description: Array of permissions change objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionsChange'
+      required:
+        - changes
+    PermissionsChange:
+      type: object
+      properties:
+        principal:
+          description: The principal whose privileges we are changing.
+          type: string
+        add:
+          description: The set of privileges to add.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+        remove:
+          description: The set of privileges to remove.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - add
+        - remove
+    PermissionsList:
+      type: object
+      properties:
+        privilege_assignments:
+          description: The privileges assigned to each principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/PrivilegeAssignment'
+      required:
+        - privilege_assignments
+    PrivilegeAssignment:
+      type: object
+      properties:
+        principal:
+          description: The principal (user email address or group name).
+          type: string
+        privileges:
+          description: The privileges assigned to the principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - privileges
+    GetMetastoreSummaryResponse:
+      type: object
+      properties:
+        metastore_id:
+          description: Unique identifier of the metastore.
+          type: string
+    CredentialInfo:
+      type: object
+      properties:
+        name:
+          description: The credential name. The name must be unique within the metastore.
+          type: string
+        aws_iam_role:
+          $ref: '#/components/schemas/AwsIamRoleResponse'
+        comment:
+          description: Comment associated with the credential.
+          type: string
+        owner:
+          description: Username of current owner of credential.
+          type: string
+        full_name:
+          description: The full name of the credential.
+          type: string
+        id:
+          description: The unique identifier of the credential.
+          type: string
+        created_at:
+          description: Time at which this Credential was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of credential creator.
+          type: string
+        updated_at:
+          description: Time at which this credential was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified the credential.
+          type: string
+        purpose:
+          $ref: "#/components/schemas/CredentialPurpose"
+    CreateCredentialRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          description: The credential name. The name must be unique within the metastore.
+          type: string
+        comment:
+          description: Comment associated with the credential.
+          type: string
+        aws_iam_role:
+          $ref: '#/components/schemas/AwsIamRoleRequest'
+        purpose:
+          $ref: "#/components/schemas/CredentialPurpose"
+    UpdateCredentialRequest:
+      type: object
+      properties:
+        comment:
+          description: Comment associated with the credential.
+          type: string
+        owner:
+          description: Username of current owner of credential.
+          type: string
+        aws_iam_role:
+          $ref: '#/components/schemas/AwsIamRoleRequest'
+        new_name:
+          description: New name for the credential.
+          type: string
+    AwsIamRoleArn:
+      description: The Amazon Resource Name (ARN) of the AWS IAM role used to vend temporary credentials.
+      type: string
+    AwsIamRoleRequest:
+      type: object
+      required:
+        - role_arn
+      properties:
+        role_arn:
+          $ref: "#/components/schemas/AwsIamRoleArn"
+    AwsIamRoleResponse:
+      type: object
+      required:
+        - role_arn
+      properties:
+        role_arn:
+          $ref: "#/components/schemas/AwsIamRoleArn"
+        unity_catalog_iam_arn:
+          description: The Amazon Resource Name (ARN) of the AWS IAM used by the Unity Catalog Server. This is the identity that is going to assume the AWS IAM role.
+          type: string
+        external_id:
+          description: The external ID used in role assumption to prevent confused deputy problem.
+          type: string
+    ListCredentialsResponse:
+      type: object
+      properties:
+        credentials:
+          description: An array of credential information objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialInfo'
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    CredentialPurpose:
+      type: string
+      enum:
+        - STORAGE
+    ExternalLocationInfo:
+      type: object
+      properties:
+        name:
+          description: Name of the external location.
+          type: string
+        id:
+          description: Unique identifier for the external location.
+          type: string
+        url:
+          description: Path URL of the external location.
+          type: string
+        credential_name:
+          description: Name of the storage credential used with this location.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        owner:
+          description: The owner of the external location.
+          type: string
+        credential_id:
+          description: Unique ID of the location's storage credential.
+          type: string
+        created_at:
+          description: Time at which this external location was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of external location creator.
+          type: string
+        updated_at:
+          description: Time at which external location this was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified the external location.
+          type: string
+    CreateExternalLocation:
+      type: object
+      required:
+        - name
+        - url
+        - credential_name
+      properties:
+        name:
+          description: Name of the external location.
+          type: string
+        url:
+          description: Path URL of the external location.
+          type: string
+        credential_name:
+          description: Name of the storage credential used with this location.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+    UpdateExternalLocation:
+      type: object
+      properties:
+        url:
+          description: Path URL of the external location.
+          type: string
+        credential_name:
+          description: Name of the storage credential used with this location.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        owner:
+          description: The owner of the external location.
+          type: string
+        new_name:
+          description: New name for the external location.
+          type: string
+    ListExternalLocationsResponse:
+      type: object
+      properties:
+        external_locations:
+          description: An array of external locations.
+          type: array
+          items:
+            $ref: '#/components/schemas/ExternalLocationInfo'
+        next_page_token:
+          type: string
+          description: Opaque token to retrieve the next page of results. Absent if there are no more pages. __page_token__ should be set to this value for the next request (for the next page of results).
+    DeltaCommit:
+      type: object
+      description: Request body for committing changes to a specified Delta table. At least one of commit_info and latest_backfilled_version must be present.
+      properties:
+        table_id:
+          type: string
+          description: The ID of the table to commit to. This ID uniquely identifies a table.
+        table_uri:
+          type: string
+          description: |
+            The URI of the storage location of the table. If the table_id exists but the table_uri is 
+            different from the one previously registered (e.g., if the client moved the table), the request will fail.
+            Example: s3://bucket-name/tables/some-table-id
+        commit_info:
+          $ref: '#/components/schemas/DeltaCommitInfo'
+        latest_backfilled_version:
+          type: integer
+          format: int64
+          description: |
+            The highest version of the commits that have been backfilled for this table; meaning UC no longer 
+            needs to keep track of commits of versions <= this version.
+        metadata:
+          $ref: '#/components/schemas/DeltaMetadata'
+        uniform:
+          $ref: '#/components/schemas/DeltaUniform'
+          description: |
+            Optional UniForm metadata to be committed alongside this Delta commit. Whether this field is
+            strictly required by a UC API compatible implementation is left up to the implementation.
+            It is set by UniForm conversion processes after converting a Delta commit. When set, 
+            UC will atomically update the table's format-specific metadata (e.g. DeltaUniformIceberg),
+            keeping the conversion state synchronized with the Delta version.
+            Uniform enables Delta tables to be read by other table formats (e.g., Iceberg) without data conversion.
+            Independent of the `metadata` field, both can be provided together or separately.
+      required:
+        - table_id
+        - table_uri
+    DeltaMetadata:
+      description: Represents a Delta metadata action (see https://github.com/delta-io/delta/blob/master/PROTOCOL.md#change-metadata for more information).
+      properties:
+        description:
+          type: string
+          description: The table comment.
+        schema:
+          $ref: '#/components/schemas/ColumnInfos'
+        properties:
+          $ref: '#/components/schemas/DeltaCommitMetadataProperties'
+    DeltaCommitMetadataProperties:
+      description: The properties of the Delta table. Updated by UC if set.
+      type: object
+      properties:
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+    ColumnInfos:
+      type: object
+      description: The schema of the table.
+      properties:
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+          maxItems: 32768
+          description: The array of column descriptions.
+    DeltaCommitInfo:
+      type: object
+      description: Represents a Delta commit version.
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: The version of this commit.
+        timestamp:
+          type: integer
+          format: int64
+          description: The timestamp for when the commit was made. This is the in-commit timestamp as produced by the Delta client writing to the table.
+        file_name:
+          type: string
+          description: The filename of the UUID-based commit file.
+        file_size:
+          type: integer
+          format: int64
+          description: The size of the commit file in bytes.
+        file_modification_timestamp:
+          type: integer
+          format: int64
+          description: The modification time of the commit file. This is the mod time of the file as written to the file system.
+      required:
+        - version
+        - timestamp
+        - file_name
+        - file_size
+        - file_modification_timestamp
+    DeltaCommitResponse:
+      type: object
+      description: The response for the Delta commit action
+    DeltaUniform:
+      type: object
+      description: |
+        Uniform metadata that can be atomically committed alongside a Delta commit.
+        Uniform enables Delta tables to be read by other table formats (e.g. Iceberg)
+        without data conversion. When this message is provided in a Commit request,
+        UC will atomically update the table's format-specific metadata during the commit.
+      properties:
+        iceberg:
+          $ref: '#/components/schemas/DeltaUniformIceberg'
+          description: Metadata for Delta UniForm Iceberg conversion.
+      required:
+        - iceberg
+    DeltaUniformIceberg:
+      type: object
+      description: |
+        Iceberg conversion metadata tracking the Delta-to-Iceberg conversion state.
+        It contains the metadata location pointer, converted Delta version, timestamp, and 
+        optional base converted Delta version of the corresponding conversion.
+      properties:
+        metadata_location:
+          type: string
+          format: uri
+          description: |
+            The latest Iceberg metadata location.
+            Example: s3://abc/def/metadata/v1.json
+        converted_delta_version:
+          type: integer
+          format: int64
+          description: |
+            The Delta version that was converted to Iceberg to produce the Iceberg metadata location.
+            It should match the Delta version in the commit info.
+            Example: 1044
+        converted_delta_timestamp:
+          type: string
+          description: |
+            The timestamp that Delta finished conversion to produce the Iceberg metadata location.
+            The string must represent a valid instant in UTC with ISO 8601 format.
+            Example: 2025-01-04T03:13:11.423Z
+        base_converted_delta_version:
+          type: integer
+          format: int64
+          description: |
+            Optional Delta version used to incrementally convert Delta changes to Iceberg changes to
+            produce the latest Iceberg metadata at the metadata_location.
+            Example: 1042
+      required:
+        - metadata_location
+        - converted_delta_version
+        - converted_delta_timestamp
+    DeltaGetCommits:
+      type: object
+      properties:
+        table_id:
+          type: string
+          description: The ID of the table to get the commits for. This ID uniquely identifies a table.
+        table_uri:
+          type: string
+          description: |
+            The URI of the storage location of the table. If the table_id exists but the table_uri is 
+            different from the one previously registered (e.g., if the client moved the table), the request will fail.
+            Example: s3://bucket-name/tables/some-table-id
+        start_version:
+          type: integer
+          format: int64
+          description: |
+            The start version from which to retrieve commits (inclusive). This along with the
+            optional end_version specifies the range of commit versions that this request wants.
+        end_version:
+          type: integer
+          format: int64
+          description: |
+            The end version upto which to retrieve commits (inclusive).
+            If not set, the latest version will be used as the end version. This does not affect the
+            latest_table_version in the response.
+            If num of commits that meet this criteria is larger than a limit set by server config,
+            the response will be limited to the first X commits. Call can send request again with a
+            larger start_version according to the response to get the remaining commits.
+      required:
+        - table_id
+        - table_uri
+        - start_version
+    DeltaGetCommitsResponse:
+      type: object
+      properties:
+        commits:
+          type: array
+          description: The list of unbackfilled Delta table commits. Can be in arbitrary order.
+          items:
+            $ref: '#/components/schemas/DeltaCommitInfo'
+        latest_table_version:
+          type: integer
+          format: int64
+          description: |
+            Represents the latest version of the table tracked by UC. For a newly created managed table
+            with no commits, this returns 0. Use this field to manage pagination —
+            if the returned commits don't cover the range up to latest_table_version or end_version (whichever is smaller),
+            it indicates that more unbackfilled commits may be available.
+      required:
+        - commits
+        - latest_table_version
 info:
   title: Unity Catalog API
   version: '0.1'

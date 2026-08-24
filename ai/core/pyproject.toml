@@ -1,0 +1,130 @@
+[project]
+name = "unitycatalog-ai"
+version = "0.4.0"
+description = "Official Python library for Unity Catalog AI support"
+authors = [
+    { name="Serena Ruan", email="serena.ruan@databricks.com" },
+    { name="Ben Wilson", email="benjamin.wilson@databricks.com" }
+]
+readme = "README.md"
+license = { text="Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+  "typing_extensions>=4.0.0,<=4.15.0",
+  "pydantic>=2.0.0,<3",
+  "nest_asyncio>=1.5.0,<=1.6.0",
+  "unitycatalog-client>=0.4.0, <0.5.0",
+  "cloudpickle>=2.0.0,<=3.1.2",
+]
+keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Education",
+  "Intended Audience :: End Users/Desktop",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: Other Audience",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Software Development :: User Interfaces",
+]
+maintainers = [
+  { name="Serena Ruan", email="serena.ruan@databricks.com" },
+  { name="Ben Wilson", email="benjamin.wilson@databricks.com" }
+]
+
+[project.urls]
+homepage = "https://www.unitycatalog.io/"
+issues = "https://github.com/unitycatalog/unitycatalog/issues"
+repository = "https://github.com/unitycatalog/unitycatalog"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/*"
+]
+exclude = [
+  "src/unitycatalog/ai/test_utils/*"
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/core"]
+
+[project.optional-dependencies]
+
+databricks = [
+  "databricks-sdk>=0.32.0,<=0.94.0",
+  "pandas>=1.0.0,<=3.0.1",
+  "databricks-connect>=15.1.0,<17.1",
+]
+databricks-dev = [
+  "hatch>=1.0.0,<=1.16.5",
+  "pytest>=7.0.0,<=9.0.2",
+  "databricks-sdk>=0.32.0,<=0.94.0",
+  "databricks-connect>=15.1.0,<17.1",
+  "pandas>=1.0.0,<=3.0.1",
+  "ruff==0.9.3",
+]
+dev = [
+  "hatch>=1.0.0,<=1.16.5",
+  "pytest>=7.0.0,<=9.0.2",
+  "pytest-asyncio>=0.21.0,<=1.3.0",
+  "databricks-sdk>=0.32.0,<=0.94.0",
+  "pandas>=1.0.0,<=3.0.1",
+  "ruff==0.9.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+  # isort
+  "I",
+  # bugbear rules
+  "B",
+  # remove unused imports
+  "F401",
+  # bare except statements
+  "E722",
+  # print statements
+  "T201",
+  "T203",
+  # misuse of typing.TYPE_CHECKING
+  "TC004",
+  # import rules
+  "TID251",
+  # undefined-local-with-import-star
+  "F403",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["T201", "T203"] # ignore print statements in notebooks
+
+[tool.uv]
+exclude-newer = "2026-03-10T00:00:00Z"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

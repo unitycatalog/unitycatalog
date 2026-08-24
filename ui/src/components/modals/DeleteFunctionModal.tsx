@@ -22,13 +22,12 @@ export function DeleteFunctionModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteFunction({
-    catalog,
-    schema,
+    name: [catalog, schema, ucFunction].join('.'),
   });
 
   const handleSubmit = useCallback(() => {
     mutation.mutate(
-      { catalog_name: catalog, schema_name: schema, name: ucFunction },
+      { name: [catalog, schema, ucFunction].join('.') },
       {
         onError: (error: Error) => {
           setNotification(error.message, 'error');
@@ -42,7 +41,7 @@ export function DeleteFunctionModal({
         },
       },
     );
-  }, [mutation, ucFunction, setNotification, navigate]);
+  }, [mutation, ucFunction, setNotification, navigate, catalog, schema]);
 
   return (
     <Modal

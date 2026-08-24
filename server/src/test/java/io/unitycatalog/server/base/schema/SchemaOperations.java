@@ -10,7 +10,7 @@ import java.util.Optional;
 public interface SchemaOperations {
   SchemaInfo createSchema(CreateSchema createSchema) throws ApiException;
 
-  List<SchemaInfo> listSchemas(String catalogName) throws ApiException;
+  List<SchemaInfo> listSchemas(String catalogName, Optional<String> pageToken) throws ApiException;
 
   SchemaInfo getSchema(String schemaFullName) throws ApiException;
 

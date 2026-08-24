@@ -15,6 +15,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QUERY_STALE_TIME } from './utils/constants';
 
 import SchemaBrowser from './components/SchemaBrowser';
 import TableDetails from './pages/TableDetails';
@@ -24,9 +25,17 @@ import CatalogsList from './pages/CatalogsList';
 import CatalogDetails from './pages/CatalogDetails';
 import SchemaDetails from './pages/SchemaDetails';
 import { NotificationProvider } from './utils/NotificationContext';
+import ModelDetails from './pages/ModelDetails';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/auth-context';
 import { UserOutlined } from '@ant-design/icons';
+import ModelVersionDetails from './pages/ModelVersionDetails';
+
+// TODO:
+// As of [19/02/2025], this implementation should be updated once the following PR are merged.
+// SEE:
+// https://github.com/unitycatalog/unitycatalog/pull/809
+const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
 
 const router = createBrowserRouter([
   {
@@ -56,14 +65,21 @@ const router = createBrowserRouter([
         path: '/functions/:catalog/:schema/:ucFunction',
         element: <FunctionDetails />,
       },
+      {
+        path: '/models/:catalog/:schema/:model',
+        element: <ModelDetails />,
+      },
+      {
+        path: '/models/:catalog/:schema/:model/versions/:version',
+        element: <ModelVersionDetails />,
+      },
     ],
   },
 ]);
 
 function AppProvider() {
-  const { accessToken, logout } = useAuth();
+  const { logout, currentUser } = useAuth();
   const navigate = useNavigate();
-  const loggedIn = accessToken !== '';
 
   const profileMenuItems = useMemo(
     (): MenuProps['items'] => [
@@ -77,8 +93,8 @@ function AppProvider() {
               cursor: 'default',
             }}
           >
-            <Typography.Text>User name here</Typography.Text>
-            <Typography.Text>user.email@goeshere.com</Typography.Text>
+            <Typography.Text>{currentUser?.displayName}</Typography.Text>
+            <Typography.Text>{currentUser?.emails?.[0]?.value}</Typography.Text>
           </div>
         ),
       },
@@ -91,14 +107,12 @@ function AppProvider() {
         onClick: () => logout().then(() => navigate('/')),
       },
     ],
-    [],
+    [currentUser, logout, navigate],
   );
 
-  // commenting login UI for now until repositories are merged
-  // return !loggedIn ? (
-  //   <Login />
-  // ) : (
-  return (
+  return authEnabled && !currentUser ? (
+    <Login />
+  ) : (
     <ConfigProvider
       theme={{
         components: {
@@ -143,22 +157,24 @@ function AppProvider() {
               style={{ flex: 1, minWidth: 0 }}
             />
           </div>
-          {/*<div>*/}
-          {/*  <Dropdown*/}
-          {/*    menu={{ items: profileMenuItems }}*/}
-          {/*    trigger={['click']}*/}
-          {/*    placement={'bottomRight'}*/}
-          {/*  >*/}
-          {/*    <Avatar*/}
-          {/*      icon={<UserOutlined />}*/}
-          {/*      style={{*/}
-          {/*        backgroundColor: 'white',*/}
-          {/*        color: 'black',*/}
-          {/*        cursor: 'pointer',*/}
-          {/*      }}*/}
-          {/*    />*/}
-          {/*  </Dropdown>*/}
-          {/*</div>*/}
+          {authEnabled && (
+            <div>
+              <Dropdown
+                menu={{ items: profileMenuItems }}
+                trigger={['click']}
+                placement={'bottomRight'}
+              >
+                <Avatar
+                  icon={<UserOutlined />}
+                  style={{
+                    backgroundColor: 'white',
+                    color: 'black',
+                    cursor: 'pointer',
+                  }}
+                />
+              </Dropdown>
+            </div>
+          )}
         </Layout.Header>
         {/* Content */}
         <Layout.Content
@@ -195,20 +211,25 @@ function AppProvider() {
       </Layout>
     </ConfigProvider>
   );
-  // );
 }
 
 function App() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { staleTime: 1000 * 5 * 60 } },
+    defaultOptions: { queries: { staleTime: QUERY_STALE_TIME } },
   });
 
-  return (
+  return authEnabled ? (
     <NotificationProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
         </AuthProvider>
+      </QueryClientProvider>
+    </NotificationProvider>
+  ) : (
+    <NotificationProvider>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
       </QueryClientProvider>
     </NotificationProvider>
   );

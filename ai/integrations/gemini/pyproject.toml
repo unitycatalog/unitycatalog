@@ -1,0 +1,80 @@
+[project]
+name = "unitycatalog-gemini"
+version = "0.2.0"
+description = "Support for Unity Catalog functions as Gemini tools"
+authors = [
+    { name="Puneet Jain", email="puneet.jain@databricks.com" }
+]
+readme = "README.md"
+license = { text="Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "google-generativeai>=0.7.2,<=0.8.6",
+    "unitycatalog-ai>=0.3.0,<=0.4.0",
+    "pydantic<3,>=2",
+]
+
+[project.optional-dependencies]
+databricks = [
+  "unitycatalog-ai[databricks]>=0.3.0,<=0.4.0",
+]
+
+databricks-dev = [
+  "unitycatalog-ai[databricks-dev]>=0.3.0,<=0.4.0",
+]
+
+dev = [
+  "unitycatalog-ai[dev]>=0.3.0,<=0.4.0",
+  "mlflow>=3.3.0,<=3.10.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/unitycatalog/ai/gemini/*"
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/gemini"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  # isort
+  "I",
+  # bugbear rules
+  "B",
+  # remove unused imports
+  "F401",
+  # bare except statements
+  "E722",
+  # print statements
+  "T201",
+  "T203",
+  # misuse of typing.TYPE_CHECKING
+  "TC004",
+  # import rules
+  "TID251",
+  # undefined-local-with-import-star
+  "F403",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.uv]
+exclude-newer = "2026-03-10T00:00:00Z"
+
+[tool.uv.sources]
+unitycatalog-ai = { path = "../../core", editable = true }

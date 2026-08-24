@@ -3,7 +3,6 @@ package io.unitycatalog.cli;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiClient;
@@ -12,7 +11,6 @@ import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateSchema;
-import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
@@ -57,7 +55,8 @@ public class SchemaCli {
             .name(json.getString(CliParams.NAME.getServerParam()))
             .catalogName(json.getString(CliParams.CATALOG_NAME.getServerParam()))
             .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
-            .properties(CliUtils.extractProperties(objectMapper, json));
+            .properties(CliUtils.extractProperties(objectMapper, json))
+            .storageRoot(json.optString(CliParams.STORAGE_ROOT.getServerParam(), null));
     SchemaInfo schemaInfo = schemasApi.createSchema(createSchema);
     return objectWriter.writeValueAsString(schemaInfo);
   }
@@ -69,8 +68,12 @@ public class SchemaCli {
     if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
     }
+    String pageToken = null;
+    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
+      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
+    }
     return objectWriter.writeValueAsString(
-        schemasApi.listSchemas(catalogName, maxResults, null).getSchemas());
+        schemasApi.listSchemas(catalogName, maxResults, pageToken).getSchemas());
   }
 
   private static String getSchema(SchemasApi schemasApi, JSONObject json)
@@ -83,15 +86,7 @@ public class SchemaCli {
       throws JsonProcessingException, ApiException {
     String schemaFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     json.remove(CliParams.FULL_NAME.getServerParam());
-    if (json.length() == 0) {
-      List<CliParams> optionalParams =
-          CliUtils.cliOptions.get(CliUtils.SCHEMA).get(CliUtils.UPDATE).getOptionalParams();
-      String errorMessage = "No parameters to update, please provide one of:";
-      for (CliParams param : optionalParams) {
-        errorMessage += "\n  --" + param.val();
-      }
-      throw new CliException(errorMessage);
-    }
+    CliUtils.validateUpdateParameters(json, CliUtils.SCHEMA, CliUtils.UPDATE);
     UpdateSchema updateSchema =
         new UpdateSchema()
             .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))

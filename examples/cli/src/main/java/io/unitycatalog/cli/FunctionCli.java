@@ -1,6 +1,14 @@
 package io.unitycatalog.cli;
 
-import static io.unitycatalog.cli.utils.CliUtils.*;
+import static io.unitycatalog.cli.utils.CliUtils.CREATE;
+import static io.unitycatalog.cli.utils.CliUtils.DELETE;
+import static io.unitycatalog.cli.utils.CliUtils.EMPTY;
+import static io.unitycatalog.cli.utils.CliUtils.EXECUTE;
+import static io.unitycatalog.cli.utils.CliUtils.FUNCTION;
+import static io.unitycatalog.cli.utils.CliUtils.GET;
+import static io.unitycatalog.cli.utils.CliUtils.LIST;
+import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
+import static io.unitycatalog.cli.utils.CliUtils.printEntityHelp;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -101,8 +109,12 @@ public class FunctionCli {
     if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
     }
+    String pageToken = null;
+    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
+      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
+    }
     return objectWriter.writeValueAsString(
-        functionsApi.listFunctions(catalogName, schemaName, maxResults, null).getFunctions());
+        functionsApi.listFunctions(catalogName, schemaName, maxResults, pageToken).getFunctions());
   }
 
   private static String executeFunction(FunctionsApi functionsApi, JSONObject json)

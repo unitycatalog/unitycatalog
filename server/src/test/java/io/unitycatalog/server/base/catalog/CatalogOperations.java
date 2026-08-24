@@ -10,7 +10,7 @@ import java.util.Optional;
 public interface CatalogOperations {
   CatalogInfo createCatalog(CreateCatalog createCatalog) throws ApiException;
 
-  List<CatalogInfo> listCatalogs() throws ApiException;
+  List<CatalogInfo> listCatalogs(Optional<String> pageToken) throws ApiException;
 
   CatalogInfo getCatalog(String name) throws ApiException;
 

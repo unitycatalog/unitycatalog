@@ -1,0 +1,27 @@
+ui:
+  deployment:
+    replicaCount: 2
+server:
+  deployment:
+    replicaCount: 2
+  db:
+    type: postgresql
+    postgresqlConfig:
+      host: my-postgres.somecloud.example.com
+      port: 5432
+      dbName: ucdb
+      username: uc
+      passwordSecretName: db-password
+      passwordSecretKey: password
+      ssl:
+        enabled: true
+        mode: verify-full
+        rootCertConfigMapName: db-root-cert
+        rootCertConfigMapKey: rootCert
+httpRoute:
+  enabled: true
+  host: mydomain.example.com
+  parentRefs:
+    - name: my-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io

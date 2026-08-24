@@ -13,7 +13,7 @@ Follow the guide below to connect to open-source Unity Catalog. See the [Databri
 
 ## Step 1. Create a new directory and initialize a [Spicepod](https://docs.spiceai.org/reference/spicepod)
 
-```bash
+```sh
 mkdir uc_quickstart
 cd uc_quickstart
 spice init
@@ -86,13 +86,13 @@ catalogs:
 
 Once the `spicepod.yml` is configured, start the Spice runtime:
 
-```shell
+```sh
 spice run
 ```
 
 In a seperate terminal, run the Spice SQL REPL:
 
-```shell
+```sh
 spice sql
 ```
 

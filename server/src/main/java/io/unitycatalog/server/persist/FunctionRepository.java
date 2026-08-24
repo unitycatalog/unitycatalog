@@ -2,13 +2,17 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CreateFunction;
+import io.unitycatalog.server.model.CreateFunctionRequest;
+import io.unitycatalog.server.model.FunctionInfo;
+import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,28 +20,27 @@ import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class FunctionRepository {
-  private static final FunctionRepository INSTANCE = new FunctionRepository();
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
   private static final Logger LOGGER = LoggerFactory.getLogger(FunctionRepository.class);
-  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private final Repositories repositories;
+  private final SessionFactory sessionFactory;
   private static final PagedListingHelper<FunctionInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(FunctionInfoDAO.class);
 
-  private FunctionRepository() {}
-
-  public static FunctionRepository getInstance() {
-    return INSTANCE;
+  public FunctionRepository(Repositories repositories, SessionFactory sessionFactory) {
+    this.repositories = repositories;
+    this.sessionFactory = sessionFactory;
   }
 
   public FunctionInfo createFunction(CreateFunctionRequest createFunctionRequest) {
     ValidationUtils.validateSqlObjectName(createFunctionRequest.getFunctionInfo().getName());
     CreateFunction createFunction = createFunctionRequest.getFunctionInfo();
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    Long createTime = System.currentTimeMillis();
     FunctionInfo functionInfo =
         new FunctionInfo()
             .functionId(UUID.randomUUID().toString())
@@ -46,7 +49,11 @@ public class FunctionRepository {
             .schemaName(createFunction.getSchemaName())
             .comment(createFunction.getComment())
             .properties(createFunction.getProperties())
-            .createdAt(System.currentTimeMillis())
+            .owner(callerId)
+            .createdAt(createTime)
+            .createdBy(callerId)
+            .updatedAt(createTime)
+            .updatedBy(callerId)
             .dataType(createFunction.getDataType())
             .fullDataType(createFunction.getFullDataType())
             .inputParams(createFunction.getInputParams())
@@ -72,55 +79,46 @@ public class FunctionRepository {
       functionInfo.setSqlDataAccess(
           FunctionInfo.SqlDataAccessEnum.valueOf(createFunction.getSqlDataAccess().toString()));
     }
-    try (Session session = SESSION_FACTORY.openSession()) {
-      Transaction tx = session.beginTransaction();
-      try {
-        String catalogName = createFunction.getCatalogName();
-        String schemaName = createFunction.getSchemaName();
-        SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
-        if (schemaInfo == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-        }
-        if (getFunctionDAO(session, catalogName, schemaName, createFunction.getName()) != null) {
-          throw new BaseException(
-              ErrorCode.ALREADY_EXISTS, "Function already exists: " + createFunction.getName());
-        }
-        FunctionInfoDAO dao = FunctionInfoDAO.from(functionInfo);
-        dao.setSchemaId(schemaInfo.getId());
-        dao.getInputParams()
-            .forEach(
-                p -> {
-                  p.setId(UUID.randomUUID());
-                  p.setFunction(dao);
-                });
-        dao.getReturnParams()
-            .forEach(
-                p -> {
-                  p.setId(UUID.randomUUID());
-                  p.setFunction(dao);
-                });
-        session.persist(dao);
-        tx.commit();
-        return functionInfo;
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    }
+
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          String catalogName = createFunction.getCatalogName();
+          String schemaName = createFunction.getSchemaName();
+          SchemaInfoDAO schemaInfo =
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaDaoOrThrow(session, catalogName, schemaName);
+          if (getFunctionDAO(session, catalogName, schemaName, createFunction.getName()) != null) {
+            throw new BaseException(
+                ErrorCode.RESOURCE_ALREADY_EXISTS,
+                "Function already exists: " + createFunction.getName());
+          }
+          FunctionInfoDAO dao = FunctionInfoDAO.from(functionInfo);
+          dao.setSchemaId(schemaInfo.getId());
+          dao.getInputParams()
+              .forEach(
+                  p -> {
+                    p.setId(UUID.randomUUID());
+                    p.setFunction(dao);
+                  });
+          dao.getReturnParams()
+              .forEach(
+                  p -> {
+                    p.setId(UUID.randomUUID());
+                    p.setFunction(dao);
+                  });
+          session.persist(dao);
+          return functionInfo;
+        },
+        "Failed to create function",
+        /* readOnly = */ false);
   }
 
   private void addNamespaceData(FunctionInfo functionInfo, String catalogName, String schemaName) {
     functionInfo.setCatalogName(catalogName);
     functionInfo.setSchemaName(schemaName);
     functionInfo.setFullName(catalogName + "." + schemaName + "." + functionInfo.getName());
-  }
-
-  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
-    SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-    }
-    return schemaInfo.getId();
   }
 
   /**
@@ -137,20 +135,17 @@ public class FunctionRepository {
       String schemaName,
       Optional<Integer> maxResults,
       Optional<String> pageToken) {
-    try (Session session = SESSION_FACTORY.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        UUID schemaId = getSchemaId(session, catalogName, schemaName);
-        ListFunctionsResponse response =
-            listFunctions(session, schemaId, catalogName, schemaName, maxResults, pageToken);
-        tx.commit();
-        return response;
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
+          return listFunctions(session, schemaId, catalogName, schemaName, maxResults, pageToken);
+        },
+        "Failed to list functions",
+        /* readOnly = */ true);
   }
 
   public ListFunctionsResponse listFunctions(
@@ -175,48 +170,38 @@ public class FunctionRepository {
   }
 
   public FunctionInfo getFunction(String name) {
-    FunctionInfo functionInfo = null;
-    try (Session session = SESSION_FACTORY.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        String[] parts = name.split("\\.");
-        if (parts.length != 3) {
-          throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
-        }
-        String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
-        FunctionInfoDAO functionInfoDAO =
-            getFunctionDAO(session, catalogName, schemaName, functionName);
-        if (functionInfoDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + name);
-        }
-        functionInfo = functionInfoDAO.toFunctionInfo();
-        addNamespaceInfo(functionInfo, catalogName, schemaName);
-        tx.commit();
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    } catch (Exception e) {
-      LOGGER.error("Error getting function", e);
-      return null;
-    }
-    return functionInfo;
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          String[] parts = name.split("\\.");
+          if (parts.length != 3) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
+          }
+          String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
+          FunctionInfoDAO functionInfoDAO =
+              getFunctionDAO(session, catalogName, schemaName, functionName);
+          if (functionInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + name);
+          }
+          FunctionInfo functionInfo = functionInfoDAO.toFunctionInfo();
+          addNamespaceInfo(functionInfo, catalogName, schemaName);
+          RepositoryUtils.attachProperties(
+              functionInfo, functionInfo.getFunctionId(), Constants.FUNCTION, session);
+          return functionInfo;
+        },
+        "Failed to get function",
+        /* readOnly = */ true);
   }
 
   public void addNamespaceInfo(FunctionInfo functionInfo, String catalogName, String schemaName) {
-    functionInfo.setCatalogName(catalogName);
-    functionInfo.setSchemaName(schemaName);
-    functionInfo.setFullName(catalogName + "." + schemaName + "." + functionInfo.getName());
+    addNamespaceData(functionInfo, catalogName, schemaName);
   }
 
   public FunctionInfoDAO getFunctionDAO(
       Session session, String catalogName, String schemaName, String functionName) {
-    SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-    }
-    return getFunctionDAO(session, schemaInfo.getId(), functionName);
+    UUID schemaId =
+        repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalogName, schemaName);
+    return getFunctionDAO(session, schemaId, functionName);
   }
 
   public FunctionInfoDAO getFunctionDAO(Session session, UUID schemaId, String functionName) {
@@ -231,26 +216,24 @@ public class FunctionRepository {
   }
 
   public void deleteFunction(String name, Boolean force) {
-    try (Session session = SESSION_FACTORY.openSession()) {
-      Transaction tx = session.beginTransaction();
-      try {
-        String[] parts = name.split("\\.");
-        if (parts.length != 3) {
-          throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
-        }
-        String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
-        SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
-        if (schemaInfo == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-        }
-        deleteFunction(session, schemaInfo.getId(), functionName);
-        tx.commit();
-        LOGGER.info("Deleted function: {}", functionName);
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    }
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          String[] parts = name.split("\\.");
+          if (parts.length != 3) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
+          }
+          String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
+          UUID schemaId =
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
+          deleteFunction(session, schemaId, functionName);
+          LOGGER.info("Deleted function: {}", functionName);
+          return null;
+        },
+        "Failed to delete function",
+        /* readOnly = */ false);
   }
 
   public void deleteFunction(Session session, UUID schemaId, String functionName) {

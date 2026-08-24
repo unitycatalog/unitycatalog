@@ -4,11 +4,12 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.unitycatalog.server.UnityCatalogServer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
@@ -29,9 +30,9 @@ public class SecurityContext {
   }
 
   private static final ObjectMapper mapper = new ObjectMapper();
-  private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(SecurityContext.class);
 
-  private final Path certsFile;
+  @Getter private final Path certsFile;
   private final Path serviceTokenFile;
 
   @Getter private final RSAPublicKey rsaPublicKey;
@@ -70,17 +71,19 @@ public class SecurityContext {
     LOGGER.info(getInternalCertsFile());
   }
 
-  public String createAccessToken(DecodedJWT decodedJWT) {
-
+  public String createAccessToken(DecodedJWT decodedJWT, Duration ttl) {
     String subject =
-        decodedJWT.getClaim("email").isMissing()
-            ? decodedJWT.getClaim("sub").asString()
-            : decodedJWT.getClaim("email").asString();
+        decodedJWT
+            .getClaims()
+            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
+            .asString();
 
+    Instant expiresAt = Instant.now().plus(ttl);
     return JWT.create()
         .withSubject(serviceName)
         .withIssuer(localIssuer)
         .withIssuedAt(new Date())
+        .withExpiresAt(Date.from(expiresAt))
         .withKeyId(keyId)
         .withJWTId(UUID.randomUUID().toString())
         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())

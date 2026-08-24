@@ -2,7 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.dao.*;
+import io.unitycatalog.server.persist.dao.IdentifiableDAO;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
@@ -28,7 +28,8 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
     this.entityClass = entityClass;
   }
 
-  public static final Integer DEFAULT_PAGE_SIZE = 100;
+  // @VisibleForTesting
+  public static Integer DEFAULT_PAGE_SIZE = 100;
 
   /**
    * Get the page size to use for listing entities. The page size is the minimum of the maxResults

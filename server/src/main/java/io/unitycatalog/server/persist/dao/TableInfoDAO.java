@@ -3,12 +3,23 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
-import io.unitycatalog.server.persist.utils.FileUtils;
-import jakarta.persistence.*;
+import io.unitycatalog.server.utils.NormalizedURL;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 // Hibernate annotations
@@ -32,11 +43,20 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "type")
   private String type;
 
+  @Column(name = "owner")
+  private String owner;
+
   @Column(name = "created_at")
   private Date createdAt;
 
+  @Column(name = "created_by")
+  private String createdBy;
+
   @Column(name = "updated_at")
   private Date updatedAt;
+
+  @Column(name = "updated_by")
+  private String updatedBy;
 
   @Column(name = "data_source_format")
   private String dataSourceFormat;
@@ -57,40 +77,82 @@ public class TableInfoDAO extends IdentifiableDAO {
       fetch = FetchType.LAZY)
   private List<ColumnInfoDAO> columns;
 
+  @Lob
+  @Column(name = "view_definition", length = 16777215)
+  private String viewDefinition;
+
+  /**
+   * Iceberg metadata pointer for either a Delta UniForm projection or a native Iceberg table. The
+   * meaning is distinguished by {@link #dataSourceFormat}: Delta is authoritative for UniForm;
+   * Iceberg is authoritative for native Iceberg tables.
+   */
   @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
 
-  public static TableInfoDAO from(TableInfo tableInfo) {
+  @Column(name = "uniform_iceberg_converted_delta_version")
+  private Long uniformIcebergConvertedDeltaVersion;
+
+  @Column(name = "uniform_iceberg_converted_delta_timestamp")
+  private Date uniformIcebergConvertedDeltaTimestamp;
+
+  public static TableInfoDAO from(TableInfo tableInfo, UUID schemaId) {
     return TableInfoDAO.builder()
         .id(UUID.fromString(tableInfo.getTableId()))
         .name(tableInfo.getName())
         .comment(tableInfo.getComment())
+        .owner(tableInfo.getOwner())
         .createdAt(
             tableInfo.getCreatedAt() != null ? new Date(tableInfo.getCreatedAt()) : new Date())
+        .createdBy(tableInfo.getCreatedBy())
         .updatedAt(tableInfo.getUpdatedAt() != null ? new Date(tableInfo.getUpdatedAt()) : null)
+        .updatedBy(tableInfo.getUpdatedBy())
         .columnCount(tableInfo.getColumns() != null ? tableInfo.getColumns().size() : 0)
-        .url(tableInfo.getStorageLocation() != null ? tableInfo.getStorageLocation() : null)
         .type(tableInfo.getTableType().toString())
-        .dataSourceFormat(tableInfo.getDataSourceFormat().toString())
+        .dataSourceFormat(
+            tableInfo.getDataSourceFormat() != null
+                ? tableInfo.getDataSourceFormat().toString()
+                : null)
         .url(tableInfo.getStorageLocation())
+        .viewDefinition(tableInfo.getViewDefinition())
         .columns(ColumnInfoDAO.fromList(tableInfo.getColumns()))
+        .schemaId(schemaId)
         .build();
   }
 
-  public TableInfo toTableInfo(boolean fetchColumns) {
+  public TableInfo toTableInfo(boolean fetchColumns, String catalogName, String schemaName) {
     TableInfo tableInfo =
         new TableInfo()
             .tableId(getId().toString())
             .name(getName())
+            .catalogName(catalogName)
+            .schemaName(schemaName)
             .tableType(TableType.valueOf(type))
-            .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
-            .storageLocation(FileUtils.convertRelativePathToURI(url))
+            .dataSourceFormat(
+                dataSourceFormat != null ? DataSourceFormat.valueOf(dataSourceFormat) : null)
+            .storageLocation(url != null ? NormalizedURL.normalize(url) : null)
+            .viewDefinition(viewDefinition)
             .comment(comment)
+            .owner(owner)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
-            .updatedAt(updatedAt != null ? updatedAt.getTime() : null);
+            .createdBy(createdBy)
+            .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
+            .updatedBy(updatedBy);
     if (fetchColumns) {
       tableInfo.columns(ColumnInfoDAO.toList(columns));
     }
     return tableInfo;
+  }
+
+  /**
+   * Update the UniForm Iceberg metadata fields as an atomic triple. All three fields are written
+   * together; callers must supply the validated, normalized values produced by {@code
+   * DeltaUniformUtils.UniformIcebergFields} so the DAO cannot drift on which fields are touched or
+   * how the location is normalized. Shared between createTable on Delta REST and addCommit.
+   */
+  public void updateUniformIcebergMetadata(
+      NormalizedURL metadataLocation, long convertedDeltaVersion, long convertedDeltaTimestampMs) {
+    setUniformIcebergMetadataLocation(metadataLocation.toString());
+    setUniformIcebergConvertedDeltaVersion(convertedDeltaVersion);
+    setUniformIcebergConvertedDeltaTimestamp(new Date(convertedDeltaTimestampMs));
   }
 }

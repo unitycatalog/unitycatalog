@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router-dom';
 import DetailsLayout from '../components/layouts/DetailsLayout';
 import FunctionSidebar from '../components/functions/FunctionSidebar';
 import { useGetFunction } from '../hooks/functions';
-import DescriptionBox from '../components/DescriptionBox';
 import { Flex, Typography } from 'antd';
 import { FunctionOutlined } from '@ant-design/icons';
 import CodeBox from '../components/CodeBox';
@@ -15,7 +14,9 @@ export default function FunctionDetails() {
   if (!schema) throw new Error('Schema name is required');
   if (!ucFunction) throw new Error('Function name is required');
 
-  const { data } = useGetFunction({ catalog, schema, ucFunction });
+  const { data } = useGetFunction({
+    name: [catalog, schema, ucFunction].join('.'),
+  });
 
   if (!data) return null;
 
@@ -48,8 +49,13 @@ export default function FunctionDetails() {
     >
       <DetailsLayout.Content>
         <Flex vertical gap="middle">
-          <DescriptionBox comment={data?.comment} />
-          <CodeBox definition={data.routine_definition} />
+          <div>
+            <Typography.Title level={5}>Description</Typography.Title>
+            <Typography.Text type="secondary">
+              {data.comment ?? ''}
+            </Typography.Text>
+          </div>
+          <CodeBox definition={data.routine_definition ?? ''} />
         </Flex>
       </DetailsLayout.Content>
       <DetailsLayout.Aside>

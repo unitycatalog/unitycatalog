@@ -7,25 +7,82 @@ name: Unit Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "branch-*" ]
   pull_request:
+    branches: [ "main", "branch-*" ]
 
 permissions:
   contents: read
 
+# The test matrix is inlined below. Each row sets spark-source-build, which controls ONLY how
+# Spark is provided (it has no effect on Delta):
+#   - false: run against published Spark artifacts.
+#   - true:  the test job restores the Spark Maven cache, builds Spark from the metadata
+#            ref on a miss, saves the cache, then runs tests against it.
+#
+# There is no Delta equivalent flag: when delta-version is master-SNAPSHOT the run-uc-unit-tests
+# action always builds Delta from source (project/scripts/build_delta.sh), gated on the version
+# string itself rather than a separate toggle. Every published delta-version is resolved directly.
+#
+# The source-built Spark SHA, artifact version, and cache key come from
+# project/spark-versions.json (sourceBuildDefaultRef) via project/scripts/get_spark_version_info.py.
+# Bumping the source-built Spark line is a one-line change there plus the matrix row below.
+#
+# The Spark build is inlined per row (in the prepare-spark-env action) because UC runs one
+# runner per combo. Delta keeps a dedicated build job only because it shards each Spark
+# version across many runners and must build once and restore into every shard.
+#
+# Cache model: the cache uses an exact key (no restore-keys). When the Spark SHA or
+# build_spark.sh changes, a new key is used; older entries are orphaned and GitHub evicts
+# them by LRU.
 jobs:
   test:
     runs-on: ubuntu-latest
 
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+    # Build a human-readable job name from the matrix entry, e.g.:
+    #   "All tests (Spark 4.0.0, Delta 4.3.1)"
+    #   "[Non Blocking] Spark tests (Spark 4.2.0, Delta master-SNAPSHOT)"
+    name: >-
+      ${{ matrix.non-blocking && '[Non Blocking]' || '' }}
+      ${{ matrix.validation-mode == 'spark-tests' && 'Spark tests' || 'All tests' }}
+      (Spark ${{ matrix.spark-version }}${{ matrix.delta-version != '' && format(', Delta {0}', matrix.delta-version) || '' }})
+    continue-on-error: ${{ matrix.non-blocking || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - spark-version: "4.0.0"
+            delta-version: "4.3.1"
+            # Primary combo: runs ALL tests (unit, spark, license). Other combos run only
+            # spark connector tests since unit/license checks don't depend on Spark/Delta.
+            validation-mode: "all-tests"
+            non-blocking: false
+            spark-source-build: false
+          - spark-version: "4.1.0"
+            delta-version: "4.3.1"
+            validation-mode: "spark-tests"
+            non-blocking: false
+            spark-source-build: false
+          - spark-version: "4.1.0"
+            delta-version: "master-SNAPSHOT"
+            # Cross-version testing with Delta master is informational; failures indicate
+            # upcoming incompatibilities but should not block PRs.
+            validation-mode: "spark-tests"
+            non-blocking: true
+            spark-source-build: false
+          - spark-version: "4.2.0"
+            delta-version: "master-SNAPSHOT"
+            validation-mode: "spark-tests"
+            non-blocking: true
+            spark-source-build: false
 
-    - name: Run tests with coverage
-      run: build/sbt -J-Xmx2G +jacoco
-    - name: Run license check
-      run: build/sbt licenseCheck
+    steps:
+      # Local composite actions require checkout before uses: ./.github/actions/...
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Run UC unit tests
+        uses: ./.github/actions/run-uc-unit-tests
+        with:
+          spark-version: ${{ matrix.spark-version }}
+          delta-version: ${{ matrix.delta-version }}
+          validation-mode: ${{ matrix.validation-mode }}
+          use-spark-source-cache: ${{ matrix.spark-source-build }}

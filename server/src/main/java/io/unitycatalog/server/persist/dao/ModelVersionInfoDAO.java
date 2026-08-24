@@ -2,10 +2,17 @@ package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.ModelVersionInfo;
 import io.unitycatalog.server.model.ModelVersionStatus;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.UUID;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 // Hibernate annotations
@@ -41,6 +48,9 @@ public class ModelVersionInfoDAO {
   @Column(name = "status")
   private String status;
 
+  @Column(name = "owner")
+  private String owner;
+
   @Column(name = "created_at")
   private Date createdAt;
 
@@ -61,7 +71,7 @@ public class ModelVersionInfoDAO {
 
   public static ModelVersionInfoDAO from(ModelVersionInfo modelVersionInfo) {
     return ModelVersionInfoDAO.builder()
-        .id(UUID.fromString(modelVersionInfo.getModelVersionId()))
+        .id(UUID.fromString(modelVersionInfo.getId()))
         .runId(modelVersionInfo.getRunId())
         .source(modelVersionInfo.getSource())
         .status(modelVersionInfo.getStatus().getValue())
@@ -75,7 +85,7 @@ public class ModelVersionInfoDAO {
         .updatedAt(
             modelVersionInfo.getUpdatedAt() != null
                 ? new Date(modelVersionInfo.getUpdatedAt())
-                : new Date())
+                : null)
         .updatedBy(modelVersionInfo.getUpdatedBy())
         .url(modelVersionInfo.getStorageLocation())
         .build();
@@ -84,7 +94,7 @@ public class ModelVersionInfoDAO {
   public ModelVersionInfo toModelVersionInfo() {
     ModelVersionInfo modelVersionInfo =
         new ModelVersionInfo()
-            .modelVersionId(getId().toString())
+            .id(getId().toString())
             .runId(getRunId())
             .source(getSource())
             .version(getVersion())

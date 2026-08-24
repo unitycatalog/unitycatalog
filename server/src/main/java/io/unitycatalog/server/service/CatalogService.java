@@ -2,45 +2,130 @@ package io.unitycatalog.server.service;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.*;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateCatalog;
+import io.unitycatalog.server.model.ListCatalogsResponse;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.model.DeletedResource;
+import io.unitycatalog.server.utils.ServerProperties;
+import lombok.SneakyThrows;
+
+import java.util.List;
 import java.util.Optional;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class CatalogService {
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
-  public CatalogService() {}
+public class CatalogService extends AuthorizedService implements UnityCatalogRestService {
+  private final CatalogRepository catalogRepository;
+  private final MetastoreRepository metastoreRepository;
 
-  @Post("")
-  public HttpResponse createCatalog(CreateCatalog createCatalog) {
-    return HttpResponse.ofJson(CATALOG_REPOSITORY.addCatalog(createCatalog));
+  @SneakyThrows
+  public CatalogService(
+      UnityCatalogAuthorizer authorizer,
+      Repositories repositories,
+      ServerProperties serverProperties) {
+    super(authorizer, repositories, serverProperties);
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
   }
 
+  /**
+   * Creating a catalog requires one of OWNER or CREATE_CATALOG permission on metastore.
+   * Additionally, if a {@code storage_root} is specified:
+   *
+   * <ul>
+   *   <li>The path has to map to an external_location, not anything else (tables, volumes, models),
+   *       to make sure the path isn't under any existing data securables.
+   *   <li>User needs to have OWNER or CREATE_MANAGED_STORAGE permission on the external location.
+   * </ul>
+   *
+   * {@code storage_root} is annotated as both a {@link AuthorizeResourceKey} (which maps to owning
+   * resource) and {@link AuthorizeKey} (which is simply the raw value of storage_root). This is
+   * done so that the expression can check both: 1. if parameter is specified, and 2. which external
+   * location (rather than tables etc.) owns the path.
+   */
+  @Post("")
+  @AuthorizeExpression("""
+      #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG) &&
+      (#storage_root == null ||
+       (#no_overlap_with_data_securable &&
+        #external_location != null &&
+        #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
+    """)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse createCatalog(
+      @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
+      @AuthorizeKey(key = "storage_root")
+      CreateCatalog createCatalog) {
+    CatalogInfo catalogInfo = catalogRepository.addCatalog(createCatalog);
+    initializeBasicAuthorization(catalogInfo.getId());
+    return HttpResponse.ofJson(catalogInfo);
+  }
+
+  private static final String LIST_AND_GET_AUTH_EXPRESSION = """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+      """;
+
   @Get("")
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @ResponseAuthorizeFilter
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse listCatalogs(
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
-    return HttpResponse.ofJson(CATALOG_REPOSITORY.listCatalogs(maxResults, pageToken));
+    ListCatalogsResponse listCatalogsResponse = catalogRepository.listCatalogs(
+        maxResults, pageToken);
+    applyResponseFilter(SecurableType.CATALOG, listCatalogsResponse.getCatalogs());
+    return HttpResponse.ofJson(listCatalogsResponse);
   }
 
   @Get("/{name}")
-  public HttpResponse getCatalog(@Param("name") String name) {
-    return HttpResponse.ofJson(CATALOG_REPOSITORY.getCatalog(name));
+  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse getCatalog(@Param("name") @AuthorizeResourceKey(CATALOG) String name) {
+    return HttpResponse.ofJson(catalogRepository.getCatalog(name));
   }
 
   @Patch("/{name}")
-  public HttpResponse updateCatalog(@Param("name") String name, UpdateCatalog updateCatalog) {
-    return HttpResponse.ofJson(CATALOG_REPOSITORY.updateCatalog(name, updateCatalog));
+  @AuthorizeExpression("""
+      #authorize(#principal, #catalog, OWNER)
+      """)
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse updateCatalog(
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name,
+      UpdateCatalog updateCatalog) {
+    return HttpResponse.ofJson(catalogRepository.updateCatalog(name, updateCatalog));
   }
 
   @Delete("/{name}")
+  @AuthorizeExpression("""
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER)
+      """)
+  @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCatalog(
-      @Param("name") String name, @Param("force") Optional<Boolean> force) {
-    CATALOG_REPOSITORY.deleteCatalog(name, force.orElse(false));
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name,
+      @Param("force") Optional<Boolean> force) {
+    List<DeletedResource> deleted =
+        catalogRepository.deleteCatalog(name, force.orElse(false));
+    clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }
 }

@@ -8,9 +8,23 @@ import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.data.FilteredColumnarBatch;
 import io.delta.kernel.data.Row;
 import io.delta.kernel.engine.Engine;
+import io.delta.kernel.engine.FileReadResult;
 import io.delta.kernel.internal.InternalScanFileUtils;
 import io.delta.kernel.internal.data.ScanStateRow;
-import io.delta.kernel.types.*;
+import io.delta.kernel.types.BinaryType;
+import io.delta.kernel.types.BooleanType;
+import io.delta.kernel.types.ByteType;
+import io.delta.kernel.types.DataType;
+import io.delta.kernel.types.DateType;
+import io.delta.kernel.types.DecimalType;
+import io.delta.kernel.types.DoubleType;
+import io.delta.kernel.types.FloatType;
+import io.delta.kernel.types.IntegerType;
+import io.delta.kernel.types.LongType;
+import io.delta.kernel.types.ShortType;
+import io.delta.kernel.types.StringType;
+import io.delta.kernel.types.StructType;
+import io.delta.kernel.types.TimestampType;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.FileStatus;
 import java.io.IOException;
@@ -96,7 +110,7 @@ public class DeltaKernelReadUtils {
     CloseableIterator<FilteredColumnarBatch> scanFileIter = scan.getScanFiles(engine);
     int readRecordCount = 0;
     try {
-      StructType physicalReadSchema = ScanStateRow.getPhysicalDataReadSchema(engine, scanState);
+      StructType physicalReadSchema = ScanStateRow.getPhysicalDataReadSchema(scanState);
       outer:
       while (scanFileIter.hasNext()) {
         FilteredColumnarBatch scanFilesBatch = scanFileIter.next();
@@ -110,7 +124,8 @@ public class DeltaKernelReadUtils {
                     .readParquetFiles(
                         singletonCloseableIterator(fileStatus),
                         physicalReadSchema,
-                        Optional.empty());
+                        Optional.empty())
+                    .map(FileReadResult::getData);
             try (CloseableIterator<FilteredColumnarBatch> transformedData =
                 Scan.transformPhysicalData(engine, scanState, scanFileRow, physicalDataIter)) {
               while (transformedData.hasNext()) {

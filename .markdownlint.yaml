@@ -1,0 +1,24 @@
+---
+# Unordered list indentation
+MD007:
+  # Use 4 spaces for unordered list indentation for mkdocs displaying it correctly
+  indent: 4
+
+# Line length
+# Allow lines as long as necessary due to longer links included in the documentation
+# Still, the goal is to not exceed 120 characters
+MD013: false
+
+# Multiple headings with the same content
+MD024:
+  # Only check sibling headings
+  siblings_only: true
+
+# First line in a file should be a top-level heading
+# Ignoring to allow the logo being displayed at the top of the page
+MD041: false
+
+# Code block style
+# Ignoring as we use different styles for different purposes and at some points also mkdocs is requring different
+# styles
+MD046: false

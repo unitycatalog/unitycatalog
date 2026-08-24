@@ -3,7 +3,6 @@ package io.unitycatalog.cli;
 import static io.unitycatalog.cli.utils.CliUtils.commonOptions;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiClient;
@@ -12,7 +11,12 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import org.apache.commons.cli.*;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.core.config.Configurator;
 
 public class UnityCatalogCli {
@@ -133,7 +137,7 @@ public class UnityCatalogCli {
           VolumeCli.handle(cmd, apiClient);
           break;
         case CliUtils.TABLE:
-          TableCli.handle(cmd, apiClient);
+          TableCli.handle(cmd, apiClient, loadProperty(CliUtils.AUTH_TOKEN, cmd));
           break;
         case CliUtils.FUNCTION:
           FunctionCli.handle(cmd, apiClient);
@@ -144,8 +148,20 @@ public class UnityCatalogCli {
         case CliUtils.MODEL_VERSION:
           ModelVersionCli.handle(cmd, apiClient);
           break;
+        case CliUtils.PERMISSION:
+          PermissionCli.handle(cmd, apiClient);
+          break;
         case CliUtils.USER:
           UserCli.handle(cmd, getControlClient(cmd));
+          break;
+        case CliUtils.METASTORE:
+          MetastoreCli.handle(cmd, apiClient);
+          break;
+        case CliUtils.CREDENTIAL:
+          CredentialCli.handle(cmd, apiClient);
+          break;
+        case CliUtils.EXTERNAL_LOCATION:
+          ExternalLocationCli.handle(cmd, apiClient);
           break;
         default:
           CliUtils.printHelp();
@@ -156,11 +172,6 @@ public class UnityCatalogCli {
               + "Please check the command and try again. "
               + e.getMessage());
       CliUtils.printHelp();
-    } catch (CliException e) {
-      System.out.println(
-          "Error occurred while executing the command. "
-              + e.getMessage()
-              + (e.getCause() != null ? e.getCause().getMessage() : ""));
     } catch (ApiException | io.unitycatalog.control.ApiException e) {
       throw new RuntimeException(e);
     }
@@ -172,15 +183,16 @@ public class UnityCatalogCli {
       System.out.println("Please provide a entity.");
       CliUtils.printHelp();
       return false;
-    } else if (subArgs.length < 2) {
-      System.out.println("Please provide an operation.");
-      CliUtils.printEntityHelp(subArgs[0]);
-      return false;
     } else {
       String entity = cmd.getArgs()[0];
       if (!CliUtils.cliOptions.containsKey(entity.toLowerCase())) {
         System.out.println("Invalid entity provided: " + entity);
         CliUtils.printHelp();
+        return false;
+      }
+      if (subArgs.length < 2) {
+        System.out.println("Please provide an operation.");
+        CliUtils.printEntityHelp(subArgs[0]);
         return false;
       }
       String operation = cmd.getArgs()[1];

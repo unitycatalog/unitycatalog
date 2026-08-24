@@ -11,7 +11,7 @@ Unity Catalog is the industry’s only universal catalog for data and AI.
 - **Open source API and implementation** - OpenAPI spec and OSS implementation (Apache 2.0 license). It is also compatible with Apache Hive's metastore API and Apache Iceberg's REST catalog API. Unity Catalog is currently a sandbox project with LF AI and Data Foundation (part of the Linux Foundation).
 - **Unified governance** for data and AI - Govern and secure tabular data, unstructured assets, and AI assets with a single interface.
 
-The first release of Unity Catalog focuses on a core set of APIs for tables, unstructured data, and AI assets - with more to come soon on governance, access, and client interoperability. This is just the beginning!
+The current roadmap is available at [Unity Catalog Roadmap](roadmap.md).
 
 ![UC Hero Image](./docs/assets/images/uc.png)
 
@@ -29,6 +29,7 @@ This is a community effort. Unity Catalog is supported by
 - [Granica](https://granica.ai/)
 - [Immuta](https://www.immuta.com/)
 - [Informatica](https://www.informatica.com/)
+- [Kuzu](https://www.kuzudb.com/)
 - [LanceDB](https://lancedb.com/)
 - [LangChain](https://www.langchain.com/)
 - [LlamaIndex](https://www.llamaindex.ai/)
@@ -36,7 +37,9 @@ This is a community effort. Unity Catalog is supported by
 - [NVIDIA](https://www.nvidia.com/)
 - [Onehouse](https://www.onehouse.ai/)
 - [PuppyGraph](https://www.puppygraph.com/)
+- [RisingWave](https://risingwave.com/)
 - [Salesforce](https://www.salesforce.com/)
+- [Starburst](https://www.starburst.io/)
 - [StarRocks (CelerData)](https://celerdata.com/)
 - [Spice AI](https://github.com/spiceai/spiceai)
 - [Tecton](https://www.tecton.ai/)
@@ -57,6 +60,8 @@ Let's take Unity Catalog for spin. In this guide, we are going to do the followi
   An example project is provided to demonstrate how to use the UC SDK for various assets
   as well as provide a convenient way to explore the content of any UC server implementation.
 
+> If you prefer to run Unity Catalog in Docker use `docker compose up`. See the [Docker Compose docs](./docs/docker_compose.md) for more details.
+
 ### Prerequisites
 
 You have to ensure that your local environment has the following:
@@ -64,8 +69,6 @@ You have to ensure that your local environment has the following:
 - Clone this repository.
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17.
 - Compile the project using `build/sbt package`
-
-> If you prefer to run this using the Unity Catalog Dockerized Environment, please refer to the Docker [README.md](./docker/README.md)
 
 ### Run the UC Server
 
@@ -151,14 +154,18 @@ To quit DuckDB, press `Ctrl`+`D` (if your platform supports it), press `Ctrl`+`C
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
 
+**Prerequisites**
+
+- Node: https://nodejs.org/en/download/package-manager
+- Yarn: https://classic.yarnpkg.com/lang/en/docs/install
+
+**How to start the UI through yarn**
+
 ```
 cd /ui
 yarn install
 yarn start
-open localhost:3000
 ```
-
-
 
 ## CLI tutorial
 
@@ -168,17 +175,17 @@ See the [cli usage](docs/usage/cli.md) for more details.
 
 ## APIs and Compatibility
 
-- Open API specification: The Unity Catalog Rest API is documented [here](api).
+- Open API specification: See the [Unity Catalog Rest API](https://docs.unitycatalog.io/swagger-docs/).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
 ## Building Unity Catalog
 
-Unity Catalog can be built using [sbt](https://www.scala-sbt.org/).
+Unity Catalog is built using [sbt](https://www.scala-sbt.org/).
 
 To build UC (incl. [Spark Integration](./connectors/spark) module), run the following command:
 
-```shell
-build/sbt clean package publishLocal spark/publishLocal
+```sh
+build/sbt clean package publishLocal
 ```
 
 Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
@@ -241,27 +248,28 @@ imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-
 
 ### Serving the documentation with mkdocs
 
-Create a virtual environment:
+For an overview of how to contribute to the documentation, please see our introduction [here](./docs/README.md).
+For the official documentation, please take a look at [https://docs.unitycatalog.io/](https://docs.unitycatalog.io/).
 
-```sh
-# Create virtual environment
-python -m venv uc_docs_venv
+# Docker Builds
 
-# Activate virtual environment (Linux/macOS)
-source uc_docs_venv/bin/activate
+You can build a local version of the Unity Catalog Server or UI for local testing. All you need is Docker on your machine. In addition,
+if you are working behind a corporate firewall, simply add the environment variable `MAVEN_PROXY_URL=https://maven-proxy.your-company.com` for the Unity Catalog server build, or `NPM_PROXY_URL=https://npm-proxy.your-company.com/` for the Unity Catalog UI build. If you don't need a proxy, you can safely still run the following commands without any variables set.
 
-# Activate virtual environment (Windows)
-uc_docs_venv\Scripts\activate
+## Unity Catalog Server
+
+```bash
+docker build \
+  --build-arg MAVEN_PROXY_URL="$MAVEN_PROXY_URL" \
+  -t unitycatalog/unitycatalog:local \
+  .
 ```
 
-Install the required dependencies:
+## Unity Catalog UI
 
-```sh
-pip install -r requirements-docs.txt
-```
-
-Then serve the docs with
-
-```sh
-mkdocs serve
+```bash
+docker build \
+  --build-arg NPM_PROXY_URL="$NPM_PROXY_URL" \
+  -t unitycatalog/unitycatalog-ui:local \
+  ./ui
 ```

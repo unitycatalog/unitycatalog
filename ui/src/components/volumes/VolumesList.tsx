@@ -17,7 +17,10 @@ export default function VolumesList({
   schema,
   filters,
 }: VolumesListProps) {
-  const { data, isLoading } = useListVolumes({ catalog, schema });
+  const { data, isLoading } = useListVolumes({
+    catalog_name: catalog,
+    schema_name: schema,
+  });
   const navigate = useNavigate();
 
   return (
@@ -31,6 +34,7 @@ export default function VolumesList({
           `/volumes/${record.catalog_name}/${record.schema_name}/${record.name}`,
         )
       }
+      rowKey={(record) => `volume-${record.volume_id}`}
       columns={[
         {
           title: 'Name',

@@ -39,7 +39,9 @@ export default function FunctionSidebar({
   schema,
   ucFunction,
 }: FunctionSidebarProps) {
-  const { data } = useGetFunction({ catalog, schema, ucFunction });
+  const { data } = useGetFunction({
+    name: [catalog, schema, ucFunction].join('.'),
+  });
 
   if (!data) return null;
 

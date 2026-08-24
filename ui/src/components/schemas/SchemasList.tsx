@@ -10,7 +10,7 @@ interface SchemasListProps {
 }
 
 export default function SchemasList({ catalog }: SchemasListProps) {
-  const { data, isLoading } = useListSchemas({ catalog });
+  const { data, isLoading } = useListSchemas({ catalog_name: catalog });
   const navigate = useNavigate();
 
   return (
@@ -19,6 +19,7 @@ export default function SchemasList({ catalog }: SchemasListProps) {
       title={<Typography.Title level={4}>Schemas</Typography.Title>}
       data={data?.schemas}
       onRowClick={(record) => navigate(`/data/${catalog}/${record.name}`)}
+      rowKey={(record) => `schema-${record.schema_id}`}
       columns={[
         {
           title: 'Name',

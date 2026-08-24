@@ -16,10 +16,12 @@ export default function VolumeDetails() {
   if (!schema) throw new Error('Schema name is required');
   if (!volume) throw new Error('Volume name is required');
 
-  const { data } = useGetVolume({ catalog, schema, volume });
+  const { data } = useGetVolume({ name: [catalog, schema, volume].join('.') });
   const [open, setOpen] = useState<boolean>(false);
   const { setNotification } = useNotification();
-  const mutation = useUpdateVolume({ catalog, schema, volume });
+  const mutation = useUpdateVolume({
+    name: [catalog, schema, volume].join('.'),
+  });
 
   if (!data) return null;
 
@@ -55,7 +57,7 @@ export default function VolumeDetails() {
         <DetailsLayout.Content>
           <Flex vertical gap="middle">
             <DescriptionBox
-              comment={data.comment}
+              comment={data.comment || ''}
               onEdit={() => setOpen(true)}
             />
           </Flex>

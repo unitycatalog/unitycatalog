@@ -5,6 +5,7 @@ import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.linecorp.armeria.common.Cookie;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
@@ -15,10 +16,10 @@ import io.netty.util.AttributeKey;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
-import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
-import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,64 +37,80 @@ import org.slf4j.LoggerFactory;
 public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthDecorator.class);
-  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
+  private final UserRepository userRepository;
+
+  public static final String UC_TOKEN_KEY = "UC_TOKEN";
+
+  private static final String BEARER_PREFIX = "Bearer ";
 
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
       AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
+
+  private final JwksOperations jwksOperations;
+
+  public AuthDecorator(SecurityContext securityContext, Repositories repositories) {
+    this.jwksOperations = new JwksOperations(securityContext);
+    this.userRepository = repositories.getUserRepository();
+  }
 
   @Override
   public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req)
       throws Exception {
     LOGGER.debug("AuthDecorator checking {}", req.path());
-    String authorization =
-        req.headers().stream()
-            .filter(h -> h.getKey().equals(HttpHeaderNames.AUTHORIZATION))
-            .map(Map.Entry::getValue)
+
+    String authorizationHeader = req.headers().get(HttpHeaderNames.AUTHORIZATION);
+    String authorizationCookie =
+        req.headers().cookies().stream()
+            .filter(c -> c.name().equals(UC_TOKEN_KEY))
+            .map(Cookie::value)
             .findFirst()
             .orElse(null);
 
-    if (authorization == null) {
-      throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No authorization found.");
+    DecodedJWT decodedJWT =
+        JWT.decode(getAccessTokenFromCookieOrAuthHeader(authorizationHeader, authorizationCookie));
+
+    String issuer = decodedJWT.getIssuer();
+    String keyId = decodedJWT.getKeyId();
+    String alg = decodedJWT.getAlgorithm();
+
+    LOGGER.debug("Validating access-token for issuer: {} and keyId: {}", issuer, keyId);
+
+    if (!issuer.equals(INTERNAL)) {
+      throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "Invalid access token.");
     }
 
-    String[] parts = authorization.split(" ");
+    // Internal tokens don't need audience validation
+    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
+    decodedJWT = jwtVerifier.verify(decodedJWT);
 
-    if (parts.length != 2 || !parts[0].equals("Bearer")) {
-      throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No Bearer found.");
-    } else {
-      String token = parts[1];
-      DecodedJWT decodedJWT = JWT.decode(token);
+    String subject = decodedJWT.getSubject();
 
-      JwksOperations jwksOperations = new JwksOperations();
-
-      String issuer = decodedJWT.getClaim(JwtClaim.ISSUER.key()).asString();
-      String keyId = decodedJWT.getHeaderClaim(JwtClaim.KEY_ID.key()).asString();
-
-      LOGGER.debug("Validating access-token for issuer: {}", issuer);
-
-      if (!issuer.equals(INTERNAL)) {
-        throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "Invalid access token.");
-      }
-
-      JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
-      decodedJWT = jwtVerifier.verify(decodedJWT);
-      String subject = decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString();
-
-      User user;
-      try {
-        user = USER_REPOSITORY.getUserByEmail(subject);
-      } catch (Exception e) {
-        user = null;
-      }
-      if (!subject.equals("admin") && (user == null || user.getState() != User.StateEnum.ENABLED)) {
-        throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed.");
-      }
-
-      LOGGER.debug("Access allowed for subject: {}", subject);
-
-      ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
+    User user;
+    try {
+      user = userRepository.getUserByEmail(subject);
+    } catch (Exception e) {
+      LOGGER.debug("User not found: {}", subject);
+      user = null;
     }
+    if (user == null || user.getState() != User.StateEnum.ENABLED) {
+      throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + subject);
+    }
+
+    LOGGER.debug("Access allowed for subject: {}", subject);
+
+    ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
 
     return delegate.serve(ctx, req);
+  }
+
+  private String getAccessTokenFromCookieOrAuthHeader(
+      String authorizationHeader, String authorizationCookie) {
+    if (authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX)) {
+      return authorizationHeader.substring(BEARER_PREFIX.length());
+    }
+    if (authorizationCookie != null) {
+      return authorizationCookie;
+    }
+    throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No authorization found.");
   }
 }

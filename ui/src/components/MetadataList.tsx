@@ -16,7 +16,12 @@ interface MetadataListProps<T> {
 
 export default function MetadataList<
   T extends Record<K, string | number | null>,
-  K extends keyof T,
+  // NOTE:
+  // Since some properties do not extend `string | number | null` (e.g., `SecurablePropertiesMap`),
+  // we should filter out such properties here.
+  K extends {
+    [U in keyof T]: T[U] extends string | number | null ? U : never;
+  }[keyof T],
 >({ data, metadata, title }: MetadataListProps<T>) {
   return (
     <Flex vertical gap="middle">

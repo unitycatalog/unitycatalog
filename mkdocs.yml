@@ -8,21 +8,63 @@ site_author: unitycatalog
 
 nav:
   - Home: index.md
-  - Quickstart: quickstart.md
+  - Getting Started:
+      - Quickstart: quickstart.md
+      - Docker Compose: docker_compose.md
   - Usage:
       - CLI: usage/cli.md
+      - UI: usage/ui.md
+      - API:
+          - Overview: usage/api/index.md
+          - Catalogs: usage/api/catalogs.md
+          - Schemas: usage/api/schemas.md
+          - Tables: usage/api/tables.md
+          - Volumes: usage/api/volumes.md
+          - Functions: usage/api/functions.md
+          - Models: usage/api/models.md
+          - UC Delta API: usage/api/delta.md
       - Tables:
-          - usage/tables/index.md
           - Delta Lake: usage/tables/deltalake.md
-          - Parquet: usage/tables/parquet.md
+          - Formats: usage/tables/formats.md
           - UniForm: usage/tables/uniform.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
-      - Server: usage/server.md
+      - Models: usage/models.md
+      - Metric Views: usage/metric-views.md
+  - Server:
+      - Configuration: server/configuration.md
+      - Auth: server/auth.md
+      - Users and Privileges: server/users-privileges.md
+      - Deployment: server/deployment.md
+      - Deploy for AWS: server/aws.md
   - Integrations:
+      - Overview: integrations/index.md
+      - Apache Spark: integrations/unity-catalog-spark.md
+      - CelerData: integrations/unity-catalog-celerdata.md
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
-  - Deployment: deployment.md
+      - Kuzu: integrations/unity-catalog-kuzu.md
+      - PuppyGraph: integrations/unity-catalog-puppygraph.md
+      - SpiceAI: integrations/unity-catalog-spiceai.md
+      - Trino: integrations/unity-catalog-trino.md
+      - XTable: integrations/unity-catalog-xtable.md
+  - AI:
+      - Quickstart: ai/quickstart.md
+      - Usage: ai/usage.md
+      - AI Client: ai/client.md
+      - AI Integrations:
+          - Integrations: ai/integrations/index.md
+          - LangChain: ai/integrations/langchain.md
+          - LlamaIndex: ai/integrations/llamaindex.md
+          - OpenAI: ai/integrations/openai.md
+          - Anthropic: ai/integrations/anthropic.md
+          - CrewAI: ai/integrations/crewai.md
+          - AutoGen: ai/integrations/autogen.md
+          - LiteLLM: ai/integrations/litellm.md
+          - Gemini: ai/integrations/gemini.md
+
+exclude_docs: |
+  README.md
 
 plugins:
   - search
@@ -30,12 +72,19 @@ plugins:
 
 theme:
   name: material
+  logo: assets/images/uc-logo-mark-reverse.png
+  favicon: assets/images/unitycatalog_256x256.png
+  font:
+    text: Plus Jakarta Sans
+    code: Consolas
   features:
     - content.action.edit
     - content.code.copy
+    - content.tabs.link
     - navigation.footer
     - navigation.expand
     - navigation.indexes
+    - content.code.annotate
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -53,8 +102,12 @@ theme:
         name: Switch to light mode
   icon:
     repo: fontawesome/brands/github
+    annotation: material/arrow-right-circle
+extra_css:
+  - assets/stylesheets/extra.css
 
 extra:
+  homepage: https://unitycatalog.io
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/unitycatalog/unitycatalog
@@ -82,3 +135,14 @@ markdown_extensions:
   - md_in_html
   - toc:
       permalink: true
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+        - name: plantuml
+          class: plantuml
+          format: !!python/name:pymdownx.superfences.fence_code_format

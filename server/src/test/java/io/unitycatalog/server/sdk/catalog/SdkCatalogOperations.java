@@ -23,8 +23,8 @@ public class SdkCatalogOperations implements CatalogOperations {
   }
 
   @Override
-  public List<CatalogInfo> listCatalogs() throws ApiException {
-    return catalogsApi.listCatalogs(null, 100).getCatalogs();
+  public List<CatalogInfo> listCatalogs(Optional<String> pageToken) throws ApiException {
+    return catalogsApi.listCatalogs(pageToken.orElse(null), 100).getCatalogs();
   }
 
   @Override

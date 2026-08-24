@@ -22,13 +22,12 @@ export function DeleteVolumeModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteVolume({
-    catalog,
-    schema,
+    name: [catalog, schema, volume].join('.'),
   });
 
   const handleSubmit = useCallback(() => {
     mutation.mutate(
-      { catalog_name: catalog, schema_name: schema, name: volume },
+      { name: [catalog, schema, volume].join('.') },
       {
         onError: (error: Error) => {
           setNotification(error.message, 'error');
@@ -39,7 +38,7 @@ export function DeleteVolumeModal({
         },
       },
     );
-  }, [mutation, volume, setNotification, navigate]);
+  }, [mutation, volume, setNotification, navigate, catalog, schema]);
 
   return (
     <Modal

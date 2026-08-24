@@ -2,10 +2,19 @@ package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.model.FunctionInfo;
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Lob;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import java.util.List;
 import java.util.UUID;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -23,14 +32,23 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "schema_id")
   private UUID schemaId;
 
-  @Column(name = "comment")
+  @Column(name = "comment", length = 65535)
   private String comment;
+
+  @Column(name = "owner")
+  private String owner;
 
   @Column(name = "created_at")
   private Long createdAt;
 
+  @Column(name = "created_by")
+  private String createdBy;
+
   @Column(name = "updated_at")
   private Long updatedAt;
+
+  @Column(name = "updated_by")
+  private String updatedBy;
 
   @Column(name = "data_type")
   private ColumnTypeName dataType;
@@ -53,7 +71,8 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "routine_body")
   private FunctionInfo.RoutineBodyEnum routineBody;
 
-  @Column(name = "routine_definition")
+  @Lob
+  @Column(name = "routine_definition", length = 16777215)
   private String routineDefinition;
 
   @Column(name = "sql_data_access")
@@ -82,8 +101,11 @@ public class FunctionInfoDAO extends IdentifiableDAO {
                     : null)
             .name(functionInfo.getName())
             .comment(functionInfo.getComment())
+            .owner(functionInfo.getOwner())
             .createdAt(functionInfo.getCreatedAt())
+            .createdBy(functionInfo.getCreatedBy())
             .updatedAt(functionInfo.getUpdatedAt())
+            .updatedBy(functionInfo.getUpdatedBy())
             .dataType(functionInfo.getDataType())
             .fullDataType(functionInfo.getFullDataType())
             .externalLanguage(functionInfo.getExternalLanguage())
@@ -119,8 +141,11 @@ public class FunctionInfoDAO extends IdentifiableDAO {
             .functionId(getId().toString())
             .name(getName())
             .comment(comment)
+            .owner(owner)
             .createdAt(createdAt)
+            .createdBy(createdBy)
             .updatedAt(updatedAt)
+            .updatedBy(updatedBy)
             .dataType(dataType)
             .fullDataType(fullDataType)
             .externalLanguage(externalLanguage)

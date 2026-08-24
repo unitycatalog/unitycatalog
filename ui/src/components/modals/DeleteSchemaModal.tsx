@@ -20,12 +20,12 @@ export function DeleteSchemaModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteSchema({
-    catalog,
+    full_name: [catalog, schema].join('.'),
   });
 
   const handleSubmit = useCallback(() => {
     mutation.mutate(
-      { catalog_name: catalog, name: schema },
+      { full_name: [catalog, schema].join('.') },
       {
         onError: (error: Error) => {
           setNotification(error.message, 'error');

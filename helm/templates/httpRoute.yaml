@@ -1,0 +1,37 @@
+{{- if .Values.httpRoute.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "unitycatalog.fullname" . | quote }}
+  labels:
+    {{- include "unitycatalog.commonLabels" . | nindent 4 }}
+  {{- with .Values.httpRoute.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  hostnames:
+    - {{ required "Host is required" .Values.httpRoute.host | quote }}
+  parentRefs:
+    {{- with .Values.httpRoute.parentRefs }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  rules:
+    {{- if .Values.server.enabled }}
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /api
+      backendRefs:
+        - name: {{ include "unitycatalog.server.fullname" . | quote }}
+          port: {{ .Values.server.service.port }}
+    {{- end }}
+    {{- if .Values.ui.enabled }}
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /
+      backendRefs:
+        - name: {{ include "unitycatalog.ui.fullname" . | quote }}
+          port: {{ .Values.ui.service.port }}
+    {{- end }}
+{{- end }}

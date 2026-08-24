@@ -17,7 +17,10 @@ export default function TablesList({
   schema,
   filters,
 }: TablesListProps) {
-  const { data, isLoading } = useListTables({ catalog, schema });
+  const { data, isLoading } = useListTables({
+    catalog_name: catalog,
+    schema_name: schema,
+  });
   const navigate = useNavigate();
 
   return (
@@ -31,6 +34,7 @@ export default function TablesList({
           `/data/${record.catalog_name}/${record.schema_name}/${record.name}`,
         )
       }
+      rowKey={(record) => `table-${record.table_id}`}
       columns={[
         {
           title: 'Name',

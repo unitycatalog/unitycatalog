@@ -39,7 +39,7 @@ export default function VolumeSidebar({
   schema,
   volume,
 }: VolumeSidebarProps) {
-  const { data } = useGetVolume({ catalog, schema, volume });
+  const { data } = useGetVolume({ name: [catalog, schema, volume].join('.') });
 
   if (!data) return null;
 

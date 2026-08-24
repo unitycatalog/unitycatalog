@@ -8,6 +8,7 @@ import io.unitycatalog.client.model.UpdateVolumeRequestContent;
 import io.unitycatalog.client.model.VolumeInfo;
 import io.unitycatalog.server.base.volume.VolumeOperations;
 import java.util.List;
+import java.util.Optional;
 
 public class SdkVolumeOperations implements VolumeOperations {
   private final VolumesApi volumesApi;
@@ -23,8 +24,11 @@ public class SdkVolumeOperations implements VolumeOperations {
   }
 
   @Override
-  public List<VolumeInfo> listVolumes(String catalogName, String schemaName) throws ApiException {
-    return volumesApi.listVolumes(catalogName, schemaName, 100, null).getVolumes();
+  public List<VolumeInfo> listVolumes(
+      String catalogName, String schemaName, Optional<String> pageToken) throws ApiException {
+    return volumesApi
+        .listVolumes(catalogName, schemaName, 100, pageToken.orElse(null))
+        .getVolumes();
   }
 
   @Override

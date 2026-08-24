@@ -1,19 +1,36 @@
 package io.unitycatalog.server.utils;
 
-import static io.unitycatalog.server.utils.ColumnUtils.*;
+import static io.unitycatalog.server.utils.ColumnUtils.addTypeTextAndJsonText;
+import static io.unitycatalog.server.utils.ColumnUtils.getTypeJson;
+import static io.unitycatalog.server.utils.ColumnUtils.getTypeText;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.ColumnTypeName;
+import io.unitycatalog.server.model.CreateCatalog;
+import io.unitycatalog.server.model.CreateFunction;
+import io.unitycatalog.server.model.CreateFunctionRequest;
+import io.unitycatalog.server.model.CreateSchema;
+import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.FunctionParameterInfo;
+import io.unitycatalog.server.model.FunctionParameterInfos;
+import io.unitycatalog.server.model.FunctionParameterMode;
+import io.unitycatalog.server.model.FunctionParameterType;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.util.Date;
 import java.util.List;
+import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -33,22 +50,29 @@ public class PopulateTestDatabase {
   public static void main(String[] args) throws JsonProcessingException {
     System.out.println("Populating test database...");
 
-    System.setProperty("server.env", "dev");
+    Properties properties = new Properties();
+    properties.setProperty(Property.SERVER_ENV.getKey(), "dev");
+    ServerProperties serverProperties = new ServerProperties(properties);
+    HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
+    Repositories repositories =
+        new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
+    CatalogRepository catalogRepository = repositories.getCatalogRepository();
+    SchemaRepository schemaRepository = repositories.getSchemaRepository();
+
     String catalogName = "unity";
     String schemaName = "default";
 
     CreateCatalog catalog1 = new CreateCatalog().name(catalogName).comment("Main catalog");
-    CatalogRepository.getInstance().addCatalog(catalog1);
+    catalogRepository.addCatalog(catalog1);
 
     CreateSchema schema1 =
         new CreateSchema().name(schemaName).catalogName(catalogName).comment("Default schema");
-    SchemaRepository.getInstance().createSchema(schema1);
+    schemaRepository.createSchema(schema1);
 
-    SchemaInfo schemaInfo =
-        SchemaRepository.getInstance().getSchema(catalogName + "." + schemaName);
+    SchemaInfo schemaInfo = schemaRepository.getSchema(catalogName + "." + schemaName);
     String schemaId = schemaInfo.getSchemaId();
 
-    SessionFactory factory = HibernateUtils.getSessionFactory();
+    SessionFactory factory = hibernateConfigurator.getSessionFactory();
 
     // Create managed table
     ColumnInfoDAO idColumn =
@@ -368,10 +392,11 @@ public class PopulateTestDatabase {
       session.getTransaction().commit();
     }
 
-    insertFunctionSampleData(catalogName, schemaName);
+    insertFunctionSampleData(catalogName, schemaName, repositories);
   }
 
-  public static void insertFunctionSampleData(String catalog, String schema) {
+  public static void insertFunctionSampleData(
+      String catalog, String schema, Repositories repositories) {
 
     // Create function objects
     CreateFunction sumFunction = new CreateFunction();
@@ -455,7 +480,7 @@ public class PopulateTestDatabase {
     stringLowercaseFunctionParameterInfos.setParameters(List.of(lowercaseParam));
     stringLowercaseFunction.setInputParams(stringLowercaseFunctionParameterInfos);
 
-    FunctionRepository functionRepository = FunctionRepository.getInstance();
+    FunctionRepository functionRepository = repositories.getFunctionRepository();
     functionRepository.createFunction(new CreateFunctionRequest().functionInfo(sumFunction));
 
     functionRepository.createFunction(

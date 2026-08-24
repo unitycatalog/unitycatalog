@@ -21,6 +21,7 @@ public enum CliParams {
       "The storage location associated with the table. Need to be specified for external tables.",
       "storage_location"),
   MAX_RESULTS("max_results", "The maximum number of results to return.", "max_results"),
+  PAGE_TOKEN("page_token", "Opaque token to retrieve the next page of results.", "page_token"),
   TABLE_TYPE(
       "table_type",
       "The type of the table. Supported values are MANAGED and EXTERNAL. For create table only EXTERNAL tables are supported in this CLI example.",
@@ -52,7 +53,7 @@ public enum CliParams {
       "output"),
   VERSION("version", "Version number of a registered model entity.", "version"),
   FORCE("force", "To force delete the entity", "force"),
-  RESOURCE_TYPE("resource_type", "The type of the resource", "resource_type"),
+  SECURABLE_TYPE("securable_type", "The type of the securable", "securable_type"),
   PRINCIPAL("principal", "The target principal of the permission change", "principal"),
   PRIVILEGE("privilege", "The privilege to grant or revoke", "privilege"),
   ID("id", "The unique id of the user", "id"),
@@ -60,25 +61,19 @@ public enum CliParams {
   EMAIL("email", "The email address for the user", "email"),
   FILTER("filter", "Query by which the results have to be filtered", "filter"),
   START_INDEX(
-      "startIndex",
-      "Specifies the index of the first result. First item is number 1",
-      "startIndex"),
-  COUNT("count", "Desired number of results per page", "count");
+      "start_index", "Specifies the index (starting at 1) of the first result.", "startIndex"),
+  COUNT("count", "Desired number of results per page", "count"),
+  URL("url", "The URL/path of the external location (e.g., s3://bucket/path)", "url"),
+  CREDENTIAL_NAME("credential_name", "The name of the storage credential", "credential_name"),
+  AWS_IAM_ROLE_ARN(
+      "aws_iam_role_arn", "The ARN of the AWS IAM role for credential", "aws_iam_role_arn"),
+  STORAGE_ROOT(
+      "storage_root",
+      "The storage root URL for managed tables/volumes within the catalog or schema.",
+      "storage_root");
   private final String value;
   private final String helpMessage;
   private final String serverParam;
-
-  CliParams(String value) {
-    this.value = value;
-    this.serverParam = "";
-    this.helpMessage = "";
-  }
-
-  CliParams(String value, String helpMessage) {
-    this.value = value;
-    this.helpMessage = helpMessage;
-    this.serverParam = "";
-  }
 
   CliParams(String value, String helpMessage, String serverParam) {
     this.value = value;
@@ -105,15 +100,6 @@ public enum CliParams {
       }
     }
     throw new IllegalArgumentException("No enum constant for value: " + text);
-  }
-
-  public static boolean contains(String text) {
-    for (CliParams cliParam : CliParams.values()) {
-      if (cliParam.value.equalsIgnoreCase(text)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   @Override

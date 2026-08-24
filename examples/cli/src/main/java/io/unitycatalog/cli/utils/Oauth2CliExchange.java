@@ -6,12 +6,16 @@ import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import io.unitycatalog.control.model.AuthorizationGrantType;
+import io.unitycatalog.control.model.OAuthAccessTokenForm;
+import io.unitycatalog.control.model.OAuthAuthorizationForm;
+import io.unitycatalog.control.model.OAuthAuthorizationInfo;
+import io.unitycatalog.control.model.ResponseType;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,14 +25,12 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -40,24 +42,6 @@ import org.apache.commons.codec.binary.Hex;
 
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
-
-  // TODO: need common module for these constants, they are reused in AuthService
-  public interface Fields {
-    String GRANT_TYPE = "grant_type";
-    String CLIENT_ID = "client_id";
-    String CLIENT_SECRET = "client_secret";
-    String REDIRECT_URL = "redirect_uri";
-  }
-
-  public interface TokenTypes {
-    String ACCESS = "urn:ietf:params:oauth:token-type:access_token";
-    String ID = "urn:ietf:params:oauth:token-type:id_token";
-    String JWT = "urn:ietf:params:oauth:token-type:jwt";
-  }
-
-  public interface GrantTypes {
-    String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
-  }
 
   private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -103,13 +87,15 @@ public class Oauth2CliExchange {
     new SecureRandom().nextBytes(stateBytes);
 
     String authUrl =
-        String.format(
-            "%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
-            authorizationUrl,
-            URLEncoder.encode(clientId, StandardCharsets.UTF_8),
-            URLEncoder.encode(redirectUrl, StandardCharsets.UTF_8),
-            URLEncoder.encode("openid profile email", StandardCharsets.UTF_8),
-            Hex.encodeHexString(stateBytes));
+        authorizationUrl
+            + "?"
+            + new OAuthAuthorizationForm()
+                .responseType(ResponseType.CODE)
+                .clientId(clientId)
+                .redirectUri(redirectUrl)
+                .scope("openid profile email")
+                .state(Hex.encodeHexString(stateBytes))
+                .toUrlQueryString();
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");
@@ -146,15 +132,15 @@ public class Oauth2CliExchange {
 
     server.stop(0);
 
-    Map<String, String> tokenParams = new HashMap<>();
-    tokenParams.put("code", authCode);
-    tokenParams.put(Fields.CLIENT_ID, clientId);
-    tokenParams.put(Fields.CLIENT_SECRET, clientSecret);
-    tokenParams.put(Fields.GRANT_TYPE, "authorization_code");
-    tokenParams.put(Fields.REDIRECT_URL, redirectUrl);
+    String tokenBody =
+        new OAuthAccessTokenForm()
+            .grantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+            .code(authCode)
+            .redirectUri(redirectUrl)
+            .toUrlQueryString();
 
-    String tokenBody = buildTokenBody(tokenParams);
-    String authorization = buildAuthorization(tokenParams);
+    String authorization =
+        "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes());
 
     // TODO: Replace this with a more modern web-client
     HttpURLConnection urlConnection = (HttpURLConnection) new URL(tokenUrl).openConnection();
@@ -203,25 +189,6 @@ public class Oauth2CliExchange {
     }
   }
 
-  private String buildTokenBody(Map<String, String> tokenParams) throws JsonProcessingException {
-    return tokenParams.entrySet().stream()
-        .filter(
-            p -> !p.getKey().equals(Fields.CLIENT_ID) && !p.getKey().equals(Fields.CLIENT_SECRET))
-        .map(
-            p ->
-                URLEncoder.encode(p.getKey(), StandardCharsets.UTF_8)
-                    + "="
-                    + URLEncoder.encode(p.getValue(), StandardCharsets.UTF_8))
-        .reduce((p1, p2) -> p1 + "&" + p2)
-        .orElse("");
-  }
-
-  private String buildAuthorization(Map<String, String> tokenParams) {
-    String authorizationValue =
-        tokenParams.get(Fields.CLIENT_ID) + ":" + tokenParams.get(Fields.CLIENT_SECRET);
-    return "Basic " + Base64.getEncoder().encodeToString(authorizationValue.getBytes());
-  }
-
   static class AuthCallbackHandler implements HttpHandler {
 
     CompletableFuture<String> futureValue = new CompletableFuture<>();
@@ -240,10 +207,10 @@ public class Oauth2CliExchange {
                       mapping(s -> decode(s[1], StandardCharsets.UTF_8), toList())));
 
       // Get the authorization flow code
-      String value = parameters.get("code").get(0);
+      String value = parameters.get(OAuthAuthorizationInfo.JSON_PROPERTY_CODE).get(0);
 
       // Prepare response send to browser.
-      String response = "Authentication to UC successful.";
+      String response = "User validated with identity provider.";
       exchange.sendResponseHeaders(HTTP_OK, response.getBytes().length);
       OutputStream os = exchange.getResponseBody();
       os.write(response.getBytes());

@@ -17,7 +17,10 @@ export default function FunctionsList({
   schema,
   filters,
 }: FunctionsListProps) {
-  const { data, isLoading } = useListFunctions({ catalog, schema });
+  const { data, isLoading } = useListFunctions({
+    catalog_name: catalog,
+    schema_name: schema,
+  });
   const navigate = useNavigate();
 
   return (
@@ -31,6 +34,7 @@ export default function FunctionsList({
           `/functions/${record.catalog_name}/${record.schema_name}/${record.name}`,
         )
       }
+      rowKey={(record) => `function-${record.function_id}`}
       columns={[
         {
           title: 'Name',

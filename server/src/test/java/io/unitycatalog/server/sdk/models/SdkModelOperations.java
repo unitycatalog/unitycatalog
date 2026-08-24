@@ -4,7 +4,13 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.ModelVersionsApi;
 import io.unitycatalog.client.api.RegisteredModelsApi;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.CreateModelVersion;
+import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.FinalizeModelVersion;
+import io.unitycatalog.client.model.ModelVersionInfo;
+import io.unitycatalog.client.model.RegisteredModelInfo;
+import io.unitycatalog.client.model.UpdateModelVersion;
+import io.unitycatalog.client.model.UpdateRegisteredModel;
 import io.unitycatalog.server.base.model.ModelOperations;
 import java.util.List;
 import java.util.Optional;
@@ -26,9 +32,11 @@ public class SdkModelOperations implements ModelOperations {
 
   @Override
   public List<RegisteredModelInfo> listRegisteredModels(
-      Optional<String> catalogName, Optional<String> schemaName) throws ApiException {
+      Optional<String> catalogName, Optional<String> schemaName, Optional<String> pageToken)
+      throws ApiException {
     return registeredModelsApi
-        .listRegisteredModels(catalogName.orElse(null), schemaName.orElse(null), 100, null)
+        .listRegisteredModels(
+            catalogName.orElse(null), schemaName.orElse(null), 100, pageToken.orElse(null))
         .getRegisteredModels();
   }
 
@@ -57,10 +65,10 @@ public class SdkModelOperations implements ModelOperations {
   }
 
   @Override
-  public List<ModelVersionInfo> listModelVersions(String registeredModelFullName)
-      throws ApiException {
+  public List<ModelVersionInfo> listModelVersions(
+      String registeredModelFullName, Optional<String> pageToken) throws ApiException {
     return modelVersionsApi
-        .listModelVersions(registeredModelFullName, 100, null)
+        .listModelVersions(registeredModelFullName, 100, pageToken.orElse(null))
         .getModelVersions();
   }
 
