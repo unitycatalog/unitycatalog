@@ -37,7 +37,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setRenewableCredKeys(GenericCredential cred) {
+  protected void setInitRenewableCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AwsCredential,
         "Expected AwsCredential, but got %s",
@@ -55,7 +55,7 @@ final class S3CredPropsBuilder extends CredPropsBuilder {
   }
 
   @Override
-  protected void setFixedCredKeys(GenericCredential cred) {
+  protected void setInitFixedCredKeys(GenericCredential cred) {
     Preconditions.checkArgument(
         cred instanceof AwsCredential,
         "Expected AwsCredential, but got %s",

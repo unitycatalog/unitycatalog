@@ -34,14 +34,8 @@ public final class FileSystemCredId {
     return new FileSystemCredId(credId, prefix);
   }
 
-  /**
-   * Like {@link #create(Configuration)} but for a filesystem being initialized on {@code uri}: when
-   * the configuration carries no Unity Catalog credential type, falls back to a {@link
-   * DefaultCredId} derived from the URI's scheme and authority.
-   */
-  public static FileSystemCredId create(Configuration conf, URI uri) {
+  public static FileSystemCredId create(Configuration conf, URI uri, String prefix) {
     CredId credId = CredId.create(conf, () -> new DefaultCredId(uri, conf));
-    String prefix = getCredPrefix(conf);
     return new FileSystemCredId(credId, prefix);
   }
 

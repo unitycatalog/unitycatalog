@@ -7,7 +7,7 @@ import static io.unitycatalog.server.service.credential.CredentialContext.READ_W
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Head;
 import com.linecorp.armeria.server.annotation.Param;
@@ -44,7 +44,7 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -68,6 +68,7 @@ import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.CreateNamespaceResponse;
@@ -77,9 +78,12 @@ import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@ExceptionHandler(IcebergRestExceptionHandler.class)
-public class IcebergRestCatalogService extends AuthorizedService {
+public class IcebergRestCatalogService extends AuthorizedService implements RegisteredService {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(IcebergRestCatalogService.class);
 
   private static final String PREFIX_BASE = "catalogs/";
 
@@ -107,6 +111,11 @@ public class IcebergRestCatalogService extends AuthorizedService {
   private final StagingTableRepository stagingTableRepository;
   private final TableRepository tableRepository;
   private final SessionFactory sessionFactory;
+
+  @Override
+  public ExceptionHandlerFunction exceptionHandler() {
+    return IcebergRestExceptionHandler.INSTANCE;
+  }
 
   public IcebergRestCatalogService(
       UnityCatalogAuthorizer authorizer,
@@ -154,18 +163,18 @@ public class IcebergRestCatalogService extends AuthorizedService {
   @AuthorizeResourceKey(METASTORE)
   public ListNamespacesResponse listNamespaces(
       @Param("catalog") String catalog, @Param("parent") Optional<String> parent) {
-    List<Namespace> namespaces;
-    if (parent.isPresent() && !parent.get().isEmpty()) {
-      // nested namespaces is not supported, so child namespaces will be empty
-      namespaces = Collections.emptyList();
-    } else {
-      ListSchemasResponse resp =
-          schemaRepository.listSchemas(catalog, Optional.of(Integer.MAX_VALUE), Optional.empty());
-      assert resp.getSchemas() != null;
-      namespaces =
-          resp.getSchemas().stream()
-              .map(schemaInfo -> Namespace.of(schemaInfo.getName()))
-              .collect(Collectors.toList());
+    List<Namespace> namespaces = new ArrayList<>();
+    // Nested namespaces are not supported, so a parent yields no child namespaces.
+    if (parent.isEmpty() || parent.get().isEmpty()) {
+      // This endpoint returns the whole listing, so follow the repository's page token to the end.
+      Optional<String> pageToken = Optional.empty();
+      do {
+        ListSchemasResponse resp =
+            schemaRepository.listSchemas(catalog, Optional.empty(), pageToken);
+        assert resp.getSchemas() != null;
+        resp.getSchemas().forEach(schemaInfo -> namespaces.add(Namespace.of(schemaInfo.getName())));
+        pageToken = nextPageToken(resp.getNextPageToken());
+      } while (pageToken.isPresent());
     }
 
     return ListNamespacesResponse.builder().addAll(namespaces).build();
@@ -553,12 +562,29 @@ public class IcebergRestCatalogService extends AuthorizedService {
     throw new NoSuchViewException("View does not exist: %s", namespace + "." + view);
   }
 
+  /**
+   * Accept a scan or commit report from an Iceberg client. Clients report after every scan and
+   * commit as long as the server advertises {@code V1_REPORT_METRICS}, which this service does. The
+   * report is acknowledged and discarded -- UC does not persist client telemetry today -- but the
+   * table is still resolved so that a report naming a table UC doesn't serve is answered with a
+   * 404, as the REST spec requires.
+   */
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics")
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse reportMetrics(
-      @Param("namespace") String namespace, @Param("table") String table) {
-    return HttpResponse.of(HttpStatus.OK);
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      @Param("table") String table,
+      ReportMetricsRequest request) {
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, table);
+    if (state.metadataLocation() == null) {
+      throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
+    }
+
+    LOGGER.debug("Received {} for table {}.{}.{}", request.reportType(), catalog, namespace, table);
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables")
@@ -567,13 +593,27 @@ public class IcebergRestCatalogService extends AuthorizedService {
   @AuthorizeResourceKey(METASTORE)
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
       @Param("catalog") String catalog, @Param("namespace") String namespace) {
-    ListTablesResponse tables =
-        tableRepository.listTables(
-            catalog, namespace, Optional.of(Integer.MAX_VALUE), Optional.empty(), false, false);
+    List<TableInfo> tables = new ArrayList<>();
+    // This endpoint returns the whole listing, so follow the repository's page token to the end.
+    // Only table names are used below, so columns and properties are omitted rather than fetched.
+    Optional<String> pageToken = Optional.empty();
+    do {
+      ListTablesResponse page =
+          tableRepository.listTables(
+              catalog,
+              namespace,
+              Optional.empty(),
+              pageToken,
+              /* omitProperties= */ true,
+              /* omitColumns= */ true);
+      tables.addAll(Objects.requireNonNull(page.getTables()));
+      pageToken = nextPageToken(page.getNextPageToken());
+    } while (pageToken.isPresent());
+
     List<TableIdentifier> filteredTables;
     try (Session session = sessionFactory.openSession()) {
       filteredTables =
-          Objects.requireNonNull(tables.getTables()).stream()
+          tables.stream()
               .filter(
                   tableInfo -> {
                     String metadataLocation =
@@ -591,5 +631,12 @@ public class IcebergRestCatalogService extends AuthorizedService {
     return org.apache.iceberg.rest.responses.ListTablesResponse.builder()
         .addAll(filteredTables)
         .build();
+  }
+
+  /**
+   * Wraps the page token a listing returned, treating a missing or empty token as "no more pages".
+   */
+  private static Optional<String> nextPageToken(String token) {
+    return Optional.ofNullable(token).filter(t -> !t.isEmpty());
   }
 }

@@ -1,13 +1,11 @@
 package io.unitycatalog.server.service;
 
 import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.persist.Repositories;
@@ -25,8 +23,7 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class TemporaryTableCredentialsService {
+public class TemporaryTableCredentialsService implements UnityCatalogRestService {
   private final TableRepository tableRepository;
   private final StorageCredentialVendor storageCredentialVendor;
   private final ServerProperties serverProperties;

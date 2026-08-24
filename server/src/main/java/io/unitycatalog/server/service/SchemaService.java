@@ -11,7 +11,6 @@ import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.ListSchemasResponse;
@@ -22,21 +21,20 @@ import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import lombok.SneakyThrows;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class SchemaService extends AuthorizedService {
+public class SchemaService extends AuthorizedService implements UnityCatalogRestService {
   private final SchemaRepository schemaRepository;
   private final CatalogRepository catalogRepository;
   private final MetastoreRepository metastoreRepository;
@@ -151,16 +149,10 @@ public class SchemaService extends AuthorizedService {
   public HttpResponse deleteSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       @Param("force") Optional<Boolean> force) {
-    SchemaInfo schemaInfo = schemaRepository.getSchema(fullName);
-    schemaRepository.deleteSchema(fullName, force.orElse(false));
-
-    CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
-
-    // First remove any child table links
-    authorizer.removeHierarchyChildren(UUID.fromString(schemaInfo.getSchemaId()));
-    // Then remove schema from catalog and clear authorizations
-    removeHierarchicalAuthorizations(schemaInfo.getSchemaId(), catalogInfo.getId());
-
+    schemaRepository.getSchema(fullName);
+    List<DeletedResource> deleted =
+        schemaRepository.deleteSchema(fullName, force.orElse(false));
+    clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }
 

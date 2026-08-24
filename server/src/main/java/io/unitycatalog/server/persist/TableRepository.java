@@ -316,6 +316,12 @@ public class TableRepository {
       // Idempotent replay: the transaction rolled back to a no-op. Return the current table state
       // (a fresh read, since the rolled-back transaction produced no response).
       return loadTableForDelta(catalog, schema, table);
+    } catch (DeltaCommitRepository.CommitContentCheckRequiredException e) {
+      // Version was purged, so the DB couldn't decide: settle it out of the (rolled-back)
+      // transaction by comparing file content. A match is a no-op success (return current state);
+      // a difference throws a conflict.
+      DeltaCommitRepository.verifyContentReplayOrThrowConflict(repositories.getFileOperations(), e);
+      return loadTableForDelta(catalog, schema, table);
     }
   }
 
@@ -890,10 +896,12 @@ public class TableRepository {
           session.persist(tableInfoDAO);
           if (RepositoryUtils.isViewLike(tableType.getValue())) {
             DependencyDAO.DependentType dependentType = DependencyDAO.DependentType.TABLE;
+            // view_dependencies is optional (see validateViewLike); treat an absent list as empty.
             List<DependencyDAO> depDAOs =
-                createTable.getViewDependencies().getDependencies().stream()
+                Optional.ofNullable(createTable.getViewDependencies())
+                    .map(DependencyList::getDependencies).orElse(List.of()).stream()
                     .map(dep -> DependencyDAO.from(dep, tableUUID, dependentType))
-                    .collect(Collectors.toList());
+                    .toList();
             repositories
                 .getDependencyRepository()
                 .createDependencies(session, tableUUID, dependentType, depDAOs);
@@ -913,7 +921,11 @@ public class TableRepository {
 
   private void validateMetricView(Session session, CreateTable createTable) {
     validateViewLike(session, createTable, "metric view");
-    if (createTable.getViewDependencies().getDependencies().isEmpty()) {
+    // A metric view's dependencies are always client-supplied; require at least one.
+    if (Optional.ofNullable(createTable.getViewDependencies())
+        .map(DependencyList::getDependencies)
+        .orElse(List.of())
+        .isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "view_dependencies must contain at least one entry for metric view");
@@ -929,10 +941,14 @@ public class TableRepository {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "view_definition is required for " + entityLabel);
     }
+    // view_dependencies is optional here (shared by view + metric view):
+    //  - a plain view may omit it (e.g. the Spark connector sends null when it cannot derive
+    //    lineage from the view text).
+    //  - metric views DO require it, enforced by the validateMetricView caller, not here.
+    // When present, every listed dependency must resolve to an existing table/function.
     DependencyList viewDeps = createTable.getViewDependencies();
     if (viewDeps == null || viewDeps.getDependencies() == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "view_dependencies is required for " + entityLabel);
+      return;
     }
     List<DependencyDAO> depDAOs =
         viewDeps.getDependencies().stream()

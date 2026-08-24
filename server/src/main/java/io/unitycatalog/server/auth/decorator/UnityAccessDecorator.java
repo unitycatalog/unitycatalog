@@ -2,16 +2,13 @@ package io.unitycatalog.server.auth.decorator;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.SplitHttpResponse;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedService;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.ServiceRequestContext;
-import com.linecorp.armeria.server.SimpleDecoratingHttpService;
 import io.netty.util.AttributeKey;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -27,8 +24,6 @@ import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
@@ -37,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PARAM;
 import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PAYLOAD;
@@ -63,27 +59,34 @@ import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.S
  * for non-resource request values (operation mode, table type, flag, etc.) exposed directly as a
  * SpEL variable instead of being mapped to a resource identifier.
  *
- * <p>For PAYLOAD-source locators (body-read), {@code peekData} only observes complete JSON chunks;
- * anything else (no body, non-JSON content-type, malformed JSON, trailing whitespace) silently
- * skips the authorization evaluation. The {@link #AUTH_PENDING} flag and {@link
- * AuthorizationGateConverter} close that gap: the decorator marks the request auth-pending on
- * entry to the PAYLOAD path, clears it only after authorization succeeds, and the gate converter
- * denies any body-binding where the flag is still set.
+ * <p>PARAM- and SYSTEM-source locators are read from the request context and authorized inline.
+ * PAYLOAD-source locators need a field from the request body, which is not available yet, so the
+ * decorator stashes a {@link #PAYLOAD_AUTHORIZER} callback that {@link AuthorizationGateConverter}
+ * invokes on the bound body just before the handler runs.
  */
 public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityAccessDecorator.class);
-  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   /**
-   * Per-request flag: {@code true} once the decorator enters the PAYLOAD path, flipped to
-   * {@code false} when the authorization evaluation completes inside the peekData callback. Read by
-   * {@link AuthorizationGateConverter} at body-binding time: if still {@code true}, authorization
-   * never ran (no body chunk arrived, content-type wasn't JSON, or JSON didn't complete) and the
-   * request must be denied.
+   * Client-facing message for every "an authorization check did not run" denial: the gate found no
+   * authorizer, a body carried no keys to evaluate, or a success response was produced without the
+   * check having run. Deliberately uniform and non-specific; the distinguishing detail belongs in
+   * the SECURITY VIOLATION log line, not the response. Public so tests can assert on it without
+   * copying the string.
    */
-  public static final AttributeKey<Boolean> AUTH_PENDING =
-      AttributeKey.valueOf(UnityAccessDecorator.class, "AUTH_PENDING");
+  public static final String ERR_AUTH_NOT_EXECUTED =
+      "Authorization could not be verified for this request";
+
+  /**
+   * Per-request {@link PayloadAuthorizer}, which {@link AuthorizationGateConverter} invokes on the
+   * bound body before the handler runs. Set on every request this decorator handles: the real
+   * authorizer when the method reads keys from the body, {@link
+   * PayloadAuthorizer#NO_BODY_CHECK_REQUIRED} when it does not. Always setting one means the gate
+   * never reads a missing value as "already authorized".
+   */
+  public static final AttributeKey<PayloadAuthorizer> PAYLOAD_AUTHORIZER =
+      AttributeKey.valueOf(UnityAccessDecorator.class, "PAYLOAD_AUTHORIZER");
   private final KeyMapper keyMapper;
   private final UserRepository userRepository;
 
@@ -178,43 +181,36 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     EvaluationAction evaluateAction =
         filterAnnotation
             .<EvaluationAction>map(x -> new ResultFilterAction(ctx, method))
-            .orElseGet(RequestEvaluationAction::new);
+            .orElseGet(() -> new RequestEvaluationAction(method));
 
     if (payloadLocators.isEmpty()) {
+      // All keys are already available, so authorize now.
       Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
-      evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
+      evaluateAction.runBeforeRequest(principal, expression, resourceIds, nonResourceValues);
+      // The method may still bind a body (e.g. updateCatalog authorizes on the "name" path param),
+      // so the gate converter still runs and needs to be told the check is done.
+      ctx.setAttr(PAYLOAD_AUTHORIZER, PayloadAuthorizer.NO_BODY_CHECK_REQUIRED);
     } else {
-      // Since we have PAYLOAD locators, we can only interrogate the payload while the request
-      // is being evaluated, via peekData()
-      LOGGER.debug("Checking authorization before in peekData.");
-
-      PeekDataHandler peekDataHandler = new PeekDataHandler(
-          req.contentType(),
-          payloadLocators,
-          resourceKeys,
-          nonResourceValues);
-
-      // peekData's lambda only fires when a body chunk arrives AND processPeekData returns true
-      // (JSON content-type + chunk ending in '}'). Any other path (no body, non-JSON, malformed
-      // JSON, trailing whitespace) silently skips authorization. Mark the request auth-pending
-      // here and clear it only after the authorization evaluation runs; AuthorizationGateConverter
-      // denies any body-binding attempt where this flag is still set.
-      ctx.setAttr(AUTH_PENDING, true);
-
-      req = req.peekData(data -> {
-        // This code block is not called immediately. It is called later as part of delegate.serve()
-        LOGGER.debug("Authorization peekData invoked.");
-
-        if (peekDataHandler.processPeekData(data)) {
-          Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
-          evaluateAction.beforeRequest(principal, expression, resourceIds, nonResourceValues);
-          ctx.setAttr(AUTH_PENDING, false);
-        }
-      });
+      // Some keys live in the body, so defer: the gate converter runs this on the bound object,
+      // which is what the handler will use. beforeRequest is called at the end of authorizePayload,
+      // once those keys are populated.
+      LOGGER.debug("Deferring PAYLOAD authorization to the request converter.");
+      ctx.setAttr(
+          PAYLOAD_AUTHORIZER,
+          (body, mapper) ->
+              authorizePayload(
+                  body,
+                  mapper,
+                  payloadLocators,
+                  resourceKeys,
+                  nonResourceValues,
+                  principal,
+                  expression,
+                  evaluateAction));
     }
 
-    HttpResponse response = delegate.serve(ctx, req);
-    return evaluateAction.afterRequest(response);
+    // runAfterRequest confirms at response time that beforeRequest actually ran.
+    return evaluateAction.runAfterRequest(delegate.serve(ctx, req));
   }
 
   private static Object findPayloadValue(String key, Map<String, Object> payload) {
@@ -233,20 +229,114 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  private interface EvaluationAction {
-    void beforeRequest(
+  /**
+   * How a request is authorized. Subclasses implement {@link #beforeRequest}; {@link
+   * #runAfterRequest} is final because it must be the only place a response is split, so an action
+   * is never double-wrapped. It waits for headers only, to avoid buffering large LIST responses.
+   *
+   * <p>On success it confirms {@code beforeRequest} actually ran, catching a PAYLOAD method whose
+   * deferred callback never fired. This is a backstop only: the handler has already run, so its
+   * side effects are not rolled back. Prevention is the gate converter authorizing before the
+   * handler; see {@link #PAYLOAD_AUTHORIZER}.
+   *
+   * <p>When authorization already ran inline and no subclass needs {@link #successCheck}, there is
+   * nothing to verify and the response is returned unsplit.
+   */
+  private abstract class EvaluationAction {
+    private final Method method;
+    private final AtomicBoolean beforeRequestRan = new AtomicBoolean(false);
+
+    EvaluationAction(Method method) {
+      this.method = method;
+    }
+
+    /**
+     * Authorizes this request. Call this rather than {@link #beforeRequest}: it records that the
+     * check ran, which {@link #runAfterRequest} verifies. The flag is set only once {@code
+     * beforeRequest} returns, so a denial leaves it unset.
+     */
+    final void runBeforeRequest(
+        UUID principal,
+        String expression,
+        Map<SecurableType, UUID> resourceIds,
+        Map<String, Object> nonResourceValues) {
+      beforeRequest(principal, expression, resourceIds, nonResourceValues);
+      beforeRequestRan.set(true);
+    }
+
+    /**
+     * Evaluates access, throwing a {@link BaseException} to deny. Implemented by subclasses;
+     * callers use {@link #runBeforeRequest} instead so the check is recorded.
+     */
+    protected abstract void beforeRequest(
         UUID principal,
         String expression,
         Map<SecurableType, UUID> resourceIds,
         Map<String, Object> nonResourceValues);
 
-    HttpResponse afterRequest(HttpResponse response);
+    /** The annotated method being guarded, for use in subclass log messages. */
+    protected final Method method() {
+      return method;
+    }
+
+    /**
+     * Whether {@link #successCheck} has anything to check. Return false when it is a no-op, so the
+     * fast path can skip splitting the response.
+     */
+    protected abstract boolean needsSuccessCheck();
+
+    /**
+     * Subclass-specific success check, run only after {@code beforeRequest} is confirmed to have
+     * run, and only when {@link #needsSuccessCheck} is true. Throw a {@link BaseException} to deny.
+     */
+    protected abstract void successCheck();
+
+    final HttpResponse runAfterRequest(HttpResponse response) {
+      // Fast path: authorization already ran synchronously (PARAM/SYSTEM keys), and no subclass
+      // wants a success-time check, so there is nothing left to verify. Return the response as-is
+      // rather than splitting it, which would add a stream hop for a check whose answer is known.
+      if (beforeRequestRan.get() && !needsSuccessCheck()) {
+        return response;
+      }
+      SplitHttpResponse split = response.split();
+      return HttpResponse.of(
+          split
+              .headers()
+              .thenApply(
+                  headers -> {
+                    if (headers.status().isSuccess()) {
+                      try {
+                        if (!beforeRequestRan.get()) {
+                          LOGGER.error(
+                              "SECURITY VIOLATION: Method {} produced a success response without "
+                                  + "running authorization; denying the request.",
+                              method.getName());
+                          throw new BaseException(
+                              ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
+                        }
+                        if (needsSuccessCheck()) {
+                          successCheck();
+                        }
+                      } catch (RuntimeException e) {
+                        // Abort the not-yet-consumed body before failing closed so the handler's
+                        // response payload is never streamed to the client.
+                        split.body().abort();
+                        throw e;
+                      }
+                    }
+                    return HttpResponse.of(headers, split.body());
+                  }));
+    }
   }
 
-  private class RequestEvaluationAction implements EvaluationAction {
+  private class RequestEvaluationAction extends EvaluationAction {
+
+    RequestEvaluationAction(Method method) {
+      super(method);
+    }
 
     @Override
-    public void beforeRequest(
+    protected void beforeRequest(
         UUID principal,
         String expression,
         Map<SecurableType, UUID> resourceIds,
@@ -257,25 +347,25 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     @Override
-    public HttpResponse afterRequest(HttpResponse response) {
-      return response;
-    }
-  }
-
-  private class ResultFilterAction implements EvaluationAction {
-    protected static final String ERR_AUTH_NOT_EXECUTED =
-        "Authorization required but failed to execute";
-    private final ServiceRequestContext ctx;
-    private final Method method;
-    private volatile ResultFilter resultFilter = null;
-
-    ResultFilterAction(ServiceRequestContext ctx, Method method) {
-      this.ctx = ctx;
-      this.method = method;
+    protected boolean needsSuccessCheck() {
+      return false;
     }
 
     @Override
-    public void beforeRequest(
+    protected void successCheck() {}
+  }
+
+  private class ResultFilterAction extends EvaluationAction {
+    private final ServiceRequestContext ctx;
+    private volatile ResultFilter resultFilter = null;
+
+    ResultFilterAction(ServiceRequestContext ctx, Method method) {
+      super(method);
+      this.ctx = ctx;
+    }
+
+    @Override
+    protected void beforeRequest(
       UUID principal,
       String expression,
       Map<SecurableType, UUID> resourceIds,
@@ -287,32 +377,23 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
 
     @Override
-    public HttpResponse afterRequest(HttpResponse response) {
-      // Wait only for response headers (not the full body) to run the enforcement check,
-      // then stream the body through. This avoids buffering large LIST responses just to
-      // check a flag that would allocate O(response size) per concurrent request.
-      SplitHttpResponse split = response.split();
-      return HttpResponse.of(split.headers().thenApply(
-        headers -> {
-          if (headers.status().isSuccess()) {
-            if (resultFilter == null) {
-              split.body().abort();
-              LOGGER.error(
-                  "SECURITY VIOLATION: Method {} did not execute evaluateAction",
-                  method.getName());
-              throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
-            }
-            if (!resultFilter.wasCalled()) {
-              split.body().abort();
-              LOGGER.error(
-                  "SECURITY VIOLATION: Method {} with @ResponseAuthorizeFilter did not call "
-                      + "applyResponseFilter(). This is a security vulnerability!",
-                  method.getName());
-              throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
-            }
-          }
-          return HttpResponse.of(headers, split.body());
-        }));
+    protected boolean needsSuccessCheck() {
+      // The handler is trusted to call applyResponseFilter(); nothing upstream can confirm it did,
+      // so this action always needs the response-time check.
+      return true;
+    }
+
+    @Override
+    protected void successCheck() {
+      // beforeRequestRan is already confirmed by the base class, so resultFilter is non-null here.
+      // Additionally require the handler to have actually applied the response filter.
+      if (!resultFilter.wasCalled()) {
+        LOGGER.error(
+            "SECURITY VIOLATION: Method {} with @ResponseAuthorizeFilter did not call "
+                + "applyResponseFilter(). This is a security vulnerability!",
+            method().getName());
+        throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
+      }
     }
   }
 
@@ -384,8 +465,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   }
 
   private static Method findServiceMethod(HttpService httpService) throws ClassNotFoundException {
-    if (httpService.unwrap() instanceof SimpleDecoratingHttpService decoratingService
-        && decoratingService.unwrap() instanceof AnnotatedService service) {
+    // as() searches the whole decorator chain, so this does not depend on how many decorators sit
+    // between the route and the annotated service.
+    HttpService annotated = httpService.as(AnnotatedService.class);
+    if (annotated instanceof AnnotatedService service) {
 
       LOGGER.debug("serviceName = {}, methodName = {}",
           service.serviceName(),
@@ -412,77 +495,48 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     return matchingMethods;
   }
 
-  private static class PeekDataHandler {
-    // This is a little ugly - peekData provides only a block of data at a time, so lets
-    // buffer it up until we think its complete. A better long term solution would be to
-    // abandon this method and either integrate with Spring Boot to get full AOP support
-    // with aspect weaving, or build implement custom aspect weaving so we can intercept
-    // the method call directly and extract the payload data from the method arguments.
-
-    private final MediaType contentType;
-    private final List<AuthorizeKeyLocator> payloadLocators;
-    private final Map<SecurableType, Object> resourceKeys;
-    private final Map<String, Object> nonResourceValues;
-    private final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
-
-    private PeekDataHandler(
-        MediaType contentType,
-        List<AuthorizeKeyLocator> payloadLocators,
-        Map<SecurableType, Object> resourceKeys,
-        Map<String, Object> nonResourceValues) {
-      this.contentType = contentType;
-      this.payloadLocators = payloadLocators;
-      this.resourceKeys = resourceKeys;
-      this.nonResourceValues = nonResourceValues;
+  /**
+   * Authorizes against the already-bound body, invoked by {@link AuthorizationGateConverter} after
+   * binding and before the handler. Reads locator keys off the exact object the handler will use,
+   * so there is no differential between what is authorized and what executes. A malformed body
+   * never reaches here; it fails binding as a 400. Throws {@link BaseException} with {@link
+   * ErrorCode#PERMISSION_DENIED} to deny.
+   */
+  private void authorizePayload(
+      Object body,
+      ObjectMapper mapper,
+      List<AuthorizeKeyLocator> payloadLocators,
+      Map<SecurableType, Object> resourceKeys,
+      Map<String, Object> nonResourceValues,
+      UUID principal,
+      String expression,
+      EvaluationAction evaluateAction) {
+    // A null body (e.g. the JSON literal "null") carries no authorization keys, so fail closed
+    // rather than NPE below.
+    if (body == null) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, ERR_AUTH_NOT_EXECUTED);
     }
 
-    private boolean processPeekData(HttpData data) {
-      // TODO: For now, we're going to assume JSON data, but might need to support other
-      // content types.
-      if (contentType.equals(MediaType.JSON)) {
-        try {
-          dataStream.write(data.array());
-          LOGGER.debug("Payload: {}", dataStream.toString());
-        } catch (IOException e) {
-          // IGNORE
-        }
+    // Locators hold JSON wire names (e.g. "table_id"), so go back through the same mapper rather
+    // than reflection: the wire names come from its naming strategy / @JsonProperty, not the Java
+    // field names.
+    Map<String, Object> payload = mapper.convertValue(body, new TypeReference<>() {});
 
-        // Unfortunately we don't appear to get a signal that we've got all the data, so we have to
-        // resort to attempting to parse the data whenever it _looks_ complete.
-        // TODO: try to optimize this using Jackson streaming or something else.
-        if (data.array()[data.array().length - 1] == '}') {
-          try {
-            Map<String, Object> payload = MAPPER.readValue(
-                dataStream.toByteArray(),
-                new TypeReference<>() {
-                });
-
-            payloadLocators.forEach(
-                l -> {
-                  Object value = findPayloadValue(l.getKey(), payload);
-                  if (l.getType().isPresent()) {
-                    resourceKeys.put(l.getType().get(), value);
-                  } else {
-                    if (value != null && value.getClass().isEnum()) {
-                      // Convert enums to their string representation
-                      value = value.toString();
-                    }
-                    nonResourceValues.put(l.getVariableName(), value);
-                  }
-                });
-
-            return true;
-          } catch (IOException e) {
-            // This is probably because we read partial data.
-            LOGGER.warn("Error parsing payload: {}", e.getMessage());
+    payloadLocators.forEach(
+        l -> {
+          Object value = findPayloadValue(l.getKey(), payload);
+          if (l.getType().isPresent()) {
+            resourceKeys.put(l.getType().get(), value);
+          } else {
+            if (value != null && value.getClass().isEnum()) {
+              // Convert enums to their string representation
+              value = value.toString();
+            }
+            nonResourceValues.put(l.getVariableName(), value);
           }
-        }
+        });
 
-      } else {
-        LOGGER.warn("Skipping content-type: {}", contentType);
-      }
-
-      return false;
-    }
+    Map<SecurableType, UUID> resourceIds = mapResourceKeys(resourceKeys, nonResourceValues);
+    evaluateAction.runBeforeRequest(principal, expression, resourceIds, nonResourceValues);
   }
 }

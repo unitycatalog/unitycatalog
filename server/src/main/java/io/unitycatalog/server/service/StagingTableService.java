@@ -5,14 +5,12 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.Repositories;
@@ -20,8 +18,7 @@ import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.utils.ServerProperties;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
-public class StagingTableService extends AuthorizedService {
+public class StagingTableService extends AuthorizedService implements UnityCatalogRestService {
 
   private final StagingTableRepository stagingTableRepository;
   private final SchemaRepository schemaRepository;

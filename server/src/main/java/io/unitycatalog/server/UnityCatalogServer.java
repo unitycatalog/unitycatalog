@@ -119,12 +119,18 @@ public class UnityCatalogServer implements AutoCloseable {
 
   private Server initializeServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
     ArmeriaServerBuilder armeriaServerBuilder =
-        new ArmeriaServerBuilder(unityCatalogServerBuilder.port, BASE_PATH, CONTROL_PATH);
+        new ArmeriaServerBuilder(
+            unityCatalogServerBuilder.port,
+            BASE_PATH,
+            CONTROL_PATH,
+            unityCatalogServerBuilder.serverProperties);
 
     // Init all repositories
     Repositories repositories =
         new Repositories(
-            hibernateConfigurator.getSessionFactory(), unityCatalogServerBuilder.serverProperties);
+            hibernateConfigurator.getSessionFactory(),
+            unityCatalogServerBuilder.serverProperties,
+            unityCatalogServerBuilder.cloudCredentialVendor);
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer
@@ -169,52 +175,48 @@ public class UnityCatalogServer implements AutoCloseable {
       Repositories repositories) {
     LOGGER.info("Adding Unity Catalog API services...");
     ServerProperties serverProperties = unityCatalogServerBuilder.serverProperties;
-    CloudCredentialVendor cloudCredentialVendor =
-        unityCatalogServerBuilder.cloudCredentialVendor != null
-            ? unityCatalogServerBuilder.cloudCredentialVendor
-            : new CloudCredentialVendor(serverProperties);
-    StorageCredentialVendor storageCredentialVendor =
-        new StorageCredentialVendor(cloudCredentialVendor, repositories.getExternalLocationUtils());
-    FileOperations fileOperations = new FileOperations(storageCredentialVendor, serverProperties);
+    // The credential/file-IO chain is built and owned by Repositories (so repositories can read
+    // table storage); reuse those instances here rather than rebuilding them.
+    StorageCredentialVendor storageCredentialVendor = repositories.getStorageCredentialVendor();
+    FileOperations fileOperations = repositories.getFileOperations();
 
     SchemaService schemaService = new SchemaService(authorizer, repositories, serverProperties);
 
-    // Each annotate* call registers one service. Order is not significant (Armeria routes by path
+    // Each annotate call registers one service. Order is not significant (Armeria routes by path
     // specificity); relative paths are resolved against the protocol's base path ("" mounts at the
     // base path root).
     armeriaServerBuilder
-        .annotateAuth("auth", new AuthService(securityContext, serverProperties, repositories))
-        .annotateScim("scim2/Users", new Scim2UserService(authorizer, repositories))
-        .annotateScim("scim2/Me", new Scim2SelfService(authorizer, repositories))
-        .annotateUc("permissions", new PermissionService(authorizer, repositories))
-        .annotateUc("catalogs", new CatalogService(authorizer, repositories, serverProperties))
-        .annotateUc("schemas", schemaService)
-        .annotateUc("volumes", new VolumeService(authorizer, repositories, serverProperties))
-        .annotateUc("tables", new TableService(authorizer, repositories, serverProperties))
-        .annotateUc(
+        .annotate("auth", new AuthService(securityContext, serverProperties, repositories))
+        .annotate("scim2/Users", new Scim2UserService(authorizer, repositories))
+        .annotate("scim2/Me", new Scim2SelfService(authorizer, repositories))
+        .annotate("permissions", new PermissionService(authorizer, repositories))
+        .annotate("catalogs", new CatalogService(authorizer, repositories, serverProperties))
+        .annotate("schemas", schemaService)
+        .annotate("volumes", new VolumeService(authorizer, repositories, serverProperties))
+        .annotate("tables", new TableService(authorizer, repositories, serverProperties))
+        .annotate(
             "staging-tables", new StagingTableService(authorizer, repositories, serverProperties))
-        .annotateUc("functions", new FunctionService(authorizer, repositories, serverProperties))
-        .annotateUc("models", new ModelService(authorizer, repositories, serverProperties))
-        .annotateUc("", new MetastoreService(repositories))
-        .annotateUc(
+        .annotate("functions", new FunctionService(authorizer, repositories, serverProperties))
+        .annotate("models", new ModelService(authorizer, repositories, serverProperties))
+        .annotate("", new MetastoreService(repositories))
+        .annotate(
             "temporary-table-credentials",
             new TemporaryTableCredentialsService(
                 storageCredentialVendor, repositories, serverProperties))
-        .annotateUc(
+        .annotate(
             "temporary-volume-credentials",
             new TemporaryVolumeCredentialsService(storageCredentialVendor, repositories))
-        .annotateUc(
+        .annotate(
             "temporary-model-version-credentials",
             new TemporaryModelVersionCredentialsService(storageCredentialVendor, repositories))
-        .annotateUc(
+        .annotate(
             "temporary-path-credentials",
             new TemporaryPathCredentialsService(storageCredentialVendor))
-        .annotateUc(
-            "credentials", new CredentialService(authorizer, repositories, serverProperties))
-        .annotateUc(
+        .annotate("credentials", new CredentialService(authorizer, repositories, serverProperties))
+        .annotate(
             "delta/preview/commits",
             new DeltaCommitsService(authorizer, repositories, serverProperties))
-        .annotateUc(
+        .annotate(
             "external-locations",
             new ExternalLocationService(authorizer, repositories, serverProperties));
     addIcebergApiServices(
@@ -235,7 +237,7 @@ public class UnityCatalogServer implements AutoCloseable {
     MetadataService metadataService = new MetadataService(fileOperations);
     TableConfigService tableConfigService = new TableConfigService(fileOperations);
 
-    armeriaServerBuilder.annotateIceberg(
+    armeriaServerBuilder.annotate(
         "iceberg",
         new IcebergRestCatalogService(
             authorizer, tableConfigService, metadataService, repositories, serverProperties));
@@ -250,7 +252,7 @@ public class UnityCatalogServer implements AutoCloseable {
     LOGGER.info("Adding UC Delta API services...");
     DeltaApiService deltaApiService =
         new DeltaApiService(authorizer, repositories, serverProperties, storageCredentialVendor);
-    armeriaServerBuilder.annotateDelta("", deltaApiService);
+    armeriaServerBuilder.annotate("", deltaApiService);
   }
 
   private void addSecurityDecorators(

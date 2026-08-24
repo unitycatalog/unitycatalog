@@ -9,7 +9,6 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Head;
 import com.linecorp.armeria.server.annotation.Param;
@@ -27,10 +26,12 @@ import io.unitycatalog.server.delta.model.DeltaCredentialOperation;
 import io.unitycatalog.server.delta.model.DeltaCredentialsResponse;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
 import io.unitycatalog.server.delta.model.DeltaRenameTableRequest;
+import io.unitycatalog.server.delta.model.DeltaReportMetricsRequest;
 import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
+import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import io.unitycatalog.server.exception.DeltaApiExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateStagingTable;
@@ -43,6 +44,7 @@ import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.service.AuthorizedService;
+import io.unitycatalog.server.service.RegisteredService;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
@@ -56,9 +58,11 @@ import java.util.UUID;
  *
  * <p>Enables Delta clients (e.g., Delta Spark, Delta Kernel) to create, read, write, and manage
  * managed and external Delta tables.
+ *
+ * <p>Its own protocol, with its own body mapper and the error format Delta clients expect, so it
+ * implements {@link RegisteredService} directly rather than the unrelated UC REST interface.
  */
-@ExceptionHandler(DeltaApiExceptionHandler.class)
-public class DeltaApiService extends AuthorizedService {
+public class DeltaApiService extends AuthorizedService implements RegisteredService {
 
   private static final List<String> ENDPOINTS =
       List.of(
@@ -80,6 +84,12 @@ public class DeltaApiService extends AuthorizedService {
   private final TableRepository tableRepository;
   private final StagingTableRepository stagingTableRepository;
   private final StorageCredentialVendor storageCredentialVendor;
+
+
+  @Override
+  public ExceptionHandlerFunction exceptionHandler() {
+    return DeltaApiExceptionHandler.INSTANCE;
+  }
 
   public DeltaApiService(
       UnityCatalogAuthorizer authorizer,
@@ -284,6 +294,36 @@ public class DeltaApiService extends AuthorizedService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "New table name is required.");
     }
     tableRepository.renameTable(catalog, schema, table, request.getNewName());
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
+  }
+
+  // ==================== Report Metrics API ====================
+
+  /**
+   * Accept commit metrics reported by Delta clients after a commit (e.g. Delta Spark's {@code
+   * UpdateMetricsHook}). Per {@code delta.yaml} the body's {@code table-id} must identify the same
+   * table as the path; mismatches are rejected. The metrics are acknowledged and discarded -- UC
+   * does not persist client telemetry today. Authorization mirrors {@link #updateTable}, so a
+   * caller who can commit to the table can report metrics for it.
+   */
+  @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics")
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
+  public HttpResponse reportMetrics(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("schema") @AuthorizeResourceKey(SCHEMA) String schema,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
+      DeltaReportMetricsRequest request) {
+    if (request == null || request.getTableId() == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "table-id is required.");
+    }
+    TableInfoDAO tableInfo = tableRepository.findTableOrThrow(catalog, schema, table);
+    if (!tableInfo.getId().equals(request.getTableId())) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          String.format(
+              "table-id %s does not match table %s.%s.%s.",
+              request.getTableId(), catalog, schema, table));
+    }
     return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 

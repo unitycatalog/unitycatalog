@@ -59,6 +59,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
@@ -541,5 +543,22 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
             .tableType(TableType.EXTERNAL)
             .dataSourceFormat(DataSourceFormat.DELTA);
     return tablesApi.createTable(createTable);
+  }
+
+  protected long countCasbinRulesReferencing(String... resourceIds) {
+    SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
+    try (Session session = sessionFactory.openSession()) {
+      long total = 0;
+      for (String resourceId : resourceIds) {
+        total +=
+            session
+                .createNativeQuery(
+                    "select count(*) from casbin_rule where v0 = :id or v1 = :id or v2 = :id",
+                    Long.class)
+                .setParameter("id", resourceId)
+                .uniqueResult();
+      }
+      return total;
+    }
   }
 }

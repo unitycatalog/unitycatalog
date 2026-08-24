@@ -23,6 +23,7 @@ import io.unitycatalog.client.delta.model.DeltaSetPropertiesUpdate;
 import io.unitycatalog.client.delta.model.DeltaSetProtocolUpdate;
 import io.unitycatalog.client.delta.model.DeltaSetSchemaUpdate;
 import io.unitycatalog.client.delta.model.DeltaSetTableCommentUpdate;
+import io.unitycatalog.client.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.client.delta.model.DeltaStructField;
 import io.unitycatalog.client.delta.model.DeltaStructFieldMetadata;
 import io.unitycatalog.client.delta.model.DeltaStructType;
@@ -47,6 +48,11 @@ import io.unitycatalog.server.service.delta.DeltaConsts.TableFeature;
 import io.unitycatalog.server.service.delta.DeltaConsts.TableProperties;
 import io.unitycatalog.server.service.delta.UcManagedDeltaContract;
 import io.unitycatalog.server.utils.TestUtils;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -1285,6 +1291,87 @@ public class SdkUpdateTableTest extends DeltaBaseTableCRUDTestEnv {
       assertThat(r.getMetadata().getLastCommitVersion()).isEqualTo(1L);
       assertThat(r.getMetadata().getLastCommitTimestampMs()).isEqualTo(1700000001L);
     }
+
+    // -------- content-based idempotency for a backfilled-and-purged version --------
+    // Once a version is backfilled and purged, its staged file name is no longer tracked, so a
+    // replay is settled by comparing the incoming staged file against the published commit file.
+    {
+      DeltaStagingTableResponse staging = createDeltaStaging("tbl_content_idem_purged");
+      Handle h = createDeltaManaged("tbl_content_idem_purged", staging, Map.of());
+      String loc = staging.getLocation();
+      // Commit v1, v2, v3, keeping each update so the v2 object can be replayed verbatim below.
+      DeltaAddCommitUpdate[] commits = new DeltaAddCommitUpdate[3];
+      Handle cur = h;
+      for (int i = 0; i < commits.length; i++) {
+        long v = i + 1;
+        commits[i] =
+            new DeltaAddCommitUpdate()
+                .commit(
+                    new DeltaCommit()
+                        .version(v)
+                        .timestamp(1700000000L + v)
+                        .fileName(String.format("%08d.json", v))
+                        .fileSize(1024L)
+                        .fileModificationTimestamp(1700000000L + v));
+        cur = cur.withEtag(updateTable(cur, commits[i]).getMetadata().getEtag());
+      }
+      // Backfill v2 -> purge v1 and v2 from the DB (leaving [v3]).
+      DeltaLoadTableResponse afterBackfill =
+          updateTable(cur, new DeltaSetLatestBackfilledVersionUpdate().latestPublishedVersion(2L));
+      final Handle h3 = cur.withEtag(afterBackfill.getMetadata().getEtag());
+
+      // Publish v2 and stage a byte-identical file: the replay is recognized by content and is an
+      // idempotent no-op success (table still at v3).
+      byte[] v2Content = "delta-commit-v2\n".getBytes(StandardCharsets.UTF_8);
+      writeTableFile(loc, "_delta_log/00000000000000000002.json", v2Content);
+      writeTableFile(loc, "_delta_log/_staged_commits/00000002.json", v2Content);
+      DeltaLoadTableResponse replay = updateTable(h3, commits[1]);
+      assertThat(replay.getLatestTableVersion()).isEqualTo(3L);
+
+      // A staged file whose content differs from the published commit is a definitive conflict.
+      writeTableFile(
+          loc,
+          "_delta_log/_staged_commits/00000002.json",
+          "different\n".getBytes(StandardCharsets.UTF_8));
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h3, commits[1]),
+          DeltaErrorType.COMMIT_VERSION_CONFLICT_EXCEPTION,
+          "already accepted");
+
+      // The published file is absent (deleted here): the outcome cannot be determined, so the whole
+      // request fails open to a retriable COMMIT_STATE_UNKNOWN (500), never a false conflict.
+      deleteTablePath(loc, "_delta_log/00000000000000000002.json");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h3, commits[1]),
+          DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION,
+          "retry");
+
+      // The published path exists but cannot be read as a file (a directory stands in for a
+      // permission / non-not-found IO error): still COMMIT_STATE_UNKNOWN, not a false conflict.
+      createTableDir(loc, "_delta_log/00000000000000000002.json");
+      TestUtils.assertDeltaApiException(
+          () -> updateTable(h3, commits[1]),
+          DeltaErrorType.COMMIT_STATE_UNKNOWN_EXCEPTION,
+          "retry");
+    }
+  }
+
+  /** Write {@code content} to {@code relativePath} under the table's (file://) storage location. */
+  private void writeTableFile(String storageLocation, String relativePath, byte[] content)
+      throws IOException {
+    Path path = Path.of(URI.create(storageLocation + "/" + relativePath));
+    Files.createDirectories(path.getParent());
+    Files.write(path, content);
+  }
+
+  /** Delete {@code relativePath} under the table's (file://) storage location. */
+  private void deleteTablePath(String storageLocation, String relativePath) throws IOException {
+    Files.delete(Path.of(URI.create(storageLocation + "/" + relativePath)));
+  }
+
+  /** Create {@code relativePath} as a directory under the table's (file://) storage location. */
+  private void createTableDir(String storageLocation, String relativePath) throws IOException {
+    Files.createDirectories(Path.of(URI.create(storageLocation + "/" + relativePath)));
   }
 
   // ---------------------------------------------------------------- helpers

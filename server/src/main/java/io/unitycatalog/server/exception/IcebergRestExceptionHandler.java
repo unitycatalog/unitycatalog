@@ -21,6 +21,11 @@ import org.apache.iceberg.rest.responses.ErrorResponse;
  */
 public class IcebergRestExceptionHandler extends BaseExceptionHandler {
 
+  /** Shared instance; these handlers are stateless. */
+  public static final IcebergRestExceptionHandler INSTANCE = new IcebergRestExceptionHandler();
+
+  private IcebergRestExceptionHandler() {}
+
   /**
    * Walks the cause chain past BaseException wrappers to find the original exception, so the
    * Iceberg error type reflects the actual exception (e.g., "NoSuchTableException") rather than
