@@ -25,3 +25,11 @@ repos:
         args:
           - --chart-search-root=helm
           - --output-file=README.md
+  - repo: local
+    hooks:
+      - id: clean-bun-lock
+        name: Strip proxy URLs from ui/bun.lock
+        language: system
+        entry: bash -c 'cd ui && bun run clean-bun-lock'
+        files: ^ui/bun\.lock$
+        pass_filenames: false
