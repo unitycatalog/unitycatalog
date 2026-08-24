@@ -33,8 +33,10 @@ import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
-import java.net.URISyntaxException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -212,7 +214,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
-  public void testTable() throws ApiException, IOException, URISyntaxException {
+  public void testTable() throws ApiException, IOException {
     CreateCatalog createCatalog =
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
     catalogOperations.createCatalog(createCatalog);
@@ -283,20 +285,28 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(errorResponse.type()).isEqualTo(NoSuchTableException.class.getSimpleName());
     }
 
-    // Add the uniform metadata
+    // Register UniForm-derived Iceberg metadata for the table. The fixture's baked table root is
+    // rewritten onto a hermetic temp directory and the metadata file is written under it, modeling
+    // a real UniForm table whose persisted metadata pointer lives inside the table location that
+    // the REST load path validates.
+    Path tableRoot = testDirectoryRoot.resolve("uniform_iceberg_table");
+    NormalizedURL tableLocation = NormalizedURL.from(tableRoot.toUri());
+    Path metadataFile = tableRoot.resolve("metadata/v1.metadata.json");
+    Files.createDirectories(metadataFile.getParent());
+    try (InputStream fixture =
+        Objects.requireNonNull(this.getClass().getResourceAsStream("/iceberg.metadata.json"))) {
+      String fixtureJson =
+          new String(fixture.readAllBytes(), StandardCharsets.UTF_8)
+              .replace("file:/tmp/uniform_iceberg_table", tableLocation.toString());
+      Files.writeString(metadataFile, fixtureJson);
+    }
+    String metadataLocation = metadataFile.toUri().toString();
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();
       TableInfoDAO tableInfoDAO = TableInfoDAO.builder().build();
       assertThat(tableInfo.getTableId()).isNotNull();
       session.load(tableInfoDAO, UUID.fromString(tableInfo.getTableId()));
-      String metadataLocation =
-          Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
-              .toURI()
-              .toString();
-      // The fixture's metadata document declares file:/tmp/uniform_iceberg_table as its table
-      // root; keep the persisted DAO location aligned so the REST service's location check models
-      // a valid UniForm table rather than an out-of-root metadata pointer.
-      tableInfoDAO.setUrl("file:/tmp/uniform_iceberg_table");
+      tableInfoDAO.setUrl(tableLocation.toString());
       tableInfoDAO.setUniformIcebergMetadataLocation(metadataLocation);
       session.merge(tableInfoDAO);
       tx.commit();
@@ -332,9 +342,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       LoadTableResponse loadTableResponse =
           IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
-          .isEqualTo(
-              Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
-                  .getPath());
+          .isEqualTo(metadataFile.toString());
 
       // non-prefixed URL should result in 404
       resp =

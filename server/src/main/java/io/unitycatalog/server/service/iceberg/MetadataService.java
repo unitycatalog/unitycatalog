@@ -28,13 +28,6 @@ public class MetadataService {
     this.fileOperations = fileOperations;
   }
 
-  public TableMetadata readTableMetadata(NormalizedURL metadataLocation) {
-    // TODO: cache fileIO
-    try (FileIO fileIO = fileOperations.getFileIO(metadataLocation)) {
-      return TableMetadataParser.read(fileIO, metadataLocation.toString());
-    }
-  }
-
   /**
    * Reads metadata only after confirming both the requested file and the table root recorded in the
    * metadata are inside the persisted table location.
@@ -42,14 +35,13 @@ public class MetadataService {
   public TableMetadata readTableMetadata(
       NormalizedURL metadataLocation, NormalizedURL persistedTableLocation) {
     validateMetadataLocation(metadataLocation, persistedTableLocation);
-    TableMetadata tableMetadata = readTableMetadata(metadataLocation);
+    // TODO: cache fileIO
+    TableMetadata tableMetadata;
+    try (FileIO fileIO = fileOperations.getFileIO(metadataLocation)) {
+      tableMetadata = TableMetadataParser.read(fileIO, metadataLocation.toString());
+    }
     validateTableMetadataLocation(tableMetadata, persistedTableLocation);
     return tableMetadata;
-  }
-
-  public void writeTableMetadata(TableMetadata tableMetadata, NormalizedURL metadataLocation) {
-    writeTableMetadata(
-        tableMetadata, metadataLocation, NormalizedURL.from(tableMetadata.location()));
   }
 
   /** Writes metadata only within the table location persisted by UC. */
@@ -67,12 +59,8 @@ public class MetadataService {
   /**
    * For local file locations, pre-creates the table's directory layout so staged creates can write
    * data and manifest files before the first metadata commit. Object stores have no directories.
+   * Prepares the directories only after validating the table's client-supplied locations.
    */
-  public void prepareTableLocation(TableMetadata tableMetadata) {
-    prepareTableLocation(tableMetadata, NormalizedURL.from(tableMetadata.location()));
-  }
-
-  /** Prepares local table directories after validating the table's client-supplied locations. */
   public void prepareTableLocation(
       TableMetadata tableMetadata, NormalizedURL persistedTableLocation) {
     validateTableMetadataLocation(tableMetadata, persistedTableLocation);
@@ -83,7 +71,7 @@ public class MetadataService {
   }
 
   /** Best-effort cleanup of a metadata file that lost a commit race or whose commit failed. */
-  public void deleteTableMetadata(NormalizedURL metadataLocation) {
+  private void deleteTableMetadata(NormalizedURL metadataLocation) {
     try (FileIO fileIO = fileOperations.getFileIO(metadataLocation, CredentialContext.READ_WRITE)) {
       fileIO.deleteFile(metadataLocation.toString());
     } catch (Exception e) {
@@ -99,7 +87,7 @@ public class MetadataService {
   }
 
   /** Builds the location of the next metadata file, following Iceberg's naming scheme. */
-  public static NormalizedURL newMetadataLocation(TableMetadata tableMetadata, int version) {
+  private static NormalizedURL newMetadataLocation(TableMetadata tableMetadata, int version) {
     String metadataDirectory =
         tableMetadata
             .properties()
