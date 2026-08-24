@@ -11,6 +11,7 @@ import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.CredPropsUtil.GenericCredentialFetcherFactory;
 import io.unitycatalog.hadoop.internal.auth.CredentialCache;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
+import io.unitycatalog.hadoop.internal.id.DeltaTableCredId;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
@@ -157,6 +158,70 @@ public class WriteIntentE2ETest extends BaseSparkIntegrationTest {
     assertStatementIntent(false, "SELECT * FROM %s", table);
   }
 
+  // Requires a Delta build with delta-io/delta#7518 (intent-aware UC credential requests);
+  // skipped on older Delta. Locally: publish Delta with the patch and run with
+  // -DdeltaVersion=<snapshot> -DsparkVersion=4.2.0.
+  @Test
+  public void deltaRestApiPathHonorsDeclaredWriteIntent() {
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+        deltaSupportsWriteIntent(), "requires Delta with delta-io/delta#7518");
+    session = createSparkSessionWithCatalogs(false, false, SPARK_CATALOG, CATALOG_NAME);
+    installRecorder(Set.of());
+
+    String table = CATALOG_NAME + "." + SCHEMA_NAME + ".wi_rest";
+    String location = "s3://test-bucket0" + dataDir + "/wi_rest";
+    sql("CREATE TABLE %s (i INT, s STRING) USING delta LOCATION '%s'", table, location);
+    sql("INSERT INTO %s VALUES (1, 'a')", table);
+
+    // The "server" now denies READ_WRITE for this table (delta-path credentials are keyed by
+    // location).
+    installRecorder(Set.of(location));
+
+    // SELECT: denied READ_WRITE, then READ succeeds and the query returns data.
+    fetches.clear();
+    clearCredentialCache();
+    assertThat(sql("SELECT * FROM %s", table)).hasSize(1);
+    assertThat(operationsFor(location))
+        .containsExactly(TableOperation.READ_WRITE.value(), TableOperation.READ.value());
+
+    // Declared write reaches Delta through UCSingleCatalog -> DeltaCatalog and fails fast.
+    fetches.clear();
+    clearCredentialCache();
+    assertThatThrownBy(() -> sql("INSERT INTO %s VALUES (2, 'b')", table))
+        .hasStackTraceContaining("Credential fetch failed");
+    assertThat(operationsFor(location)).containsOnly(TableOperation.READ_WRITE.value());
+
+    // Once the "grant" returns, the declared write succeeds.
+    installRecorder(Set.of());
+    fetches.clear();
+    clearCredentialCache();
+    sql("INSERT INTO %s VALUES (3, 'c')", table);
+    assertThat(operationsFor(location)).containsOnly(TableOperation.READ_WRITE.value());
+  }
+
+  /**
+   * True when the Delta on the classpath declares the intent-carrying {@code loadTable} override
+   * somewhere in DeltaCatalog's class hierarchy (interfaces excluded: the TableCatalog default
+   * exists on every Spark and proves nothing).
+   */
+  private static boolean deltaSupportsWriteIntent() {
+    try {
+      Class<?> current = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog");
+      while (current != null && current != Object.class) {
+        try {
+          current.getDeclaredMethod(
+              "loadTable", org.apache.spark.sql.connector.catalog.Identifier.class, Set.class);
+          return true;
+        } catch (NoSuchMethodException notHere) {
+          current = current.getSuperclass();
+        }
+      }
+      return false;
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
+  }
+
   /** Runs the statement and asserts the write-intent flag observed at every credential fetch. */
   private void assertStatementIntent(boolean expectedIntent, String statement, Object... args) {
     fetches.clear();
@@ -172,18 +237,24 @@ public class WriteIntentE2ETest extends BaseSparkIntegrationTest {
    * Records every table-credential fetch and denies READ_WRITE for the given table ids; all other
    * fetches are served by the real factory against the live server.
    */
-  private void installRecorder(Set<String> denyReadWriteForTableIds) {
+  private void installRecorder(Set<String> denyReadWriteForKeys) {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) -> {
-          if (!(credId instanceof TableCredId)) {
+          String key;
+          String operation;
+          if (credId instanceof TableCredId) {
+            key = ((TableCredId) credId).tableId();
+            operation = ((TableCredId) credId).tableOperation();
+          } else if (credId instanceof DeltaTableCredId) {
+            key = ((DeltaTableCredId) credId).location();
+            operation = ((DeltaTableCredId) credId).tableOperation();
+          } else {
             return realFactory.create(apiClient, credId);
           }
-          TableCredId tableCredId = (TableCredId) credId;
-          fetches.add(
-              new Fetch(tableCredId.tableId(), tableCredId.tableOperation(), currentWriteIntent()));
+          fetches.add(new Fetch(key, operation, currentWriteIntent()));
           return () -> {
-            if (denyReadWriteForTableIds.contains(tableCredId.tableId())
-                && TableOperation.READ_WRITE.value().equals(tableCredId.tableOperation())) {
+            if (denyReadWriteForKeys.contains(key)
+                && TableOperation.READ_WRITE.value().equals(operation)) {
               throw new ApiException(403, "SIMULATED_DENIAL: READ_WRITE not permitted");
             }
             return realFactory.create(apiClient, credId).createCredentials();
