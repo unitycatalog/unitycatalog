@@ -101,6 +101,29 @@ values under that pattern can steer JWKS fetches (an SSRF-style surface).
 Use wildcard issuers only where necessary, only for domains you control, and avoid patterns that
 cover internal or sensitive hosts. Prefer exact issuer URLs and `https://` issuers when possible.
 
+### Multiple server instances
+
+Authorization decisions use an in-memory Casbin policy loaded from the shared `casbin_rule` table.
+A grant or revoke written on one server process is not visible to other processes until they reload
+that table.
+
+Refresh is **off by default**. For any multi-instance deployment that shares one database (HA,
+rolling updates, horizontal scale), set:
+
+```properties
+server.authorization.policy-refresh=true
+```
+
+Optional tuning:
+
+| Property | Default | Purpose |
+|---|---|---|
+| `server.authorization.policy-refresh-interval` | `PT1M` | How often each instance polls `casbin_rule` |
+| `server.authorization.policy-refresh-debounce-interval` | `PT1S` | Minimum gap between deny-triggered reloads |
+
+Revocations propagate on the poll interval. A stale deny (a grant not yet seen) can trigger one
+debounced reload before returning 403.
+
 ### Restart the UC Server
 
 Now that the Google Authentication is configured, restart the UC Server with the following command.

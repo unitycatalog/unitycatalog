@@ -64,6 +64,9 @@ public class UnityCatalogServer implements AutoCloseable {
   /** True when this server built the configurator itself and must therefore close it. */
   private final boolean ownsHibernateConfigurator;
 
+  /** Set during {@link #initializeServer}; may be null if construction fails early. */
+  private UnityCatalogAuthorizer authorizer;
+
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
@@ -88,6 +91,7 @@ public class UnityCatalogServer implements AutoCloseable {
       // Construction failed after the SessionFactory was built; close it so a failed boot does
       // not leak its connection pool. Errors matter as much as RuntimeExceptions here: a
       // NoClassDefFoundError out of initializeServer() would leak the pool just the same.
+      closeAuthorizer(t);
       closeOwnedSessionFactory(t);
       throw t;
     }
@@ -105,6 +109,22 @@ public class UnityCatalogServer implements AutoCloseable {
       hibernateConfigurator.getSessionFactory().close();
     } catch (Throwable closeFailure) {
       primaryFailure.addSuppressed(closeFailure);
+    }
+  }
+
+  /** Stops the authorizer if closeable; failures are suppressed onto {@code primaryFailure}. */
+  private void closeAuthorizer(Throwable primaryFailure) {
+    if (!(authorizer instanceof AutoCloseable closeable)) {
+      return;
+    }
+    try {
+      closeable.close();
+    } catch (Exception closeFailure) {
+      if (primaryFailure != null) {
+        primaryFailure.addSuppressed(closeFailure);
+      } else {
+        LOGGER.warn("Failed to close the authorizer", closeFailure);
+      }
     }
   }
 
@@ -134,7 +154,7 @@ public class UnityCatalogServer implements AutoCloseable {
     // Init metastore
     repositories.getMetastoreRepository().initMetastoreIfNeeded();
     // Init authorizer
-    UnityCatalogAuthorizer authorizer =
+    authorizer =
         initializeAuthorizer(
             unityCatalogServerBuilder.serverProperties, hibernateConfigurator, repositories);
     // Configure error response stack traces
@@ -156,9 +176,15 @@ public class UnityCatalogServer implements AutoCloseable {
     if (serverProperties.isAuthorizationEnabled()) {
       try {
         LOGGER.info("Initializing JCasbinAuthorizer...");
-        UnityCatalogAuthorizer authorizer = new JCasbinAuthorizer(hibernateConfigurator);
-        new UnityAccessUtil(repositories).initializeAdmin(authorizer);
-        return authorizer;
+        JCasbinAuthorizer authorizer =
+            new JCasbinAuthorizer(hibernateConfigurator, serverProperties);
+        try {
+          new UnityAccessUtil(repositories).initializeAdmin(authorizer);
+          return authorizer;
+        } catch (Exception e) {
+          authorizer.close();
+          throw e;
+        }
       } catch (Exception e) {
         throw new BaseException(ErrorCode.INTERNAL, "Problem initializing authorizer.", e);
       }
@@ -307,6 +333,7 @@ public class UnityCatalogServer implements AutoCloseable {
     try {
       stop();
     } finally {
+      closeAuthorizer(null);
       if (ownsHibernateConfigurator) {
         hibernateConfigurator.getSessionFactory().close();
       }
