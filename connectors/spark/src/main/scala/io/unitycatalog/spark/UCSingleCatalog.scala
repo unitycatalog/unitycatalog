@@ -202,10 +202,7 @@ class UCSingleCatalog
 
   override def loadTable(ident: Identifier, timestamp:  Long): Table = delegate.loadTable(ident, timestamp)
 
-  // Spark resolves the target of INSERT / UPDATE / DELETE / MERGE through this overload, so it is
-  // the one place write intent is declared. Record it for `UCProxy.loadV1Table` (see
-  // `WRITE_INTENT` for why a thread-local and not the `writePrivileges` argument itself), and
-  // still forward the privileges so a future `DeltaCatalog` that honors them receives them.
+  // Spark resolves write targets (INSERT / UPDATE / DELETE / MERGE) through this overload.
   override def loadTable(
       ident: Identifier,
       writePrivileges: util.Set[TableWritePrivilege]): Table = {
@@ -623,12 +620,9 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
-  // True while the current thread resolves a table Spark declared as a write target via
-  // `loadTable(ident, writePrivileges)`. Carried out-of-band because the `DeltaCatalog` layer
-  // between `UCSingleCatalog` and `UCProxy` does not override that overload -- its inherited
-  // default drops the privileges and forwards to the intent-less `loadTable(ident)` -- so the
-  // vend site in `UCProxy.loadV1Table` could not see the intent otherwise. Set/cleared only in
-  // `UCSingleCatalog.loadTable(ident, writePrivileges)`; resolution runs on the calling thread.
+  // True while the current thread resolves a declared write target. Thread-local because
+  // DeltaCatalog does not override `loadTable(ident, writePrivileges)` and drops the argument
+  // before it reaches the vend site in `UCProxy.loadV1Table`.
   private[spark] val WRITE_INTENT = ThreadLocal.withInitial[Boolean](() => false)
 
   /**
@@ -789,13 +783,9 @@ private[spark] class UCProxy(
     }
   }
 
-  // Table ids whose READ_WRITE credential request was denied, so intent-less loads (SELECT
-  // resolution) go straight to READ instead of re-paying the denied round-trip on every query.
-  // An entry is cleared when a declared write for the table succeeds; per catalog instance.
+  // Table ids denied READ_WRITE, so intent-less loads skip the doomed round-trip per query.
   private[spark] val writeDeniedTables = util.concurrent.ConcurrentHashMap.newKeySet[String]()
 
-  // READ-credential fallback shared by the intent-less load paths: on failure, fall back to
-  // server-side planning when enabled, otherwise propagate.
   private def readCredentialsOrServerSidePlanning(
       credBuilder: UCCredentialHadoopConfs.Builder,
       tableId: String,
@@ -848,21 +838,15 @@ private[spark] class UCProxy(
         .enableCredentialScopedFs(credScopedFsEnabled)
         .hadoopConf(UCSingleCatalog.sessionHadoopConf())
 
-    // Spark declares write targets through `loadTable(ident, writePrivileges)` (available on
-    // every supported Spark version); `UCSingleCatalog` records that in `WRITE_INTENT`. A load
-    // with no declared intent is almost always a read, but a few paths (e.g. Delta's OPTIMIZE)
-    // still resolve their write target through the intent-less overload, so the first such load
-    // still requests READ_WRITE and only after a denial is the table remembered as read-only.
-    // A later declared write always requests READ_WRITE again and clears the entry on success,
-    // so a newly granted MODIFY takes effect on the next write attempt.
+    // Intent-less loads still try READ_WRITE first: some write paths (e.g. Delta's OPTIMIZE)
+    // resolve through the intent-less overload. A denial is remembered per table so SELECTs stop
+    // re-paying it; a later granted declared write clears the entry.
     val extraSerdeProps = if (UCSingleCatalog.WRITE_INTENT.get()) {
-      // Declared write: vending READ credentials here would only defer the same authorization
-      // failure to the storage layer mid-job, so let the denial surface now.
+      // Fail fast: READ credentials would only defer the denial to the storage layer mid-job.
       val props = credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
       writeDeniedTables.remove(tableId)
       props
     } else if (writeDeniedTables.contains(tableId)) {
-      // A previous READ_WRITE request for this table was denied: skip the guaranteed round-trip.
       readCredentialsOrServerSidePlanning(credBuilder, tableId, identifier)
     } else {
       try {
