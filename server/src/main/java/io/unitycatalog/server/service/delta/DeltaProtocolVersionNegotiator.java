@@ -24,7 +24,8 @@ final class DeltaProtocolVersionNegotiator {
 
   private static final int CURRENT_MAJOR = 1;
 
-  private static final Pattern VERSION_PATTERN = Pattern.compile("(\\d+)\\.(\\d+)");
+  // Bounded digit counts keep Integer.parseInt safe; no real protocol version comes close.
+  private static final Pattern VERSION_PATTERN = Pattern.compile("(\\d{1,4})\\.(\\d{1,5})");
 
   private DeltaProtocolVersionNegotiator() {}
 

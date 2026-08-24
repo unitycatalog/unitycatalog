@@ -40,7 +40,22 @@ public class DeltaProtocolVersionNegotiatorTest {
 
   @ParameterizedTest
   @ValueSource(
-      strings = {"1", "1.", ".0", "v1.0", "1.0.0", "abc", "1.0,", ",1.0", "1.0,,2.0", "1.x"})
+      strings = {
+        "1",
+        "1.",
+        ".0",
+        "v1.0",
+        "1.0.0",
+        "abc",
+        "1.0,",
+        ",1.0",
+        "1.0,,2.0",
+        "1.x",
+        // Oversized digit runs must be rejected as malformed, not overflow Integer.parseInt
+        // into a 500.
+        "99999999999999.0",
+        "1.999999999999"
+      })
   public void rejectsMalformedEntries(String client) {
     assertInvalidArgument(client, "is not of the form <major>.<minor>");
   }
