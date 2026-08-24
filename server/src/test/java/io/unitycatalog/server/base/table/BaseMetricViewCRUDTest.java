@@ -116,10 +116,6 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
    * measures declared in {@link #VIEW_DEFINITION_ASSET_SOURCE}. A metric view must be created with
    * a non-empty column list, so every valid request below carries these.
    *
-   * <p>Each column's {@code type_json} metadata carries the two required metric-view keys: {@code
-   * metric_view.type} ({@code dimension} or {@code measure}) and {@code metric_view.expr} (the
-   * originating YAML expression). Both are JSON strings, and the {@code expr} values match the
-   * corresponding entries in {@link #VIEW_DEFINITION_ASSET_SOURCE}.
    */
   protected static final List<ColumnInfo> METRIC_VIEW_COLUMNS =
       List.of(
