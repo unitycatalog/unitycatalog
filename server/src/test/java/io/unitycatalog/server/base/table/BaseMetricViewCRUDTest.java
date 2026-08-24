@@ -115,6 +115,11 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
    * The dimension/measure columns a reader resolves queries against, matching the dimensions and
    * measures declared in {@link #VIEW_DEFINITION_ASSET_SOURCE}. A metric view must be created with
    * a non-empty column list, so every valid request below carries these.
+   *
+   * <p>Each column's {@code type_json} metadata carries the two required metric-view keys: {@code
+   * metric_view.type} ({@code dimension} or {@code measure}) and {@code metric_view.expr} (the
+   * originating YAML expression). Both are JSON strings, and the {@code expr} values match the
+   * corresponding entries in {@link #VIEW_DEFINITION_ASSET_SOURCE}.
    */
   protected static final List<ColumnInfo> METRIC_VIEW_COLUMNS =
       List.of(
@@ -123,7 +128,9 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
               .typeText("DATE")
               .typeJson(
                   "{\"name\":\"event_day\",\"type\":\"date\","
-                      + "\"nullable\":true,\"metadata\":{}}")
+                      + "\"nullable\":true,\"metadata\":{"
+                      + "\"metric_view.type\":\"dimension\","
+                      + "\"metric_view.expr\":\"date_trunc('day', event_time)\"}}")
               .typeName(ColumnTypeName.DATE)
               .position(0)
               .comment("Event day dimension")
@@ -133,7 +140,9 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
               .typeText("BIGINT")
               .typeJson(
                   "{\"name\":\"event_count\",\"type\":\"long\","
-                      + "\"nullable\":true,\"metadata\":{}}")
+                      + "\"nullable\":true,\"metadata\":{"
+                      + "\"metric_view.type\":\"measure\","
+                      + "\"metric_view.expr\":\"count(*)\"}}")
               .typeName(ColumnTypeName.LONG)
               .position(1)
               .comment("Event count measure")
@@ -188,11 +197,17 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
         .isEqualTo(SOURCE_TABLE_FULL_NAME);
 
     // Columns are required on create, so they must also round-trip back to the reader that needs
-    // them to resolve queries against the metric view.
+    // them to resolve queries against the metric view. The per-column metric_view.type and
+    // metric_view.expr metadata is what makes a column resolvable as a dimension or a measure, so
+    // assert type_json survives verbatim rather than only checking the column names.
     assertThat(fetched.getColumns()).isNotNull();
     assertThat(fetched.getColumns())
         .extracting(ColumnInfo::getName)
         .containsExactly("event_day", "event_count");
+    assertThat(fetched.getColumns())
+        .extracting(ColumnInfo::getTypeJson)
+        .containsExactly(
+            METRIC_VIEW_COLUMNS.get(0).getTypeJson(), METRIC_VIEW_COLUMNS.get(1).getTypeJson());
 
     // Verify properties round-trip
     assertThat(fetched.getProperties()).isNotNull();
