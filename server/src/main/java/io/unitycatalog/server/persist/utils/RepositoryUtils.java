@@ -15,17 +15,39 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.Constants;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.HashMap;
+import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
 
 public class RepositoryUtils {
 
   private static final Map<String, Class<?>> PROPERTY_TYPE_MAP = new HashMap<>();
+
+  /**
+   * Acquires the table row lock shared by Delta and Iceberg commit paths. Lock waits and deadlock
+   * victims are reported as retryable requirement conflicts instead of leaking ORM exceptions.
+   */
+  public static void lockTableForCommit(
+      Session session, TableInfoDAO dao, UUID tableId, Optional<String> tableFullNameForLogging) {
+    try {
+      session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
+    } catch (RuntimeException e) {
+      if (!(e instanceof org.hibernate.PessimisticLockException)
+          && !(e instanceof jakarta.persistence.PessimisticLockException)) {
+        throw e;
+      }
+      throw new BaseException(
+          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
+          "Concurrent commit in progress on table "
+              + tableFullNameForLogging.orElseGet(tableId::toString)
+              + "; retry the request.");
+    }
+  }
 
   static {
     PROPERTY_TYPE_MAP.put(Constants.FUNCTION, String.class);

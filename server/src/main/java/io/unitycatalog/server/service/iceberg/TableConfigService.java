@@ -1,8 +1,10 @@
 package io.unitycatalog.server.service.iceberg;
 
 import io.unitycatalog.server.persist.utils.FileOperations;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Builds the per-table FileIO configuration (credentials, region, etc.) returned to clients in the
@@ -16,15 +18,11 @@ public class TableConfigService {
   }
 
   /**
-   * Returns the FileIO config for the given table location. Note this vends temporary storage
-   * credentials for the location as a side effect.
-   *
-   * @param location the registered table location used to scope credentials
+   * Builds credentials from the location persisted in the UC table DAO. Do not accept a location
+   * extracted from client-supplied Iceberg metadata here: that metadata is untrusted input.
    */
-  public Map<String, String> getTableConfig(NormalizedURL location) {
-    // TODO: metadataService.readTableMetadata called fileOperations.getFileIO already. It already
-    //  generated this config but not passed back. For best efficiency the result from
-    //  readTableMetadata should be reused.
-    return fileOperations.getFileIOConfig(location);
+  public Map<String, String> getTableConfig(
+      NormalizedURL tableLocation, Set<CredentialContext.Privilege> privileges) {
+    return fileOperations.getFileIOConfig(tableLocation, privileges);
   }
 }

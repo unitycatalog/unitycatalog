@@ -206,6 +206,8 @@ public class ServerProperties {
     COOKIE_TIMEOUT("server.cookie-timeout", "P5D", DURATION_VALIDATOR),
     ACCESS_TOKEN_TIMEOUT("server.access-token-timeout", "PT24H", DURATION_VALIDATOR),
     MANAGED_TABLE_ENABLED("server.managed-table.enabled", "true", BOOLEAN_VALIDATOR),
+    // Native Iceberg REST writes are experimental and opt-in until the API is stable.
+    ICEBERG_TABLE_ENABLED("server.iceberg-table.enabled", "false", BOOLEAN_VALIDATOR),
     MANAGED_TABLE_USE_DELTA_API_ONLY(
         "server.managed-table.use-delta-api-only", "false", BOOLEAN_VALIDATOR),
     UNIFORM_ICEBERG_V2_ALLOW_MISSING_DV(
@@ -511,6 +513,23 @@ public class ServerProperties {
           "MANAGED table is an is currently disabled. To enable it, set "
               + "'server.managed-table.enabled=true' in server.properties");
     }
+  }
+
+  /**
+   * Check if experimental native Iceberg REST table writes are enabled. Reads remain available when
+   * this flag is disabled; only namespace/table mutations are gated by this check.
+   */
+  public void checkIcebergTableEnabled() {
+    if (!isIcebergTableEnabled()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Iceberg table writes are currently disabled. To enable them, set "
+              + "'server.iceberg-table.enabled=true' in server.properties");
+    }
+  }
+
+  public boolean isIcebergTableEnabled() {
+    return isTrueOrEnable(get(Property.ICEBERG_TABLE_ENABLED));
   }
 
   /**

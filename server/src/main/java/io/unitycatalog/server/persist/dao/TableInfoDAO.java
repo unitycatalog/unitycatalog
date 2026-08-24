@@ -81,6 +81,11 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "view_definition", length = 16777215)
   private String viewDefinition;
 
+  /**
+   * Iceberg metadata pointer for either a Delta UniForm projection or a native Iceberg table. The
+   * meaning is distinguished by {@link #dataSourceFormat}: Delta is authoritative for UniForm;
+   * Iceberg is authoritative for native Iceberg tables.
+   */
   @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
 
