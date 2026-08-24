@@ -28,15 +28,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Unit tests for the credential-operation choice in {@code UCProxy.loadV1Table}: a load with
- * declared write intent (Spark's {@code loadTable(ident, writePrivileges)}, recorded in {@code
- * UCSingleCatalog.WRITE_INTENT}) requests READ_WRITE and surfaces a denial immediately, while
- * intent-less loads remember a READ_WRITE denial per table and go straight to READ afterwards
- * instead of re-paying the denied round-trip on every query.
- *
- * <p>The UC credential endpoint is stubbed at the hadoop connector's {@link
- * CredPropsUtil#genericCredFetcherFactory} seam, which sees the requested {@link TableOperation}
- * via {@link TableCredId} and can grant or deny per operation.
+ * Unit tests for the credential-operation choice in {@code UCProxy.loadV1Table}, with the UC
+ * credential endpoint stubbed at the {@link CredPropsUtil#genericCredFetcherFactory} seam. The
+ * end-to-end path (Spark SQL -> {@code UCSingleCatalog} -> DeltaCatalog -> vend site) is covered by
+ * {@code WriteIntentE2ETest}.
  */
 public class WriteIntentCredentialSuite {
 
@@ -66,14 +61,12 @@ public class WriteIntentCredentialSuite {
     String tableId = stubTable("t_denied");
     denyReadWriteGrantRead();
 
-    // First intent-less load: READ_WRITE is attempted once, denied, and remembered; the load
-    // still succeeds on READ credentials.
     proxy.loadTable(Identifier.of(NAMESPACE, "t_denied"));
     assertThat(readWriteAttempts.get()).isEqualTo(1);
     assertThat(readAttempts.get()).isEqualTo(1);
     assertThat(writeDeniedTables()).containsExactly(tableId);
 
-    // Subsequent loads skip the guaranteed READ_WRITE denial entirely.
+    // Subsequent loads must not retry the denied READ_WRITE.
     proxy.loadTable(Identifier.of(NAMESPACE, "t_denied"));
     assertThat(readWriteAttempts.get()).isEqualTo(1);
   }
@@ -84,8 +77,6 @@ public class WriteIntentCredentialSuite {
     denyReadWriteGrantRead();
 
     UCSingleCatalog$.MODULE$.WRITE_INTENT().set(true);
-    // Vending READ credentials to a declared write would only defer the same failure to the
-    // storage layer mid-job, so the denial must surface here and READ must not be attempted.
     assertThatThrownBy(() -> proxy.loadTable(Identifier.of(NAMESPACE, "t_write_denied")))
         .isInstanceOf(ApiException.class);
     assertThat(readWriteAttempts.get()).isEqualTo(1);
@@ -97,23 +88,17 @@ public class WriteIntentCredentialSuite {
     String tableId = stubTable("t_regranted");
     denyReadWriteGrantRead();
 
-    // Prime the denial memory through an intent-less load.
     proxy.loadTable(Identifier.of(NAMESPACE, "t_regranted"));
     assertThat(writeDeniedTables()).containsExactly(tableId);
 
-    // The principal is granted write access; a declared write still requests READ_WRITE (the
-    // denial memory never gates declared writes) and, once granted, clears the memory so
-    // intent-less loads return to the READ_WRITE-first path.
     grantAllOperations();
     UCSingleCatalog$.MODULE$.WRITE_INTENT().set(true);
     proxy.loadTable(Identifier.of(NAMESPACE, "t_regranted"));
     assertThat(writeDeniedTables()).isEmpty();
   }
 
-  /** Registers a mock UC table with an s3 location and returns its unique table id. */
+  /** Table ids are unique per test: the hadoop credential cache is JVM-global. */
   private String stubTable(String name) throws Exception {
-    // Unique per test method: the hadoop connector's credential cache is JVM-global and keyed by
-    // (context, tableId, operation), so reusing ids would leak cached grants across tests.
     String tableId = "table-id-" + name;
     TableInfo ucTable =
         new TableInfo()
@@ -169,7 +154,6 @@ public class WriteIntentCredentialSuite {
 
   @SuppressWarnings("unchecked")
   private java.util.Set<String> writeDeniedTables() throws Exception {
-    // UCProxy is package-private Scala; read the tracked set through its generated accessor.
     return (java.util.Set<String>)
         fixture.proxyObj.getClass().getMethod("writeDeniedTables").invoke(fixture.proxyObj);
   }
