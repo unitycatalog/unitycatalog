@@ -125,6 +125,7 @@ public class WriteIntentE2ETest extends BaseSparkIntegrationTest {
     List<Row> rows = sql("SELECT * FROM %s", table);
     assertThat(rows).hasSize(1);
     List<String> operations = operationsFor(tableId);
+    assertThat(operations).isNotEmpty();
     assertThat(operations.get(0)).isEqualTo(TableOperation.READ_WRITE.value());
     assertThat(operations).filteredOn(TableOperation.READ_WRITE.value()::equals).hasSize(1);
     assertThat(operations).contains(TableOperation.READ.value());
@@ -193,7 +194,7 @@ public class WriteIntentE2ETest extends BaseSparkIntegrationTest {
           return () -> {
             if (denyReadWriteForTableIds.contains(tableCredId.tableId())
                 && TableOperation.READ_WRITE.value().equals(tableCredId.tableOperation())) {
-              throw new ApiException("SIMULATED_DENIAL: READ_WRITE not permitted");
+              throw new ApiException(403, "SIMULATED_DENIAL: READ_WRITE not permitted");
             }
             return realFactory.create(apiClient, credId).createCredentials();
           };

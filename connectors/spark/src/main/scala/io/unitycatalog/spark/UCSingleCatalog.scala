@@ -1,6 +1,6 @@
 package io.unitycatalog.spark
 
-import java.net.URI
+import java.net.{HttpURLConnection, URI}
 import java.util
 import java.util.Locale
 
@@ -783,8 +783,28 @@ private[spark] class UCProxy(
     }
   }
 
-  // Table ids denied READ_WRITE, so intent-less loads skip the doomed round-trip per query.
-  private[spark] val writeDeniedTables = util.concurrent.ConcurrentHashMap.newKeySet[String]()
+  // Table ids whose READ_WRITE credential request was 403-denied, mapped to the deadline until
+  // which intent-less loads skip the doomed round-trip. Entries expire (so a later grant reaches
+  // intent-less paths like OPTIMIZE without a session restart) and are cleared early by a
+  // successful declared write.
+  private[spark] val writeDeniedTables =
+    new util.concurrent.ConcurrentHashMap[String, java.lang.Long]()
+
+  private def markWriteDenied(tableId: String): Unit =
+    writeDeniedTables.put(
+      tableId, System.currentTimeMillis() + UCProxy.WRITE_DENIAL_TTL_MILLIS)
+
+  private def isWriteDenied(tableId: String): Boolean = {
+    val deadline = writeDeniedTables.get(tableId)
+    if (deadline == null) {
+      false
+    } else if (System.currentTimeMillis() >= deadline) {
+      writeDeniedTables.remove(tableId, deadline)
+      false
+    } else {
+      true
+    }
+  }
 
   private def readCredentialsOrServerSidePlanning(
       credBuilder: UCCredentialHadoopConfs.Builder,
@@ -843,10 +863,18 @@ private[spark] class UCProxy(
     // re-paying it; a later granted declared write clears the entry.
     val extraSerdeProps = if (UCSingleCatalog.WRITE_INTENT.get()) {
       // Fail fast: READ credentials would only defer the denial to the storage layer mid-job.
-      val props = credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
+      val props = try {
+        credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
+      } catch {
+        case e: ApiException =>
+          logWarning(s"READ_WRITE credential generation failed for declared write on table " +
+            s"$identifier: ${e.getMessage}")
+          if (e.getCode == HttpURLConnection.HTTP_FORBIDDEN) markWriteDenied(tableId)
+          throw e
+      }
       writeDeniedTables.remove(tableId)
       props
-    } else if (writeDeniedTables.contains(tableId)) {
+    } else if (isWriteDenied(tableId)) {
       readCredentialsOrServerSidePlanning(credBuilder, tableId, identifier)
     } else {
       try {
@@ -855,7 +883,9 @@ private[spark] class UCProxy(
         case e: ApiException =>
           logWarning(
             s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
-          writeDeniedTables.add(tableId)
+          // Only a permission denial is worth remembering; transient failures must keep the
+          // READ_WRITE-first retry on the next load.
+          if (e.getCode == HttpURLConnection.HTTP_FORBIDDEN) markWriteDenied(tableId)
           readCredentialsOrServerSidePlanning(credBuilder, tableId, identifier)
       }
     }
@@ -1134,4 +1164,10 @@ private[spark] class UCProxy(
     schemasApi.deleteSchema(name + "." + namespace.head, cascade)
     true
   }
+}
+
+private[spark] object UCProxy {
+  // How long an intent-less load trusts a remembered READ_WRITE denial before probing again.
+  // Bounds the staleness window for a grant added after a denial (e.g. before an OPTIMIZE).
+  private[spark] val WRITE_DENIAL_TTL_MILLIS: Long = java.util.concurrent.TimeUnit.MINUTES.toMillis(5)
 }
