@@ -83,8 +83,11 @@ public class TableInfoDAO extends IdentifiableDAO {
 
   /**
    * Iceberg metadata pointer for either a Delta UniForm projection or a native Iceberg table. The
-   * meaning is distinguished by {@link #dataSourceFormat}: Delta is authoritative for UniForm;
-   * Iceberg is authoritative for native Iceberg tables.
+   * {@code uniform_iceberg_} name predates native Iceberg support and is a misnomer here: a
+   * non-null value does NOT imply a Delta/UniForm table. The owning format is distinguished by
+   * {@link #dataSourceFormat} -- Delta is authoritative for UniForm, Iceberg is authoritative for
+   * native Iceberg tables -- so always read this field together with {@code dataSourceFormat},
+   * never on its own.
    */
   @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
