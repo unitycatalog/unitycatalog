@@ -21,7 +21,7 @@ import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
-import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.TableRepository.TableDeletionResult;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
 import com.linecorp.armeria.common.HttpResponse;
@@ -142,8 +142,11 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
   public HttpResponse deleteTable(
       @Param("full_name") @AuthorizeResourceKey(TABLE) String fullName) {
-    TableInfoDAO deleted = tableRepository.deleteTable(fullName);
-    removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
+    TableDeletionResult deletion = tableRepository.deleteTable(fullName);
+    if (!deletion.softDeleted()) {
+      removeHierarchicalAuthorizations(
+          deletion.tableId().toString(), deletion.schemaId().toString());
+    }
     return HttpResponse.of(HttpStatus.OK);
   }
 }

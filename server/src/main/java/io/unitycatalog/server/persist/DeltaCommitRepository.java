@@ -347,6 +347,9 @@ public class DeltaCommitRepository {
       Session session, TableInfoDAO dao, UUID tableId, Optional<String> tableFullNameForLogging) {
     try {
       session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
+      if (dao.getDeletedAt() != null) {
+        throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableId);
+      }
     } catch (PessimisticLockException e) {
       throw new BaseException(
           ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
@@ -1277,6 +1280,10 @@ public class DeltaCommitRepository {
    * @throws BaseException if the table doesn't meet requirements for Delta commits
    */
   private static void validateTable(TableInfoDAO tableInfoDAO) {
+    if (tableInfoDAO.getDeletedAt() != null) {
+      throw new BaseException(
+          ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableInfoDAO.getId());
+    }
     ValidationUtils.checkArgument(
         tableInfoDAO.getType() != null
             && tableInfoDAO.getType().equals(TableType.MANAGED.toString()),

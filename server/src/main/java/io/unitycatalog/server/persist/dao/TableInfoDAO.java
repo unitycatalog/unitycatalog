@@ -28,6 +28,7 @@ import lombok.experimental.SuperBuilder;
     name = "uc_tables",
     indexes = {
       @Index(name = "idx_name", columnList = "name"),
+      @Index(name = "idx_table_cleanup_eligibility", columnList = "type, purge_after"),
     })
 // Lombok annotations
 @Getter
@@ -57,6 +58,14 @@ public class TableInfoDAO extends IdentifiableDAO {
 
   @Column(name = "updated_by")
   private String updatedBy;
+
+  /** Time at which the table stopped being visible through catalog APIs. */
+  @Column(name = "deleted_at")
+  private Date deletedAt;
+
+  /** Earliest time at which the table may be handed to durable physical cleanup. */
+  @Column(name = "purge_after")
+  private Date purgeAfter;
 
   @Column(name = "data_source_format")
   private String dataSourceFormat;

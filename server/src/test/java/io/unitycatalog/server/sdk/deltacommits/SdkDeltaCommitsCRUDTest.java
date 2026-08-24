@@ -383,18 +383,19 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     verifyDeltaCommits(
         /* expectedLatestTableVersion= */ 5, /* expectedCommits= */ commit5);
 
-    // Verify commits are cleaned up upon table deletion
+    UUID tableId = UUID.fromString(tableInfo.getTableId());
+    int commitCountBeforeDrop = getCommitDAOs(tableId).size();
+    assertThat(commitCountBeforeDrop).isEqualTo(2);
+
+    // A logical drop hides the table but retains its commits so the table can be restored.
     tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
-    // Verify the uc_delta_commits table is cleaned up. This has to be done by checking the DAOs
-    // because the getCommit api call would fail with NOT_FOUND once the table is gone.
     assertApiException(
         () ->
             getAllCommits(
                 tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty()),
         ErrorCode.TABLE_NOT_FOUND,
         "Table not found");
-    List<DeltaCommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(0);
+    assertThat(getCommitDAOs(tableId).size()).isEqualTo(commitCountBeforeDrop);
   }
 
   @Test

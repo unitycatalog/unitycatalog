@@ -42,10 +42,10 @@ public class StagingTableRepository {
 
   private void validateIfAlreadyExists(
       Session session, UUID schemaId, String tableName, NormalizedURL stagingLocation) {
-    // Check if table by the same name already exists. It's OK if a staging table with the same name
-    // already exist.
+    // Active tables and retained tombstones both reserve the name. It's OK if a staging table with
+    // the same name already exists.
     TableInfoDAO existingTable =
-        repositories.getTableRepository().findBySchemaIdAndName(session, schemaId, tableName);
+        repositories.getTableRepository().findAnyBySchemaIdAndName(session, schemaId, tableName);
     if (existingTable != null) {
       throw new BaseException(ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + tableName);
     }
