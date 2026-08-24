@@ -119,6 +119,34 @@ class UCCredentialHadoopConfsTest {
   }
 
   @Test
+  void icebergPlanBuildRejectsMissingFields() {
+    TokenProvider tp = TokenProvider.create(Map.of("type", "static", "token", "tok"));
+
+    assertThatThrownBy(
+            () ->
+                UCCredentialHadoopConfs.builder("http://uc", "s3")
+                    .tokenProvider(tp)
+                    .buildForIcebergPlan(null, "plan-id"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("credentialsEndpoint is required");
+
+    assertThatThrownBy(
+            () ->
+                UCCredentialHadoopConfs.builder("http://uc", "s3")
+                    .tokenProvider(tp)
+                    .buildForIcebergPlan("http://uc/v1/credentials", ""))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("planId is required");
+
+    assertThatThrownBy(
+            () ->
+                UCCredentialHadoopConfs.builder("http://uc", "s3")
+                    .buildForIcebergPlan("http://uc/v1/credentials", "plan-id"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("tokenProvider is required");
+  }
+
+  @Test
   void stagingTableBuildRejectsMissingFields() {
     TokenProvider tp = TokenProvider.create(Map.of("type", "static", "token", "tok"));
 

@@ -95,6 +95,11 @@ public class UCHadoopConfConstants {
   public static final String UC_DELTA_STAGING_TABLE_LOCATION_KEY =
       "fs.unitycatalog.delta.staging.table.location";
 
+  // Keys for Iceberg REST scan-plan credential requests.
+  public static final String UC_ICEBERG_CREDENTIALS_ENDPOINT_KEY =
+      "fs.unitycatalog.iceberg.credentials.endpoint";
+  public static final String UC_ICEBERG_PLAN_ID_KEY = "fs.unitycatalog.iceberg.plan.id";
+
   // Keys for path based temporary credential requests.
   public static final String UC_PATH_KEY = "fs.unitycatalog.path";
   public static final String UC_PATH_OPERATION_KEY = "fs.unitycatalog.path.operation";
@@ -103,6 +108,7 @@ public class UCHadoopConfConstants {
   public static final String UC_CREDENTIALS_TYPE_KEY = "fs.unitycatalog.credentials.type";
   public static final String UC_CREDENTIALS_TYPE_TABLE_VALUE = "table";
   public static final String UC_CREDENTIALS_TYPE_PATH_VALUE = "path";
+  public static final String UC_CREDENTIALS_TYPE_ICEBERG_PLAN_VALUE = "iceberg-plan";
 
   // Key to enable the credential cache.
   public static final String UC_CREDENTIAL_CACHE_ENABLED_KEY =

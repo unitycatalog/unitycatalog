@@ -71,7 +71,8 @@ public final class UCCredentialHadoopConfs {
 
   /**
    * Collects credential settings and produces Hadoop configuration properties via {@link
-   * #buildForTable}, {@link #buildForStagingTable}, or {@link #buildForPath}.
+   * #buildForTable}, {@link #buildForStagingTable}, {@link #buildForIcebergPlan}, or {@link
+   * #buildForPath}.
    */
   public static final class Builder {
 
@@ -244,6 +245,40 @@ public final class UCCredentialHadoopConfs {
           tokenProvider,
           stagingTableId,
           location,
+          appVersions);
+    }
+
+    /**
+     * Builds Hadoop properties for credentials scoped to an Iceberg REST server-side scan plan.
+     *
+     * <p>Credential renewal calls {@code credentialsEndpoint} with the standard {@code planId}
+     * query parameter. The returned Iceberg {@code storage-credentials} are converted to the same
+     * renewable Hadoop credential providers used by the other builder modes.
+     *
+     * @param credentialsEndpoint the absolute Iceberg REST credentials endpoint from the scan-plan
+     *     catalog, excluding the {@code planId} query parameter
+     * @param planId the opaque plan ID returned by the server-side scan planning response
+     * @return unmodifiable map; empty if the scheme is unrecognized
+     * @throws IllegalArgumentException if an endpoint, plan ID, or {@code tokenProvider} is missing
+     * @throws ApiException if the credential fetch from the Iceberg REST API fails
+     */
+    public Map<String, String> buildForIcebergPlan(String credentialsEndpoint, String planId)
+        throws ApiException {
+      Preconditions.checkArgument(
+          credentialsEndpoint != null && !credentialsEndpoint.isEmpty(),
+          "credentialsEndpoint is required");
+      Preconditions.checkArgument(planId != null && !planId.isEmpty(), "planId is required");
+      Preconditions.checkArgument(tokenProvider != null, "tokenProvider is required");
+      return CredPropsUtil.createIcebergPlanCredProps(
+          credentialRenewalEnabled,
+          credentialScopedFsEnabled,
+          hadoopConf,
+          scheme,
+          apiClient,
+          catalogUri,
+          tokenProvider,
+          credentialsEndpoint,
+          planId,
           appVersions);
     }
 
