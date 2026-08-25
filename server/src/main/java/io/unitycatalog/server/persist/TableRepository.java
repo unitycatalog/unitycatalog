@@ -769,8 +769,12 @@ public class TableRepository {
     ValidationUtils.validateSqlObjectName(createTable.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     DataSourceFormat format = createTable.getDataSourceFormat();
+    // `columns` arrives as null (not an empty list) when a client omits the field entirely, so
+    // normalize before streaming. Whether an empty column list is acceptable is a per-table-type
+    // rule decided in the create branches below, and those checks must be the ones that reject the
+    // request so the caller gets INVALID_ARGUMENT instead of an NPE here.
     List<ColumnInfo> columnInfos =
-        createTable.getColumns().stream()
+        Optional.ofNullable(createTable.getColumns()).orElse(List.of()).stream()
             .map(
                 c -> {
                   ColumnUtils.validateTypeJson(c, format);
@@ -940,6 +944,16 @@ public class TableRepository {
     if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "view_definition is required for " + entityLabel);
+    }
+    // A view (plain or metric) exposes its output as columns, and a reader resolves queries against
+    // that column list, so a view with no columns is accepted by the server but unusable by any
+    // engine. Reject it rather than persisting an unreadable entity. Column-level validation beyond
+    // this (that each column matches the view definition) needs the definition semantics and stays
+    // with the engine that owns them. Checked ahead of the dependency-existence lookups below so
+    // this request-shape rule is reported without first spending those on an unusable request.
+    if (Optional.ofNullable(createTable.getColumns()).orElse(List.of()).isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "columns must contain at least one entry for " + entityLabel);
     }
     // view_dependencies is optional here (shared by view + metric view):
     //  - a plain view may omit it (e.g. the Spark connector sends null when it cannot derive

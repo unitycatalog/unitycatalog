@@ -4,6 +4,7 @@ import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateFunction;
 import io.unitycatalog.client.model.CreateFunctionRequest;
@@ -110,12 +111,45 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
     return depList;
   }
 
+  /**
+   * The dimension/measure columns a reader resolves queries against, matching the dimensions and
+   * measures declared in {@link #VIEW_DEFINITION_ASSET_SOURCE}. A metric view must be created with
+   * a non-empty column list, so every valid request below carries these.
+   */
+  protected static final List<ColumnInfo> METRIC_VIEW_COLUMNS =
+      List.of(
+          new ColumnInfo()
+              .name("event_day")
+              .typeText("DATE")
+              .typeJson(
+                  "{\"name\":\"event_day\",\"type\":\"date\","
+                      + "\"nullable\":true,\"metadata\":{"
+                      + "\"metric_view.type\":\"dimension\","
+                      + "\"metric_view.expr\":\"date_trunc('day', event_time)\"}}")
+              .typeName(ColumnTypeName.DATE)
+              .position(0)
+              .comment("Event day dimension")
+              .nullable(true),
+          new ColumnInfo()
+              .name("event_count")
+              .typeText("BIGINT")
+              .typeJson(
+                  "{\"name\":\"event_count\",\"type\":\"long\","
+                      + "\"nullable\":true,\"metadata\":{"
+                      + "\"metric_view.type\":\"measure\","
+                      + "\"metric_view.expr\":\"count(*)\"}}")
+              .typeName(ColumnTypeName.LONG)
+              .position(1)
+              .comment("Event count measure")
+              .nullable(true));
+
   private CreateTable validMetricViewRequest() {
     return new CreateTable()
         .name(METRIC_VIEW_NAME)
         .catalogName(TestUtils.CATALOG_NAME)
         .schemaName(TestUtils.SCHEMA_NAME)
         .tableType(TableType.METRIC_VIEW)
+        .columns(METRIC_VIEW_COLUMNS)
         .viewDefinition(VIEW_DEFINITION_ASSET_SOURCE)
         .viewDependencies(makeDependencyList(SOURCE_TABLE_FULL_NAME));
   }
@@ -157,6 +191,19 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(fetched.getViewDependencies().getDependencies().get(0).getTable().getTableFullName())
         .isEqualTo(SOURCE_TABLE_FULL_NAME);
 
+    // Columns are required on create, so they must also round-trip back to the reader that needs
+    // them to resolve queries against the metric view. The per-column metric_view.type and
+    // metric_view.expr metadata is what makes a column resolvable as a dimension or a measure, so
+    // assert type_json survives verbatim rather than only checking the column names.
+    assertThat(fetched.getColumns()).isNotNull();
+    assertThat(fetched.getColumns())
+        .extracting(ColumnInfo::getName)
+        .containsExactly("event_day", "event_count");
+    assertThat(fetched.getColumns())
+        .extracting(ColumnInfo::getTypeJson)
+        .containsExactly(
+            METRIC_VIEW_COLUMNS.get(0).getTypeJson(), METRIC_VIEW_COLUMNS.get(1).getTypeJson());
+
     // Verify properties round-trip
     assertThat(fetched.getProperties()).isNotNull();
     assertThat(fetched.getProperties().get("team")).isEqualTo("analytics");
@@ -187,6 +234,18 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
             (UnaryOperator<CreateTable>) request -> request.viewDefinition(null),
             ErrorCode.INVALID_ARGUMENT,
             "view_definition is required for metric view"),
+        Arguments.of(
+            "empty column list",
+            (UnaryOperator<CreateTable>) request -> request.columns(List.of()),
+            ErrorCode.INVALID_ARGUMENT,
+            "columns must contain at least one entry for metric view"),
+        Arguments.of(
+            // A client that omits `columns` entirely sends null rather than an empty list. This
+            // must be rejected the same way, not surface as an internal error.
+            "missing columns",
+            (UnaryOperator<CreateTable>) request -> request.columns(null),
+            ErrorCode.INVALID_ARGUMENT,
+            "columns must contain at least one entry for metric view"),
         Arguments.of(
             "missing view_dependencies",
             (UnaryOperator<CreateTable>) request -> request.viewDependencies(null),
