@@ -52,6 +52,16 @@ public abstract class CredPropsBuilder {
     throw new IllegalStateException("Unhandled cloud type: " + cloudType);
   }
 
+  /**
+   * Records the credential identity whose props ({@code fs.unitycatalog.path}, table id, …) are
+   * always written by {@link #build()}, including when renewal is disabled.
+   */
+  public CredPropsBuilder credId(CredId credId) {
+    Preconditions.checkNotNull(credId, "credId is required");
+    this.credId = credId;
+    return this;
+  }
+
   /** Records the configuration needed to enable credential renewal. */
   public CredPropsBuilder enableRenewCred(
       String catalogUri,
@@ -88,6 +98,12 @@ public abstract class CredPropsBuilder {
       setCredScopedFsKeys();
     }
 
+    // Path/table identity is independent of renewal: analyzers skip re-vending by matching these
+    // keys even when only static access keys are present.
+    if (credId != null) {
+      credId.props().forEach(this::set);
+    }
+
     // Set the props when renewal credential enabled.
     if (renewCredEnabled) {
       setVendedProviderKeys();
@@ -96,7 +112,6 @@ public abstract class CredPropsBuilder {
       tokenProvider
           .configs()
           .forEach((key, value) -> set(UCHadoopConfConstants.UC_AUTH_PREFIX + key, value));
-      credId.props().forEach(this::set);
       appVersions.forEach(
           (key, value) -> set(UCHadoopConfConstants.UC_ENGINE_VERSION_PREFIX + key, value));
     }

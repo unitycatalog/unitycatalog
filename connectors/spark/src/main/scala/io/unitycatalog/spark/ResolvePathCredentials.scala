@@ -1,6 +1,8 @@
 package io.unitycatalog.spark
 
+import io.unitycatalog.hadoop.UCCredentialHadoopConfs
 import io.unitycatalog.hadoop.UCCredentialHadoopConfs.PathOperation
+import io.unitycatalog.hadoop.internal.UCHadoopConfConstants
 
 import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.SparkSession
@@ -40,18 +42,21 @@ import scala.collection.JavaConverters._
  * ahead of the analyzer's Resolution batch. The parser stays side-effect free.
  *
  * '''Idempotence''': the analyzer runs its batches to a fixed point, so this rule is applied
- * repeatedly to the same plan. Nodes that already carry `fs.*` options are therefore left
+ * repeatedly to the same plan. Nodes that already carry UC path-credential identity
+ * (`fs.unitycatalog.credentials.type=path` and `fs.unitycatalog.path` for this URI) are left
  * untouched: credentials are vended at most once per path per query, and the plan converges even
  * when the credential cache (`fs.unitycatalog.credential.cache.enabled`) is disabled and every
- * vend would otherwise return a fresh session token. It also means explicit user-supplied `fs.*`
- * options win over vended ones.
+ * vend would otherwise return a fresh session token. Ambient `fs.s3a.*` (or other cloud) keys
+ * do not skip vending.
  *
  * The rule is a no-op unless the session's current catalog is a [[UCSingleCatalog]]. It can be
  * disabled with `spark.sql.catalog.<catalog>.vendPathCredentials.enabled=false`.
  *
- * When UC cannot vend credentials for a path (not managed by UC, no permission, etc.), the plan
- * node is left unchanged so Spark can use ambient storage credentials (e.g.
- * `spark.hadoop.fs.s3a.*`, instance profile) configured on the session.
+ * When UC cannot vend credentials for a path (not managed by UC, no permission, etc.), cloud
+ * secrets are omitted so Spark can use ambient storage credentials (`spark.hadoop.fs.s3a.*`,
+ * instance profile). The node is still stamped with path-cred identity
+ * (`fs.unitycatalog.credentials.type=path` and `fs.unitycatalog.path`) so later analyzer
+ * iterations do not re-issue the failing RPCs, even when the credential cache is disabled.
  *
  * Bare `delta.`path`` cloud relations are excluded: Delta's analysis path does not propagate
  * relation options into `DeltaLog`, so vended credentials would not reach execution and can
@@ -86,18 +91,19 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
           // Write: INSERT OVERWRITE DIRECTORY '<cloud path>' USING <format> ...
           case i: InsertIntoDir
               if !isDeltaProvider(i.provider) &&
-                !hasCredentialOptions(i.storage.properties.keys) &&
-                i.storage.locationUri.exists(u => isCloudPath(u.toString)) =>
+                i.storage.locationUri.exists { u =>
+                  val location = u.toString
+                  isCloudPath(location) &&
+                    !hasUcPathCredentials(i.storage.properties, location)
+                } =>
             val location = i.storage.locationUri.get.toString
-            val conf =
+            val conf = optionsAfterLookup(
+              location,
+              PathOperation.PATH_READ_WRITE,
               uc.vendPathCredentialConfOrEmpty(
-                spark, location, PathOperation.PATH_READ_WRITE)
-            if (conf.isEmpty) {
-              i
-            } else {
-              i.copy(storage =
-                i.storage.copy(properties = i.storage.properties ++ conf.asScala))
-            }
+                spark, location, PathOperation.PATH_READ_WRITE))
+            i.copy(storage =
+              i.storage.copy(properties = i.storage.properties ++ conf.asScala))
         }
     }
   }
@@ -106,7 +112,10 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
       relation: UnresolvedRelation,
       uc: UCSingleCatalog): UnresolvedRelation = {
     val path = relation.multipartIdentifier.last
-    val conf = uc.vendPathCredentialConfWithFallback(spark, path)
+    val conf = optionsAfterLookup(
+      path,
+      PathOperation.PATH_READ,
+      uc.vendPathCredentialConfWithFallback(spark, path))
     if (conf.isEmpty) relation else relation.copy(options = mergeOptions(relation.options, conf))
   }
 
@@ -127,13 +136,6 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
 
 object ResolvePathCredentials {
 
-  /**
-   * URI schemes for which UC can vend credentials. These match [[CloudType]] (including Hadoop's
-   * `s3a://` alias for S3). UC external locations and the path-credentials API use canonical
-   * `s3://` URLs; [[UCSingleCatalog.vendPathCredentialConf]] rewrites `s3a://` for lookup only.
-   */
-  private val CLOUD_SCHEMES = Set("s3", "s3a", "gs", "abfs", "abfss")
-
   private def isDeltaProvider(provider: Option[String]): Boolean =
     provider.exists(_.equalsIgnoreCase("delta"))
 
@@ -142,24 +144,61 @@ object ResolvePathCredentials {
     relation.multipartIdentifier.length == 2 &&
     !isDeltaProvider(Some(relation.multipartIdentifier.head)) &&
     isCloudPath(relation.multipartIdentifier.last) &&
-    !hasCredentialOptions(relation.options.keySet.asScala)
+    !hasUcPathCredentials(
+      relation.options.asCaseSensitiveMap().asScala,
+      relation.multipartIdentifier.last)
   }
 
   /**
-   * True when the option map already carries Hadoop filesystem credentials, either vended by an
-   * earlier pass of this rule or supplied explicitly by the user.
+   * True when this node already carries UC path-credential identity for `location`:
+   * `fs.unitycatalog.credentials.type=path` and `fs.unitycatalog.path` equal to this URI (or the
+   * canonical s3a→s3 form stored by [[UCSingleCatalog.vendPathCredentialConf]]). Ambient
+   * `fs.s3a.*` keys do not count.
    */
-  private def hasCredentialOptions(keys: Iterable[String]): Boolean =
-    keys.exists(_.toLowerCase.startsWith("fs."))
+  private def hasUcPathCredentials(
+      options: scala.collection.Map[String, String],
+      location: String): Boolean = {
+    val byLowerKey = options.collect {
+      case (k, v) if k != null => k.toLowerCase -> v
+    }
+    val credType = byLowerKey.getOrElse(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY, "")
+    val storedPath = byLowerKey.get(UCHadoopConfConstants.UC_PATH_KEY)
+    credType.equalsIgnoreCase(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE) &&
+      storedPath.exists(pathsMatch(_, location))
+  }
 
-  /** True when `pathStr` is an absolute URI whose scheme is one UC can vend credentials for. */
+  /** True when stored identity path is this location or the UC API canonical form of it. */
+  private def pathsMatch(stored: String, location: String): Boolean = {
+    stored == location || stored == UCSingleCatalog.pathForCredentialApi(location)._1
+  }
+
+  /**
+   * True when `pathStr` is an absolute URI whose scheme [[UCCredentialHadoopConfs]] can vend
+   * credentials for. Same scheme set as name-based table resolution (including `s3a://`). UC API
+   * lookup still rewrites `s3a://` to `s3://` in [[UCSingleCatalog.vendPathCredentialConf]].
+   */
   private def isCloudPath(pathStr: String): Boolean = {
     val scheme = try {
       new Path(pathStr).toUri.getScheme
     } catch {
       case _: IllegalArgumentException => null
     }
-    scheme != null && CLOUD_SCHEMES.contains(scheme.toLowerCase)
+    UCCredentialHadoopConfs.isSupportedScheme(scheme)
+  }
+
+  /**
+   * Successful vending already includes path identity. An allowed miss returns empty secrets;
+   * stamp identity so [[hasUcPathCredentials]] skips this node on the next analyzer pass.
+   */
+  private def optionsAfterLookup(
+      location: String,
+      operation: PathOperation,
+      conf: java.util.Map[String, String]): java.util.Map[String, String] = {
+    if (!conf.isEmpty) {
+      conf
+    } else {
+      UCSingleCatalog.pathCredentialIdentityProps(location, operation)
+    }
   }
 
   /** Merges vended `fs.*` credential entries into an existing relation option map. */

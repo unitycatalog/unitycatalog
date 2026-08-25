@@ -197,7 +197,8 @@ public class CredPropsUtil {
     CredPropsBuilder builder =
         CredPropsBuilder.forCloud(cloudType.get(), hadoopConf)
             .credScopedFsEnabled(credScopedFsEnabled)
-            .initialCredentials(credentials);
+            .initialCredentials(credentials)
+            .credId(credId);
 
     if (renewCredEnabled) {
       builder.enableRenewCred(catalogUri, tokenProvider, credId, appVersions);

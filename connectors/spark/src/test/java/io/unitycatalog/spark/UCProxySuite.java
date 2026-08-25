@@ -194,29 +194,10 @@ public class UCProxySuite {
    * Spark asks the current catalog to load every relation before falling back to path-based
    * resolution, so a bare {@code parquet.`s3://.../file.parquet`} arrives at {@code loadTable} as
    * namespace {@code parquet} with the path as the table name. UC addresses a table by the dotted
-   * string {@code catalog.schema.table} and answers 400 INVALID_ARGUMENT when the name does not
-   * split into three parts. {@code CatalogV2Util.loadTable} only absorbs a not-found answer, so any
-   * other exception aborts analysis before Spark's {@code ResolveSQLOnFile} can read the path --
-   * which is what breaks {@code SELECT * FROM parquet.`s3://...`} against a UC catalog.
-   */
-  @Test
-  public void testLoadTableReportsNotFoundForNameUcCannotAddress() throws Exception {
-    String path = "s3://bucket/tenants/t1/tmp-ingest-4825.parquet";
-
-    assertThatThrownBy(() -> proxy.loadTable(Identifier.of(new String[] {"parquet"}, path)))
-        .isInstanceOf(NoSuchTableException.class);
-
-    verify(mockTablesApi, org.mockito.Mockito.never())
-        .getTable(
-            org.mockito.ArgumentMatchers.anyString(),
-            org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any());
-  }
-
-  /**
-   * A name UC cannot address can never denote a table UC holds, so the answer is known without
-   * asking. Skipping the RPC also keeps the outcome independent of how the server chooses to reject
-   * the name -- an unauthenticated server 404s at the router while an authorizing one returns 400.
+   * string {@code catalog.schema.table} and would 400 if asked; {@code CatalogV2Util.loadTable}
+   * only absorbs a not-found answer. A name UC cannot address can never denote a table UC holds, so
+   * this returns {@link NoSuchTableException} without an RPC (servers disagree 400 vs 404 on the
+   * same bad name).
    */
   @Test
   public void testLoadTableSkipsRpcForNameUcCannotAddress() throws Exception {

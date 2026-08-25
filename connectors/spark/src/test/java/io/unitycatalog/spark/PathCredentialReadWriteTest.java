@@ -315,6 +315,10 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
       UnresolvedRelation relation = findBareCloudPathRelation(readPlan);
       assertThat(relation).isNotNull();
       assertThat(relation.options().get("fs.s3a.access.key")).isEqualTo("accessKey0");
+      assertThat(relation.options().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
+          .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
+      assertThat(relation.options().get(UCHadoopConfConstants.UC_PATH_KEY))
+          .isEqualTo(location.replaceFirst("(?i)^s3a://", "s3://"));
     }
 
     assertSingleRow(sql("SELECT * FROM parquet.`%s`", location));
@@ -481,8 +485,13 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     UCSingleCatalog catalog =
         (UCSingleCatalog) session.sessionState().catalogManager().catalog(SPARK_CATALOG);
 
+    String identityPath = location.replaceFirst("(?i)^(s3a|s3)://", "s3://");
     assertThat(catalog.vendPathCredentialConfWithFallback(session, location))
-        .containsEntry("fs.s3a.access.key", "accessKey0");
+        .containsEntry("fs.s3a.access.key", "accessKey0")
+        .containsEntry(
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
+            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
+        .containsEntry(UCHadoopConfConstants.UC_PATH_KEY, identityPath);
   }
 
   /**
@@ -522,6 +531,37 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
                     location))
         .satisfies(e -> assertNoCauseOfType(e, ApiException.class))
         .satisfies(e -> assertCauseChainContainsMessage(e, "invalid path"));
+  }
+
+  /**
+   * An allowed UC miss (unmanaged path) still stamps path-cred identity so a later analyzer pass
+   * does not re-issue the failing RPCs, including when the credential cache is disabled.
+   */
+  @Test
+  public void testAllowedMissStampsIdentityAndSecondApplyLeavesPlanUnchanged()
+      throws IOException, ParseException {
+    session = createPathCredSession(SPARK_CATALOG);
+    session.conf().set(UCHadoopConfConstants.UC_CREDENTIAL_CACHE_ENABLED_KEY, "false");
+    String location =
+        "s3://" + NO_CREDS_BUCKET + new File(dataDir, "miss_identity").getCanonicalPath();
+
+    LogicalPlan parsed =
+        session
+            .sessionState()
+            .sqlParser()
+            .parsePlan(String.format("SELECT * FROM parquet.`%s`", location));
+    LogicalPlan firstPlan = injectPathCredentials(parsed);
+    UnresolvedRelation first = findBareCloudPathRelation(firstPlan);
+    assertThat(first).isNotNull();
+    assertThat(first.options().get("fs.s3a.access.key")).isNull();
+    assertThat(first.options().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
+        .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    assertThat(first.options().get(UCHadoopConfConstants.UC_PATH_KEY)).isEqualTo(location);
+
+    LogicalPlan second = injectPathCredentials(firstPlan);
+    UnresolvedRelation after = findBareCloudPathRelation(second);
+    assertThat(after.options().asCaseSensitiveMap())
+        .containsExactlyInAnyOrderEntriesOf(first.options().asCaseSensitiveMap());
   }
 
   /**
