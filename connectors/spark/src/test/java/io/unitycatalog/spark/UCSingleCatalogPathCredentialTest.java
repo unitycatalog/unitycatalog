@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.hadoop.UCCredentialHadoopConfs.PathOperation;
 import io.unitycatalog.hadoop.internal.UCHadoopConfConstants;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -30,16 +29,16 @@ class UCSingleCatalogPathCredentialTest {
   }
 
   @Test
-  void pathIdentityUsesCanonicalS3SchemeWithoutSecrets() {
+  void pathSkipMarkersUseCanonicalS3SchemeWithoutPathCredIdOrSecrets() {
     Map<String, String> props =
-        UCSingleCatalog$.MODULE$.pathCredentialIdentityProps(
-            "s3a://bucket/dir", PathOperation.PATH_READ_WRITE);
+        UCSingleCatalog$.MODULE$.pathCredentialSkipProps("s3a://bucket/dir");
     assertThat(props)
         .containsEntry(
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-            UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
-        .containsEntry(UCHadoopConfConstants.UC_PATH_KEY, "s3://bucket/dir")
-        .containsEntry(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, "PATH_READ_WRITE")
+            UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_KEY,
+            UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_VALUE)
+        .containsEntry(UCHadoopConfConstants.UC_PATH_VENDING_LOCATION_KEY, "s3://bucket/dir")
+        .doesNotContainKey(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY)
+        .doesNotContainKey(UCHadoopConfConstants.UC_PATH_KEY)
         .doesNotContainKey("fs.s3a.access.key");
   }
 

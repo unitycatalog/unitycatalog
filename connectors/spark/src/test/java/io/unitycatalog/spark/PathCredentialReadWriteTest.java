@@ -534,8 +534,9 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   /**
-   * An allowed UC miss (unmanaged path) still stamps path-cred identity so a later analyzer pass
-   * does not re-issue the failing RPCs, including when the credential cache is disabled.
+   * An allowed UC miss (unmanaged path) stamps skip markers (not a Hadoop path-cred identity) so a
+   * later analyzer pass does not re-issue the failing RPCs, including when the credential cache is
+   * disabled.
    */
   @Test
   public void testAllowedMissStampsIdentityAndSecondApplyLeavesPlanUnchanged()
@@ -554,9 +555,12 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     UnresolvedRelation first = findBareCloudPathRelation(firstPlan);
     assertThat(first).isNotNull();
     assertThat(first.options().get("fs.s3a.access.key")).isNull();
-    assertThat(first.options().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY))
-        .isEqualTo(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    assertThat(first.options().get(UCHadoopConfConstants.UC_PATH_KEY)).isEqualTo(location);
+    assertThat(first.options().get(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY)).isNull();
+    assertThat(first.options().get(UCHadoopConfConstants.UC_PATH_KEY)).isNull();
+    assertThat(first.options().get(UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_KEY))
+        .isEqualTo(UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_VALUE);
+    assertThat(first.options().get(UCHadoopConfConstants.UC_PATH_VENDING_LOCATION_KEY))
+        .isEqualTo(location);
 
     LogicalPlan second = injectPathCredentials(firstPlan);
     UnresolvedRelation after = findBareCloudPathRelation(second);

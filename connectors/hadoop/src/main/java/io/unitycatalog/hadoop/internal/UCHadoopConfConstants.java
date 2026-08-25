@@ -99,6 +99,16 @@ public class UCHadoopConfConstants {
   public static final String UC_PATH_KEY = "fs.unitycatalog.path";
   public static final String UC_PATH_OPERATION_KEY = "fs.unitycatalog.path.operation";
 
+  /**
+   * Analyzer skip markers after a path-credential lookup, including an allowed miss. These are
+   * not {@code CredId} fields: {@code credentials.type=path} plus {@link #UC_PATH_KEY} would make
+   * Hadoop treat the job conf as a path-cred scope (and fail without {@code cred.context.id}).
+   */
+  public static final String UC_PATH_VENDING_ATTEMPTED_KEY =
+      "fs.unitycatalog.path.vending.attempted";
+  public static final String UC_PATH_VENDING_ATTEMPTED_VALUE = "true";
+  public static final String UC_PATH_VENDING_LOCATION_KEY = "fs.unitycatalog.path.vending.location";
+
   // Key indicating the credential request type, table or path.
   public static final String UC_CREDENTIALS_TYPE_KEY = "fs.unitycatalog.credentials.type";
   public static final String UC_CREDENTIALS_TYPE_TABLE_VALUE = "table";

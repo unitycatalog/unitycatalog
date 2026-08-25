@@ -42,21 +42,19 @@ import scala.collection.JavaConverters._
  * ahead of the analyzer's Resolution batch. The parser stays side-effect free.
  *
  * '''Idempotence''': the analyzer runs its batches to a fixed point, so this rule is applied
- * repeatedly to the same plan. Nodes that already carry UC path-credential identity
- * (`fs.unitycatalog.credentials.type=path` and `fs.unitycatalog.path` for this URI) are left
- * untouched: credentials are vended at most once per path per query, and the plan converges even
- * when the credential cache (`fs.unitycatalog.credential.cache.enabled`) is disabled and every
- * vend would otherwise return a fresh session token. Ambient `fs.s3a.*` (or other cloud) keys
- * do not skip vending.
+ * repeatedly to the same plan. Nodes that already had a lookup for this URI — a successful vend
+ * (`credentials.type=path` and `fs.unitycatalog.path`) or skip markers after an allowed miss —
+ * are left untouched. Ambient `fs.s3a.*` (or other cloud) keys do not skip vending.
  *
  * The rule is a no-op unless the session's current catalog is a [[UCSingleCatalog]]. It can be
  * disabled with `spark.sql.catalog.<catalog>.vendPathCredentials.enabled=false`.
  *
  * When UC cannot vend credentials for a path (not managed by UC, no permission, etc.), cloud
  * secrets are omitted so Spark can use ambient storage credentials (`spark.hadoop.fs.s3a.*`,
- * instance profile). The node is still stamped with path-cred identity
- * (`fs.unitycatalog.credentials.type=path` and `fs.unitycatalog.path`) so later analyzer
- * iterations do not re-issue the failing RPCs, even when the credential cache is disabled.
+ * instance profile). The node is stamped with skip markers
+ * (`fs.unitycatalog.path.vending.attempted` and `fs.unitycatalog.path.vending.location`), not
+ * `credentials.type=path`, so later analyzer iterations do not re-issue the failing RPCs and
+ * Hadoop does not treat the job conf as a path-cred scope.
  *
  * Bare `delta.`path`` cloud relations are excluded: Delta's analysis path does not propagate
  * relation options into `DeltaLog`, so vended credentials would not reach execution and can
@@ -99,7 +97,6 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
             val location = i.storage.locationUri.get.toString
             val conf = optionsAfterLookup(
               location,
-              PathOperation.PATH_READ_WRITE,
               uc.vendPathCredentialConfOrEmpty(
                 spark, location, PathOperation.PATH_READ_WRITE))
             i.copy(storage =
@@ -114,7 +111,6 @@ case class ResolvePathCredentials(spark: SparkSession) extends Rule[LogicalPlan]
     val path = relation.multipartIdentifier.last
     val conf = optionsAfterLookup(
       path,
-      PathOperation.PATH_READ,
       uc.vendPathCredentialConfWithFallback(spark, path))
     if (conf.isEmpty) relation else relation.copy(options = mergeOptions(relation.options, conf))
   }
@@ -150,10 +146,9 @@ object ResolvePathCredentials {
   }
 
   /**
-   * True when this node already carries UC path-credential identity for `location`:
-   * `fs.unitycatalog.credentials.type=path` and `fs.unitycatalog.path` equal to this URI (or the
-   * canonical s3a→s3 form stored by [[UCSingleCatalog.vendPathCredentialConf]]). Ambient
-   * `fs.s3a.*` keys do not count.
+   * True when this node already had a path-credential lookup for `location`. A successful vend
+   * carries `credentials.type=path` and `fs.unitycatalog.path`. An allowed miss carries only the
+   * vending skip markers (not a Hadoop {@code PathCredId}). Ambient `fs.s3a.*` keys do not count.
    */
   private def hasUcPathCredentials(
       options: scala.collection.Map[String, String],
@@ -163,8 +158,15 @@ object ResolvePathCredentials {
     }
     val credType = byLowerKey.getOrElse(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY, "")
     val storedPath = byLowerKey.get(UCHadoopConfConstants.UC_PATH_KEY)
-    credType.equalsIgnoreCase(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE) &&
-      storedPath.exists(pathsMatch(_, location))
+    val successfulVend =
+      credType.equalsIgnoreCase(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE) &&
+        storedPath.exists(pathsMatch(_, location))
+    val attempted =
+      byLowerKey
+        .get(UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_KEY)
+        .exists(_.equalsIgnoreCase(UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_VALUE))
+    val skipLocation = byLowerKey.get(UCHadoopConfConstants.UC_PATH_VENDING_LOCATION_KEY)
+    successfulVend || (attempted && skipLocation.exists(pathsMatch(_, location)))
   }
 
   /** True when stored identity path is this location or the UC API canonical form of it. */
@@ -188,16 +190,15 @@ object ResolvePathCredentials {
 
   /**
    * Successful vending already includes path identity. An allowed miss returns empty secrets;
-   * stamp identity so [[hasUcPathCredentials]] skips this node on the next analyzer pass.
+   * stamp skip markers so [[hasUcPathCredentials]] skips this node on the next analyzer pass.
    */
   private def optionsAfterLookup(
       location: String,
-      operation: PathOperation,
       conf: java.util.Map[String, String]): java.util.Map[String, String] = {
     if (!conf.isEmpty) {
       conf
     } else {
-      UCSingleCatalog.pathCredentialIdentityProps(location, operation)
+      UCSingleCatalog.pathCredentialSkipProps(location)
     }
   }
 

@@ -701,22 +701,22 @@ object UCSingleCatalog {
   }
 
   /**
-   * Path-cred identity Hadoop keys without cloud secrets. Stamped after an allowed vending miss
-   * so [[ResolvePathCredentials]] does not re-issue RPCs on later analyzer passes.
+   * Skip markers after an allowed vending miss so [[ResolvePathCredentials]] does not re-issue
+   * RPCs on later analyzer passes. Intentionally not {@code credentials.type=path} /
+   * {@code fs.unitycatalog.path}: those keys are a Hadoop {@code PathCredId} and require a
+   * credential context id.
    */
-  private[spark] def pathCredentialIdentityProps(
-      location: String,
-      operation: PathOperation): util.Map[String, String] = {
+  private[spark] def pathCredentialSkipProps(
+      location: String): util.Map[String, String] = {
     val (apiLocation, scheme) = pathForCredentialApi(location)
     if (scheme == null) {
       util.Collections.emptyMap[String, String]()
     } else {
       val props = new util.HashMap[String, String]()
       props.put(
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY,
-        UCHadoopConfConstants.UC_CREDENTIALS_TYPE_PATH_VALUE)
-      props.put(UCHadoopConfConstants.UC_PATH_KEY, apiLocation)
-      props.put(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, operation.value())
+        UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_KEY,
+        UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_VALUE)
+      props.put(UCHadoopConfConstants.UC_PATH_VENDING_LOCATION_KEY, apiLocation)
       props
     }
   }
