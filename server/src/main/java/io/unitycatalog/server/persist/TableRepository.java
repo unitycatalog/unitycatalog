@@ -771,17 +771,6 @@ public class TableRepository {
   }
 
   private void validateMetricView(Session session, CreateTable createTable) {
-    // A metric view exposes its dimensions and measures as columns, and engines resolve queries
-    // against that column list. A metric view with no columns is therefore accepted by the server
-    // but unusable by any reader, so reject it rather than persisting an unreadable entity.
-    // Column-level validation beyond this (that each column matches the view_definition YAML) needs
-    // the YAML semantics and stays with the engine that owns them.
-    // Checked ahead of validateViewLike so this request-shape rule is reported without first
-    // spending dependency-existence lookups on a request that cannot be accepted either way.
-    if (Optional.ofNullable(createTable.getColumns()).orElse(List.of()).isEmpty()) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "columns must contain at least one entry for metric view");
-    }
     validateViewLike(session, createTable, "metric view");
     // A metric view's dependencies are always client-supplied; require at least one.
     if (Optional.ofNullable(createTable.getViewDependencies())
@@ -802,6 +791,16 @@ public class TableRepository {
     if (createTable.getViewDefinition() == null || createTable.getViewDefinition().isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "view_definition is required for " + entityLabel);
+    }
+    // A view (plain or metric) exposes its output as columns, and a reader resolves queries against
+    // that column list, so a view with no columns is accepted by the server but unusable by any
+    // engine. Reject it rather than persisting an unreadable entity. Column-level validation beyond
+    // this (that each column matches the view definition) needs the definition semantics and stays
+    // with the engine that owns them. Checked ahead of the dependency-existence lookups below so
+    // this request-shape rule is reported without first spending those on an unusable request.
+    if (Optional.ofNullable(createTable.getColumns()).orElse(List.of()).isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "columns must contain at least one entry for " + entityLabel);
     }
     // view_dependencies is optional here (shared by view + metric view):
     //  - a plain view may omit it (e.g. the Spark connector sends null when it cannot derive

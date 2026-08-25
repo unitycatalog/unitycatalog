@@ -115,7 +115,6 @@ public abstract class BaseMetricViewCRUDTest extends BaseTableCRUDTestEnv {
    * The dimension/measure columns a reader resolves queries against, matching the dimensions and
    * measures declared in {@link #VIEW_DEFINITION_ASSET_SOURCE}. A metric view must be created with
    * a non-empty column list, so every valid request below carries these.
-   *
    */
   protected static final List<ColumnInfo> METRIC_VIEW_COLUMNS =
       List.of(

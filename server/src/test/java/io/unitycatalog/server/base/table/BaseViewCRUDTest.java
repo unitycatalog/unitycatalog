@@ -126,6 +126,18 @@ public abstract class BaseViewCRUDTest extends BaseTableCRUDTestEnv {
             ErrorCode.INVALID_ARGUMENT,
             "view_definition is required for view"),
         Arguments.of(
+            "empty column list",
+            (UnaryOperator<CreateTable>) request -> request.columns(List.of()),
+            ErrorCode.INVALID_ARGUMENT,
+            "columns must contain at least one entry for view"),
+        Arguments.of(
+            // A client that omits `columns` entirely sends null rather than an empty list. This
+            // must be rejected the same way, not surface as an internal error.
+            "missing columns",
+            (UnaryOperator<CreateTable>) request -> request.columns(null),
+            ErrorCode.INVALID_ARGUMENT,
+            "columns must contain at least one entry for view"),
+        Arguments.of(
             "non-existent dependency",
             (UnaryOperator<CreateTable>)
                 request ->
