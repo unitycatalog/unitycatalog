@@ -1,5 +1,6 @@
 package io.unitycatalog.spark
 
+import java.io.{BufferedReader, InputStreamReader}
 import java.net.URI
 import java.util
 import java.util.Locale
@@ -9,6 +10,7 @@ import scala.collection.convert.ImplicitConversions._
 import scala.collection.mutable.ArrayBuffer
 import scala.language.existentials
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.unitycatalog.client.api.{SchemasApi, TablesApi}
 import io.unitycatalog.client.auth.TokenProvider
 import io.unitycatalog.client.model.{
@@ -863,6 +865,96 @@ private[spark] class UCProxy(
   }
 
   /**
+   * Recovers the table schema by reading it back from the Delta transaction log at `location`.
+   *
+   * `DeltaCatalog` commits the schema to `_delta_log` itself and then calls this catalog's
+   * legacy `createTable(ident, schema: StructType, ...)` overload with an *empty* schema -- it
+   * treats the transaction log as the source of truth and doesn't expect the underlying catalog
+   * to need the columns. Left as-is, that leaves UC's own metadata with zero columns, which
+   * breaks any UC-native reader of table metadata (non-Spark clients, `SHOW COLUMNS`, direct
+   * `TablesApi.getTable` callers, etc). We recover the real schema here so UC's record matches
+   * reality.
+   *
+   * Deliberately fails soft: returns `None` (instead of throwing) on any failure to fetch
+   * credentials, list/open the log, or parse a commit, so callers can fall back to the original
+   * (possibly empty) schema instead of failing the whole CREATE TABLE over a best-effort repair.
+   *
+   * Note: this does not depend on credential-shaped entries surviving in `properties` -- by the
+   * time `DeltaCatalog` calls back into this method, it may have rebuilt/stripped the property
+   * map, so any `fs.*` / `option.fs.*` overrides `UCSingleCatalog` originally vended upstream
+   * are not reliably present here. We fetch fresh READ-capable credentials for `location`
+   * directly instead of trying to recover them from `properties`.
+   */
+  private[spark] def readSchemaFromDeltaLog(
+      properties: util.Map[String, String]): Option[StructType] = {
+    val location = properties.get(TableCatalog.PROP_LOCATION)
+    if (location == null || location.isEmpty) return None
+
+    try {
+      val locationUri = CatalogUtils.stringToURI(location)
+      val conf = new Configuration(UCSingleCatalog.sessionHadoopConf())
+
+      val credentialProps = UCCredentialHadoopConfs
+        .builder(uri.toString, locationUri.getScheme)
+        .addAppVersions(ApiClientFactory.appEngineVersions())
+        .tokenProvider(tokenProvider)
+        .apiClient(apiClient)
+        .enableCredentialRenewal(renewCredEnabled)
+        .enableCredentialScopedFs(credScopedFsEnabled)
+        .hadoopConf(UCSingleCatalog.sessionHadoopConf())
+        .buildForPath(location, PathOperation.PATH_CREATE_TABLE)
+      credentialProps.asScala.foreach { case (k, v) => conf.set(k, v) }
+
+      val logDir = new Path(location, "_delta_log")
+      val fs = logDir.getFileSystem(conf)
+      if (!fs.exists(logDir)) return None
+
+      val commitFiles = fs.listStatus(logDir)
+        .filter(s => s.getPath.getName.endsWith(".json"))
+        .sortBy(_.getPath.getName) // ascending: 00000000000000000000.json first
+
+      val mapper = new ObjectMapper()
+      // Walk commits in order and keep the *last* schemaString seen, in case of schema
+      // evolution within the same batch of commits (unlikely on initial create, but cheap to
+      // handle correctly).
+      val schemaJson = commitFiles.iterator.flatMap { status =>
+        val in = fs.open(status.getPath)
+        try {
+          val reader = new BufferedReader(new InputStreamReader(in, "UTF-8"))
+          Iterator.continually(reader.readLine()).takeWhile(_ != null).flatMap { line =>
+            if (line.trim.isEmpty) None
+            else {
+              val node = mapper.readTree(line)
+              val metaData = node.get("metaData")
+              if (metaData != null && metaData.has("schemaString")) {
+                Some(metaData.get("schemaString").asText())
+              } else {
+                None
+              }
+            }
+          }.toList // materialize before closing the stream
+        } finally {
+          in.close()
+        }
+      }.toSeq.lastOption
+
+      schemaJson.flatMap { json =>
+        try {
+          Some(DataType.fromJson(json).asInstanceOf[StructType])
+        } catch {
+          case e: Exception =>
+            logWarning(s"Failed to parse Delta schemaString from $logDir: ${e.getMessage}")
+            None
+        }
+      }
+    } catch {
+      case e: Exception =>
+        logWarning(s"Failed to recover schema from Delta log at $location", e)
+        None
+    }
+  }
+
+  /**
    * Spark 4.2's `TableCatalog` made `createTable(ident, TableInfo)` the canonical entry
    * point; this legacy 4-arg method carries all the create-table logic, which keeps the diff
    * vs. main scoped to "add the new overload + 409 -> TableAlreadyExistsException catch required
@@ -871,6 +963,19 @@ private[spark] class UCProxy(
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
     UCSingleCatalog.requireProviderSpecified("CREATE TABLE", properties)
+
+    val format = properties.get("provider")
+
+    // `DeltaCatalog` calls into this overload with an empty `schema` once it has already
+    // committed the real schema to the Delta transaction log itself (see
+    // `readSchemaFromDeltaLog`'s scaladoc for why). Recover it here so UC's own metadata isn't
+    // left with zero columns.
+    val effectiveSchema =
+      if (schema.fields.isEmpty && format != null && format.equalsIgnoreCase("delta")) {
+        readSchemaFromDeltaLog(properties).getOrElse(schema)
+      } else {
+        schema
+      }
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())
@@ -882,7 +987,6 @@ private[spark] class UCProxy(
     assert(storageLocation != null, "location should either be user specified or system generated.")
     val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
       .exists(_.equalsIgnoreCase("true"))
-    val format = properties.get("provider")
     if (isManagedLocation) {
       assert(!hasExternalClause, "location is only generated for managed tables.")
       if (!format.equalsIgnoreCase(DataSourceFormat.DELTA.name)) {
@@ -896,7 +1000,7 @@ private[spark] class UCProxy(
 
     val partitionColNames: Seq[String] =
       UCColumnConversions.partitionColumnNames(partitions).asScala.toSeq
-    val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
+    val columns: Seq[ColumnInfo] = effectiveSchema.fields.toSeq.zipWithIndex.map { case (field, i) =>
       val column = new ColumnInfo()
       column.setName(field.name)
       if (field.getComment().isDefined) {
