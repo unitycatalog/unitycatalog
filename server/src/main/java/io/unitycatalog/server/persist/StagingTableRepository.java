@@ -115,7 +115,7 @@ public class StagingTableRepository {
               createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
         },
         "Error creating table: " + getTableFullName(createStagingTable),
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   /**

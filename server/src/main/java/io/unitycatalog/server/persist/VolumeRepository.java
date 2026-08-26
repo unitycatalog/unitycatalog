@@ -105,7 +105,7 @@ public class VolumeRepository {
               createVolumeRequest.getCatalogName(), createVolumeRequest.getSchemaName());
         },
         "Failed to create volume",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public VolumeInfo getVolume(String fullName) {
@@ -123,7 +123,7 @@ public class VolumeRepository {
               .toVolumeInfo(catalogName, schemaName);
         },
         "Failed to get volume",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public VolumeInfoDAO getVolumeDAO(
@@ -159,7 +159,7 @@ public class VolumeRepository {
           return volumeInfo;
         },
         "Failed to get volume by ID",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   /**
@@ -188,7 +188,7 @@ public class VolumeRepository {
           return listVolumes(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         },
         "Failed to list volumes",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public ListVolumesResponseContent listVolumes(
@@ -250,7 +250,7 @@ public class VolumeRepository {
           return volumeInfo.toVolumeInfo(catalog, schema);
         },
         "Failed to update volume",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public void deleteVolume(String name) {
@@ -268,7 +268,7 @@ public class VolumeRepository {
           return null;
         },
         "Failed to delete volume",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public void deleteVolume(Session session, UUID schemaId, String volumeName) {

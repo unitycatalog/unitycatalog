@@ -296,8 +296,7 @@ public class DeltaModelSerializationTest {
   public void testDeserMalformedDecimalString() throws Exception {
     // Malformed decimal string doesn't match decimal(N,N) regex,
     // so it falls through to DeltaPrimitiveType (same as any unrecognized type string)
-    String json =
-        "{\"name\":\"col\",\"type\":\"decimal(abc)\",\"nullable\":true,\"metadata\":{}}";
+    String json = "{\"name\":\"col\",\"type\":\"decimal(abc)\",\"nullable\":true,\"metadata\":{}}";
     DeltaStructField col = MAPPER.readValue(json, DeltaStructField.class);
     assertThat(col.getType()).isInstanceOf(DeltaPrimitiveType.class);
     assertThat(col.getType().getType()).isEqualTo("decimal(abc)");
@@ -383,8 +382,7 @@ public class DeltaModelSerializationTest {
                 meta(
                     null,
                     Map.of(
-                        "delta.columnMapping.id", 1,
-                        "delta.columnMapping.physicalName", "col-1")));
+                        "delta.columnMapping.id", 1, "delta.columnMapping.physicalName", "col-1")));
     DeltaStructField colPrice =
         new DeltaStructField()
             .name("price")
@@ -418,8 +416,10 @@ public class DeltaModelSerializationTest {
                                             meta(
                                                 "score value",
                                                 Map.of(
-                                                    "delta.columnMapping.id", 10,
-                                                    "delta.columnMapping.physicalName", "col-10"))),
+                                                    "delta.columnMapping.id",
+                                                    10,
+                                                    "delta.columnMapping.physicalName",
+                                                    "col-10"))),
                                     new DeltaStructField()
                                         .name("timestamp")
                                         .type(new DeltaPrimitiveType().type("long"))
@@ -527,8 +527,7 @@ public class DeltaModelSerializationTest {
   @Test
   public void testCreateTableRequestRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/create-table-request.json");
-    DeltaCreateTableRequest req =
-        MAPPER.readValue(json, DeltaCreateTableRequest.class);
+    DeltaCreateTableRequest req = MAPPER.readValue(json, DeltaCreateTableRequest.class);
 
     // Verify DeltaDataType serde works on nested DeltaStructType fields
     DeltaStructField idField = req.getColumns().getFields().get(0);
@@ -557,8 +556,7 @@ public class DeltaModelSerializationTest {
   @Test
   public void testLoadTableResponseRoundTrip() throws Exception {
     String json = readFixture("/delta-model-test/load-table-response.json");
-    DeltaLoadTableResponse resp =
-        MAPPER.readValue(json, DeltaLoadTableResponse.class);
+    DeltaLoadTableResponse resp = MAPPER.readValue(json, DeltaLoadTableResponse.class);
 
     // Verify DeltaDataType serde works in DeltaTableMetadata.columns
     DeltaStructField priceField = resp.getMetadata().getColumns().getFields().get(1);
@@ -589,8 +587,8 @@ public class DeltaModelSerializationTest {
    * Build a {@link DeltaStructFieldMetadata} with the optional {@code comment} plus a bag of
    * additional properties for the spec's dotted Delta keys (e.g. {@code delta.columnMapping.id}).
    * The schema models {@code DeltaStructFieldMetadata} as a bare additionalProperties wrapper, so
-   * the generated class extends {@code HashMap<String, Object>}; all keys (including
-   * {@code comment}) go through the map view.
+   * the generated class extends {@code HashMap<String, Object>}; all keys (including {@code
+   * comment}) go through the map view.
    */
   private static DeltaStructFieldMetadata meta(String comment, Map<String, Object> additional) {
     DeltaStructFieldMetadata m = new DeltaStructFieldMetadata();

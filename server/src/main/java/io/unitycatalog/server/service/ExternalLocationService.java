@@ -5,7 +5,6 @@ import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 import com.linecorp.armeria.common.HttpResponse;
-import io.unitycatalog.server.model.SecurableType;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Get;
@@ -14,11 +13,12 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.ExternalLocationInfo;
 import io.unitycatalog.server.model.ListExternalLocationsResponse;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.ExternalLocationRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
@@ -43,26 +43,28 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   }
 
   @Post("")
-  @AuthorizeExpression("""
-    #authorize(#principal, #metastore, OWNER) ||
-    (#authorize(#principal, #metastore, CREATE_EXTERNAL_LOCATION) &&
-     #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION))
-    """)
+  @AuthorizeExpression(
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      (#authorize(#principal, #metastore, CREATE_EXTERNAL_LOCATION) &&
+       #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION))
+      """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createExternalLocation(
       @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
-      CreateExternalLocation createExternalLocation) {
+          CreateExternalLocation createExternalLocation) {
     ExternalLocationInfo externalLocationInfo =
         externalLocationRepository.addExternalLocation(createExternalLocation);
     initializeBasicAuthorization(externalLocationInfo.getId());
     return HttpResponse.ofJson(externalLocationInfo);
   }
 
-  private static final String LIST_AND_GET_AUTH_EXPRESSION = """
-    #authorize(#principal, #metastore, OWNER) ||
-    #authorizeAny(#principal, #external_location, OWNER, READ_FILES, WRITE_FILES,
-      CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE)
-    """;
+  private static final String LIST_AND_GET_AUTH_EXPRESSION =
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorizeAny(#principal, #external_location, OWNER, READ_FILES, WRITE_FILES,
+        CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME, CREATE_MANAGED_STORAGE)
+      """;
 
   @Get("")
   @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
@@ -86,26 +88,28 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   }
 
   @Patch("/{name}")
-  @AuthorizeExpression("""
-    #authorize(#principal, #metastore, OWNER) ||
-    (#authorize(#principal, #external_location, OWNER) &&
-     (#credential == null ||
-      #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION)))
-    """)
+  @AuthorizeExpression(
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      (#authorize(#principal, #external_location, OWNER) &&
+       (#credential == null ||
+        #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION)))
+      """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
       @AuthorizeResourceKey(value = CREDENTIAL, key = "credential_name")
-      UpdateExternalLocation updateRequest) {
+          UpdateExternalLocation updateRequest) {
     return HttpResponse.ofJson(
         externalLocationRepository.updateExternalLocation(name, updateRequest));
   }
 
   @Delete("/{name}")
-  @AuthorizeExpression("""
-    #authorize(#principal, #metastore, OWNER) ||
-    #authorize(#principal, #external_location, OWNER)
-    """)
+  @AuthorizeExpression(
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #external_location, OWNER)
+      """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
@@ -115,5 +119,4 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
     removeAuthorizations(externalLocationDAO.getId().toString());
     return HttpResponse.of(HttpStatus.OK);
   }
-
 }

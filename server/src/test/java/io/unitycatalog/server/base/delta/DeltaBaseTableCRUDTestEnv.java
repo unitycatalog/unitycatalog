@@ -33,9 +33,7 @@ import java.util.stream.Collectors;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 
-/**
- * Test scaffolding for integration tests that exercise the Delta APIs against a UC catalog.
- */
+/** Test scaffolding for integration tests that exercise the Delta APIs against a UC catalog. */
 public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
 
   /**
@@ -73,8 +71,9 @@ public abstract class DeltaBaseTableCRUDTestEnv extends BaseTableCRUDTestEnv {
   /** Stage a MANAGED Delta table via Delta REST. */
   protected DeltaStagingTableResponse createDeltaStaging(String name) throws ApiException {
     return deltaTablesApi.createStagingTable(
-        TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME,
-            new DeltaCreateStagingTableRequest().name(name));
+        TestUtils.CATALOG_NAME,
+        TestUtils.SCHEMA_NAME,
+        new DeltaCreateStagingTableRequest().name(name));
   }
 
   /**

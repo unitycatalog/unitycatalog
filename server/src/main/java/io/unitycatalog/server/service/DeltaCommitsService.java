@@ -1,5 +1,8 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
+
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Get;
@@ -15,12 +18,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.utils.ServerProperties;
 import lombok.SneakyThrows;
 
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.TABLE;
-
-/**
- * REST API service for Delta commits to Delta tables in Unity Catalog.
- */
+/** REST API service for Delta commits to Delta tables in Unity Catalog. */
 public class DeltaCommitsService extends AuthorizedService implements UnityCatalogRestService {
 
   private final DeltaCommitRepository deltaCommitRepository;
@@ -38,8 +36,7 @@ public class DeltaCommitsService extends AuthorizedService implements UnityCatal
   @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse postCommit(
-      @AuthorizeResourceKey(value = TABLE, key = "table_id")
-      DeltaCommit commit) {
+      @AuthorizeResourceKey(value = TABLE, key = "table_id") DeltaCommit commit) {
     // The UC REST commit endpoint only accepts MANAGED Delta tables (enforced downstream by
     // validateTableForCommit), so the gate applies unconditionally here.
     serverProperties.checkDeltaApiOnlyEnabled(
@@ -49,15 +46,15 @@ public class DeltaCommitsService extends AuthorizedService implements UnityCatal
   }
 
   @Get("")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
         #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
         #authorizeAny(#principal, #table, OWNER, SELECT)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getCommits(
-    @AuthorizeResourceKey(value = TABLE, key = "table_id")
-    DeltaGetCommits rpc) {
+      @AuthorizeResourceKey(value = TABLE, key = "table_id") DeltaGetCommits rpc) {
     // Same as postCommit above -- managed-Delta-only by contract; gate unconditionally.
     serverProperties.checkDeltaApiOnlyEnabled(
         "GET /delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table} (commits[])");

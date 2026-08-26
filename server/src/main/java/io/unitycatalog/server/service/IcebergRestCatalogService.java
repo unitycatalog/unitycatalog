@@ -533,8 +533,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         tableMetadata.location().contains(Constants.MANAGED_STORAGE_PREFIX)
             ? TableType.MANAGED
             : TableType.EXTERNAL;
-    return finalizeIcebergTableCreation(
-        catalog, namespace, table, tableType, tableMetadata, true);
+    return finalizeIcebergTableCreation(catalog, namespace, table, tableType, tableMetadata, true);
   }
 
   private boolean ucTableExists(String catalog, String namespace, String table) {

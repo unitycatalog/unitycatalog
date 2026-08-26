@@ -138,7 +138,8 @@ public abstract class AuthorizedService {
       if (resultFilter == null) {
         throw new BaseException(
             ErrorCode.INTERNAL,
-            "Authorization filter not initialized — ensure the request goes through UnityAccessDecorator.");
+            "Authorization filter not initialized — ensure the request goes through"
+                + " UnityAccessDecorator.");
       }
       resultFilter.filter(securableType, items);
     }

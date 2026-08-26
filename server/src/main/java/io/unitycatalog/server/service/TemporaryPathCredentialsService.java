@@ -1,23 +1,22 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
+
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.utils.NormalizedURL;
-
 import java.util.Collections;
 import java.util.Set;
-
-import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
-import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 
 public class TemporaryPathCredentialsService implements UnityCatalogRestService {
   private final StorageCredentialVendor storageCredentialVendor;
@@ -58,7 +57,8 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
   // e. Additionally for all data securables, it requires USE_CATALOG and USE_SCHEMA (or OWNER)
   //  of the parent catalog and schema.
   @Post("")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #operation == 'PATH_READ' ? (
         #authorize(#principal, #metastore, OWNER) ||
         (#table != null &&
@@ -105,9 +105,8 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse generateTemporaryPathCredential(
-      @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "url")
-      @AuthorizeKey(key = "operation")
-      GenerateTemporaryPathCredential generateTemporaryPathCredential) {
+      @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "url") @AuthorizeKey(key = "operation")
+          GenerateTemporaryPathCredential generateTemporaryPathCredential) {
     return HttpResponse.ofJson(
         storageCredentialVendor.vendCredential(
             NormalizedURL.from(generateTemporaryPathCredential.getUrl()),

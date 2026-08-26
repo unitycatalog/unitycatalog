@@ -155,10 +155,10 @@ public class ColumnUtils {
 
   /**
    * Validate that a UC column stores {@code typeJson} as Spark {@code StructField} JSON. Shape
-   * (deserializability) and name/nullable cross-match run for all formats. The
-   * Delta-protocol primitive-type closed-set check runs only for {@link DataSourceFormat#DELTA} --
-   * non-Delta tables (Parquet, CSV, ...) may legitimately carry Spark types that the closed set
-   * rejects (e.g. {@code char(N)} / {@code varchar(N)}).
+   * (deserializability) and name/nullable cross-match run for all formats. The Delta-protocol
+   * primitive-type closed-set check runs only for {@link DataSourceFormat#DELTA} -- non-Delta
+   * tables (Parquet, CSV, ...) may legitimately carry Spark types that the closed set rejects (e.g.
+   * {@code char(N)} / {@code varchar(N)}).
    */
   public static void validateTypeJson(ColumnInfo column, DataSourceFormat format) {
     if (column == null) {
@@ -210,9 +210,7 @@ public class ColumnUtils {
         cause);
   }
 
-  /**
-   * Serialize a DeltaStructField to Spark's camelCase typeJson format for UC database storage.
-   */
+  /** Serialize a DeltaStructField to Spark's camelCase typeJson format for UC database storage. */
   public static String toTypeJson(DeltaStructField field) {
     try {
       return TYPE_MAPPER.writeValueAsString(field);
@@ -228,8 +226,8 @@ public class ColumnUtils {
    * pre-checking nullness/emptiness.
    *
    * <p>Field-name uniqueness is enforced case-insensitively (per Delta's schema rule "All column
-   * names must be unique regardless of casing"). Names are stored case-preserving on
-   * {@link DeltaStructField#getName()}; only the duplicate check ignores case.
+   * names must be unique regardless of casing"). Names are stored case-preserving on {@link
+   * DeltaStructField#getName()}; only the duplicate check ignores case.
    */
   public static void validateStructType(DeltaStructType structType, String path) {
     requireNonNull(structType, path);
@@ -247,8 +245,8 @@ public class ColumnUtils {
       String name = fields.get(i).getName();
       if (!seenLower.add(name.toLowerCase(Locale.ROOT))) {
         throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "Duplicate field name (case-insensitive) in " + fieldPath + ": " + name);
+            ErrorCode.INVALID_ARGUMENT,
+            "Duplicate field name (case-insensitive) in " + fieldPath + ": " + name);
       }
     }
   }
@@ -332,30 +330,31 @@ public class ColumnUtils {
   }
 
   /**
-   * Convert a UC Delta API {@link DeltaStructField} into a UC {@link ColumnInfo}, mirroring
-   * {@code UCSingleCatalog.createTable}'s per-column projection so Delta-created tables render
-   * identically to Spark-created ones.
+   * Convert a UC Delta API {@link DeltaStructField} into a UC {@link ColumnInfo}, mirroring {@code
+   * UCSingleCatalog.createTable}'s per-column projection so Delta-created tables render identically
+   * to Spark-created ones.
    *
-   * <p>Caller contract: {@code field} must have already been validated by
-   * {@link #validateStructType}. This method does not re-check shape -- malformed input will
-   * surface as a downstream {@link IllegalStateException} from {@link #toTypeJson} or a
-   * {@link BaseException} from {@link #resolveColumnTypeName}, without the path-context that
-   * {@code validateStructType} provides.
+   * <p>Caller contract: {@code field} must have already been validated by {@link
+   * #validateStructType}. This method does not re-check shape -- malformed input will surface as a
+   * downstream {@link IllegalStateException} from {@link #toTypeJson} or a {@link BaseException}
+   * from {@link #resolveColumnTypeName}, without the path-context that {@code validateStructType}
+   * provides.
    *
    * <p>Fields populated (matching UCSingleCatalog exactly):
+   *
    * <ul>
    *   <li>{@code name}, {@code nullable}, {@code position}
-   *   <li>{@code comment} -- only when present in {@code metadata.comment} (UCSingleCatalog
-   *       skips the setter when {@code field.getComment().isEmpty}); when absent the field is
-   *       left at its default {@code null}, which produces the same wire shape
+   *   <li>{@code comment} -- only when present in {@code metadata.comment} (UCSingleCatalog skips
+   *       the setter when {@code field.getComment().isEmpty}); when absent the field is left at its
+   *       default {@code null}, which produces the same wire shape
    *   <li>{@code typeJson} -- {@code field.dataType.json}, the Spark-format column spec
    *   <li>{@code typeName} -- {@code convertDataTypeToTypeName(field.dataType)}
    *   <li>{@code typeText} -- {@code field.dataType.catalogString}
    * </ul>
    *
-   * <p>Fields intentionally not populated (matching UCSingleCatalog):
-   * {@code typePrecision}, {@code typeScale}, {@code typeIntervalType}, {@code partitionIndex}
-   * ({@code partitionIndex} is stamped separately by {@link #applyPartitionColumns}).
+   * <p>Fields intentionally not populated (matching UCSingleCatalog): {@code typePrecision}, {@code
+   * typeScale}, {@code typeIntervalType}, {@code partitionIndex} ({@code partitionIndex} is stamped
+   * separately by {@link #applyPartitionColumns}).
    */
   public static ColumnInfo toColumnInfo(DeltaStructField field, int position) {
     DeltaDataType type = field.getType();
@@ -375,9 +374,9 @@ public class ColumnUtils {
   }
 
   /**
-   * Project a list of {@link DeltaStructField}s into UC {@link ColumnInfo}s, stamping each
-   * column's {@code position} from its index in the list. Used by both the create and update paths
-   * of the UC Delta API so the wire-order-to-position mapping stays in one place.
+   * Project a list of {@link DeltaStructField}s into UC {@link ColumnInfo}s, stamping each column's
+   * {@code position} from its index in the list. Used by both the create and update paths of the UC
+   * Delta API so the wire-order-to-position mapping stays in one place.
    */
   public static List<ColumnInfo> toColumnInfos(List<DeltaStructField> fields) {
     List<ColumnInfo> columns = new ArrayList<>(fields.size());
@@ -405,7 +404,10 @@ public class ColumnUtils {
       return "array<" + toCatalogString(a.getElementType()) + ">";
     }
     if (type instanceof DeltaMapType m) {
-      return "map<" + toCatalogString(m.getKeyType()) + "," + toCatalogString(m.getValueType())
+      return "map<"
+          + toCatalogString(m.getKeyType())
+          + ","
+          + toCatalogString(m.getValueType())
           + ">";
     }
     if (type instanceof DeltaStructType s) {
@@ -474,14 +476,14 @@ public class ColumnUtils {
   }
 
   /**
-   * Stamp each {@link ColumnInfo} whose name appears in {@code partitionColumns} with its
-   * partition index (the position within {@code partitionColumns}). Throws {@code INVALID_ARGUMENT}
-   * at the first partition-column name that does not match any column in {@code columns}.
+   * Stamp each {@link ColumnInfo} whose name appears in {@code partitionColumns} with its partition
+   * index (the position within {@code partitionColumns}). Throws {@code INVALID_ARGUMENT} at the
+   * first partition-column name that does not match any column in {@code columns}.
    *
-   * <p>The input {@code columns} list is mutated in place. Designed to be shared between the
-   * UC Delta API create and update/commit paths -- both take a kebab-case {@code
-   * partition-columns} list of names from the wire and project it onto UC's
-   * partition-index-per-column representation (only create is wired up today).
+   * <p>The input {@code columns} list is mutated in place. Designed to be shared between the UC
+   * Delta API create and update/commit paths -- both take a kebab-case {@code partition-columns}
+   * list of names from the wire and project it onto UC's partition-index-per-column representation
+   * (only create is wired up today).
    *
    * <p>Runs in {@code O(|columns| + |partitionColumns|)}: builds a name → ColumnInfo lookup once,
    * then walks {@code partitionColumns} stamping indices and rejecting unknown names inline.
@@ -509,8 +511,7 @@ public class ColumnUtils {
       ColumnInfo match = columnsByLowerName.get(lowerPartName);
       if (match == null) {
         throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT,
-            "partition-columns references unknown column: " + partName);
+            ErrorCode.INVALID_ARGUMENT, "partition-columns references unknown column: " + partName);
       }
       match.setPartitionIndex(i);
     }

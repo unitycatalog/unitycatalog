@@ -1,5 +1,9 @@
 package io.unitycatalog.server.auth.decorator;
 
+import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PARAM;
+import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PAYLOAD;
+import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.SYSTEM;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.HttpRequest;
@@ -21,9 +25,6 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
@@ -33,10 +34,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PARAM;
-import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.PAYLOAD;
-import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.SYSTEM;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Armeria access control Decorator.
@@ -50,10 +49,10 @@ import static io.unitycatalog.server.auth.decorator.AuthorizeKeyLocator.Source.S
  *
  * <p>2. {@code @AuthorizeResourceKey} - This annotation maps a request value to a unity catalog
  * resource (catalog, schema, table, etc.) for the authorization context. The source is chosen by
- * whether the annotated method parameter also carries {@code @Param}: if present, the value is
- * read from the URL query or path; if absent, from the request body field named by
- * {@code @AuthorizeResourceKey.key()}. May be used at the method level (server-level resources
- * like METASTORE) or at the parameter level, and may be specified more than once per method.
+ * whether the annotated method parameter also carries {@code @Param}: if present, the value is read
+ * from the URL query or path; if absent, from the request body field named by
+ * {@code @AuthorizeResourceKey.key()}. May be used at the method level (server-level resources like
+ * METASTORE) or at the parameter level, and may be specified more than once per method.
  *
  * <p>3. {@code @AuthorizeKey} - Works like {@code @AuthorizeResourceKey} for source selection, but
  * for non-resource request values (operation mode, table type, flag, etc.) exposed directly as a
@@ -87,6 +86,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
    */
   public static final AttributeKey<PayloadAuthorizer> PAYLOAD_AUTHORIZER =
       AttributeKey.valueOf(UnityAccessDecorator.class, "PAYLOAD_AUTHORIZER");
+
   private final KeyMapper keyMapper;
   private final UserRepository userRepository;
 
@@ -141,7 +141,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       UUID principal,
       List<AuthorizeKeyLocator> locators,
       String expression,
-      Optional<ResponseAuthorizeFilter> filterAnnotation) throws Exception {
+      Optional<ResponseAuthorizeFilter> filterAnnotation)
+      throws Exception {
     //
     // Based on the query and payload parameters defined on the service method (that
     // have been gathered as Locators), we'll attempt to find the entity/resource that
@@ -153,30 +154,29 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // Split up the locators by type, because we have to extract the value from the request
     // different ways for different types
 
-    List<AuthorizeKeyLocator> systemLocators = locators.stream()
-        .filter(l -> l.getSource().equals(SYSTEM))
-        .toList();
-    List<AuthorizeKeyLocator> paramLocators = locators.stream()
-        .filter(l -> l.getSource().equals(PARAM))
-        .toList();
-    List<AuthorizeKeyLocator> payloadLocators = locators.stream()
-        .filter(l -> l.getSource().equals(PAYLOAD))
-        .toList();
+    List<AuthorizeKeyLocator> systemLocators =
+        locators.stream().filter(l -> l.getSource().equals(SYSTEM)).toList();
+    List<AuthorizeKeyLocator> paramLocators =
+        locators.stream().filter(l -> l.getSource().equals(PARAM)).toList();
+    List<AuthorizeKeyLocator> payloadLocators =
+        locators.stream().filter(l -> l.getSource().equals(PAYLOAD)).toList();
 
     // Add system-type keys, just metastore for now.
     systemLocators.forEach(l -> resourceKeys.put(l.getType().get(), "metastore"));
 
     // Extract the query/path parameter values just by grabbing them from the request
-    paramLocators.forEach(l -> {
-      String value = ctx.pathParam(l.getKey()) != null
-          ? ctx.pathParam(l.getKey())
-          : ctx.queryParam(l.getKey());
-      if (l.getType().isPresent()) {
-        resourceKeys.put(l.getType().get(), value);
-      } else {
-        nonResourceValues.put(l.getVariableName(), value);
-      }
-    });
+    paramLocators.forEach(
+        l -> {
+          String value =
+              ctx.pathParam(l.getKey()) != null
+                  ? ctx.pathParam(l.getKey())
+                  : ctx.queryParam(l.getKey());
+          if (l.getType().isPresent()) {
+            resourceKeys.put(l.getType().get(), value);
+          } else {
+            nonResourceValues.put(l.getVariableName(), value);
+          }
+        });
 
     EvaluationAction evaluateAction =
         filterAnnotation
@@ -366,10 +366,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     @Override
     protected void beforeRequest(
-      UUID principal,
-      String expression,
-      Map<SecurableType, UUID> resourceIds,
-      Map<String, Object> nonResourceValues) {
+        UUID principal,
+        String expression,
+        Map<SecurableType, UUID> resourceIds,
+        Map<String, Object> nonResourceValues) {
       resultFilter =
           new ResultFilter(
               evaluator, principal, expression, resourceIds, nonResourceValues, keyMapper);
@@ -470,9 +470,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     HttpService annotated = httpService.as(AnnotatedService.class);
     if (annotated instanceof AnnotatedService service) {
 
-      LOGGER.debug("serviceName = {}, methodName = {}",
-          service.serviceName(),
-          service.methodName());
+      LOGGER.debug(
+          "serviceName = {}, methodName = {}", service.serviceName(), service.methodName());
 
       Class<?> clazz = Class.forName(service.serviceName());
       List<Method> methods = findMethodsByName(clazz, service.methodName());

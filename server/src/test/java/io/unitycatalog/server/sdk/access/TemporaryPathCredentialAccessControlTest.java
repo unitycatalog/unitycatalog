@@ -66,6 +66,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
   private static final String READWRITE_EMAIL = "readwrite@example.com";
   private static final String CREATE_TABLE_EMAIL = "createtable@example.com";
   private static final String UNAUTHORIZED_EMAIL = "unauthorized@example.com";
+
   /** User dedicated to creating external tables and volumes for testing. */
   private static final String TABLE_VOLUME_OWNER_EMAIL = "table_volume_owner@example.com";
 

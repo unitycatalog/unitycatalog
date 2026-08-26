@@ -75,8 +75,7 @@ public class ArmeriaServerBuilder {
         Server.builder()
             .localPort(port, SessionProtocol.HTTP)
             .serviceUnder("/docs", new DocService());
-    this.armeriaServerBuilder.service(
-        "/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
+    this.armeriaServerBuilder.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"));
     this.basePath = basePath;
     this.controlPath = controlPath;
     this.authorizationEnabled = serverProperties.isAuthorizationEnabled();
@@ -139,8 +138,7 @@ public class ArmeriaServerBuilder {
    * @param authDecorator authentication decorator; runs first at request time
    */
   ArmeriaServerBuilder withSecurityDecorators(
-      DecoratingHttpServiceFunction accessDecorator,
-      DecoratingHttpServiceFunction authDecorator) {
+      DecoratingHttpServiceFunction accessDecorator, DecoratingHttpServiceFunction authDecorator) {
     Objects.requireNonNull(accessDecorator, "accessDecorator");
     Objects.requireNonNull(authDecorator, "authDecorator");
     for (DecoratingHttpServiceFunction decorator : List.of(accessDecorator, authDecorator)) {
@@ -200,18 +198,20 @@ public class ArmeriaServerBuilder {
    * converters.
    */
   private void register(ServiceProtocol protocol, String relativePath, RegisteredService service) {
-    RequestConverterFunction requestConverter = switch (protocol) {
-      case AUTH, UC, SCIM -> bodyConverter(ucMapper);
-      case ICEBERG -> bodyConverter(icebergMapper);
-      case DELTA -> bodyConverter(deltaMapper);
-    };
+    RequestConverterFunction requestConverter =
+        switch (protocol) {
+          case AUTH, UC, SCIM -> bodyConverter(ucMapper);
+          case ICEBERG -> bodyConverter(icebergMapper);
+          case DELTA -> bodyConverter(deltaMapper);
+        };
     // Auth and UC services have no response converter; they return HttpResponse.ofJson directly.
-    List<JacksonResponseConverterFunction> responseConverters = switch (protocol) {
-      case AUTH, UC -> List.of();
-      case SCIM -> List.of(scimResponseConverter);
-      case ICEBERG -> List.of(icebergResponseConverter);
-      case DELTA -> List.of(deltaResponseConverter);
-    };
+    List<JacksonResponseConverterFunction> responseConverters =
+        switch (protocol) {
+          case AUTH, UC -> List.of();
+          case SCIM -> List.of(scimResponseConverter);
+          case ICEBERG -> List.of(icebergResponseConverter);
+          case DELTA -> List.of(deltaResponseConverter);
+        };
     // The service names its own dialect, so both paths use the same value: exceptionHandlers()
     // covers exceptions thrown inside the handler, the per-service decorator covers those thrown by
     // decorators sitting outside it.

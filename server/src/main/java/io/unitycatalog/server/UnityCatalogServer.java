@@ -61,6 +61,7 @@ public class UnityCatalogServer implements AutoCloseable {
   private final Server server;
   private final SecurityContext securityContext;
   private final HibernateConfigurator hibernateConfigurator;
+
   /** True when this server built the configurator itself and must therefore close it. */
   private final boolean ownsHibernateConfigurator;
 

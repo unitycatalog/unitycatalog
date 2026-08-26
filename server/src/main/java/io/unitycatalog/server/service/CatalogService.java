@@ -1,5 +1,9 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
@@ -9,9 +13,9 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.ListCatalogsResponse;
@@ -22,14 +26,9 @@ import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.utils.ServerProperties;
-import lombok.SneakyThrows;
-
 import java.util.List;
 import java.util.Optional;
-
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import lombok.SneakyThrows;
 
 public class CatalogService extends AuthorizedService implements UnityCatalogRestService {
   private final CatalogRepository catalogRepository;
@@ -61,24 +60,26 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
    * location (rather than tables etc.) owns the path.
    */
   @Post("")
-  @AuthorizeExpression("""
-      #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG) &&
-      (#storage_root == null ||
-       (#no_overlap_with_data_securable &&
-        #external_location != null &&
-        #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
-    """)
+  @AuthorizeExpression(
+      """
+        #authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG) &&
+        (#storage_root == null ||
+         (#no_overlap_with_data_securable &&
+          #external_location != null &&
+          #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
+      """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createCatalog(
       @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
-      @AuthorizeKey(key = "storage_root")
-      CreateCatalog createCatalog) {
+          @AuthorizeKey(key = "storage_root")
+          CreateCatalog createCatalog) {
     CatalogInfo catalogInfo = catalogRepository.addCatalog(createCatalog);
     initializeBasicAuthorization(catalogInfo.getId());
     return HttpResponse.ofJson(catalogInfo);
   }
 
-  private static final String LIST_AND_GET_AUTH_EXPRESSION = """
+  private static final String LIST_AND_GET_AUTH_EXPRESSION =
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
       """;
@@ -90,8 +91,8 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   public HttpResponse listCatalogs(
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
-    ListCatalogsResponse listCatalogsResponse = catalogRepository.listCatalogs(
-        maxResults, pageToken);
+    ListCatalogsResponse listCatalogsResponse =
+        catalogRepository.listCatalogs(maxResults, pageToken);
     applyResponseFilter(SecurableType.CATALOG, listCatalogsResponse.getCatalogs());
     return HttpResponse.ofJson(listCatalogsResponse);
   }
@@ -104,18 +105,19 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   }
 
   @Patch("/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #catalog, OWNER)
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCatalog(
-      @Param("name") @AuthorizeResourceKey(CATALOG) String name,
-      UpdateCatalog updateCatalog) {
+      @Param("name") @AuthorizeResourceKey(CATALOG) String name, UpdateCatalog updateCatalog) {
     return HttpResponse.ofJson(catalogRepository.updateCatalog(name, updateCatalog));
   }
 
   @Delete("/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER)
       """)
@@ -123,8 +125,7 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   public HttpResponse deleteCatalog(
       @Param("name") @AuthorizeResourceKey(CATALOG) String name,
       @Param("force") Optional<Boolean> force) {
-    List<DeletedResource> deleted =
-        catalogRepository.deleteCatalog(name, force.orElse(false));
+    List<DeletedResource> deleted = catalogRepository.deleteCatalog(name, force.orElse(false));
     clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }

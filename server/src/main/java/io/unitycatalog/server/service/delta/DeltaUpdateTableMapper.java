@@ -4,8 +4,8 @@ import io.unitycatalog.server.delta.model.DeltaAddCommitUpdate;
 import io.unitycatalog.server.delta.model.DeltaAssertEtag;
 import io.unitycatalog.server.delta.model.DeltaAssertTableUUID;
 import io.unitycatalog.server.delta.model.DeltaCommit;
-import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaDomainMetadataUpdates;
+import io.unitycatalog.server.delta.model.DeltaProtocol;
 import io.unitycatalog.server.delta.model.DeltaRemoveDomainMetadataUpdate;
 import io.unitycatalog.server.delta.model.DeltaRemovePropertiesUpdate;
 import io.unitycatalog.server.delta.model.DeltaSetDomainMetadataUpdate;
@@ -49,8 +49,7 @@ import java.util.stream.Collectors;
 import org.hibernate.Session;
 
 /**
- * Translates a {@link DeltaUpdateTableRequest} into in-memory mutations on a {@link
- * TableInfoDAO}
+ * Translates a {@link DeltaUpdateTableRequest} into in-memory mutations on a {@link TableInfoDAO}
  * and {@link MutablePropertyMap}. Three phases, each separately callable:
  *
  * <ol>
@@ -69,8 +68,7 @@ public final class DeltaUpdateTableMapper {
 
   // ---------------------------------------------------------------------- collection
 
-  public record CollectedRequest(
-      CollectedRequirements requirements, CollectedUpdates updates) {}
+  public record CollectedRequest(CollectedRequirements requirements, CollectedUpdates updates) {}
 
   /**
    * Classify and shape-check the request. {@code assert-table-uuid} is mandatory: without it a
@@ -183,9 +181,9 @@ public final class DeltaUpdateTableMapper {
 
     /**
      * True if this request carries at least one MANAGED-applicable metadata-changing action
-     * (properties, protocol, schema, partition columns, comment, domain metadata). Used to gate
-     * the auto-stamping of {@code delta.lastUpdateVersion} / {@code delta.lastCommitTimestamp} on
-     * a MANAGED {@code add-commit}. {@code update-metadata-snapshot-version} is intentionally
+     * (properties, protocol, schema, partition columns, comment, domain metadata). Used to gate the
+     * auto-stamping of {@code delta.lastUpdateVersion} / {@code delta.lastCommitTimestamp} on a
+     * MANAGED {@code add-commit}. {@code update-metadata-snapshot-version} is intentionally
      * omitted: it is EXTERNAL-only and so can never co-occur with {@code add-commit}.
      *
      * <p>A {@code set-domain-metadata} that touches only the {@code delta.rowTracking} domain does
@@ -220,10 +218,10 @@ public final class DeltaUpdateTableMapper {
     }
 
     /**
-     * True if this request changes catalog-visible table metadata: any MANAGED-applicable
-     * metadata action ({@link #hasManagedTableMetadataChange()}) or the EXTERNAL-only {@code
-     * update-metadata-snapshot-version}. Data-only {@code add-commit} and backfill-only
-     * requests carry no metadata change and return false.
+     * True if this request changes catalog-visible table metadata: any MANAGED-applicable metadata
+     * action ({@link #hasManagedTableMetadataChange()}) or the EXTERNAL-only {@code
+     * update-metadata-snapshot-version}. Data-only {@code add-commit} and backfill-only requests
+     * carry no metadata change and return false.
      */
     public boolean changesTableMetadata() {
       return hasManagedTableMetadataChange() || updateSnapshotVersion.isPresent();
@@ -310,8 +308,7 @@ public final class DeltaUpdateTableMapper {
    * would compare against post-mutation state.
    */
   public static void checkEtagRequirement(String preApplyEtag, CollectedRequest collected) {
-    Optional<String> assertEtag =
-        collected.requirements().assertEtag.map(DeltaAssertEtag::getEtag);
+    Optional<String> assertEtag = collected.requirements().assertEtag.map(DeltaAssertEtag::getEtag);
     if (assertEtag.isPresent() && !Objects.equals(preApplyEtag, assertEtag.get())) {
       throw new BaseException(
           ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
@@ -324,12 +321,11 @@ public final class DeltaUpdateTableMapper {
    *
    * <p>Known weakness: ms-precision {@code updated_at}. If a state-changing update lands in the
    * same wall-clock millisecond as the client's prior read, the etag doesn't advance and a
-   * follow-up {@code assert-etag} passes against state the client never observed. The Delta
-   * update path holds {@code PESSIMISTIC_WRITE} on the row, so two concurrent {@code
-   * updateTableForDelta} calls cannot both pass {@code assert-etag} against the same stale
-   * snapshot. {@code assert-etag} is an optional client-side optimization anyway; the
-   * authoritative serialization for CCv2 commits is the version conflict check in the commit
-   * endpoint.
+   * follow-up {@code assert-etag} passes against state the client never observed. The Delta update
+   * path holds {@code PESSIMISTIC_WRITE} on the row, so two concurrent {@code updateTableForDelta}
+   * calls cannot both pass {@code assert-etag} against the same stale snapshot. {@code assert-etag}
+   * is an optional client-side optimization anyway; the authoritative serialization for CCv2
+   * commits is the version conflict check in the commit endpoint.
    */
   public static String computeEtag(TableInfoDAO dao) {
     return dao.getUpdatedAt() != null
@@ -431,8 +427,8 @@ public final class DeltaUpdateTableMapper {
    * with {@code partition-columns references unknown column: ...}.
    *
    * <p>Swap semantics rely on the orphanRemoval mapping on {@link TableInfoDAO#getColumns()} to
-   * clean up the old rows; the intervening flush ensures the deletes hit the DB before the
-   * inserts, so the {@code (table_id, ordinal_position, name)} unique constraint doesn't trip.
+   * clean up the old rows; the intervening flush ensures the deletes hit the DB before the inserts,
+   * so the {@code (table_id, ordinal_position, name)} unique constraint doesn't trip.
    */
   private static void applySchemaAndPartitionColumns(
       Session session,
@@ -450,8 +446,7 @@ public final class DeltaUpdateTableMapper {
           ValidationUtils.checkNotNull(
               setSchema.get().getColumns(), "set-columns requires a columns block.");
       List<DeltaStructField> fields =
-          ValidationUtils.checkNotNull(
-              columns.getFields(), "set-columns requires columns.fields.");
+          ValidationUtils.checkNotNull(columns.getFields(), "set-columns requires columns.fields.");
       if (fields.isEmpty()) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT, "set-columns requires at least one column.");
@@ -537,10 +532,12 @@ public final class DeltaUpdateTableMapper {
           "update-metadata-snapshot-version is only supported for EXTERNAL Delta tables; "
               + "for MANAGED tables, use the Delta commit endpoint.");
     }
-    ValidationUtils.checkNotNull(update.getLastCommitVersion(),
-      "update-metadata-snapshot-version requires last-commit-version.");
-    ValidationUtils.checkNotNull(update.getLastCommitTimestampMs(),
-      "update-metadata-snapshot-version requires last-commit-timestamp-ms.");
+    ValidationUtils.checkNotNull(
+        update.getLastCommitVersion(),
+        "update-metadata-snapshot-version requires last-commit-version.");
+    ValidationUtils.checkNotNull(
+        update.getLastCommitTimestampMs(),
+        "update-metadata-snapshot-version requires last-commit-timestamp-ms.");
     properties.put(
         TableProperties.LAST_UPDATE_VERSION, String.valueOf(update.getLastCommitVersion()));
     properties.put(
@@ -551,8 +548,8 @@ public final class DeltaUpdateTableMapper {
 
   /**
    * Mapper-side preparation for the {@code add-commit} and {@code set-latest-backfilled-version}
-   * actions: cross-action validation plus snapshot-property bookkeeping. Returns the
-   * {@link CommitDispatch} the caller forwards to {@code
+   * actions: cross-action validation plus snapshot-property bookkeeping. Returns the {@link
+   * CommitDispatch} the caller forwards to {@code
    * DeltaCommitRepository.applyCommitAndBackfillInSession} so the mapper stays free of the
    * commit-repo dependency.
    *
@@ -561,11 +558,11 @@ public final class DeltaUpdateTableMapper {
    *       format is guaranteed by the caller's prior {@code requireDeltaTable});
    *   <li>extract and shape-validate uniform fields when {@code add-commit} carries them;
    *   <li>pin uniform.iceberg.converted-delta-version equal to commit.version (the commit-time
-   *       check that the create-time uniform validator can't run because there is no commit
-   *       version at create);
+   *       check that the create-time uniform validator can't run because there is no commit version
+   *       at create);
    *   <li>run the UniForm presence-consistency check against the post-update property map;
-   *   <li>stamp {@code delta.lastUpdateVersion} / {@code delta.lastCommitTimestamp} when the
-   *       commit is metadata-changing;
+   *   <li>stamp {@code delta.lastUpdateVersion} / {@code delta.lastCommitTimestamp} when the commit
+   *       is metadata-changing;
    *   <li>read {@code latest-published-version} off the backfill action and reject if it's null.
    * </ul>
    */
@@ -613,8 +610,8 @@ public final class DeltaUpdateTableMapper {
   }
 
   /**
-   * Convert a {@link DeltaCommit} into the UC {@link DeltaCommitInfo} shape so the Delta
-   * update path can flow through the shared commit-log helpers, which speak the UC wire shape.
+   * Convert a {@link DeltaCommit} into the UC {@link DeltaCommitInfo} shape so the Delta update
+   * path can flow through the shared commit-log helpers, which speak the UC wire shape.
    */
   private static DeltaCommitInfo toUcCommitInfo(DeltaCommit commit) {
     return new DeltaCommitInfo()

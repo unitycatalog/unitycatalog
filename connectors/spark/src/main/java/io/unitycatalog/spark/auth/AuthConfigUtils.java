@@ -32,7 +32,8 @@ public class AuthConfigUtils {
     if (token != null) {
       Preconditions.checkArgument(
           !newConfigs.containsKey(AuthConfigUtils.STATIC_TOKEN),
-          "Static token was configured twice, choose only one: 'token' (legacy) or 'auth.token' (new-style).");
+          "Static token was configured twice, choose only one: 'token' (legacy) or 'auth.token'"
+              + " (new-style).");
 
       newConfigs.put(TYPE, STATIC_TYPE);
       newConfigs.put(STATIC_TOKEN, token);

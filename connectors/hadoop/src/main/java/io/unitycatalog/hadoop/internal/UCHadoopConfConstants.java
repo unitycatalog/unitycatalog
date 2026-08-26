@@ -49,6 +49,7 @@ public class UCHadoopConfConstants {
 
   /** The storage prefix covered by a file system or a UC credential. */
   public static final String UC_CREDENTIAL_PREFIX_KEY = "fs.unitycatalog.credential.prefix";
+
   /**
    * Stable id derived from the credential context ({@code catalogUri}, storage {@code scheme}, and
    * {@code TokenProvider.configs()}) to isolate caches per credential context.

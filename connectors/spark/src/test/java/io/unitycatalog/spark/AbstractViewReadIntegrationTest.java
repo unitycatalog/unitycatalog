@@ -46,6 +46,7 @@ public abstract class AbstractViewReadIntegrationTest extends BaseSparkIntegrati
 
   protected static final String EMPLOYEES_TABLE_FULL_NAME =
       CATALOG_NAME + "." + SCHEMA_NAME + "." + EMPLOYEES_TABLE_NAME;
+
   /** EXTERNAL Delta table in a different catalog AND schema, referenced FULLY-QUALIFIED. */
   protected static final String DEPARTMENTS_TABLE_NAME = "departments";
 
@@ -59,6 +60,7 @@ public abstract class AbstractViewReadIntegrationTest extends BaseSparkIntegrati
   protected static final String[] QUERY_OUTPUT_COLUMNS = {
     "123", "e_id", "emp_name", "budget", "tags", "emp_info"
   };
+
   /** Declared view column names -- intentionally different from {@link #QUERY_OUTPUT_COLUMNS}. */
   protected static final String[] DECLARED_COLUMNS = {
     "num", "emp", "person", "dept_budget", "dept_tags", "person_info"
