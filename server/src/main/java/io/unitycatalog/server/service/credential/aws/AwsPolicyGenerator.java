@@ -22,6 +22,8 @@ import software.amazon.awssdk.regions.Region;
 
 public class AwsPolicyGenerator {
 
+  static final String AWS_PARTITION = "aws";
+
   static final List<String> SELECT_ACTIONS = List.of("s3:GetO*");
   static final List<String> UPDATE_ACTIONS = List.of(
       "s3:GetO*", "s3:PutO*", "s3:DeleteO*", "s3:*Multipart*");
@@ -53,32 +55,32 @@ public class AwsPolicyGenerator {
       Resource: []
       """;
 
-  // The condition key S3 populates when it calls KMS on the caller's behalf. Its value is the ARN
-  // of the object being encrypted or decrypted, or the ARN of the bucket when the bucket has S3
-  // Bucket Keys enabled, in which case the data key is shared across the objects in the bucket.
-  static final String KMS_ENCRYPTION_CONTEXT_KEY = "kms:EncryptionContext:aws:s3:arn";
-
   // Unity Catalog doesn't know which KMS key a bucket is configured with, so the resource stays
-  // open and the statement is narrowed by condition instead: to KMS calls made through S3, and to
-  // the S3 ARNs this policy already grants access to. A session policy can only narrow what the
-  // assumed role is already allowed to do, so a role without KMS access still gets none.
+  // open and the statement is narrowed to KMS calls made through S3. A session policy can only
+  // narrow what the assumed role is already allowed to do, so a role without KMS access still
+  // gets none. Encryption-context ARNs are omitted on purpose: they duplicate every S3 resource
+  // in this policy, and on long managed-table paths that blows the STS packed-policy limit
+  // ("Packed policy consumes 100% of allotted space"). S3 resource statements already constrain
+  // which objects the session can Get/Put. GovCloud/China hit the limit sooner because those
+  // ARN prefixes are longer, but commercial paths of the same length overflow too.
   static final String KMS_STATEMENT = """
       Effect: Allow
       Action: []
       Resource:
         - "*"
-      Condition:
-        StringLike:
-          "%s": []
-      """.formatted(KMS_ENCRYPTION_CONTEXT_KEY);
+      """;
 
   private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
   private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
 
   // This can support generating a policy across multiple buckets and paths, however, the assumed
   // role the policy is applied to for a scoped-session needs to have access across those buckets
+  /**
+   * Test helper: commercial {@link #AWS_PARTITION} (no role ARN or region). Production always
+   * calls {@link #generatePolicy(Set, List, String, Region)}.
+   */
   @SneakyThrows
-  public static String generatePolicy(
+  static String generatePolicy(
       Set<CredentialContext.Privilege> privileges,
       List<NormalizedURL> locations) {
     return generatePolicy(privileges, locations, null, null);
@@ -89,8 +91,8 @@ public class AwsPolicyGenerator {
    *
    * <p>IAM partition is taken from {@code roleArn} when that ARN is well-formed ({@code
    * arn:aws-us-gov:...} → {@code aws-us-gov}), then from the STS region catalog, then commercial
-   * {@code aws}. The same partition is used for S3 resources, KMS encryption-context ARNs, and
-   * {@code kms:ViaService} ({@code s3.*.amazonaws.com} vs {@code s3.*.amazonaws.com.cn}).
+   * {@code aws}. The same partition is used for S3 resources and {@code kms:ViaService}
+   * ({@code s3.*.amazonaws.com} vs {@code s3.*.amazonaws.com.cn}).
    */
   @SneakyThrows
   public static String generatePolicy(
@@ -104,10 +106,10 @@ public class AwsPolicyGenerator {
     JsonNode operationsStatement = loadYaml(OPERATION_STATEMENT);
     policyStatement.add(operationsStatement);
     JsonNode kmsStatement = loadYaml(KMS_STATEMENT);
-    JsonNode stringLike = kmsStatement.findPath("StringLike");
-    if (stringLike instanceof ObjectNode stringLikeNode) {
-      stringLikeNode.put("kms:ViaService", kmsViaService(partition));
-    }
+    ((ObjectNode) kmsStatement)
+        .putObject("Condition")
+        .putObject("StringLike")
+        .put("kms:ViaService", kmsViaService(partition));
 
     // Add the appropriate S3 and KMS operations for the privileges requested
     ArrayNode actions = (ArrayNode) operationsStatement.findPath("Action");
@@ -124,8 +126,6 @@ public class AwsPolicyGenerator {
               privileges, locations));
     }
 
-    ArrayNode kmsEncryptionContexts = (ArrayNode) kmsStatement.findPath(KMS_ENCRYPTION_CONTEXT_KEY);
-
     // Group each location by s3 bucket it's located in, then for each
     // bucket, add the bucket arn for the listBucket and operations statements,
     // then add each path as a conditional prefix
@@ -137,11 +137,6 @@ public class AwsPolicyGenerator {
       ArrayNode operationsResource = (ArrayNode) operationsStatement.findPath("Resource");
       bucketResource.add(s3Arn(partition, bucketName));
 
-      // A bucket with S3 Bucket Keys enabled encrypts under the bucket arn rather than the object
-      // arn, so the bucket has to be allowed as an encryption context on its own. That case can't
-      // be scoped to a path: the same data key covers every object in the bucket.
-      kmsEncryptionContexts.add(s3Arn(partition, bucketName));
-
       ArrayNode conditionalPrefixes = (ArrayNode) listStatement.findPath("s3:prefix");
       paths.forEach(path -> {
         // remove any preceding forward slashes
@@ -149,17 +144,14 @@ public class AwsPolicyGenerator {
 
         if (sanitizedPath.isEmpty()) {
           conditionalPrefixes.add("*");
-          addObjectArn(s3Arn(partition, bucketName + "/*"),
-              operationsResource, kmsEncryptionContexts);
+          operationsResource.add(s3Arn(partition, bucketName + "/*"));
         } else {
           conditionalPrefixes.add(sanitizedPath);
           conditionalPrefixes.add(sanitizedPath + "/");
           conditionalPrefixes.add(sanitizedPath + "/*");
 
-          addObjectArn(s3Arn(partition, bucketName + "/" + sanitizedPath + "/*"),
-              operationsResource, kmsEncryptionContexts);
-          addObjectArn(s3Arn(partition, bucketName + "/" + sanitizedPath),
-              operationsResource, kmsEncryptionContexts);
+          operationsResource.add(s3Arn(partition, bucketName + "/" + sanitizedPath + "/*"));
+          operationsResource.add(s3Arn(partition, bucketName + "/" + sanitizedPath));
         }
       });
     });
@@ -169,17 +161,6 @@ public class AwsPolicyGenerator {
     policyStatement.add(kmsStatement);
 
     return JSON_MAPPER.writeValueAsString(policyRoot);
-  }
-
-  /**
-   * Allows an object arn in the S3 operations statement, and allows the same arn as a KMS
-   * encryption context so that the KMS permissions cover exactly the objects the policy grants
-   * access to.
-   */
-  private static void addObjectArn(
-      String objectArn, ArrayNode operationsResource, ArrayNode kmsEncryptionContexts) {
-    operationsResource.add(objectArn);
-    kmsEncryptionContexts.add(objectArn);
   }
 
   /**
@@ -232,7 +213,7 @@ public class AwsPolicyGenerator {
   }
 
   private static PartitionMetadata commercialPartition() {
-    return PartitionMetadata.of("aws");
+    return PartitionMetadata.of(AWS_PARTITION);
   }
 
   private static String s3Arn(PartitionMetadata partition, String resource) {
