@@ -200,11 +200,38 @@ class UCSingleCatalog
 
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
-  override def loadTable(ident: Identifier): Table = delegate.loadTable(ident)
+  override def loadTable(ident: Identifier): Table = {
+    requireAddressableTableNameOrDeltaPath(ident)
+    delegate.loadTable(ident)
+  }
 
-  override def loadTable(ident: Identifier, version:  String): Table = delegate.loadTable(ident, version)
+  override def loadTable(ident: Identifier, version: String): Table = {
+    requireAddressableTableNameOrDeltaPath(ident)
+    delegate.loadTable(ident, version)
+  }
 
-  override def loadTable(ident: Identifier, timestamp:  Long): Table = delegate.loadTable(ident, timestamp)
+  override def loadTable(ident: Identifier, timestamp: Long): Table = {
+    requireAddressableTableNameOrDeltaPath(ident)
+    delegate.loadTable(ident, timestamp)
+  }
+
+  /**
+   * Prevents non-Delta path identifiers (for example, `parquet`.`s3://bucket/path`) from reaching
+   * catalog delegates that interpret them as Unity Catalog table names. Reporting these identifiers
+   * as missing lets Spark's SQL-on-file resolution handle them instead. Delta paths remain delegated
+   * because DeltaCatalog resolves those directly.
+   */
+  private def requireAddressableTableNameOrDeltaPath(ident: Identifier): Unit = {
+    val isDeltaPath =
+      ident.namespace().length == 1 && ident.namespace()(0).equalsIgnoreCase("delta")
+    val isAddressableTableName =
+      ident.namespace().length == 1 &&
+        !ident.namespace()(0).contains("/") &&
+        !ident.name().contains("/")
+    if (!isAddressableTableName && !isDeltaPath) {
+      throw new NoSuchTableException(ident)
+    }
+  }
 
   override def tableExists(ident: Identifier): Boolean = {
     delegate.tableExists(ident)
