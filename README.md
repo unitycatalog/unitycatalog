@@ -236,7 +236,7 @@ IntelliJ is the recommended IDE to use when developing Unity Catalog. The below 
 Java code adheres to the [Google style](https://google.github.io/styleguide/javaguide.html), which is verified via `build/sbt javafmtCheckAll` during builds.
 In order to automatically fix Java code style issues, please use `build/sbt javafmtAll`.
 
-The build uses [sbt-java-formatter](https://github.com/sbt/sbt-java-formatter) 0.12.0 with
+The build uses [sbt-java-formatter](https://github.com/sbt/sbt-java-formatter) 0.13.1 with
 `javafmtFormatterCompatibleJavaVersion := 17` (google-java-format **1.28.0**). Point IDE plugins
 at that same GJF version; a newer plugin will fight `javafmtCheck`.
 
