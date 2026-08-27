@@ -147,9 +147,9 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
     // Admin can update its own external location
     assertUpdateUrlSuccess(adminApi, adminLocation, "s3://test-bucket/another-admin-path1");
 
-    // Admin can always update userC's external location (metastore owner)
-    assertUpdateUrlSuccess(adminApi, userCLocation, "s3://test-bucket/another-admin-path2");
-    assertUpdateCredentialSuccess(adminApi, userCLocation, ANOTHER_CREDENTIAL_NAME);
+    // Admin (metastore owner) cannot update userC's external location -- only the owner can
+    assertUpdateUrlFailure(adminApi, userCLocation);
+    assertUpdateCredentialFailure(adminApi, userCLocation, ANOTHER_CREDENTIAL_NAME);
 
     // UserC can update its own external location (owner), but not if it tries to use another
     // credential without permission.
@@ -207,8 +207,11 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
     assertDeleteFailure(userCApi, adminLocation);
     assertDeleteSuccess(userCApi, userCLocation);
 
-    // Admin can delete any external location
-    assertDeleteSuccess(adminApi, userCLocation2);
+    // Admin (metastore owner) cannot delete userC's external location -- only the owner can
+    assertDeleteFailure(adminApi, userCLocation2);
+    assertDeleteSuccess(userCApi, userCLocation2);
+
+    // Admin can delete its own external location (owner)
     assertDeleteSuccess(adminApi, adminLocation);
   }
 

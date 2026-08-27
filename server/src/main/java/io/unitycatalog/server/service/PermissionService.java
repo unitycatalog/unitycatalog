@@ -264,8 +264,14 @@ public class PermissionService implements UnityCatalogRestService {
   }
 
   @Patch("/registered_model/{name}")
-  @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #registered_model, OWNER)")
+  @AuthorizeExpression("""
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #registered_model, OWNER))
+      """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModelAuthorization(
       @Param("name") @AuthorizeResourceKey(REGISTERED_MODEL) String name,

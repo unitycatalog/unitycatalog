@@ -152,6 +152,21 @@ public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
             principal2VersionsApi.updateModelVersion(
                 "cat_pr1.sch_pr1.mod_pr1", 1L, updateVersion2));
 
+    // A non-owner with the USE chain still cannot update a version; granting MODIFY on the model
+    // unblocks it (models are authorized like tables, whose update path accepts MODIFY, not only
+    // ownership).
+    grantPermissions(PRINCIPAL_2, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    assertPermissionDenied(
+        () ->
+            principal2VersionsApi.updateModelVersion(
+                "cat_pr1.sch_pr1.mod_pr1", 1L, new UpdateModelVersion().comment("still-no")));
+    grantPermissions(
+        PRINCIPAL_2, SecurableType.REGISTERED_MODEL, "cat_pr1.sch_pr1.mod_pr1", Privileges.MODIFY);
+    ModelVersionInfo modifyUpdated =
+        principal2VersionsApi.updateModelVersion(
+            "cat_pr1.sch_pr1.mod_pr1", 1L, new UpdateModelVersion().comment("via-modify"));
+    assertThat(modifyUpdated.getComment()).isEqualTo("via-modify");
+
     // TEST: Delete model version as principal-2 (not owner) - should fail
     assertPermissionDenied(
         () -> principal2VersionsApi.deleteModelVersion("cat_pr1.sch_pr1.mod_pr1", 1L));

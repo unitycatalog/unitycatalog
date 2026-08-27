@@ -59,52 +59,14 @@ public class SdkFunctionAccessControlCRUDTest extends SdkAccessControlBaseCRUDTe
     FunctionsApi principal2FunctionsApi =
         new FunctionsApi(TestUtils.createApiClient(principal2Config));
 
-    // give user USE CATALOG and USE SCHEMA on cat_pr1.sch_pr1
-    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
-    grantPermissions(PRINCIPAL_1, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.USE_SCHEMA);
-
-    // create function -> use catalog, use "schema" -> allow
-    CreateFunctionRequest createFunction1 =
-        new CreateFunctionRequest()
-            .functionInfo(
-                new CreateFunction()
-                    .name("fun_pr1")
-                    .catalogName("cat_pr1")
-                    .schemaName("sch_pr1")
-                    .parameterStyle(CreateFunction.ParameterStyleEnum.S)
-                    .isDeterministic(true)
-                    .isNullCall(false)
-                    .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
-                    .specificName("fun_pr1")
-                    .dataType(ColumnTypeName.INT)
-                    .fullDataType("INT")
-                    .inputParams(TEST_PARAMS)
-                    .externalLanguage("python")
-                    .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
-                    .routineDefinition("return x"));
+    // create function -> principal-1 owns the schema -> allow
+    CreateFunctionRequest createFunction1 = newCreateFunctionRequest("fun_pr1");
     FunctionInfo function1Info = principal1FunctionsApi.createFunction(createFunction1);
     assertThat(function1Info).isNotNull();
     assertThat(function1Info.getName()).isEqualTo("fun_pr1");
 
-    // create function -> no use catalog, no use "schema" -> deny
-    CreateFunctionRequest createFunction2 =
-        new CreateFunctionRequest()
-            .functionInfo(
-                new CreateFunction()
-                    .name("fun_pr2")
-                    .catalogName("cat_pr1")
-                    .schemaName("sch_pr1")
-                    .parameterStyle(CreateFunction.ParameterStyleEnum.S)
-                    .isDeterministic(true)
-                    .isNullCall(false)
-                    .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
-                    .specificName("fun_pr2")
-                    .dataType(ColumnTypeName.INT)
-                    .fullDataType("INT")
-                    .inputParams(TEST_PARAMS)
-                    .externalLanguage("python")
-                    .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
-                    .routineDefinition("return x"));
+    // create function -> no privileges -> deny
+    CreateFunctionRequest createFunction2 = newCreateFunctionRequest("fun_pr2");
     assertPermissionDenied(() -> principal2FunctionsApi.createFunction(createFunction2));
 
     // list functions -> no privileges -> allow - filtered list
@@ -135,5 +97,40 @@ public class SdkFunctionAccessControlCRUDTest extends SdkAccessControlBaseCRUDTe
     List<FunctionInfo> functionsAfterDelete =
         listAllFunctions(principal1FunctionsApi, "cat_pr1", "sch_pr1");
     assertThat(functionsAfterDelete).isEmpty();
+
+    // USE CATALOG + USE SCHEMA but no CREATE FUNCTION cannot create a function; granting CREATE
+    // FUNCTION unblocks it (creation requires CREATE_FUNCTION, not merely USE SCHEMA).
+    grantPermissions(PRINCIPAL_2, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(PRINCIPAL_2, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.USE_SCHEMA);
+    CreateFunctionRequest createFunctionCf = newCreateFunctionRequest("fun_cf");
+    assertPermissionDenied(() -> principal2FunctionsApi.createFunction(createFunctionCf));
+    grantPermissions(
+        PRINCIPAL_2, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.CREATE_FUNCTION);
+    FunctionInfo createdCf = principal2FunctionsApi.createFunction(createFunctionCf);
+    assertThat(createdCf.getName()).isEqualTo("fun_cf");
+
+    // principal-1 owns the catalog/schema but not the function; a catalog/schema owner governs
+    // children, so it can still delete it.
+    principal1FunctionsApi.deleteFunction("cat_pr1.sch_pr1.fun_cf");
+  }
+
+  private static CreateFunctionRequest newCreateFunctionRequest(String name) {
+    return new CreateFunctionRequest()
+        .functionInfo(
+            new CreateFunction()
+                .name(name)
+                .catalogName("cat_pr1")
+                .schemaName("sch_pr1")
+                .parameterStyle(CreateFunction.ParameterStyleEnum.S)
+                .isDeterministic(true)
+                .isNullCall(false)
+                .securityType(CreateFunction.SecurityTypeEnum.DEFINER)
+                .specificName(name)
+                .dataType(ColumnTypeName.INT)
+                .fullDataType("INT")
+                .inputParams(TEST_PARAMS)
+                .externalLanguage("python")
+                .routineBody(CreateFunction.RoutineBodyEnum.EXTERNAL)
+                .routineDefinition("return x"));
   }
 }
