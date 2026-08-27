@@ -211,27 +211,30 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
     TemporaryCredentialsApi unauthorizedTempCredsApi =
         createTempCredApiForNewUser(UNAUTHORIZED_EMAIL, List.of());
 
-    // For URLs under the external location, follow external location permission.
+    // For URLs under the external location, follow external location permission. The metastore
+    // admin has no path-credential bypass: without READ_FILES/WRITE_FILES (or ownership) it is
+    // denied like any unprivileged user.
 
     List<String> matchingUrls =
         List.of(TEST_EXTERNAL_LOCATION_URL, TEST_EXTERNAL_LOCATION_URL + "/subdir/nested");
     testPathCredentials(
         matchingUrls,
         List.of(
-            new TestCase(adminTempCredsApi, TestCase.ALL_OPERATIONS),
+            new TestCase(adminTempCredsApi, Set.of()),
             new TestCase(locationOwnerTempCredsApi, TestCase.ALL_OPERATIONS),
             new TestCase(readWriteTempCredsApi, TestCase.READ_WRITE),
             new TestCase(readOnlyTempCredsApi, TestCase.READONLY),
             new TestCase(createTableTempCredsApi, TestCase.CREATE_EXTERNAL_TABLE),
             new TestCase(unauthorizedTempCredsApi, Set.of())));
 
-    // For URLs outside the external location, only metastore owner can get credential
+    // For URLs outside every external location and data securable, nothing resolves to authorize
+    // against, so no one -- including the metastore admin -- can get a credential.
 
     List<String> nonMatchingUrls = List.of("s3://test-bucket0/different/path");
     testPathCredentials(
         nonMatchingUrls,
         List.of(
-            new TestCase(adminTempCredsApi, TestCase.ALL_OPERATIONS),
+            new TestCase(adminTempCredsApi, Set.of()),
             new TestCase(locationOwnerTempCredsApi, Set.of()),
             new TestCase(unauthorizedTempCredsApi, Set.of())));
 
@@ -274,7 +277,9 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
             TEST_EXTERNAL_LOCATION_URL + "/tables/test_table",
             TEST_EXTERNAL_LOCATION_URL + "/tables/test_table/subdir"),
         List.of(
-            new TestCase(adminTempCredsApi, TestCase.READ_WRITE),
+            // Admin is not the table owner and has no SELECT/MODIFY, so it is denied like anyone
+            // else once the path resolves to the table.
+            new TestCase(adminTempCredsApi, Set.of()),
             new TestCase(locationOwnerTempCredsApi, Set.of()),
             new TestCase(readWriteTempCredsApi, TestCase.READ_WRITE),
             new TestCase(readOnlyTempCredsApi, TestCase.READONLY),
@@ -318,7 +323,7 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
             TEST_EXTERNAL_LOCATION_URL + "/volumes/test_volume",
             TEST_EXTERNAL_LOCATION_URL + "/volumes/test_volume/subdir"),
         List.of(
-            new TestCase(adminTempCredsApi, TestCase.READ_WRITE),
+            new TestCase(adminTempCredsApi, Set.of()),
             new TestCase(locationOwnerTempCredsApi, Set.of()),
             new TestCase(readWriteTempCredsApi, Set.of()),
             new TestCase(readOnlyTempCredsApi, TestCase.READONLY),
@@ -328,10 +333,12 @@ public class TemporaryPathCredentialAccessControlTest extends SdkAccessControlBa
     // TODO: Test permission when a managed storage, or a model version exists under the path,
     //  once they are supported.
 
-    // Finally, even admin can not access the parent path anymore due to data securables exist
-    // under it.
+    // Finally, the parent path now has data securables (a table and a volume) beneath it, so it
+    // resolves to more than one securable and is rejected outright -- even for the external
+    // location's own owner.
     testPathCredentials(
-        List.of(TEST_EXTERNAL_LOCATION_URL), List.of(new TestCase(adminTempCredsApi, Set.of())));
+        List.of(TEST_EXTERNAL_LOCATION_URL),
+        List.of(new TestCase(locationOwnerTempCredsApi, Set.of())));
   }
 
   private void testPathCredentials(List<String> urls, List<TestCase> testCases) {

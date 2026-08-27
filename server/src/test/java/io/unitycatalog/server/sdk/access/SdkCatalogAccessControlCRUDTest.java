@@ -207,7 +207,10 @@ public class SdkCatalogAccessControlCRUDTest extends SdkAccessControlBaseCRUDTes
     // create a catalog -> CREATE CATALOG -> allowed
     CreateCatalog catalog3 = new CreateCatalog().name("catalog3").comment("(created from scratch)");
     principal1CatalogsApi.createCatalog(catalog3);
-    adminCatalogsApi.deleteCatalog("catalog3", null);
+    // delete a catalog (admin) -> metastore admin is not the catalog owner -> denied
+    assertPermissionDenied(() -> adminCatalogsApi.deleteCatalog("catalog3", null));
+    // owner can delete
+    principal1CatalogsApi.deleteCatalog("catalog3", null);
 
     // create a catalog -> CREATE CATALOG -> allowed
     CreateCatalog catalog4 = new CreateCatalog().name("catalog4").comment("(created from scratch)");

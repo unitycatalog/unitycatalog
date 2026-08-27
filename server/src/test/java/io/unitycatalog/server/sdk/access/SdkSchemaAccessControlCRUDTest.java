@@ -114,17 +114,23 @@ public class SdkSchemaAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
     SchemaInfo schemaInfoRegular2 = regular2SchemasApi.getSchema("cat_pr1.sch_pr1");
     assertThat(schemaInfoRegular2).isNotNull();
 
-    // update schema (admin) -> metastore admin -> allowed
+    // update schema (admin) -> metastore admin is not a catalog/schema owner -> denied
+    // (object mutations carry no bare metastore-admin bypass)
     UpdateSchema updateSchemaAdmin = new UpdateSchema().comment("(admin update)");
-    SchemaInfo updatedSchemaAdmin =
-        adminSchemasApi.updateSchema("cat_pr1.sch_pr1", updateSchemaAdmin);
-    assertThat(updatedSchemaAdmin.getComment()).isEqualTo("(admin update)");
+    assertPermissionDenied(
+        () -> adminSchemasApi.updateSchema("cat_pr1.sch_pr1", updateSchemaAdmin));
 
     // update schema (principal-1) -> owner -> allowed
     UpdateSchema updateSchemaOwner = new UpdateSchema().comment("(principal update)");
     SchemaInfo updatedSchemaOwner =
         principal1SchemasApi.updateSchema("cat_pr1.sch_pr1", updateSchemaOwner);
     assertThat(updatedSchemaOwner.getComment()).isEqualTo("(principal update)");
+
+    // update schema (regular-2) -> USE_CATALOG + USE_SCHEMA but not owner -> denied
+    // (updating a schema requires OWNER, not plain USE)
+    UpdateSchema updateSchemaUseOnly = new UpdateSchema().comment("(use-only update)");
+    assertPermissionDenied(
+        () -> regular2SchemasApi.updateSchema("cat_pr1.sch_pr1", updateSchemaUseOnly));
 
     // update schema (regular-1) -> -- -> denied
     UpdateSchema updateSchemaRegular = new UpdateSchema().comment("(regular update)");

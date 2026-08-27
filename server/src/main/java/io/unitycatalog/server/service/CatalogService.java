@@ -116,7 +116,6 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
 
   @Delete("/{name}")
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER)
       """)
   @AuthorizeResourceKey(METASTORE)

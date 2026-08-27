@@ -87,10 +87,9 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
 
   @Patch("/{name}")
   @AuthorizeExpression("""
-    #authorize(#principal, #metastore, OWNER) ||
-    (#authorize(#principal, #external_location, OWNER) &&
-     (#credential == null ||
-      #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION)))
+    #authorize(#principal, #external_location, OWNER) &&
+    (#credential == null ||
+     #authorizeAny(#principal, #credential, OWNER, CREATE_EXTERNAL_LOCATION))
     """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateExternalLocation(
@@ -102,10 +101,7 @@ public class ExternalLocationService extends AuthorizedService implements UnityC
   }
 
   @Delete("/{name}")
-  @AuthorizeExpression("""
-    #authorize(#principal, #metastore, OWNER) ||
-    #authorize(#principal, #external_location, OWNER)
-    """)
+  @AuthorizeExpression("#authorize(#principal, #external_location, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteExternalLocation(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
