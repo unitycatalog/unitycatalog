@@ -812,9 +812,9 @@ components:
         client-maintenance-operations:
           type: array
           description: |
-            Additional maintenance operations that the catalog permits for this table. A missing
-            or empty list permits no additional operations. A client must not perform an operation
-            that it does not recognize.
+            Maintenance operations that the catalog permits in addition to the operations that the
+            Delta protocol permits by default. A missing or empty list permits no additional
+            operations. A client must not perform an operation that it does not recognize.
           items:
             $ref: '#/components/schemas/DeltaMaintenanceOperation'
       required:
