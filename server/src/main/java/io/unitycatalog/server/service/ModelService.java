@@ -17,6 +17,8 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateModelVersion;
 import io.unitycatalog.server.model.CreateRegisteredModel;
 import io.unitycatalog.server.model.FinalizeModelVersion;
@@ -123,9 +125,11 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @Patch("/{full_name}")
   @AuthorizeExpression(
       """
-      (#authorize(#principal, #registered_model, OWNER) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorizeAny(#principal, #registered_model, OWNER, MODIFY))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModel(
@@ -140,12 +144,11 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @Delete("/{full_name}")
   @AuthorizeExpression(
       """
-      #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #registered_model, OWNER) &&
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG))
+          #authorize(#principal, #registered_model, OWNER))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteRegisteredModel(
@@ -165,9 +168,9 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @Post("/versions")
   @AuthorizeExpression(
       """
-      (#authorize(#principal, #registered_model, OWNER) &&
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+          #authorizeAny(#principal, #registered_model, OWNER, MODIFY))
       """)
   public HttpResponse createModelVersion(
       @AuthorizeResourceKeys({
@@ -226,9 +229,11 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @Patch("/{full_name}/versions/{version}")
   @AuthorizeExpression(
       """
-      (#authorize(#principal, #registered_model, OWNER) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorizeAny(#principal, #registered_model, OWNER, MODIFY))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateModelVersion(
@@ -244,12 +249,11 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @Delete("/{full_name}/versions/{version}")
   @AuthorizeExpression(
       """
-      #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #registered_model, OWNER) &&
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
           #authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG))
+          #authorize(#principal, #registered_model, OWNER))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteModelVersion(
@@ -262,15 +266,24 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   @Patch("/{full_name}/versions/{version}/finalize")
   @AuthorizeExpression(
       """
-      (#authorize(#principal, #registered_model, OWNER) &&
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+          #authorizeAny(#principal, #registered_model, OWNER, MODIFY))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse finalizeModelVersion(
       @Param("full_name") @AuthorizeResourceKey(REGISTERED_MODEL) String fullName,
+      @Param("version") Long version,
       FinalizeModelVersion finalizeModelVersion) {
     assert finalizeModelVersion != null;
+    // Authorization is evaluated against the URL model version, but the mutation targets the one
+    // named in the request body. Reject a mismatch so a caller authorized on the URL target cannot
+    // finalize a different model version named in the body.
+    if (!fullName.equals(finalizeModelVersion.getFullName())
+        || !version.equals(finalizeModelVersion.getVersion())) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Path and request-body model version must match.");
+    }
     ModelVersionInfo finalizeModelVersionResponse =
         modelRepository.finalizeModelVersion(finalizeModelVersion);
     return HttpResponse.ofJson(finalizeModelVersionResponse);

@@ -142,5 +142,25 @@ public class SdkVolumeAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest
 
     // delete volume (principal-1) -> owner -> allowed
     principal1VolumesApi.deleteVolume("cat_pr1.sch_pr1.vol_adm");
+
+    // A catalog/schema owner can update a volume it does not own: updateVolume mirrors its sibling
+    // deleteVolume, letting a catalog/schema owner govern the child volume. regular-1 owns the
+    // volume; principal-1 owns only the catalog and schema.
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.USE_SCHEMA);
+    grantPermissions(REGULAR_1, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.CREATE_VOLUME);
+    VolumeInfo volRg1 =
+        regular1VolumesApi.createVolume(
+            new CreateVolumeRequestContent()
+                .name("vol_rg1")
+                .catalogName("cat_pr1")
+                .schemaName("sch_pr1")
+                .volumeType(VolumeType.EXTERNAL)
+                .storageLocation("/tmp/vol_rg1"));
+    assertThat(volRg1.getName()).isEqualTo("vol_rg1");
+
+    VolumeInfo updatedByOwner =
+        principal1VolumesApi.updateVolume(
+            "cat_pr1.sch_pr1.vol_rg1", new UpdateVolumeRequestContent().comment("owner-cascade"));
+    assertThat(updatedByOwner.getComment()).isEqualTo("owner-cascade");
   }
 }

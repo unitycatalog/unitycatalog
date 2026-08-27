@@ -178,7 +178,8 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
     // Grant SELECT to read user (no MODIFY)
     grantPermissions(READ_USER_EMAIL, SecurableType.TABLE, tableFullName, Privileges.SELECT);
 
-    // Grant MODIFY to write user
+    // Grant MODIFY (only) to write user for now; committing requires SELECT+MODIFY, so SELECT is
+    // added below after asserting MODIFY alone is insufficient.
     grantPermissions(WRITE_USER_EMAIL, SecurableType.TABLE, tableFullName, Privileges.MODIFY);
 
     // Create API clients for read user, write user, and a 3rd user without any access.
@@ -193,10 +194,13 @@ public class SdkDeltaCommitsAccessControlCRUDTest extends SdkAccessControlBaseCR
         new DeltaCommitsApi(TestUtils.createApiClient(noAccessUserConfig));
     DeltaCommitsApi unauthCommitsApi = new DeltaCommitsApi(TestUtils.createApiClient(serverConfig));
 
-    // Attempt to post a commit as read user should fail with 403 Forbidden
+    // Attempt to post a commit as read user (SELECT only) should fail with 403 Forbidden
     DeltaCommit commit1 = createCommitObject(1L);
     assertPermissionDenied(() -> readUserCommitsApi.commit(commit1));
-    // Write user posts a commit successfully
+    // Write user has MODIFY but not SELECT -> commit denied (UPDATE_TABLE requires both)
+    assertPermissionDenied(() -> writeUserCommitsApi.commit(commit1));
+    // Grant SELECT as well; with SELECT+MODIFY the write user posts a commit successfully
+    grantPermissions(WRITE_USER_EMAIL, SecurableType.TABLE, tableFullName, Privileges.SELECT);
     writeUserCommitsApi.commit(commit1);
 
     // No-access user attempts to get commits should fail with 403 Forbidden

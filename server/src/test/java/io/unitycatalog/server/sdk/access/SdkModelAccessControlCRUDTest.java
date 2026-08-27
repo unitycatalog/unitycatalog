@@ -2,11 +2,14 @@ package io.unitycatalog.server.sdk.access;
 
 import static io.unitycatalog.server.utils.TestUtils.assertPermissionDenied;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.ModelVersionsApi;
 import io.unitycatalog.client.api.RegisteredModelsApi;
 import io.unitycatalog.client.model.CreateModelVersion;
 import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.FinalizeModelVersion;
 import io.unitycatalog.client.model.ModelVersionInfo;
 import io.unitycatalog.client.model.RegisteredModelInfo;
 import io.unitycatalog.client.model.SecurableType;
@@ -101,6 +104,20 @@ public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     assertPermissionDenied(
         () -> principal2ModelsApi.updateRegisteredModel("cat_pr1.sch_pr1.mod_pr1", updateModel2));
 
+    // TEST: the catalog owner can update a model it does NOT own at the model level, via the owner
+    // cascade (matching deleteRegisteredModel; model MODIFY is not the only path). principal-2 owns
+    // mod_pr2; principal-1 owns the parent catalog/schema but holds no grant on mod_pr2 itself.
+    grantPermissions(PRINCIPAL_2, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    grantPermissions(PRINCIPAL_2, SecurableType.SCHEMA, "cat_pr1.sch_pr1", Privileges.CREATE_MODEL);
+    principal2ModelsApi.createRegisteredModel(
+        new CreateRegisteredModel().name("mod_pr2").catalogName("cat_pr1").schemaName("sch_pr1"));
+    RegisteredModelInfo cascadeUpdated =
+        principal1ModelsApi.updateRegisteredModel(
+            "cat_pr1.sch_pr1.mod_pr2", new UpdateRegisteredModel().comment("via-catalog-owner"));
+    assertThat(cascadeUpdated.getComment()).isEqualTo("via-catalog-owner");
+    // Clean up mod_pr2 so the final list assertion (mod_pr1 only) is unaffected.
+    principal1ModelsApi.deleteRegisteredModel("cat_pr1.sch_pr1.mod_pr2", false);
+
     // TEST: Create model version as principal-1 (owner) - should succeed
     CreateModelVersion createVersion =
         new CreateModelVersion()
@@ -111,6 +128,18 @@ public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
     ModelVersionInfo versionInfo = principal1VersionsApi.createModelVersion(createVersion);
     assertThat(versionInfo).isNotNull();
     assertThat(versionInfo.getVersion()).isEqualTo(1L);
+
+    // finalizeModelVersion rejects a body whose (full_name, version) differs from the path (a
+    // confused-deputy guard: authorization is evaluated on the URL target). Only a direct client
+    // can exercise it, since the CLI overwrites the body identity with the path args.
+    assertThatThrownBy(
+            () ->
+                principal1VersionsApi.finalizeModelVersion(
+                    "cat_pr1.sch_pr1.mod_pr1",
+                    1L,
+                    new FinalizeModelVersion().fullName("cat_pr1.sch_pr1.mod_pr1").version(2L)))
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Path and request-body model version must match");
 
     // TEST: Create model version as principal-2 (not owner) - should fail
     CreateModelVersion createVersion2 =
@@ -151,6 +180,21 @@ public class SdkModelAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest 
         () ->
             principal2VersionsApi.updateModelVersion(
                 "cat_pr1.sch_pr1.mod_pr1", 1L, updateVersion2));
+
+    // A non-owner with the USE chain still cannot update a version; granting MODIFY on the model
+    // unblocks it (models are authorized like tables, whose update path accepts MODIFY, not only
+    // ownership).
+    grantPermissions(PRINCIPAL_2, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    assertPermissionDenied(
+        () ->
+            principal2VersionsApi.updateModelVersion(
+                "cat_pr1.sch_pr1.mod_pr1", 1L, new UpdateModelVersion().comment("still-no")));
+    grantPermissions(
+        PRINCIPAL_2, SecurableType.REGISTERED_MODEL, "cat_pr1.sch_pr1.mod_pr1", Privileges.MODIFY);
+    ModelVersionInfo modifyUpdated =
+        principal2VersionsApi.updateModelVersion(
+            "cat_pr1.sch_pr1.mod_pr1", 1L, new UpdateModelVersion().comment("via-modify"));
+    assertThat(modifyUpdated.getComment()).isEqualTo("via-modify");
 
     // TEST: Delete model version as principal-2 (not owner) - should fail
     assertPermissionDenied(

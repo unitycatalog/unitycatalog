@@ -96,8 +96,8 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
       """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      (#authorizeAny(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA))
       """)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
@@ -127,28 +127,23 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   @Patch("/{full_name}")
   @AuthorizeExpression(
       """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #schema, OWNER) ||
-      #authorizeAll(#principal, #catalog, USE_CATALOG, USE_SCHEMA) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorize(#principal, #catalog, USE_CATALOG))
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, OWNER))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateSchema(
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       UpdateSchema updateSchema) {
-    // TODO: This method does not adhere to the complete access control rules of the Databricks
-    // Unity Catalog
     return HttpResponse.ofJson(schemaRepository.updateSchema(fullName, updateSchema));
   }
 
   @Delete("/{full_name}")
   @AuthorizeExpression(
       """
-      #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) &&
-          #authorizeAny(#principal, #catalog, USE_CATALOG))
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, OWNER))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteSchema(
