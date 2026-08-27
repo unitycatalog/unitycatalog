@@ -555,6 +555,13 @@ components:
         - READ
         - READ_WRITE
 
+    DeltaMaintenanceOperation:
+      type: string
+      enum:
+        - DATA_REORGANIZATION
+        - DATA_CLEANUP
+        - METADATA_CLEANUP
+
     # Shared Types
 
     DeltaStorageCredential:
@@ -802,6 +809,14 @@ components:
           type: integer
           format: int64
           description: The latest ratified table version tracked by the server, including data-only commits. Compare with metadata.last-commit-version which only tracks metadata-changing commits.
+        client-maintenance-operations:
+          type: array
+          description: |
+            Additional maintenance operations that the catalog permits for this table. A missing
+            or empty list permits no additional operations. A client must not perform an operation
+            that it does not recognize.
+          items:
+            $ref: '#/components/schemas/DeltaMaintenanceOperation'
       required:
         - metadata
 
