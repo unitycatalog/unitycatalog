@@ -1,6 +1,10 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_ONLY;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 
@@ -19,9 +23,12 @@ import com.linecorp.armeria.server.annotation.HttpResult;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
@@ -91,6 +98,7 @@ import org.apache.iceberg.rest.responses.CreateNamespaceResponse;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ImmutableLoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
+import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
@@ -160,9 +168,10 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/config")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
   @AuthorizeResourceKey(METASTORE)
-  public ConfigResponse config(@Param("warehouse") Optional<String> catalogOpt) {
+  public ConfigResponse config(
+      @Param("warehouse") @AuthorizeResourceKey(CATALOG) Optional<String> catalogOpt) {
     String catalog =
         catalogOpt.orElseThrow(
             () -> new BadRequestException("Must supply a proper catalog in warehouse property."));
@@ -185,11 +194,14 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/catalogs/{catalog}/namespaces")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
+  @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public ListNamespacesResponse listNamespaces(
-      @Param("catalog") String catalog, @Param("parent") Optional<String> parent) {
-    List<Namespace> namespaces = new ArrayList<>();
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("parent") Optional<String> parent) {
+    // Collect the full listing; @ResponseAuthorizeFilter drops schemas the caller can't read.
+    List<SchemaInfo> schemas = new ArrayList<>();
     if (parent.isPresent() && !parent.get().isEmpty()) {
       // Nested namespaces are not supported, so a parent yields no child namespaces. The parent is
       // still resolved rather than assumed: per the REST spec, listing under a namespace that does
@@ -202,19 +214,24 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         ListSchemasResponse resp =
             schemaRepository.listSchemas(catalog, Optional.empty(), pageToken);
         assert resp.getSchemas() != null;
-        resp.getSchemas().forEach(schemaInfo -> namespaces.add(Namespace.of(schemaInfo.getName())));
+        schemas.addAll(resp.getSchemas());
         pageToken = nextPageToken(resp.getNextPageToken());
       } while (pageToken.isPresent());
     }
 
-    return ListNamespacesResponse.builder().addAll(namespaces).build();
+    applyResponseFilter(SCHEMA, schemas);
+
+    ListNamespacesResponse.Builder response = ListNamespacesResponse.builder();
+    schemas.forEach(schemaInfo -> response.add(Namespace.of(schemaInfo.getName())));
+    return response.build();
   }
 
   @Head("/v1/catalogs/{catalog}/namespaces/{namespace}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse namespaceExists(
-      @Param("catalog") String catalog, @Param("namespace") String namespace) {
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace) {
     // Without a route of its own, this HEAD was served by the GET below, which answered 200 and
     // described a body a HEAD response must not carry. The REST spec answers it with 204.
     schemaRepository.getSchema(String.join(".", catalog, namespace));
@@ -223,10 +240,11 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public GetNamespaceResponse getNamespace(
-      @Param("catalog") String catalog, @Param("namespace") String namespace) {
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace) {
     String schemaFullName = String.join(".", catalog, namespace);
     SchemaInfo schemaInfo = schemaRepository.getSchema(schemaFullName);
     return GetNamespaceResponse.builder()
@@ -237,10 +255,11 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Post("/v1/catalogs/{catalog}/namespaces")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public CreateNamespaceResponse createNamespace(
-      @Param("catalog") String catalog, CreateNamespaceRequest request) {
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      CreateNamespaceRequest request) {
     serverProperties.checkIcebergTableEnabled();
     request.validate();
     if (request.namespace().levels().length != 1) {
@@ -261,10 +280,11 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   }
 
   @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse dropNamespace(
-      @Param("catalog") String catalog, @Param("namespace") String namespace) {
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace) {
     serverProperties.checkIcebergTableEnabled();
     List<DeletedResource> deleted;
     try {
@@ -283,11 +303,11 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/properties")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.UPDATE_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public UpdateNamespacePropertiesResponse updateNamespaceProperties(
-      @Param("catalog") String catalog,
-      @Param("namespace") String namespace,
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
       UpdateNamespacePropertiesRequest request) {
     serverProperties.checkIcebergTableEnabled();
     // Iceberg's own request rejects a key asked to be both set and removed.
@@ -307,12 +327,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   // Table APIs
 
   @Head("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse tableExists(
-      @Param("catalog") String catalog,
-      @Param("namespace") String namespace,
-      @Param("table") String table) {
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table) {
     TableRepository.IcebergTableState state =
         tableRepository.getIcebergTableState(catalog, namespace, table);
     if (state.metadataLocation() == null) {
@@ -325,12 +345,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResult<LoadTableResponse> loadTable(
-      @Param("catalog") String catalog,
-      @Param("namespace") String namespace,
-      @Param("table") String table,
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
       @Param(RESTCatalogProperties.SNAPSHOTS_QUERY_PARAMETER) Optional<String> snapshots,
       @Header("if-none-match") Optional<String> ifNoneMatch) {
     TableRepository.IcebergTableState state =
@@ -374,12 +394,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/credentials")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public LoadCredentialsResponse loadCredentials(
-      @Param("catalog") String catalog,
-      @Param("namespace") String namespace,
-      @Param("table") String table) {
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table) {
     TableRepository.IcebergTableState state =
         tableRepository.getIcebergTableState(catalog, namespace, table);
     if (state.metadataLocation() == null) {
@@ -417,15 +437,18 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
             PREFIX_BASE, catalog, RESTUtil.encodeString(namespace), RESTUtil.encodeString(table));
   }
 
+  /**
+   * Storage-credential scope for {@link #loadTable}: non-native (UniForm) tables are read-only;
+   * native tables get READ_WRITE for table {@code OWNER} or {@code SELECT}+{@code MODIFY}, else
+   * READ. Done imperatively because the endpoint's {@code @AuthorizeExpression} only yields a read
+   * pass/fail. (Auth off: principal is null but {@code AllowingAuthorizer} grants all.)
+   */
   Set<CredentialContext.Privilege> getLoadCredentialPrivileges(
       TableRepository.IcebergTableState state) {
     if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
       return READ_ONLY;
     }
     UUID principalId = userRepository.findPrincipalId();
-    if (principalId == null) {
-      return READ_ONLY;
-    }
     boolean canWrite =
         authorizer.authorize(principalId, state.tableId(), Privileges.OWNER)
             || authorizer.authorizeAll(
@@ -435,12 +458,14 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_ICEBERG_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public LoadTableResponse createTable(
-      @Param("catalog") String catalog,
-      @Param("namespace") String namespace,
-      CreateTableRequest request) {
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "location")
+          @AuthorizeKey(key = "location")
+          CreateTableRequest request) {
     serverProperties.checkIcebergTableEnabled();
     request.validate();
     NormalizedURL location;
@@ -552,6 +577,14 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         .build();
   }
 
+  // TODO(auth): still on the metastore-owner placeholder. One endpoint, two operations with
+  // different privileges chosen by the request body: a plain commit to the existing table
+  // (needs UPDATE_TABLE = SELECT+MODIFY) vs. a staged-create commit. An AssertTableDoesNotExist
+  // requirement routes to commitStagedCreate, which needs create authorization like createTable
+  // plus a check that the write location matches a staging table the caller can access, closing
+  // a confused-deputy write gap. A declarative expression cannot branch on that without
+  // body-derived inputs it lacks here; wire it next with an AuthorizeValueExtractor + skipWhen
+  // exposing a staging-table variable.
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
   @ProducesJson
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
@@ -630,12 +663,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   }
 
   @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.DELETE_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse dropTable(
-      @Param("catalog") String catalog,
-      @Param("namespace") String namespace,
-      @Param("table") String table,
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
       @Param("purgeRequested") Optional<String> purgeRequested) {
     serverProperties.checkIcebergTableEnabled();
     // Bound as a String rather than a Boolean so the spelling a client actually sends is accepted;
@@ -731,6 +764,13 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     }
   }
 
+  // TODO(auth): still on the metastore-owner placeholder. Rename needs DELETE_TABLE on the source
+  // table plus create in the destination schema (which, since a cross-namespace rename is rejected
+  // below, is the source schema). The source/destination are TableIdentifiers in the request body
+  // whose full identity also spans the URL {catalog}, so a scalar field-key @AuthorizeResourceKey
+  // cannot resolve them: it reads a single leaf value and can neither index the namespace array nor
+  // compose the catalog param with the body fields into a "catalog.schema.table" name. Wire it with
+  // a body-derived AuthorizeValueExtractor (as for updateTable) that computes those names.
   @Post("/v1/catalogs/{catalog}/tables/rename")
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
@@ -770,10 +810,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public LoadViewResponse loadView(
-      @Param("namespace") String namespace, @Param("view") String view) {
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("view") @AuthorizeResourceKey(TABLE) String view) {
     // this is not supported yet, but Iceberg REST client tries to load
     // a table with given path name and then tries to load a view with that
     // name if it didn't find a table, so for now, let's just return a 404
@@ -788,13 +830,14 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
    * table is still resolved so that a report naming a table UC doesn't serve is answered with a
    * 404, as the REST spec requires.
    */
+  // Reports follow scans (reads), not just commits, so gate as a table read (GET_TABLE).
   @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/tables/{table}/metrics")
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse reportMetrics(
-      @Param("catalog") String catalog,
-      @Param("namespace") String namespace,
-      @Param("table") String table,
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace,
+      @Param("table") @AuthorizeResourceKey(TABLE) String table,
       ReportMetricsRequest request) {
     TableRepository.IcebergTableState state =
         tableRepository.getIcebergTableState(catalog, namespace, table);
@@ -808,23 +851,29 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/tables")
   @ProducesJson
-  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeExpression(AuthorizeExpressions.GET_TABLE)
+  @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
-  public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
-      @Param("catalog") String catalog, @Param("namespace") String namespace) {
-    // This endpoint returns the whole listing, so follow the repository's page token to the end.
-    // Each page already says which of its tables carry Iceberg metadata, so no listed table is
-    // resolved a second time: doing that made a table dropped mid-listing fail the entire request.
-    org.apache.iceberg.rest.responses.ListTablesResponse.Builder listed =
-        org.apache.iceberg.rest.responses.ListTablesResponse.builder();
+  public ListTablesResponse listTables(
+      @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,
+      @Param("namespace") @AuthorizeResourceKey(SCHEMA) String namespace) {
+    // Collect the whole listing, following the repository's page token to the end. Each page
+    // already carries only the tables with Iceberg metadata, so no listed table is resolved a
+    // second time: doing that made a table dropped mid-listing fail the entire request.
+    List<TableInfoDAO> tables = new ArrayList<>();
     Optional<String> pageToken = Optional.empty();
     do {
       IcebergTablePage page = tableRepository.listIcebergTables(catalog, namespace, pageToken);
-      page.tableNames()
-          .forEach(table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table)));
+      tables.addAll(page.tableDaos());
       pageToken = page.nextPageToken();
     } while (pageToken.isPresent());
 
+    // Drop tables the caller can't read, per-table, matching loadTable and UC REST listTables.
+    applyResponseFilter(TABLE, tables);
+
+    ListTablesResponse.Builder listed = ListTablesResponse.builder();
+    tables.forEach(
+        table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table.getName())));
     return listed.build();
   }
 
