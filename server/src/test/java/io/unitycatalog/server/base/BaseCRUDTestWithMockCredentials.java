@@ -36,6 +36,7 @@ import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.server.utils.UriScheme;
 import lombok.SneakyThrows;
+import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.provider.Arguments;
 import org.mockito.ArgumentMatcher;
@@ -50,6 +51,7 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
@@ -67,6 +69,26 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   protected static final String TEST_AWS_STORAGE_CREDENTIAL_ROLE_ARN =
       "arn:aws:iam::987654321:role/UCDbRole-EXAMPLE";
   protected CredentialInfo awsCredentialInfo;
+
+  // The bucket/account configured (index 0) for every cloud scheme in setUpProperties;
+  // getTestCloudPath contrasts it with an unconfigured bucket.
+  protected static final String CONFIGURED_BUCKET = "test-bucket0";
+
+  // Credential values the mock vendor produces, named once so the vendor setup and the assertions
+  // on vended credentials cannot drift apart.
+  protected static final String S3_ACCESS_KEY = "accessKey0";
+  protected static final String S3_SECRET_KEY = "secretKey0";
+  protected static final String S3_SESSION_TOKEN = "sessionToken0";
+  protected static final String GCS_OAUTH_TOKEN = "test-token";
+
+  // Expected S3 credentials in a vended Iceberg FileIO config, keyed by FileIO property. Only S3 is
+  // pinned: it flows through a real AwsCredentialVendor, so the values are meaningful; GCS/Azure
+  // vendors are fully mocked. Checked by the fake FileIO (see LocalMappingFileOperations).
+  protected static final Map<String, String> EXPECTED_VENDED_S3_CREDENTIALS =
+      Map.of(
+          S3FileIOProperties.ACCESS_KEY_ID, S3_ACCESS_KEY,
+          S3FileIOProperties.SECRET_ACCESS_KEY, S3_SECRET_KEY,
+          S3FileIOProperties.SESSION_TOKEN, S3_SESSION_TOKEN);
 
   @SneakyThrows
   @BeforeEach
@@ -95,10 +117,13 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-    serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
-    serverProperties.put("s3.accessKey.0", "accessKey0");
-    serverProperties.put("s3.secretKey.0", "secretKey0");
-    serverProperties.put("s3.sessionToken.0", "sessionToken0");
+    serverProperties.put("s3.bucketPath.0", "s3://" + CONFIGURED_BUCKET);
+    serverProperties.put("s3.accessKey.0", S3_ACCESS_KEY);
+    serverProperties.put("s3.secretKey.0", S3_SECRET_KEY);
+    serverProperties.put("s3.sessionToken.0", S3_SESSION_TOKEN);
+    // Per-bucket region completes the S3 config; getFileIOConfig (the Iceberg FileIO path) requires
+    // it, while the Delta/temporary-credential paths vend credentials without it.
+    serverProperties.put("s3.region.0", TestUtils.TEST_AWS_REGION);
 
     // AWS S3 master role config
     serverProperties.put(
@@ -112,11 +137,11 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
         TestUtils.TEST_AWS_MASTER_ROLE_SECRET_KEY);
     serverProperties.put(ServerProperties.Property.AWS_REGION.getKey(), TestUtils.TEST_AWS_REGION);
 
-    serverProperties.put("gcs.bucketPath.0", "gs://test-bucket0");
+    serverProperties.put("gcs.bucketPath.0", "gs://" + CONFIGURED_BUCKET);
     serverProperties.put("gcs.jsonKeyFilePath.0", "testing://0");
     serverProperties.put("gcs.credentialGenerator.0", TestingCredentialGenerator.class.getName());
 
-    serverProperties.put("adls.storageAccountName.0", "test-bucket0");
+    serverProperties.put("adls.storageAccountName.0", CONFIGURED_BUCKET);
     serverProperties.put("adls.tenantId.0", "tenantId0");
     serverProperties.put("adls.clientId.0", "clientId0");
     serverProperties.put("adls.clientSecret.0", "clientSecret0");
@@ -180,7 +205,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   private void setupGcpCredentials() {
     gcpCredentialVendor = mock(GcpCredentialVendor.class);
     AccessToken gcpCredential = new AccessToken(
-            "test-token",
+            GCS_OAUTH_TOKEN,
             Date.from(Instant.now().plusSeconds(10 * 60))
     );
     serverProperties.entrySet().stream()
@@ -204,8 +229,8 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
    * @return Cloud path for testing
    */
   protected String getTestCloudPath(String scheme, boolean isConfiguredPath) {
-    // test-bucket0 is configured in the properties
-    String bucket = isConfiguredPath ? "test-bucket0" : "test-bucket1";
+    // CONFIGURED_BUCKET is configured in the properties; the unconfigured bucket is not.
+    String bucket = isConfiguredPath ? CONFIGURED_BUCKET : "test-bucket1";
     return switch (scheme) {
       case "s3" -> "s3://" + bucket + "/test";
       case "abfs", "abfss" -> "abfs://test-container@" + bucket + ".dfs.core.windows.net/test";
@@ -222,9 +247,9 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
       case "s3":
         AwsCredentials awsCredentials = tempCredentials.getAwsTempCredentials();
         assertThat(awsCredentials).isNotNull();
-        assertThat(awsCredentials.getSessionToken()).isEqualTo("sessionToken0");
-        assertThat(awsCredentials.getAccessKeyId()).isEqualTo("accessKey0");
-        assertThat(awsCredentials.getSecretAccessKey()).isEqualTo("secretKey0");
+        assertThat(awsCredentials.getSessionToken()).isEqualTo(S3_SESSION_TOKEN);
+        assertThat(awsCredentials.getAccessKeyId()).isEqualTo(S3_ACCESS_KEY);
+        assertThat(awsCredentials.getSecretAccessKey()).isEqualTo(S3_SECRET_KEY);
         break;
       case "abfs":
       case "abfss":
@@ -235,7 +260,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
       case "gs":
         GcpOauthToken gcpOauthToken = tempCredentials.getGcpOauthToken();
         assertThat(gcpOauthToken).isNotNull();
-        assertThat(gcpOauthToken.getOauthToken()).isEqualTo("test-token");
+        assertThat(gcpOauthToken.getOauthToken()).isEqualTo(GCS_OAUTH_TOKEN);
         break;
       default:
         fail("Invalid scheme");
