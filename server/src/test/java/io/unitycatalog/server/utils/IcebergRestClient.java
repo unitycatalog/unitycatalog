@@ -76,8 +76,12 @@ public class IcebergRestClient {
 
   public CreateNamespaceResponse createNamespace(String catalog, String namespace)
       throws ApiException {
-    CreateNamespaceRequest request =
-        CreateNamespaceRequest.builder().withNamespace(Namespace.of(namespace)).build();
+    return createNamespace(
+        catalog, CreateNamespaceRequest.builder().withNamespace(Namespace.of(namespace)).build());
+  }
+
+  public CreateNamespaceResponse createNamespace(String catalog, CreateNamespaceRequest request)
+      throws ApiException {
     return parse(post(namespacesPath(catalog), toJson(request)), CreateNamespaceResponse.class);
   }
 
@@ -106,6 +110,13 @@ public class IcebergRestClient {
   public LoadTableResponse loadTable(String catalog, String namespace, String table)
       throws ApiException {
     return parse(get(tablePath(catalog, namespace, table)), LoadTableResponse.class);
+  }
+
+  public LoadTableResponse loadTable(
+      String catalog, String namespace, String table, String snapshots) throws ApiException {
+    return parse(
+        get(tablePath(catalog, namespace, table) + "?snapshots=" + snapshots),
+        LoadTableResponse.class);
   }
 
   public boolean tableExists(String catalog, String namespace, String table) throws ApiException {
@@ -138,6 +149,10 @@ public class IcebergRestClient {
     checkSuccess(delete(tablePath(catalog, namespace, table)));
   }
 
+  public void renameTable(String catalog, RenameTableRequest request) throws ApiException {
+    checkSuccess(post("/v1/catalogs/" + catalog + "/tables/rename", toJson(request)));
+  }
+
   public void renameTable(
       String catalog,
       String sourceNamespace,
@@ -145,13 +160,13 @@ public class IcebergRestClient {
       String destinationNamespace,
       String destinationTable)
       throws ApiException {
-    RenameTableRequest request =
+    renameTable(
+        catalog,
         RenameTableRequest.builder()
             .withSource(TableIdentifier.of(Namespace.of(sourceNamespace), sourceTable))
             .withDestination(
                 TableIdentifier.of(Namespace.of(destinationNamespace), destinationTable))
-            .build();
-    checkSuccess(post("/v1/catalogs/" + catalog + "/tables/rename", toJson(request)));
+            .build());
   }
 
   /** Posts a raw rename body, for exercising malformed-request handling. */
