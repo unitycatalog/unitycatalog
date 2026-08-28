@@ -50,10 +50,10 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
   }
 
   @Post("")
-  // TODO: for now, we are not supporting CREATE FUNCTION privilege
   @AuthorizeExpression("""
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
+          (#authorize(#principal, #schema, OWNER) ||
+            #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_FUNCTION))
       """)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createFunction(
@@ -113,10 +113,11 @@ public class FunctionService extends AuthorizedService implements UnityCatalogRe
   @Delete("/{name}")
   @AuthorizeResourceKey(METASTORE)
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      (#authorize(#principal, #function, OWNER) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #function, OWNER))
       """)
   public HttpResponse deleteFunction(
       @Param("name") @AuthorizeResourceKey(FUNCTION) String name,

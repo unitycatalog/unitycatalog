@@ -35,15 +35,14 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
   }
 
   // The authorization will determine which securable to authorize against in this order:
-  // 1. if user is owner of metastore, always allow
-  // 2. if the path is a parent of any data securable or external location, fail with error.
-  // 3. if the path is a part of more than one data securable or more than one external location,
+  // 1. if the path is a parent of any data securable or external location, fail with error.
+  // 2. if the path is a part of more than one data securable or more than one external location,
   //  fail with error.
-  // 4. if the path is found to be part of one data securable:
-  //   4a. if the path is found to belong to a table, user needs and only needs to have access to
+  // 3. if the path is found to be part of one data securable:
+  //   3a. if the path is found to belong to a table, user needs and only needs to have access to
   //    the table.
-  //   4b. ditto for volume and registered_model
-  // 5. Otherwise, the path must belong to one external location and user must have access to
+  //   3b. ditto for volume and registered_model
+  // 4. Otherwise, the path must belong to one external location and user must have access to
   //  it.
   // This function will only set resource key for ONE of the table, volume, model, or external
   // location.
@@ -60,7 +59,6 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
   @Post("")
   @AuthorizeExpression("""
       #operation == 'PATH_READ' ? (
-        #authorize(#principal, #metastore, OWNER) ||
         (#table != null &&
          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
@@ -77,7 +75,6 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
          #authorizeAny(#principal, #external_location, OWNER, READ_FILES))
       )
       : #operation == 'PATH_READ_WRITE' ? (
-        #authorize(#principal, #metastore, OWNER) ||
         (#table != null &&
          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
@@ -97,9 +94,8 @@ public class TemporaryPathCredentialsService implements UnityCatalogRestService 
       )
       : #operation == 'PATH_CREATE_TABLE' ? (
         #no_overlap_with_data_securable &&
-        (#authorize(#principal, #metastore, OWNER) ||
-         (#external_location != null &&
-          #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE)))
+        #external_location != null &&
+        #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE)
       )
       : #deny
       """)

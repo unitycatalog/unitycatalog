@@ -89,10 +89,7 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   }
 
   @Patch("/{name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #credential, OWNER)
-      """)
+  @AuthorizeExpression("#authorize(#principal, #credential, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,
@@ -101,10 +98,7 @@ public class CredentialService extends AuthorizedService implements UnityCatalog
   }
 
   @Delete("/{name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #credential, OWNER)
-      """)
+  @AuthorizeExpression("#authorize(#principal, #credential, OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse deleteCredential(
       @Param("name") @AuthorizeResourceKey(CREDENTIAL) String name,

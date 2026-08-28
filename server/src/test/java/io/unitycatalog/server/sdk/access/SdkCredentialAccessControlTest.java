@@ -132,8 +132,8 @@ public class SdkCredentialAccessControlTest extends SdkAccessControlBaseCRUDTest
     // Admin can update its own credential
     assertUpdateSuccess(adminApi, adminCredential);
 
-    // Admin can update userA's credentials (metastore owner)
-    assertUpdateSuccess(adminApi, userACredential1);
+    // Admin (metastore owner) cannot update userA's credential -- only the owner can
+    assertUpdateFailure(adminApi, userACredential1);
 
     // UserA can update its own credentials (owner)
     assertUpdateSuccess(userAApi, userACredential1);
@@ -182,8 +182,11 @@ public class SdkCredentialAccessControlTest extends SdkAccessControlBaseCRUDTest
     // UserA can delete its own credentials (owner)
     assertDeleteSuccess(userAApi, userACredential2);
 
-    // Admin can delete any credential (metastore owner)
-    assertDeleteSuccess(adminApi, userACredential1);
+    // Admin (metastore owner) cannot delete userA's credential -- only the owner can
+    assertDeleteFailure(adminApi, userACredential1);
+    assertDeleteSuccess(userAApi, userACredential1);
+
+    // Admin can delete its own credential (owner)
     assertDeleteSuccess(adminApi, adminCredential);
   }
 
