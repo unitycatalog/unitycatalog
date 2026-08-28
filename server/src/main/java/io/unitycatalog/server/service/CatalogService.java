@@ -7,6 +7,7 @@ import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
@@ -78,13 +79,8 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
     return HttpResponse.ofJson(catalogInfo);
   }
 
-  private static final String LIST_AND_GET_AUTH_EXPRESSION = """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
-      """;
-
   @Get("")
-  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listCatalogs(
@@ -97,7 +93,7 @@ public class CatalogService extends AuthorizedService implements UnityCatalogRes
   }
 
   @Get("/{name}")
-  @AuthorizeExpression(LIST_AND_GET_AUTH_EXPRESSION)
+  @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getCatalog(@Param("name") @AuthorizeResourceKey(CATALOG) String name) {
     return HttpResponse.ofJson(catalogRepository.getCatalog(name));

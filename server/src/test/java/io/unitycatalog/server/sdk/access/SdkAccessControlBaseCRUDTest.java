@@ -446,13 +446,24 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
   }
 
   /**
-   * Common setup: Creates catalog "cat_pr1" with schema "sch_pr1". Equivalent to
-   * commonSecurableSteps in CLI tests. This setup includes: - Grant CREATE CATALOG to principal-1 -
-   * Create catalog "cat_pr1" as principal-1 - Grant CREATE SCHEMA and USE CATALOG to principal-1 -
-   * Create schema "sch_pr1" in cat_pr1
+   * Common setup: creates catalog "cat_pr1" with schema "sch_pr1", owned by principal-1. Equivalent
+   * to commonSecurableSteps in CLI tests. Delegates to {@link #setupCommonCatalogAndSchema(String,
+   * String)}.
    */
   @SneakyThrows
   protected void setupCommonCatalogAndSchema() {
+    setupCommonCatalogAndSchema("cat_pr1", "sch_pr1");
+  }
+
+  /**
+   * As {@link #setupCommonCatalogAndSchema()} but with caller-chosen names (e.g. {@link
+   * TestUtils#CATALOG_NAME2}/{@link TestUtils#SCHEMA_NAME2}). Grants principal-1 CREATE CATALOG,
+   * creates the catalog as principal-1, grants CREATE SCHEMA and USE CATALOG, then creates the
+   * schema -- so principal-1 owns both, distinct from the admin-owned catalog {@link
+   * #createCommonResources()} makes.
+   */
+  @SneakyThrows
+  protected void setupCommonCatalogAndSchema(String catalogName, String schemaName) {
     ServerConfig principal1Config = createTestUserServerConfig(PRINCIPAL_1);
     CatalogsApi principal1CatalogsApi =
         new CatalogsApi(TestUtils.createApiClient(principal1Config));
@@ -463,19 +474,16 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
         PRINCIPAL_1, SecurableType.METASTORE, METASTORE_NAME, Privileges.CREATE_CATALOG);
 
     // create a catalog -> CREATE CATALOG -> allowed
-    io.unitycatalog.client.model.CreateCatalog createCatalog =
-        new io.unitycatalog.client.model.CreateCatalog()
-            .name("cat_pr1")
-            .comment("(created from scratch)");
+    CreateCatalog createCatalog =
+        new CreateCatalog().name(catalogName).comment("(created from scratch)");
     principal1CatalogsApi.createCatalog(createCatalog);
 
-    // give user CREATE SCHEMA on cat_pr1
-    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, "cat_pr1", Privileges.CREATE_SCHEMA);
-    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, "cat_pr1", Privileges.USE_CATALOG);
+    // give user CREATE SCHEMA on the catalog
+    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, catalogName, Privileges.CREATE_SCHEMA);
+    grantPermissions(PRINCIPAL_1, SecurableType.CATALOG, catalogName, Privileges.USE_CATALOG);
 
     // create schema
-    io.unitycatalog.client.model.CreateSchema createSchema =
-        new io.unitycatalog.client.model.CreateSchema().name("sch_pr1").catalogName("cat_pr1");
+    CreateSchema createSchema = new CreateSchema().name(schemaName).catalogName(catalogName);
     principal1SchemasApi.createSchema(createSchema);
   }
 

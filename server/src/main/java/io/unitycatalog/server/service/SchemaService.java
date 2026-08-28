@@ -5,6 +5,7 @@ import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
+import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
@@ -66,14 +67,7 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
    * location (rather than tables etc.) owns the path.
    */
   @Post("")
-  @AuthorizeExpression("""
-      (#authorize(#principal, #catalog, OWNER) ||
-       #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)) &&
-      (#storage_root == null ||
-       (#no_overlap_with_data_securable &&
-        #external_location != null &&
-        #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.CREATE_SCHEMA_WITH_STORAGE_ROOT)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createSchema(
       @AuthorizeResourceKeys({
@@ -91,12 +85,7 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Get("")
-  @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
   @ResponseAuthorizeFilter
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse listSchemas(
@@ -110,12 +99,7 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Get("/{full_name}")
-  @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER) ||
-      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, USE_CATALOG))
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_SCHEMA)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse getSchema(@Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName) {
     return HttpResponse.ofJson(schemaRepository.getSchema(fullName));

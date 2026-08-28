@@ -108,11 +108,7 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
 
   @Get("/delta/v1/config")
   @ProducesJson
-  @AuthorizeExpression(
-      """
-      #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
-      """)
+  @AuthorizeExpression(AuthorizeExpressions.GET_CATALOG)
   @AuthorizeResourceKey(METASTORE)
   public DeltaCatalogConfig getConfig(
       @Param("catalog") @AuthorizeResourceKey(CATALOG) String catalog,

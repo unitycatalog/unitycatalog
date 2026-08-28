@@ -21,11 +21,11 @@ public final class AuthorizeExpressions {
   private AuthorizeExpressions() {}
 
   /**
-   * Authorization policy for reading table metadata (UC REST {@code GET /tables/{name}} and Delta
-   * REST Catalog {@code loadTable}). Metastore admin and catalog owner pass unconditionally;
-   * schema owner passes with catalog {@code USE_CATALOG}; regular callers need {@code USE_SCHEMA}
-   * + {@code USE_CATALOG} plus any of {@code OWNER} / {@code SELECT} / {@code MODIFY} on the
-   * table itself.
+   * Authorization policy for reading table metadata (UC REST {@code GET /tables/{name}}, UC Delta
+   * API, and the Iceberg REST {@code loadTable}). Metastore admin and catalog owner pass
+   * unconditionally; schema owner passes with catalog {@code USE_CATALOG}; regular callers need
+   * {@code USE_SCHEMA} + {@code USE_CATALOG} plus any of {@code OWNER} / {@code SELECT} /
+   * {@code MODIFY} on the table itself.
    */
   public static final String GET_TABLE =
       """
@@ -36,6 +36,56 @@ public final class AuthorizeExpressions {
           #authorize(#principal, #schema, USE_SCHEMA) &&
           #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
       """;
+
+  /**
+   * Catalog-level read access: metastore admin, or {@code OWNER}/{@code USE_CATALOG} on the
+   * catalog. Shared by the catalog get/list endpoints and the Delta/Iceberg config endpoints.
+   */
+  public static final String GET_CATALOG =
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+      """;
+
+  /**
+   * Schema-level read access: metastore admin, catalog {@code OWNER}, or schema
+   * {@code OWNER}/{@code USE_SCHEMA} with catalog {@code USE_CATALOG}. Used as the get-schema gate
+   * and the list-schemas/namespaces response filter (listing and reading grant the same access).
+   */
+  public static final String GET_SCHEMA =
+      """
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorizeAny(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA))
+      """;
+
+  /**
+   * Catalog tier for creating a schema: catalog {@code OWNER}, or {@code USE_CATALOG} +
+   * {@code CREATE_SCHEMA}. Used directly by Iceberg {@code createNamespace} (no storage root);
+   * {@link #CREATE_SCHEMA_WITH_STORAGE_ROOT} wraps it for the UC REST endpoint.
+   */
+  public static final String CREATE_SCHEMA =
+      """
+      #authorize(#principal, #catalog, OWNER) ||
+      #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)
+      """;
+
+  /**
+   * UC REST create-schema policy: the {@link #CREATE_SCHEMA} catalog tier plus, when a
+   * {@code storage_root} is supplied, {@code OWNER}/{@code CREATE_MANAGED_STORAGE} on the covering
+   * (non-overlapping) external location. Mirrors the createCatalog storage-root gate.
+   */
+  public static final String CREATE_SCHEMA_WITH_STORAGE_ROOT =
+      "("
+          + CREATE_SCHEMA
+          + """
+          ) &&
+          (#storage_root == null ||
+           (#no_overlap_with_data_securable &&
+            #external_location != null &&
+            #authorizeAny(#principal, #external_location, OWNER, CREATE_MANAGED_STORAGE)))
+          """;
 
   /**
    * Authorization policy for creating a staging table (UC REST {@code POST /staging-tables} and
@@ -74,6 +124,23 @@ public final class AuthorizeExpressions {
       """;
 
   /**
+   * Iceberg {@code createTable} policy: same as {@link #CREATE_TABLE}, but discriminates MANAGED
+   * vs EXTERNAL on the request's {@code location} (Iceberg has no table_type). Keying on location
+   * (not the resolved external location) keeps the no-overlap guard running when a path resolves
+   * to no external location.
+   */
+  public static final String CREATE_ICEBERG_TABLE =
+      """
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+      (#authorize(#principal, #schema, OWNER) ||
+        #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)) &&
+      (#location == null ||
+        (#no_overlap_with_data_securable &&
+          (#external_location == null ||
+           #authorizeAny(#principal, #external_location, OWNER, CREATE_EXTERNAL_TABLE))))
+      """;
+
+  /**
    * Authorization policy for updating / committing to a table (UC REST {@code
    * DeltaCommitsService.postCommit} and the Delta {@code updateTable}). The Delta {@code POST
    * /tables/{name}} endpoint covers both metadata-only updates (properties, columns, comment,
@@ -91,9 +158,9 @@ public final class AuthorizeExpressions {
       """;
 
   /**
-   * Authorization policy for deleting a table, shared by the UC REST and Delta REST Catalog
-   * delete endpoints. Metastore admin alone is intentionally not sufficient -- the caller must
-   * hold {@code OWNER} somewhere in the catalog / schema / table hierarchy.
+   * Authorization policy for deleting a table, shared by the UC REST, UC Delta API, and Iceberg
+   * REST delete endpoints. Metastore admin alone is intentionally not sufficient -- the caller
+   * must hold {@code OWNER} somewhere in the catalog / schema / table hierarchy.
    */
   public static final String DELETE_TABLE =
       """
