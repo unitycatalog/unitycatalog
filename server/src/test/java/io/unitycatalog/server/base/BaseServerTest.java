@@ -1,6 +1,7 @@
 package io.unitycatalog.server.base;
 
 import io.unitycatalog.server.UnityCatalogServer;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -64,6 +65,14 @@ public abstract class BaseServerTest {
   protected void setUpCredentialOperations(ServerProperties serverProperties) {}
 
   /**
+   * Subclasses can override this to decorate the server's {@link FileOperations}, e.g. to map cloud
+   * storage to local files for Iceberg tests. Returns the instance unchanged by default.
+   */
+  protected FileOperations decorateFileOperations(FileOperations fileOperations) {
+    return fileOperations;
+  }
+
+  /**
    * Subclasses can override this to customize the hibernate properties before the session factory
    * is created, e.g. to point the server at an external database such as PostgreSQL via
    * Testcontainers. Defaults to the H2 in-memory test configuration.
@@ -101,6 +110,7 @@ public abstract class BaseServerTest {
               .serverProperties(initServerProperties)
               .hibernateConfigurator(hibernateConfigurator)
               .credentialOperations(cloudCredentialVendor)
+              .fileOperations(this::decorateFileOperations)
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);

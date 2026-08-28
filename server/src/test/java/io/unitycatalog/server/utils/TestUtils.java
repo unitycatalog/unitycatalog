@@ -1,6 +1,7 @@
 package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -25,6 +26,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Flow;
+import org.apache.iceberg.rest.responses.ErrorResponse;
+import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.junit.jupiter.api.function.Executable;
 
 public class TestUtils {
@@ -160,6 +163,52 @@ public class TestUtils {
         .isTrue();
   }
 
+  public static void assertIcebergApiException(Executable executable, int expectedStatus) {
+    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.empty());
+  }
+
+  /**
+   * As {@link #assertIcebergApiException(Executable, int)}, additionally asserting the error
+   * message contains {@code containsMessage}.
+   */
+  public static void assertIcebergApiException(
+      Executable executable, int expectedStatus, String containsMessage) {
+    assertIcebergApiExceptionImpl(executable, expectedStatus, Optional.of(containsMessage));
+  }
+
+  /**
+   * Asserts the call fails with {@code expectedStatus} and an Iceberg REST {@code ErrorResponse}
+   * body. The Iceberg endpoints use Iceberg's own error format ({@code {"error": {"code", "type",
+   * "message"}}}), distinct from the UC envelope ({@link #assertApiException}) and the Delta
+   * envelope ({@link #assertDeltaApiException}). Mirroring {@link #assertDeltaApiException}, this
+   * parses the body into an {@link ErrorResponse} and checks that both the HTTP status and the code
+   * echoed in the body equal {@code expectedStatus} (and, when present, that the message contains
+   * {@code containsMessage}).
+   */
+  private static void assertIcebergApiExceptionImpl(
+      Executable executable, int expectedStatus, Optional<String> containsMessage) {
+    ApiException ex = assertThrows(ApiException.class, executable);
+    assertThat(ex.getCode()).isEqualTo(expectedStatus);
+    ErrorResponse error = parseIcebergErrorBody(ex.getResponseBody());
+    assertThat(error.code())
+        .as("Iceberg ErrorResponse code in: %s", ex.getResponseBody())
+        .isEqualTo(expectedStatus);
+    containsMessage.ifPresent(
+        m ->
+            assertThat(error.message())
+                .as("Iceberg error message in: %s", ex.getResponseBody())
+                .contains(m));
+  }
+
+  private static ErrorResponse parseIcebergErrorBody(String bodyText) {
+    try {
+      return ErrorResponseParser.fromJson(bodyText);
+    } catch (Exception e) {
+      return fail(
+          "Error response was not a valid Iceberg ErrorResponse: " + bodyText, e);
+    }
+  }
+
   public static void assertDeltaApiException(
       Executable executable, DeltaErrorType expectedType, String expectedMessageSubstring) {
     int expectedCode = ErrorCode.getDeltaHttpStatus(expectedType.getValue()).code();
@@ -278,7 +327,7 @@ public class TestUtils {
     try {
       return new ObjectMapper().readTree(bodyText);
     } catch (Exception e) {
-      return org.assertj.core.api.Assertions.fail(
+      return fail(
           "Error response was not valid JSON: " + bodyText, e);
     }
   }
