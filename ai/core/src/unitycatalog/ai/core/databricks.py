@@ -19,6 +19,14 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
 )
 from unitycatalog.ai.core.executor.local_subprocess import run_in_sandbox_subprocess
 from unitycatalog.ai.core.paged_list import PagedList
+from unitycatalog.ai.core.service_policies import (
+    allow,
+    build_variant_conversion_preamble,
+    decision,
+    decision_payload,
+    deny,
+    resolve_service_policy_parameters,
+)
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
     ServiceCredential,
@@ -518,6 +526,103 @@ class DatabricksFunctionClient(BaseFunctionClient):
         sql_function_body = generate_wrapped_sql_function_body(
             primary_func=primary_func,
             functions=functions,
+            catalog=catalog,
+            schema=schema,
+            replace=replace,
+            dependencies=dependencies,
+            environment_version=environment_version,
+            credentials=credentials,
+            secrets=secrets,
+        )
+
+        return self.create_function(sql_function_body=sql_function_body)
+
+    @retry_on_session_expiration
+    def create_service_policy(
+        self,
+        *,
+        func: Callable[..., Any],
+        catalog: str,
+        schema: str,
+        replace: bool = False,
+        dependencies: Optional[list[str]] = None,
+        environment_version: str = "None",
+        credentials: Optional[list[Union[str, ServiceCredential]]] = None,
+        secrets: Optional[list[str]] = None,
+    ) -> "FunctionInfo":
+        """
+        Create a Unity Catalog service policy from a Python function.
+
+        A service policy decides whether a request to a governed service is allowed. It receives
+        an event and a configuration, both VARIANT, and returns a VARIANT decision of the form
+        `{"decision": {"result": "ALLOW" | "DENY", "reason": "..."}}`.
+
+        The `allow` and `deny` helpers from `unitycatalog.ai.core.service_policies` build that
+        decision, and are in-lined into the created function so that its body can call them
+        without the library being installed in the execution environment.
+
+        **Example**:
+        ```python
+        from unitycatalog.ai.core.service_policies import allow, deny
+        from unitycatalog.ai.core.types import Variant
+
+
+        def block_restricted_terms(event: Variant, config: Variant) -> Variant:
+            \"\"\"
+            Deny requests whose prompt mentions a restricted term.
+
+            Args:
+                event (Variant): The request event being evaluated.
+                config (Variant): The policy configuration, holding the restricted terms.
+
+            Returns:
+                Variant: The policy decision.
+            \"\"\"
+            prompt = event.get("prompt", "").lower()
+            for term in config.get("restricted_terms", []):
+                if term.lower() in prompt:
+                    return deny(f"The request references a restricted term: {term}.")
+            return allow()
+
+
+        client.create_service_policy(
+            func=block_restricted_terms,
+            catalog="main",
+            schema="policies",
+        )
+        ```
+
+        Note that this creates the policy function only. Attaching it to a service is a separate
+        step performed through the Unity Catalog service policy APIs.
+
+        Args:
+            func: The Python function implementing the policy. It must take exactly two
+                parameters, the event and the configuration, both annotated as `Variant`, and be
+                annotated as returning `Variant`. The parameters are bound positionally, so their
+                names are free.
+            catalog: The catalog name in which to create the policy.
+            schema: The schema name in which to create the policy.
+            replace: Whether to replace the policy if it already exists. Defaults to False.
+            dependencies: An optional list of external dependencies required by the policy.
+            environment_version: The version of the environment in which the policy will be
+                executed. Defaults to 'None'.
+            credentials: An optional list of Unity Catalog service credentials to make available
+                to the policy body.
+            secrets: An optional list of Unity Catalog secrets to make available to the policy
+                body, each a three-part name of the form 'catalog.schema.key'.
+
+        Returns:
+            FunctionInfo: Metadata about the created policy, including its name and signature.
+        """
+        if not callable(func):
+            raise ValueError("The provided function is not callable.")
+
+        parameters = resolve_service_policy_parameters(func)
+
+        sql_function_body = generate_wrapped_sql_function_body(
+            primary_func=func,
+            functions=[decision_payload, decision, allow, deny],
+            body_preamble=build_variant_conversion_preamble(parameters),
             catalog=catalog,
             schema=schema,
             replace=replace,
