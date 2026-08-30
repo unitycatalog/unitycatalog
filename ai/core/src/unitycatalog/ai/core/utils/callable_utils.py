@@ -26,6 +26,10 @@ from unitycatalog.ai.core.utils.type_utils import (
 FORBIDDEN_PARAMS = ["self", "cls"]
 PRIMARY_INDENT = " " * 4
 WRAPPED_INDENT = " " * 6
+# Mirrors the server-side minimum environment version that ships the `databricks.secrets`
+# module. Unity Catalog is the authority on this value; it is duplicated here only to fail
+# fast with an actionable message instead of after a round trip.
+SECRETS_MIN_ENVIRONMENT_VERSION = 6
 
 
 class FunctionBodyExtractor(ast.NodeVisitor):
@@ -124,6 +128,28 @@ class SQLMetadata:
     sql_params: List[str]
     func_comment: str
     indented_body: str
+
+
+@dataclass(frozen=True)
+class ServiceCredential:
+    """
+    Dataclass to declare a Unity Catalog service credential on a function.
+
+    A credential is exposed to the function body through
+    `databricks.service_credentials.credential_retriever.CredentialRetriever`, keyed by
+    `alias` when one is given and by `name` otherwise. The credential marked as the default
+    is the one `CredentialRetriever` returns when called without a name.
+
+    Attributes:
+        name: The name of the service credential in Unity Catalog.
+        alias: An optional alias to refer to the credential by within the function body.
+        is_default: Whether this is the default credential for the function. At most one
+            credential in a function may be the default.
+    """
+
+    name: str
+    alias: Optional[str] = None
+    is_default: bool = False
 
 
 def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
@@ -389,6 +415,84 @@ def process_parameter(
         return f"{param_name} {sql_type} COMMENT '{param_comment}'"
 
 
+def _quote_identifier(identifier: str, context: str) -> str:
+    """
+    Backtick-quote a SQL identifier so that names containing hyphens or reserved words parse.
+
+    Args:
+        identifier: The identifier to quote.
+        context: A description of what the identifier is, used in error messages.
+
+    Returns:
+        str: The backtick-quoted identifier.
+
+    Raises:
+        ValueError: If the identifier is empty or contains a backtick.
+    """
+    if not identifier or not identifier.strip():
+        raise ValueError(f"{context} cannot be empty.")
+    if "`" in identifier:
+        raise ValueError(f"{context} cannot contain a backtick: {identifier!r}.")
+    return f"`{identifier}`"
+
+
+def _validate_dependencies(dependencies: list[str]) -> None:
+    """
+    Validate function dependencies before they are embedded in the ENVIRONMENT clause.
+
+    The dependency list is emitted as a single-quoted SQL string literal, so a dependency
+    containing a single quote or a backslash would corrupt the statement. Volume paths are
+    checked for the `/Volumes/<catalog>/<schema>/<volume>` shape that Unity Catalog resolves
+    to a volume securable.
+
+    Args:
+        dependencies: The list of dependencies to validate.
+
+    Raises:
+        ValueError: If a dependency is empty, contains a single quote or a backslash, or is a
+            malformed volume path.
+    """
+    for dependency in dependencies:
+        stripped = dependency.strip() if dependency else ""
+        if not stripped:
+            raise ValueError("Dependencies cannot contain empty entries.")
+        for character, name in (("'", "a single quote"), ("\\", "a backslash")):
+            if character in dependency:
+                raise ValueError(
+                    f"Dependency cannot contain {name}: {dependency!r}. The dependency list is "
+                    "carried in a SQL string literal that such a character would corrupt."
+                )
+        if stripped.lower().startswith("/volumes/"):
+            segments = [segment for segment in stripped.split("/") if segment]
+            if len(segments) < 4:
+                raise ValueError(
+                    f"Volume dependency {dependency!r} is not a valid volume path. Expected at "
+                    "least '/Volumes/<catalog>/<schema>/<volume>'."
+                )
+
+
+def _validate_environment_version(environment_version: str) -> None:
+    """
+    Validate the environment version before it is embedded in the ENVIRONMENT clause.
+
+    The version is emitted inside a single-quoted SQL string literal. A single quote would close
+    that literal, and a trailing backslash would escape the closing quote so that the rest of the
+    statement is absorbed into the string and the text after it is reparsed as SQL.
+
+    Args:
+        environment_version: The environment version to validate.
+
+    Raises:
+        ValueError: If the version contains a single quote or a backslash.
+    """
+    for character, name in (("'", "a single quote"), ("\\", "a backslash")):
+        if character in environment_version:
+            raise ValueError(
+                f"environment_version cannot contain {name}: {environment_version!r}. It is "
+                "emitted inside a single-quoted SQL string literal."
+            )
+
+
 def construct_dependency_statement(
     dependencies: Optional[list[str]] = None, environment_version: str = "None"
 ) -> str:
@@ -402,13 +506,136 @@ def construct_dependency_statement(
     Returns:
         str: The constructed dependency statement.
     """
+    _validate_environment_version(environment_version)
     if dependencies:
+        _validate_dependencies(dependencies)
         dependencies_json = json.dumps(dependencies)
         return f"\nENVIRONMENT (dependencies = '{dependencies_json}', environment_version = '{environment_version}')"
     elif environment_version != "None":
         return f"\nENVIRONMENT (environment_version = '{environment_version}')"
     else:
         return ""
+
+
+def construct_credentials_statement(
+    credentials: Optional[list[Union[str, ServiceCredential]]] = None,
+) -> str:
+    """
+    Constructs the CREDENTIALS clause for the SQL function.
+
+    Args:
+        credentials: An optional list of service credentials to make available to the function.
+            A plain string is shorthand for `ServiceCredential(name=...)`.
+
+    Returns:
+        str: The constructed CREDENTIALS clause, or an empty string if no credentials are given.
+
+    Raises:
+        ValueError: If more than one credential is marked as the default, or if two credentials
+            resolve to the same name within the function body.
+    """
+    if not credentials:
+        return ""
+
+    specs = []
+    referenced_names = set()
+    default_names = []
+    for credential in credentials:
+        if isinstance(credential, str):
+            credential = ServiceCredential(name=credential)
+
+        spec = _quote_identifier(credential.name, "Service credential name")
+        if credential.alias is not None:
+            spec += f" AS {_quote_identifier(credential.alias, 'Service credential alias')}"
+        if credential.is_default:
+            spec += " DEFAULT"
+            default_names.append(credential.name)
+
+        # The name a credential is reachable by inside the function body, which is what must
+        # be unique; two different credentials aliased to the same thing are ambiguous.
+        referenced_name = credential.alias or credential.name
+        if referenced_name in referenced_names:
+            raise ValueError(
+                f"Duplicate service credential reference: {referenced_name!r}. Each credential "
+                "must have a distinct name or alias within a function."
+            )
+        referenced_names.add(referenced_name)
+        specs.append(spec)
+
+    if len(default_names) > 1:
+        raise ValueError(
+            "Only one service credential can be marked as the default, but "
+            f"{len(default_names)} were: {default_names}."
+        )
+
+    return f"\nCREDENTIALS ({', '.join(specs)})"
+
+
+def _validate_secrets_environment_version(environment_version: str) -> None:
+    """
+    Validate that the environment version supports secrets.
+
+    Unity Catalog rejects a function that declares secrets on an environment version below
+    `SECRETS_MIN_ENVIRONMENT_VERSION`, and the version the server picks implicitly is currently
+    below that minimum, so an explicit version is required. A version that does not parse as a
+    number (a named channel, for example) is left to the server to judge rather than rejected
+    here.
+
+    Args:
+        environment_version: The environment version declared for the function.
+
+    Raises:
+        ValueError: If the version is absent or is a number below the minimum.
+    """
+    if environment_version == "None":
+        raise ValueError(
+            "Declaring secrets requires an explicit environment_version of at least "
+            f"'{SECRETS_MIN_ENVIRONMENT_VERSION}'. Pass "
+            f"environment_version='{SECRETS_MIN_ENVIRONMENT_VERSION}' when creating the function."
+        )
+
+    major_version = environment_version.split("-", 1)[0]
+    if major_version.isdigit() and int(major_version) < SECRETS_MIN_ENVIRONMENT_VERSION:
+        raise ValueError(
+            f"Declaring secrets requires an environment_version of at least "
+            f"'{SECRETS_MIN_ENVIRONMENT_VERSION}', but {environment_version!r} was given."
+        )
+
+
+def construct_secrets_statement(
+    secrets: Optional[list[str]] = None, environment_version: str = "None"
+) -> str:
+    """
+    Constructs the SECRETS clause for the SQL function.
+
+    Args:
+        secrets: An optional list of Unity Catalog secrets to make available to the function,
+            each a three-part name of the form "catalog.schema.key".
+        environment_version: The environment version declared for the function. Secrets require
+            an explicit version of at least `SECRETS_MIN_ENVIRONMENT_VERSION`.
+
+    Returns:
+        str: The constructed SECRETS clause, or an empty string if no secrets are given.
+
+    Raises:
+        ValueError: If a secret is not a three-part name, or if the environment version is
+            absent or below the minimum that supports secrets.
+    """
+    if not secrets:
+        return ""
+
+    _validate_secrets_environment_version(environment_version)
+
+    specs = []
+    for secret in secrets:
+        parts = secret.split(".")
+        if len(parts) != 3:
+            raise ValueError(
+                f"Secret {secret!r} must be a three-part name of the form 'catalog.schema.key'."
+            )
+        specs.append(".".join(_quote_identifier(part, "Secret identifier part") for part in parts))
+
+    return f"\nSECRETS ({', '.join(specs)})"
 
 
 def assemble_sql_body(
@@ -422,6 +649,8 @@ def assemble_sql_body(
     replace: bool,
     dependencies: Optional[list[str]] = None,
     environment_version: str = "None",
+    credentials: Optional[list[Union[str, ServiceCredential]]] = None,
+    secrets: Optional[list[str]] = None,
 ) -> str:
     """
     Assembles the final SQL function body.
@@ -439,6 +668,8 @@ def assemble_sql_body(
         replace: Whether to include the 'OR REPLACE' clause.
         dependencies: An optional list of PyPI dependencies for the function to utilize in the execution environment
         environment_version: The version of the environment to use for the function. Defaults to "None".
+        credentials: An optional list of service credentials to make available to the function.
+        secrets: An optional list of Unity Catalog secrets to make available to the function.
 
     Returns:
         The assembled SQL function creation statement.
@@ -448,10 +679,12 @@ def assemble_sql_body(
     """Assembles the final SQL function body."""
     sql_params_str = ", ".join(sql_params)
     environment_str = construct_dependency_statement(dependencies, environment_version)
+    credentials_str = construct_credentials_statement(credentials)
+    secrets_str = construct_secrets_statement(secrets, environment_version)
     sql_body = f"""
 {replace_command} FUNCTION `{catalog}`.`{schema}`.`{func_name}`({sql_params_str})
 RETURNS {sql_return_type}
-LANGUAGE PYTHON{environment_str}
+LANGUAGE PYTHON{environment_str}{credentials_str}{secrets_str}
 COMMENT '{func_comment}'
 AS $$
 {indented_body}
@@ -570,6 +803,8 @@ def generate_sql_function_body(
     replace: bool = False,
     dependencies: Optional[list[str]] = None,
     environment_version: str = "None",
+    credentials: Optional[list[Union[str, ServiceCredential]]] = None,
+    secrets: Optional[list[str]] = None,
 ) -> str:
     """
     Generate SQL body for creating the function in Unity Catalog.
@@ -581,6 +816,8 @@ def generate_sql_function_body(
         replace: Whether to replace the function if it already exists. Defaults to False.
         dependencies: An optional list of PyPI dependencies for the function to utilize in the execution environment
         environment_version: The version of the environment to use for the function. Defaults to "None".
+        credentials: An optional list of service credentials to make available to the function.
+        secrets: An optional list of Unity Catalog secrets to make available to the function.
 
     Returns:
         SQL statement for creating the UDF.
@@ -601,6 +838,8 @@ def generate_sql_function_body(
         replace,
         dependencies,
         environment_version,
+        credentials,
+        secrets,
     )
 
     return sql_body
@@ -614,6 +853,8 @@ def generate_wrapped_sql_function_body(
     replace: bool = False,
     dependencies: Optional[list[str]] = None,
     environment_version: str = "None",
+    credentials: Optional[list[Union[str, ServiceCredential]]] = None,
+    secrets: Optional[list[str]] = None,
 ) -> str:
     """
     Generate SQL body for creating the function in Unity Catalog.
@@ -626,6 +867,8 @@ def generate_wrapped_sql_function_body(
         replace: Whether to include the 'OR REPLACE' clause.
         dependencies: An optional list of PyPI dependencies for the function to utilize in the execution environment
         environment_version: The version of the environment to use for the function. Defaults to "None".
+        credentials: An optional list of service credentials to make available to the function.
+        secrets: An optional list of Unity Catalog secrets to make available to the function.
 
     Returns:
         SQL statement for creating the UDF.
@@ -653,6 +896,8 @@ def generate_wrapped_sql_function_body(
         replace,
         dependencies,
         environment_version,
+        credentials,
+        secrets,
     )
 
     return sql_body
