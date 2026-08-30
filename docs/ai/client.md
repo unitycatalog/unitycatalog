@@ -406,6 +406,49 @@ client.create_python_function(
 
 > Note: the parameters `dependencies` and `environment_version` for the `create_python_function` API are only compatible with Databricks runtime versions that support these SQL parameters for function creation. Currently, this is Databricks runtime versions **17 and higher**.
 
+### Creating a service policy
+
+A service policy decides whether a request to a governed service is allowed. Use
+`create_service_policy` to create the Unity Catalog function that implements the policy. The
+function must take exactly two `Variant` parameters—an event and configuration—and return a
+`Variant` decision. Use `allow` and `deny` to create the required decision envelope.
+Service policies require environment version 6 or later; `create_service_policy` uses version 6
+by default.
+They also require serverless execution because the decision helpers use PySpark's `VariantVal`.
+
+The following policy denies every request with a message:
+
+```python
+from unitycatalog.ai.core.service_policies import deny
+from unitycatalog.ai.core.types import Variant
+
+
+def deny_all(event: Variant, config: Variant) -> Variant:
+    """
+    Deny every request for this governed service.
+
+    Args:
+        event: The request event.
+        config: The service-policy configuration.
+    """
+    return deny("This service is not available.")
+
+
+client.create_service_policy(
+    func=deny_all,
+    catalog="your_catalog",
+    schema="your_schema",
+)
+```
+
+The client in-lines the decision helpers into the created function and converts `Variant`
+arguments to ordinary Python values before the policy body runs. This lets a policy inspect
+`event` and `config` with normal dictionary operations without adding `unitycatalog-ai` as a
+function dependency.
+
+Creating the function does not attach it to a governed service. Attach the resulting function
+through the applicable Unity Catalog service-policy API, such as when configuring an MCP server.
+
 #### Example of an Invalid Function
 
 The following function definition will not successfully be created as a UC function due to several reasons:
