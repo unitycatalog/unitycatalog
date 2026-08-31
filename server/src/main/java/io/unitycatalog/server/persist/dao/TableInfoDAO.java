@@ -36,7 +36,7 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @SuperBuilder
-public class TableInfoDAO extends IdentifiableDAO {
+public class TableInfoDAO extends DroppableIdentifiableDAO {
   @Column(name = "schema_id")
   private UUID schemaId;
 
