@@ -83,14 +83,12 @@ public class SdkIdentitySequenceAccessControlCRUDTest extends SdkAccessControlBa
         TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + TestUtils.TABLE_NAME;
   }
 
-  /**
-   * Create a managed table as admin. When authorization is enabled, managed tables must be created
-   * from a staging table location.
-   */
+  /** Create a managed table as admin. */
   @SneakyThrows
   private TableInfo createManagedTable() {
     TablesApi adminTablesApi = new TablesApi(TestUtils.createApiClient(adminConfig));
 
+    // When authorization is enabled, managed tables must be created from a staging table location.
     CreateStagingTable createStagingTable =
         new CreateStagingTable()
             .catalogName(TestUtils.CATALOG_NAME)
