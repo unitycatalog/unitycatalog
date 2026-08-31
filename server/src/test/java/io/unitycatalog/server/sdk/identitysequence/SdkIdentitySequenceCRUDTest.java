@@ -33,10 +33,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * End-to-end tests for the identity sequence service, driven through the generated Java client over
- * HTTP. Exercises the full stack -- Armeria routing, the authorization decorator, the service, and
- * the repository -- as an authorized (owner) caller, including the batch and batch-atomicity paths.
- * Authorization denial is covered separately by {@code SdkIdentitySequenceAccessControlCRUDTest}.
+ * End-to-end tests for the identity sequence service, using the generated Java client over HTTP.
+ * Runs the full stack: Armeria routing, authorization middleware, the service, and repository.
  */
 public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
 
@@ -61,7 +59,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-    // The identity-sequence service is off by default; enable it for these tests.
+    // The identity-sequence service is off by default. We enable it for these tests.
     serverProperties.setProperty(Property.IDENTITY_SEQUENCES_ENABLED.getKey(), "true");
   }
 
@@ -108,7 +106,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(info.getStart()).isEqualTo(100L);
     assertThat(info.getStep()).isEqualTo(2L);
 
-    // First reserve issues start; the second continues with no overlap.
+    // First reserve issues start. The second reserve continues with no overlap.
     IdentityIdRange first = reserve(seq, 3); // 100, 102, 104
     assertThat(first.getSequenceId()).isEqualTo(seq);
     assertThat(first.getRangeStart()).isEqualTo(100L);
@@ -119,7 +117,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(second.getRangeStart()).isEqualTo(106L);
     assertThat(second.getRangeEnd()).isEqualTo(108L);
 
-    // Drop is idempotent: first drop removes it, second reports it was already gone.
+    // Drop is idempotent: first drop removes it. The second drop reports that it was already gone.
     DropIdentitySequenceResult dropped =
         identitySequencesApi
             .dropIdentitySequences(
@@ -137,7 +135,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
             .get(0);
     assertThat(droppedAgain.getExisted()).isFalse();
 
-    // Reserving from the now-dropped sequence is a not-found.
+    // Reserving from the now-dropped sequence throws a not-found error.
     assertApiException(() -> reserve(seq, 1), ErrorCode.NOT_FOUND, "not found");
   }
 
@@ -145,9 +143,9 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
   public void createIsIdempotentButConflictsOnMismatch() throws ApiException {
     String seq = UUID.randomUUID().toString();
     create(seq, 1L, 1L);
-    reserve(seq, 5); // advance the counter
+    reserve(seq, 5); // Advance the counter.
 
-    // Re-create with the same definition is a no-op and must not reset the counter.
+    // Re-create with the same definition is a no-op. It must not reset the counter.
     create(seq, 1L, 1L);
     assertThat(reserve(seq, 1).getRangeStart()).isEqualTo(6L);
 
@@ -235,7 +233,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
         ErrorCode.OUT_OF_RANGE,
         "overflow");
 
-    // The good sequence still starts at its start value -- the failed batch did not advance it.
+    // The good sequence still starts at its start value. The failed batch did not advance it.
     assertThat(reserve(good, 1).getRangeStart()).isEqualTo(0L);
   }
 
@@ -243,14 +241,14 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
   public void softDeleteBlocksReserveThenReactivates() throws ApiException {
     String seq = UUID.randomUUID().toString();
     create(seq, 1L, 1L);
-    reserve(seq, 5); // frontier at 5
+    reserve(seq, 5); // Frontier is at 5.
 
-    // Default drop is SOFT: reserving is blocked while soft-deleted.
+    // Default drop is SOFT which blocks reserving while the sequence is "soft-deleted".
     identitySequencesApi.dropIdentitySequences(
         new DropIdentitySequences().tableId(tableId).addSequenceIdsItem(seq));
     assertApiException(() -> reserve(seq, 1), ErrorCode.NOT_FOUND, "not found");
 
-    // A matching create reactivates it without resetting the counter.
+    // A matching create reactivates the sequence without resetting the counter.
     create(seq, 1L, 1L);
     assertThat(reserve(seq, 1).getRangeStart()).isEqualTo(6L);
   }
@@ -272,7 +270,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
             .get(0);
     assertThat(result.getExisted()).isTrue();
 
-    // Re-creating the id starts a brand-new counter at start, not the old frontier.
+    // Re-creating the sequence starts a new counter at the start, not the old frontier.
     create(seq, 1L, 1L);
     assertThat(reserve(seq, 1).getRangeStart()).isEqualTo(1L);
   }
