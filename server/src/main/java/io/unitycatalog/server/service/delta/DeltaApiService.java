@@ -125,8 +125,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     // Verify catalog exists
     catalogRepository.getCatalog(catalog);
 
-    // For now, we only have 1.0 as the first protocol version. Input protocolVersions is ignored.
-    return new DeltaCatalogConfig().endpoints(ENDPOINTS).protocolVersion("1.0");
+    // For now, we only have 1.1 as the protocol version. Input protocolVersions is ignored.
+    return new DeltaCatalogConfig().endpoints(ENDPOINTS).protocolVersion("1.1");
   }
 
   // ==================== Load Table API ====================
