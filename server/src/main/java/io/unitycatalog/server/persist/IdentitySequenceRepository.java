@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
 import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.exception.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,10 +39,8 @@ import org.slf4j.LoggerFactory;
  * Persistence and range-reservation logic for concurrent identity column sequences.
  *
  * <p>Unity Catalog is the authority that guarantees identity uniqueness: it holds the single
- * counter per sequence and hands out disjoint, contiguous ranges. Writers reserve ranges here and
- * assign values locally, so many writers generate identity values in parallel without contending on
- * a commit. The guarantee is uniqueness, not density. So if reserved values are not used, they
- * simply show up as gaps in the sequence.
+ * counter per sequence and hands out disjoint ranges. Writers reserve ranges here and assign values
+ * locally, so many writers generate identity values in parallel without contending on a commit.
  *
  * <p>All three operations, create, reserve, and drop, are <b>table-scoped batches</b> of sequences
  * and each executes inside a single transaction, so a batch is <b>all-or-nothing</b>: if any entry
@@ -107,6 +106,17 @@ public class IdentitySequenceRepository {
           "Duplicate sequence_id in request: " + spec.getSequenceId());
     }
 
+    return runWithRetry(1, () -> createSequencesOnce(request));
+  }
+
+  /**
+   * A single create attempt inside one transaction. Retried by once {@link #createSequences} if
+   * a concurrent writer wins the insert race for the same {@code (table_id, sequence_id)}. During
+   * the retry the now-committed row is resolved by the create-or-get path (an idempotent match, or
+   * {@code ALREADY_EXISTS} on a mismatched definition).
+   */
+  private CreateIdentitySequencesResponse createSequencesOnce(CreateIdentitySequences request) {
+    List<IdentitySequenceSpec> specs = request.getSequences();
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
@@ -143,7 +153,7 @@ public class IdentitySequenceRepository {
                       .sequenceId(spec.getSequenceId())
                       .startValue(spec.getStart())
                       .step(spec.getStep())
-                      .allocationFrontier(null) // nothing issued yet; first reserve starts at start
+                      .allocationFrontier(null)
                       .deleted(false)
                       .createdAt(now)
                       .updatedAt(now)
@@ -165,7 +175,16 @@ public class IdentitySequenceRepository {
                     + ".");
           }
 
-          toPersist.forEach(session::persist);
+          try {
+            toPersist.forEach(session::persist);
+            if (!toPersist.isEmpty()) {
+              // Flush the inserts now so a concurrent create of the same (table_id, sequence_id)
+              // surfaces here as a constraint violation.
+              session.flush();
+            }
+          } catch (ConstraintViolationException e) {
+            throw new ConcurrentCreateException(request.getTableId());
+          }
           LOGGER.info(
               "Created {} new identity sequence(s) for table {}",
               toPersist.size(),
@@ -382,29 +401,45 @@ public class IdentitySequenceRepository {
   }
 
   /**
-   * Run a reservation attempt, retrying on lock contention. Once the `maxRetries` is reached, the
-   * conflict propagates as an ABORTED (409) response.
+   * Run an attempt, retrying on a retryable conflict: reserve lock contention, or a create that
+   * lost the insert race for an id. Once {@code maxRetries} is reached the last conflict propagates
+   * unchanged (ABORTED for reserve, ALREADY_EXISTS for create).
    */
   static <T> T runWithRetry(int maxRetries, Supplier<T> attempt) {
-    ReservationConflictException lastConflict = null;
+    RetryableConflictException lastConflict = null;
     for (int i = 0; i <= maxRetries; i++) {
       try {
         return attempt.get();
-      } catch (ReservationConflictException e) {
+      } catch (RetryableConflictException e) {
         lastConflict = e;
       }
     }
     throw lastConflict;
   }
 
-  /** A lock conflict on a sequence row (lock-wait timeout) used for {@link #runWithRetry}. */
-  static class ReservationConflictException extends BaseException {
+  abstract static class RetryableConflictException extends BaseException {
+    RetryableConflictException(ErrorCode errorCode, String message) {
+      super(errorCode, message);
+    }
+  }
+
+  /** A lock conflict on a sequence row (lock-wait timeout). Exhausting retries yields ABORTED. */
+  static class ReservationConflictException extends RetryableConflictException {
     ReservationConflictException(String sequenceId) {
       super(
           ErrorCode.ABORTED,
           "Concurrent reservation in progress on identity sequence "
               + sequenceId
               + "; retry the request.");
+    }
+  }
+
+  /** A concurrent create won the insert race for the same sequence. */
+  static class ConcurrentCreateException extends RetryableConflictException {
+    ConcurrentCreateException(String tableId) {
+      super(
+          ErrorCode.ALREADY_EXISTS,
+          "A sequence in the request was created concurrently under table " + tableId + ".");
     }
   }
 
