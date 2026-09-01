@@ -6,14 +6,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateIdentitySequences;
-import io.unitycatalog.server.model.CreateIdentitySequencesResponse;
-import io.unitycatalog.server.model.DeletionMode;
 import io.unitycatalog.server.model.DropIdentitySequenceResult;
 import io.unitycatalog.server.model.DropIdentitySequences;
 import io.unitycatalog.server.model.DropIdentitySequencesResponse;
 import io.unitycatalog.server.model.IdentityIdRange;
 import io.unitycatalog.server.model.IdentityReservation;
-import io.unitycatalog.server.model.IdentitySequenceInfo;
 import io.unitycatalog.server.model.IdentitySequenceSpec;
 import io.unitycatalog.server.model.ReserveIdentityRanges;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -81,13 +78,7 @@ public class IdentitySequenceRepositoryTest {
   }
 
   private DropIdentitySequencesResponse drop(String tableId, String... sequenceIds) {
-    // No deletion_mode -> defaults to SOFT.
-    return dropWithMode(tableId, null, sequenceIds);
-  }
-
-  private DropIdentitySequencesResponse dropWithMode(
-      String tableId, DeletionMode mode, String... sequenceIds) {
-    DropIdentitySequences request = new DropIdentitySequences().tableId(tableId).deletionMode(mode);
+    DropIdentitySequences request = new DropIdentitySequences().tableId(tableId);
     for (String id : sequenceIds) {
       request.addSequenceIdsItem(id);
     }
@@ -148,17 +139,9 @@ public class IdentitySequenceRepositoryTest {
     create(tableId, seq, 1L, 1L);
     // Reserve so the sequence has advanced, then re-create with the same definition.
     reserve(tableId, seq, 4);
+    create(tableId, seq, 1L, 1L);
 
-    CreateIdentitySequencesResponse got =
-        repository.createSequences(
-            new CreateIdentitySequences().tableId(tableId).addSequencesItem(spec(seq, 1L, 1L)));
-    assertThat(got.getSequences()).hasSize(1);
-    IdentitySequenceInfo sequenceInfo = got.getSequences().get(0);
-    assertThat(sequenceInfo.getSequenceId()).isEqualTo(seq);
-    assertThat(sequenceInfo.getStart()).isEqualTo(1L);
-    assertThat(sequenceInfo.getStep()).isEqualTo(1L);
-
-    // The re-create must not reset the frontier.
+    // The matching re-create is a no-op that must not reset the frontier.
     assertThat(reserve(tableId, seq, 1).getRangeStart()).isEqualTo(5L);
   }
 
@@ -278,21 +261,17 @@ public class IdentitySequenceRepositoryTest {
   }
 
   @Test
-  public void createBatchCreatesAllAndReturnsPositional() {
+  public void createBatchCreatesAllEntries() {
     String tableId = uniqueId();
     String a = uniqueId();
     String b = uniqueId();
-    CreateIdentitySequencesResponse response =
-        repository.createSequences(
-            new CreateIdentitySequences()
-                .tableId(tableId)
-                .addSequencesItem(spec(a, 10L, 1L))
-                .addSequencesItem(spec(b, 0L, 5L)));
+    repository.createSequences(
+        new CreateIdentitySequences()
+            .tableId(tableId)
+            .addSequencesItem(spec(a, 10L, 1L))
+            .addSequencesItem(spec(b, 0L, 5L)));
 
-    assertThat(response.getSequences()).hasSize(2);
-    assertThat(response.getSequences().get(0).getSequenceId()).isEqualTo(a);
-    assertThat(response.getSequences().get(1).getSequenceId()).isEqualTo(b);
-    // Both are independently reservable.
+    // Both entries were created and are independently reservable from their own start.
     assertThat(reserve(tableId, a, 1).getRangeStart()).isEqualTo(10L);
     assertThat(reserve(tableId, b, 1).getRangeStart()).isEqualTo(0L);
   }
@@ -535,93 +514,36 @@ public class IdentitySequenceRepositoryTest {
   }
 
   @Test
-  public void softDeleteBlocksReserveAndReactivationResumesPastFrontier() {
-    String tableId = uniqueId();
-    String seq = uniqueId();
-    create(tableId, seq, 1L, 1L);
-    reserve(tableId, seq, 5); // frontier now at 5
-
-    // Default drop is SOFT, so the sequence rejects reservations while soft-deleted.
-    assertThat(drop(tableId, seq).getResults().get(0).getExisted()).isTrue();
-    assertThatThrownBy(() -> reserve(tableId, seq, 1))
-        .satisfies(e -> assertErrorCode(e, ErrorCode.NOT_FOUND));
-
-    // A matching create reactivates it WITHOUT resetting the counter, so the next value is 6.
-    create(tableId, seq, 1L, 1L);
-    assertThat(reserve(tableId, seq, 1).getRangeStart()).isEqualTo(6L);
-  }
-
-  @Test
-  public void reactivationWithDifferentDefinitionConflicts() {
-    String tableId = uniqueId();
-    String seq = uniqueId();
-    create(tableId, seq, 1L, 1L);
-    drop(tableId, seq); // Soft delete the sequence.
-
-    assertThatThrownBy(() -> create(tableId, seq, 1L, 2L))
-        .isInstanceOf(BaseException.class)
-        .satisfies(e -> assertErrorCode(e, ErrorCode.ALREADY_EXISTS));
-  }
-
-  @Test
-  public void softDeleteIsIdempotent() {
-    String tableId = uniqueId();
-    String seq = uniqueId();
-    create(tableId, seq, 1L, 1L);
-
-    // First SOFT drop changes state and a second SOFT drop is a no-op.
-    assertThat(drop(tableId, seq).getResults().get(0).getExisted()).isTrue();
-    assertThat(drop(tableId, seq).getResults().get(0).getExisted()).isFalse();
-  }
-
-  @Test
-  public void hardDeleteRemovesPermanentlyAndFreesReactivation() {
+  public void dropRemovesPermanentlyAndReCreateStartsFresh() {
     String tableId = uniqueId();
     String seq = uniqueId();
     create(tableId, seq, 1L, 1L);
     reserve(tableId, seq, 5); // Frontier at 5.
 
-    assertThat(dropWithMode(tableId, DeletionMode.HARD, seq).getResults().get(0).getExisted())
-        .isTrue();
-    // Hard delete on an already-absent sequence is a no-op.
-    assertThat(dropWithMode(tableId, DeletionMode.HARD, seq).getResults().get(0).getExisted())
-        .isFalse();
+    assertThat(drop(tableId, seq).getResults().get(0).getExisted()).isTrue();
     assertThatThrownBy(() -> reserve(tableId, seq, 1))
         .satisfies(e -> assertErrorCode(e, ErrorCode.NOT_FOUND));
 
-    // The state is gone: re-creating the id starts a brand-new counter at start (not the old 5).
-    // Note that this should never happen in practice because two independent sequences sharing the
-    // same id are not allowed.
+    // The counter state is gone: re-creating the id starts at start (not the old frontier).
+    // In practice this should not happen, since two independent sequences never share an id.
     create(tableId, seq, 1L, 1L);
     assertThat(reserve(tableId, seq, 1).getRangeStart()).isEqualTo(1L);
   }
 
   @Test
-  public void hardDeleteRemovesASoftDeletedSequence() {
-    String tableId = uniqueId();
-    String seq = uniqueId();
-    create(tableId, seq, 1L, 1L);
-    drop(tableId, seq); // soft delete
-
-    // HARD delete removes an already soft-deleted sequence, and reports it changed state.
-    assertThat(dropWithMode(tableId, DeletionMode.HARD, seq).getResults().get(0).getExisted())
-        .isTrue();
-  }
-
-  @Test
-  public void softDeleteDoesNotCountAgainstTheLiveCapacity() {
+  public void dropFreesCapacity() {
     String tableId = uniqueId();
     String victim = uniqueId();
     create(tableId, victim, 1L, 1L);
     for (int i = 0; i < IdentitySequenceRepository.MAX_SEQUENCES_PER_TABLE - 1; i++) {
       create(tableId, uniqueId(), 1L, 1L);
     }
-    // At the live capacity, another create fails.
+    // At capacity, another create fails.
     String extra = uniqueId();
     assertThatThrownBy(() -> create(tableId, extra, 1L, 1L))
         .satisfies(e -> assertErrorCode(e, ErrorCode.RESOURCE_EXHAUSTED));
 
-    // Soft-deleting one frees a live slot, so the new create then succeeds.
+    // Dropping one frees a slot, so the new create then succeeds.
     drop(tableId, victim);
     create(tableId, extra, 1L, 1L);
   }
