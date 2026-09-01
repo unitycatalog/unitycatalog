@@ -4,6 +4,8 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -42,7 +44,8 @@ public class IdentitySequenceService extends AuthorizedService implements UnityC
   public HttpResponse createSequences(
       @AuthorizeResourceKey(value = TABLE, key = "table_id") CreateIdentitySequences request) {
     serverProperties.checkIdentitySequencesEnabled();
-    return HttpResponse.ofJson(identitySequenceRepository.createSequences(request));
+    identitySequenceRepository.createSequences(request);
+    return HttpResponse.of(HttpStatus.OK);
   }
 
   @Post("/reserve")
@@ -54,7 +57,7 @@ public class IdentitySequenceService extends AuthorizedService implements UnityC
     return HttpResponse.ofJson(identitySequenceRepository.reserveRanges(request));
   }
 
-  @Post("/drop")
+  @Delete("")
   @AuthorizeExpression(AuthorizeExpressions.UPDATE_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse dropSequences(

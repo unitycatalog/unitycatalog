@@ -247,7 +247,7 @@ public class UnityCatalogServer implements AutoCloseable {
             "external-locations",
             new ExternalLocationService(authorizer, repositories, serverProperties))
         .annotate(
-            "identity-sequences",
+            "identity/sequence",
             new IdentitySequenceService(authorizer, repositories, serverProperties));
     addIcebergApiServices(
         armeriaServerBuilder, authorizer, repositories, fileOperations, serverProperties);
