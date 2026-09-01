@@ -132,7 +132,7 @@ resolvers ++= Seq(
 )
 
 // GJF 1.28.0: newest google-java-format that runs on the JDK 17 CI image without a
-// second JDK. Import sort/prune stay on (plugin defaults, same as 0.8.0).
+// second JDK. Import sort/prune stay on (plugin defaults).
 ThisBuild / javafmtFormatterCompatibleJavaVersion := 17
 
 // enforce java code style

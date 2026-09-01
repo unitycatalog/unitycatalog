@@ -28,8 +28,7 @@ addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "7.9.0")
 
 addSbtPlugin("com.github.sbt" % "sbt-license-report" % "1.6.1")
 
-// GJF 1.28.0 on Java 17 (see build.sbt). 0.8.0/1.7 skipped text blocks
-// and switch expressions.
+// Java 17 uses google-java-format 1.28.0 (see build.sbt).
 addSbtPlugin("com.github.sbt" % "sbt-java-formatter" % "0.13.1")
 
 addSbtPlugin("software.purpledragon" % "sbt-checkstyle-plugin" % "4.0.1")
