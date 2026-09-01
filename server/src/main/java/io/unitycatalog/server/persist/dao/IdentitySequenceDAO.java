@@ -1,6 +1,5 @@
 package io.unitycatalog.server.persist.dao;
 
-import io.unitycatalog.server.model.IdentitySequenceInfo;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -53,23 +52,11 @@ public class IdentitySequenceDAO {
   @Column(name = "allocation_frontier")
   private Long allocationFrontier;
 
-  // false = live; true = soft-deleted (retains state, rejects reservations until reactivated).
-  @Column(name = "deleted", nullable = false)
-  private boolean deleted;
-
   @Column(name = "created_at")
   private Date createdAt;
 
   @Column(name = "updated_at")
   private Date updatedAt;
-
-  public IdentitySequenceInfo toIdentitySequenceInfo() {
-    return new IdentitySequenceInfo()
-        .sequenceId(sequenceId)
-        .tableId(tableId)
-        .start(startValue)
-        .step(step);
-  }
 
   /** The composite primary key of a sequence is {@code (table_id, sequence_id)}. */
   @Data

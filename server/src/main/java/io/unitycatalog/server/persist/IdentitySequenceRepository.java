@@ -3,14 +3,11 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateIdentitySequences;
-import io.unitycatalog.server.model.CreateIdentitySequencesResponse;
-import io.unitycatalog.server.model.DeletionMode;
 import io.unitycatalog.server.model.DropIdentitySequenceResult;
 import io.unitycatalog.server.model.DropIdentitySequences;
 import io.unitycatalog.server.model.DropIdentitySequencesResponse;
 import io.unitycatalog.server.model.IdentityIdRange;
 import io.unitycatalog.server.model.IdentityReservation;
-import io.unitycatalog.server.model.IdentitySequenceInfo;
 import io.unitycatalog.server.model.IdentitySequenceSpec;
 import io.unitycatalog.server.model.ReserveIdentityRanges;
 import io.unitycatalog.server.model.ReserveIdentityRangesResponse;
@@ -47,21 +44,19 @@ import org.slf4j.LoggerFactory;
  * is rejected the transaction rolls back and no sequence is modified.
  *
  * <ul>
- *   <li>{@link #createSequences} idempotent create-or-get per entry (and reactivation of a
- *       soft-deleted sequence). Reusing an id requires a matching {@code (start, step)}, and {@code
- *       step} must be non-zero.
+ *   <li>{@link #createSequences} idempotent create-per entry. Reusing an id requires a matching
+ *       {@code (start, step)}, and {@code step} must be non-zero.
  *   <li>{@link #reserveRanges} returns one non-empty, contiguous, inclusive range per entry,
  *       positional with the request, that never overlaps a prior grant and follows the sign of
  *       {@code step}.
- *   <li>{@link #dropSequences} idempotent soft/hard cleanup, one result per unique requested id.
+ *   <li>{@link #dropSequences} idempotent delete, one result per unique requested id.
  * </ul>
  */
 public class IdentitySequenceRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(IdentitySequenceRepository.class);
 
   /**
-   * Cap on <b>live</b> identity sequences per table. Bounds the fan-out of a single table's
-   * identity columns. Soft-deleted sequences do not count for this limit.
+   * Cap on identity sequences per table. Bounds the fan-out of a single table's identity columns.
    */
   public static final long MAX_SEQUENCES_PER_TABLE = 128;
 
@@ -83,13 +78,12 @@ public class IdentitySequenceRepository {
   }
 
   /**
-   * Create the requested sequences (or return / reactivate existing ones) atomically. Each entry is
-   * idempotent when the stored {@code (start, step)} match the request. A mismatch is a conflict. A
-   * matching create against a soft-deleted sequence reactivates it without resetting its counter.
-   * If any entry conflicts, or the batch would exceed the per-table cap of live sequences, nothing
-   * is created. The returned infos are positional with the request.
+   * Create the requested sequences atomically, accepting an existing one when it already matches.
+   * Each entry is idempotent when the stored {@code (start, step)} match the request. A mismatch is
+   * a conflict. If any entry conflicts, or the batch would exceed the per-table limit, nothing is
+   * created.
    */
-  public CreateIdentitySequencesResponse createSequences(CreateIdentitySequences request) {
+  public void createSequences(CreateIdentitySequences request) {
     ValidationUtils.checkArgument(isNotEmpty(request.getTableId()), "table_id must be set");
     List<IdentitySequenceSpec> specs = request.getSequences();
     ValidationUtils.checkArgument(
@@ -106,22 +100,26 @@ public class IdentitySequenceRepository {
           "Duplicate sequence_id in request: " + spec.getSequenceId());
     }
 
-    return runWithRetry(1, () -> createSequencesOnce(request));
+    runWithRetry(
+        1,
+        () -> {
+          createSequencesOnce(request);
+          return null;
+        });
   }
 
   /**
-   * A single create attempt inside one transaction. Retried by once {@link #createSequences} if
-   * a concurrent writer wins the insert race for the same {@code (table_id, sequence_id)}. During
-   * the retry the now-committed row is resolved by the create-or-get path (an idempotent match, or
+   * A single create attempt inside one transaction. Retried once by {@link #createSequences} if a
+   * concurrent writer wins the insert race for the same {@code (table_id, sequence_id)}. During the
+   * retry the now-committed row is resolved by the create-or-accept path (an idempotent match, or
    * {@code ALREADY_EXISTS} on a mismatched definition).
    */
-  private CreateIdentitySequencesResponse createSequencesOnce(CreateIdentitySequences request) {
+  private void createSequencesOnce(CreateIdentitySequences request) {
     List<IdentitySequenceSpec> specs = request.getSequences();
-    return TransactionManager.executeWithTransaction(
+    TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          long liveCount = countLiveSequencesForTable(session, request.getTableId());
-          List<IdentitySequenceInfo> infos = new ArrayList<>(specs.size());
+          long count = countSequencesForTable(session, request.getTableId());
           List<IdentitySequenceDAO> toPersist = new ArrayList<>();
 
           for (IdentitySequenceSpec spec : specs) {
@@ -137,14 +135,7 @@ public class IdentitySequenceRepository {
                     "Identity sequence already exists with a different definition: "
                         + spec.getSequenceId());
               }
-              if (existing.isDeleted()) {
-                // Reactivate: clear the tombstone but keep the counter, so previously issued values
-                // are never reused.
-                existing.setDeleted(false);
-                existing.setUpdatedAt(new Date());
-              }
-              // Otherwise a matching re-create is a no-op that keeps the current counter.
-              infos.add(existing.toIdentitySequenceInfo());
+              // A matching re-create is a no-op that keeps the current counter.
             } else {
               Date now = new Date();
               IdentitySequenceDAO dao =
@@ -154,16 +145,14 @@ public class IdentitySequenceRepository {
                       .startValue(spec.getStart())
                       .step(spec.getStep())
                       .allocationFrontier(null)
-                      .deleted(false)
                       .createdAt(now)
                       .updatedAt(now)
                       .build();
               toPersist.add(dao);
-              infos.add(dao.toIdentitySequenceInfo());
             }
           }
 
-          if (liveCount + toPersist.size() > MAX_SEQUENCES_PER_TABLE) {
+          if (count + toPersist.size() > MAX_SEQUENCES_PER_TABLE) {
             throw new BaseException(
                 ErrorCode.RESOURCE_EXHAUSTED,
                 "Creating "
@@ -189,7 +178,7 @@ public class IdentitySequenceRepository {
               "Created {} new identity sequence(s) for table {}",
               toPersist.size(),
               request.getTableId());
-          return new CreateIdentitySequencesResponse().sequences(infos);
+          return null;
         },
         "Failed to create identity sequences",
         /* readOnly = */ false);
@@ -248,11 +237,6 @@ public class IdentitySequenceRepository {
                   ErrorCode.NOT_FOUND, "Identity sequence not found: " + sequenceId);
             }
             lockSequence(session, dao);
-            if (dao.isDeleted()) {
-              // A soft-deleted sequence issues no ranges until it is reactivated.
-              throw new BaseException(
-                  ErrorCode.NOT_FOUND, "Identity sequence not found: " + sequenceId);
-            }
             locked.put(sequenceId, dao);
           }
 
@@ -315,10 +299,10 @@ public class IdentitySequenceRepository {
   }
 
   /**
-   * Idempotently drop the requested sequences, atomically. {@code SOFT} (the default) retires each
-   * sequence but keeps its counter for a later reactivation, while {@code HARD} removes it
-   * permanently. Duplicate ids are de-duplicated, and one result is returned per unique requested
-   * id.
+   * Idempotently drop the requested sequences, atomically. A dropped sequence is removed
+   * permanently. Dropping one that does not exist (or that belongs to a different table) is a no-op
+   * that reports {@code existed=false}. Duplicate ids are de-duplicated, and one result is returned
+   * per unique requested id.
    */
   public DropIdentitySequencesResponse dropSequences(DropIdentitySequences request) {
     ValidationUtils.checkArgument(isNotEmpty(request.getTableId()), "table_id must be set");
@@ -329,8 +313,6 @@ public class IdentitySequenceRepository {
     for (String sequenceId : sequenceIds) {
       ValidationUtils.checkArgument(isNotEmpty(sequenceId), "sequence_id must be set");
     }
-    // Default to SOFT when the mode is omitted.
-    boolean hard = request.getDeletionMode() == DeletionMode.HARD;
     // De-duplicate while preserving first-seen order.
     List<String> uniqueIds = new ArrayList<>(new LinkedHashSet<>(sequenceIds));
 
@@ -340,30 +322,15 @@ public class IdentitySequenceRepository {
           List<DropIdentitySequenceResult> results = new ArrayList<>(uniqueIds.size());
           for (String sequenceId : uniqueIds) {
             IdentitySequenceDAO dao = find(session, request.getTableId(), sequenceId);
-            boolean existed;
-            if (dao == null) {
-              existed = false;
-            } else if (hard) {
-              // Hard delete removes the sequence whether it was live or already soft-deleted.
+            boolean existed = dao != null;
+            if (existed) {
               session.remove(dao);
-              existed = true;
-            } else if (!dao.isDeleted()) {
-              // Soft delete a live sequence: keep its frontier, just tombstone it.
-              dao.setDeleted(true);
-              dao.setUpdatedAt(new Date());
-              existed = true;
-            } else {
-              // Already soft-deleted: an idempotent no-op.
-              existed = false;
             }
             results.add(new DropIdentitySequenceResult().sequenceId(sequenceId).existed(existed));
           }
           long changed = results.stream().filter(r -> Boolean.TRUE.equals(r.getExisted())).count();
           LOGGER.info(
-              "Dropped ({}) {} identity sequence(s) for table {}",
-              hard ? "hard" : "soft",
-              changed,
-              request.getTableId());
+              "Dropped {} identity sequence(s) for table {}", changed, request.getTableId());
           return new DropIdentitySequencesResponse().results(results);
         },
         "Failed to drop identity sequences",
@@ -375,22 +342,20 @@ public class IdentitySequenceRepository {
         IdentitySequenceDAO.class, new IdentitySequenceDAO.PrimaryKey(tableId, sequenceId));
   }
 
-  private long countLiveSequencesForTable(Session session, String tableId) {
+  private long countSequencesForTable(Session session, String tableId) {
     return session
         .createQuery(
-            "SELECT COUNT(s) FROM IdentitySequenceDAO s WHERE s.tableId = :tableId AND s.deleted ="
-                + " false",
-            Long.class)
+            "SELECT COUNT(s) FROM IdentitySequenceDAO s WHERE s.tableId = :tableId", Long.class)
         .setParameter("tableId", tableId)
         .getSingleResult();
   }
 
   /**
    * Take a {@code PESSIMISTIC_WRITE} lock on the sequence row so concurrent reservations serialize.
-   * {@code refresh} reloads the row under the lock, so the allocation frontier and lifecycle flag
-   * read afterwards reflect any reservation or drop that committed while we waited. A lock-wait
-   * timeout or deadlock surfaces as a {@link ReservationConflictException}, which {@link
-   * #reserveRanges} retries a bounded number of times before it escapes as ABORTED (409).
+   * {@code refresh} reloads the row under the lock, so the allocation frontier read afterwards
+   * reflects any reservation that committed while we waited. A lock-wait timeout or deadlock
+   * surfaces as a {@link ReservationConflictException}, which {@link #reserveRanges} retries a
+   * bounded number of times before it escapes as ABORTED (409).
    */
   private static void lockSequence(Session session, IdentitySequenceDAO dao) {
     try {
