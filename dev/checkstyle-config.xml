@@ -182,8 +182,7 @@
         </module>
         <!-- Indentation and CommentsIndentation are owned by google-java-format.
              Checkstyle 9.3 misreads the continuation indent GJF emits for switch
-             expressions and annotation array initializers. The previous formatter
-             (GJF 1.7) never formatted those files because it could not parse them. -->
+             expressions and annotation array initializers. -->
 
         <module name="LeftCurly"/>
         <module name="RightCurly"/>
