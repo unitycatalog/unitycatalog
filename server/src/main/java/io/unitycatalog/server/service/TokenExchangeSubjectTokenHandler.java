@@ -4,11 +4,13 @@ import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import io.unitycatalog.control.model.TokenType;
 import io.unitycatalog.control.model.User;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,16 +29,22 @@ public class TokenExchangeSubjectTokenHandler {
   /**
    * Returns the UC principal email for the issued access token.
    *
-   * <p>The subject token must already be issuer-, signature-, and audience-validated. For {@code
-   * id_token} subjects, resolution order is email (or {@code sub}) then OAuth client id from {@code
-   * azp} or {@code client_id} mapped to {@code externalId}. For {@code access_token} subjects
-   * without an {@code email} claim, {@code externalId} is tried before {@code sub}.
+   * <p>The subject token must already be issuer-, signature-, and audience-validated. {@code
+   * id_token} subjects resolve only from {@code email} (or {@code sub}); OAuth client id ({@code
+   * azp} / {@code client_id}) is not used, because that claim identifies the application, not the
+   * human. For {@code access_token} subjects without an {@code email} claim, {@code externalId} is
+   * tried before {@code sub}.
    */
   public String resolvePrincipalEmail(TokenType subjectTokenType, DecodedJWT decodedJWT) {
-    PrincipalResolutionOrder order =
-        subjectTokenType == TokenType.ACCESS_TOKEN && !hasEmailClaim(decodedJWT)
-            ? PrincipalResolutionOrder.CLIENT_THEN_CLAIMS
-            : PrincipalResolutionOrder.CLAIMS_THEN_CLIENT;
+    PrincipalResolutionOrder order;
+    if (subjectTokenType == TokenType.ACCESS_TOKEN) {
+      order =
+          hasEmailClaim(decodedJWT)
+              ? PrincipalResolutionOrder.CLAIMS_THEN_CLIENT
+              : PrincipalResolutionOrder.CLIENT_THEN_CLAIMS;
+    } else {
+      order = PrincipalResolutionOrder.CLAIMS_ONLY;
+    }
 
     return resolveInOrder(decodedJWT, order);
   }
@@ -88,21 +96,31 @@ public class TokenExchangeSubjectTokenHandler {
     return Optional.empty();
   }
 
-  private Optional<User> findEnabledUserByExternalId(String externalId) {
+  private Optional<User> findEnabledUser(Supplier<User> lookup, String lookupType, String key) {
+    final User user;
     try {
-      User user = userRepository.getUserByExternalId(externalId);
-      if (user != null && user.getState() == User.StateEnum.ENABLED) {
-        return Optional.of(user);
+      user = lookup.get();
+    } catch (BaseException e) {
+      if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
+        return Optional.empty();
       }
-    } catch (Exception e) {
-      // IGNORE
+      LOGGER.error("Failed to look up user by {} {}", lookupType, key, e);
+      throw e;
+    } catch (RuntimeException e) {
+      LOGGER.error("Failed to look up user by {} {}", lookupType, key, e);
+      throw e;
+    }
+    if (user != null && user.getState() == User.StateEnum.ENABLED) {
+      return Optional.of(user);
     }
     return Optional.empty();
   }
 
   private Optional<String> tryResolvePrincipalEmailForClient(String clientId) {
     LOGGER.debug("Resolving principal for OAuth client id {}", clientId);
-    Optional<String> email = findEnabledUserByExternalId(clientId).map(User::getEmail);
+    Optional<String> email =
+        findEnabledUser(() -> userRepository.getUserByExternalId(clientId), "external id", clientId)
+            .map(User::getEmail);
     email.ifPresent(
         resolvedEmail ->
             LOGGER.debug("Principal for client {} resolved to {}", clientId, resolvedEmail));
@@ -127,16 +145,12 @@ public class TokenExchangeSubjectTokenHandler {
       return Optional.of(subject);
     }
 
-    try {
-      User user = userRepository.getUserByEmail(subject);
-      if (user != null && user.getState() == User.StateEnum.ENABLED) {
-        LOGGER.debug("Principal {} resolved from token email", subject);
-        return Optional.of(user.getEmail());
-      }
-    } catch (Exception e) {
-      // IGNORE
+    Optional<User> user =
+        findEnabledUser(() -> userRepository.getUserByEmail(subject), "email", subject);
+    if (user.isPresent()) {
+      LOGGER.debug("Principal {} resolved from token email", subject);
+      return user.map(User::getEmail);
     }
-
     return Optional.empty();
   }
 
@@ -146,6 +160,7 @@ public class TokenExchangeSubjectTokenHandler {
   }
 
   private enum PrincipalResolutionOrder {
+    CLAIMS_ONLY(ResolutionStep.CLAIMS),
     CLAIMS_THEN_CLIENT(ResolutionStep.CLAIMS, ResolutionStep.CLIENT),
     CLIENT_THEN_CLAIMS(ResolutionStep.CLIENT, ResolutionStep.CLAIMS);
 

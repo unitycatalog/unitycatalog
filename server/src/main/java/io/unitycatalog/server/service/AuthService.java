@@ -105,10 +105,10 @@ public class AuthService implements RegisteredService {
    * <p>Audience validation uses {@code server.audiences} only and runs here with issuer and
    * signature checks; a matching {@code azp} or {@code client_id} does not skip the allowlist. Use
    * {@code *} to disable audience checks. Principal resolution is then delegated to {@link
-   * TokenExchangeSubjectTokenHandler} on the already-validated token. For {@code id_token}
-   * subjects, resolution order is {@code email} (or {@code sub}) then OAuth client id from {@code
-   * azp} or {@code client_id} mapped to {@code externalId}. For {@code access_token} subjects
-   * without an {@code email} claim, {@code externalId} is tried before {@code sub}.
+   * TokenExchangeSubjectTokenHandler} on the already-validated token. {@code id_token} subjects
+   * resolve only from {@code email} (or {@code sub}). For {@code access_token} subjects without an
+   * {@code email} claim, {@code externalId} from {@code azp} or {@code client_id} is tried before
+   * {@code sub}.
    *
    * @param ext Specifies whether the issued token should be set as a cookie.
    * @param form The OAuth 2.0 token exchange request form.

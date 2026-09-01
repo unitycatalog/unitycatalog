@@ -61,7 +61,7 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testIdTokenExchangeResolvesPrincipalByExternalId() throws IOException {
+  public void testIdTokenExchangeDoesNotFallBackToExternalId() {
     String token =
         createIdentityToken(
             testIssuer,
@@ -74,9 +74,8 @@ public class AuthServiceClientPrincipalTest extends BaseAuthCRUDTest {
     AggregatedHttpResponse response =
         exchangeToken(token, "urn:ietf:params:oauth:token-type:id_token");
 
-    assertThat(response.status()).isEqualTo(HttpStatus.OK);
-    JsonNode body = MAPPER.readTree(response.contentUtf8());
-    assertIssuedUcTokenSubject(body, SERVICE_EMAIL);
+    assertThat(response.status()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.contentUtf8()).contains("User not allowed");
   }
 
   @Test
