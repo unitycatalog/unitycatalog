@@ -1500,7 +1500,7 @@ paths:
           description: Internal Server Error. An unexpected error occurred on the server.
         '501':
           description: Not Implemented. The requested functionality is not supported.
-  /identity-sequences:
+  /identity/sequence:
     post:
       operationId: createIdentitySequences
       tags:
@@ -1526,11 +1526,7 @@ paths:
               $ref: '#/components/schemas/CreateIdentitySequences'
       responses:
         '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateIdentitySequencesResponse'
+          description: The sequences were created (or already existed with a matching definition).
         '400':
           description: Bad request or Invalid Argument. Example, the request is empty, step is zero, a sequence id is empty or longer than 64 characters, or a sequence id is duplicated within the request.
         '401':
@@ -1547,7 +1543,44 @@ paths:
           description: Internal Server Error. An unexpected error occurred on the server.
         '501':
           description: Not Implemented. Identity sequences are disabled on this server.
-  /identity-sequences/reserve:
+    delete:
+      operationId: dropIdentitySequences
+      tags:
+        - IdentitySequences
+      summary: |
+        Drop one or more identity sequences.
+        WARNING: This API is experimental and may change in future versions.
+      description: |
+        Idempotently remove sequences under a table. Dropping a sequence that does not exist (or that
+        belongs to a different table) is a no-op that reports existed=false for that id. Duplicate ids
+        in the request are de-duplicated, and one result is returned per unique requested id.
+        WARNING: This API is experimental and may change in future versions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DropIdentitySequences'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DropIdentitySequencesResponse'
+        '400':
+          description: Bad request or Invalid Argument. Example, the request is empty or a sequence id is empty.
+        '401':
+          description: Unauthorized. Authentication credentials are missing or incorrect.
+        '403':
+          description: Forbidden. The user does not have the necessary permissions to perform this action.
+        '404':
+          description: Not Found. The table the sequences belong to does not exist.
+        '500':
+          description: Internal Server Error. An unexpected error occurred on the server.
+        '501':
+          description: Not Implemented. Identity sequences are disabled on this server.
+  /identity/sequence/reserve:
     post:
       operationId: reserveIdentityRanges
       tags:
@@ -1595,44 +1628,6 @@ paths:
           description: Internal Server Error. An unexpected error occurred on the server.
         '501':
           description: Not Implemented. Identity sequences are disabled on this server.
-  /identity-sequences/drop:
-    post:
-      operationId: dropIdentitySequences
-      tags:
-        - IdentitySequences
-      summary: |
-        Drop one or more identity sequences.
-        WARNING: This API is experimental and may change in future versions.
-      description: |
-        Idempotently remove sequences under a table. Dropping a sequence that does not exist (or that
-        belongs to a different table) is a no-op that reports existed=false for that id. Duplicate ids
-        in the request are de-duplicated, and one result is returned per unique requested id.
-        WARNING: This API is experimental and may change in future versions.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DropIdentitySequences'
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DropIdentitySequencesResponse'
-        '400':
-          description: Bad request or Invalid Argument. Example, the request is empty or a sequence id is empty.
-        '401':
-          description: Unauthorized. Authentication credentials are missing or incorrect.
-        '403':
-          description: Forbidden. The user does not have the necessary permissions to perform this action.
-        '404':
-          description: Not Found. The table the sequences belong to does not exist.
-        '500':
-          description: Internal Server Error. An unexpected error occurred on the server.
-        '501':
-          description: Not Implemented. Identity sequences are disabled on this server.
 components:
   schemas:
     IdentitySequenceSpec:
@@ -1670,40 +1665,6 @@ components:
             $ref: '#/components/schemas/IdentitySequenceSpec'
       required:
         - table_id
-        - sequences
-    IdentitySequenceInfo:
-      type: object
-      description: The stored definition of an identity sequence.
-      properties:
-        sequence_id:
-          type: string
-          description: The unique id of the sequence.
-        table_id:
-          type: string
-          description: The UC id of the table the sequence belongs to.
-        start:
-          type: integer
-          format: int64
-          description: The first value the sequence issues.
-        step:
-          type: integer
-          format: int64
-          description: The increment between successive values.
-      required:
-        - sequence_id
-        - table_id
-        - start
-        - step
-    CreateIdentitySequencesResponse:
-      type: object
-      description: The created (or idempotently fetched) sequences, positional with the request.
-      properties:
-        sequences:
-          type: array
-          description: One entry per requested sequence, in request order.
-          items:
-            $ref: '#/components/schemas/IdentitySequenceInfo'
-      required:
         - sequences
     IdentityReservation:
       type: object
@@ -1781,15 +1742,6 @@ components:
             $ref: '#/components/schemas/IdentityIdRange'
       required:
         - ranges
-    DeletionMode:
-      type: string
-      description: |
-        How a sequence is deleted. SOFT (the default when omitted) retains the sequence's allocation
-        state so a later create with the same definition can reactivate it, but rejects reservations
-        while soft-deleted. HARD removes the sequence permanently, such that it cannot be reactivated.
-      enum:
-        - SOFT
-        - HARD
     DropIdentitySequences:
       type: object
       description: Request to drop one or more identity sequences under a table.
@@ -1802,8 +1754,6 @@ components:
           description: The ids of the sequences to drop. Must contain at least one entry, and duplicate ids are de-duplicated.
           items:
             type: string
-        deletion_mode:
-          $ref: '#/components/schemas/DeletionMode'
       required:
         - table_id
         - sequence_ids

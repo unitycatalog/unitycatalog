@@ -30,9 +30,9 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *FunctionsApi* | [**listFunctions**](Apis/FunctionsApi.md#listfunctions) | **GET** /functions | List functions |
 | *GrantsApi* | [**get**](Apis/GrantsApi.md#get) | **GET** /permissions/{securable_type}/{full_name} | Get permissions |
 *GrantsApi* | [**update**](Apis/GrantsApi.md#update) | **PATCH** /permissions/{securable_type}/{full_name} | Update a permission |
-| *IdentitySequencesApi* | [**createIdentitySequences**](Apis/IdentitySequencesApi.md#createidentitysequences) | **POST** /identity-sequences | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
-*IdentitySequencesApi* | [**dropIdentitySequences**](Apis/IdentitySequencesApi.md#dropidentitysequences) | **POST** /identity-sequences/drop | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
-*IdentitySequencesApi* | [**reserveIdentityRanges**](Apis/IdentitySequencesApi.md#reserveidentityranges) | **POST** /identity-sequences/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
+| *IdentitySequencesApi* | [**createIdentitySequences**](Apis/IdentitySequencesApi.md#createidentitysequences) | **POST** /identity/sequence | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
+*IdentitySequencesApi* | [**dropIdentitySequences**](Apis/IdentitySequencesApi.md#dropidentitysequences) | **DELETE** /identity/sequence | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
+*IdentitySequencesApi* | [**reserveIdentityRanges**](Apis/IdentitySequencesApi.md#reserveidentityranges) | **POST** /identity/sequence/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
 | *MetastoresApi* | [**summary**](Apis/MetastoresApi.md#summary) | **GET** /metastore_summary | Get metastore summary |
 | *ModelVersionsApi* | [**createModelVersion**](Apis/ModelVersionsApi.md#createmodelversion) | **POST** /models/versions | Create a model version.  |
 *ModelVersionsApi* | [**deleteModelVersion**](Apis/ModelVersionsApi.md#deletemodelversion) | **DELETE** /models/{full_name}/versions/{version} | Delete a model version |
@@ -83,7 +83,6 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [CreateFunction](./Models/CreateFunction.md)
  - [CreateFunctionRequest](./Models/CreateFunctionRequest.md)
  - [CreateIdentitySequences](./Models/CreateIdentitySequences.md)
- - [CreateIdentitySequencesResponse](./Models/CreateIdentitySequencesResponse.md)
  - [CreateModelVersion](./Models/CreateModelVersion.md)
  - [CreateRegisteredModel](./Models/CreateRegisteredModel.md)
  - [CreateSchema](./Models/CreateSchema.md)
@@ -93,7 +92,6 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [CredentialInfo](./Models/CredentialInfo.md)
  - [CredentialPurpose](./Models/CredentialPurpose.md)
  - [DataSourceFormat](./Models/DataSourceFormat.md)
- - [DeletionMode](./Models/DeletionMode.md)
  - [DeltaCommit](./Models/DeltaCommit.md)
  - [DeltaCommitInfo](./Models/DeltaCommitInfo.md)
  - [DeltaCommitMetadataProperties](./Models/DeltaCommitMetadataProperties.md)
@@ -123,7 +121,6 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [GetMetastoreSummaryResponse](./Models/GetMetastoreSummaryResponse.md)
  - [IdentityIdRange](./Models/IdentityIdRange.md)
  - [IdentityReservation](./Models/IdentityReservation.md)
- - [IdentitySequenceInfo](./Models/IdentitySequenceInfo.md)
  - [IdentitySequenceSpec](./Models/IdentitySequenceSpec.md)
  - [ListCatalogsResponse](./Models/ListCatalogsResponse.md)
  - [ListCredentialsResponse](./Models/ListCredentialsResponse.md)

@@ -4,14 +4,14 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createIdentitySequences**](IdentitySequencesApi.md#createIdentitySequences) | **POST** /identity-sequences | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
-| [**dropIdentitySequences**](IdentitySequencesApi.md#dropIdentitySequences) | **POST** /identity-sequences/drop | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
-| [**reserveIdentityRanges**](IdentitySequencesApi.md#reserveIdentityRanges) | **POST** /identity-sequences/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
+| [**createIdentitySequences**](IdentitySequencesApi.md#createIdentitySequences) | **POST** /identity/sequence | Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions.  |
+| [**dropIdentitySequences**](IdentitySequencesApi.md#dropIdentitySequences) | **DELETE** /identity/sequence | Drop one or more identity sequences. WARNING: This API is experimental and may change in future versions.  |
+| [**reserveIdentityRanges**](IdentitySequencesApi.md#reserveIdentityRanges) | **POST** /identity/sequence/reserve | Reserve a contiguous range of identity values from one or more sequences. WARNING: This API is experimental and may change in future versions.  |
 
 
 <a name="createIdentitySequences"></a>
 # **createIdentitySequences**
-> CreateIdentitySequencesResponse createIdentitySequences(CreateIdentitySequences)
+> createIdentitySequences(CreateIdentitySequences)
 
 Create (or idempotently get) one or more monotonic identity sequences under a table. WARNING: This API is experimental and may change in future versions. 
 
@@ -25,7 +25,7 @@ Create (or idempotently get) one or more monotonic identity sequences under a ta
 
 ### Return type
 
-[**CreateIdentitySequencesResponse**](../Models/CreateIdentitySequencesResponse.md)
+null (empty response body)
 
 ### Authorization
 
@@ -34,7 +34,7 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: application/json
-- **Accept**: application/json
+- **Accept**: Not defined
 
 <a name="dropIdentitySequences"></a>
 # **dropIdentitySequences**
