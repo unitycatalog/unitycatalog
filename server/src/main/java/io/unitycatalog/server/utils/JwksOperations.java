@@ -8,6 +8,7 @@ import com.auth0.jwk.JwkProviderBuilder;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.client.WebClient;
@@ -26,7 +27,7 @@ import org.slf4j.LoggerFactory;
 
 public class JwksOperations {
 
-  private final WebClient webClient = WebClient.builder().build();
+  private final WebClient webClient;
   private static final ObjectMapper mapper = new ObjectMapper();
   private final SecurityContext securityContext;
 
@@ -34,6 +35,7 @@ public class JwksOperations {
 
   public JwksOperations(SecurityContext securityContext) {
     this.securityContext = securityContext;
+    this.webClient = WebClient.builder().build();
   }
 
   @SneakyThrows
@@ -95,35 +97,55 @@ public class JwksOperations {
       var path = wellKnownConfigUrl + ".well-known/openid-configuration";
       LOGGER.debug("path: {}", path);
 
-      String response = webClient
+      var response = webClient
           .get(path)
           .aggregate()
-          .join()
-          .contentUtf8();
+          .join();
 
-      // TODO: We should cache this. No need to fetch it each time.
-      Map<String, Object> configMap = mapper.readValue(response, new TypeReference<>() {});
+      if (!response.status().isSuccess()) {
+        throw new OAuthInvalidRequestException(
+            ErrorCode.ABORTED, "Could not get issuer configuration: HTTP " + response.status());
+      }
+
+      String responseBody = response.contentUtf8();
+
+      // Discovery is intentionally performed per verifier until metadata caching can be made
+      // compatible with the provider's rate-limit and key-rotation behavior.
+      Map<String, Object> configMap;
+      try {
+        configMap = mapper.readValue(responseBody, new TypeReference<>() {});
+      } catch (JsonProcessingException e) {
+        throw new OAuthInvalidRequestException(
+            ErrorCode.ABORTED, "Could not parse issuer configuration", e);
+      }
 
       if (configMap == null || configMap.isEmpty()) {
         throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
             "Could not get issuer configuration");
       }
 
-      String configIssuer = (String) configMap.get("issuer");
-      String configJwksUri = (String) configMap.get("jwks_uri");
+      String configJwksUri = validateIssuerConfiguration(configMap, issuer);
 
-      if (!configIssuer.equals(issuer)) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
-            "Issuer doesn't match configuration");
-      }
-
-      if (configJwksUri == null) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED, "JWKS configuration missing");
-      }
-
-      // TODO: Or maybe just cache the provider for reuse.
+      // Do not cache this provider: its rate limiter is scoped to the provider instance.
       return new JwkProviderBuilder(URI.create(configJwksUri).toURL()).cached(false).build();
     }
+  }
+
+  static String validateIssuerConfiguration(Map<String, Object> configMap, String issuer) {
+    Object issuerValue = configMap.get("issuer");
+    Object jwksUriValue = configMap.get("jwks_uri");
+    if (!(issuerValue instanceof String configIssuer)
+        || !(jwksUriValue instanceof String configJwksUri)
+        || configIssuer.isBlank()
+        || configJwksUri.isBlank()) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.ABORTED, "Issuer configuration must contain issuer and jwks_uri");
+    }
+    if (!configIssuer.equals(issuer)) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.ABORTED, "Issuer doesn't match configuration");
+    }
+    return configJwksUri;
   }
 }
 
