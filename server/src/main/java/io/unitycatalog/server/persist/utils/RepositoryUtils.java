@@ -47,6 +47,12 @@ public class RepositoryUtils {
               + tableFullNameForLogging.orElseGet(tableId::toString)
               + "; retry the request.");
     }
+    // The table can be dropped while this request waits for the row lock.
+    if (dao.getDroppedAt() != null) {
+      throw new BaseException(
+          ErrorCode.TABLE_NOT_FOUND,
+          "Table not found: " + tableFullNameForLogging.orElseGet(tableId::toString));
+    }
   }
 
   static {
