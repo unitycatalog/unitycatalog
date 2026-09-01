@@ -6,12 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.IdentitySequencesApi;
 import io.unitycatalog.client.model.CreateIdentitySequences;
-import io.unitycatalog.client.model.DeletionMode;
 import io.unitycatalog.client.model.DropIdentitySequenceResult;
 import io.unitycatalog.client.model.DropIdentitySequences;
 import io.unitycatalog.client.model.IdentityIdRange;
 import io.unitycatalog.client.model.IdentityReservation;
-import io.unitycatalog.client.model.IdentitySequenceInfo;
 import io.unitycatalog.client.model.IdentitySequenceSpec;
 import io.unitycatalog.client.model.ReserveIdentityRanges;
 import io.unitycatalog.client.model.TableType;
@@ -74,16 +72,12 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
             .getTableId();
   }
 
-  private IdentitySequenceInfo create(String sequenceId, long start, long step)
-      throws ApiException {
-    return identitySequencesApi
-        .createIdentitySequences(
-            new CreateIdentitySequences()
-                .tableId(tableId)
-                .addSequencesItem(
-                    new IdentitySequenceSpec().sequenceId(sequenceId).start(start).step(step)))
-        .getSequences()
-        .get(0);
+  private void create(String sequenceId, long start, long step) throws ApiException {
+    identitySequencesApi.createIdentitySequences(
+        new CreateIdentitySequences()
+            .tableId(tableId)
+            .addSequencesItem(
+                new IdentitySequenceSpec().sequenceId(sequenceId).start(start).step(step)));
   }
 
   private IdentityIdRange reserve(String sequenceId, long count) throws ApiException {
@@ -100,11 +94,7 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
   public void createReserveAndDropRoundTrip() throws ApiException {
     String seq = UUID.randomUUID().toString();
 
-    IdentitySequenceInfo info = create(seq, 100L, 2L);
-    assertThat(info.getSequenceId()).isEqualTo(seq);
-    assertThat(info.getTableId()).isEqualTo(tableId);
-    assertThat(info.getStart()).isEqualTo(100L);
-    assertThat(info.getStep()).isEqualTo(2L);
+    create(seq, 100L, 2L);
 
     // First reserve issues start. The second reserve continues with no overlap.
     IdentityIdRange first = reserve(seq, 3); // 100, 102, 104
@@ -181,21 +171,14 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   @Test
-  public void createAndReserveBatchArePositional() throws ApiException {
+  public void reserveBatchIsPositional() throws ApiException {
     String a = UUID.randomUUID().toString();
     String b = UUID.randomUUID().toString();
-
-    List<IdentitySequenceInfo> created =
-        identitySequencesApi
-            .createIdentitySequences(
-                new CreateIdentitySequences()
-                    .tableId(tableId)
-                    .addSequencesItem(new IdentitySequenceSpec().sequenceId(a).start(100L).step(1L))
-                    .addSequencesItem(new IdentitySequenceSpec().sequenceId(b).start(0L).step(10L)))
-            .getSequences();
-    assertThat(created).hasSize(2);
-    assertThat(created.get(0).getSequenceId()).isEqualTo(a);
-    assertThat(created.get(1).getSequenceId()).isEqualTo(b);
+    identitySequencesApi.createIdentitySequences(
+        new CreateIdentitySequences()
+            .tableId(tableId)
+            .addSequencesItem(new IdentitySequenceSpec().sequenceId(a).start(100L).step(1L))
+            .addSequencesItem(new IdentitySequenceSpec().sequenceId(b).start(0L).step(10L)));
 
     List<IdentityIdRange> ranges =
         identitySequencesApi
@@ -238,37 +221,19 @@ public class SdkIdentitySequenceCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   @Test
-  public void softDeleteBlocksReserveThenReactivates() throws ApiException {
+  public void dropRemovesPermanentlyAndReCreateStartsFresh() throws ApiException {
     String seq = UUID.randomUUID().toString();
     create(seq, 1L, 1L);
     reserve(seq, 5); // Frontier is at 5.
 
-    // Default drop is SOFT which blocks reserving while the sequence is "soft-deleted".
-    identitySequencesApi.dropIdentitySequences(
-        new DropIdentitySequences().tableId(tableId).addSequenceIdsItem(seq));
-    assertApiException(() -> reserve(seq, 1), ErrorCode.NOT_FOUND, "not found");
-
-    // A matching create reactivates the sequence without resetting the counter.
-    create(seq, 1L, 1L);
-    assertThat(reserve(seq, 1).getRangeStart()).isEqualTo(6L);
-  }
-
-  @Test
-  public void hardDeleteRemovesPermanently() throws ApiException {
-    String seq = UUID.randomUUID().toString();
-    create(seq, 1L, 1L);
-    reserve(seq, 5);
-
     DropIdentitySequenceResult result =
         identitySequencesApi
             .dropIdentitySequences(
-                new DropIdentitySequences()
-                    .tableId(tableId)
-                    .addSequenceIdsItem(seq)
-                    .deletionMode(DeletionMode.HARD))
+                new DropIdentitySequences().tableId(tableId).addSequenceIdsItem(seq))
             .getResults()
             .get(0);
     assertThat(result.getExisted()).isTrue();
+    assertApiException(() -> reserve(seq, 1), ErrorCode.NOT_FOUND, "not found");
 
     // Re-creating the sequence starts a new counter at the start, not the old frontier.
     create(seq, 1L, 1L);
