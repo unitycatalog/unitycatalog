@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.persist.dao.DroppableIdentifiableDAO;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
@@ -22,6 +23,7 @@ import java.util.Properties;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.service.ServiceRegistry;
@@ -42,7 +44,7 @@ abstract class AbstractLifecycleSchemaMigrationTest {
   void migrationPreservesExistingRowsAndStagingCleanupState() {
     Properties properties = databaseProperties();
     properties.setProperty("hibernate.hbm2ddl.auto", "create");
-    createLegacySchema(properties);
+    createLegacySchema(properties, false);
 
     properties.setProperty("hibernate.hbm2ddl.auto", "update");
     HibernateConfigurator configurator = new HibernateConfigurator(properties);
@@ -68,9 +70,35 @@ abstract class AbstractLifecycleSchemaMigrationTest {
       assertThat(staging.getLastCleanupAt().getTime()).isEqualTo(LAST_CLEANUP_AT.getTime());
 
       assertLifecycleStateRoundTrip(session);
+      assertTableNameIsUnique(configurator.getSessionFactory());
     } finally {
       configurator.getSessionFactory().close();
     }
+  }
+
+  @Test
+  void migrationRejectsExistingDuplicateTableNames() {
+    Properties properties = databaseProperties();
+    properties.setProperty("hibernate.hbm2ddl.auto", "create");
+    createLegacySchema(properties, true);
+
+    properties.setProperty("hibernate.hbm2ddl.auto", "update");
+    assertThatThrownBy(() -> updateSchema(properties))
+        .hasRootCauseMessage(
+            "Cannot enforce unique table names because a schema contains duplicate names.");
+  }
+
+  @Test
+  void startupRejectsMissingTableNameConstraint() {
+    Properties properties = databaseProperties();
+    properties.setProperty("hibernate.hbm2ddl.auto", "create");
+    createLegacySchema(properties, false);
+
+    properties.setProperty("hibernate.hbm2ddl.auto", "none");
+    assertThatThrownBy(() -> updateSchema(properties))
+        .hasRootCauseMessage(
+            "Cannot enforce unique table names because the database did not create constraint "
+                + "uc_tables_schema_id_name_unique.");
   }
 
   private static void assertActive(DroppableIdentifiableDAO resource, String name) {
@@ -104,7 +132,28 @@ abstract class AbstractLifecycleSchemaMigrationTest {
     assertThat(reloaded.getLastCleanupAt().getTime()).isEqualTo(cleanupAt.getTime());
   }
 
-  private static void createLegacySchema(Properties properties) {
+  private static void assertTableNameIsUnique(SessionFactory sessionFactory) {
+    try (Session session = sessionFactory.openSession()) {
+      Transaction transaction = session.beginTransaction();
+      session.persist(
+          TableInfoDAO.builder()
+              .id(UUID.fromString("00000000-0000-0000-0000-000000000007"))
+              .schemaId(SCHEMA_ID)
+              .name("table")
+              .build());
+      assertThatThrownBy(transaction::commit).isInstanceOf(RuntimeException.class);
+      if (transaction.isActive()) {
+        transaction.rollback();
+      }
+    }
+  }
+
+  private static void updateSchema(Properties properties) {
+    HibernateConfigurator configurator = new HibernateConfigurator(properties);
+    configurator.getSessionFactory().close();
+  }
+
+  private static void createLegacySchema(Properties properties, boolean addDuplicateTable) {
     Configuration configuration = new Configuration().setProperties(properties);
     configuration.addAnnotatedClass(LegacyTable.class);
     configuration.addAnnotatedClass(LegacyVolume.class);
@@ -122,6 +171,11 @@ abstract class AbstractLifecycleSchemaMigrationTest {
       session.persist(new LegacyRegisteredModel(MODEL_ID, "model", SCHEMA_ID));
       session.persist(new LegacyStagingTable(STAGING_ID, "staging", SCHEMA_ID));
       session.persist(new LegacyModelVersion(VERSION_ID, MODEL_ID));
+      if (addDuplicateTable) {
+        session.persist(
+            new LegacyTable(
+                UUID.fromString("00000000-0000-0000-0000-000000000008"), "table", SCHEMA_ID));
+      }
       session.getTransaction().commit();
     }
   }

@@ -24,7 +24,16 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
@@ -42,6 +51,8 @@ import org.slf4j.LoggerFactory;
 public class HibernateConfigurator {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HibernateConfigurator.class);
+  private static final String TABLE_NAME_UNIQUE_CONSTRAINT = "uc_tables_schema_id_name_unique";
+  private static final Set<String> TABLE_NAME_UNIQUE_COLUMNS = Set.of("schema_id", "name");
 
   private final SessionFactory sessionFactory;
   private final Properties hibernateProperties;
@@ -85,11 +96,84 @@ public class HibernateConfigurator {
       ServiceRegistry serviceRegistry =
           new StandardServiceRegistryBuilder().applySettings(configuration.getProperties()).build();
 
-      return configuration.buildSessionFactory(serviceRegistry);
+      SessionFactory sessionFactory = configuration.buildSessionFactory(serviceRegistry);
+      try {
+        validateTableNameUniqueness(sessionFactory);
+        return sessionFactory;
+      } catch (RuntimeException e) {
+        sessionFactory.close();
+        throw e;
+      }
     } catch (Exception e) {
       throw new RuntimeException("Exception during creation of SessionFactory", e);
     }
   }
+
+  private static void validateTableNameUniqueness(SessionFactory sessionFactory) {
+    try (var session = sessionFactory.openSession()) {
+      if (session.doReturningWork(HibernateConfigurator::hasTableNameUniqueConstraint)) {
+        return;
+      }
+      boolean hasDuplicates =
+          !session
+              .createQuery(
+                  "SELECT t.schemaId, t.name FROM TableInfoDAO t "
+                      + "GROUP BY t.schemaId, t.name HAVING COUNT(t) > 1",
+                  Object[].class)
+              .setMaxResults(1)
+              .getResultList()
+              .isEmpty();
+      if (hasDuplicates) {
+        throw new IllegalStateException(
+            "Cannot enforce unique table names because a schema contains duplicate names.");
+      }
+      throw new IllegalStateException(
+          "Cannot enforce unique table names because the database did not create constraint "
+              + TABLE_NAME_UNIQUE_CONSTRAINT
+              + ".");
+    }
+  }
+
+  private static boolean hasTableNameUniqueConstraint(Connection connection) throws SQLException {
+    DatabaseMetaData metadata = connection.getMetaData();
+    TableReference table = findTable(metadata, connection.getCatalog(), connection.getSchema());
+    if (table == null) {
+      return false;
+    }
+
+    Map<String, Set<String>> indexes = new HashMap<>();
+    try (ResultSet rows =
+        metadata.getIndexInfo(table.catalog(), table.schema(), table.name(), true, false)) {
+      while (rows.next()) {
+        String indexName = rows.getString("INDEX_NAME");
+        String columnName = rows.getString("COLUMN_NAME");
+        if (indexName != null && columnName != null && !rows.getBoolean("NON_UNIQUE")) {
+          indexes
+              .computeIfAbsent(indexName, ignored -> new HashSet<>())
+              .add(columnName.toLowerCase(Locale.ROOT));
+        }
+      }
+    }
+
+    return indexes.values().stream().anyMatch(TABLE_NAME_UNIQUE_COLUMNS::equals);
+  }
+
+  private static TableReference findTable(DatabaseMetaData metadata, String catalog, String schema)
+      throws SQLException {
+    try (ResultSet rows = metadata.getTables(catalog, schema, null, new String[] {"TABLE"})) {
+      while (rows.next()) {
+        if ("uc_tables".equalsIgnoreCase(rows.getString("TABLE_NAME"))) {
+          return new TableReference(
+              rows.getString("TABLE_CAT"),
+              rows.getString("TABLE_SCHEM"),
+              rows.getString("TABLE_NAME"));
+        }
+      }
+    }
+    return null;
+  }
+
+  private record TableReference(String catalog, String schema, String name) {}
 
   public static Properties setupHibernateProperties(ServerProperties serverProperties) {
     Path hibernatePropertiesPath = Paths.get("etc/conf/hibernate.properties");

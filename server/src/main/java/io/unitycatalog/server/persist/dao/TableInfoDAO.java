@@ -12,6 +12,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +27,11 @@ import lombok.experimental.SuperBuilder;
 @Entity
 @Table(
     name = "uc_tables",
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uc_tables_schema_id_name_unique",
+          columnNames = {"schema_id", "name"})
+    },
     indexes = {
       @Index(name = "idx_name", columnList = "name"),
     })

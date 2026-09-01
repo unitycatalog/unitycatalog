@@ -53,12 +53,14 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class TableRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
+  private static final String TABLE_NAME_UNIQUE_CONSTRAINT = "uc_tables_schema_id_name_unique";
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
   private final ServerProperties serverProperties;
@@ -912,6 +914,7 @@ public class TableRepository {
             tableInfo.setViewDependencies(
                 new DependencyList().dependencies(DependencyDAO.toDependencyList(depDAOs)));
           }
+          flushTableNameChange(session, fullName);
           return mapper.apply(session, tableInfoDAO, tableInfo);
         },
         "Error creating table: " + fullName,
@@ -1175,9 +1178,24 @@ public class TableRepository {
           tableInfoDAO.setUpdatedAt(new Date());
           tableInfoDAO.setUpdatedBy(callerId);
           session.merge(tableInfoDAO);
+          flushTableNameChange(session, catalog + "." + schema + "." + newName);
           return null;
         },
         "Failed to rename table " + catalog + "." + schema + "." + table,
         /* readOnly = */ false);
+  }
+
+  private static void flushTableNameChange(Session session, String fullName) {
+    try {
+      session.flush();
+    } catch (ConstraintViolationException e) {
+      String constraintName = e.getConstraintName();
+      if (constraintName != null
+          && constraintName.toLowerCase(Locale.ROOT).contains(TABLE_NAME_UNIQUE_CONSTRAINT)) {
+        throw new BaseException(
+            ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
+      }
+      throw e;
+    }
   }
 }
