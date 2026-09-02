@@ -9,6 +9,7 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Head;
 import com.linecorp.armeria.server.annotation.Param;
@@ -31,7 +32,6 @@ import io.unitycatalog.server.delta.model.DeltaStagingTableResponse;
 import io.unitycatalog.server.delta.model.DeltaTableType;
 import io.unitycatalog.server.delta.model.DeltaUpdateTableRequest;
 import io.unitycatalog.server.exception.BaseException;
-import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import io.unitycatalog.server.exception.DeltaApiExceptionHandler;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateStagingTable;
@@ -84,7 +84,6 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   private final TableRepository tableRepository;
   private final StagingTableRepository stagingTableRepository;
   private final StorageCredentialVendor storageCredentialVendor;
-
 
   @Override
   public ExceptionHandlerFunction exceptionHandler() {
@@ -224,8 +223,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    * TableService.createTable}. EXTERNAL wires it via the {@code
    * initializeHierarchicalAuthorization} call below. MANAGED reuses the staging-table UUID's auth
    * row (already wired by {@code createStagingTable} under the staging-creator); {@code
-   * commitStagingTable} additionally enforces {@code callerId == staging.createdBy}, so a
-   * different principal cannot finalize someone else's staging — the staging-creator and the
+   * commitStagingTable} additionally enforces {@code callerId == staging.createdBy}, so a different
+   * principal cannot finalize someone else's staging — the staging-creator and the
    * createTable-caller are always the same identity. The cross-principal rejection is pinned by
    * {@code SdkStagingTableAccessControlTest#testManagedTableCreationByDifferentUserShouldFail}.
    */
@@ -240,8 +239,8 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
           DeltaCreateTableRequest request) {
     DeltaCreateTableMapper.Result mapped =
         DeltaCreateTableMapper.toCreateTable(catalog, schema, request, serverProperties);
-    DeltaLoadTableResponse response = tableRepository.createTableForDelta(
-        mapped.createTable(), mapped.uniformIcebergFields());
+    DeltaLoadTableResponse response =
+        tableRepository.createTableForDelta(mapped.createTable(), mapped.uniformIcebergFields());
     // Wire the new table into the auth hierarchy under its schema (mirrors
     // TableService.createTable). MANAGED tables reuse the staging-table UUID, whose auth row
     // was already created in createStagingTable, so re-init is unnecessary there.
@@ -261,9 +260,9 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
    * partition-columns, set-table-comment, set-domain-metadata / remove-domain-metadata -- and the
    * CCv2 commit flow via add-commit (+ optional uniform for UniForm tables) and
    * set-latest-backfilled-version. External-table-only post-commit-hook updates go through
-   * update-metadata-snapshot-version. Authorization mirrors the UC REST commit endpoint
-   * ({@link io.unitycatalog.server.service.DeltaCommitsService#postCommit}) so a caller's
-   * privileges don't vary by URL.
+   * update-metadata-snapshot-version. Authorization mirrors the UC REST commit endpoint ({@link
+   * io.unitycatalog.server.service.DeltaCommitsService#postCommit}) so a caller's privileges don't
+   * vary by URL.
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}")
   @ProducesJson
@@ -281,7 +280,6 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
   /**
    * Rename a table by three-part name, within the same catalog and schema. Cross-catalog and
    * cross-schema moves are not supported per {@code delta.yaml}.
-   *
    */
   @Post("/delta/v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/rename")
   @AuthorizeExpression(AuthorizeExpressions.RENAME_TABLE)

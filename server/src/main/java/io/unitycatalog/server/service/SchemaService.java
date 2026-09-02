@@ -5,12 +5,19 @@ import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.ListSchemasResponse;
@@ -25,13 +32,6 @@ import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.List;
 import java.util.Optional;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Patch;
-import com.linecorp.armeria.server.annotation.Post;
 import lombok.SneakyThrows;
 
 public class SchemaService extends AuthorizedService implements UnityCatalogRestService {
@@ -66,7 +66,8 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
    * location (rather than tables etc.) owns the path.
    */
   @Post("")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       (#authorize(#principal, #catalog, OWNER) ||
        #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)) &&
       (#storage_root == null ||
@@ -77,11 +78,11 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createSchema(
       @AuthorizeResourceKeys({
-        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
-        @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
-      })
-      @AuthorizeKey(key = "storage_root")
-      CreateSchema createSchema) {
+            @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
+            @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_root")
+          })
+          @AuthorizeKey(key = "storage_root")
+          CreateSchema createSchema) {
     SchemaInfo schemaInfo = schemaRepository.createSchema(createSchema);
 
     CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
@@ -91,7 +92,8 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Get("")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, USE_SCHEMA) &&
@@ -110,7 +112,8 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Get("/{full_name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
@@ -122,7 +125,8 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Patch("/{full_name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #schema, OWNER) ||
       #authorizeAll(#principal, #catalog, USE_CATALOG, USE_SCHEMA) ||
@@ -139,7 +143,8 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) &&
@@ -150,11 +155,8 @@ public class SchemaService extends AuthorizedService implements UnityCatalogRest
       @Param("full_name") @AuthorizeResourceKey(SCHEMA) String fullName,
       @Param("force") Optional<Boolean> force) {
     schemaRepository.getSchema(fullName);
-    List<DeletedResource> deleted =
-        schemaRepository.deleteSchema(fullName, force.orElse(false));
+    List<DeletedResource> deleted = schemaRepository.deleteSchema(fullName, force.orElse(false));
     clearDeletedResourceAuthorizations(deleted);
     return HttpResponse.of(HttpStatus.OK);
   }
-
 }
-

@@ -8,13 +8,13 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
  * <p>When the same logical operation is exposed through multiple endpoints (e.g. the UC REST API
  * and the UC Delta API both vending table credentials), each endpoint's
  * {@code @AuthorizeExpression} must grant identical access -- otherwise a caller's permissions
- * depend on which URL they happen to hit. Extracting the expression here makes the two sites
- * share a single source of truth, so drift becomes a compile-time impossibility instead of a
- * runtime surprise.
+ * depend on which URL they happen to hit. Extracting the expression here makes the two sites share
+ * a single source of truth, so drift becomes a compile-time impossibility instead of a runtime
+ * surprise.
  *
- * <p>Convention: each constant is named {@code <ACTION>_<RESOURCE>} (e.g.
- * {@link #VEND_TABLE_CREDENTIAL}) to describe the authorized operation, not the endpoint. Add
- * new constants here whenever a second call site needs the same policy.
+ * <p>Convention: each constant is named {@code <ACTION>_<RESOURCE>} (e.g. {@link
+ * #VEND_TABLE_CREDENTIAL}) to describe the authorized operation, not the endpoint. Add new
+ * constants here whenever a second call site needs the same policy.
  */
 public final class AuthorizeExpressions {
 
@@ -22,10 +22,9 @@ public final class AuthorizeExpressions {
 
   /**
    * Authorization policy for reading table metadata (UC REST {@code GET /tables/{name}} and Delta
-   * REST Catalog {@code loadTable}). Metastore admin and catalog owner pass unconditionally;
-   * schema owner passes with catalog {@code USE_CATALOG}; regular callers need {@code USE_SCHEMA}
-   * + {@code USE_CATALOG} plus any of {@code OWNER} / {@code SELECT} / {@code MODIFY} on the
-   * table itself.
+   * REST Catalog {@code loadTable}). Metastore admin and catalog owner pass unconditionally; schema
+   * owner passes with catalog {@code USE_CATALOG}; regular callers need {@code USE_SCHEMA} + {@code
+   * USE_CATALOG} plus any of {@code OWNER} / {@code SELECT} / {@code MODIFY} on the table itself.
    */
   public static final String GET_TABLE =
       """
@@ -38,10 +37,10 @@ public final class AuthorizeExpressions {
       """;
 
   /**
-   * Authorization policy for creating a staging table (UC REST {@code POST /staging-tables} and
-   * UC Delta API {@code createStagingTable}). Catalog {@code USE_CATALOG}/{@code OWNER}
-   * plus either schema {@code OWNER} or schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. Catalog
-   * OWNER alone is not sufficient.
+   * Authorization policy for creating a staging table (UC REST {@code POST /staging-tables} and UC
+   * Delta API {@code createStagingTable}). Catalog {@code USE_CATALOG}/{@code OWNER} plus either
+   * schema {@code OWNER} or schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. Catalog OWNER alone is
+   * not sufficient.
    */
   public static final String CREATE_STAGING_TABLE =
       """
@@ -52,11 +51,11 @@ public final class AuthorizeExpressions {
       """;
 
   /**
-   * Authorization policy for creating a table (UC REST {@code POST /tables} and UC Delta API
-   * {@code createTable}). Catalog {@code USE_CATALOG}/{@code OWNER} plus either schema
-   * {@code OWNER} or schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. For EXTERNAL tables, the
-   * caller additionally needs {@code OWNER}/{@code CREATE_EXTERNAL_TABLE} on the external location
-   * (if one resolves) and the storage path must not overlap a data securable.
+   * Authorization policy for creating a table (UC REST {@code POST /tables} and UC Delta API {@code
+   * createTable}). Catalog {@code USE_CATALOG}/{@code OWNER} plus either schema {@code OWNER} or
+   * schema {@code USE_SCHEMA}+{@code CREATE_TABLE}. For EXTERNAL tables, the caller additionally
+   * needs {@code OWNER}/{@code CREATE_EXTERNAL_TABLE} on the external location (if one resolves)
+   * and the storage path must not overlap a data securable.
    *
    * <p>The {@code #table_type} SpEL variable comes from {@code @AuthorizeKey(key = "table-type")};
    * kebab-case payload keys surface with hyphens mapped to underscores (see {@link
@@ -89,9 +88,9 @@ public final class AuthorizeExpressions {
       """;
 
   /**
-   * Authorization policy for deleting a table, shared by the UC REST and Delta REST Catalog
-   * delete endpoints. Metastore admin alone is intentionally not sufficient -- the caller must
-   * hold {@code OWNER} somewhere in the catalog / schema / table hierarchy.
+   * Authorization policy for deleting a table, shared by the UC REST and Delta REST Catalog delete
+   * endpoints. Metastore admin alone is intentionally not sufficient -- the caller must hold {@code
+   * OWNER} somewhere in the catalog / schema / table hierarchy.
    */
   public static final String DELETE_TABLE =
       """
@@ -107,18 +106,20 @@ public final class AuthorizeExpressions {
    * table name as well as permission to create the new name in the same schema.
    */
   public static final String RENAME_TABLE =
-      "(" + DELETE_TABLE + """
-      ) &&
-      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-        (#authorize(#principal, #schema, OWNER) ||
-          #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)))
-      """;
+      "("
+          + DELETE_TABLE
+          + """
+          ) &&
+          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+            (#authorize(#principal, #schema, OWNER) ||
+              #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE)))
+          """;
 
   /**
-   * Authorization policy for vending table credentials. Admin-above-the-table privileges on
-   * their own are not sufficient; the caller must have an explicit table-level privilege
-   * matching the requested operation. {@code READ} needs OWNER or SELECT; {@code READ_WRITE}
-   * needs OWNER, or both SELECT and MODIFY.
+   * Authorization policy for vending table credentials. Admin-above-the-table privileges on their
+   * own are not sufficient; the caller must have an explicit table-level privilege matching the
+   * requested operation. {@code READ} needs OWNER or SELECT; {@code READ_WRITE} needs OWNER, or
+   * both SELECT and MODIFY.
    */
   public static final String VEND_TABLE_CREDENTIAL =
       """

@@ -95,7 +95,8 @@ public class ModelRepository {
 
   public ModelVersionInfoDAO getModelVersionDao(Session session, UUID modelId, Long version) {
     String hql =
-        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version = :version";
+        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version ="
+            + " :version";
     Query<ModelVersionInfoDAO> query = session.createQuery(hql, ModelVersionInfoDAO.class);
     query.setParameter("registeredModelId", modelId);
     query.setParameter("version", version.toString());
@@ -126,7 +127,8 @@ public class ModelRepository {
   public List<ModelVersionInfoDAO> getModelVersionsDao(
       Session session, UUID registeredModelId, String token, int maxResults) {
     String hql =
-        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version > :token ORDER BY t.version ASC";
+        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version >"
+            + " :token ORDER BY t.version ASC";
     Query<ModelVersionInfoDAO> query = session.createQuery(hql, ModelVersionInfoDAO.class);
     query.setParameter("registeredModelId", registeredModelId);
     query.setParameter("token", Long.parseLong(token));

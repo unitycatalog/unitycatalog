@@ -10,6 +10,10 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
@@ -43,10 +47,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Patch;
 
 public class PermissionService implements UnityCatalogRestService {
 
@@ -79,69 +79,59 @@ public class PermissionService implements UnityCatalogRestService {
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Get("/metastore/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getMetastoreAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getMetastoreAuthorization(@Param("name") String name) {
     return getAuthorization(METASTORE, name);
   }
 
   @Get("/catalog/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getCatalogAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getCatalogAuthorization(@Param("name") String name) {
     return getAuthorization(CATALOG, name);
   }
 
   @Get("/schema/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getSchemaAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getSchemaAuthorization(@Param("name") String name) {
     return getAuthorization(SCHEMA, name);
   }
 
   @Get("/table/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getTableAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getTableAuthorization(@Param("name") String name) {
     return getAuthorization(TABLE, name);
   }
 
   @Get("/function/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getFunctionAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getFunctionAuthorization(@Param("name") String name) {
     return getAuthorization(FUNCTION, name);
   }
 
   @Get("/volume/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getVolumeAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getVolumeAuthorization(@Param("name") String name) {
     return getAuthorization(VOLUME, name);
   }
 
   @Get("/registered_model/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getRegisteredModelAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getRegisteredModelAuthorization(@Param("name") String name) {
     return getAuthorization(REGISTERED_MODEL, name);
   }
 
   @Get("/external_location/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getExternalLocationAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getExternalLocationAuthorization(@Param("name") String name) {
     return getAuthorization(EXTERNAL_LOCATION, name);
   }
 
   @Get("/credential/{name}")
   @AuthorizeExpression(AuthorizeExpressions.GET_RESOURCE_AUTHORIZATION)
-  public HttpResponse getCredentialAuthorization(
-      @Param("name") String name) {
+  public HttpResponse getCredentialAuthorization(@Param("name") String name) {
     return getAuthorization(CREDENTIAL, name);
   }
 
-  private HttpResponse getAuthorization(
-      SecurableType securableType, String name) {
+  private HttpResponse getAuthorization(SecurableType securableType, String name) {
 
     // Only show permissions for the authenticated identity unless they are the owner
     // or if the authenticated identity is the owner of the parent resource(s)
@@ -207,7 +197,8 @@ public class PermissionService implements UnityCatalogRestService {
   }
 
   @Patch("/schema/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG))
@@ -219,7 +210,8 @@ public class PermissionService implements UnityCatalogRestService {
   }
 
   @Patch("/table/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -234,7 +226,8 @@ public class PermissionService implements UnityCatalogRestService {
   }
 
   @Patch("/function/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -249,7 +242,8 @@ public class PermissionService implements UnityCatalogRestService {
   }
 
   @Patch("/volume/{name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -265,7 +259,8 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/registered_model/{name}")
   @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #registered_model, OWNER)")
+      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #registered_model,"
+          + " OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateRegisteredModelAuthorization(
       @Param("name") @AuthorizeResourceKey(REGISTERED_MODEL) String name,
@@ -275,7 +270,8 @@ public class PermissionService implements UnityCatalogRestService {
 
   @Patch("/external_location/{name}")
   @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #external_location, OWNER)")
+      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #external_location,"
+          + " OWNER)")
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse updateExternalLocationAuthorization(
       @Param("name") @AuthorizeResourceKey(EXTERNAL_LOCATION) String name,
@@ -346,18 +342,20 @@ public class PermissionService implements UnityCatalogRestService {
 
   private UUID getResourceId(SecurableType securableType, String name) {
 
-    String resourceId = switch (securableType) {
-      case METASTORE -> metastoreRepository.getMetastoreId().toString();
-      case CATALOG -> catalogRepository.getCatalog(name).getId();
-      case SCHEMA -> schemaRepository.getSchema(name).getSchemaId();
-      case TABLE -> tableRepository.getTable(name).getTableId();
-      case FUNCTION -> functionRepository.getFunction(name).getFunctionId();
-      case VOLUME -> volumeRepository.getVolume(name).getVolumeId();
-      case REGISTERED_MODEL -> modelRepository.getRegisteredModel(name).getId();
-      case EXTERNAL_LOCATION -> externalLocationRepository.getExternalLocation(name).getId();
-      case CREDENTIAL -> credentialRepository.getCredential(name).getId();
-      default -> throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
-    };
+    String resourceId =
+        switch (securableType) {
+          case METASTORE -> metastoreRepository.getMetastoreId().toString();
+          case CATALOG -> catalogRepository.getCatalog(name).getId();
+          case SCHEMA -> schemaRepository.getSchema(name).getSchemaId();
+          case TABLE -> tableRepository.getTable(name).getTableId();
+          case FUNCTION -> functionRepository.getFunction(name).getFunctionId();
+          case VOLUME -> volumeRepository.getVolume(name).getVolumeId();
+          case REGISTERED_MODEL -> modelRepository.getRegisteredModel(name).getId();
+          case EXTERNAL_LOCATION -> externalLocationRepository.getExternalLocation(name).getId();
+          case CREDENTIAL -> credentialRepository.getCredential(name).getId();
+          default ->
+              throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
+        };
 
     return UUID.fromString(Objects.requireNonNull(resourceId));
   }

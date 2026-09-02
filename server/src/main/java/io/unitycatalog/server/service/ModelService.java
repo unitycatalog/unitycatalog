@@ -1,5 +1,10 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.Delete;
@@ -9,9 +14,9 @@ import com.linecorp.armeria.server.annotation.Patch;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateModelVersion;
 import io.unitycatalog.server.model.CreateRegisteredModel;
 import io.unitycatalog.server.model.FinalizeModelVersion;
@@ -28,15 +33,8 @@ import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.utils.ServerProperties;
-
 import java.util.Optional;
-
 import lombok.SneakyThrows;
-
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 public class ModelService extends AuthorizedService implements UnityCatalogRestService {
 
@@ -58,7 +56,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Post("")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
           #authorize(#principal, #schema, OWNER)) ||
       (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
@@ -68,10 +67,10 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
       """)
   public HttpResponse createRegisteredModel(
       @AuthorizeResourceKeys({
-        @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
-        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
-      })
-      CreateRegisteredModel createRegisteredModel) {
+            @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
+            @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
+          })
+          CreateRegisteredModel createRegisteredModel) {
     assert createRegisteredModel != null;
     RegisteredModelInfo createRegisteredModelResponse =
         modelRepository.createRegisteredModel(createRegisteredModel);
@@ -85,7 +84,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
     return HttpResponse.ofJson(createRegisteredModelResponse);
   }
 
-  private static final String LIST_AND_GET_AUTH_EXPRESSION = """
+  private static final String LIST_AND_GET_AUTH_EXPRESSION =
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -121,7 +121,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Patch("/{full_name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       (#authorize(#principal, #registered_model, OWNER) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
@@ -137,7 +138,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -161,18 +163,19 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Post("/versions")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       (#authorize(#principal, #registered_model, OWNER) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
       """)
   public HttpResponse createModelVersion(
       @AuthorizeResourceKeys({
-        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
-        @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
-        @AuthorizeResourceKey(value = REGISTERED_MODEL, key = "model_name")
-      })
-      CreateModelVersion createModelVersion) {
+            @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
+            @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
+            @AuthorizeResourceKey(value = REGISTERED_MODEL, key = "model_name")
+          })
+          CreateModelVersion createModelVersion) {
     assert createModelVersion != null;
     assert createModelVersion.getModelName() != null;
     assert createModelVersion.getCatalogName() != null;
@@ -184,7 +187,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Get("/{full_name}/versions")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -201,7 +205,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Get("/{full_name}/versions/{version}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -219,7 +224,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Patch("/{full_name}/versions/{version}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       (#authorize(#principal, #registered_model, OWNER) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
@@ -236,7 +242,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Delete("/{full_name}/versions/{version}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
@@ -253,7 +260,8 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Patch("/{full_name}/versions/{version}/finalize")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       (#authorize(#principal, #registered_model, OWNER) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
@@ -267,6 +275,4 @@ public class ModelService extends AuthorizedService implements UnityCatalogRestS
         modelRepository.finalizeModelVersion(finalizeModelVersion);
     return HttpResponse.ofJson(finalizeModelVersionResponse);
   }
-
 }
-

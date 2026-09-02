@@ -34,19 +34,20 @@ public class StagingTableService extends AuthorizedService implements UnityCatal
 
   static final String disableGoogleJavaFormat =
       """
-    Google Java Format and Checkstyle disagree on how to indent annotation array initializers in
-    method parameters. This doc string is just a hack to stop Google Java Format from messing up
-    with this file.""";
+      Google Java Format and Checkstyle disagree on how to indent annotation array initializers in
+      method parameters. This doc string is just a hack to stop Google Java Format from messing up
+      with this file.\
+      """;
 
   @Post("")
   @AuthorizeExpression(AuthorizeExpressions.CREATE_STAGING_TABLE)
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse createStagingTable(
       @AuthorizeResourceKeys({
-        @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
-        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
-      })
-      CreateStagingTable createStagingTable) {
+            @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
+            @AuthorizeResourceKey(value = CATALOG, key = "catalog_name")
+          })
+          CreateStagingTable createStagingTable) {
     assert createStagingTable != null;
     // A staging table can only ever finalize into a MANAGED Delta table, so the
     // managed-tables-use-delta-api-only gate applies unconditionally here.

@@ -131,6 +131,10 @@ resolvers ++= Seq(
   "Maven Central" at "https://repo1.maven.org/maven2/",
 )
 
+// GJF 1.28.0: newest google-java-format that runs on the JDK 17 CI image without a
+// second JDK. Import sort/prune stay on (plugin defaults).
+ThisBuild / javafmtFormatterCompatibleJavaVersion := 17
+
 // enforce java code style
 def javafmtCheckSettings() = Seq(
   (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtAll)).value

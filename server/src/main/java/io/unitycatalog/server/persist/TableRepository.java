@@ -125,7 +125,7 @@ public class TableRepository {
               "Neither table nor staging table found with id: " + tableId);
         },
         "Failed to get storage location of table or staging table",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   /**
@@ -144,7 +144,7 @@ public class TableRepository {
           return NormalizedURL.from(dao.getUrl());
         },
         "Failed to get storage location of table " + catalog + "." + schema + "." + table,
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   /**
@@ -159,7 +159,7 @@ public class TableRepository {
         sessionFactory,
         session -> findTableOrThrow(session, catalog, schema, table),
         "Failed to find table " + catalog + "." + schema + "." + table,
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   /**
@@ -182,7 +182,7 @@ public class TableRepository {
           return NormalizedURL.from(stagingTableDAO.getStagingLocation());
         },
         "Failed to get storage location of staging table",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   /**
@@ -229,7 +229,7 @@ public class TableRepository {
           return Pair.of(schemaInfoDAO.getCatalogId(), schemaId);
         },
         "Failed to get table or staging table by ID",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public TableInfo getTable(String fullName) {
@@ -253,7 +253,7 @@ public class TableRepository {
           return tableInfo;
         },
         "Failed to get table",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   /**
@@ -279,7 +279,7 @@ public class TableRepository {
           return buildLoadTableResponse(session, dao, Optional.empty(), catalog, schema, table);
         },
         "Failed to load table",
-        /* readOnly = */ true,
+        /* readOnly= */ true,
         Optional.of(TRANSACTION_REPEATABLE_READ));
   }
 
@@ -374,7 +374,7 @@ public class TableRepository {
               session, dao, Optional.of(properties.asMap()), catalog, schema, table);
         },
         "Failed to update table " + tableFullName,
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   /**
@@ -608,7 +608,7 @@ public class TableRepository {
               dao.getId(), dataSourceFormat, dao.getUniformIcebergMetadataLocation(), dao.getUrl());
         },
         "Failed to load Iceberg table state for " + fullName,
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   /**
@@ -682,7 +682,7 @@ public class TableRepository {
           return null;
         },
         "Failed to update Iceberg metadata location for " + fullName,
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   private TableInfoDAO findTableOrThrow(
@@ -903,7 +903,9 @@ public class TableRepository {
             // view_dependencies is optional (see validateViewLike); treat an absent list as empty.
             List<DependencyDAO> depDAOs =
                 Optional.ofNullable(createTable.getViewDependencies())
-                    .map(DependencyList::getDependencies).orElse(List.of()).stream()
+                    .map(DependencyList::getDependencies)
+                    .orElse(List.of())
+                    .stream()
                     .map(dep -> DependencyDAO.from(dep, tableUUID, dependentType))
                     .toList();
             repositories
@@ -915,7 +917,7 @@ public class TableRepository {
           return mapper.apply(session, tableInfoDAO, tableInfo);
         },
         "Error creating table: " + fullName,
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   @FunctionalInterface
@@ -1060,7 +1062,7 @@ public class TableRepository {
               omitColumns);
         },
         "Failed to list tables",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public ListTablesResponse listTables(
@@ -1114,7 +1116,7 @@ public class TableRepository {
           return deleteTable(session, schemaId, table);
         },
         "Failed to delete table",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
@@ -1178,6 +1180,6 @@ public class TableRepository {
           return null;
         },
         "Failed to rename table " + catalog + "." + schema + "." + table,
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 }

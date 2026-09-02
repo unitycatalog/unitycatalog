@@ -190,7 +190,7 @@ public class TransactionManagerTest {
                         return null;
                       },
                       errorMessage,
-                      /* readOnly = */ true))
+                      /* readOnly= */ true))
           .isInstanceOf(BaseException.class)
           .hasMessageContaining(errorMessage)
           .hasMessageContaining(hibernateException.getMessage());

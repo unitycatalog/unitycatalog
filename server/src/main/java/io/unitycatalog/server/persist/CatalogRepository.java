@@ -84,7 +84,7 @@ public class CatalogRepository {
           return catalogInfo;
         },
         "Failed to add catalog",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   /**
@@ -100,7 +100,7 @@ public class CatalogRepository {
         sessionFactory,
         session -> listCatalogs(session, maxResults, pageToken),
         "Failed to list catalogs",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public ListCatalogsResponse listCatalogs(
@@ -128,7 +128,7 @@ public class CatalogRepository {
               catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
         },
         "Failed to get catalog",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public CatalogInfoDAO getCatalogDaoOrThrow(Session session, String name) {
@@ -189,7 +189,7 @@ public class CatalogRepository {
               catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
         },
         "Failed to update catalog",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public List<DeletedResource> deleteCatalog(String name, boolean force) {
@@ -261,6 +261,6 @@ public class CatalogRepository {
           return deleted;
         },
         "Failed to delete catalog",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 }

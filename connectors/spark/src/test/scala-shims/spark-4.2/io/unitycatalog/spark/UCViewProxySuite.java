@@ -36,27 +36,27 @@ import org.apache.spark.sql.connector.catalog.Relation;
 import org.apache.spark.sql.connector.catalog.RelationCatalog;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.connector.catalog.TableSummary;
-import org.apache.spark.sql.connector.catalog.ViewCatalog;
 import org.apache.spark.sql.connector.catalog.View;
+import org.apache.spark.sql.connector.catalog.ViewCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * Spark-4.2-only view-side unit tests for {@code UCProxy}. Composes the shared
- * {@link UCProxyTestFixture} (which builds the mock-backed proxy) and adds the
- * {@code RelationCatalog} / {@code ViewCatalog} casts plus the view CRUD / metric-view tests.
+ * Spark-4.2-only view-side unit tests for {@code UCProxy}. Composes the shared {@link
+ * UCProxyTestFixture} (which builds the mock-backed proxy) and adds the {@code RelationCatalog} /
+ * {@code ViewCatalog} casts plus the view CRUD / metric-view tests.
  *
  * <p>This file lives under {@code src/test/scala-shims/spark-4.2/}, so the cross-Spark build only
  * compiles and runs it for the Spark 4.2 build, where {@code UCProxy} actually mixes in the V2 view
- * catalog surface ({@code Relation}, {@code View}, {@code RelationCatalog},
- * {@code ViewCatalog}, the V2 {@code TableInfo}). The version-agnostic table/namespace tests live
- * in {@code UCProxySuite} under {@code src/test/java/} and run on all Spark versions.
+ * catalog surface ({@code Relation}, {@code View}, {@code RelationCatalog}, {@code ViewCatalog},
+ * the V2 {@code TableInfo}). The version-agnostic table/namespace tests live in {@code
+ * UCProxySuite} under {@code src/test/java/} and run on all Spark versions.
  *
- * <p>The Spark V2 {@code Dependency} / {@code DependencyList} / {@code TableDependency} /
- * {@code TableInfo} types are used fully-qualified to disambiguate from the UC-client homonyms
- * imported above.
+ * <p>The Spark V2 {@code Dependency} / {@code DependencyList} / {@code TableDependency} / {@code
+ * TableInfo} types are used fully-qualified to disambiguate from the UC-client homonyms imported
+ * above.
  */
 public class UCViewProxySuite {
 
@@ -821,8 +821,9 @@ public class UCViewProxySuite {
                         .name("c")
                         .typeName(ColumnTypeName.INT)
                         .typeText("int")
-                        .typeJson("{\"name\":\"c\",\"type\":\"integer\",\"nullable\":true,"
-                            + "\"metadata\":{}}")
+                        .typeJson(
+                            "{\"name\":\"c\",\"type\":\"integer\",\"nullable\":true,"
+                                + "\"metadata\":{}}")
                         .nullable(true)
                         .position(0)));
     when(mockTablesApi.getTable(eq("test_catalog.test_schema.v1"), eq(true), eq(true)))

@@ -391,9 +391,7 @@ public class TestUtils {
       String contentType)
       throws Exception {
     HttpRequest.Builder reqBuilder =
-        HttpRequest.newBuilder()
-            .uri(URI.create(config.getServerUrl() + path))
-            .method(method, body);
+        HttpRequest.newBuilder().uri(URI.create(config.getServerUrl() + path)).method(method, body);
     if (contentType != null) {
       reqBuilder.header("Content-Type", contentType);
     }
