@@ -49,7 +49,18 @@ public class PropertyDAO {
   @Column(name = "property_key", nullable = false)
   private String key;
 
-  @Column(name = "property_value", nullable = false)
+  /**
+   * Entity property values, including Spark datasource schema JSON ({@code
+   * spark.sql.sources.schema.part.N}).
+   *
+   * <p>An unannotated {@code String} is mapped as {@code varchar(255)}. That is too small for Spark
+   * table properties, so the length matches {@code ColumnInfoDAO.typeJson}.
+   *
+   * <p>{@code hibernate.hbm2ddl.auto=update} does not change the type of an existing column. Fresh
+   * databases pick up this mapping; existing deployments must {@code ALTER} {@code
+   * uc_properties.property_value} as described in {@code docs/server/deployment.md}.
+   */
+  @Column(name = "property_value", nullable = false, length = 16777215)
   private String value;
 
   public static List<PropertyDAO> from(

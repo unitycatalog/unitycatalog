@@ -107,3 +107,32 @@ This guide outlines how to deploy the Unity Catalog server.
     ```
 
 - Modify the `jars/classpath` file and add path to your jdbc driver.
+
+### Existing deployments and column type changes
+
+The server uses `hibernate.hbm2ddl.auto=update`. Hibernate can create missing tables and
+columns, but **it does not change the type or length of a column that already exists**.
+
+`uc_properties.property_value` used to be created as `varchar(255)`. Spark stores datasource
+schema JSON in table properties (`spark.sql.sources.schema.part.N`), which is often longer than
+255 characters (for example `CREATE TABLE … USING PARQUET` with more than a couple of columns).
+New installs get a wider column from Hibernate. **Existing databases keep `varchar(255)` until
+you run one of the statements below**; upgrading the server JAR alone has no effect.
+
+PostgreSQL:
+
+```sql
+ALTER TABLE uc_properties ALTER COLUMN property_value TYPE text;
+```
+
+MySQL:
+
+```sql
+ALTER TABLE uc_properties MODIFY property_value MEDIUMTEXT NOT NULL;
+```
+
+H2:
+
+```sql
+ALTER TABLE uc_properties ALTER COLUMN property_value SET DATA TYPE VARCHAR(16777215);
+```

@@ -99,6 +99,49 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         .withMessageContaining("s3://bucket/");
   }
 
+  /**
+   * Spark stores datasource schema JSON in {@code spark.sql.sources.schema.part.N}. That value is
+   * larger than Hibernate's default {@code varchar(255)} as soon as the table has more than a
+   * couple of columns.
+   */
+  @Test
+  public void testCreateTableAcceptsPropertyValueLongerThanDefaultVarchar() throws Exception {
+    String schemaJson =
+        "{\"type\":\"struct\",\"fields\":["
+            + "{\"name\":\"col1\",\"type\":\"string\",\"nullable\":true,\"metadata\":{}},"
+            + "{\"name\":\"col2\",\"type\":\"integer\",\"nullable\":true,\"metadata\":{}},"
+            + "{\"name\":\"col3\",\"type\":\"double\",\"nullable\":true,\"metadata\":{}},"
+            + "{\"name\":\"col4\",\"type\":\"long\",\"nullable\":true,\"metadata\":{}},"
+            + "{\"name\":\"col5\",\"type\":\"boolean\",\"nullable\":true,\"metadata\":{}},"
+            + "{\"name\":\"col6\",\"type\":\"timestamp\",\"nullable\":true,\"metadata\":{}},"
+            + "{\"name\":\"col7\",\"type\":\"decimal(18,2)\",\"nullable\":true,\"metadata\":{}}"
+            + "]}";
+    assertThat(schemaJson.length()).isGreaterThan(255);
+
+    String tableName = "long_property_table";
+    TableInfo created =
+        tableOperations.createTable(
+            new CreateTable()
+                .name(tableName)
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME)
+                .columns(COLUMNS)
+                .properties(Map.of("spark.sql.sources.schema.part.0", schemaJson))
+                .comment(TestUtils.COMMENT)
+                .storageLocation(
+                    Files.createTempDirectory(testDirectoryRoot, "long-props").toString())
+                .tableType(TableType.EXTERNAL)
+                .dataSourceFormat(DataSourceFormat.PARQUET));
+
+    TableInfo retrieved =
+        tableOperations.getTable(
+            TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + tableName);
+    assertThat(retrieved.getProperties())
+        .containsEntry("spark.sql.sources.schema.part.0", schemaJson);
+    tableOperations.deleteTable(
+        created.getCatalogName() + "." + created.getSchemaName() + "." + created.getName());
+  }
+
   @Test
   public void testListTablesWithNoNextPageTokenShouldReturnNull() throws Exception {
     TableInfo testingTable =
