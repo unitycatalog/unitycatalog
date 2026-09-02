@@ -336,7 +336,11 @@ Add it on the same `spark.sql.extensions` line as Delta in the cloud examples ab
 spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,io.unitycatalog.spark.UCSparkSessionExtensions
 ```
 
-The session's current catalog must be a `UCSingleCatalog` (`spark.sql.defaultCatalog` in those examples, or `SET CATALOG`).
+The session's current catalog must be a `UCSingleCatalog` (`spark.sql.defaultCatalog` in those examples, or `SET CATALOG`). Path credential vending is **off by default** so Unity Catalog does not override ambient Hadoop or instance-profile credentials. Enable it per catalog:
+
+```properties
+spark.sql.catalog.<catalog_name>.vendPathCredentials.enabled=true
+```
 
 ```sql
 -- Read (parquet, json, csv, orc, …)
@@ -349,12 +353,6 @@ SELECT 1 AS i, 'a' AS s;
 
 `s3://` and `s3a://` both work; Unity Catalog looks up the path as `s3://`. The same vending applies to `gs://`,
 `abfs://`, and `abfss://`.
-
-Disable per catalog if needed (default is enabled):
-
-```properties
-spark.sql.catalog.<catalog_name>.vendPathCredentials.enabled=false
-```
 
 !!! note
     Path credential vending applies to **Spark SQL** `` format.`path` `` reads and `INSERT OVERWRITE DIRECTORY` only.

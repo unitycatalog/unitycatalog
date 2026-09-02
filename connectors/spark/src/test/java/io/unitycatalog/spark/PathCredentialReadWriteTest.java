@@ -78,6 +78,23 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     return createPathCredSession(false, false, true, ucCatalogs);
   }
 
+  /** Same layout as {@link #createPathCredSession} but omits {@code vendPathCredentials.enabled}. */
+  private SparkSession createPathCredSessionLeavingVendFlagUnset(String... ucCatalogs) {
+    SparkSession.Builder builder =
+        SparkSession.builder()
+            .appName("test")
+            .master("local[*]")
+            .config("spark.sql.shuffle.partitions", "4")
+            .config("spark.sql.extensions", DELTA_AND_UC_EXTENSIONS);
+    for (String catalog : ucCatalogs) {
+      builder = configureUcCatalog(builder, catalog);
+    }
+    builder
+        .config("spark.hadoop.fs.s3.impl", S3CredentialTestFileSystem.class.getName())
+        .config("spark.hadoop.fs.s3a.impl", S3CredentialTestFileSystem.S3a.class.getName());
+    return builder.getOrCreate();
+  }
+
   private SparkSession createPathCredSession(
       boolean renewCred, boolean credScopedFs, boolean vendPathEnabled, String... ucCatalogs) {
     return createPathCredSessionWithLayout(
@@ -582,6 +599,22 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
     // Recreate session with path credential vending disabled.
     stopSession();
     session = createPathCredSession(false, false, false, SPARK_CATALOG);
+    assertThatThrownBy(() -> sql("SELECT * FROM parquet.`%s`", location))
+        .satisfies(e -> assertCauseChainContainsMessage(e, "accessKey0"));
+  }
+
+  /**
+   * Omitting {@code vendPathCredentials.enabled} uses the default ({@code false}), so ambient
+   * credentials are not overwritten.
+   */
+  @Test
+  public void testDisabledByDefaultWhenFlagOmitted() throws IOException {
+    session = createPathCredSession(SPARK_CATALOG);
+    String location = bucketPath("import_default_disabled");
+    sql("INSERT OVERWRITE DIRECTORY '%s' USING parquet SELECT 1 AS i, 'a' AS s", location);
+
+    stopSession();
+    session = createPathCredSessionLeavingVendFlagUnset(SPARK_CATALOG);
     assertThatThrownBy(() -> sql("SELECT * FROM parquet.`%s`", location))
         .satisfies(e -> assertCauseChainContainsMessage(e, "accessKey0"));
   }

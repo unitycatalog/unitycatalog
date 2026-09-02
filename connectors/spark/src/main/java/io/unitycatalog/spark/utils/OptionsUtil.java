@@ -18,5 +18,5 @@ public class OptionsUtil {
   public static final boolean DEFAULT_DELTA_API_ENABLED = true;
 
   public static final String VEND_PATH_CREDENTIALS_ENABLED = "vendPathCredentials.enabled";
-  public static final boolean DEFAULT_VEND_PATH_CREDENTIALS_ENABLED = true;
+  public static final boolean DEFAULT_VEND_PATH_CREDENTIALS_ENABLED = false;
 }

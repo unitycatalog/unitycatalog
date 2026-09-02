@@ -46,8 +46,9 @@ import scala.collection.JavaConverters._
  * (`credentials.type=path` and `fs.unitycatalog.path`) or skip markers after an allowed miss —
  * are left untouched. Ambient `fs.s3a.*` (or other cloud) keys do not skip vending.
  *
- * The rule is a no-op unless the session's current catalog is a [[UCSingleCatalog]]. It can be
- * disabled with `spark.sql.catalog.<catalog>.vendPathCredentials.enabled=false`.
+ * The rule is a no-op unless the session's current catalog is a [[UCSingleCatalog]] and
+ * `spark.sql.catalog.<catalog>.vendPathCredentials.enabled=true` (default false, so ambient
+ * Hadoop / instance-profile credentials are not overwritten unless the user opts in).
  *
  * When UC cannot vend credentials for a path (not managed by UC, no permission, etc.), cloud
  * secrets are omitted so Spark can use ambient storage credentials (`spark.hadoop.fs.s3a.*`,
