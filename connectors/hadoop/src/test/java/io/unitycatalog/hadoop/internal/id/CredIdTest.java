@@ -145,6 +145,17 @@ public class CredIdTest {
   }
 
   @Test
+  void createReturnsDefaultKeyWhenOnlyPathVendingSkipMarkers() {
+    Configuration conf = new Configuration();
+    conf.set(
+        UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_KEY,
+        UCHadoopConfConstants.UC_PATH_VENDING_ATTEMPTED_VALUE);
+    conf.set(UCHadoopConfConstants.UC_PATH_VENDING_LOCATION_KEY, "s3://b/p");
+    assertThat(CredId.create(conf, () -> new DefaultCredId(URI.create("s3://b/p"), conf)))
+        .isInstanceOf(DefaultCredId.class);
+  }
+
+  @Test
   void createThrowsWhenNoTypeAndNoFallback() {
     assertThatThrownBy(() -> CredId.create(new Configuration()))
         .isInstanceOf(IllegalArgumentException.class);

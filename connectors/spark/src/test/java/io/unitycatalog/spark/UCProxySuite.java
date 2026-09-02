@@ -4,6 +4,7 @@ import static io.unitycatalog.spark.UCProxyTestFixture.CATALOG_NAME;
 import static io.unitycatalog.spark.UCProxyTestFixture.NAMESPACE;
 import static io.unitycatalog.spark.UCProxyTestFixture.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
@@ -20,6 +21,7 @@ import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import java.util.Collections;
 import java.util.List;
+import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.SupportsNamespaces;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
@@ -186,6 +188,44 @@ public class UCProxySuite {
     }
     verify(mockTablesApi, org.mockito.Mockito.times(1))
         .getTable(eq("test_catalog.test_schema.t1"), eq(true), eq(true));
+  }
+
+  /**
+   * Spark asks the current catalog to load every relation before falling back to path-based
+   * resolution, so a bare {@code parquet.`s3://.../file.parquet`} arrives at {@code loadTable} as
+   * namespace {@code parquet} with the path as the table name. UC addresses a table by the dotted
+   * string {@code catalog.schema.table} and would 400 if asked; {@code CatalogV2Util.loadTable}
+   * only absorbs a not-found answer. A name UC cannot address can never denote a table UC holds, so
+   * this returns {@link NoSuchTableException} without an RPC (servers disagree 400 vs 404 on the
+   * same bad name).
+   */
+  @Test
+  public void testLoadTableSkipsRpcForNameUcCannotAddress() throws Exception {
+    String path = "s3://bucket/tenants/t1/tmp-ingest-4825.parquet";
+
+    assertThatThrownBy(() -> proxy.loadTable(Identifier.of(new String[] {"parquet"}, path)))
+        .isInstanceOf(NoSuchTableException.class);
+
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .getTable(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any());
+  }
+
+  /** Extensionless cloud paths also carry `/` and must skip the UC RPC. */
+  @Test
+  public void testLoadTableSkipsRpcForExtensionlessBarePath() throws Exception {
+    String path = "s3://bucket/dir/part";
+
+    assertThatThrownBy(() -> proxy.loadTable(Identifier.of(new String[] {"parquet"}, path)))
+        .isInstanceOf(NoSuchTableException.class);
+
+    verify(mockTablesApi, org.mockito.Mockito.never())
+        .getTable(
+            org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any());
   }
 
   // -- dropTable (table surface) tests --
