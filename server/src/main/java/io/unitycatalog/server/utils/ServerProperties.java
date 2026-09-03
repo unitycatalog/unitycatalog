@@ -226,11 +226,13 @@ public class ServerProperties {
     // path-based routing, never directly. See OPENSHARING_PROTOCOL_PREFIX and friends below.
     OPENSHARING_PORT("server.opensharing.port", "8099", POSITIVE_INTEGER_VALIDATOR),
     OPENSHARING_PROTOCOL_PREFIX(
-        "server.opensharing.protocol-prefix", "/api/2.1/unity-catalog/sharing", NOOP_VALIDATOR),
+        "server.opensharing.protocol-prefix", "/api/2.1/opensharing", NOOP_VALIDATOR),
     OPENSHARING_ADMIN_BASE_PATH(
-        "server.opensharing.admin-base-path", "/api/admin/v1", NOOP_VALIDATOR),
+        "server.opensharing.admin-base-path", "/api/2.1/opensharing/provider", NOOP_VALIDATOR),
     OPENSHARING_ACTIVATION_BASE_PATH(
-        "server.opensharing.activation-base-path", "/activation", NOOP_VALIDATOR),
+        "server.opensharing.activation-base-path",
+        "/api/2.1/opensharing/activation",
+        NOOP_VALIDATOR),
     // Public: what a recipient's activation URL and config.share point at, so this is UC's own
     // public address, not the internal port above — every request lands on the same port UC
     // itself is reached on, and is routed from there by path.

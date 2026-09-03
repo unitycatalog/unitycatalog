@@ -91,7 +91,7 @@ public class URLTranscoderVerticleTest {
     URLTranscoderVerticle verticle = new URLTranscoderVerticle(0, 9000);
 
     assertThat(verticle.targetPort("/api/2.1/unity-catalog/catalogs")).isEqualTo(9000);
-    assertThat(verticle.targetPort("/api/admin/v1/shares")).isEqualTo(9000);
+    assertThat(verticle.targetPort("/api/2.1/opensharing/provider/shares")).isEqualTo(9000);
   }
 
   @Test
@@ -101,17 +101,20 @@ public class URLTranscoderVerticleTest {
             0,
             9000,
             9099,
-            List.of("/api/2.1/unity-catalog/sharing", "/api/admin/v1", "/activation"));
+            List.of(
+                "/api/2.1/opensharing",
+                "/api/2.1/opensharing/provider",
+                "/api/2.1/opensharing/activation"));
 
-    assertThat(verticle.targetPort("/api/2.1/unity-catalog/sharing/shares")).isEqualTo(9099);
-    assertThat(verticle.targetPort("/api/admin/v1/shares")).isEqualTo(9099);
-    assertThat(verticle.targetPort("/activation/some-nonce")).isEqualTo(9099);
+    assertThat(verticle.targetPort("/api/2.1/opensharing/shares")).isEqualTo(9099);
+    assertThat(verticle.targetPort("/api/2.1/opensharing/provider/shares")).isEqualTo(9099);
+    assertThat(verticle.targetPort("/api/2.1/opensharing/activation/some-nonce")).isEqualTo(9099);
   }
 
   @Test
   public void testPathMatchingNoSidecarPrefixRoutesToService() {
     URLTranscoderVerticle verticle =
-        new URLTranscoderVerticle(0, 9000, 9099, List.of("/api/2.1/unity-catalog/sharing"));
+        new URLTranscoderVerticle(0, 9000, 9099, List.of("/api/2.1/opensharing"));
 
     assertThat(verticle.targetPort("/api/2.1/unity-catalog/catalogs")).isEqualTo(9000);
   }
