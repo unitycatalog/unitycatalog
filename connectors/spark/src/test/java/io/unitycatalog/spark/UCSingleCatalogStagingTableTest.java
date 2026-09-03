@@ -133,15 +133,15 @@ public class UCSingleCatalogStagingTableTest {
   @Test
   public void testLoadTableRejectsNestedNamespaceWithExplicitError() throws Exception {
     Identifier nested = Identifier.of(new String[] {"a", "b"}, "t");
+    when(mockDelegate.tableExists(nested)).thenReturn(false);
 
     assertThatThrownBy(() -> catalog.loadTable(nested))
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("Nested namespaces are not supported");
-    assertThatThrownBy(() -> catalog.tableExists(nested))
-        .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Nested namespaces are not supported");
+    assertThat(catalog.tableExists(nested)).isFalse();
+
     verify(mockDelegate, never()).loadTable(nested);
-    verify(mockDelegate, never()).tableExists(nested);
+    verify(mockDelegate).tableExists(nested);
   }
 
   @AfterEach

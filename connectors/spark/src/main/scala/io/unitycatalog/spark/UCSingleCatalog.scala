@@ -222,30 +222,32 @@ class UCSingleCatalog
    *
    * Delta and Iceberg path identifiers remain delegated so DeltaCatalog can resolve
    * `delta.`path`` via `loadPathTable` and `iceberg.`path`` via `newIcebergPathTable`.
-   * Nested namespaces still fail with [[UCSingleCatalog.checkUnsupportedNestedNamespace]] rather
-   * than looking like a missing table.
+   * Nested namespaces fail with [[UCSingleCatalog.checkUnsupportedNestedNamespace]] on load so
+   * they are not mistaken for a missing table.
    */
   private def requireAddressableTableNameOrPathTable(ident: Identifier): Unit = {
-    if (!shouldDelegateCatalogLookup(ident)) {
+    if (isDeltaOrIcebergPath(ident)) {
+      return
+    }
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (!UCSingleCatalog.isAddressableTableName(ident)) {
       throw new NoSuchTableException(ident)
     }
   }
 
-  override def tableExists(ident: Identifier): Boolean = {
-    shouldDelegateCatalogLookup(ident) && delegate.tableExists(ident)
-  }
-
   /**
-   * True when the identifier should reach DeltaCatalog / UCProxy. Path-based Delta and Iceberg
-   * identifiers are always delegated. Everything else must be a UC `schema.table` name; nested
-   * namespaces throw, and file-format paths (`parquet.`s3://...``) are treated as absent.
+   * Parquet-style path identifiers are absent (so Spark can fall through to SQL-on-file). Nested
+   * names still go to the delegate: Delta 4.3+ rejects them client-side with
+   * IllegalArgumentException, which Spark DROP/EXISTS tests expect. Do not throw
+   * [[UCSingleCatalog.checkUnsupportedNestedNamespace]] here.
    */
-  private def shouldDelegateCatalogLookup(ident: Identifier): Boolean = {
-    if (isDeltaOrIcebergPath(ident)) {
-      true
+  override def tableExists(ident: Identifier): Boolean = {
+    if (isDeltaOrIcebergPath(ident) || ident.namespace().length != 1) {
+      delegate.tableExists(ident)
+    } else if (!UCSingleCatalog.isAddressableTableName(ident)) {
+      false
     } else {
-      UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
-      UCSingleCatalog.isAddressableTableName(ident)
+      delegate.tableExists(ident)
     }
   }
 
