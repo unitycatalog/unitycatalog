@@ -2,8 +2,8 @@ package io.unitycatalog.server.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -35,6 +35,10 @@ import io.unitycatalog.server.service.credential.gcp.TestingCredentialGenerator;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import io.unitycatalog.server.utils.UriScheme;
+import java.time.Instant;
+import java.util.Date;
+import java.util.List;
+import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.provider.Arguments;
@@ -46,11 +50,6 @@ import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 import software.amazon.awssdk.services.sts.model.AssumeRoleResponse;
 import software.amazon.awssdk.services.sts.model.Credentials;
-
-import java.time.Instant;
-import java.util.Date;
-import java.util.List;
-import java.util.stream.Stream;
 
 public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   @Mock AwsCredentialVendor awsCredentialVendor;
@@ -79,11 +78,12 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     schemaOperations = createSchemaOperations(serverConfig);
 
     // Setup AWS external location + credential
-    awsCredentialInfo = credentialsApi.createCredential(
-        new CreateCredentialRequest()
-            .name(AWS_CREDENTIAL_NAME)
-            .purpose(CredentialPurpose.STORAGE)
-            .awsIamRole(new AwsIamRoleRequest().roleArn(TEST_AWS_STORAGE_CREDENTIAL_ROLE_ARN)));
+    awsCredentialInfo =
+        credentialsApi.createCredential(
+            new CreateCredentialRequest()
+                .name(AWS_CREDENTIAL_NAME)
+                .purpose(CredentialPurpose.STORAGE)
+                .awsIamRole(new AwsIamRoleRequest().roleArn(TEST_AWS_STORAGE_CREDENTIAL_ROLE_ARN)));
     externalLocationsApi.createExternalLocation(
         new CreateExternalLocation()
             .name(AWS_EXTERNAL_LOCATION_NAME)
@@ -102,8 +102,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
 
     // AWS S3 master role config
     serverProperties.put(
-        ServerProperties.Property.AWS_MASTER_ROLE_ARN.getKey(),
-        TestUtils.TEST_AWS_MASTER_ROLE_ARN);
+        ServerProperties.Property.AWS_MASTER_ROLE_ARN.getKey(), TestUtils.TEST_AWS_MASTER_ROLE_ARN);
     serverProperties.put(
         ServerProperties.Property.AWS_ACCESS_KEY.getKey(),
         TestUtils.TEST_AWS_MASTER_ROLE_ACCESS_KEY);
@@ -128,11 +127,8 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     setupAzureCredentials();
     setupGcpCredentials();
 
-    cloudCredentialVendor = new CloudCredentialVendor(
-            awsCredentialVendor,
-            azureCredentialVendor,
-            gcpCredentialVendor
-    );
+    cloudCredentialVendor =
+        new CloudCredentialVendor(awsCredentialVendor, azureCredentialVendor, gcpCredentialVendor);
   }
 
   @SneakyThrows
@@ -164,38 +160,41 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
 
   private void setupAzureCredentials() {
     azureCredentialVendor = mock(AzureCredentialVendor.class);
-    AzureCredential azureCredential = AzureCredential.builder()
+    AzureCredential azureCredential =
+        AzureCredential.builder()
             .sasToken("test-sas-token")
             .expirationTimeInEpochMillis(System.currentTimeMillis() + 6000)
             .build();
     serverProperties.entrySet().stream()
-            .filter(e -> e.getKey().toString().startsWith("adls.storageAccountName"))
-            .map(e -> e.getValue().toString())
-            .forEach(path -> doReturn(azureCredential)
+        .filter(e -> e.getKey().toString().startsWith("adls.storageAccountName"))
+        .map(e -> e.getValue().toString())
+        .forEach(
+            path ->
+                doReturn(azureCredential)
                     .when(azureCredentialVendor)
                     .vendAzureCredential(
-                            argThat(isCredentialContextForCloudPath(UriScheme.ABFS, path))));
+                        argThat(isCredentialContextForCloudPath(UriScheme.ABFS, path))));
   }
 
   private void setupGcpCredentials() {
     gcpCredentialVendor = mock(GcpCredentialVendor.class);
-    AccessToken gcpCredential = new AccessToken(
-            "test-token",
-            Date.from(Instant.now().plusSeconds(10 * 60))
-    );
+    AccessToken gcpCredential =
+        new AccessToken("test-token", Date.from(Instant.now().plusSeconds(10 * 60)));
     serverProperties.entrySet().stream()
-            .filter(e -> e.getKey().toString().startsWith("gcs.bucketPath"))
-            .map(e -> e.getValue().toString())
-            .forEach(path -> doReturn(gcpCredential)
+        .filter(e -> e.getKey().toString().startsWith("gcs.bucketPath"))
+        .map(e -> e.getValue().toString())
+        .forEach(
+            path ->
+                doReturn(gcpCredential)
                     .when(gcpCredentialVendor)
                     .vendGcpCredential(
-                            argThat(isCredentialContextForCloudPath(UriScheme.GS, path))));
+                        argThat(isCredentialContextForCloudPath(UriScheme.GS, path))));
   }
 
   private ArgumentMatcher<CredentialContext> isCredentialContextForCloudPath(
       UriScheme scheme, String path) {
-    return arg -> arg.getStorageScheme().equals(scheme)
-        && arg.getStorageBase().toString().contains(path);
+    return arg ->
+        arg.getStorageScheme().equals(scheme) && arg.getStorageBase().toString().contains(path);
   }
 
   /**
@@ -254,17 +253,18 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
 
     // Cartesian product of clouds and isConfiguredPathFlags
     return clouds.stream()
-            .flatMap(cloud -> isConfiguredPathFlags.stream()
+        .flatMap(
+            cloud ->
+                isConfiguredPathFlags.stream()
                     .map(isConfiguredPath -> Arguments.of(cloud, isConfiguredPath)));
   }
 
   /**
    * A mock STS client for testing that examines input parameters and echos back some of them back
    * in the response. It can be useful to verify that the right ARN and external is being used, and
-   * test can further examine the content of session policy by checking its response.
-   * This directly replaces and mocks the real AWS so that in all the tests based on this file
-   * the entire AWS credential vending logic is exercised to the point of calling
-   * `stsClient.assumeRole()`.
+   * test can further examine the content of session policy by checking its response. This directly
+   * replaces and mocks the real AWS so that in all the tests based on this file the entire AWS
+   * credential vending logic is exercised to the point of calling `stsClient.assumeRole()`.
    */
   protected class EchoAwsStsClient implements StsClient {
     public static final String RETURN_ACCESS_KEY = "assumedRoleAccessKey";
@@ -277,8 +277,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
       AwsIamRoleResponse awsIamRole = awsCredentialInfo.getAwsIamRole();
       assertThat(request.roleArn()).isEqualTo(awsIamRole.getRoleArn());
       assertThat(request.externalId()).isEqualTo(awsIamRole.getExternalId());
-      String echoSessionToken =
-          generateSessionToken(request.roleSessionName(), request.policy());
+      String echoSessionToken = generateSessionToken(request.roleSessionName(), request.policy());
       return AssumeRoleResponse.builder()
           .credentials(
               Credentials.builder()

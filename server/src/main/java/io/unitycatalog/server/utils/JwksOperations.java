@@ -51,22 +51,27 @@ public class JwksOperations {
     String keyType = jwk.getType();
 
     return switch (keyType) {
-      case "RSA" -> switch (alg) {
-        case "RS256" -> Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null);
-        case "RS384" -> Algorithm.RSA384((RSAPublicKey) jwk.getPublicKey(), null);
-        case "RS512" -> Algorithm.RSA512((RSAPublicKey) jwk.getPublicKey(), null);
-        default -> throw new OAuthInvalidClientException(ErrorCode.ABORTED,
-                String.format("Unsupported RSA algorithm: %s", alg));
-      };
-      case "EC" -> switch (alg) {
-        case "ES256" -> Algorithm.ECDSA256((ECPublicKey) jwk.getPublicKey(), null);
-        case "ES384" -> Algorithm.ECDSA384((ECPublicKey) jwk.getPublicKey(), null);
-        case "ES512" -> Algorithm.ECDSA512((ECPublicKey) jwk.getPublicKey(), null);
-        default -> throw new OAuthInvalidClientException(ErrorCode.ABORTED,
-                String.format("Unsupported ECDSA algorithm: %s", alg));
-      };
-      default -> throw new OAuthInvalidClientException(ErrorCode.ABORTED,
-              String.format("Unsupported key type: %s", keyType));
+      case "RSA" ->
+          switch (alg) {
+            case "RS256" -> Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null);
+            case "RS384" -> Algorithm.RSA384((RSAPublicKey) jwk.getPublicKey(), null);
+            case "RS512" -> Algorithm.RSA512((RSAPublicKey) jwk.getPublicKey(), null);
+            default ->
+                throw new OAuthInvalidClientException(
+                    ErrorCode.ABORTED, String.format("Unsupported RSA algorithm: %s", alg));
+          };
+      case "EC" ->
+          switch (alg) {
+            case "ES256" -> Algorithm.ECDSA256((ECPublicKey) jwk.getPublicKey(), null);
+            case "ES384" -> Algorithm.ECDSA384((ECPublicKey) jwk.getPublicKey(), null);
+            case "ES512" -> Algorithm.ECDSA512((ECPublicKey) jwk.getPublicKey(), null);
+            default ->
+                throw new OAuthInvalidClientException(
+                    ErrorCode.ABORTED, String.format("Unsupported ECDSA algorithm: %s", alg));
+          };
+      default ->
+          throw new OAuthInvalidClientException(
+              ErrorCode.ABORTED, String.format("Unsupported key type: %s", keyType));
     };
   }
 
@@ -95,26 +100,22 @@ public class JwksOperations {
       var path = wellKnownConfigUrl + ".well-known/openid-configuration";
       LOGGER.debug("path: {}", path);
 
-      String response = webClient
-          .get(path)
-          .aggregate()
-          .join()
-          .contentUtf8();
+      String response = webClient.get(path).aggregate().join().contentUtf8();
 
       // TODO: We should cache this. No need to fetch it each time.
       Map<String, Object> configMap = mapper.readValue(response, new TypeReference<>() {});
 
       if (configMap == null || configMap.isEmpty()) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
-            "Could not get issuer configuration");
+        throw new OAuthInvalidRequestException(
+            ErrorCode.ABORTED, "Could not get issuer configuration");
       }
 
       String configIssuer = (String) configMap.get("issuer");
       String configJwksUri = (String) configMap.get("jwks_uri");
 
       if (!configIssuer.equals(issuer)) {
-        throw new OAuthInvalidRequestException(ErrorCode.ABORTED,
-            "Issuer doesn't match configuration");
+        throw new OAuthInvalidRequestException(
+            ErrorCode.ABORTED, "Issuer doesn't match configuration");
       }
 
       if (configJwksUri == null) {
@@ -126,4 +127,3 @@ public class JwksOperations {
     }
   }
 }
-

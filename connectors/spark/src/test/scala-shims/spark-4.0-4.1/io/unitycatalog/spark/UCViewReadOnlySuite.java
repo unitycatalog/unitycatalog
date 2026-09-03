@@ -34,11 +34,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Spark-4.0/4.1 view tests -- the pre-view-API counterpart to the Spark-4.2
- * {@code UCViewProxySuite} (resolved per Spark version via the {@code scala-shims/} test dirs).
- * Spark 4.0/4.1 have no view-catalog APIs ({@code RelationCatalog}, {@code ViewCatalog},
- * {@code View}), so there is no create/replace/rename/drop-through-view surface; view DDL cannot
- * be routed to the connector.
+ * Spark-4.0/4.1 view tests -- the pre-view-API counterpart to the Spark-4.2 {@code
+ * UCViewProxySuite} (resolved per Spark version via the {@code scala-shims/} test dirs). Spark
+ * 4.0/4.1 have no view-catalog APIs ({@code RelationCatalog}, {@code ViewCatalog}, {@code View}),
+ * so there is no create/replace/rename/drop-through-view surface; view DDL cannot be routed to the
+ * connector.
  *
  * <p>Plain SQL views ({@code TableType.VIEW}) are still readable: they appear on the table listing
  * and {@code loadTable} returns a V1 VIEW {@code CatalogTable} that Spark resolves from its SQL
@@ -189,8 +189,7 @@ public class UCViewReadOnlySuite {
 
   @Test
   public void testAlterTableUnsupported() {
-    assertThatThrownBy(
-            () -> proxy.alterTable(Identifier.of(NAMESPACE, "mv1"), new TableChange[0]))
+    assertThatThrownBy(() -> proxy.alterTable(Identifier.of(NAMESPACE, "mv1"), new TableChange[0]))
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
@@ -198,8 +197,7 @@ public class UCViewReadOnlySuite {
   public void testRenameTableUnsupported() {
     assertThatThrownBy(
             () ->
-                proxy.renameTable(
-                    Identifier.of(NAMESPACE, "mv1"), Identifier.of(NAMESPACE, "mv2")))
+                proxy.renameTable(Identifier.of(NAMESPACE, "mv1"), Identifier.of(NAMESPACE, "mv2")))
         .isInstanceOf(UnsupportedOperationException.class);
   }
 

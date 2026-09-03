@@ -10,11 +10,13 @@ public enum CliParams {
   SOURCE("source", "The URI location of the source artifacts for the model version.", "source"),
   PROPERTIES(
       "properties",
-      "The properties of the entity. Need to be in json format. For example: \"{\"key1\": \"value1\", \"key2\": \"value2\"}\".",
+      "The properties of the entity. Need to be in json format. For example: \"{\"key1\":"
+          + " \"value1\", \"key2\": \"value2\"}\".",
       "properties"),
   FULL_NAME(
       "full_name",
-      "The full name in the format catalog_name.schema_name for schema, or catalog_name.schema_name.table_name for table/function/volume",
+      "The full name in the format catalog_name.schema_name for schema, or"
+          + " catalog_name.schema_name.table_name for table/function/volume",
       "full_name"),
   STORAGE_LOCATION(
       "storage_location",
@@ -24,15 +26,20 @@ public enum CliParams {
   PAGE_TOKEN("page_token", "Opaque token to retrieve the next page of results.", "page_token"),
   TABLE_TYPE(
       "table_type",
-      "The type of the table. Supported values are MANAGED and EXTERNAL. For create table only EXTERNAL tables are supported in this CLI example.",
+      "The type of the table. Supported values are MANAGED and EXTERNAL. For create table only"
+          + " EXTERNAL tables are supported in this CLI example.",
       "table_type"),
   DATA_SOURCE_FORMAT(
       "format",
-      "The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO and TEXT.",
+      "The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO and"
+          + " TEXT.",
       "data_source_format"),
   COLUMNS(
       "columns",
-      "The columns of the table. Each column spec should be in the sql-like format  \"column_name column_data_type\".Supported data types are BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, DECIMAL. Multiple columns should be separated by a comma. For example: \"id INT, name STRING\".",
+      "The columns of the table. Each column spec should be in the sql-like format  \"column_name"
+          + " column_data_type\".Supported data types are BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT,"
+          + " DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, DECIMAL. Multiple columns"
+          + " should be separated by a comma. For example: \"id INT, name STRING\".",
       "columns"),
   VOLUME_TYPE(
       "volume_type",

@@ -1,5 +1,8 @@
 package io.unitycatalog.server.persist.utils;
 
+import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_CATALOG_PREFIX;
+import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREFIX;
+
 import com.google.common.annotations.VisibleForTesting;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -27,9 +30,6 @@ import org.apache.hadoop.fs.Path;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
-
-import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_CATALOG_PREFIX;
-import static io.unitycatalog.server.utils.Constants.MANAGED_STORAGE_SCHEMA_PREFIX;
 
 /**
  * Utility class for performing path-based database queries on Unity Catalog entities.
@@ -198,8 +198,9 @@ public class ExternalLocationUtils {
       case TABLE -> ((TableInfoDAO) dao).getSchemaId();
       case VOLUME -> ((VolumeInfoDAO) dao).getSchemaId();
       case REGISTERED_MODEL -> ((RegisteredModelInfoDAO) dao).getSchemaId();
-      default -> throw new BaseException(
-          ErrorCode.UNIMPLEMENTED, "Unknown securable type: " + securableType);
+      default ->
+          throw new BaseException(
+              ErrorCode.UNIMPLEMENTED, "Unknown securable type: " + securableType);
     };
   }
 
@@ -297,8 +298,7 @@ public class ExternalLocationUtils {
       // This is an invalid internal state. We never allow external locations with
       // overlapping URLs.
       throw new BaseException(
-          ErrorCode.INTERNAL,
-          "More than one external location with URL '" + url + "' exist.");
+          ErrorCode.INTERNAL, "More than one external location with URL '" + url + "' exist.");
     }
 
     // Get the credential that is assigned to the external location
@@ -582,8 +582,8 @@ public class ExternalLocationUtils {
   }
 
   /**
-   * Gets the managed storage location for creating child entities (tables, volumes, models)
-   * within a catalog/schema.
+   * Gets the managed storage location for creating child entities (tables, volumes, models) within
+   * a catalog/schema.
    *
    * <p>This method returns the storageLocation of the schema if set, otherwise falls back to the
    * catalog's storageLocation. If neither is set, throws an exception.
@@ -599,8 +599,8 @@ public class ExternalLocationUtils {
   }
 
   /**
-   * Gets the managed storage location for creating child entities (tables, volumes, models)
-   * within a catalog/schema, with a fallback option.
+   * Gets the managed storage location for creating child entities (tables, volumes, models) within
+   * a catalog/schema, with a fallback option.
    *
    * <p>The resolution order is:
    *
@@ -612,8 +612,8 @@ public class ExternalLocationUtils {
    * </ol>
    *
    * @param catalogAndSchemaDao the catalog and schema DAOs
-   * @param fallbackStorageRoot supplier that provides an optional fallback storage root from
-   *                            server properties
+   * @param fallbackStorageRoot supplier that provides an optional fallback storage root from server
+   *     properties
    * @return the storage location to use as root for child entity storage
    * @throws BaseException with ErrorCode.FAILED_PRECONDITION if no storage root is available
    */
@@ -635,7 +635,7 @@ public class ExternalLocationUtils {
                   new BaseException(
                       ErrorCode.FAILED_PRECONDITION,
                       "None of catalog, schema or storage-root.tables server property has managed "
-                        + "location configured."));
+                          + "location configured."));
     }
   }
 

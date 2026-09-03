@@ -148,7 +148,8 @@ public class GcpCredentialVendor {
               // for listing objects
               String objectListPrefixStartsWithExpr =
                   format(
-                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith(%s)",
+                      "api.getAttribute('storage.googleapis.com/objectListPrefix',"
+                          + " '').startsWith(%s)",
                       celStringLiteral(path));
 
               String combinedExpr =

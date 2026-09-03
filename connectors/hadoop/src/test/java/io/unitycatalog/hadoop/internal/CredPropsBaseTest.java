@@ -345,9 +345,10 @@ abstract class CredPropsBaseTest {
       List<String> prefixes,
       Map<String, String> appVersions) {
     Map<String, String> expected = new HashMap<>(defaultKeys());
+    expected.putAll(credIdKeys(kind));
     if (renew) {
       expected.putAll(renewableProviderKeys());
-      expected.putAll(requestContext(kind, appVersions));
+      expected.putAll(requestContext(appVersions));
     }
     if (prefixes != null) {
       expected.put(
@@ -368,10 +369,11 @@ abstract class CredPropsBaseTest {
       Long expiration,
       Map<String, String> appVersions) {
     Map<String, String> expected = new HashMap<>(defaultKeys());
+    expected.putAll(credIdKeys(kind));
     if (renew) {
       expected.putAll(initialCredKeys(expiration));
       expected.putAll(renewableProviderKeys());
-      expected.putAll(requestContext(kind, appVersions));
+      expected.putAll(requestContext(appVersions));
     } else {
       expected.putAll(staticCredKeys(expiration));
     }
@@ -404,9 +406,9 @@ abstract class CredPropsBaseTest {
         });
   }
 
-  /** The cloud-agnostic API request context is included in the conf. */
-  private Map<String, String> requestContext(CredKind kind, Map<String, String> appVersions) {
-    Map<String, String> keys = new HashMap<>(credIdKeys(kind));
+  /** Cloud-agnostic renewal context (URI, auth, engine versions). Cred identity is separate. */
+  private Map<String, String> requestContext(Map<String, String> appVersions) {
+    Map<String, String> keys = new HashMap<>();
     keys.put(UCHadoopConfConstants.UC_URI_KEY, CATALOG_URI);
     tokenProvider()
         .configs()

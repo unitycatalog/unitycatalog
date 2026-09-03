@@ -6,7 +6,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public interface Clock {
-  /** @return the current time of the clock. */
+  /**
+   * @return the current time of the clock.
+   */
   Instant now();
 
   /**

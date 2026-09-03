@@ -132,7 +132,8 @@ public class MetadataService {
       NormalizedURL metadataLocation, NormalizedURL persistedTableLocation) {
     ValidationUtils.checkArgument(
         metadataLocation.toString().startsWith(persistedTableLocation.toString() + "/"),
-        "Iceberg metadata location ('%s') must be a subpath of the persisted table location ('%s').",
+        "Iceberg metadata location ('%s') must be a subpath of the persisted table location"
+            + " ('%s').",
         metadataLocation,
         persistedTableLocation);
   }

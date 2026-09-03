@@ -7,15 +7,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.NormalizedURL;
-import lombok.SneakyThrows;
-import org.apache.iceberg.exceptions.NotAuthorizedException;
-
 import java.net.URI;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import lombok.SneakyThrows;
+import org.apache.iceberg.exceptions.NotAuthorizedException;
 import software.amazon.awssdk.arns.Arn;
 import software.amazon.awssdk.regions.PartitionMetadata;
 import software.amazon.awssdk.regions.Region;
@@ -25,8 +24,8 @@ public class AwsPolicyGenerator {
   static final String AWS_PARTITION = "aws";
 
   static final List<String> SELECT_ACTIONS = List.of("s3:GetO*");
-  static final List<String> UPDATE_ACTIONS = List.of(
-      "s3:GetO*", "s3:PutO*", "s3:DeleteO*", "s3:*Multipart*");
+  static final List<String> UPDATE_ACTIONS =
+      List.of("s3:GetO*", "s3:PutO*", "s3:DeleteO*", "s3:*Multipart*");
 
   // Reading an object encrypted with SSE-KMS requires kms:Decrypt, and writing one additionally
   // requires kms:GenerateDataKey*. Without these the vended session credentials can't touch a
@@ -34,12 +33,14 @@ public class AwsPolicyGenerator {
   static final List<String> SELECT_KMS_ACTIONS = List.of("kms:Decrypt");
   static final List<String> UPDATE_KMS_ACTIONS = List.of("kms:Decrypt", "kms:GenerateDataKey*");
 
-  static final String POLICY_STATEMENT = """
+  static final String POLICY_STATEMENT =
+      """
       Version: 2012-10-17
       Statement: []
       """;
 
-  static final String BUCKET_STATEMENT = """
+  static final String BUCKET_STATEMENT =
+      """
       Effect: Allow
       Action:
         - s3:ListBucket
@@ -49,7 +50,8 @@ public class AwsPolicyGenerator {
           "s3:prefix": []
       """;
 
-  static final String OPERATION_STATEMENT = """
+  static final String OPERATION_STATEMENT =
+      """
       Effect: Allow
       Action: []
       Resource: []
@@ -63,7 +65,8 @@ public class AwsPolicyGenerator {
   // ("Packed policy consumes 100% of allotted space"). S3 resource statements already constrain
   // which objects the session can Get/Put. GovCloud/China hit the limit sooner because those
   // ARN prefixes are longer, but commercial paths of the same length overflow too.
-  static final String KMS_STATEMENT = """
+  static final String KMS_STATEMENT =
+      """
       Effect: Allow
       Action: []
       Resource:
@@ -76,13 +79,12 @@ public class AwsPolicyGenerator {
   // This can support generating a policy across multiple buckets and paths, however, the assumed
   // role the policy is applied to for a scoped-session needs to have access across those buckets
   /**
-   * Test helper: commercial {@link #AWS_PARTITION} (no role ARN or region). Production always
-   * calls {@link #generatePolicy(Set, List, String, Region)}.
+   * Test helper: commercial {@link #AWS_PARTITION} (no role ARN or region). Production always calls
+   * {@link #generatePolicy(Set, List, String, Region)}.
    */
   @SneakyThrows
   static String generatePolicy(
-      Set<CredentialContext.Privilege> privileges,
-      List<NormalizedURL> locations) {
+      Set<CredentialContext.Privilege> privileges, List<NormalizedURL> locations) {
     return generatePolicy(privileges, locations, null, null);
   }
 
@@ -91,8 +93,8 @@ public class AwsPolicyGenerator {
    *
    * <p>IAM partition is taken from {@code roleArn} when that ARN is well-formed ({@code
    * arn:aws-us-gov:...} → {@code aws-us-gov}), then from the STS region catalog, then commercial
-   * {@code aws}. The same partition is used for S3 resources and {@code kms:ViaService}
-   * ({@code s3.*.amazonaws.com} vs {@code s3.*.amazonaws.com.cn}).
+   * {@code aws}. The same partition is used for S3 resources and {@code kms:ViaService} ({@code
+   * s3.*.amazonaws.com} vs {@code s3.*.amazonaws.com.cn}).
    */
   @SneakyThrows
   public static String generatePolicy(
@@ -122,39 +124,44 @@ public class AwsPolicyGenerator {
       SELECT_KMS_ACTIONS.forEach(kmsActions::add);
     } else {
       throw new NotAuthorizedException(
-          String.format("Can't generate policy for unknown privileges '%s' for locations: '%s'",
+          String.format(
+              "Can't generate policy for unknown privileges '%s' for locations: '%s'",
               privileges, locations));
     }
 
     // Group each location by s3 bucket it's located in, then for each
     // bucket, add the bucket arn for the listBucket and operations statements,
     // then add each path as a conditional prefix
-    getBucketToPathsMap(locations).forEach((bucketName, paths) -> {
-      JsonNode listStatement = loadYaml(BUCKET_STATEMENT);
-      policyStatement.add(listStatement);
+    getBucketToPathsMap(locations)
+        .forEach(
+            (bucketName, paths) -> {
+              JsonNode listStatement = loadYaml(BUCKET_STATEMENT);
+              policyStatement.add(listStatement);
 
-      ArrayNode bucketResource = (ArrayNode) listStatement.findPath("Resource");
-      ArrayNode operationsResource = (ArrayNode) operationsStatement.findPath("Resource");
-      bucketResource.add(s3Arn(partition, bucketName));
+              ArrayNode bucketResource = (ArrayNode) listStatement.findPath("Resource");
+              ArrayNode operationsResource = (ArrayNode) operationsStatement.findPath("Resource");
+              bucketResource.add(s3Arn(partition, bucketName));
 
-      ArrayNode conditionalPrefixes = (ArrayNode) listStatement.findPath("s3:prefix");
-      paths.forEach(path -> {
-        // remove any preceding forward slashes
-        String sanitizedPath = escapeIamSpecialCharacters(path.replaceAll("^/+", ""));
+              ArrayNode conditionalPrefixes = (ArrayNode) listStatement.findPath("s3:prefix");
+              paths.forEach(
+                  path -> {
+                    // remove any preceding forward slashes
+                    String sanitizedPath = escapeIamSpecialCharacters(path.replaceAll("^/+", ""));
 
-        if (sanitizedPath.isEmpty()) {
-          conditionalPrefixes.add("*");
-          operationsResource.add(s3Arn(partition, bucketName + "/*"));
-        } else {
-          conditionalPrefixes.add(sanitizedPath);
-          conditionalPrefixes.add(sanitizedPath + "/");
-          conditionalPrefixes.add(sanitizedPath + "/*");
+                    if (sanitizedPath.isEmpty()) {
+                      conditionalPrefixes.add("*");
+                      operationsResource.add(s3Arn(partition, bucketName + "/*"));
+                    } else {
+                      conditionalPrefixes.add(sanitizedPath);
+                      conditionalPrefixes.add(sanitizedPath + "/");
+                      conditionalPrefixes.add(sanitizedPath + "/*");
 
-          operationsResource.add(s3Arn(partition, bucketName + "/" + sanitizedPath + "/*"));
-          operationsResource.add(s3Arn(partition, bucketName + "/" + sanitizedPath));
-        }
-      });
-    });
+                      operationsResource.add(
+                          s3Arn(partition, bucketName + "/" + sanitizedPath + "/*"));
+                      operationsResource.add(s3Arn(partition, bucketName + "/" + sanitizedPath));
+                    }
+                  });
+            });
 
     // Appended after the per-bucket statements so that the position of the S3 statements
     // within the policy doesn't change
@@ -223,27 +230,27 @@ public class AwsPolicyGenerator {
   /**
    * Makes an S3 path safe to include in an IAM policy.
    *
-   * <p>S3 treats {@code *}, {@code ?}, and {@code $} as ordinary characters in object
-   * names. IAM gives them special meanings:
+   * <p>S3 treats {@code *}, {@code ?}, and {@code $} as ordinary characters in object names. IAM
+   * gives them special meanings:
    *
    * <ul>
-   *   <li>{@code *} matches any number of characters. For example, {@code reports/*}
-   *       matches every object under {@code reports/}.
-   *   <li>{@code ?} matches exactly one character. For example, {@code file?.txt}
-   *       matches {@code file1.txt}.
-   *   <li>{@code ${...}} is a policy variable whose value IAM fills in when it evaluates
-   *       the policy. For example, {@code ${aws:username}} is replaced with the caller's
-   *       IAM username.
+   *   <li>{@code *} matches any number of characters. For example, {@code reports/*} matches every
+   *       object under {@code reports/}.
+   *   <li>{@code ?} matches exactly one character. For example, {@code file?.txt} matches {@code
+   *       file1.txt}.
+   *   <li>{@code ${...}} is a policy variable whose value IAM fills in when it evaluates the
+   *       policy. For example, {@code ${aws:username}} is replaced with the caller's IAM username.
    * </ul>
    *
-   * <p>Therefore, copying an S3 path directly into a policy could grant access to more
-   * objects than the path names. AWS provides {@code ${*}}, {@code ${?}}, and {@code ${$}}
-   * to make IAM match the literal {@code *}, {@code ?}, and {@code $} characters instead.
+   * <p>Therefore, copying an S3 path directly into a policy could grant access to more objects than
+   * the path names. AWS provides {@code ${*}}, {@code ${?}}, and {@code ${$}} to make IAM match the
+   * literal {@code *}, {@code ?}, and {@code $} characters instead.
    *
-   * <p>We replace {@code $} first because the replacements for {@code *} and {@code ?}
-   * also contain a dollar sign.
+   * <p>We replace {@code $} first because the replacements for {@code *} and {@code ?} also contain
+   * a dollar sign.
    *
-   * @see <a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_variables.html">
+   * @see <a
+   *     href="https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_variables.html">
    *     AWS documentation for IAM policy variables</a>
    */
   private static String escapeIamSpecialCharacters(String keyPrefix) {
@@ -253,13 +260,14 @@ public class AwsPolicyGenerator {
   private static Map<String, List<String>> getBucketToPathsMap(List<NormalizedURL> locations) {
     return locations.stream()
         .map(NormalizedURL::toUri)
-        .collect(Collectors.toMap(
-            URI::getHost,
-            uri -> new LinkedList<>(List.of(uri.getPath())),
-            (map, newPaths) -> {
-              map.addAll(newPaths);
-              return map;
-            }));
+        .collect(
+            Collectors.toMap(
+                URI::getHost,
+                uri -> new LinkedList<>(List.of(uri.getPath())),
+                (map, newPaths) -> {
+                  map.addAll(newPaths);
+                  return map;
+                }));
   }
 
   @SneakyThrows

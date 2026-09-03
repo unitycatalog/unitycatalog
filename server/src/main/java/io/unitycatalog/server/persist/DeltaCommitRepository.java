@@ -327,7 +327,7 @@ public class DeltaCommitRepository {
           return null;
         },
         "Error committing to table: " + commit.getTableId(),
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   /**
@@ -997,8 +997,8 @@ public class DeltaCommitRepository {
       Session session, UUID tableId, long commitVersion) {
     NativeQuery<?> query =
         session.createNativeQuery(
-            "UPDATE uc_delta_commits SET is_backfilled_latest_commit = true WHERE table_id = :tableId "
-                + "AND commit_version = :commitVersion");
+            "UPDATE uc_delta_commits SET is_backfilled_latest_commit = true WHERE table_id ="
+                + " :tableId AND commit_version = :commitVersion");
     query.setParameter("tableId", tableId);
     query.setParameter("commitVersion", commitVersion);
     query.executeUpdate();

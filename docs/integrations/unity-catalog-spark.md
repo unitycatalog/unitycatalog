@@ -325,6 +325,46 @@ your Spark version. Use `hadoop-aws` and `hadoop-azure` **3.4.1** with Spark 4.0
         --conf "spark.sql.defaultCatalog=$CATALOG_NAME"
     ```
 
+## Querying cloud paths with Unity Catalog credentials
+
+Registered catalog tables already receive vended credentials from `UCSingleCatalog.loadTable`. Spark SQL that names a
+cloud URI directly never calls `loadTable`, so the session must also register the Unity Catalog Spark extension.
+
+Add it on the same `spark.sql.extensions` line as Delta in the cloud examples above:
+
+```properties
+spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,io.unitycatalog.spark.UCSparkSessionExtensions
+```
+
+The session's current catalog must be a `UCSingleCatalog` (`spark.sql.defaultCatalog` in those examples, or `SET CATALOG`). Path credential vending is **off by default** so Unity Catalog does not override ambient Hadoop or instance-profile credentials. Enable it per catalog:
+
+```properties
+spark.sql.catalog.<catalog_name>.vendPathCredentials.enabled=true
+```
+
+```sql
+-- Read (parquet, json, csv, orc, …)
+SELECT * FROM parquet.`s3://my-bucket/path/to/data`;
+
+-- Write
+INSERT OVERWRITE DIRECTORY 's3://my-bucket/path/to/data' USING parquet
+SELECT 1 AS i, 'a' AS s;
+```
+
+`s3://` and `s3a://` both work; Unity Catalog looks up the path as `s3://`. The same vending applies to `gs://`,
+`abfs://`, and `abfss://`.
+
+!!! note
+    Path credential vending applies to **Spark SQL** `` format.`path` `` reads and `INSERT OVERWRITE DIRECTORY` only.
+    `spark.read.parquet("s3://...")` and `DataFrameWriter` path saves do not go through this rule; use a registered
+    table or ambient `spark.hadoop.fs.*` credentials.
+
+    Bare `` delta.`s3://...` `` paths are skipped so they keep using ambient storage credentials. Catalog Delta tables
+    are unchanged.
+
+    If Unity Catalog cannot vend for a path (not managed by UC, or no permission), Spark falls back to ambient Hadoop
+    credentials already configured on the session.
+
 ## Using Spark SQL to query Unity Catalog schemas and tables
 
 Let’s start by running some quick commands from the Spark SQL and pyspark shells.

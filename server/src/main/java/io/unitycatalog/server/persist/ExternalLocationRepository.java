@@ -96,7 +96,7 @@ public class ExternalLocationRepository {
           return externalLocationDAO.toExternalLocationInfo(credentialDAO.getName());
         },
         "Failed to add external location",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public ExternalLocationInfo getExternalLocation(String name) {
@@ -115,7 +115,7 @@ public class ExternalLocationRepository {
           return externalLocationDAO.toExternalLocationInfo(credentialName);
         },
         "Failed to get external location",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   protected ExternalLocationDAO getExternalLocationDAO(Session session, String name) {
@@ -133,8 +133,7 @@ public class ExternalLocationRepository {
         sessionFactory,
         session -> {
           List<ExternalLocationDAO> daoList =
-              LISTING_HELPER.listEntity(
-                  session, maxResults, pageToken, /* parentEntityId = */ null);
+              LISTING_HELPER.listEntity(session, maxResults, pageToken, /* parentEntityId= */ null);
           String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
           List<ExternalLocationInfo> results = new ArrayList<>();
           for (ExternalLocationDAO dao : daoList) {
@@ -149,7 +148,7 @@ public class ExternalLocationRepository {
               .nextPageToken(nextPageToken);
         },
         "Failed to list external locations",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public ExternalLocationInfo updateExternalLocation(
@@ -205,7 +204,7 @@ public class ExternalLocationRepository {
           return existingLocation.toExternalLocationInfo(credentialName);
         },
         "Failed to update external location",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   /**
@@ -256,7 +255,7 @@ public class ExternalLocationRepository {
           return existingLocation;
         },
         "Failed to delete external location",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   /**

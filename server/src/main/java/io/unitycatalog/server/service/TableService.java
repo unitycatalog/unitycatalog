@@ -6,13 +6,19 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.AuthorizeExpressions;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
@@ -24,12 +30,6 @@ import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Post;
 import lombok.SneakyThrows;
 
 public class TableService extends AuthorizedService implements UnityCatalogRestService {
@@ -78,16 +78,15 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
   @AuthorizeExpression(AuthorizeExpressions.CREATE_TABLE)
   public HttpResponse createTable(
       @AuthorizeResourceKeys({
-        @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
-        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
-        @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
-      })
-      @AuthorizeKey(key = "table_type")
-      CreateTable createTable) {
+            @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
+            @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
+            @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
+          })
+          @AuthorizeKey(key = "table_type")
+          CreateTable createTable) {
     assert createTable != null;
     serverProperties.checkDeltaApiOnlyForManagedTable(
-        createTable.getTableType(),
-        "POST /delta/v1/catalogs/{catalog}/schemas/{schema}/tables");
+        createTable.getTableType(), "POST /delta/v1/catalogs/{catalog}/schemas/{schema}/tables");
     TableInfo tableInfo = tableRepository.createTable(createTable);
 
     SchemaInfo schemaInfo =
@@ -107,7 +106,8 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
   }
 
   @Get("")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) &&
@@ -126,13 +126,14 @@ public class TableService extends AuthorizedService implements UnityCatalogRestS
       @Param("omit_properties") Optional<Boolean> omitProperties,
       @Param("omit_columns") Optional<Boolean> omitColumns) {
 
-    ListTablesResponse listTablesResponse = tableRepository.listTables(
-        catalogName,
-        schemaName,
-        maxResults,
-        pageToken,
-        omitProperties.orElse(false),
-        omitColumns.orElse(false));
+    ListTablesResponse listTablesResponse =
+        tableRepository.listTables(
+            catalogName,
+            schemaName,
+            maxResults,
+            pageToken,
+            omitProperties.orElse(false),
+            omitColumns.orElse(false));
 
     applyResponseFilter(SecurableType.TABLE, listTablesResponse.getTables());
     return HttpResponse.ofJson(listTablesResponse);

@@ -92,7 +92,7 @@ public class SchemaRepository {
           return schemaInfo;
         },
         "Failed to create schema",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   private void addNamespaceData(SchemaInfo schemaInfo, String catalogName) {
@@ -137,7 +137,7 @@ public class SchemaRepository {
         sessionFactory,
         session -> getSchemaIdOrThrow(session, catalogName, schemaName),
         "Failed to get schema id",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   private void validateSchemaNotExistInCatalog(
@@ -180,7 +180,7 @@ public class SchemaRepository {
           return listSchemas(session, catalogId, catalogName, maxResults, pageToken);
         },
         "Failed to list schemas",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public ListSchemasResponse listSchemas(
@@ -213,7 +213,7 @@ public class SchemaRepository {
               schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
         },
         "Failed to get schema",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public SchemaInfo updateSchema(String fullName, UpdateSchema updateSchema) {
@@ -255,7 +255,7 @@ public class SchemaRepository {
           return convertFromDAO(session, schemaInfoDAO, fullName);
         },
         "Failed to update schema",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   public List<DeletedResource> deleteSchema(String fullName, boolean force) {
@@ -271,7 +271,7 @@ public class SchemaRepository {
               session, catalog.getId(), names.catalogName(), names.schemaName(), force);
         },
         "Failed to delete schema",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   private List<DeletedResource> deleteChildTables(

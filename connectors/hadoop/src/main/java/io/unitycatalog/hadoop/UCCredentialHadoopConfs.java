@@ -4,9 +4,11 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.auth.TokenProvider;
 import io.unitycatalog.client.internal.Preconditions;
+import io.unitycatalog.hadoop.internal.CloudType;
 import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.UCDeltaTableIdentifier;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 
@@ -62,11 +64,23 @@ public final class UCCredentialHadoopConfs {
    * Creates a new {@link Builder} with the two required fields.
    *
    * @param catalogUri the Unity Catalog server base URI, e.g. {@code "https://my-uc-server"}
-   * @param scheme the storage URI scheme ({@code "s3"}, {@code "gs"}, {@code "abfs"}, or {@code
-   *     "abfss"})
+   * @param scheme the storage URI scheme ({@code "s3"}, {@code "s3a"}, {@code "gs"}, {@code
+   *     "abfs"}, or {@code "abfss"})
    */
   public static Builder builder(String catalogUri, String scheme) {
     return new Builder(catalogUri, scheme);
+  }
+
+  /**
+   * Whether {@code scheme} is a cloud storage scheme this builder can vend Hadoop credentials for
+   * (including Hadoop aliases such as {@code s3a}). Comparison is case-insensitive so SQL URIs like
+   * {@code S3://} match the same set as catalog-table credential vending.
+   */
+  public static boolean isSupportedScheme(String scheme) {
+    if (scheme == null) {
+      return false;
+    }
+    return CloudType.fromScheme(scheme.toLowerCase(Locale.ROOT)).isPresent();
   }
 
   /**

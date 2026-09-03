@@ -6,12 +6,19 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeResourceKeys;
+import io.unitycatalog.server.auth.annotation.ResponseAuthorizeFilter;
 import io.unitycatalog.server.model.CreateVolumeRequestContent;
 import io.unitycatalog.server.model.ListVolumesResponseContent;
 import io.unitycatalog.server.model.SchemaInfo;
@@ -25,13 +32,6 @@ import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Optional;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Patch;
-import com.linecorp.armeria.server.annotation.Post;
 import lombok.SneakyThrows;
 
 public class VolumeService extends AuthorizedService implements UnityCatalogRestService {
@@ -65,10 +65,10 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
    *       <ul>
    *         <li>The storage location must not overlap with any existing table, volume, or
    *             registered model
-   *         <li>If the storage location falls within a registered external location, the user
-   *             must have OWNER or CREATE_EXTERNAL_VOLUME permission on that external location
-   *         <li>If the storage location does not fall within any registered external location,
-   *             the volume can be created without additional external location permissions
+   *         <li>If the storage location falls within a registered external location, the user must
+   *             have OWNER or CREATE_EXTERNAL_VOLUME permission on that external location
+   *         <li>If the storage location does not fall within any registered external location, the
+   *             volume can be created without additional external location permissions
    *       </ul>
    *   <li>MANAGED volume creation delegates to catalog and schema for permission. Once the catalog
    *       or schema is allowed to create under an external location with permission
@@ -80,7 +80,8 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
    * @return HTTP response containing the created VolumeInfo
    */
   @Post("")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
       (#authorize(#principal, #schema, OWNER) ||
         #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_VOLUME)) &&
@@ -91,12 +92,12 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
       """)
   public HttpResponse createVolume(
       @AuthorizeResourceKeys({
-        @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
-        @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
-        @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
-      })
-      @AuthorizeKey(key = "volume_type")
-      CreateVolumeRequestContent createVolumeRequest) {
+            @AuthorizeResourceKey(value = SCHEMA, key = "schema_name"),
+            @AuthorizeResourceKey(value = CATALOG, key = "catalog_name"),
+            @AuthorizeResourceKey(value = EXTERNAL_LOCATION, key = "storage_location")
+          })
+          @AuthorizeKey(key = "volume_type")
+          CreateVolumeRequestContent createVolumeRequest) {
     // Throw error if catalog/schema does not exist
     VolumeInfo volumeInfo = volumeRepository.createVolume(createVolumeRequest);
 
@@ -107,7 +108,8 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
     return HttpResponse.ofJson(volumeInfo);
   }
 
-  private static final String LIST_AND_GET_AUTH_EXPRESSION = """
+  private static final String LIST_AND_GET_AUTH_EXPRESSION =
+      """
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
@@ -126,8 +128,8 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
-    ListVolumesResponseContent listVolumesResponse = volumeRepository.listVolumes(
-        catalogName, schemaName, maxResults, pageToken, includeBrowse);
+    ListVolumesResponseContent listVolumesResponse =
+        volumeRepository.listVolumes(catalogName, schemaName, maxResults, pageToken, includeBrowse);
     applyResponseFilter(SecurableType.VOLUME, listVolumesResponse.getVolumes());
     return HttpResponse.ofJson(listVolumesResponse);
   }
@@ -142,7 +144,8 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Patch("/{full_name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       (#authorize(#principal, #volume, OWNER) &&
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA))
@@ -155,7 +158,8 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
   }
 
   @Delete("/{full_name}")
-  @AuthorizeExpression("""
+  @AuthorizeExpression(
+      """
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
       (#authorize(#principal, #volume, OWNER) &&
@@ -174,6 +178,4 @@ public class VolumeService extends AuthorizedService implements UnityCatalogRest
 
     return HttpResponse.of(HttpStatus.OK);
   }
-
 }
-

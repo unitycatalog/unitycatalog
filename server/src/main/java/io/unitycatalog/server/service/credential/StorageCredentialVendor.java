@@ -48,7 +48,8 @@ public class StorageCredentialVendor {
     }
     ValidationUtils.checkArgument(
         !path.isCloudStorageRoot(),
-        "Storage location must include a non-empty path prefix before credentials can be vended: %s",
+        "Storage location must include a non-empty path prefix before credentials can be vended:"
+            + " %s",
         path);
     if (privileges == null || privileges.isEmpty()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Privileges cannot be null or empty.");

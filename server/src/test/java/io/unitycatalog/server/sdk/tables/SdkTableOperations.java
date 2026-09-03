@@ -60,8 +60,8 @@ public class SdkTableOperations implements TableOperations {
   public TableInfo getTable(String tableFullName) throws ApiException {
     return tablesApi.getTable(
         tableFullName,
-        /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true);
+        /* readStreamingTableAsManaged= */ true,
+        /* readMaterializedViewAsManaged= */ true);
   }
 
   @Override

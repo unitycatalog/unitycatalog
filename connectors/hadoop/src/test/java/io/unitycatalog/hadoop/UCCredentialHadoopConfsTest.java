@@ -17,6 +17,22 @@ import org.junit.jupiter.api.Test;
 class UCCredentialHadoopConfsTest {
 
   @Test
+  void isSupportedSchemeMatchesCloudTypeIncludingAliasesAndCasing() {
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("s3")).isTrue();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("s3a")).isTrue();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("S3")).isTrue();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("S3A")).isTrue();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("gs")).isTrue();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("abfs")).isTrue();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("abfss")).isTrue();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("s3n")).isFalse();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("hdfs")).isFalse();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("file")).isFalse();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme("")).isFalse();
+    assertThat(UCCredentialHadoopConfs.isSupportedScheme(null)).isFalse();
+  }
+
+  @Test
   void missingCatalogUriThrows() {
     assertThatThrownBy(() -> UCCredentialHadoopConfs.builder(null, "s3"))
         .isInstanceOf(IllegalArgumentException.class)

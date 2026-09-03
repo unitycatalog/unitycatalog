@@ -14,6 +14,7 @@ public interface TableOperations {
       throws ApiException;
 
   TableInfo getTable(String tableFullName) throws ApiException;
+
   // TableInfo updateTable(UpdateTableRequestContent updateTableRequest) throws IOException;
   void deleteTable(String tableFullName) throws ApiException;
 }

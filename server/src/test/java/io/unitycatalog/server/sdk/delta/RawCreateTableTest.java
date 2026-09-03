@@ -32,9 +32,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The auto-generated {@code unitycatalog-client} can't construct certain malformed payloads --
  * its DTOs reject them at compile time -- but a non-SDK client (Rust, Kernel) is not bound by the
- * SDK's typed shape. This test posts hand-crafted JSON straight at the endpoint to pin server-
- * side validation that the SDK tests cannot reach. Sister to {@link SdkCreateTableTest}, which
- * covers everything reachable through the typed client.
+ * SDK's typed shape. This test posts hand-crafted JSON straight at the endpoint to pin server- side
+ * validation that the SDK tests cannot reach. Sister to {@link SdkCreateTableTest}, which covers
+ * everything reachable through the typed client.
  */
 public class RawCreateTableTest extends BaseCRUDTest {
 
@@ -86,7 +86,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
     assertRejected(
         staging,
         """
-        {"type": "long", "nullable": false, "metadata": {}}""",
+        {"type": "long", "nullable": false, "metadata": {}}\
+        """,
         "columns.fields[0].name is required.");
 
     // -------- DeltaStructField missing 'type', second column in a multi-column request -------
@@ -97,7 +98,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
         staging,
         """
         {"name": "id", "type": "long", "nullable": false, "metadata": {}},
-        {"name": "amount", "nullable": true, "metadata": {}}""",
+        {"name": "amount", "nullable": true, "metadata": {}}\
+        """,
         "columns.fields[1].type is required.");
 
     // -------- a field element that is the bare string instead of a DeltaStructField object --
@@ -125,7 +127,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
     assertRejected(
         staging,
         """
-        {"name": "x", "type": "void", "nullable": false, "metadata": {}}""",
+        {"name": "x", "type": "void", "nullable": false, "metadata": {}}\
+        """,
         "columns.fields[0].type: Unsupported Delta primitive type: void");
 
     // -------- DeltaStructField with a blank name --------
@@ -134,7 +137,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
     assertRejected(
         staging,
         """
-        {"name": "   ", "type": "long", "nullable": false, "metadata": {}}""",
+        {"name": "   ", "type": "long", "nullable": false, "metadata": {}}\
+        """,
         "columns.fields[0].name is required.");
 
     // -------- DeltaStructField missing 'nullable' --------
@@ -142,7 +146,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
     assertRejected(
         staging,
         """
-        {"name": "id", "type": "long", "metadata": {}}""",
+        {"name": "id", "type": "long", "metadata": {}}\
+        """,
         "columns.fields[0].nullable is required.");
 
     // -------- DeltaStructField missing 'metadata' --------
@@ -152,7 +157,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
     assertRejected(
         staging,
         """
-        {"name": "id", "type": "long", "nullable": false}""",
+        {"name": "id", "type": "long", "nullable": false}\
+        """,
         "columns.fields[0].metadata is required.");
 
     // -------- DeltaArrayType missing 'contains-null' --------
@@ -167,7 +173,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
           "type": {"type": "array", "element-type": "string"},
           "nullable": true,
           "metadata": {}
-        }""",
+        }\
+        """,
         "columns.fields[0].type.contains-null is required.");
 
     // -------- DeltaMapType missing 'value-contains-null' --------
@@ -179,7 +186,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
           "type": {"type": "map", "key-type": "string", "value-type": "string"},
           "nullable": true,
           "metadata": {}
-        }""",
+        }\
+        """,
         "columns.fields[0].type.value-contains-null is required.");
 
     // -------- DeltaMapType missing 'key-type' --------
@@ -191,7 +199,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
           "type": {"type": "map", "value-type": "string", "value-contains-null": false},
           "nullable": true,
           "metadata": {}
-        }""",
+        }\
+        """,
         "columns.fields[0].type.key-type is required.");
 
     // -------- DeltaMapType missing 'value-type' --------
@@ -203,7 +212,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
           "type": {"type": "map", "key-type": "string", "value-contains-null": false},
           "nullable": true,
           "metadata": {}
-        }""",
+        }\
+        """,
         "columns.fields[0].type.value-type is required.");
 
     // -------- DeltaDecimalType: precision > 38 (string wire form) --------
@@ -212,7 +222,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
     assertRejected(
         staging,
         """
-        {"name": "price", "type": "decimal(50,2)", "nullable": true, "metadata": {}}""",
+        {"name": "price", "type": "decimal(50,2)", "nullable": true, "metadata": {}}\
+        """,
         "columns.fields[0].type.precision must be in [0, 38], got 50.");
 
     // -------- DeltaDecimalType: precision < 0 (object wire form) --------
@@ -227,14 +238,16 @@ public class RawCreateTableTest extends BaseCRUDTest {
           "type": {"type": "decimal", "precision": -1, "scale": 0},
           "nullable": true,
           "metadata": {}
-        }""",
+        }\
+        """,
         "columns.fields[0].type.precision must be in [0, 38], got -1.");
 
     // -------- DeltaDecimalType: scale > precision (string wire form) --------
     assertRejected(
         staging,
         """
-        {"name": "price", "type": "decimal(5,10)", "nullable": true, "metadata": {}}""",
+        {"name": "price", "type": "decimal(5,10)", "nullable": true, "metadata": {}}\
+        """,
         "columns.fields[0].type.scale must be in [0, precision=5], got 10.");
 
     // -------- DeltaDecimalType: missing precision (object wire form) --------
@@ -247,7 +260,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
           "type": {"type": "decimal", "scale": 0},
           "nullable": true,
           "metadata": {}
-        }""",
+        }\
+        """,
         "columns.fields[0].type.precision is required.");
 
     // -------- nested DeltaStructField inside an array of structs --------
@@ -268,7 +282,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
           },
           "nullable": true,
           "metadata": {}
-        }""",
+        }\
+        """,
         "columns.fields[0].type.element-type.fields[0].name is required.");
 
     // -------- columns.fields is an empty list --------
@@ -289,7 +304,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
         staging,
         """
         {"name": "id", "type": "long", "nullable": false, "metadata": {}},
-        {"name": "ID", "type": "string", "nullable": true, "metadata": {}}""",
+        {"name": "ID", "type": "string", "nullable": true, "metadata": {}}\
+        """,
         "Duplicate field name (case-insensitive) in columns.fields[1]: ID");
 
     // -------- duplicate field name inside a nested struct --------
@@ -313,9 +329,10 @@ public class RawCreateTableTest extends BaseCRUDTest {
           },
           "nullable": true,
           "metadata": {}
-        }""",
+        }\
+        """,
         "Duplicate field name (case-insensitive) in columns.fields[0].type.element-type"
-          + ".fields[1]: x");
+            + ".fields[1]: x");
   }
 
   // ---------- helpers ----------
@@ -325,8 +342,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
    * columnJson} (or no fields at all when {@code columnJson} is empty), and assert the server
    * rejects it with HTTP 400 and the exact {@code expectedMessage} in {@code error.message}. The
    * surrounding request body is a full UC-managed shape (location/table-type/protocol/properties)
-   * bound to the given staging response, so cases that pass the column
-   * gates land on a request the rest of the server would normally accept.
+   * bound to the given staging response, so cases that pass the column gates land on a request the
+   * rest of the server would normally accept.
    */
   @SneakyThrows
   private void assertRejected(
@@ -336,8 +353,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
   }
 
   /**
-   * Like {@link #assertRejected} but matches a substring of {@code error.message} -- used when
-   * the response message comes from Jackson + Armeria framework wrapping (e.g. a deserialization
+   * Like {@link #assertRejected} but matches a substring of {@code error.message} -- used when the
+   * response message comes from Jackson + Armeria framework wrapping (e.g. a deserialization
    * mismatch) and contains source-location / reference-chain noise we don't want to pin.
    */
   @SneakyThrows
@@ -395,8 +412,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
             .path(CREATE_TABLE_PATH)
             .contentType(MediaType.JSON)
             .build();
-    AggregatedHttpResponse resp =
-        client.execute(headers, HttpData.ofUtf8(body)).aggregate().join();
+    AggregatedHttpResponse resp = client.execute(headers, HttpData.ofUtf8(body)).aggregate().join();
 
     String content = resp.contentUtf8();
     assertThat(resp.status().code()).as("body: %s", content).isEqualTo(400);
@@ -408,8 +424,8 @@ public class RawCreateTableTest extends BaseCRUDTest {
   /**
    * Posts a createTable request whose {@code columns.fields} contains {@code columnJson} and
    * asserts the envelope (HTTP 400, {@code error.code} 400, {@code error.type}
-   * "InvalidParameterValueException"). Returns {@code error} so the caller can additionally
-   * assert on {@code message}.
+   * "InvalidParameterValueException"). Returns {@code error} so the caller can additionally assert
+   * on {@code message}.
    */
   @SneakyThrows
   private JsonNode postAndAssertRejected(DeltaStagingTableResponse staging, String columnJson) {
@@ -454,8 +470,7 @@ public class RawCreateTableTest extends BaseCRUDTest {
             .path(CREATE_TABLE_PATH)
             .contentType(MediaType.JSON)
             .build();
-    AggregatedHttpResponse resp =
-        client.execute(headers, HttpData.ofUtf8(body)).aggregate().join();
+    AggregatedHttpResponse resp = client.execute(headers, HttpData.ofUtf8(body)).aggregate().join();
 
     String content = resp.contentUtf8();
     assertThat(resp.status().code()).as("body: %s", content).isEqualTo(400);

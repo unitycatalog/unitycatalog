@@ -61,6 +61,36 @@ class CredPropsUtilTest {
         .hasMessageContaining("Initial credentials cannot be null or empty");
   }
 
+  @Test
+  void pathCredPropsAlwaysIncludePathIdentityKeys() throws Exception {
+    String path = "s3://bucket/data";
+    CredPropsUtil.genericCredFetcherFactory =
+        (apiClient, credId) ->
+            CredPropsBaseTest.mockGenericCredentialFetcher(
+                new io.unitycatalog.hadoop.internal.auth.AwsCredential(
+                    "ak", "sk", "st", null, path));
+
+    for (boolean renew : new boolean[] {false, true}) {
+      Map<String, String> props =
+          CredPropsUtil.createPathCredProps(
+              renew,
+              false,
+              new Configuration(false),
+              "s3",
+              null,
+              "http://uc",
+              tokenProvider(),
+              path,
+              UCCredentialHadoopConfs.PathOperation.PATH_READ,
+              Map.of());
+      assertThat(props)
+          .as("renew=%s", renew)
+          .containsEntry(UCHadoopConfConstants.UC_CREDENTIALS_TYPE_KEY, "path")
+          .containsEntry(UCHadoopConfConstants.UC_PATH_KEY, path)
+          .containsEntry(UCHadoopConfConstants.UC_PATH_OPERATION_KEY, "PATH_READ");
+    }
+  }
+
   private static TokenProvider tokenProvider() {
     return TokenProvider.create(Map.of("type", "static", "token", "tok"));
   }

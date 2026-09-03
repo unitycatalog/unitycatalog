@@ -49,6 +49,7 @@ public class UCHadoopConfConstants {
 
   /** The storage prefix covered by a file system or a UC credential. */
   public static final String UC_CREDENTIAL_PREFIX_KEY = "fs.unitycatalog.credential.prefix";
+
   /**
    * Stable id derived from the credential context ({@code catalogUri}, storage {@code scheme}, and
    * {@code TokenProvider.configs()}) to isolate caches per credential context.
@@ -98,6 +99,17 @@ public class UCHadoopConfConstants {
   // Keys for path based temporary credential requests.
   public static final String UC_PATH_KEY = "fs.unitycatalog.path";
   public static final String UC_PATH_OPERATION_KEY = "fs.unitycatalog.path.operation";
+
+  /**
+   * Analyzer skip markers after a path-credential lookup, including an allowed miss. These are not
+   * {@code CredId} fields: {@code credentials.type=path} plus {@link #UC_PATH_KEY} would make
+   * Hadoop treat the job conf as a path-cred scope (and fail without {@code cred.context.id}).
+   */
+  public static final String UC_PATH_VENDING_ATTEMPTED_KEY =
+      "fs.unitycatalog.path.vending.attempted";
+
+  public static final String UC_PATH_VENDING_ATTEMPTED_VALUE = "true";
+  public static final String UC_PATH_VENDING_LOCATION_KEY = "fs.unitycatalog.path.vending.location";
 
   // Key indicating the credential request type, table or path.
   public static final String UC_CREDENTIALS_TYPE_KEY = "fs.unitycatalog.credentials.type";

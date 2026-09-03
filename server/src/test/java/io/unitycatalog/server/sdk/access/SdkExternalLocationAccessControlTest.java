@@ -450,10 +450,12 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
       // Grant test case specific permissions
       for (Privileges privilege : testCase.grantPermissions) {
         switch (privilege) {
-          case CREATE_TABLE, CREATE_VOLUME -> grantPermissions(
-              testCase.email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, privilege);
-          case CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME -> grantPermissions(
-              testCase.email, SecurableType.EXTERNAL_LOCATION, externalLocationName, privilege);
+          case CREATE_TABLE, CREATE_VOLUME ->
+              grantPermissions(
+                  testCase.email, SecurableType.SCHEMA, TestUtils.SCHEMA_FULL_NAME, privilege);
+          case CREATE_EXTERNAL_TABLE, CREATE_EXTERNAL_VOLUME ->
+              grantPermissions(
+                  testCase.email, SecurableType.EXTERNAL_LOCATION, externalLocationName, privilege);
           default -> throw new RuntimeException("Unknown privilege: " + privilege);
         }
       }
@@ -513,8 +515,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
   }
 
   /** Minimum valid DeltaCreateTableRequest for an EXTERNAL Delta table. */
-  private static DeltaCreateTableRequest
-      deltaExternalTableRequest(String name, String location) {
+  private static DeltaCreateTableRequest deltaExternalTableRequest(String name, String location) {
     return new DeltaCreateTableRequest()
         .name(name)
         .location(location)
@@ -532,9 +533,7 @@ public class SdkExternalLocationAccessControlTest extends SdkAccessControlBaseCR
                     List.of(
                         new DeltaStructField()
                             .name("id")
-                            .type(
-                                new DeltaPrimitiveType()
-                                    .type("long"))
+                            .type(new DeltaPrimitiveType().type("long"))
                             .nullable(true)
                             .metadata(new DeltaStructFieldMetadata()))))
         .properties(java.util.Map.of("delta.enableDeletionVectors", "true"))
