@@ -1,11 +1,14 @@
 package io.unitycatalog.server.sharing;
 
+import io.opensharing.catalog.unity.UnityCatalogConnector;
 import io.opensharing.runtime.OpenSharing;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.net.URI;
+import java.time.Duration;
 import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +23,11 @@ public final class OpenSharingLifecycle implements AutoCloseable {
   private OpenSharingLifecycle(AutoCloseable context) {
     this.context = context;
   }
+
+  /** Timeouts for the loopback call to UC's own Armeria server — see {@link #start}. */
+  private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
+
+  private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
   /**
    * Starts embedded OpenSharing against UC's own database — the same JDBC connection {@code
@@ -38,12 +46,23 @@ public final class OpenSharingLifecycle implements AutoCloseable {
    * still work — nothing about the routing is a security boundary between UC and OpenSharing, both
    * of which trust each other completely in one process — but restricting the bind address is what
    * makes "one address" true on the network, not merely in how the demo happens to be run.
+   *
+   * <p>Catalog access is OpenSharing's own {@code UnityCatalogConnector} (the same class standalone
+   * mode uses) pointed at UC's Armeria server on {@code 127.0.0.1:armeriaPort} — a real HTTP call,
+   * not a direct repository read. That is deliberate: UC enforces its own grants (metastore /
+   * catalog / schema / table privileges) in {@code UnityAccessDecorator}, a decorator wrapped
+   * around Armeria's HTTP dispatch, not inside the repositories or service methods themselves —
+   * calling a repository directly, or even calling a {@code TableService} method as a plain Java
+   * call, bypasses every grant check UC has. Going through the real HTTP endpoint, on the same
+   * loopback address UC itself is reached on, is what lets this be embedded without becoming a
+   * second implementation of UC's authorization policy to keep in sync by hand.
    */
   public static OpenSharingLifecycle start(
       ServerProperties serverProperties,
       SecurityContext securityContext,
       Repositories repositories,
-      HibernateConfigurator hibernateConfigurator) {
+      HibernateConfigurator hibernateConfigurator,
+      int armeriaPort) {
     if (!serverProperties.isOpenSharingEnabled()) {
       return null;
     }
@@ -54,9 +73,10 @@ public final class OpenSharingLifecycle implements AutoCloseable {
         serverProperties.getOpenSharingPort(),
         serverProperties.getOpenSharingRoutedPathPrefixes());
     try {
+      URI ucLoopback = URI.create("http://127.0.0.1:" + armeriaPort + "/api/2.1/unity-catalog");
       OpenSharing.EmbeddedBuilder builder =
           OpenSharing.embedded()
-              .catalog(new UnityCatalogEmbeddedConnector(repositories))
+              .catalog(new UnityCatalogConnector(ucLoopback, CONNECT_TIMEOUT, REQUEST_TIMEOUT))
               .identityResolver(
                   new UnityCatalogProviderIdentityResolver(
                       serverProperties, securityContext, repositories))

@@ -171,13 +171,16 @@ public class UnityCatalogServer implements AutoCloseable {
 
     unityCatalogServerBuilder.serverProperties.checkOpenSharingConfigured();
     openSharingLifecycle =
-        startEmbeddedOpenSharing(unityCatalogServerBuilder.serverProperties, repositories);
+        startEmbeddedOpenSharing(
+            unityCatalogServerBuilder.serverProperties,
+            repositories,
+            unityCatalogServerBuilder.port);
 
     return armeriaServerBuilder.build();
   }
 
   private AutoCloseable startEmbeddedOpenSharing(
-      ServerProperties serverProperties, Repositories repositories) {
+      ServerProperties serverProperties, Repositories repositories, int armeriaPort) {
     if (!serverProperties.isOpenSharingEnabled()) {
       return null;
     }
@@ -191,8 +194,15 @@ public class UnityCatalogServer implements AutoCloseable {
                   ServerProperties.class,
                   SecurityContext.class,
                   Repositories.class,
-                  HibernateConfigurator.class)
-              .invoke(null, serverProperties, securityContext, repositories, hibernateConfigurator);
+                  HibernateConfigurator.class,
+                  int.class)
+              .invoke(
+                  null,
+                  serverProperties,
+                  securityContext,
+                  repositories,
+                  hibernateConfigurator,
+                  armeriaPort);
       return started == null ? null : (AutoCloseable) started;
     } catch (ReflectiveOperationException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Failed to start embedded OpenSharing.", e);
