@@ -4,6 +4,7 @@ import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import io.opensharing.principal.Caller;
 import io.opensharing.runtime.ProviderIdentityResolver;
@@ -47,8 +48,7 @@ public final class UnityCatalogProviderIdentityResolver implements ProviderIdent
       return Optional.empty();
     }
     if (!serverProperties.isAuthorizationEnabled()) {
-      return Optional.of(
-          new Caller("uc-local", serverProperties.getOpenSharingPrincipalName(), token));
+      return Optional.of(new Caller("uc-local", disabledAuthCallerName(token), token));
     }
     try {
       DecodedJWT decoded = JWT.decode(token);
@@ -67,6 +67,24 @@ public final class UnityCatalogProviderIdentityResolver implements ProviderIdent
     } catch (Exception e) {
       LOGGER.debug("Could not resolve OpenSharing provider identity from UC token", e);
       return Optional.empty();
+    }
+  }
+
+  /**
+   * The name attributed to a provider-admin caller when {@code server.authorization=disable}, so
+   * there is no UC user to look up and no signature to verify. Rather than a name configured on
+   * UC's side — which has nothing to do with who actually presented the token — this reads the
+   * same {@code sub} claim a verified caller's identity comes from, decoded but not verified,
+   * since nothing is verified in this mode anyway. A token that is not even shaped like a JWT
+   * (the placeholder demo scripts use) falls back to the token text itself: still a caller
+   * identified by what they presented, not by a value the server made up.
+   */
+  private static String disabledAuthCallerName(String token) {
+    try {
+      String subject = JWT.decode(token).getSubject();
+      return subject == null || subject.isBlank() ? token : subject;
+    } catch (JWTDecodeException e) {
+      return token;
     }
   }
 

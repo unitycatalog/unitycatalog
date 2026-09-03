@@ -66,10 +66,15 @@ public final class OpenSharingLifecycle implements AutoCloseable {
     if (!serverProperties.isOpenSharingEnabled()) {
       return null;
     }
+    // main() always starts Armeria on the public port + 1 (see UnityCatalogServer.main), so the
+    // public address a client — and a recipient's activation URL / config.share — actually
+    // reaches this same process on is one below armeriaPort. Derived rather than a separate
+    // config property, so there is nothing for an operator to keep in sync with the real port.
+    String externalBaseUrl = "http://localhost:" + (armeriaPort - 1);
     LOGGER.info(
         "Starting embedded OpenSharing on {} (internal port {}), routed from UC's own port under"
             + " {}",
-        serverProperties.getOpenSharingExternalBaseUrl(),
+        externalBaseUrl,
         serverProperties.getOpenSharingPort(),
         serverProperties.getOpenSharingRoutedPathPrefixes());
     try {
@@ -90,9 +95,7 @@ public final class OpenSharingLifecycle implements AutoCloseable {
               .property(
                   "opensharing.activation.base-path",
                   serverProperties.getOpenSharingActivationBasePath())
-              .property(
-                  "opensharing.activation.external-base-url",
-                  serverProperties.getOpenSharingExternalBaseUrl())
+              .property("opensharing.activation.external-base-url", externalBaseUrl)
               .property(
                   "opensharing.security.credential-encryption-key",
                   serverProperties.getOpenSharingCredentialEncryptionKey());
