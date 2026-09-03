@@ -62,15 +62,16 @@ public final class OpenSharingLifecycle implements AutoCloseable {
       SecurityContext securityContext,
       Repositories repositories,
       HibernateConfigurator hibernateConfigurator,
-      int armeriaPort) {
+      int armeriaPort,
+      int publicPort) {
     if (!serverProperties.isOpenSharingEnabled()) {
       return null;
     }
-    // main() always starts Armeria on the public port + 1 (see UnityCatalogServer.main), so the
-    // public address a client — and a recipient's activation URL / config.share — actually
-    // reaches this same process on is one below armeriaPort. Derived rather than a separate
-    // config property, so there is nothing for an operator to keep in sync with the real port.
-    String externalBaseUrl = "http://localhost:" + (armeriaPort - 1);
+    // The address a client — and a recipient's activation URL / config.share — actually reaches
+    // this process on, which UnityCatalogServer already knows and passes in rather than this
+    // class inferring it from armeriaPort. Derived, not a separate config property, so there is
+    // nothing for an operator to keep in sync with the real port by hand.
+    String externalBaseUrl = "http://localhost:" + publicPort;
     LOGGER.info(
         "Starting embedded OpenSharing on {} (internal port {}), routed from UC's own port under"
             + " {}",
