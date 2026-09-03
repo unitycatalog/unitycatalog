@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sharing;
 
 import io.opensharing.runtime.OpenSharing;
+import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityContext;
@@ -87,11 +88,16 @@ public final class OpenSharingLifecycle implements AutoCloseable {
     }
     // UC's own connection decides the credentials these two connection pools must agree on to open
     // the same database — not OpenSharing's application.yml default of "sa". If UC's
-    // hibernate.properties leaves username/password unset, UC connected (and, on first connect, H2
-    // created the database's admin user) with an empty one, so this sets an explicit empty string
-    // here too rather than falling through to OpenSharing's own default.
-    builder.property(
-        "spring.datasource.username", hibernate.getProperty("hibernate.connection.username", ""));
+    // hibernate.properties leaves username unset, UC connected (and, on first connect, H2 created
+    // the database's admin user) with an empty one, so this sets an explicit empty string here too
+    // rather than falling through to OpenSharing's own default. Username is resolved the same way
+    // JCasbinAuthorizer resolves it for its own JDBC adapter: UC's deployment docs and Helm chart
+    // set the non-standard hibernate.connection.user, which Hibernate's own connection provider
+    // (and, until now, this method) silently ignores in favor of the standard
+    // hibernate.connection.username — so a Postgres/MySQL setup that followed those docs literally
+    // would otherwise connect with no username at all.
+    String username = JCasbinAuthorizer.resolveConnectionUsername(hibernate);
+    builder.property("spring.datasource.username", username == null ? "" : username);
     builder.property(
         "spring.datasource.password", hibernate.getProperty("hibernate.connection.password", ""));
   }
