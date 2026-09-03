@@ -64,6 +64,10 @@ import java.util.UUID;
  */
 public class DeltaApiService extends AuthorizedService implements RegisteredService {
 
+  private static final int SUPPORTED_PROTOCOL_MAJOR_VERSION = 1;
+  private static final int SUPPORTED_PROTOCOL_MINOR_VERSION = 0;
+  private static final String SUPPORTED_PROTOCOL_VERSION = "1.0";
+
   private static final List<String> ENDPOINTS =
       List.of(
           "POST /v1/catalogs/{catalog}/schemas/{schema}/staging-tables",
@@ -124,8 +128,49 @@ public class DeltaApiService extends AuthorizedService implements RegisteredServ
     // Verify catalog exists
     catalogRepository.getCatalog(catalog);
 
-    // For now, we only have 1.0 as the first protocol version. Input protocolVersions is ignored.
-    return new DeltaCatalogConfig().endpoints(ENDPOINTS).protocolVersion("1.0");
+    return new DeltaCatalogConfig()
+        .endpoints(ENDPOINTS)
+        .protocolVersion(negotiateProtocolVersion(protocolVersions));
+  }
+
+  private static String negotiateProtocolVersion(String protocolVersions) {
+    if (protocolVersions == null || protocolVersions.isBlank()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Must supply at least one protocol version.");
+    }
+
+    boolean isSupported = false;
+    for (String version : protocolVersions.split(",", -1)) {
+      String[] parts = version.trim().split("\\.", -1);
+      if (parts.length != 2) {
+        throw invalidProtocolVersion(version);
+      }
+
+      try {
+        int major = Integer.parseInt(parts[0]);
+        int minor = Integer.parseInt(parts[1]);
+        if (major < 1 || minor < 0) {
+          throw invalidProtocolVersion(version);
+        }
+        if (major == SUPPORTED_PROTOCOL_MAJOR_VERSION
+            && minor >= SUPPORTED_PROTOCOL_MINOR_VERSION) {
+          isSupported = true;
+        }
+      } catch (NumberFormatException e) {
+        throw invalidProtocolVersion(version);
+      }
+    }
+
+    if (!isSupported) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "No compatible protocol version found for: " + protocolVersions);
+    }
+    return SUPPORTED_PROTOCOL_VERSION;
+  }
+
+  private static BaseException invalidProtocolVersion(String version) {
+    return new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid protocol version: " + version);
   }
 
   // ==================== Load Table API ====================
