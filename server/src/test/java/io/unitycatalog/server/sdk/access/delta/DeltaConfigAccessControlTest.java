@@ -32,7 +32,7 @@ public class DeltaConfigAccessControlTest extends SdkAccessControlBaseCRUDTest {
     ServerConfig noAuthConfig = new ServerConfig(serverConfig.getServerUrl(), null);
     DeltaConfigurationApi noAuthApi =
         new DeltaConfigurationApi(TestUtils.createApiClient(noAuthConfig));
-    assertThatThrownBy(() -> noAuthApi.getConfig(TestUtils.CATALOG_NAME, "1.1"))
+    assertThatThrownBy(() -> noAuthApi.getConfig(TestUtils.CATALOG_NAME, "1.0"))
         .isInstanceOf(ApiException.class)
         .satisfies(e -> assertThat(((ApiException) e).getCode()).isEqualTo(401));
 
@@ -41,7 +41,7 @@ public class DeltaConfigAccessControlTest extends SdkAccessControlBaseCRUDTest {
     ServerConfig regularConfig = createTestUserServerConfig(REGULAR_1);
     DeltaConfigurationApi regularApi =
         new DeltaConfigurationApi(TestUtils.createApiClient(regularConfig));
-    assertThatThrownBy(() -> regularApi.getConfig(TestUtils.CATALOG_NAME, "1.1"))
+    assertThatThrownBy(() -> regularApi.getConfig(TestUtils.CATALOG_NAME, "1.0"))
         .isInstanceOf(ApiException.class)
         .satisfies(e -> assertThat(((ApiException) e).getCode()).isEqualTo(403));
 
@@ -69,8 +69,8 @@ public class DeltaConfigAccessControlTest extends SdkAccessControlBaseCRUDTest {
         new DeltaConfigurationApi(TestUtils.createApiClient(principalConfig));
     grantPermissions(
         PRINCIPAL_1, SecurableType.CATALOG, TestUtils.CATALOG_NAME, Privileges.USE_CATALOG);
-    DeltaCatalogConfig config = principalApi.getConfig(TestUtils.CATALOG_NAME, "1.1");
+    DeltaCatalogConfig config = principalApi.getConfig(TestUtils.CATALOG_NAME, "1.0");
     assertThat(config.getEndpoints()).isNotEmpty();
-    assertThat(config.getProtocolVersion()).isEqualTo("1.1");
+    assertThat(config.getProtocolVersion()).isEqualTo("1.0");
   }
 }

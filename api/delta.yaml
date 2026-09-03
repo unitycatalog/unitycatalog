@@ -20,7 +20,7 @@ servers:
 info:
   title: UC Delta API
   summary: REST API for Delta Lake table catalog operations
-  version: '1.1'
+  version: '1.0'
   description: |
     This is a new catalog API for external Delta client access to UC managed and external
     Delta tables. While inspired by the Apache Iceberg REST Catalog (IRC) API style, this API
@@ -96,7 +96,7 @@ paths:
                   - "POST /v1/catalogs/{catalog}/schemas/{schema}/tables/{table}/metrics"
                   - "GET /v1/staging-tables/{table_id}/credentials"
                   - "GET /v1/temporary-path-credentials"
-                protocol-version: "1.1"
+                protocol-version: "1.0"
         '400':
           $ref: '#/components/responses/BadRequestErrorResponse'
         '401':
@@ -641,7 +641,7 @@ components:
             type: string
         protocol-version:
           type: string
-          description: The negotiated protocol version (e.g., "1.1")
+          description: The negotiated protocol version (e.g., "1.0")
       required:
         - endpoints
         - protocol-version

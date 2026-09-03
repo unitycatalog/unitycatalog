@@ -49,19 +49,19 @@ public class SdkDeltaConfigTest extends BaseServerTest {
   @Test
   public void testGetConfig() throws Exception {
     // Success: valid catalog returns endpoints and protocol version
-    DeltaCatalogConfig config = configApi.getConfig(TestUtils.CATALOG_NAME, "1.1");
+    DeltaCatalogConfig config = configApi.getConfig(TestUtils.CATALOG_NAME, "1.0");
     assertThat(config.getEndpoints()).isNotEmpty();
-    assertThat(config.getProtocolVersion()).isEqualTo("1.1");
+    assertThat(config.getProtocolVersion()).isEqualTo("1.0");
 
     // Error: missing catalog returns 400 with InvalidParameterValueException
     TestUtils.assertDeltaApiException(
-        () -> configApi.getConfig("", "1.1"),
+        () -> configApi.getConfig("", "1.0"),
         DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
         "catalog");
 
     // Error: nonexistent catalog returns 404 with NoSuchCatalogException
     TestUtils.assertDeltaApiException(
-        () -> configApi.getConfig("nonexistent", "1.1"),
+        () -> configApi.getConfig("nonexistent", "1.0"),
         DeltaErrorType.NO_SUCH_CATALOG_EXCEPTION,
         "nonexistent");
   }
