@@ -201,40 +201,59 @@ class UCSingleCatalog
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
   override def loadTable(ident: Identifier): Table = {
-    requireAddressableTableNameOrDeltaPath(ident)
+    requireAddressableTableNameOrPathTable(ident)
     delegate.loadTable(ident)
   }
 
   override def loadTable(ident: Identifier, version: String): Table = {
-    requireAddressableTableNameOrDeltaPath(ident)
+    requireAddressableTableNameOrPathTable(ident)
     delegate.loadTable(ident, version)
   }
 
   override def loadTable(ident: Identifier, timestamp: Long): Table = {
-    requireAddressableTableNameOrDeltaPath(ident)
+    requireAddressableTableNameOrPathTable(ident)
     delegate.loadTable(ident, timestamp)
   }
 
   /**
-   * Prevents non-Delta path identifiers (for example, `parquet`.`s3://bucket/path`) from reaching
+   * Prevents file-format path identifiers (for example, `parquet`.`s3://bucket/path`) from reaching
    * catalog delegates that interpret them as Unity Catalog table names. Reporting these identifiers
-   * as missing lets Spark's SQL-on-file resolution handle them instead. Delta paths remain delegated
-   * because DeltaCatalog resolves those directly.
+   * as missing lets Spark's SQL-on-file resolution handle them instead.
+   *
+   * Delta and Iceberg path identifiers remain delegated so DeltaCatalog can resolve
+   * `delta.`path`` via `loadPathTable` and `iceberg.`path`` via `newIcebergPathTable`.
+   * Nested namespaces still fail with [[UCSingleCatalog.checkUnsupportedNestedNamespace]] rather
+   * than looking like a missing table.
    */
-  private def requireAddressableTableNameOrDeltaPath(ident: Identifier): Unit = {
-    val isDeltaPath =
-      ident.namespace().length == 1 && ident.namespace()(0).equalsIgnoreCase("delta")
-    val isAddressableTableName =
-      ident.namespace().length == 1 &&
-        !ident.namespace()(0).contains("/") &&
-        !ident.name().contains("/")
-    if (!isAddressableTableName && !isDeltaPath) {
+  private def requireAddressableTableNameOrPathTable(ident: Identifier): Unit = {
+    if (!shouldDelegateCatalogLookup(ident)) {
       throw new NoSuchTableException(ident)
     }
   }
 
   override def tableExists(ident: Identifier): Boolean = {
-    delegate.tableExists(ident)
+    shouldDelegateCatalogLookup(ident) && delegate.tableExists(ident)
+  }
+
+  /**
+   * True when the identifier should reach DeltaCatalog / UCProxy. Path-based Delta and Iceberg
+   * identifiers are always delegated. Everything else must be a UC `schema.table` name; nested
+   * namespaces throw, and file-format paths (`parquet.`s3://...``) are treated as absent.
+   */
+  private def shouldDelegateCatalogLookup(ident: Identifier): Boolean = {
+    if (isDeltaOrIcebergPath(ident)) {
+      true
+    } else {
+      UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+      UCSingleCatalog.isAddressableTableName(ident)
+    }
+  }
+
+  /** Matches DeltaCatalog's `hasDeltaNamespace` / `hasIcebergNamespace` path-table probe. */
+  private def isDeltaOrIcebergPath(ident: Identifier): Boolean = {
+    ident.namespace().length == 1 && (
+      ident.namespace()(0).equalsIgnoreCase("delta") ||
+        ident.namespace()(0).equalsIgnoreCase("iceberg"))
   }
 
   override def capabilities(): util.Set[TableCatalogCapability] = delegate.capabilities()
