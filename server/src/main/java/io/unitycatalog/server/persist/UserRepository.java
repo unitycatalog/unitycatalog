@@ -151,7 +151,7 @@ public class UserRepository {
           return userDAO.toUser();
         },
         "Failed to get user by external id",
-        /* readOnly = */ true);
+        /* readOnly= */ true);
   }
 
   public UserDAO getUserByEmail(Session session, String email) {
