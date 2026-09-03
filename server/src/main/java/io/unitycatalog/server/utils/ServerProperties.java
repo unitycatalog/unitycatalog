@@ -227,8 +227,8 @@ public class ServerProperties {
     OPENSHARING_PORT("server.opensharing.port", "8099", POSITIVE_INTEGER_VALIDATOR),
     OPENSHARING_PROTOCOL_PREFIX(
         "server.opensharing.protocol-prefix", "/api/2.1/opensharing", NOOP_VALIDATOR),
-    OPENSHARING_ADMIN_BASE_PATH(
-        "server.opensharing.admin-base-path", "/api/2.1/opensharing/provider", NOOP_VALIDATOR),
+    OPENSHARING_PROVIDER_BASE_PATH(
+        "server.opensharing.provider-base-path", "/api/2.1/opensharing/provider", NOOP_VALIDATOR),
     OPENSHARING_ACTIVATION_BASE_PATH(
         "server.opensharing.activation-base-path",
         "/api/2.1/opensharing/activation",
@@ -701,8 +701,8 @@ public class ServerProperties {
     return get(Property.OPENSHARING_PROTOCOL_PREFIX);
   }
 
-  public String getOpenSharingAdminBasePath() {
-    return get(Property.OPENSHARING_ADMIN_BASE_PATH);
+  public String getOpenSharingProviderBasePath() {
+    return get(Property.OPENSHARING_PROVIDER_BASE_PATH);
   }
 
   public String getOpenSharingActivationBasePath() {
@@ -713,7 +713,7 @@ public class ServerProperties {
   public List<String> getOpenSharingRoutedPathPrefixes() {
     return List.of(
         getOpenSharingProtocolPrefix(),
-        getOpenSharingAdminBasePath(),
+        getOpenSharingProviderBasePath(),
         getOpenSharingActivationBasePath());
   }
 

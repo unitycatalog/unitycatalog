@@ -65,7 +65,8 @@ public final class OpenSharingLifecycle implements AutoCloseable {
               .property(
                   "opensharing.protocol-prefix", serverProperties.getOpenSharingProtocolPrefix())
               .property(
-                  "opensharing.admin.base-path", serverProperties.getOpenSharingAdminBasePath())
+                  "opensharing.provider.base-path",
+                  serverProperties.getOpenSharingProviderBasePath())
               .property(
                   "opensharing.activation.base-path",
                   serverProperties.getOpenSharingActivationBasePath())
