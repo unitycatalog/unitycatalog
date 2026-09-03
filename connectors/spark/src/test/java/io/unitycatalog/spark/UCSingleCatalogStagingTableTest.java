@@ -131,7 +131,7 @@ public class UCSingleCatalogStagingTableTest {
   }
 
   @Test
-  public void testLoadTableRejectsNestedNamespaceWithExplicitError() {
+  public void testLoadTableRejectsNestedNamespaceWithExplicitError() throws Exception {
     Identifier nested = Identifier.of(new String[] {"a", "b"}, "t");
 
     assertThatThrownBy(() -> catalog.loadTable(nested))
