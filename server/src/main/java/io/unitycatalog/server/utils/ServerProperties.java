@@ -220,7 +220,20 @@ public class ServerProperties {
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
-    INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
+    INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR),
+    OPENSHARING_ENABLED("server.opensharing.enabled", "false", BOOLEAN_VALIDATOR),
+    OPENSHARING_PORT("server.opensharing.port", "8099", POSITIVE_INTEGER_VALIDATOR),
+    OPENSHARING_PROTOCOL_PREFIX(
+        "server.opensharing.protocol-prefix", "/api/2.1/unity-catalog/sharing", NOOP_VALIDATOR),
+    OPENSHARING_EXTERNAL_BASE_URL(
+        "server.opensharing.external-base-url", "http://localhost:8099", URL_VALIDATOR),
+    OPENSHARING_DATASOURCE_URL(
+        "server.opensharing.datasource.url",
+        "jdbc:h2:file:./data/opensharing;AUTO_SERVER=TRUE",
+        NOOP_VALIDATOR),
+    OPENSHARING_CREDENTIAL_ENCRYPTION_KEY("server.opensharing.credential-encryption-key"),
+    OPENSHARING_PRINCIPAL_NAME(
+        "server.opensharing.principal-name", "admin@unitycatalog.local", NOOP_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
     // getS3Configurations.
@@ -667,5 +680,47 @@ public class ServerProperties {
       return List.of();
     }
     return Arrays.stream(value.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+  }
+
+  public boolean isOpenSharingEnabled() {
+    return isTrueOrEnable(get(Property.OPENSHARING_ENABLED));
+  }
+
+  public int getOpenSharingPort() {
+    return Integer.parseInt(get(Property.OPENSHARING_PORT));
+  }
+
+  public String getOpenSharingProtocolPrefix() {
+    return get(Property.OPENSHARING_PROTOCOL_PREFIX);
+  }
+
+  public String getOpenSharingExternalBaseUrl() {
+    return get(Property.OPENSHARING_EXTERNAL_BASE_URL);
+  }
+
+  public String getOpenSharingDatasourceUrl() {
+    return get(Property.OPENSHARING_DATASOURCE_URL);
+  }
+
+  public String getOpenSharingCredentialEncryptionKey() {
+    return get(Property.OPENSHARING_CREDENTIAL_ENCRYPTION_KEY);
+  }
+
+  public String getOpenSharingPrincipalName() {
+    return get(Property.OPENSHARING_PRINCIPAL_NAME);
+  }
+
+  public void checkOpenSharingConfigured() {
+    if (!isOpenSharingEnabled()) {
+      return;
+    }
+    String key = getOpenSharingCredentialEncryptionKey();
+    if (key == null || key.isBlank()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "OpenSharing is enabled but '"
+              + Property.OPENSHARING_CREDENTIAL_ENCRYPTION_KEY.getKey()
+              + "' is not set in server.properties");
+    }
   }
 }

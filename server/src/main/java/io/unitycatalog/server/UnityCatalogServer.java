@@ -68,6 +68,8 @@ public class UnityCatalogServer implements AutoCloseable {
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
 
+  private AutoCloseable openSharingLifecycle;
+
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
@@ -167,7 +169,29 @@ public class UnityCatalogServer implements AutoCloseable {
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
 
+    unityCatalogServerBuilder.serverProperties.checkOpenSharingConfigured();
+    openSharingLifecycle =
+        startEmbeddedOpenSharing(unityCatalogServerBuilder.serverProperties, repositories);
+
     return armeriaServerBuilder.build();
+  }
+
+  private AutoCloseable startEmbeddedOpenSharing(
+      ServerProperties serverProperties, Repositories repositories) {
+    if (!serverProperties.isOpenSharingEnabled()) {
+      return null;
+    }
+    try {
+      Class<?> lifecycleClass =
+          Class.forName("io.unitycatalog.server.sharing.OpenSharingLifecycle");
+      Object started =
+          lifecycleClass
+              .getMethod("start", ServerProperties.class, SecurityContext.class, Repositories.class)
+              .invoke(null, serverProperties, securityContext, repositories);
+      return started == null ? null : (AutoCloseable) started;
+    } catch (ReflectiveOperationException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Failed to start embedded OpenSharing.", e);
+    }
   }
 
   private UnityCatalogAuthorizer initializeAuthorizer(
@@ -334,6 +358,13 @@ public class UnityCatalogServer implements AutoCloseable {
   @Override
   public void close() {
     try {
+      if (openSharingLifecycle != null) {
+        try {
+          openSharingLifecycle.close();
+        } catch (Exception e) {
+          throw new BaseException(ErrorCode.INTERNAL, "Failed to stop embedded OpenSharing.", e);
+        }
+      }
       stop();
     } finally {
       closeAuthorizer(null);
