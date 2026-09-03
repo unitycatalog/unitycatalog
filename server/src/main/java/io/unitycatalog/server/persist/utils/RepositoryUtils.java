@@ -30,7 +30,16 @@ public class RepositoryUtils {
 
   /**
    * Acquires the table row lock shared by Delta and Iceberg commit paths. Lock waits and deadlock
-   * victims are reported as retryable requirement conflicts instead of leaking ORM exceptions.
+   * victims are reported as {@code COMMIT_STATE_UNKNOWN} (a retryable, unknown-outcome error)
+   * instead of leaking ORM exceptions.
+   *
+   * <p>The failure is deliberately not surfaced as a conflict. Failing to acquire the lock rolls
+   * back only this transaction; it does not reveal whether the logical commit landed. The lock
+   * holder is another commit still in progress on this table, and it may be this same commit's own
+   * earlier attempt (a slow client retry carrying the same UUID) that goes on to succeed. Reporting
+   * a conflict would let the client conclude the commit did not land and rebase, committing the
+   * same change twice. The client must instead resend the identical request, which deduplication
+   * resolves to the true outcome.
    */
   public static void lockTableForCommit(
       Session session, TableInfoDAO dao, UUID tableId, Optional<String> tableFullNameForLogging) {
@@ -38,11 +47,12 @@ public class RepositoryUtils {
       session.refresh(dao, LockMode.PESSIMISTIC_WRITE);
     } catch (RuntimeException e) {
       if (!(e instanceof org.hibernate.PessimisticLockException)
-          && !(e instanceof jakarta.persistence.PessimisticLockException)) {
+          && !(e instanceof jakarta.persistence.PessimisticLockException)
+          && !(e instanceof jakarta.persistence.LockTimeoutException)) {
         throw e;
       }
       throw new BaseException(
-          ErrorCode.UPDATE_REQUIREMENT_CONFLICT,
+          ErrorCode.COMMIT_STATE_UNKNOWN,
           "Concurrent commit in progress on table "
               + tableFullNameForLogging.orElseGet(tableId::toString)
               + "; retry the request.");
