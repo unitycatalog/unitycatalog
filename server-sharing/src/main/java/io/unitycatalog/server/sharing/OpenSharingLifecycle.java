@@ -30,6 +30,14 @@ public final class OpenSharingLifecycle implements AutoCloseable {
    * transaction between the two: each keeps its own connection pool and Hibernate/JPA session, so
    * a single logical operation touching both sides' tables is still two local transactions, not
    * one atomic unit.
+   *
+   * <p>Bound to {@code 127.0.0.1} rather than every interface: its port is reached only through
+   * {@code URLTranscoderVerticle}'s path-based routing on UC's own public port, which is how a
+   * client sees one address for the whole process rather than a second server to know about and
+   * open a second port for. A client that guessed the internal port and reached it directly would
+   * still work — nothing about the routing is a security boundary between UC and OpenSharing, both
+   * of which trust each other completely in one process — but restricting the bind address is what
+   * makes "one address" true on the network, not merely in how the demo happens to be run.
    */
   public static OpenSharingLifecycle start(
       ServerProperties serverProperties,
@@ -40,9 +48,11 @@ public final class OpenSharingLifecycle implements AutoCloseable {
       return null;
     }
     LOGGER.info(
-        "Starting embedded OpenSharing on port {} with protocol prefix {}",
+        "Starting embedded OpenSharing on {} (internal port {}), routed from UC's own port under"
+            + " {}",
+        serverProperties.getOpenSharingExternalBaseUrl(),
         serverProperties.getOpenSharingPort(),
-        serverProperties.getOpenSharingProtocolPrefix());
+        serverProperties.getOpenSharingRoutedPathPrefixes());
     try {
       OpenSharing.EmbeddedBuilder builder =
           OpenSharing.embedded()
@@ -51,8 +61,14 @@ public final class OpenSharingLifecycle implements AutoCloseable {
                   new UnityCatalogProviderIdentityResolver(
                       serverProperties, securityContext, repositories))
               .property("server.port", serverProperties.getOpenSharingPort())
+              .property("server.address", "127.0.0.1")
               .property(
                   "opensharing.protocol-prefix", serverProperties.getOpenSharingProtocolPrefix())
+              .property(
+                  "opensharing.admin.base-path", serverProperties.getOpenSharingAdminBasePath())
+              .property(
+                  "opensharing.activation.base-path",
+                  serverProperties.getOpenSharingActivationBasePath())
               .property(
                   "opensharing.activation.external-base-url",
                   serverProperties.getOpenSharingExternalBaseUrl())

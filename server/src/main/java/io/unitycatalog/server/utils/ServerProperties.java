@@ -222,11 +222,20 @@ public class ServerProperties {
     AWS_REGION("aws.region"),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR),
     OPENSHARING_ENABLED("server.opensharing.enabled", "false", BOOLEAN_VALIDATOR),
+    // Bound to 127.0.0.1 only: reached through the public port via URLTranscoderVerticle's
+    // path-based routing, never directly. See OPENSHARING_PROTOCOL_PREFIX and friends below.
     OPENSHARING_PORT("server.opensharing.port", "8099", POSITIVE_INTEGER_VALIDATOR),
     OPENSHARING_PROTOCOL_PREFIX(
         "server.opensharing.protocol-prefix", "/api/2.1/unity-catalog/sharing", NOOP_VALIDATOR),
+    OPENSHARING_ADMIN_BASE_PATH(
+        "server.opensharing.admin-base-path", "/api/admin/v1", NOOP_VALIDATOR),
+    OPENSHARING_ACTIVATION_BASE_PATH(
+        "server.opensharing.activation-base-path", "/activation", NOOP_VALIDATOR),
+    // Public: what a recipient's activation URL and config.share point at, so this is UC's own
+    // public address, not the internal port above — every request lands on the same port UC
+    // itself is reached on, and is routed from there by path.
     OPENSHARING_EXTERNAL_BASE_URL(
-        "server.opensharing.external-base-url", "http://localhost:8099", URL_VALIDATOR),
+        "server.opensharing.external-base-url", "http://localhost:8080", URL_VALIDATOR),
     OPENSHARING_CREDENTIAL_ENCRYPTION_KEY("server.opensharing.credential-encryption-key"),
     OPENSHARING_PRINCIPAL_NAME(
         "server.opensharing.principal-name", "admin@unitycatalog.local", NOOP_VALIDATOR);
@@ -688,6 +697,22 @@ public class ServerProperties {
 
   public String getOpenSharingProtocolPrefix() {
     return get(Property.OPENSHARING_PROTOCOL_PREFIX);
+  }
+
+  public String getOpenSharingAdminBasePath() {
+    return get(Property.OPENSHARING_ADMIN_BASE_PATH);
+  }
+
+  public String getOpenSharingActivationBasePath() {
+    return get(Property.OPENSHARING_ACTIVATION_BASE_PATH);
+  }
+
+  /** Path prefixes the public port's URL transcoder routes to embedded OpenSharing's own port. */
+  public List<String> getOpenSharingRoutedPathPrefixes() {
+    return List.of(
+        getOpenSharingProtocolPrefix(),
+        getOpenSharingAdminBasePath(),
+        getOpenSharingActivationBasePath());
   }
 
   public String getOpenSharingExternalBaseUrl() {

@@ -328,15 +328,27 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
+    ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer =
-        UnityCatalogServer.builder().port(options.getPort() + 1).build();
+        UnityCatalogServer.builder()
+            .port(options.getPort() + 1)
+            .serverProperties(serverProperties)
+            .build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
-    // Start URL transcoder
+    // Start URL transcoder — also the one public listener embedded OpenSharing shares a port
+    // with, when enabled: a request under one of its path prefixes is routed to its own port
+    // instead of Armeria's, so a client reaches either half of the process at the same address.
     Vertx vertx = Vertx.vertx();
     Verticle transcodeVerticle =
-        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
+        serverProperties.isOpenSharingEnabled()
+            ? new URLTranscoderVerticle(
+                options.getPort(),
+                options.getPort() + 1,
+                serverProperties.getOpenSharingPort(),
+                serverProperties.getOpenSharingRoutedPathPrefixes())
+            : new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
     vertx.deployVerticle(transcodeVerticle);
   }
 
