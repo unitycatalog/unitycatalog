@@ -227,10 +227,6 @@ public class ServerProperties {
         "server.opensharing.protocol-prefix", "/api/2.1/unity-catalog/sharing", NOOP_VALIDATOR),
     OPENSHARING_EXTERNAL_BASE_URL(
         "server.opensharing.external-base-url", "http://localhost:8099", URL_VALIDATOR),
-    OPENSHARING_DATASOURCE_URL(
-        "server.opensharing.datasource.url",
-        "jdbc:h2:file:./data/opensharing;AUTO_SERVER=TRUE",
-        NOOP_VALIDATOR),
     OPENSHARING_CREDENTIAL_ENCRYPTION_KEY("server.opensharing.credential-encryption-key"),
     OPENSHARING_PRINCIPAL_NAME(
         "server.opensharing.principal-name", "admin@unitycatalog.local", NOOP_VALIDATOR);
@@ -696,10 +692,6 @@ public class ServerProperties {
 
   public String getOpenSharingExternalBaseUrl() {
     return get(Property.OPENSHARING_EXTERNAL_BASE_URL);
-  }
-
-  public String getOpenSharingDatasourceUrl() {
-    return get(Property.OPENSHARING_DATASOURCE_URL);
   }
 
   public String getOpenSharingCredentialEncryptionKey() {

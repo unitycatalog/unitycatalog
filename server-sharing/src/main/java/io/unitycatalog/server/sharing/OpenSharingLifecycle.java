@@ -2,8 +2,10 @@ package io.unitycatalog.server.sharing;
 
 import io.opensharing.runtime.OpenSharing;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,10 +20,21 @@ public final class OpenSharingLifecycle implements AutoCloseable {
     this.context = context;
   }
 
+  /**
+   * Starts embedded OpenSharing against UC's own database — the same JDBC connection {@code
+   * hibernateConfigurator} already opened for UC's own tables, not a second one. Safe within one
+   * JVM (H2 shares one in-memory Database instance per canonical file path per process; a real
+   * database server is designed for exactly this), and none of OpenSharing's table names (all
+   * prefixed {@code os_}) collide with UC's ({@code uc_}-prefixed) ones. There is no coordinated
+   * transaction between the two: each keeps its own connection pool and Hibernate/JPA session, so
+   * a single logical operation touching both sides' tables is still two local transactions, not
+   * one atomic unit.
+   */
   public static OpenSharingLifecycle start(
       ServerProperties serverProperties,
       SecurityContext securityContext,
-      Repositories repositories) {
+      Repositories repositories,
+      HibernateConfigurator hibernateConfigurator) {
     if (!serverProperties.isOpenSharingEnabled()) {
       return null;
     }
@@ -30,7 +43,7 @@ public final class OpenSharingLifecycle implements AutoCloseable {
         serverProperties.getOpenSharingPort(),
         serverProperties.getOpenSharingProtocolPrefix());
     try {
-      AutoCloseable context =
+      OpenSharing.EmbeddedBuilder builder =
           OpenSharing.embedded()
               .catalog(new UnityCatalogEmbeddedConnector(repositories))
               .identityResolver(
@@ -42,16 +55,45 @@ public final class OpenSharingLifecycle implements AutoCloseable {
               .property(
                   "opensharing.activation.external-base-url",
                   serverProperties.getOpenSharingExternalBaseUrl())
-              .property("spring.datasource.url", serverProperties.getOpenSharingDatasourceUrl())
               .property(
                   "opensharing.security.credential-encryption-key",
-                  serverProperties.getOpenSharingCredentialEncryptionKey())
-              .run();
+                  serverProperties.getOpenSharingCredentialEncryptionKey());
+      applyUcDataSource(builder, hibernateConfigurator.getHibernateProperties());
+      AutoCloseable context = builder.run();
       LOGGER.info("Embedded OpenSharing started");
       return new OpenSharingLifecycle(context);
     } catch (Exception e) {
       throw new IllegalStateException("failed to start embedded OpenSharing", e);
     }
+  }
+
+  /**
+   * Maps UC's own {@code hibernate.connection.*} settings to the {@code spring.datasource.*} ones
+   * OpenSharing's JPA layer reads, so it opens connections against UC's own database instead of a
+   * datasource of its own. Whatever UC connects to — H2 file, Postgres, MySQL — OpenSharing
+   * follows.
+   */
+  private static void applyUcDataSource(OpenSharing.EmbeddedBuilder builder, Properties hibernate) {
+    String url = hibernate.getProperty("hibernate.connection.url");
+    if (url == null || url.isBlank()) {
+      throw new IllegalStateException(
+          "embedded OpenSharing could not determine UC's database: "
+              + "hibernate.connection.url is not set in etc/conf/hibernate.properties");
+    }
+    builder.property("spring.datasource.url", url);
+    String driver = hibernate.getProperty("hibernate.connection.driver_class");
+    if (driver != null && !driver.isBlank()) {
+      builder.property("spring.datasource.driver-class-name", driver);
+    }
+    // UC's own connection decides the credentials these two connection pools must agree on to open
+    // the same database — not OpenSharing's application.yml default of "sa". If UC's
+    // hibernate.properties leaves username/password unset, UC connected (and, on first connect, H2
+    // created the database's admin user) with an empty one, so this sets an explicit empty string
+    // here too rather than falling through to OpenSharing's own default.
+    builder.property(
+        "spring.datasource.username", hibernate.getProperty("hibernate.connection.username", ""));
+    builder.property(
+        "spring.datasource.password", hibernate.getProperty("hibernate.connection.password", ""));
   }
 
   @Override

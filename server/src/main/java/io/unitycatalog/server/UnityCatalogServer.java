@@ -186,8 +186,13 @@ public class UnityCatalogServer implements AutoCloseable {
           Class.forName("io.unitycatalog.server.sharing.OpenSharingLifecycle");
       Object started =
           lifecycleClass
-              .getMethod("start", ServerProperties.class, SecurityContext.class, Repositories.class)
-              .invoke(null, serverProperties, securityContext, repositories);
+              .getMethod(
+                  "start",
+                  ServerProperties.class,
+                  SecurityContext.class,
+                  Repositories.class,
+                  HibernateConfigurator.class)
+              .invoke(null, serverProperties, securityContext, repositories, hibernateConfigurator);
       return started == null ? null : (AutoCloseable) started;
     } catch (ReflectiveOperationException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Failed to start embedded OpenSharing.", e);
