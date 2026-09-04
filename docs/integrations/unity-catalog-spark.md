@@ -190,9 +190,19 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
   4.1.x coordinates from the prerequisites table above.
 - `spark.sql.catalog.spark_catalog` should be set to Delta's session catalog when working with Delta tables.
 - `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance.
-- `spark.sql.catalog.<catalog_name>.token` is empty when authentication is disabled; refer to [auth](../server/auth.md)
-  when using an authenticated server.
+- `spark.sql.catalog.<catalog_name>.token` is the **static** bearer token (`auth.type=static`). When the
+  server has `server.authorization=disable` (the default), set this key to an **empty string**
+  (`export UC_TOKEN=` as in the examples above). The Spark connector still uses static token
+  authentication; an empty token is the supported way to talk to an auth-disabled server. Do not
+  omit both `token` and `auth.type` — the client requires a token provider type. When the server has
+  authorization enabled, set a real token; see [auth](../server/auth.md).
 - `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog.
+
+You can set `spark.sql.catalog.<catalog_name>.auth.type=static` explicitly instead of relying on the
+legacy `token` key. Either way, `type` is required: omitting both `token` and `auth.type` fails with
+`Required configuration key 'type' is missing`. Hive JDBC / Beeline URLs that drop empty property
+values may need a dummy non-empty `auth.token` when talking to an auth-disabled server; Spark
+`--conf` and `spark-defaults` accept `token=` as empty.
 
 ??? note "Three-part and two-part naming conventions"
 
