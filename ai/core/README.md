@@ -372,6 +372,130 @@ def dep_check(x: str) -> str:
 client.create_python_function(func=dep_check, catalog=CATALOG, schema=SCHEMA, replace=True, dependencies=["scrapy==2.10.1"])
 ```
 
+Dependencies can also be wheels stored in a Unity Catalog volume, referenced by their full volume path:
+
+```python
+client.create_python_function(
+    func=dep_check,
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=True,
+    dependencies=["/Volumes/my_catalog/my_schema/my_volume/internal_sdk-1.2.0-py3-none-any.whl"],
+)
+```
+
+> [!NOTE]
+> Dependencies are installed by the Unity Catalog execution environment. They are not installed into the
+> local sandbox used by the `"local"` execution mode, so a function that imports an external dependency
+> must be executed with the `"serverless"` execution mode.
+
+#### Service Credentials and Secrets
+
+A function can declare Unity Catalog **service credentials** and **secrets** that its body reads at execution
+time. The declaration grants the function access; the body reads the values through the Databricks runtime
+modules. This requires a runtime that supports these clauses for scalar Python UDFs.
+
+To declare a service credential, pass either its name or a `ServiceCredential`. The alias is the name the
+credential is referred to by inside the function body, and the credential marked as the default is the one
+`CredentialRetriever` returns when called with no arguments:
+
+```python
+from unitycatalog.ai.core.utils.callable_utils import ServiceCredential
+
+
+def list_bucket(prefix: str) -> str:
+    """
+    List objects in an S3 bucket.
+
+    Args:
+        prefix: The key prefix to list.
+
+    Returns:
+        A newline-delimited list of object keys.
+    """
+    import boto3
+    from databricks.service_credentials.credential_retriever import CredentialRetriever
+
+    creds = CredentialRetriever().get_aws_credential("prod-s3")
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=creds.access_key_id,
+        aws_secret_access_key=creds.secret_access_key,
+        aws_session_token=creds.session_token,
+    )
+    response = s3.list_objects_v2(Bucket="my-bucket", Prefix=prefix)
+    return "\n".join(obj["Key"] for obj in response.get("Contents", []))
+
+
+client.create_python_function(
+    func=list_bucket,
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=True,
+    dependencies=["boto3"],
+    credentials=[ServiceCredential(name="prod-s3", is_default=True)],
+)
+```
+
+Secrets are declared as three-part `catalog.schema.key` names and read with `databricks.secrets.secrets.get`:
+
+```python
+def call_api(query: str) -> str:
+    """
+    Call an external API using a stored API key.
+
+    Args:
+        query: The query to send.
+
+    Returns:
+        The API response body.
+    """
+    import requests
+    from databricks.secrets.secrets import get
+
+    api_key = get("main", "default", "api_key")
+    return requests.get(
+        "https://api.example.com/search",
+        params={"q": query},
+        headers={"Authorization": f"Bearer {api_key}"},
+    ).text
+
+
+client.create_python_function(
+    func=call_api,
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=True,
+    dependencies=["requests"],
+    environment_version="6",
+    secrets=["main.default.api_key"],
+)
+```
+
+> [!IMPORTANT]
+> Declaring secrets requires an explicit `environment_version` of `"6"` or higher. The version that Unity
+> Catalog selects implicitly does not include the `databricks.secrets` module, so omitting it will fail.
+
+Functions that declare credentials or secrets cannot be executed with the `"local"` execution mode, which has
+no access to the Unity Catalog credential and secret services. Use the `"serverless"` execution mode.
+
+To read the declarations back off an existing function, use the helpers in `function_processing_utils`. Unity
+Catalog returns these in the JSON-encoded `FunctionInfo.properties` field rather than as typed fields:
+
+```python
+from unitycatalog.ai.core.utils.function_processing_utils import (
+    get_function_credentials,
+    get_function_environment,
+    get_function_secrets,
+)
+
+function_info = client.get_function(f"{CATALOG}.{SCHEMA}.call_api")
+
+get_function_environment(function_info)  # FunctionEnvironment(dependencies=['requests'], environment_version='6')
+get_function_credentials(function_info)  # [ServiceCredential(name='prod-s3', alias=None, is_default=True)]
+get_function_secrets(function_info)      # ['main.default.api_key']
+```
+
 #### Retrieve a UC function
 
 The client also provides API to get the UC function information details. Note that the function name passed in must be the full name in the format of `<catalog>.<schema>.<function_name>`.
