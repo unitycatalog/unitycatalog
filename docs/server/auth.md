@@ -334,6 +334,21 @@ SHOW ALL TABLES;
 SELECT * from unity.default.numbers;
 ```
 
+## Spark and Java client authentication types
+
+The Java and Spark clients always construct a token provider (`TokenProvider.create`).
+`type` is required (`static`, `oauth`, or a custom class name). Omitting both `type` and a
+legacy `token` key is not a valid configuration.
+
+| Server | Client |
+| --- | --- |
+| `server.authorization=disable` (default) | `auth.type=static` with an **empty** `token`, or the Spark catalog property `spark.sql.catalog.<name>.token` set to empty (`export UC_TOKEN=`). The client may send `Authorization: Bearer ` with an empty token; the server ignores it. |
+| `server.authorization=enable` | A real static token (personal access token) or `auth.type=oauth` with client credentials. See the sections below. |
+
+Spark maps a present `token` catalog property to `type=static` even when the value is empty. JDBC /
+Beeline URLs that omit empty query parameters cannot express an empty token; use a dummy
+non-empty `auth.token` against an auth-disabled server, or configure Spark with `--conf` instead.
+
 ## Using Spark with a User Token
 
 Now that you have enabled Google Authentication for your UC instance, any unauthenticated clients such as a spark-sql
