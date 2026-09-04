@@ -564,9 +564,9 @@ components:
         - METADATA_CLEANUP
       # Keep enum order aligned with x-enum-descriptions below
       x-enum-descriptions:
-        - 'DATA_REORGANIZATION: Rewrites data files that the current table version uses. It changes how the files store and group the data. It does not change the current table rows.'
-        - 'DATA_CLEANUP: Deletes old data files that no retained table version needs. It deletes the files only after the retention period.'
-        - 'METADATA_CLEANUP: Deletes expired files from _delta_log. It keeps the files that are necessary to read retained table versions.'
+        - 'DATA_REORGANIZATION: Rewrites data files used by the latest table version to group, cluster, or lay out the data. It must not change the data in that version.'
+        - 'DATA_CLEANUP: Deletes old data files. It must not change the data in the latest table version.'
+        - 'METADATA_CLEANUP: Deletes old metadata files from the Delta log directory or other metadata-related directories. It must not change the data in the latest table version.'
 
     # Shared Types
 
@@ -815,7 +815,7 @@ components:
           type: integer
           format: int64
           description: The latest ratified table version tracked by the server, including data-only commits. Compare with metadata.last-commit-version which only tracks metadata-changing commits.
-        client-maintenance-operations:
+        allowed-maintenance-operations:
           type: array
           description: |
             Maintenance operations that the catalog permits in addition to the operations that the

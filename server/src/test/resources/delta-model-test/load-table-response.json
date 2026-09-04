@@ -58,7 +58,7 @@
     }
   },
   "latest-table-version": 5,
-  "client-maintenance-operations": [
+  "allowed-maintenance-operations": [
     "DATA_REORGANIZATION",
     "DATA_CLEANUP",
     "METADATA_CLEANUP"

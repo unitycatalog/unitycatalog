@@ -569,7 +569,7 @@ public class DeltaModelSerializationTest {
     String json = readFixture("/delta-model-test/load-table-response.json");
     DeltaLoadTableResponse resp = MAPPER.readValue(json, DeltaLoadTableResponse.class);
 
-    assertThat(resp.getClientMaintenanceOperations())
+    assertThat(resp.getAllowedMaintenanceOperations())
         .containsExactly(
             DeltaMaintenanceOperation.DATA_REORGANIZATION,
             DeltaMaintenanceOperation.DATA_CLEANUP,

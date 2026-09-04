@@ -425,7 +425,7 @@ public class TableRepository {
         && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
       populateCommitsForDelta(
           response, repositories.getDeltaCommitRepository(), session, dao.getId());
-      response.setClientMaintenanceOperations(
+      response.setAllowedMaintenanceOperations(
           List.of(
               DeltaMaintenanceOperation.DATA_REORGANIZATION,
               DeltaMaintenanceOperation.DATA_CLEANUP,
