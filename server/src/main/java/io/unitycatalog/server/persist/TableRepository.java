@@ -4,6 +4,7 @@ import static java.sql.Connection.TRANSACTION_REPEATABLE_READ;
 
 import io.unitycatalog.server.delta.model.DeltaCommit;
 import io.unitycatalog.server.delta.model.DeltaLoadTableResponse;
+import io.unitycatalog.server.delta.model.DeltaMaintenanceOperation;
 import io.unitycatalog.server.delta.model.DeltaStructType;
 import io.unitycatalog.server.delta.model.DeltaTableMetadata;
 import io.unitycatalog.server.delta.model.DeltaTableType;
@@ -424,6 +425,11 @@ public class TableRepository {
         && DataSourceFormat.DELTA.toString().equals(dao.getDataSourceFormat())) {
       populateCommitsForDelta(
           response, repositories.getDeltaCommitRepository(), session, dao.getId());
+      response.setAllowedMaintenanceOperations(
+          List.of(
+              DeltaMaintenanceOperation.DATA_REORGANIZATION,
+              DeltaMaintenanceOperation.DATA_CLEANUP,
+              DeltaMaintenanceOperation.METADATA_CLEANUP));
     }
 
     populateUniformMetadata(response, dao);

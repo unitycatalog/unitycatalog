@@ -42,6 +42,7 @@ All URIs are relative to *https://localhost:8080/api/2.1/unity-catalog*
  - [DeltaErrorResponse](./Models/DeltaErrorResponse.md)
  - [DeltaErrorType](./Models/DeltaErrorType.md)
  - [DeltaLoadTableResponse](./Models/DeltaLoadTableResponse.md)
+ - [DeltaMaintenanceOperation](./Models/DeltaMaintenanceOperation.md)
  - [DeltaMapType](./Models/DeltaMapType.md)
  - [DeltaPrimitiveType](./Models/DeltaPrimitiveType.md)
  - [DeltaProtocol](./Models/DeltaProtocol.md)
