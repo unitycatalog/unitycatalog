@@ -1,6 +1,6 @@
 package io.unitycatalog.spark
 
-import java.net.URI
+import java.net.{HttpURLConnection, URI}
 import java.util
 import java.util.Locale
 
@@ -205,6 +205,18 @@ class UCSingleCatalog
   override def loadTable(ident: Identifier, version:  String): Table = delegate.loadTable(ident, version)
 
   override def loadTable(ident: Identifier, timestamp:  Long): Table = delegate.loadTable(ident, timestamp)
+
+  // Spark resolves write targets (INSERT / UPDATE / DELETE / MERGE) through this overload.
+  override def loadTable(
+      ident: Identifier,
+      writePrivileges: util.Set[TableWritePrivilege]): Table = {
+    UCSingleCatalog.WRITE_INTENT.set(true)
+    try {
+      delegate.loadTable(ident, writePrivileges)
+    } finally {
+      UCSingleCatalog.WRITE_INTENT.remove()
+    }
+  }
 
   override def tableExists(ident: Identifier): Boolean = {
     delegate.tableExists(ident)
@@ -681,6 +693,11 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
+  // True while the current thread resolves a declared write target. Thread-local because
+  // DeltaCatalog does not override `loadTable(ident, writePrivileges)` and drops the argument
+  // before it reaches the vend site in `UCProxy.loadV1Table`.
+  private[spark] val WRITE_INTENT = ThreadLocal.withInitial[Boolean](() => false)
+
   /**
    * UC external locations and the temporary path-credentials API use canonical lowercase
    * `s3://` URLs on the server. Hadoop clients may reference the same storage as `s3a://`
@@ -925,6 +942,47 @@ private[spark] class UCProxy(
     }
   }
 
+  // Table ids whose READ_WRITE credential request was 403-denied, mapped to the deadline until
+  // which intent-less loads skip the doomed round-trip. Entries expire (so a later grant reaches
+  // intent-less paths like OPTIMIZE without a session restart) and are cleared early by a
+  // successful declared write.
+  private[spark] val writeDeniedTables =
+    new util.concurrent.ConcurrentHashMap[String, java.lang.Long]()
+
+  private def markWriteDenied(tableId: String): Unit =
+    writeDeniedTables.put(
+      tableId, System.currentTimeMillis() + UCProxy.WRITE_DENIAL_TTL_MILLIS)
+
+  private def isWriteDenied(tableId: String): Boolean = {
+    val deadline = writeDeniedTables.get(tableId)
+    if (deadline == null) {
+      false
+    } else if (System.currentTimeMillis() >= deadline) {
+      writeDeniedTables.remove(tableId, deadline)
+      false
+    } else {
+      true
+    }
+  }
+
+  private def readCredentialsOrServerSidePlanning(
+      credBuilder: UCCredentialHadoopConfs.Builder,
+      tableId: String,
+      identifier: TableIdentifier): util.Map[String, String] = {
+    try {
+      credBuilder.buildForTable(tableId, TableOperation.READ)
+    } catch {
+      case e: ApiException =>
+        logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
+        if (serverSidePlanningEnabled) {
+          enableServerSidePlanningConfig(identifier)
+          Map.empty[String, String].asJava
+        } else {
+          throw e
+        }
+    }
+  }
+
   // Single-RPC table path. Calls UC `getTable` once and routes view-like rows through a
   // version-specific hook (rejected from the table surface on 4.2; plain views resolved as
   // read-only V1 views on 4.0/4.1).
@@ -959,27 +1017,36 @@ private[spark] class UCProxy(
         .enableCredentialScopedFs(credScopedFsEnabled)
         .hadoopConf(UCSingleCatalog.sessionHadoopConf())
 
-    // TODO: at this time, we don't know if the table will be read or written. For now we always
-    //       request READ_WRITE credentials as the server doesn't distinguish between READ and
-    //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
-    //       for read or write, we can request the proper credential after fixing Spark.
-    val extraSerdeProps = try {
-      credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
-    } catch {
-      case e: ApiException =>
-        logWarning(s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
-        try {
-          credBuilder.buildForTable(tableId, TableOperation.READ)
-        } catch {
-          case e: ApiException =>
-            logWarning(s"READ credential generation failed for table $identifier: ${e.getMessage}")
-            if (serverSidePlanningEnabled) {
-              enableServerSidePlanningConfig(identifier)
-              Map.empty[String, String].asJava
-            } else {
-              throw e
-            }
-        }
+    // Intent-less loads still try READ_WRITE first: some write paths (e.g. Delta's OPTIMIZE)
+    // resolve through the intent-less overload. A denial is remembered per table so SELECTs stop
+    // re-paying it; a later granted declared write clears the entry.
+    val extraSerdeProps = if (UCSingleCatalog.WRITE_INTENT.get()) {
+      // Fail fast: READ credentials would only defer the denial to the storage layer mid-job.
+      val props = try {
+        credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
+      } catch {
+        case e: ApiException =>
+          logWarning(s"READ_WRITE credential generation failed for declared write on table " +
+            s"$identifier: ${e.getMessage}")
+          if (e.getCode == HttpURLConnection.HTTP_FORBIDDEN) markWriteDenied(tableId)
+          throw e
+      }
+      writeDeniedTables.remove(tableId)
+      props
+    } else if (isWriteDenied(tableId)) {
+      readCredentialsOrServerSidePlanning(credBuilder, tableId, identifier)
+    } else {
+      try {
+        credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
+      } catch {
+        case e: ApiException =>
+          logWarning(
+            s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
+          // Only a permission denial is worth remembering; transient failures must keep the
+          // READ_WRITE-first retry on the next load.
+          if (e.getCode == HttpURLConnection.HTTP_FORBIDDEN) markWriteDenied(tableId)
+          readCredentialsOrServerSidePlanning(credBuilder, tableId, identifier)
+      }
     }
 
     // For unrecognized schemes (e.g. file://) the credential switch returns empty without props;
@@ -1256,4 +1323,10 @@ private[spark] class UCProxy(
     schemasApi.deleteSchema(name + "." + namespace.head, cascade)
     true
   }
+}
+
+private[spark] object UCProxy {
+  // How long an intent-less load trusts a remembered READ_WRITE denial before probing again.
+  // Bounds the staleness window for a grant added after a denial (e.g. before an OPTIMIZE).
+  private[spark] val WRITE_DENIAL_TTL_MILLIS: Long = java.util.concurrent.TimeUnit.MINUTES.toMillis(5)
 }
