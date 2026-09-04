@@ -35,4 +35,23 @@ public class UCTableProperties {
           TableCatalog.PROP_OWNER,
           TableCatalog.PROP_PROVIDER,
           PROP_TABLE_TYPE);
+
+  // Spark HiveExternalCatalog packages StructType JSON into TBLPROPERTIES so Hive metastore
+  // (which has no first-class nested schema) can reconstruct the table. Keys are
+  // `spark.sql.sources.schema`, `spark.sql.sources.schema.numParts`,
+  // `spark.sql.sources.schema.part.N`, partition/bucket column lists, and the split
+  // `spark.sql.partitionSchema*` form. UC already stores schema on `uc_columns`, so these
+  // are redundant -- and `schema.part.N` routinely exceeds the server's varchar(255)
+  // property value. Strip them on create; do not persist them.
+  public static final String SPARK_DATASOURCE_SCHEMA = "spark.sql.sources.schema";
+  public static final String SPARK_DATASOURCE_SCHEMA_PREFIX = SPARK_DATASOURCE_SCHEMA + ".";
+  public static final String SPARK_PARTITION_SCHEMA = "spark.sql.partitionSchema";
+  public static final String SPARK_PARTITION_SCHEMA_PREFIX = SPARK_PARTITION_SCHEMA + ".";
+
+  public static boolean isSparkDatasourceSchemaProperty(String key) {
+    return key.equals(SPARK_DATASOURCE_SCHEMA)
+        || key.startsWith(SPARK_DATASOURCE_SCHEMA_PREFIX)
+        || key.equals(SPARK_PARTITION_SCHEMA)
+        || key.startsWith(SPARK_PARTITION_SCHEMA_PREFIX);
+  }
 }

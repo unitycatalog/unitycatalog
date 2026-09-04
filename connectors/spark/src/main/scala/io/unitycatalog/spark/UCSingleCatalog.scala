@@ -1079,9 +1079,13 @@ private[spark] class UCProxy(
     // duplicates, e.g. fs.s3a.session.token): they are session-scoped Hadoop configs injected by
     // UCSingleCatalog for the local write path, not table metadata, and must never be persisted
     // in the catalog.
+    // Spark also injects Hive-metastore schema JSON (`spark.sql.sources.schema*`,
+    // `spark.sql.partitionSchema*`). UC already persists schema as columns, and the JSON
+    // overflowed varchar(255) on create.
     val propertiesToServer = properties.view
       .filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_))
       .filterKeys(k => !k.startsWith("fs.") && !k.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
+      .filterKeys(!UCTableProperties.isSparkDatasourceSchemaProperty(_))
       .toMap
     createTable.setProperties(propertiesToServer)
     try {
