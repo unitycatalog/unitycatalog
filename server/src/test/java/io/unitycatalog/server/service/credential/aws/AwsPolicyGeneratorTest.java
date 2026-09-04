@@ -148,9 +148,15 @@ public class AwsPolicyGeneratorTest {
                 .toList());
 
     assertThat(updatePolicy)
-        .contains("s3:PutO*")
-        .contains("s3:GetO*")
-        .contains("s3:DeleteO*")
+        .contains("s3:PutObject")
+        .contains("s3:GetObject")
+        .contains("s3:DeleteObject")
+        .contains("s3:AbortMultipartUpload")
+        .contains("s3:ListMultipartUploadParts")
+        .doesNotContain("s3:PutO*")
+        .doesNotContain("s3:GetO*")
+        .doesNotContain("s3:DeleteO*")
+        .doesNotContain("s3:*Multipart*")
         .contains("arn:aws:s3:::profile-bucket2/*")
         .contains("arn:aws:s3:::profile-bucket3/*");
 
@@ -165,9 +171,12 @@ public class AwsPolicyGeneratorTest {
                 .toList());
 
     assertThat(selectPolicy)
+        .doesNotContain("s3:PutObject")
+        .doesNotContain("s3:DeleteObject")
         .doesNotContain("s3:PutO*")
         .doesNotContain("s3:DeleteO*")
-        .contains("s3:GetO*");
+        .contains("s3:GetObject")
+        .doesNotContain("s3:GetO*");
   }
 
   @Test
@@ -239,10 +248,29 @@ public class AwsPolicyGeneratorTest {
             Set.of(SELECT), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
 
     JsonNode statements = JSON_MAPPER.readTree(policy).get("Statement");
-    assertThat(statements.get(0).path("Action")).map(JsonNode::asText).containsExactly("s3:GetO*");
+    assertThat(statements.get(0).path("Action"))
+        .map(JsonNode::asText)
+        .containsExactly("s3:GetObject");
     assertThat(statements.get(1).path("Action"))
         .map(JsonNode::asText)
         .containsExactly("s3:ListBucket");
+  }
+
+  @Test
+  public void testUpdatePolicyEmitsExactMultipartActions() throws Exception {
+    String policy =
+        AwsPolicyGenerator.generatePolicy(
+            Set.of(UPDATE), List.of(NormalizedURL.from("s3://my-bucket/path1/table1")));
+
+    JsonNode actions = JSON_MAPPER.readTree(policy).get("Statement").get(0).path("Action");
+    assertThat(actions)
+        .map(JsonNode::asText)
+        .containsExactlyInAnyOrder(
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject",
+            "s3:AbortMultipartUpload",
+            "s3:ListMultipartUploadParts");
   }
 
   @ParameterizedTest(name = "{index}: region {0} -> partition {1}")
