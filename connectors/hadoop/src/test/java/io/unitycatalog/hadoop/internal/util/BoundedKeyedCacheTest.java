@@ -2,6 +2,7 @@ package io.unitycatalog.hadoop.internal.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -13,6 +14,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 
 class BoundedKeyedCacheTest {
@@ -233,6 +235,122 @@ class BoundedKeyedCacheTest {
       assertThat(slowKey.get(5, TimeUnit.SECONDS)).isEqualTo("slow-value");
     } finally {
       releaseSlowLoader.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void getOrLoadReloadsWhenFreshnessPolicyRejectsCachedValue() throws Exception {
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(
+            2, BoundedKeyedCache.noOpListener(), value -> !value.equals("stale"));
+    AtomicInteger loadCount = new AtomicInteger();
+    cache.put("k", "stale");
+
+    String reloaded =
+        cache.getOrLoad(
+            "k",
+            () -> {
+              loadCount.incrementAndGet();
+              return "fresh";
+            });
+
+    assertThat(reloaded).isEqualTo("fresh");
+    assertThat(cache.getIfPresent("k")).isEqualTo("fresh");
+    assertThat(loadCount).hasValue(1);
+  }
+
+  @Test
+  void getOrLoadSkipsLoaderWhenFreshnessPolicyAcceptsCachedValue() throws Exception {
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, BoundedKeyedCache.noOpListener(), value -> true);
+    cache.put("k", "valid");
+
+    String value = cache.getOrLoad("k", () -> "other");
+
+    assertThat(value).isEqualTo("valid");
+    assertThat(cache.getIfPresent("k")).isEqualTo("valid");
+  }
+
+  @Test
+  void staleValueReloadedOnlyOnceAcrossThreads() throws Exception {
+    Predicate<String> isFresh = value -> value.equals("fresh");
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(2, BoundedKeyedCache.noOpListener(), isFresh);
+    cache.put("key", "stale");
+    CountDownLatch reloadStarted = new CountDownLatch(1);
+    CountDownLatch releaseReload = new CountDownLatch(1);
+    AtomicInteger loadCount = new AtomicInteger();
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<String> first =
+          executor.submit(
+              () ->
+                  cache.getOrLoad(
+                      "key",
+                      () -> {
+                        loadCount.incrementAndGet();
+                        reloadStarted.countDown();
+                        assertThat(releaseReload.await(5, TimeUnit.SECONDS)).isTrue();
+                        return "fresh";
+                      }));
+      assertThat(reloadStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+      Future<String> second =
+          executor.submit(
+              () ->
+                  cache.getOrLoad(
+                      "key",
+                      () -> {
+                        loadCount.incrementAndGet();
+                        return "fresh";
+                      }));
+
+      releaseReload.countDown();
+      assertThat(first.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+      assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+      assertThat(loadCount).hasValue(1);
+    } finally {
+      releaseReload.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void freshCachedValueIsReturnedWhileTheSameKeyIsLoading() throws Exception {
+    BoundedKeyedCache<String, String> cache =
+        new BoundedKeyedCache<>(
+            2, BoundedKeyedCache.noOpListener(), value -> value.equals("fresh"));
+    cache.put("key", "stale");
+    CountDownLatch loadStarted = new CountDownLatch(1);
+    CountDownLatch releaseLoad = new CountDownLatch(1);
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      // Holds "key"'s per-key lock for the duration of the load.
+      Future<String> loading =
+          executor.submit(
+              () ->
+                  cache.getOrLoad(
+                      "key",
+                      () -> {
+                        loadStarted.countDown();
+                        assertThat(releaseLoad.await(5, TimeUnit.SECONDS)).isTrue();
+                        return "fresh";
+                      }));
+      assertThat(loadStarted.await(5, TimeUnit.SECONDS)).isTrue();
+      cache.put("key", "fresh");
+
+      // A cached value the policy accepts must not wait on the in-flight load's key lock.
+      Future<String> reader =
+          executor.submit(() -> cache.getOrLoad("key", () -> fail("loader must not be invoked")));
+      assertThat(reader.get(2, TimeUnit.SECONDS)).isEqualTo("fresh");
+
+      releaseLoad.countDown();
+      assertThat(loading.get(5, TimeUnit.SECONDS)).isEqualTo("fresh");
+    } finally {
+      releaseLoad.countDown();
       executor.shutdownNow();
     }
   }
