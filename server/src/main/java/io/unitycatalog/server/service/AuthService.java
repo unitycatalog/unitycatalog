@@ -237,14 +237,15 @@ public class AuthService implements RegisteredService {
 
     LOGGER.debug("Validating principal: {}", subject);
 
-    if (subject.equals("admin")) {
-      LOGGER.debug("admin always allowed");
-      return;
-    }
-
     try {
       User user = userRepository.getUserByEmail(subject);
-      if (user != null && user.getState() == User.StateEnum.ENABLED) {
+      // The bootstrap "admin" user (metastore OWNER) is provisioned only for the internal service
+      // token and must not be assumable via external token exchange. Comparing the resolved user's
+      // email -- rather than the incoming subject -- also rejects case variants such as "ADMIN"
+      // that a case-insensitive database collation would otherwise resolve back to the admin user.
+      if (user != null
+          && !"admin".equals(user.getEmail())
+          && user.getState() == User.StateEnum.ENABLED) {
         LOGGER.debug("Principal {} is enabled", subject);
         return;
       }
