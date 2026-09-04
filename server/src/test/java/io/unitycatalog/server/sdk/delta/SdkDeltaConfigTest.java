@@ -48,9 +48,13 @@ public class SdkDeltaConfigTest extends BaseServerTest {
 
   @Test
   public void testGetConfig() throws Exception {
-    // Success: valid catalog returns endpoints and protocol version
+    // Success: exact protocol version returns endpoints and the selected version
     DeltaCatalogConfig config = configApi.getConfig(TestUtils.CATALOG_NAME, "1.0");
     assertThat(config.getEndpoints()).isNotEmpty();
+    assertThat(config.getProtocolVersion()).isEqualTo("1.0");
+
+    // Success: a higher compatible minor version selects the server's highest version
+    config = configApi.getConfig(TestUtils.CATALOG_NAME, "1.1");
     assertThat(config.getProtocolVersion()).isEqualTo("1.0");
 
     // Error: missing catalog returns 400 with InvalidParameterValueException
@@ -64,5 +68,23 @@ public class SdkDeltaConfigTest extends BaseServerTest {
         () -> configApi.getConfig("nonexistent", "1.0"),
         DeltaErrorType.NO_SUCH_CATALOG_EXCEPTION,
         "nonexistent");
+
+    // Error: malformed protocol version returns 400 with InvalidParameterValueException
+    TestUtils.assertDeltaApiException(
+        () -> configApi.getConfig(TestUtils.CATALOG_NAME, "invalid"),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "protocol version");
+
+    // Error: missing protocol versions return 400 with InvalidParameterValueException
+    TestUtils.assertDeltaApiException(
+        () -> configApi.getConfig(TestUtils.CATALOG_NAME, ""),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "protocol version");
+
+    // Error: a protocol version with no compatible major version returns 400
+    TestUtils.assertDeltaApiException(
+        () -> configApi.getConfig(TestUtils.CATALOG_NAME, "2.0"),
+        DeltaErrorType.INVALID_PARAMETER_VALUE_EXCEPTION,
+        "protocol version");
   }
 }
