@@ -17,9 +17,14 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.TokenRevocationRepository;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.dao.UserDAO;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
+import java.util.UUID;
+import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +43,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthDecorator.class);
   private final UserRepository userRepository;
+  private final TokenRevocationRepository tokenRevocationRepository;
+  private final SessionFactory sessionFactory;
 
   public static final String UC_TOKEN_KEY = "UC_TOKEN";
 
@@ -51,6 +58,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   public AuthDecorator(SecurityContext securityContext, Repositories repositories) {
     this.jwksOperations = new JwksOperations(securityContext);
     this.userRepository = repositories.getUserRepository();
+    this.tokenRevocationRepository = repositories.getTokenRevocationRepository();
+    this.sessionFactory = repositories.getSessionFactory();
   }
 
   @Override
@@ -81,24 +90,42 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
     // Internal tokens don't need audience validation
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId, alg);
-    decodedJWT = jwtVerifier.verify(decodedJWT);
+    DecodedJWT verifiedJWT = jwtVerifier.verify(decodedJWT);
 
-    String subject = decodedJWT.getSubject();
+    String subject = verifiedJWT.getSubject();
+    // Tokens this server issues always carry a UUID jti; an absent or non-UUID jti fails here
+    // (acceptable, since only issued tokens are revoked).
+    UUID jti = UUID.fromString(verifiedJWT.getId());
 
-    User user;
-    try {
-      user = userRepository.getUserByEmail(subject);
-    } catch (Exception e) {
-      LOGGER.debug("User not found: {}", subject);
-      user = null;
+    // Check token revocation and look up the user in a single transaction. This runs on every
+    // authenticated request, so sharing one session keeps the auth path to a single connection
+    // checkout. Expired tokens are already rejected by the verifier above, so only live tokens
+    // reach the revocation check; a revoked token (e.g. from logout) is denied before the lookup.
+    UserDAO userDAO =
+        TransactionManager.executeWithTransaction(
+            sessionFactory,
+            session -> {
+              if (tokenRevocationRepository.isRevoked(session, jti)) {
+                throw new AuthorizationException(
+                    ErrorCode.PERMISSION_DENIED, "Access token has been revoked.");
+              }
+              return userRepository.getUserByEmail(session, subject);
+            },
+            "Failed to authorize request",
+            /* readOnly= */ true);
+
+    if (userDAO == null) {
+      throw new AuthorizationException(
+          ErrorCode.PERMISSION_DENIED, "User does not exist: " + subject);
     }
-    if (user == null || user.getState() != User.StateEnum.ENABLED) {
+    User user = userDAO.toUser();
+    if (user.getState() != User.StateEnum.ENABLED) {
       throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + subject);
     }
 
     LOGGER.debug("Access allowed for subject: {}", subject);
 
-    ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
+    ctx.setAttr(DECODED_JWT_ATTR, verifiedJWT);
 
     return delegate.serve(ctx, req);
   }
