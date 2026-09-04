@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist;
 
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.dao.TokenRevocationDAO;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import java.util.Date;
@@ -32,9 +33,15 @@ public class TokenRevocationRepository {
   }
 
   /**
-   * Records a token's jti as revoked until {@code expiresAt}. Idempotent: revoking a jti that is
-   * already present just refreshes its retained expiry. This touches only the token's own row, so
-   * concurrent revocations of different sessions do not contend.
+   * Records a token's jti as revoked. A {@code null} {@code expiresAt} means the token has no
+   * expiry, so its revocation is permanent; otherwise the row is kept until {@code expiresAt}. This
+   * touches only the token's own row, so concurrent revocations of different sessions do not
+   * contend.
+   *
+   * <p>Idempotent under concurrency: if the same token is revoked twice at once, one insert wins
+   * and the other fails on the jti primary key; that is treated as success, since the token is
+   * revoked either way. The expiry is derived from the token, so both inserts carry the same value
+   * and there is nothing to reconcile.
    *
    * <p>After the revocation commits, an asynchronous, best-effort cleanup of expired rows is
    * triggered in a separate transaction. It is deliberately fire-and-forget: a failed sweep (e.g.
@@ -42,21 +49,24 @@ public class TokenRevocationRepository {
    * token and the next revocation will retry the cleanup.
    */
   public void revoke(UUID jti, Date expiresAt) {
-    TransactionManager.executeWithTransaction(
-        sessionFactory,
-        session -> {
-          TokenRevocationDAO existing = session.get(TokenRevocationDAO.class, jti);
-          if (existing == null) {
+    try {
+      TransactionManager.executeWithTransaction(
+          sessionFactory,
+          session -> {
             session.persist(TokenRevocationDAO.builder().jti(jti).expiresAt(expiresAt).build());
-          } else {
-            // existing is managed, so the updated expiry is flushed on commit.
-            existing.setExpiresAt(expiresAt);
-          }
-          LOGGER.debug("Revoked token jti={} until {}", jti, expiresAt);
-          return null;
-        },
-        "Failed to revoke token",
-        /* readOnly = */ false);
+            LOGGER.debug("Revoked token jti={} until {}", jti, expiresAt);
+            return null;
+          },
+          "Failed to revoke token",
+          /* readOnly= */ false);
+    } catch (BaseException e) {
+      // A concurrent logout of the same token can insert the row first, failing this transaction on
+      // the jti primary key. The token is revoked either way, so ignore the failure once the row is
+      // present, and rethrow anything else.
+      if (!isRevoked(jti)) {
+        throw e;
+      }
+    }
 
     CompletableFuture.runAsync(this::deleteExpiredQuietly);
   }
@@ -79,7 +89,7 @@ public class TokenRevocationRepository {
           return purge.executeUpdate();
         },
         "Failed to delete expired token revocations",
-        /* readOnly = */ false);
+        /* readOnly= */ false);
   }
 
   private void deleteExpiredQuietly() {
@@ -97,5 +107,13 @@ public class TokenRevocationRepository {
    */
   public boolean isRevoked(Session session, UUID jti) {
     return session.get(TokenRevocationDAO.class, jti) != null;
+  }
+
+  private boolean isRevoked(UUID jti) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> isRevoked(session, jti),
+        "Failed to check token revocation",
+        /* readOnly= */ true);
   }
 }

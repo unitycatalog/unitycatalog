@@ -21,8 +21,9 @@ import lombok.Setter;
  * any in-memory state.
  *
  * <p>Rows are retained only until {@link #expiresAt}: once a token would expire on its own there is
- * nothing left to revoke, so expired rows are purged once their expiry has passed. The table
- * therefore stays bounded by the number of not-yet-expired revocations.
+ * nothing left to revoke, so expired rows are purged once their expiry has passed. A {@code null}
+ * expiry marks a token that never expires, so its revocation is permanent and the row is kept
+ * indefinitely. The table therefore stays bounded by the number of not-yet-expired revocations.
  */
 @Entity
 @Table(
@@ -44,6 +45,8 @@ public class TokenRevocationDAO {
   @Column(name = "jti")
   private UUID jti;
 
-  @Column(name = "expires_at", nullable = false)
+  // When null, the revoked token has no expiry, so the revocation is permanent: the cleanup delete
+  // (expires_at < now) never matches a null row, so it is kept indefinitely.
+  @Column(name = "expires_at")
   private Date expiresAt;
 }

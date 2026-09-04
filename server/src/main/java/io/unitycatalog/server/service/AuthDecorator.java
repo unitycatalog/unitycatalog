@@ -112,7 +112,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
               return userRepository.getUserByEmail(session, subject);
             },
             "Failed to authorize request",
-            /* readOnly = */ true);
+            /* readOnly= */ true);
 
     if (userDAO == null) {
       throw new AuthorizationException(

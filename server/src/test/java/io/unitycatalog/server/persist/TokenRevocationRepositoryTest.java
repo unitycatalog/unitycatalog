@@ -57,8 +57,20 @@ public class TokenRevocationRepositoryTest {
   public void testRevokeIsIdempotent() {
     UUID jti = UUID.randomUUID();
     repository.revoke(jti, hoursFromNow(1));
-    // Revoking the same jti again refreshes the expiry rather than failing on the duplicate key.
+    // Revoking the same jti again is a no-op rather than failing on the duplicate primary key.
     repository.revoke(jti, hoursFromNow(2));
+
+    assertThat(isRevoked(jti)).isTrue();
+  }
+
+  @Test
+  public void testPermanentRevocationSurvivesCleanup() {
+    // A null expiry means the token never expires, so its revocation is permanent and cleanup must
+    // not remove it.
+    UUID jti = UUID.randomUUID();
+    repository.revoke(jti, null);
+
+    repository.deleteExpired();
 
     assertThat(isRevoked(jti)).isTrue();
   }

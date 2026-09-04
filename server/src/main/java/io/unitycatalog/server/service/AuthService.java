@@ -46,8 +46,6 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -226,13 +224,10 @@ public class AuthService implements RegisteredService {
         && JwtTokenType.ACCESS
             .name()
             .equals(decodedJWT.getClaim(JwtClaim.TOKEN_TYPE.key()).asString())) {
-      // Retain the denylist entry until the token would have expired anyway. Access tokens always
-      // carry an exp; fall back to the configured access-token lifetime if one is somehow absent.
-      Date expiresAt =
-          decodedJWT.getExpiresAt() != null
-              ? decodedJWT.getExpiresAt()
-              : Date.from(Instant.now().plus(serverProperties.getAccessTokenTimeout()));
-      tokenRevocationRepository.revoke(UUID.fromString(decodedJWT.getId()), expiresAt);
+      // Retain the denylist entry until the token would have expired anyway. A null exp means the
+      // token never expires, so revoke it permanently (the repository keeps a null-expiry row).
+      tokenRevocationRepository.revoke(
+          UUID.fromString(decodedJWT.getId()), decodedJWT.getExpiresAt());
     }
 
     return request.headers().cookies().stream()
