@@ -48,10 +48,38 @@ public class UCTableProperties {
   public static final String SPARK_PARTITION_SCHEMA = "spark.sql.partitionSchema";
   public static final String SPARK_PARTITION_SCHEMA_PREFIX = SPARK_PARTITION_SCHEMA + ".";
 
+  /**
+   * Spark copies USING/OPTIONS entries both bare and with {@link TableCatalog#OPTION_PREFIX}
+   * ({@code option.}). Credential and schema keys must match in either form.
+   */
+  private static String withoutOptionPrefix(String key) {
+    if (key.startsWith(TableCatalog.OPTION_PREFIX)) {
+      return key.substring(TableCatalog.OPTION_PREFIX.length());
+    }
+    return key;
+  }
+
   public static boolean isSparkDatasourceSchemaProperty(String key) {
-    return key.equals(SPARK_DATASOURCE_SCHEMA)
-        || key.startsWith(SPARK_DATASOURCE_SCHEMA_PREFIX)
-        || key.equals(SPARK_PARTITION_SCHEMA)
-        || key.startsWith(SPARK_PARTITION_SCHEMA_PREFIX);
+    String bare = withoutOptionPrefix(key);
+    return bare.equals(SPARK_DATASOURCE_SCHEMA)
+        || bare.startsWith(SPARK_DATASOURCE_SCHEMA_PREFIX)
+        || bare.equals(SPARK_PARTITION_SCHEMA)
+        || bare.startsWith(SPARK_PARTITION_SCHEMA_PREFIX);
+  }
+
+  /**
+   * Keys that must not be forwarded on {@code createTable} / {@code createView}. Reserved V2 fields
+   * are first-class columns on the UC payload; {@code fs.*} is session-scoped credential config;
+   * Spark datasource schema JSON duplicates {@code uc_columns} and overflows varchar(255).
+   */
+  public static boolean shouldPersistProperty(String key) {
+    String bare = withoutOptionPrefix(key);
+    if (V2_TABLE_PROPERTIES.contains(key) || V2_TABLE_PROPERTIES.contains(bare)) {
+      return false;
+    }
+    if (bare.startsWith("fs.")) {
+      return false;
+    }
+    return !isSparkDatasourceSchemaProperty(key);
   }
 }

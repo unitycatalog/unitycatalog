@@ -1074,18 +1074,10 @@ private[spark] class UCProxy(
     comment.foreach(createTable.setComment(_))
     createTable.setColumns(columns)
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
-    // Do not send the V2 table properties as they are made part of the `createTable` already.
-    // Also strip the vended filesystem credential properties (fs.* and their option.-prefixed
-    // duplicates, e.g. fs.s3a.session.token): they are session-scoped Hadoop configs injected by
-    // UCSingleCatalog for the local write path, not table metadata, and must never be persisted
-    // in the catalog.
-    // Spark also injects Hive-metastore schema JSON (`spark.sql.sources.schema*`,
-    // `spark.sql.partitionSchema*`). UC already persists schema as columns, and the JSON
-    // overflowed varchar(255) on create.
+    // Drop V2 reserved keys, vended fs.* credentials, and Spark Hive-metastore schema JSON.
+    // Same deny-list as createView; see UCTableProperties.shouldPersistProperty.
     val propertiesToServer = properties.view
-      .filterKeys(!UCTableProperties.V2_TABLE_PROPERTIES.contains(_))
-      .filterKeys(k => !k.startsWith("fs.") && !k.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
-      .filterKeys(!UCTableProperties.isSparkDatasourceSchemaProperty(_))
+      .filterKeys(UCTableProperties.shouldPersistProperty(_))
       .toMap
     createTable.setProperties(propertiesToServer)
     try {

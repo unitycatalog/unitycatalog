@@ -16,7 +16,6 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -168,11 +167,7 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
     TableInfo tableInfo = tableOperations.getTable(fullTableName);
     java.util.Map<String, String> serverProperties =
         tableInfo.getProperties() == null ? java.util.Map.of() : tableInfo.getProperties();
-    assertThat(serverProperties.keySet())
-        .noneMatch(key -> key.startsWith("fs."))
-        .noneMatch(key -> key.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
-        .noneMatch(UCTableProperties.V2_TABLE_PROPERTIES::contains)
-        .noneMatch(UCTableProperties::isSparkDatasourceSchemaProperty);
+    assertThat(serverProperties.keySet()).allMatch(UCTableProperties::shouldPersistProperty);
   }
 
   @Test
