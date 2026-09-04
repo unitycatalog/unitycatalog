@@ -19,10 +19,8 @@ import io.unitycatalog.hadoop.internal.CredPropsUtil;
 import io.unitycatalog.hadoop.internal.auth.AwsCredential;
 import io.unitycatalog.hadoop.internal.auth.GenericCredentialFetcher;
 import io.unitycatalog.hadoop.internal.id.TableCredId;
-import java.net.HttpURLConnection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.IntSupplier;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.junit.jupiter.api.AfterEach;
@@ -59,18 +57,13 @@ public class WriteIntentCredentialSuite {
   }
 
   @Test
-  public void intentLessLoadRemembersWriteDenialAndSkipsRetry() throws Exception {
-    String tableId = stubTable("t_denied");
+  public void intentLessLoadFallsBackToReadOnDenial() throws Exception {
+    stubTable("t_denied");
     denyReadWriteGrantRead();
 
     proxy.loadTable(Identifier.of(NAMESPACE, "t_denied"));
     assertThat(readWriteAttempts.get()).isEqualTo(1);
     assertThat(readAttempts.get()).isEqualTo(1);
-    assertThat(writeDeniedTables()).containsOnlyKeys(tableId);
-
-    // Subsequent loads must not retry the denied READ_WRITE.
-    proxy.loadTable(Identifier.of(NAMESPACE, "t_denied"));
-    assertThat(readWriteAttempts.get()).isEqualTo(1);
   }
 
   @Test
@@ -86,62 +79,14 @@ public class WriteIntentCredentialSuite {
   }
 
   @Test
-  public void successfulDeclaredWriteClearsDenialMemory() throws Exception {
-    String tableId = stubTable("t_regranted");
-    denyReadWriteGrantRead();
-
-    proxy.loadTable(Identifier.of(NAMESPACE, "t_regranted"));
-    assertThat(writeDeniedTables()).containsOnlyKeys(tableId);
-
+  public void grantedDeclaredWriteRequestsReadWriteOnly() throws Exception {
+    stubTable("t_granted");
     grantAllOperations();
-    UCSingleCatalog$.MODULE$.WRITE_INTENT().set(true);
-    proxy.loadTable(Identifier.of(NAMESPACE, "t_regranted"));
-    assertThat(writeDeniedTables()).isEmpty();
-  }
-
-  @Test
-  public void transientReadWriteFailureDoesNotPoisonDenialMemory() throws Exception {
-    stubTable("t_transient");
-    AtomicInteger calls = new AtomicInteger();
-    // First READ_WRITE attempt fails with a 503; everything afterwards is granted.
-    stubFetcher(() -> calls.getAndIncrement() == 0 ? 503 : 0);
-
-    proxy.loadTable(Identifier.of(NAMESPACE, "t_transient"));
-    assertThat(writeDeniedTables()).isEmpty();
-
-    // The next load must retry READ_WRITE instead of trusting the transient failure.
-    proxy.loadTable(Identifier.of(NAMESPACE, "t_transient"));
-    assertThat(readWriteAttempts.get()).isEqualTo(2);
-  }
-
-  @Test
-  public void declaredWriteDenialSeedsMemoryForLaterReads() throws Exception {
-    String tableId = stubTable("t_write_seeds");
-    denyReadWriteGrantRead();
 
     UCSingleCatalog$.MODULE$.WRITE_INTENT().set(true);
-    assertThatThrownBy(() -> proxy.loadTable(Identifier.of(NAMESPACE, "t_write_seeds")))
-        .isInstanceOf(ApiException.class);
-    UCSingleCatalog$.MODULE$.WRITE_INTENT().remove();
-    assertThat(writeDeniedTables()).containsOnlyKeys(tableId);
-
-    // The failed write already proved the denial; reads skip the doomed round-trip.
-    proxy.loadTable(Identifier.of(NAMESPACE, "t_write_seeds"));
+    proxy.loadTable(Identifier.of(NAMESPACE, "t_granted"));
     assertThat(readWriteAttempts.get()).isEqualTo(1);
-  }
-
-  @Test
-  public void expiredDenialEntryRestoresReadWriteFirstProbing() throws Exception {
-    String tableId = stubTable("t_expired");
-    denyReadWriteGrantRead();
-
-    proxy.loadTable(Identifier.of(NAMESPACE, "t_expired"));
-    assertThat(readWriteAttempts.get()).isEqualTo(1);
-
-    // Simulate the TTL elapsing (e.g. a grant added later): the next load probes again.
-    writeDeniedTables().put(tableId, 0L);
-    proxy.loadTable(Identifier.of(NAMESPACE, "t_expired"));
-    assertThat(readWriteAttempts.get()).isEqualTo(2);
+    assertThat(readAttempts.get()).isEqualTo(0);
   }
 
   /** Table ids are unique per test: the hadoop credential cache is JVM-global. */
@@ -174,24 +119,23 @@ public class WriteIntentCredentialSuite {
   }
 
   private void denyReadWriteGrantRead() {
-    stubFetcher(() -> HttpURLConnection.HTTP_FORBIDDEN);
+    stubFetcher(true);
   }
 
   private void grantAllOperations() {
-    stubFetcher(() -> 0);
+    stubFetcher(false);
   }
 
-  /** Stubs the fetcher; a non-zero status from {@code denyRwStatus} fails READ_WRITE requests. */
-  private void stubFetcher(IntSupplier denyRwStatus) {
+  /** Stubs the fetcher, recording attempts per operation and optionally denying READ_WRITE. */
+  private void stubFetcher(boolean denyReadWrite) {
     CredPropsUtil.genericCredFetcherFactory =
         (apiClient, credId) ->
             () -> {
               String operation = ((TableCredId) credId).tableOperation();
               if (TableOperation.READ_WRITE.value().equals(operation)) {
                 readWriteAttempts.incrementAndGet();
-                int status = denyRwStatus.getAsInt();
-                if (status != 0) {
-                  throw new ApiException(status, "cannot vend READ_WRITE credential");
+                if (denyReadWrite) {
+                  throw new ApiException(403, "cannot vend READ_WRITE credential");
                 }
               } else {
                 readAttempts.incrementAndGet();
@@ -199,11 +143,5 @@ public class WriteIntentCredentialSuite {
               return List.of(
                   new AwsCredential("access-key", "secret-key", "session-token", null, LOCATION));
             };
-  }
-
-  @SuppressWarnings("unchecked")
-  private java.util.Map<String, Long> writeDeniedTables() throws Exception {
-    return (java.util.Map<String, Long>)
-        fixture.proxyObj.getClass().getMethod("writeDeniedTables").invoke(fixture.proxyObj);
   }
 }
