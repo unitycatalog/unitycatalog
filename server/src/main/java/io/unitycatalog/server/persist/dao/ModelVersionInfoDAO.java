@@ -7,6 +7,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.Temporal;
+import jakarta.persistence.TemporalType;
 import java.util.Date;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -14,6 +16,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.ColumnDefault;
 
 // Hibernate annotations
 @Entity
@@ -68,6 +71,22 @@ public class ModelVersionInfoDAO {
 
   @Column(name = "url", length = 4096)
   private String url;
+
+  @Temporal(TemporalType.TIMESTAMP)
+  @Column(name = "dropped_at")
+  private Date droppedAt;
+
+  @ColumnDefault("0")
+  @Column(name = "purge_state", nullable = false)
+  private short purgeState;
+
+  @ColumnDefault("0")
+  @Column(name = "num_cleanup_retries", nullable = false)
+  private short numCleanupRetries;
+
+  @Temporal(TemporalType.TIMESTAMP)
+  @Column(name = "last_cleanup_at")
+  private Date lastCleanupAt;
 
   public static ModelVersionInfoDAO from(ModelVersionInfo modelVersionInfo) {
     return ModelVersionInfoDAO.builder()
