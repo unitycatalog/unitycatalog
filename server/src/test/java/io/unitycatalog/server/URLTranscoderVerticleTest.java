@@ -10,6 +10,7 @@ import io.vertx.ext.web.client.WebClient;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -83,6 +84,84 @@ public class URLTranscoderVerticleTest {
 
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.bodyAsString()).isEqualTo("/echo/catalog.schema");
+  }
+
+  @Test
+  public void testNoSidecarRoutesEverythingToService() {
+    URLTranscoderVerticle verticle = new URLTranscoderVerticle(0, 9000);
+
+    assertThat(verticle.targetPort("/api/2.1/unity-catalog/catalogs")).isEqualTo(9000);
+    assertThat(verticle.targetPort("/api/2.1/opensharing/provider/shares")).isEqualTo(9000);
+  }
+
+  @Test
+  public void testPathMatchingASidecarPrefixRoutesThere() {
+    URLTranscoderVerticle verticle =
+        new URLTranscoderVerticle(
+            0,
+            9000,
+            9099,
+            List.of(
+                "/api/2.1/opensharing",
+                "/api/2.1/opensharing/provider",
+                "/api/2.1/opensharing/activation"));
+
+    assertThat(verticle.targetPort("/api/2.1/opensharing/shares")).isEqualTo(9099);
+    assertThat(verticle.targetPort("/api/2.1/opensharing/provider/shares")).isEqualTo(9099);
+    assertThat(verticle.targetPort("/api/2.1/opensharing/activation/some-nonce")).isEqualTo(9099);
+  }
+
+  @Test
+  public void testPathMatchingNoSidecarPrefixRoutesToService() {
+    URLTranscoderVerticle verticle =
+        new URLTranscoderVerticle(0, 9000, 9099, List.of("/api/2.1/opensharing"));
+
+    assertThat(verticle.targetPort("/api/2.1/unity-catalog/catalogs")).isEqualTo(9000);
+  }
+
+  @Test
+  public void testSidecarPathIsForwardedToTheSidecarPort() throws Exception {
+    int servicePort = findAvailablePort();
+    int sidecarPort = findAvailablePort();
+    int routedTranscodePort = findAvailablePort();
+    startService(servicePort);
+    startSidecar(sidecarPort);
+    vertx
+        .deployVerticle(
+            new URLTranscoderVerticle(
+                routedTranscodePort, servicePort, sidecarPort, List.of("/sidecar")))
+        .toCompletionStage()
+        .toCompletableFuture()
+        .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    awaitPort(routedTranscodePort);
+
+    HttpResponse<Buffer> viaSidecar =
+        client
+            .request(HttpMethod.GET, routedTranscodePort, HOST, "/sidecar/hello")
+            .send()
+            .toCompletionStage()
+            .toCompletableFuture()
+            .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    assertThat(viaSidecar.bodyAsString()).isEqualTo("from-sidecar:/sidecar/hello");
+
+    HttpResponse<Buffer> viaService =
+        client
+            .request(HttpMethod.GET, routedTranscodePort, HOST, "/with-body")
+            .send()
+            .toCompletionStage()
+            .toCompletableFuture()
+            .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    assertThat(viaService.bodyAsString()).isEqualTo("transcoded");
+  }
+
+  private static void startSidecar(int sidecarPort) throws Exception {
+    vertx
+        .createHttpServer()
+        .requestHandler(request -> request.response().end("from-sidecar:" + request.path()))
+        .listen(sidecarPort)
+        .toCompletionStage()
+        .toCompletableFuture()
+        .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
   }
 
   private static HttpResponse<Buffer> send(HttpMethod method, String path) throws Exception {

@@ -68,6 +68,8 @@ public class UnityCatalogServer implements AutoCloseable {
   /** Set during {@link #initializeServer}; may be null if construction fails early. */
   private UnityCatalogAuthorizer authorizer;
 
+  private AutoCloseable openSharingLifecycle;
+
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
@@ -133,6 +135,13 @@ public class UnityCatalogServer implements AutoCloseable {
     if (unityCatalogServerBuilder.port == 0) {
       unityCatalogServerBuilder.port(DEFAULT_PORT);
     }
+    // Only main() below sits behind a separate public-facing port (its own Armeria port + 1); a
+    // caller with no such split — every test — gets embedded OpenSharing's external url pointed
+    // at the one port it has, which is also the only case where that would matter, since none of
+    // them enable OpenSharing.
+    if (unityCatalogServerBuilder.publicPort == 0) {
+      unityCatalogServerBuilder.publicPort(unityCatalogServerBuilder.port);
+    }
     if (unityCatalogServerBuilder.serverProperties == null) {
       unityCatalogServerBuilder.serverProperties(new ServerProperties(SERVER_PROPERTIES_FILE));
     }
@@ -167,7 +176,50 @@ public class UnityCatalogServer implements AutoCloseable {
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
 
+    unityCatalogServerBuilder.serverProperties.checkOpenSharingConfigured();
+    openSharingLifecycle =
+        startEmbeddedOpenSharing(
+            unityCatalogServerBuilder.serverProperties,
+            repositories,
+            unityCatalogServerBuilder.port,
+            unityCatalogServerBuilder.publicPort);
+
     return armeriaServerBuilder.build();
+  }
+
+  private AutoCloseable startEmbeddedOpenSharing(
+      ServerProperties serverProperties,
+      Repositories repositories,
+      int armeriaPort,
+      int publicPort) {
+    if (!serverProperties.isOpenSharingEnabled()) {
+      return null;
+    }
+    try {
+      Class<?> lifecycleClass =
+          Class.forName("io.unitycatalog.server.sharing.OpenSharingLifecycle");
+      Object started =
+          lifecycleClass
+              .getMethod(
+                  "start",
+                  ServerProperties.class,
+                  SecurityContext.class,
+                  Repositories.class,
+                  HibernateConfigurator.class,
+                  int.class,
+                  int.class)
+              .invoke(
+                  null,
+                  serverProperties,
+                  securityContext,
+                  repositories,
+                  hibernateConfigurator,
+                  armeriaPort,
+                  publicPort);
+      return started == null ? null : (AutoCloseable) started;
+    } catch (ReflectiveOperationException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Failed to start embedded OpenSharing.", e);
+    }
   }
 
   private UnityCatalogAuthorizer initializeAuthorizer(
@@ -299,15 +351,28 @@ public class UnityCatalogServer implements AutoCloseable {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
+    ServerProperties serverProperties = new ServerProperties(SERVER_PROPERTIES_FILE);
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer =
-        UnityCatalogServer.builder().port(options.getPort() + 1).build();
+        UnityCatalogServer.builder()
+            .port(options.getPort() + 1)
+            .publicPort(options.getPort())
+            .serverProperties(serverProperties)
+            .build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
-    // Start URL transcoder
+    // Start URL transcoder — also the one public listener embedded OpenSharing shares a port
+    // with, when enabled: a request under one of its path prefixes is routed to its own port
+    // instead of Armeria's, so a client reaches either half of the process at the same address.
     Vertx vertx = Vertx.vertx();
     Verticle transcodeVerticle =
-        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
+        serverProperties.isOpenSharingEnabled()
+            ? new URLTranscoderVerticle(
+                options.getPort(),
+                options.getPort() + 1,
+                serverProperties.getOpenSharingPort(),
+                serverProperties.getOpenSharingRoutedPathPrefixes())
+            : new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
     vertx.deployVerticle(transcodeVerticle);
   }
 
@@ -334,6 +399,13 @@ public class UnityCatalogServer implements AutoCloseable {
   @Override
   public void close() {
     try {
+      if (openSharingLifecycle != null) {
+        try {
+          openSharingLifecycle.close();
+        } catch (Exception e) {
+          throw new BaseException(ErrorCode.INTERNAL, "Failed to stop embedded OpenSharing.", e);
+        }
+      }
       stop();
     } finally {
       closeAuthorizer(null);
@@ -366,6 +438,7 @@ public class UnityCatalogServer implements AutoCloseable {
 
   public static class Builder {
     private int port;
+    private int publicPort;
     private ServerProperties serverProperties;
     private HibernateConfigurator hibernateConfigurator;
     private CloudCredentialVendor cloudCredentialVendor;
@@ -374,6 +447,18 @@ public class UnityCatalogServer implements AutoCloseable {
 
     public UnityCatalogServer.Builder port(int port) {
       this.port = port;
+      return this;
+    }
+
+    /**
+     * The port a client actually reaches this process on, when it differs from {@link #port} — true
+     * only for {@code main()}, where Armeria (this server's own port) sits behind {@code
+     * URLTranscoderVerticle} on {@code port - 1}. Used only to tell embedded OpenSharing what
+     * address to put in a recipient's activation link and {@code config.share}; unset, it defaults
+     * to {@link #port} itself.
+     */
+    public UnityCatalogServer.Builder publicPort(int publicPort) {
+      this.publicPort = publicPort;
       return this;
     }
 

@@ -220,7 +220,18 @@ public class ServerProperties {
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
-    INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
+    INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR),
+    OPENSHARING_ENABLED("server.opensharing.enabled", "false", BOOLEAN_VALIDATOR),
+    // Bound to 127.0.0.1 only: reached through the public port via URLTranscoderVerticle's
+    // path-based routing, never directly. Provider and activation paths, and the base url a
+    // recipient's activation link and config.share point at, are derived from this prefix and
+    // from UC's own public port rather than configured separately — see
+    // getOpenSharingProviderBasePath / getOpenSharingActivationBasePath / start's
+    // externalBaseUrl below.
+    OPENSHARING_PORT("server.opensharing.port", "8099", POSITIVE_INTEGER_VALIDATOR),
+    OPENSHARING_PROTOCOL_PREFIX(
+        "server.opensharing.protocol-prefix", "/api/2.1/opensharing", NOOP_VALIDATOR),
+    OPENSHARING_CREDENTIAL_ENCRYPTION_KEY("server.opensharing.credential-encryption-key");
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
     // getS3Configurations.
@@ -667,5 +678,53 @@ public class ServerProperties {
       return List.of();
     }
     return Arrays.stream(value.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+  }
+
+  public boolean isOpenSharingEnabled() {
+    return isTrueOrEnable(get(Property.OPENSHARING_ENABLED));
+  }
+
+  public int getOpenSharingPort() {
+    return Integer.parseInt(get(Property.OPENSHARING_PORT));
+  }
+
+  public String getOpenSharingProtocolPrefix() {
+    return get(Property.OPENSHARING_PROTOCOL_PREFIX);
+  }
+
+  /** The provider-admin API's path, derived from the protocol prefix rather than configured. */
+  public String getOpenSharingProviderBasePath() {
+    return getOpenSharingProtocolPrefix() + "/provider";
+  }
+
+  /** The activation API's path, derived from the protocol prefix rather than configured. */
+  public String getOpenSharingActivationBasePath() {
+    return getOpenSharingProtocolPrefix() + "/activation";
+  }
+
+  /** Path prefixes the public port's URL transcoder routes to embedded OpenSharing's own port. */
+  public List<String> getOpenSharingRoutedPathPrefixes() {
+    return List.of(
+        getOpenSharingProtocolPrefix(),
+        getOpenSharingProviderBasePath(),
+        getOpenSharingActivationBasePath());
+  }
+
+  public String getOpenSharingCredentialEncryptionKey() {
+    return get(Property.OPENSHARING_CREDENTIAL_ENCRYPTION_KEY);
+  }
+
+  public void checkOpenSharingConfigured() {
+    if (!isOpenSharingEnabled()) {
+      return;
+    }
+    String key = getOpenSharingCredentialEncryptionKey();
+    if (key == null || key.isBlank()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "OpenSharing is enabled but '"
+              + Property.OPENSHARING_CREDENTIAL_ENCRYPTION_KEY.getKey()
+              + "' is not set in server.properties");
+    }
   }
 }
