@@ -103,7 +103,7 @@ public class WriteIntentE2ETest extends BaseSparkIntegrationTest {
   }
 
   @Test
-  public void readOnlyPrincipalPaysReadWriteDenialOncePerTable() {
+  public void readOnlyPrincipalReadsViaFallbackAndWritesFailFast() {
     session = createSparkSessionWithCatalogs(false, false, SPARK_CATALOG, CATALOG_NAME);
     disableDeltaRestApi();
     installRecorder(Set.of());
@@ -119,22 +119,13 @@ public class WriteIntentE2ETest extends BaseSparkIntegrationTest {
     // holding only SELECT.
     installRecorder(Set.of(tableId));
 
-    // First SELECT: one denied READ_WRITE, then READ succeeds and the query returns data.
+    // SELECT: denied READ_WRITE, then READ succeeds and the query returns data.
     fetches.clear();
     clearCredentialCache();
     List<Row> rows = sql("SELECT * FROM %s", table);
     assertThat(rows).hasSize(1);
-    List<String> operations = operationsFor(tableId);
-    assertThat(operations).isNotEmpty();
-    assertThat(operations.get(0)).isEqualTo(TableOperation.READ_WRITE.value());
-    assertThat(operations).filteredOn(TableOperation.READ_WRITE.value()::equals).hasSize(1);
-    assertThat(operations).contains(TableOperation.READ.value());
-
-    // Subsequent SELECTs must not retry the denied READ_WRITE.
-    fetches.clear();
-    clearCredentialCache();
-    sql("SELECT * FROM %s", table);
-    assertThat(operationsFor(tableId)).containsOnly(TableOperation.READ.value());
+    assertThat(operationsFor(tableId))
+        .containsExactly(TableOperation.READ_WRITE.value(), TableOperation.READ.value());
 
     // A write on the denied table fails at analysis time, without a READ fallback fetch.
     fetches.clear();
@@ -144,12 +135,11 @@ public class WriteIntentE2ETest extends BaseSparkIntegrationTest {
     assertThat(operationsFor(tableId)).containsOnly(TableOperation.READ_WRITE.value());
     assertThat(currentWriteIntent()).isFalse();
 
-    // Once the "grant" returns, a declared write clears the denial memory and succeeds.
+    // Once the "grant" returns, the declared write succeeds.
     installRecorder(Set.of());
-    sql("INSERT INTO %s VALUES (3, 'c')", table);
     fetches.clear();
     clearCredentialCache();
-    sql("SELECT * FROM %s", table);
+    sql("INSERT INTO %s VALUES (3, 'c')", table);
     assertThat(operationsFor(tableId)).containsOnly(TableOperation.READ_WRITE.value());
   }
 
