@@ -249,17 +249,40 @@ public class AuthServiceTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testTokenExchangeRejectsDisallowedPrincipals() {
-    // The reserved "admin" principal must never be exchangeable (it is the internal service-token,
-    // metastore-OWNER identity), and a correctly-signed token for any non-enabled user must fail
-    // closed. Both return the same generic 400 so "admin" is indistinguishable as a reserved name.
-    for (String subject : List.of("admin", "nobody@example.com")) {
-      String token =
+  public void testTokenExchangeRejectsDisallowedPrincipals() throws IOException {
+    // The reserved "admin" principal (the internal service-token, metastore-OWNER identity) must
+    // never be exchangeable, including a case variant such as "ADMIN" that a case-insensitive
+    // database collation would resolve back to the admin user; and a correctly-signed token for
+    // any non-enabled user must fail closed. All return the same generic INVALID_ARGUMENT.
+    for (String subject : List.of("admin", "ADMIN", "nobody@example.com")) {
+      assertExchangeRejectedAsInvalid(
+          "sub=" + subject,
           createIdentityToken(
-              subject, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId);
-      AggregatedHttpResponse response = exchangeToken(token);
-      assertThat(response.status()).as("subject=%s", subject).isEqualTo(HttpStatus.BAD_REQUEST);
+              subject, testIssuer, TEST_AUDIENCE, testIssuerAlgorithm, testIssuerKeyId));
     }
+
+    // The principal is taken from the "email" claim (falling back to "sub"), so an opaque subject
+    // paired with email=admin must be rejected just like sub=admin.
+    String emailAdminToken =
+        JWT.create()
+            .withSubject("opaque-subject-id")
+            .withIssuer(testIssuer)
+            .withAudience(TEST_AUDIENCE)
+            .withIssuedAt(new Date())
+            .withKeyId(testIssuerKeyId)
+            .withJWTId(UUID.randomUUID().toString())
+            .withClaim(JwtClaim.EMAIL.key(), "admin")
+            .sign(testIssuerAlgorithm);
+    assertExchangeRejectedAsInvalid("email=admin", emailAdminToken);
+  }
+
+  private void assertExchangeRejectedAsInvalid(String description, String token)
+      throws IOException {
+    AggregatedHttpResponse response = exchangeToken(token);
+    assertThat(response.status()).as(description).isEqualTo(HttpStatus.BAD_REQUEST);
+    JsonNode error = MAPPER.readTree(response.contentUtf8());
+    assertThat(error.get("error_code").asText()).as(description).isEqualTo("INVALID_ARGUMENT");
+    assertThat(error.has("access_token")).as(description).isFalse();
   }
 
   @Test
