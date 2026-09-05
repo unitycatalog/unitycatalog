@@ -161,7 +161,7 @@ trait UCProxyViewSupport extends RelationCatalog { self: UCProxy =>
 
     val propertiesToServer = new util.HashMap[String, String]()
     properties.asScala.foreach { case (k, v) =>
-      if (!UCTableProperties.V2_TABLE_PROPERTIES.contains(k)) {
+      if (UCTableProperties.shouldPersistProperty(k)) {
         propertiesToServer.put(k, v)
       }
     }

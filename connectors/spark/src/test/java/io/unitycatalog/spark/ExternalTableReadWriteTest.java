@@ -16,7 +16,6 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -147,10 +146,11 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
    * The connector injects vended filesystem credentials (fs.s3a.access.key, fs.s3a.session.token,
    * fs.unitycatalog.*, and their option.-prefixed duplicates) into the table property map so the
    * local Spark session can write to the table location. None of them -- nor the reserved Spark V2
-   * markers -- may be forwarded to the UC server as table properties: they are session-scoped
-   * credentials, and values like an STS session token (~1100 chars) also overflow the server
-   * property store. Create the table via Spark SQL, then fetch it back through the SDK and assert
-   * the server kept none of those keys.
+   * markers, nor Spark's Hive-metastore schema JSON keys -- may be forwarded to the UC server as
+   * table properties: they are session-scoped credentials or duplicated column metadata, and values
+   * like an STS session token (~1100 chars) or {@code spark.sql.sources.schema.part.N} also
+   * overflow the server property store. Create the table via Spark SQL, then fetch it back through
+   * the SDK and assert the server kept none of those keys.
    */
   @ParameterizedTest
   @MethodSource("cloudParameters")
@@ -167,10 +167,7 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
     TableInfo tableInfo = tableOperations.getTable(fullTableName);
     java.util.Map<String, String> serverProperties =
         tableInfo.getProperties() == null ? java.util.Map.of() : tableInfo.getProperties();
-    assertThat(serverProperties.keySet())
-        .noneMatch(key -> key.startsWith("fs."))
-        .noneMatch(key -> key.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
-        .noneMatch(UCTableProperties.V2_TABLE_PROPERTIES::contains);
+    assertThat(serverProperties.keySet()).allMatch(UCTableProperties::shouldPersistProperty);
   }
 
   @Test
