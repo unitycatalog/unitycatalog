@@ -131,7 +131,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
-  public void testConfig() {
+  public void testConfig() throws ApiException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+
     // successful test of getting client config with prefix when passing in warehouse param
     AggregatedHttpResponse resp =
         client.get("/v1/config?warehouse=" + TestUtils.CATALOG_NAME).aggregate().join();
@@ -159,6 +162,13 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(resp.status().code()).isEqualTo(400);
     ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
     assertThat(errorResponse.type()).isEqualTo(BadRequestException.class.getSimpleName());
+
+    // A warehouse that does not exist is a 404, which is what the client reads as no such
+    // warehouse. Answering 200 would hand back a prefix whose every request fails instead.
+    resp = client.get("/v1/config?warehouse=noSuchCatalog").aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(404);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).message())
+        .contains("noSuchCatalog");
   }
 
   @Test
