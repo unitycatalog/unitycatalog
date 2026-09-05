@@ -328,7 +328,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       tx.commit();
     }
 
-    // Now the uniform table exists
+    // Now the uniform table exists, which the REST spec reports as 204 with no content
     {
       AggregatedHttpResponse resp =
           client
@@ -340,7 +340,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                       + TestUtils.TABLE_NAME)
               .aggregate()
               .join();
-      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(resp.status().code()).isEqualTo(204);
+      assertThat(resp.contentUtf8()).isEmpty();
     }
     // metadata is valid metadata content and metadata location matches
     {
@@ -546,7 +547,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     String tableUuid;
     {
       AggregatedHttpResponse resp = client.head(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(resp.status().code()).isEqualTo(204);
 
       resp = client.get(tablePath).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(200);
@@ -951,6 +952,52 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
     assertThat(listed.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
+  }
+
+  @Test
+  public void testListNamespacesUnderAParent() throws ApiException, IOException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+
+    // A namespace that exists has no children, because Unity Catalog has no nested namespaces.
+    AggregatedHttpResponse resp =
+        client
+            .get(TEST_BASE_PREFIX + "/namespaces?parent=" + TestUtils.SCHEMA_NAME)
+            .aggregate()
+            .join();
+    assertThat(resp.status().code()).isEqualTo(200);
+    assertThat(
+            IcebergObjectMapper.mapper()
+                .readValue(resp.contentUtf8(), ListNamespacesResponse.class)
+                .namespaces())
+        .isEmpty();
+
+    // A parent that does not exist is a 404, not an empty listing: the client has to be able to
+    // tell "this namespace has no children" from "there is no such namespace".
+    resp = client.get(TEST_BASE_PREFIX + "/namespaces?parent=noSuchSchema").aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(404);
+  }
+
+  @Test
+  public void testReportMetricsRejectsAnUnreadableBodyWithoutLeakingTheParser() throws Exception {
+    createUniformIcebergTable();
+
+    AggregatedHttpResponse resp =
+        postJson(
+            TEST_BASE_PREFIX
+                + "/namespaces/"
+                + TestUtils.SCHEMA_NAME
+                + "/tables/"
+                + TestUtils.TABLE_NAME
+                + "/metrics",
+            "");
+
+    assertThat(resp.status().code()).isEqualTo(400);
+    String message = ErrorResponseParser.fromJson(resp.contentUtf8()).message();
+    assertThat(message).contains("Malformed request body");
+    assertThat(message).doesNotContain("com.fasterxml.jackson");
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
