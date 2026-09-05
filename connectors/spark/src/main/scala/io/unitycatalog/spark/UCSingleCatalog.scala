@@ -200,14 +200,62 @@ class UCSingleCatalog
 
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
-  override def loadTable(ident: Identifier): Table = delegate.loadTable(ident)
+  override def loadTable(ident: Identifier): Table = {
+    requireAddressableTableNameOrPathTable(ident)
+    delegate.loadTable(ident)
+  }
 
-  override def loadTable(ident: Identifier, version:  String): Table = delegate.loadTable(ident, version)
+  override def loadTable(ident: Identifier, version: String): Table = {
+    requireAddressableTableNameOrPathTable(ident)
+    delegate.loadTable(ident, version)
+  }
 
-  override def loadTable(ident: Identifier, timestamp:  Long): Table = delegate.loadTable(ident, timestamp)
+  override def loadTable(ident: Identifier, timestamp: Long): Table = {
+    requireAddressableTableNameOrPathTable(ident)
+    delegate.loadTable(ident, timestamp)
+  }
 
+  /**
+   * Prevents file-format path identifiers (for example, `parquet`.`s3://bucket/path`) from reaching
+   * catalog delegates that interpret them as Unity Catalog table names. Reporting these identifiers
+   * as missing lets Spark's SQL-on-file resolution handle them instead.
+   *
+   * Delta and Iceberg path identifiers remain delegated so DeltaCatalog can resolve
+   * `delta.`path`` via `loadPathTable` and `iceberg.`path`` via `newIcebergPathTable`.
+   * Nested namespaces fail with [[UCSingleCatalog.checkUnsupportedNestedNamespace]] on load so
+   * they are not mistaken for a missing table.
+   */
+  private def requireAddressableTableNameOrPathTable(ident: Identifier): Unit = {
+    if (isDeltaOrIcebergPath(ident)) {
+      return
+    }
+    UCSingleCatalog.checkUnsupportedNestedNamespace(ident.namespace())
+    if (!UCSingleCatalog.isAddressableTableName(ident)) {
+      throw new NoSuchTableException(ident)
+    }
+  }
+
+  /**
+   * Parquet-style path identifiers are absent (so Spark can fall through to SQL-on-file). Nested
+   * names still go to the delegate: Delta 4.3+ rejects them client-side with
+   * IllegalArgumentException, which Spark DROP/EXISTS tests expect. Do not throw
+   * [[UCSingleCatalog.checkUnsupportedNestedNamespace]] here.
+   */
   override def tableExists(ident: Identifier): Boolean = {
-    delegate.tableExists(ident)
+    if (isDeltaOrIcebergPath(ident) || ident.namespace().length != 1) {
+      delegate.tableExists(ident)
+    } else if (!UCSingleCatalog.isAddressableTableName(ident)) {
+      false
+    } else {
+      delegate.tableExists(ident)
+    }
+  }
+
+  /** Matches DeltaCatalog's `hasDeltaNamespace` / `hasIcebergNamespace` path-table probe. */
+  private def isDeltaOrIcebergPath(ident: Identifier): Boolean = {
+    ident.namespace().length == 1 && (
+      ident.namespace()(0).equalsIgnoreCase("delta") ||
+        ident.namespace()(0).equalsIgnoreCase("iceberg"))
   }
 
   override def capabilities(): util.Set[TableCatalogCapability] = delegate.capabilities()
