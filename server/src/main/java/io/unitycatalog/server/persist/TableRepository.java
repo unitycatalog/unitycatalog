@@ -1071,6 +1071,48 @@ public class TableRepository {
         /* readOnly= */ true);
   }
 
+  /**
+   * One page of the tables in a schema that carry an Iceberg metadata pointer, and the token for
+   * the page after it. An empty {@code nextPageToken} means the listing is complete. The names are
+   * only the tables that carry one, so a page can be empty while more pages remain.
+   */
+  public record IcebergTablePage(List<String> tableNames, Optional<String> nextPageToken) {}
+
+  /**
+   * Lists the tables in a schema that carry an Iceberg metadata pointer -- a Delta UniForm
+   * projection or a native Iceberg table -- one repository page at a time.
+   *
+   * <p>Whether a table carries one is read from the very row the page was read from, so a table
+   * created or dropped after this page was read cannot affect it. Callers that resolved each listed
+   * name a second time to answer the same question would instead fail the whole listing when a
+   * table was dropped in between.
+   *
+   * @param pageToken the token from the previous page, or empty to start at the first page
+   */
+  public IcebergTablePage listIcebergTables(
+      String catalogName, String schemaName, Optional<String> pageToken) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId =
+              repositories
+                  .getSchemaRepository()
+                  .getSchemaIdOrThrow(session, catalogName, schemaName);
+          List<TableInfoDAO> page =
+              LISTING_HELPER.listEntity(session, Optional.empty(), pageToken, schemaId);
+          String nextPageToken = LISTING_HELPER.getNextPageToken(page, Optional.empty());
+          List<String> tableNames =
+              page.stream()
+                  .filter(dao -> dao.getUniformIcebergMetadataLocation() != null)
+                  .map(TableInfoDAO::getName)
+                  .toList();
+          return new IcebergTablePage(
+              tableNames, Optional.ofNullable(nextPageToken).filter(token -> !token.isEmpty()));
+        },
+        "Failed to list tables",
+        /* readOnly= */ true);
+  }
+
   public ListTablesResponse listTables(
       Session session,
       UUID schemaId,

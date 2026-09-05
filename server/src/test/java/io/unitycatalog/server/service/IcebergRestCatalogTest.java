@@ -52,6 +52,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
@@ -951,6 +953,55 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
     assertThat(listed.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
+  }
+
+  @Test
+  public void testListTablesToleratesATableDroppedWhileListing() throws Exception {
+    createUniformIcebergTable();
+    for (int i = 0; i < 20; i++) {
+      createTable("delta_%03d".formatted(i));
+    }
+    String churnedTable = TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".churned";
+    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
+
+    // Create and drop a table for as long as the listings below run, so that some of them read a
+    // page holding a table that is gone by the time the response is built.
+    AtomicBoolean stop = new AtomicBoolean(false);
+    AtomicReference<Throwable> churnFailure = new AtomicReference<>();
+    Thread churn =
+        new Thread(
+            () -> {
+              try {
+                while (!stop.get()) {
+                  createTable("churned");
+                  tableOperations.deleteTable(churnedTable);
+                }
+              } catch (Throwable failure) {
+                churnFailure.set(failure);
+              }
+            });
+    churn.start();
+
+    try {
+      for (int listing = 0; listing < 200; listing++) {
+        AggregatedHttpResponse resp = client.get(tablesPath).aggregate().join();
+        assertThat(resp.status().code())
+            .as("listing %d returned %s", listing, resp.contentUtf8())
+            .isEqualTo(200);
+        ListTablesResponse listed =
+            IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
+        assertThat(listed.identifiers())
+            .as("listing %d", listing)
+            .contains(
+                TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), TestUtils.TABLE_NAME));
+      }
+    } finally {
+      stop.set(true);
+      churn.join();
+    }
+
+    // A churn thread that died early would make the assertions above prove nothing.
+    assertThat(churnFailure.get()).isNull();
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {

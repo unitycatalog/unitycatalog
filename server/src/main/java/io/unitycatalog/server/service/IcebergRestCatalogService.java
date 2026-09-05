@@ -25,7 +25,6 @@ import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.ListSchemasResponse;
-import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TableInfo;
@@ -35,6 +34,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.TableRepository.IcebergTablePage;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -47,11 +47,9 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
@@ -76,8 +74,6 @@ import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -110,7 +106,6 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   private final SchemaRepository schemaRepository;
   private final StagingTableRepository stagingTableRepository;
   private final TableRepository tableRepository;
-  private final SessionFactory sessionFactory;
 
   @Override
   public ExceptionHandlerFunction exceptionHandler() {
@@ -130,7 +125,6 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     this.schemaRepository = repositories.getSchemaRepository();
     this.stagingTableRepository = repositories.getStagingTableRepository();
     this.tableRepository = repositories.getTableRepository();
-    this.sessionFactory = repositories.getSessionFactory();
   }
 
   // Config APIs
@@ -592,44 +586,20 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   @AuthorizeResourceKey(METASTORE)
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
       @Param("catalog") String catalog, @Param("namespace") String namespace) {
-    List<TableInfo> tables = new ArrayList<>();
     // This endpoint returns the whole listing, so follow the repository's page token to the end.
-    // Only table names are used below, so columns and properties are omitted rather than fetched.
+    // Each page already says which of its tables carry Iceberg metadata, so no listed table is
+    // resolved a second time: doing that made a table dropped mid-listing fail the entire request.
+    List<TableIdentifier> tables = new ArrayList<>();
     Optional<String> pageToken = Optional.empty();
     do {
-      ListTablesResponse page =
-          tableRepository.listTables(
-              catalog,
-              namespace,
-              Optional.empty(),
-              pageToken,
-              /* omitProperties= */ true,
-              /* omitColumns= */ true);
-      tables.addAll(Objects.requireNonNull(page.getTables()));
-      pageToken = nextPageToken(page.getNextPageToken());
+      IcebergTablePage page = tableRepository.listIcebergTables(catalog, namespace, pageToken);
+      page.tableNames().stream()
+          .map(tableName -> TableIdentifier.of(Namespace.of(namespace), tableName))
+          .forEach(tables::add);
+      pageToken = page.nextPageToken();
     } while (pageToken.isPresent());
 
-    List<TableIdentifier> filteredTables;
-    try (Session session = sessionFactory.openSession()) {
-      filteredTables =
-          tables.stream()
-              .filter(
-                  tableInfo -> {
-                    String metadataLocation =
-                        tableRepository.getTableUniformMetadataLocation(
-                            session, catalog, namespace, tableInfo.getName());
-                    return metadataLocation != null;
-                  })
-              .map(
-                  tableInfo ->
-                      TableIdentifier.of(
-                          Namespace.of(tableInfo.getSchemaName()), tableInfo.getName()))
-              .collect(Collectors.toList());
-    }
-
-    return org.apache.iceberg.rest.responses.ListTablesResponse.builder()
-        .addAll(filteredTables)
-        .build();
+    return org.apache.iceberg.rest.responses.ListTablesResponse.builder().addAll(tables).build();
   }
 
   /**
