@@ -265,7 +265,7 @@ public class UnityCatalogServer implements AutoCloseable {
     TableConfigService tableConfigService = new TableConfigService(fileOperations);
 
     armeriaServerBuilder.annotate(
-        "iceberg",
+        ArmeriaServerBuilder.ICEBERG_RELATIVE_PATH,
         new IcebergRestCatalogService(
             authorizer, tableConfigService, metadataService, repositories, serverProperties));
   }
