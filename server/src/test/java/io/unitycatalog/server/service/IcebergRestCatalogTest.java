@@ -54,6 +54,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
@@ -1072,6 +1073,51 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(error.message()).isEqualTo(expectedMessage);
   }
 
+  @Test
+  public void testLoadTableSnapshotsParameter() throws Exception {
+    createUniformIcebergTable("/iceberg.metadata.two-snapshots.json");
+    String tablePath =
+        TEST_BASE_PREFIX
+            + "/namespaces/"
+            + TestUtils.SCHEMA_NAME
+            + "/tables/"
+            + TestUtils.TABLE_NAME;
+
+    // The default is every snapshot the metadata holds, which includes the one no ref points at.
+    assertThat(loadedSnapshotIds(client.get(tablePath).aggregate().join())).hasSize(2);
+    assertThat(loadedSnapshotIds(client.get(tablePath + "?snapshots=all").aggregate().join()))
+        .hasSize(2);
+
+    // "refs" asks for only the snapshots the table's refs point at.
+    AggregatedHttpResponse refsOnly = client.get(tablePath + "?snapshots=refs").aggregate().join();
+    assertThat(refsOnly.status().code()).isEqualTo(200);
+    LoadTableResponse loaded =
+        IcebergObjectMapper.mapper().readValue(refsOnly.contentUtf8(), LoadTableResponse.class);
+    assertThat(loadedSnapshotIds(refsOnly))
+        .containsExactly(loaded.tableMetadata().currentSnapshot().snapshotId());
+    // The rest of the metadata is the same table, so a client can still use what it got back.
+    assertThat(loaded.tableMetadata().metadataFileLocation())
+        .isEqualTo(
+            IcebergObjectMapper.mapper()
+                .readValue(
+                    client.get(tablePath).aggregate().join().contentUtf8(), LoadTableResponse.class)
+                .tableMetadata()
+                .metadataFileLocation());
+
+    // Any other value is a bad request rather than a silently complete response.
+    AggregatedHttpResponse rejected = client.get(tablePath + "?snapshots=some").aggregate().join();
+    assertThat(rejected.status().code()).isEqualTo(400);
+    assertThat(ErrorResponseParser.fromJson(rejected.contentUtf8()).type())
+        .isEqualTo(BadRequestException.class.getSimpleName());
+  }
+
+  private static List<Long> loadedSnapshotIds(AggregatedHttpResponse resp) throws IOException {
+    assertThat(resp.status().code()).isEqualTo(200);
+    LoadTableResponse loaded =
+        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+    return loaded.tableMetadata().snapshots().stream().map(Snapshot::snapshotId).toList();
+  }
+
   private AggregatedHttpResponse postJson(String path, String body) {
     return client
         .execute(
@@ -1125,7 +1171,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   /** Creates a table that the Iceberg endpoints see, i.e. one with uniform Iceberg metadata. */
   private void createUniformIcebergTable() throws IOException, URISyntaxException, ApiException {
-    Path metadataFile = writeIcebergMetadata();
+    createUniformIcebergTable("/iceberg.metadata.json");
+  }
+
+  private void createUniformIcebergTable(String metadataResource)
+      throws IOException, URISyntaxException, ApiException {
+    Path metadataFile = writeIcebergMetadata(metadataResource);
     catalogOperations.createCatalog(
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
     schemaOperations.createSchema(
@@ -1172,9 +1223,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   private Path writeIcebergMetadata() throws IOException, URISyntaxException {
-    Path source =
-        Path.of(
-            Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).toURI());
+    return writeIcebergMetadata("/iceberg.metadata.json");
+  }
+
+  private Path writeIcebergMetadata(String resource) throws IOException, URISyntaxException {
+    Path source = Path.of(Objects.requireNonNull(this.getClass().getResource(resource)).toURI());
     Path metadataFile = icebergTableLocation.resolve("iceberg.metadata.json");
     String tableLocation = NormalizedURL.from(icebergTableLocation.toUri()).toString();
     String metadata =

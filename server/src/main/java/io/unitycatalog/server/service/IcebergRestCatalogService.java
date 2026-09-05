@@ -85,6 +85,9 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
 
   private static final String PREFIX_BASE = "catalogs/";
 
+  private static final String SNAPSHOTS_ALL = "all";
+  private static final String SNAPSHOTS_REFS = "refs";
+
   private static final List<Endpoint> READ_ENDPOINTS =
       List.of(
           Endpoint.V1_LIST_NAMESPACES,
@@ -276,7 +279,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   public LoadTableResponse loadTable(
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
-      @Param("table") String table) {
+      @Param("table") String table,
+      @Param("snapshots") Optional<String> snapshots) {
     TableRepository.IcebergTableState state =
         tableRepository.getIcebergTableState(catalog, namespace, table);
     if (state.metadataLocation() == null) {
@@ -287,6 +291,13 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     TableMetadata tableMetadata =
         metadataService.readTableMetadata(
             NormalizedURL.from(state.metadataLocation()), tableLocation);
+    if (refsOnly(snapshots)) {
+      tableMetadata =
+          TableMetadata.buildFrom(tableMetadata)
+              .withMetadataLocation(tableMetadata.metadataFileLocation())
+              .suppressHistoricalSnapshots()
+              .build();
+    }
     Map<String, String> config =
         tableConfigService.getTableConfig(tableLocation, getLoadCredentialPrivileges(state));
 
@@ -639,6 +650,27 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     } while (pageToken.isPresent());
 
     return listed.build();
+  }
+
+  /**
+   * Whether the request asked for only the snapshots the table's refs point at. The REST spec's
+   * {@code snapshots} parameter takes "all", which is also the default, or "refs"; anything else is
+   * a bad request rather than a silently full response.
+   */
+  private static boolean refsOnly(Optional<String> snapshots) {
+    if (snapshots.isEmpty()) {
+      return false;
+    }
+    String mode = snapshots.get();
+    if (SNAPSHOTS_REFS.equalsIgnoreCase(mode)) {
+      return true;
+    }
+    if (SNAPSHOTS_ALL.equalsIgnoreCase(mode)) {
+      return false;
+    }
+    throw new BadRequestException(
+        "Invalid snapshots parameter: %s. Valid values are %s and %s.",
+        mode, SNAPSHOTS_ALL, SNAPSHOTS_REFS);
   }
 
   /**
