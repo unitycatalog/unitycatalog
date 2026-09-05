@@ -1,12 +1,11 @@
 package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.StagingTableInfo;
+import io.unitycatalog.server.persist.model.PurgeState;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 import java.util.Date;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -30,7 +29,7 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @SuperBuilder
-public class StagingTableDAO extends IdentifiableDAO {
+public class StagingTableDAO extends DroppableIdentifiableDAO {
   @Column(name = "schema_id")
   private UUID schemaId;
 
@@ -52,16 +51,6 @@ public class StagingTableDAO extends IdentifiableDAO {
   @Column(name = "stage_committed_at")
   private Date stageCommittedAt;
 
-  @Column(name = "purge_state", nullable = false)
-  private short purgeState;
-
-  @Column(name = "num_cleanup_retries", nullable = false)
-  private short numCleanupRetries;
-
-  @Temporal(TemporalType.TIMESTAMP)
-  @Column(name = "last_cleanup_at")
-  private Date lastCleanupAt;
-
   public StagingTableInfo toStagingTableInfo(String catalogName, String schemaName) {
     return new StagingTableInfo()
         .id(getId().toString())
@@ -77,7 +66,7 @@ public class StagingTableDAO extends IdentifiableDAO {
     setAccessedAt(now); // Assuming current date for last access
     setStageCommitted(false);
     setStageCommittedAt(null);
-    setPurgeState((short) 0);
+    setPurgeState(PurgeState.ACTIVE.getValue());
     setNumCleanupRetries((short) 0);
     setLastCleanupAt(null);
   }
