@@ -72,6 +72,11 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
    * @return The query to fetch the next page of entities
    */
   public Query<T> buildListQuery(Session session, UUID parentEntityId, String pageToken) {
+    return buildListQuery(session, parentEntityId, pageToken, false);
+  }
+
+  private Query<T> buildListQuery(
+      Session session, UUID parentEntityId, String pageToken, boolean activeOnly) {
     CriteriaBuilder cb = session.getCriteriaBuilder();
     CriteriaQuery<T> cr = cb.createQuery(entityClass);
     Root<T> root = cr.from(entityClass);
@@ -79,6 +84,9 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
     List<Predicate> predicates = new ArrayList<>();
     Optional<String> parentEntityIdColumn = IdentifiableDAO.getParentIdColumnName(entityClass);
     parentEntityIdColumn.ifPresent(s -> predicates.add(cb.equal(root.get(s), parentEntityId)));
+    if (activeOnly) {
+      predicates.add(cb.isNull(root.get("droppedAt")));
+    }
     predicates.add(
         cb.or(cb.greaterThan(root.get("name"), pageToken), cb.isNull(cb.literal(pageToken))));
 
@@ -104,12 +112,22 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
       Optional<Integer> maxResultsOpt,
       Optional<String> nextPageTokenOpt,
       UUID parentEntityId) {
+    return listEntity(session, maxResultsOpt, nextPageTokenOpt, parentEntityId, false);
+  }
+
+  public List<T> listEntity(
+      Session session,
+      Optional<Integer> maxResultsOpt,
+      Optional<String> nextPageTokenOpt,
+      UUID parentEntityId,
+      boolean activeOnly) {
     if (maxResultsOpt.isPresent() && maxResultsOpt.get() < 0) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "maxResults must be greater than or equal to 0");
     }
     Integer pageSize = getPageSize(maxResultsOpt);
-    Query<T> query = buildListQuery(session, parentEntityId, nextPageTokenOpt.orElse(null));
+    Query<T> query =
+        buildListQuery(session, parentEntityId, nextPageTokenOpt.orElse(null), activeOnly);
     query.setMaxResults(pageSize);
     return query.getResultList();
   }

@@ -1251,6 +1251,10 @@ public class DeltaCommitRepository {
    * @throws BaseException if the table doesn't meet requirements for Delta commits
    */
   private static void validateTable(TableInfoDAO tableInfoDAO) {
+    if (tableInfoDAO.getDroppedAt() != null) {
+      throw new BaseException(
+          ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableInfoDAO.getId());
+    }
     ValidationUtils.checkArgument(
         tableInfoDAO.getType() != null
             && tableInfoDAO.getType().equals(TableType.MANAGED.toString()),

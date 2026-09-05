@@ -485,9 +485,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
               + " Catalog API instead.",
           fullName);
     }
-    // EXTERNAL tables leave data and metadata files in place (purgeRequested is accepted for
-    // spec compatibility but does not delete files); MANAGED tables have their storage directory
-    // removed by the repository's delete path.
+    // purgeRequested is accepted for protocol compatibility. External storage is retained, and
+    // managed storage cleanup is asynchronous.
     TableInfoDAO deleted = tableRepository.deleteTable(catalog, namespace, table);
     removeHierarchicalAuthorizations(deleted.getId().toString(), deleted.getSchemaId().toString());
     return HttpResponse.of(HttpStatus.NO_CONTENT);

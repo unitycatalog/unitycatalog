@@ -26,8 +26,8 @@ import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.model.PurgeState;
 import io.unitycatalog.server.persist.utils.ExternalLocationUtils;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -41,6 +41,7 @@ import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import jakarta.persistence.LockModeType;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -54,12 +55,15 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class TableRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
+  private static final String DELETED_NAME_PREFIX = "$deleted$";
+  private static final String TABLE_NAME_UNIQUE_CONSTRAINT = "uc_tables_schema_id_name_unique";
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
   private final ServerProperties serverProperties;
@@ -108,7 +112,7 @@ public class TableRepository {
         session -> {
           LOGGER.debug("Getting storage location of table by id: {}", tableId);
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
-          if (tableInfoDAO != null) {
+          if (tableInfoDAO != null && tableInfoDAO.getDroppedAt() == null) {
             return new TableStorageLocationInfo(
                 NormalizedURL.from(tableInfoDAO.getUrl()),
                 TableType.fromValue(tableInfoDAO.getType()));
@@ -116,7 +120,7 @@ public class TableRepository {
 
           LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
           StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
-          if (stagingTableDAO != null) {
+          if (stagingTableDAO != null && !stagingTableDAO.isStageCommitted()) {
             // Staging rows always become MANAGED Delta on finalize, so project them as MANAGED.
             return new TableStorageLocationInfo(
                 NormalizedURL.from(stagingTableDAO.getStagingLocation()), TableType.MANAGED);
@@ -208,12 +212,12 @@ public class TableRepository {
           TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
 
           UUID schemaId;
-          if (tableInfoDAO != null) {
+          if (tableInfoDAO != null && tableInfoDAO.getDroppedAt() == null) {
             schemaId = tableInfoDAO.getSchemaId();
           } else {
             // Table not found, try to find a staging table instead
             StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
-            if (stagingTableDAO == null) {
+            if (stagingTableDAO == null || stagingTableDAO.isStageCommitted()) {
               throw new BaseException(
                   ErrorCode.TABLE_NOT_FOUND,
                   "Neither table nor staging table found with id: " + tableId);
@@ -920,6 +924,7 @@ public class TableRepository {
             tableInfo.setViewDependencies(
                 new DependencyList().dependencies(DependencyDAO.toDependencyList(depDAOs)));
           }
+          flushTableNameChange(session, fullName);
           return mapper.apply(session, tableInfoDAO, tableInfo);
         },
         "Error creating table: " + fullName,
@@ -1016,10 +1021,20 @@ public class TableRepository {
   }
 
   public TableInfoDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
-    String hql = "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
+    return findBySchemaIdAndName(session, schemaId, name, false);
+  }
+
+  private TableInfoDAO findBySchemaIdAndName(
+      Session session, UUID schemaId, String name, boolean forUpdate) {
+    String hql =
+        "FROM TableInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name"
+            + " AND t.droppedAt IS NULL";
     Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
     query.setParameter("schemaId", schemaId);
     query.setParameter("name", name);
+    if (forUpdate) {
+      query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
+    }
     LOGGER.debug("Finding table by schemaId: {} and name: {}", schemaId, name);
     return query.uniqueResult(); // Returns null if no result is found
   }
@@ -1081,7 +1096,7 @@ public class TableRepository {
       Boolean omitProperties,
       Boolean omitColumns) {
     List<TableInfoDAO> tableInfoDAOList =
-        LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
+        LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId, true);
     String nextPageToken = LISTING_HELPER.getNextPageToken(tableInfoDAOList, maxResults);
     List<TableInfo> result = new ArrayList<>();
     for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
@@ -1126,19 +1141,19 @@ public class TableRepository {
   }
 
   TableInfoDAO deleteTable(Session session, UUID schemaId, String tableName) {
-    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
-    if (tableInfoDAO == null) {
+    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName, true);
+    if (tableInfoDAO == null || !tableName.equals(tableInfoDAO.getName())) {
       throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + tableName);
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
-      try {
-        FileOperations.deleteDirectory(NormalizedURL.from(tableInfoDAO.getUrl()));
-      } catch (Throwable e) {
-        LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
-      }
-      repositories
-          .getDeltaCommitRepository()
-          .permanentlyDeleteTableCommits(session, tableInfoDAO.getId());
+      tableInfoDAO.setDroppedName(tableInfoDAO.getName());
+      tableInfoDAO.setName(DELETED_NAME_PREFIX + tableInfoDAO.getId());
+      tableInfoDAO.setDroppedAt(new Date());
+      tableInfoDAO.setPurgeState(PurgeState.PENDING.getValue());
+      tableInfoDAO.setNumCleanupRetries((short) 0);
+      tableInfoDAO.setLastCleanupAt(null);
+      session.merge(tableInfoDAO);
+      return tableInfoDAO;
     }
     if (RepositoryUtils.isViewLike(tableInfoDAO.getType())) {
       repositories
@@ -1166,8 +1181,8 @@ public class TableRepository {
         session -> {
           UUID schemaId =
               repositories.getSchemaRepository().getSchemaIdOrThrow(session, catalog, schema);
-          TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table);
-          if (tableInfoDAO == null) {
+          TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, table, true);
+          if (tableInfoDAO == null || !table.equals(tableInfoDAO.getName())) {
             throw new BaseException(ErrorCode.TABLE_NOT_FOUND, "Table not found: " + table);
           }
           // Do the no-op check after the table lookup. A missing table must still return
@@ -1183,9 +1198,24 @@ public class TableRepository {
           tableInfoDAO.setUpdatedAt(new Date());
           tableInfoDAO.setUpdatedBy(callerId);
           session.merge(tableInfoDAO);
+          flushTableNameChange(session, catalog + "." + schema + "." + newName);
           return null;
         },
         "Failed to rename table " + catalog + "." + schema + "." + table,
         /* readOnly= */ false);
+  }
+
+  private static void flushTableNameChange(Session session, String fullName) {
+    try {
+      session.flush();
+    } catch (ConstraintViolationException e) {
+      String constraintName = e.getConstraintName();
+      if (constraintName != null
+          && constraintName.toLowerCase(Locale.ROOT).contains(TABLE_NAME_UNIQUE_CONSTRAINT)) {
+        throw new BaseException(
+            ErrorCode.TABLE_ALREADY_EXISTS, "Table already exists: " + fullName);
+      }
+      throw e;
+    }
   }
 }
