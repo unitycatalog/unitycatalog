@@ -67,6 +67,7 @@ import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.exceptions.RESTException;
+import org.apache.iceberg.exceptions.ServiceFailureException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.metrics.CommitMetrics;
 import org.apache.iceberg.metrics.CommitMetricsResult;
@@ -1208,6 +1209,34 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     LoadTableResponse loaded =
         IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
     return loaded.tableMetadata().snapshots().stream().map(Snapshot::snapshotId).toList();
+  }
+
+  @Test
+  public void testLoadTableWhoseMetadataCannotBeRead() throws Exception {
+    createUniformIcebergTable();
+    // The catalog still lists the table; the file its metadata pointer names is gone.
+    Files.delete(icebergTableLocation.resolve("iceberg.metadata.json"));
+
+    AggregatedHttpResponse resp =
+        client
+            .get(
+                TEST_BASE_PREFIX
+                    + "/namespaces/"
+                    + TestUtils.SCHEMA_NAME
+                    + "/tables/"
+                    + TestUtils.TABLE_NAME)
+            .aggregate()
+            .join();
+
+    // A table whose metadata cannot be read is a server-side failure, not a missing table, so the
+    // type has to be one that means that: a 500 typed "NotFoundException" describes the failure as
+    // something the client could act on.
+    assertThat(resp.status().code()).isEqualTo(500);
+    ErrorResponse error = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(error.code()).isEqualTo(500);
+    assertThat(error.type()).isEqualTo(ServiceFailureException.class.getSimpleName());
+    // Where the server keeps the file is not the client's business.
+    assertThat(error.message()).doesNotContain(icebergTableLocation.toString());
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
