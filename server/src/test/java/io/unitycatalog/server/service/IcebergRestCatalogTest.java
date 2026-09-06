@@ -159,7 +159,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
-                + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\""
+                + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
+                + "\"POST /v1/{prefix}/tables/rename\""
                 + "]}");
 
     // not setting warehouse param should result in 400 BadRequestException
@@ -1070,6 +1071,60 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(error.code()).isEqualTo(expectedCode);
     assertThat(error.type()).isEqualTo(expectedType.getSimpleName());
     assertThat(error.message()).isEqualTo(expectedMessage);
+  }
+
+  @Test
+  public void testRenameTable() throws Exception {
+    createUniformIcebergTable();
+    String renamePath = "/v1/catalogs/" + TestUtils.CATALOG_NAME + "/tables/rename";
+    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
+
+    // A rename answers 204 with no content, and the table is listed and loadable under its new
+    // name.
+    AggregatedHttpResponse resp =
+        postJson(renamePath, renameRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "renamed"));
+    assertThat(resp.status().code()).isEqualTo(204);
+    assertThat(resp.contentUtf8()).isEmpty();
+    ListTablesResponse listed =
+        IcebergObjectMapper.mapper()
+            .readValue(
+                client.get(tablesPath).aggregate().join().contentUtf8(), ListTablesResponse.class);
+    assertThat(listed.identifiers())
+        .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "renamed"));
+    assertThat(client.get(tablesPath + "/renamed").aggregate().join().status().code())
+        .isEqualTo(200);
+
+    // Renaming a table that is not there is a 404.
+    resp =
+        postJson(renamePath, renameRequest(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME, "other"));
+    assertThat(resp.status().code()).isEqualTo(404);
+
+    // Renaming onto a name that is taken is a 409.
+    createTable("taken");
+    resp = postJson(renamePath, renameRequest(TestUtils.SCHEMA_NAME, "renamed", "taken"));
+    assertThat(resp.status().code()).isEqualTo(409);
+
+    // Unity Catalog cannot move a table between namespaces, and says so rather than half-doing it.
+    resp =
+        postJson(renamePath, renameRequest(TestUtils.SCHEMA_NAME, "renamed", "moved", "other_ns"));
+    assertThat(resp.status().code()).isEqualTo(501);
+  }
+
+  private static String renameRequest(String namespace, String from, String to) {
+    return renameRequest(namespace, from, to, namespace);
+  }
+
+  private static String renameRequest(
+      String namespace, String from, String to, String destinationNamespace) {
+    return "{\"source\": {\"namespace\": [\""
+        + namespace
+        + "\"], \"name\": \""
+        + from
+        + "\"}, \"destination\": {\"namespace\": [\""
+        + destinationNamespace
+        + "\"], \"name\": \""
+        + to
+        + "\"}}";
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {

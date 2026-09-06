@@ -68,6 +68,7 @@ import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
@@ -102,7 +103,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           Endpoint.V1_DELETE_NAMESPACE,
           Endpoint.V1_CREATE_TABLE,
           Endpoint.V1_UPDATE_TABLE,
-          Endpoint.V1_DELETE_TABLE);
+          Endpoint.V1_DELETE_TABLE,
+          Endpoint.V1_RENAME_TABLE);
 
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
@@ -579,6 +581,36 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       }
       throw e;
     }
+  }
+
+  @Post("/v1/catalogs/{catalog}/tables/rename")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse renameTable(@Param("catalog") String catalog, RenameTableRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    Namespace source = request.source().namespace();
+    Namespace destination = request.destination().namespace();
+    if (!source.equals(destination)) {
+      // Unity Catalog has no way to move a table between schemas, so a rename that asks for one is
+      // reported as an operation this server does not implement rather than half-applied.
+      throw new BaseException(
+          ErrorCode.UNIMPLEMENTED,
+          "Renaming a table into another namespace is not supported: "
+              + source
+              + " to "
+              + destination);
+    }
+    String namespace = source.toString();
+    // Only tables this API serves can be renamed through it; anything else is not a table it has.
+    TableRepository.IcebergTableState state =
+        tableRepository.getIcebergTableState(catalog, namespace, request.source().name());
+    if (state.metadataLocation() == null) {
+      throw new NoSuchTableException(
+          "Table does not exist: %s", namespace + "." + request.source().name());
+    }
+    tableRepository.renameTable(
+        catalog, namespace, request.source().name(), request.destination().name());
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}/views/{view}")
