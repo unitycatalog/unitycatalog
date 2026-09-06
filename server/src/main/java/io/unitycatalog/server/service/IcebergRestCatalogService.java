@@ -36,6 +36,7 @@ import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.model.DeletedResource;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.iceberg.IcebergSchemaConverter;
@@ -63,6 +64,7 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.Endpoint;
@@ -100,6 +102,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   private static final List<Endpoint> WRITE_ENDPOINTS =
       List.of(
           Endpoint.V1_CREATE_NAMESPACE,
+          Endpoint.V1_DELETE_NAMESPACE,
           Endpoint.V1_CREATE_TABLE,
           Endpoint.V1_UPDATE_TABLE,
           Endpoint.V1_DELETE_TABLE);
@@ -217,6 +220,27 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         .withNamespace(request.namespace())
         .setProperties(properties)
         .build();
+  }
+
+  @Delete("/v1/catalogs/{catalog}/namespaces/{namespace}")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse dropNamespace(
+      @Param("catalog") String catalog, @Param("namespace") String namespace) {
+    serverProperties.checkIcebergTableEnabled();
+    List<DeletedResource> deleted;
+    try {
+      deleted = schemaRepository.deleteSchema(String.join(".", catalog, namespace), false);
+    } catch (BaseException failure) {
+      if (failure.getErrorCode() == ErrorCode.FAILED_PRECONDITION) {
+        // A schema that still holds objects is a failed precondition to the repository, which is a
+        // 400; the REST spec answers a namespace that is not empty with 409.
+        throw new NamespaceNotEmptyException("Namespace is not empty: %s", namespace);
+      }
+      throw failure;
+    }
+    clearDeletedResourceAuthorizations(deleted);
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   // Table APIs

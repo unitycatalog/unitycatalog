@@ -61,6 +61,7 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.metrics.CommitMetrics;
@@ -149,6 +150,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces\","
+                + "\"DELETE /v1/{prefix}/namespaces/{namespace}\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\""
@@ -951,6 +953,30 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
     assertThat(listed.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
+  }
+
+  @Test
+  public void testDropNamespace() throws Exception {
+    createUniformIcebergTable();
+    String namespacePath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME;
+
+    // A namespace that still holds a table cannot be dropped, and the spec answers that with 409
+    // rather than the failed precondition the repository reports.
+    AggregatedHttpResponse resp = client.delete(namespacePath).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(409);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+        .isEqualTo(NamespaceNotEmptyException.class.getSimpleName());
+
+    // Once it is empty the drop answers 204 with no content, and the namespace is gone.
+    tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
+    resp = client.delete(namespacePath).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(204);
+    assertThat(resp.contentUtf8()).isEmpty();
+    assertThat(client.get(namespacePath).aggregate().join().status().code()).isEqualTo(404);
+
+    // Dropping a namespace that is not there is a 404.
+    resp = client.delete(namespacePath).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(404);
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
