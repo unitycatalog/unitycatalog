@@ -65,6 +65,7 @@ import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.exceptions.RESTException;
+import org.apache.iceberg.exceptions.UnprocessableEntityException;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.metrics.CommitMetrics;
 import org.apache.iceberg.metrics.CommitMetricsResult;
@@ -84,6 +85,7 @@ import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
+import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
 import org.apache.iceberg.types.Types;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
@@ -157,6 +159,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces\","
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}\","
+                + "\"POST /v1/{prefix}/namespaces/{namespace}/properties\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\""
@@ -1070,6 +1073,57 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(error.code()).isEqualTo(expectedCode);
     assertThat(error.type()).isEqualTo(expectedType.getSimpleName());
     assertThat(error.message()).isEqualTo(expectedMessage);
+  }
+
+  @Test
+  public void testUpdateNamespaceProperties() throws Exception {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema()
+            .catalogName(TestUtils.CATALOG_NAME)
+            .name(TestUtils.SCHEMA_NAME)
+            .properties(Map.of("keep", "me", "drop", "this")));
+    String propertiesPath =
+        TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/properties";
+
+    // What was set, what was removed, and what could not be removed because it was not there.
+    AggregatedHttpResponse resp =
+        postJson(
+            propertiesPath,
+            "{\"removals\": [\"drop\", \"absent\"], \"updates\": {\"added\": \"value\"}}");
+    assertThat(resp.status().code()).isEqualTo(200);
+    UpdateNamespacePropertiesResponse updated =
+        IcebergObjectMapper.mapper()
+            .readValue(resp.contentUtf8(), UpdateNamespacePropertiesResponse.class);
+    assertThat(updated.updated()).containsExactly("added");
+    assertThat(updated.removed()).containsExactly("drop");
+    assertThat(updated.missing()).containsExactly("absent");
+
+    // The namespace itself reflects the patch: keys not mentioned are left alone.
+    assertThat(
+            IcebergObjectMapper.mapper()
+                .readValue(
+                    client
+                        .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME)
+                        .aggregate()
+                        .join()
+                        .contentUtf8(),
+                    GetNamespaceResponse.class)
+                .properties())
+        .containsOnly(Map.entry("keep", "me"), Map.entry("added", "value"));
+
+    // A key both set and removed is the spec's 422, and a namespace that does not exist is a 404.
+    resp =
+        postJson(propertiesPath, "{\"removals\": [\"both\"], \"updates\": {\"both\": \"value\"}}");
+    assertThat(resp.status().code()).isEqualTo(422);
+    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+        .isEqualTo(UnprocessableEntityException.class.getSimpleName());
+    resp =
+        postJson(
+            TEST_BASE_PREFIX + "/namespaces/noSuchSchema/properties",
+            "{\"removals\": [], \"updates\": {\"a\": \"b\"}}");
+    assertThat(resp.status().code()).isEqualTo(404);
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {

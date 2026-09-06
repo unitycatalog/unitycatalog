@@ -12,6 +12,7 @@ import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
+import org.apache.iceberg.exceptions.UnprocessableEntityException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 
 /**
@@ -78,6 +79,11 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
     }
     if (cause instanceof BadRequestException) {
       return wrapException(ErrorCode.INVALID_ARGUMENT, cause);
+    }
+    if (cause instanceof UnprocessableEntityException) {
+      // Iceberg's own request validation raises this for a request that is well formed but cannot
+      // be carried out as asked, which the REST spec answers with 422.
+      return wrapException(ErrorCode.UNPROCESSABLE_ENTITY, cause);
     }
     return super.toBaseException(cause);
   }
