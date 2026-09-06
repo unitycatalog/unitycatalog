@@ -34,8 +34,11 @@ After cloning, navigate to the top-level directory of the repository. There is n
 The `requirements-docs.txt` file contains all the dependencies necessary for serving the documentation, including **MkDocs** and its plugins. First, create a virtual environment:
 
 ```sh
+# change directory
+cd unitycatalog
+
 # Create virtual environment
-python -m venv uc_docs_venv
+python3 -m venv uc_docs_venv
 
 # Activate virtual environment (Linux/macOS)
 source uc_docs_venv/bin/activate
@@ -55,7 +58,7 @@ pip install -r requirements-docs.txt
 After installing all dependencies, you can now serve the documentation locally. Run the following command:
 
 ```sh
-mkdocs serve
+python -m mkdocs serve
 ```
 
 This will start a local development server. By default, the docs will be served at `http://127.0.0.1:8000/`. You can visit this link in your browser to see your documentation live as you edit it. Any changes made to the markdown files will automatically update the browser view.
