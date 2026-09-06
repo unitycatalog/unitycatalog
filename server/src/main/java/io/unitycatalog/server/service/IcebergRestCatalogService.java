@@ -4,12 +4,18 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_ONLY;
 import static io.unitycatalog.server.service.credential.CredentialContext.READ_WRITE;
 
+import com.google.common.hash.Hashing;
+import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.ResponseHeaders;
 import com.linecorp.armeria.server.annotation.Delete;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Head;
+import com.linecorp.armeria.server.annotation.Header;
+import com.linecorp.armeria.server.annotation.HttpResult;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
@@ -45,7 +51,9 @@ import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.NormalizedURL;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -278,22 +286,31 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   @ProducesJson
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeResourceKey(METASTORE)
-  public LoadTableResponse loadTable(
+  public HttpResult<LoadTableResponse> loadTable(
       @Param("catalog") String catalog,
       @Param("namespace") String namespace,
       @Param("table") String table,
-      @Param(RESTCatalogProperties.SNAPSHOTS_QUERY_PARAMETER) Optional<String> snapshots) {
+      @Param(RESTCatalogProperties.SNAPSHOTS_QUERY_PARAMETER) Optional<String> snapshots,
+      @Header("if-none-match") Optional<String> ifNoneMatch) {
     TableRepository.IcebergTableState state =
         tableRepository.getIcebergTableState(catalog, namespace, table);
     if (state.metadataLocation() == null) {
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
+    }
+    boolean refsOnly = refsOnly(snapshots);
+
+    // A caller holding this tag already has what this request would return, so answer it without
+    // reading the metadata file at all.
+    String etag = metadataETag(state.metadataLocation(), refsOnly);
+    if (holdsETag(ifNoneMatch, etag)) {
+      return HttpResult.of(ResponseHeaders.of(HttpStatus.NOT_MODIFIED, HttpHeaderNames.ETAG, etag));
     }
 
     NormalizedURL tableLocation = NormalizedURL.from(state.storageLocation());
     TableMetadata tableMetadata =
         metadataService.readTableMetadata(
             NormalizedURL.from(state.metadataLocation()), tableLocation);
-    if (refsOnly(snapshots)) {
+    if (refsOnly) {
       tableMetadata =
           TableMetadata.buildFrom(tableMetadata)
               .withMetadataLocation(tableMetadata.metadataFileLocation())
@@ -303,10 +320,12 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     Map<String, String> config =
         tableConfigService.getTableConfig(tableLocation, getLoadCredentialPrivileges(state));
 
-    return LoadTableResponse.builder()
-        .withTableMetadata(tableMetadata)
-        .addAllConfig(config)
-        .build();
+    return HttpResult.of(
+        ResponseHeaders.builder(HttpStatus.OK)
+            .contentType(MediaType.JSON)
+            .add(HttpHeaderNames.ETAG, etag)
+            .build(),
+        LoadTableResponse.builder().withTableMetadata(tableMetadata).addAllConfig(config).build());
   }
 
   Set<CredentialContext.Privilege> getLoadCredentialPrivileges(
@@ -715,6 +734,31 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   /** The name the mode travels under on the wire, which the client lowercases. */
   private static String modeName(SnapshotMode mode) {
     return mode.name().toLowerCase(Locale.ROOT);
+  }
+
+  /**
+   * Names the version of the metadata this endpoint would return for the given snapshots mode. The
+   * pointer is hashed rather than returned as-is so the tag does not hand callers a storage
+   * location, and the mode is part of it because {@code refs} and {@code all} return different
+   * bodies for the same version. The tag is weak: it identifies the metadata version, not a
+   * byte-for-byte body.
+   */
+  private static String metadataETag(String metadataLocation, boolean refsOnly) {
+    String version =
+        metadataLocation + "\n" + modeName(refsOnly ? SnapshotMode.REFS : SnapshotMode.ALL);
+    return "W/\"" + Hashing.sha256().hashString(version, StandardCharsets.UTF_8) + "\"";
+  }
+
+  /**
+   * Whether the caller's {@code If-None-Match} names the tag we would return. Only an exact match
+   * short-circuits; anything else -- including {@code *} -- gets the full response, which a
+   * conditional request always tolerates.
+   */
+  private static boolean holdsETag(Optional<String> ifNoneMatch, String etag) {
+    return ifNoneMatch.stream()
+        .flatMap(header -> Arrays.stream(header.split(",")))
+        .map(String::trim)
+        .anyMatch(etag::equals);
   }
 
   /**
