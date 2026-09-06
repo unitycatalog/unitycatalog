@@ -9,117 +9,104 @@ import subprocess
 import sys
 import tarfile
 import time
-import threading
+
+# Public server port (the URL transcoder; it forwards to the internal Armeria
+# port at PORT + 1). bin/start-uc-server launches via UnityCatalogServer.main,
+# which serves the public API on this port.
+SERVER_PORT = 8080
+READINESS_PATH = "/api/2.1/unity-catalog/catalogs"
+READINESS_TIMEOUT_SECONDS = 60
 
 
-def stopServer():
+def stop_server(pid):
     try:
-        with open("server_pid.txt", "r") as f:
-            pid = int(f.read().strip())
-            os.killpg(os.getpgid(pid), signal.SIGTERM)  # Send SIGTERM to the process group
-            print(f"Stopped server with PID {pid}.")
+        os.killpg(os.getpgid(pid), signal.SIGTERM)  # SIGTERM to the process group
+        print(f"Stopped server with PID {pid}.")
     except Exception as e:
         print(f"Failed to stop the server: {e}")
 
-# 1. Extract the tarball
+
+# 1. Resolve the tarball path from version.sbt
 tarball_path = "target/unitycatalog-{version}.tar.gz"
 extract_path = "target/dist"
 
 try:
     version_pattern = r'version\s*:=\s*"([^"]+)"'
-    with open('version.sbt', 'r') as file:
-        content = file.read()
-        match = re.search(version_pattern, content) # Extract the version string
-        if match:
-            version = match.group(1)
-            tarball_path = tarball_path.format(version=version)
-        else:
-            print('Version string not found.')
+    with open("version.sbt", "r") as file:
+        match = re.search(version_pattern, file.read())
+        if not match:
+            print("Version string not found.")
             sys.exit(1)
+        tarball_path = tarball_path.format(version=match.group(1))
 except Exception as e:
     print(f"Failed to extract version string: {e}")
     sys.exit(1)
 
-if not os.path.exists(extract_path):
-    os.makedirs(extract_path)
+# 2. Extract the tarball
+if os.path.exists(extract_path):
+    shutil.rmtree(extract_path)
+os.makedirs(extract_path)
 
-print(f"Load tarball from {tarball_path}")
+print(f"Loading tarball from {tarball_path}")
 with tarfile.open(tarball_path, "r:gz") as tar:
-    tar.extractall(path=extract_path, filter='data')
-    print("Extracted tarball to {}".format(extract_path))
+    tar.extractall(path=extract_path, filter="data")
+    print(f"Extracted tarball to {extract_path}")
 
-# 2. Check executable permissions
-bin_dir = extract_path + "/bin"
+# 3. Ensure the launcher scripts are executable
+bin_dir = os.path.join(extract_path, "bin")
 for filename in os.listdir(bin_dir):
     filepath = os.path.join(bin_dir, filename)
     if os.path.isfile(filepath):
         os.chmod(filepath, 0o755)
-        print(f"Set executable permission for {filepath}")
 
-# 3. Start server script
-def read_output(pipe, output):
-    for line in iter(pipe.readline, b''):
-        output.append(line.decode())
-    pipe.close()
-
+# 4. Start the server (in its own process group so we can stop the whole tree)
 start_server_cmd = os.path.join(bin_dir, "start-uc-server")
-server_process = subprocess.Popen(
-    [start_server_cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid
-)
+server_process = subprocess.Popen([start_server_cmd], preexec_fn=os.setsid)
+pid = server_process.pid
+print(f"Server started with PID {pid}")
 
-with open("server_pid.txt", "w") as f:
-    f.write(str(server_process.pid))
-print(f"Server started with PID {server_process.pid}")
-
-stdout_lines = []
-stderr_lines = []
-stdout_thread = threading.Thread(target=read_output, args=(server_process.stdout, stdout_lines))
-stderr_thread = threading.Thread(target=read_output, args=(server_process.stderr, stderr_lines))
-stdout_thread.start()
-stderr_thread.start()
-time.sleep(15)
-stdout_thread.join(timeout=5)
-stderr_thread.join(timeout=5)
-
-if not stderr_lines:
-    print("Server started successfully.")
-    print("".join(stdout_lines))
-else:
-    print("Server failed to start.")
-    print("".join(stderr_lines))
-    stopServer()
-    exit(1)
-
-# 4. Verify server is running
-try:
-    response = requests.head("http://localhost:8081", timeout=5)
-    if response.status_code == 200:
-        print("Server is running.")
-    else:
-        print(f"Server responded with status code: {response.status_code}")
-        stopServer()
+# 5. Wait until the server is serving. Any HTTP response (even 401/404) means it
+#    is up; a connection error means not-yet-ready. Fail fast if it exits early.
+base_url = f"http://localhost:{SERVER_PORT}{READINESS_PATH}"
+deadline = time.time() + READINESS_TIMEOUT_SECONDS
+ready = False
+while time.time() < deadline:
+    if server_process.poll() is not None:
+        print(f"Server exited early with code {server_process.returncode}.")
         sys.exit(1)
-except requests.RequestException as e:
-    print(f"Failed to connect to the server: {e}")
-    stopServer()
+    try:
+        response = requests.get(base_url, timeout=5)
+        print(f"Server is serving on {SERVER_PORT} (HTTP {response.status_code}).")
+        ready = True
+        break
+    except requests.RequestException:
+        time.sleep(2)
+
+if not ready:
+    print(f"Server did not become ready within {READINESS_TIMEOUT_SECONDS}s.")
+    stop_server(pid)
     sys.exit(1)
 
-# 5. Run and verify CLI
+# 6. Run and verify the CLI against the running server
 try:
-    cli_cmd = [os.path.join(bin_dir, "uc"), "catalog", "create", "--name", "Test_Catalog"]
-    subprocess.run(cli_cmd, check=True, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    cli_cmd = [
+        os.path.join(bin_dir, "uc"),
+        "catalog",
+        "create",
+        "--name",
+        "Test_Catalog",
+    ]
+    subprocess.run(cli_cmd, check=True)
     print("CLI command executed successfully.")
 except subprocess.CalledProcessError as e:
     print(f"CLI command failed with error: {e}")
-    stopServer()
+    stop_server(pid)
     sys.exit(1)
 
-# 6. Stop server
-stopServer()
-
-# 7. Cleanup temp directory
+# 7. Stop the server and clean up
+stop_server(pid)
 try:
     shutil.rmtree(extract_path)
-    print(f"Deleted target directory at {extract_path}.")
+    print(f"Deleted temp directory {extract_path}.")
 except Exception as e:
-    print(f"Failed to delete target directory: {e}")
+    print(f"Failed to delete temp directory: {e}")
