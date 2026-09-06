@@ -151,7 +151,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"POST /v1/{prefix}/namespaces\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables\","
                 + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
-                + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\""
+                + "\"DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
+                + "\"POST /v1/{prefix}/namespaces/{namespace}/register\""
                 + "]}");
 
     // not setting warehouse param should result in 400 BadRequestException
@@ -951,6 +952,73 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
     assertThat(listed.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
+  }
+
+  @Test
+  public void testRegisterTable() throws Exception {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    Path metadataFile = writeIcebergMetadata();
+    String registerPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/register";
+    String tablesPath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables";
+
+    // Registering an existing metadata file answers the table it describes, pointing at that file.
+    AggregatedHttpResponse resp =
+        postJson(registerPath, registerRequest("registered", metadataFile, false));
+    assertThat(resp.status().code()).isEqualTo(200);
+    LoadTableResponse loaded =
+        IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+    // The pointer is the file the request named. Local locations come back without their scheme,
+    // which is how this server reports every metadata location on a local filesystem.
+    assertThat(loaded.tableMetadata().metadataFileLocation()).isEqualTo(metadataFile.toString());
+    assertThat(loaded.tableMetadata().schema().columns()).isNotEmpty();
+
+    // It is a table of this catalog afterwards: listed, loadable, and its columns are in UC.
+    ListTablesResponse listed =
+        IcebergObjectMapper.mapper()
+            .readValue(
+                client.get(tablesPath).aggregate().join().contentUtf8(), ListTablesResponse.class);
+    assertThat(listed.identifiers())
+        .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "registered"));
+    assertThat(client.get(tablesPath + "/registered").aggregate().join().status().code())
+        .isEqualTo(200);
+    TableInfo registered =
+        tableOperations.getTable(
+            TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + ".registered");
+    assertThat(registered.getDataSourceFormat()).isEqualTo(DataSourceFormat.ICEBERG);
+    assertThat(registered.getColumns()).isNotEmpty();
+
+    // Registering the same name again is a 409 unless the request says to overwrite.
+    resp = postJson(registerPath, registerRequest("registered", metadataFile, false));
+    assertThat(resp.status().code()).isEqualTo(409);
+    resp = postJson(registerPath, registerRequest("registered", metadataFile, true));
+    assertThat(resp.status().code()).isEqualTo(200);
+
+    // A namespace that does not exist is a 404.
+    resp =
+        postJson(
+            TEST_BASE_PREFIX + "/namespaces/noSuchSchema/register",
+            registerRequest("registered", metadataFile, false));
+    assertThat(resp.status().code()).isEqualTo(404);
+
+    // A metadata file that is not inside the table location it declares is refused: it would
+    // register a table rooted somewhere the file does not live.
+    Path outside = Files.createTempDirectory("outside").resolve("iceberg.metadata.json");
+    Files.copy(metadataFile, outside);
+    resp = postJson(registerPath, registerRequest("elsewhere", outside, false));
+    assertThat(resp.status().code()).isEqualTo(400);
+  }
+
+  private static String registerRequest(String name, Path metadataFile, boolean overwrite) {
+    return "{\"name\": \""
+        + name
+        + "\", \"metadata-location\": \""
+        + NormalizedURL.from(metadataFile.toUri())
+        + "\", \"overwrite\": "
+        + overwrite
+        + "}";
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {

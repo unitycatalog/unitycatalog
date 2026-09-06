@@ -44,6 +44,20 @@ public class MetadataService {
     return tableMetadata;
   }
 
+  /**
+   * Reads the metadata of a table Unity Catalog does not have yet, where the table location comes
+   * from the document itself rather than from a persisted row. The file still has to sit inside the
+   * location it declares, so a metadata file cannot register a table rooted somewhere else.
+   */
+  public TableMetadata readUnregisteredTableMetadata(NormalizedURL metadataLocation) {
+    TableMetadata tableMetadata;
+    try (FileIO fileIO = fileOperations.getFileIO(metadataLocation)) {
+      tableMetadata = TableMetadataParser.read(fileIO, metadataLocation.toString());
+    }
+    validateMetadataLocation(metadataLocation, NormalizedURL.from(tableMetadata.location()));
+    return tableMetadata;
+  }
+
   /** Writes metadata only within the table location persisted by UC. */
   public void writeTableMetadata(
       TableMetadata tableMetadata,

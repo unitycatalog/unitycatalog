@@ -20,6 +20,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.CreateTable;
@@ -68,6 +69,7 @@ import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
+import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
@@ -102,7 +104,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
           Endpoint.V1_CREATE_NAMESPACE,
           Endpoint.V1_CREATE_TABLE,
           Endpoint.V1_UPDATE_TABLE,
-          Endpoint.V1_DELETE_TABLE);
+          Endpoint.V1_DELETE_TABLE,
+          Endpoint.V1_REGISTER_TABLE);
 
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
@@ -390,6 +393,69 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     NormalizedURL persistedTableLocation = NormalizedURL.from(tableInfo.getStorageLocation());
     return LoadTableResponse.builder()
         .withTableMetadata(committed)
+        .addAllConfig(tableConfigService.getTableConfig(persistedTableLocation, READ_WRITE))
+        .build();
+  }
+
+  @Post("/v1/catalogs/{catalog}/namespaces/{namespace}/register")
+  @ProducesJson
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public LoadTableResponse registerTable(
+      @Param("catalog") String catalog,
+      @Param("namespace") String namespace,
+      RegisterTableRequest request) {
+    serverProperties.checkIcebergTableEnabled();
+    request.validate();
+    NormalizedURL metadataLocation = NormalizedURL.from(request.metadataLocation());
+    // No metadata is written here: the file exists, and registering it must not touch it. That also
+    // means nothing has to be cleaned up if the row cannot be created.
+    TableMetadata tableMetadata = metadataService.readUnregisteredTableMetadata(metadataLocation);
+    NormalizedURL tableLocation = NormalizedURL.from(tableMetadata.location());
+    List<ColumnInfo> columns = IcebergSchemaConverter.toColumnInfos(tableMetadata.schema());
+
+    if (request.overwrite() && ucTableExists(catalog, namespace, request.name())) {
+      // Overwriting is a commit of the given metadata file over whatever the table points at now.
+      // The pointer read here is the one the commit requires to still be current, so a commit that
+      // lands in between is reported as a conflict rather than silently overwritten.
+      TableRepository.IcebergTableState state =
+          tableRepository.getIcebergTableState(catalog, namespace, request.name());
+      tableRepository.commitIcebergTable(
+          catalog,
+          namespace,
+          request.name(),
+          state.metadataLocation(),
+          metadataLocation,
+          columns,
+          tableMetadata.properties());
+      return loadRegisteredTable(tableMetadata, NormalizedURL.from(state.storageLocation()));
+    }
+
+    CreateTable createTable =
+        new CreateTable()
+            .name(request.name())
+            .catalogName(catalog)
+            .schemaName(namespace)
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.ICEBERG)
+            .columns(columns)
+            .storageLocation(tableLocation.toString())
+            .properties(tableMetadata.properties());
+    TableInfo tableInfo = tableRepository.createTableForIceberg(createTable, metadataLocation);
+    SchemaInfo schemaInfo =
+        schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
+    initializeHierarchicalAuthorization(tableInfo.getTableId(), schemaInfo.getSchemaId());
+    return loadRegisteredTable(tableMetadata, NormalizedURL.from(tableInfo.getStorageLocation()));
+  }
+
+  /**
+   * The response for a registered table: the metadata as it was read from the file, so the pointer
+   * a client gets back is the file it named, with credentials for the location UC persisted.
+   */
+  private LoadTableResponse loadRegisteredTable(
+      TableMetadata tableMetadata, NormalizedURL persistedTableLocation) {
+    return LoadTableResponse.builder()
+        .withTableMetadata(tableMetadata)
         .addAllConfig(tableConfigService.getTableConfig(persistedTableLocation, READ_WRITE))
         .build();
   }
