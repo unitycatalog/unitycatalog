@@ -58,6 +58,17 @@ class URLTranscoderVerticle extends AbstractVerticle {
                     // anything is written, leaving the client waiting on a response it never gets.
                     Buffer body = resp.bodyAsBuffer();
                     return body == null ? transcodeResp.end() : transcodeResp.end(body);
+                  })
+              .otherwise(
+                  err -> {
+                    LOGGER.error("URL transcode failed", err);
+                    HttpServerResponse transcodeResp = transcodeRequest.response();
+                    if (!transcodeResp.headWritten()) {
+                      transcodeResp.setStatusCode(502);
+                      transcodeResp.putHeader("Content-Type", "text/plain");
+                      transcodeResp.end("Backend error: " + err.getMessage());
+                    }
+                    return null;
                   });
         });
 
