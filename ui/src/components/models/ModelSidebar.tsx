@@ -5,6 +5,11 @@ import { ModelInterface, useGetModel } from '../../hooks/models';
 
 const MODEL_METADATA: MetadataListType<ModelInterface> = [
   {
+    key: 'owner',
+    label: 'Owner',
+    dataIndex: 'owner',
+  },
+  {
     key: 'created_at',
     label: 'Created at',
     dataIndex: 'created_at',

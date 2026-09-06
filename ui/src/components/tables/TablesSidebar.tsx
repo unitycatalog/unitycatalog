@@ -1,6 +1,7 @@
 import { Typography } from 'antd';
 import { formatTimestamp } from '../../utils/formatTimestamp';
 import MetadataList, { MetadataListType } from '../MetadataList';
+import PropertiesDisplay from '../PropertiesDisplay';
 import { TableInterface, useGetTable } from '../../hooks/tables';
 
 interface TableSidebarProps {
@@ -10,6 +11,17 @@ interface TableSidebarProps {
 }
 
 const TABLE_METADATA: MetadataListType<Omit<TableInterface, 'columns'>> = [
+  {
+    key: 'owner',
+    label: 'Owner',
+    dataIndex: 'owner',
+  },
+  {
+    key: 'table_type',
+    label: 'Table type',
+    dataIndex: 'table_type',
+    render: (value) => <Typography.Text code>{value}</Typography.Text>,
+  },
   {
     key: 'created_at',
     label: 'Created at',
@@ -48,10 +60,13 @@ export default function TableSidebar({
   const { columns, ...metadata } = data;
 
   return (
-    <MetadataList
-      data={metadata}
-      metadata={TABLE_METADATA}
-      title="Table details"
-    />
+    <>
+      <MetadataList
+        data={metadata}
+        metadata={TABLE_METADATA}
+        title="Table details"
+      />
+      <PropertiesDisplay properties={metadata.properties} />
+    </>
   );
 }

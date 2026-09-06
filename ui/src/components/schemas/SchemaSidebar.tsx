@@ -1,6 +1,7 @@
 import { Typography } from 'antd';
 import { formatTimestamp } from '../../utils/formatTimestamp';
 import MetadataList, { MetadataListType } from '../MetadataList';
+import PropertiesDisplay from '../PropertiesDisplay';
 import { SchemaInterface, useGetSchema } from '../../hooks/schemas';
 
 interface SchemaSidebarProps {
@@ -9,6 +10,11 @@ interface SchemaSidebarProps {
 }
 
 const SCHEMA_METADATA: MetadataListType<SchemaInterface> = [
+  {
+    key: 'owner',
+    label: 'Owner',
+    dataIndex: 'owner',
+  },
   {
     key: 'created_at',
     label: 'Created at',
@@ -33,10 +39,13 @@ export default function SchemaSidebar({ catalog, schema }: SchemaSidebarProps) {
   if (!data) return null;
 
   return (
-    <MetadataList
-      data={data}
-      metadata={SCHEMA_METADATA}
-      title="Schema details"
-    />
+    <>
+      <MetadataList
+        data={data}
+        metadata={SCHEMA_METADATA}
+        title="Schema details"
+      />
+      <PropertiesDisplay properties={data.properties} />
+    </>
   );
 }
