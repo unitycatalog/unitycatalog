@@ -13,9 +13,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -167,7 +169,29 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
     TableInfo tableInfo = tableOperations.getTable(fullTableName);
     java.util.Map<String, String> serverProperties =
         tableInfo.getProperties() == null ? java.util.Map.of() : tableInfo.getProperties();
-    assertThat(serverProperties.keySet()).allMatch(UCTableProperties::shouldPersistProperty);
+    assertThat(serverProperties.keySet())
+        .noneMatch(key -> key.startsWith("fs."))
+        .noneMatch(key -> key.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
+        .noneMatch(UCTableProperties.V2_TABLE_PROPERTIES::contains);
+    assertNoSparkDatasourceSchemaProperties(serverProperties.keySet());
+  }
+
+  /**
+   * Spark HiveExternalCatalog schema JSON keys, including {@code option.} copies. Asserted with
+   * literal prefixes so the check is independent of {@link UCTableProperties#shouldPersistProperty}.
+   */
+  protected static void assertNoSparkDatasourceSchemaProperties(Set<String> keys) {
+    assertThat(keys)
+        .noneMatch(
+            key ->
+                key.equals("spark.sql.sources.schema")
+                    || key.startsWith("spark.sql.sources.schema.")
+                    || key.equals("spark.sql.partitionSchema")
+                    || key.startsWith("spark.sql.partitionSchema."))
+        .noneMatch(
+            key ->
+                key.startsWith(TableCatalog.OPTION_PREFIX + "spark.sql.sources.schema")
+                    || key.startsWith(TableCatalog.OPTION_PREFIX + "spark.sql.partitionSchema"));
   }
 
   @Test

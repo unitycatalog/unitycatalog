@@ -74,7 +74,7 @@ public class UCTableProperties {
    */
   public static boolean shouldPersistProperty(String key) {
     String bare = withoutOptionPrefix(key);
-    if (V2_TABLE_PROPERTIES.contains(key) || V2_TABLE_PROPERTIES.contains(bare)) {
+    if (V2_TABLE_PROPERTIES.contains(bare)) {
       return false;
     }
     if (bare.startsWith("fs.")) {

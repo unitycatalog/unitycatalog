@@ -43,8 +43,7 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
     TableInfo tableInfo = tableOperations.getTable(fullTableName);
     Map<String, String> serverProperties =
         tableInfo.getProperties() == null ? Map.of() : tableInfo.getProperties();
-    assertThat(serverProperties.keySet())
-        .noneMatch(UCTableProperties::isSparkDatasourceSchemaProperty);
+    assertNoSparkDatasourceSchemaProperties(serverProperties.keySet());
     assertThat(tableInfo.getColumns()).hasSize(7);
 
     assertThat(sql("SELECT * FROM %s", fullTableName)).isEmpty();
