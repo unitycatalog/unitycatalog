@@ -8,6 +8,7 @@ import io.unitycatalog.client.model.TableInfo;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.spark.sql.connector.catalog.TableCatalog;
 import org.junit.jupiter.api.Test;
 
 public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTest {
@@ -43,7 +44,17 @@ public class ParquetExternalTableReadWriteTest extends ExternalTableReadWriteTes
     TableInfo tableInfo = tableOperations.getTable(fullTableName);
     Map<String, String> serverProperties =
         tableInfo.getProperties() == null ? Map.of() : tableInfo.getProperties();
-    assertNoSparkDatasourceSchemaProperties(serverProperties.keySet());
+    assertThat(serverProperties.keySet())
+        .noneMatch(
+            key ->
+                key.equals("spark.sql.sources.schema")
+                    || key.startsWith("spark.sql.sources.schema.")
+                    || key.equals("spark.sql.partitionSchema")
+                    || key.startsWith("spark.sql.partitionSchema."))
+        .noneMatch(
+            key ->
+                key.startsWith(TableCatalog.OPTION_PREFIX + "spark.sql.sources.schema")
+                    || key.startsWith(TableCatalog.OPTION_PREFIX + "spark.sql.partitionSchema"));
     assertThat(tableInfo.getColumns()).hasSize(7);
 
     assertThat(sql("SELECT * FROM %s", fullTableName)).isEmpty();

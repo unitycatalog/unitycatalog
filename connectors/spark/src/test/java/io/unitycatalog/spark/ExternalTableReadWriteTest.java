@@ -13,7 +13,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Stream;
 import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
@@ -172,16 +171,7 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
     assertThat(serverProperties.keySet())
         .noneMatch(key -> key.startsWith("fs."))
         .noneMatch(key -> key.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
-        .noneMatch(UCTableProperties.V2_TABLE_PROPERTIES::contains);
-    assertNoSparkDatasourceSchemaProperties(serverProperties.keySet());
-  }
-
-  /**
-   * Spark HiveExternalCatalog schema JSON keys, including {@code option.} copies. Asserted with
-   * literal prefixes so the check is independent of {@link UCTableProperties#shouldPersistProperty}.
-   */
-  protected static void assertNoSparkDatasourceSchemaProperties(Set<String> keys) {
-    assertThat(keys)
+        .noneMatch(UCTableProperties.V2_TABLE_PROPERTIES::contains)
         .noneMatch(
             key ->
                 key.equals("spark.sql.sources.schema")
