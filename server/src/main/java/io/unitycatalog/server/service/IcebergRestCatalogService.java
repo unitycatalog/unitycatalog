@@ -144,7 +144,10 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
         catalogOpt.orElseThrow(
             () -> new BadRequestException("Must supply a proper catalog in warehouse property."));
 
-    // TODO: check catalog exists
+    // The prefix below only leads anywhere if the catalog exists. Per the REST spec a warehouse
+    // that does not is a 404 here, rather than a config whose every later request fails.
+    catalogRepository.getCatalog(catalog);
+
     // set catalog prefix
     return ConfigResponse.builder()
         .withOverride("prefix", PREFIX_BASE + catalog)
