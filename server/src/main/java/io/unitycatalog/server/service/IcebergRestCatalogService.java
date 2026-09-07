@@ -91,6 +91,7 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
       List.of(
           Endpoint.V1_LIST_NAMESPACES,
           Endpoint.V1_LOAD_NAMESPACE,
+          Endpoint.V1_NAMESPACE_EXISTS,
           Endpoint.V1_TABLE_EXISTS,
           Endpoint.V1_LOAD_TABLE,
           Endpoint.V1_LOAD_VIEW,
@@ -181,6 +182,17 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     }
 
     return ListNamespacesResponse.builder().addAll(namespaces).build();
+  }
+
+  @Head("/v1/catalogs/{catalog}/namespaces/{namespace}")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeResourceKey(METASTORE)
+  public HttpResponse namespaceExists(
+      @Param("catalog") String catalog, @Param("namespace") String namespace) {
+    // Without a route of its own, this HEAD was served by the GET below, which answered 200 and
+    // described a body a HEAD response must not carry. The REST spec answers it with 204.
+    schemaRepository.getSchema(String.join(".", catalog, namespace));
+    return HttpResponse.of(HttpStatus.NO_CONTENT);
   }
 
   @Get("/v1/catalogs/{catalog}/namespaces/{namespace}")

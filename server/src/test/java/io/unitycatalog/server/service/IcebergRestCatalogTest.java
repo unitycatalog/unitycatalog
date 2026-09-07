@@ -145,7 +145,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + "\"}"
                 + ",\"endpoints\":["
                 + "\"GET /v1/{prefix}/namespaces\","
-                + "\"GET /v1/{prefix}/namespaces/{namespace}\""
+                + "\"GET /v1/{prefix}/namespaces/{namespace}\","
+                + "\"HEAD /v1/{prefix}/namespaces/{namespace}\""
                 + ",\"HEAD /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
                 + "\"GET /v1/{prefix}/namespaces/{namespace}/views/{view}\","
@@ -169,6 +170,27 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(resp.status().code()).isEqualTo(404);
     assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).message())
         .contains("noSuchCatalog");
+  }
+
+  @Test
+  public void testNamespaceExists() throws ApiException {
+    catalogOperations.createCatalog(
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+
+    // The REST spec answers this HEAD with 204 and no content. Served by the GET route it answered
+    // 200 and described the body of the namespace response, which a HEAD must not carry.
+    AggregatedHttpResponse resp =
+        client.head(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(204);
+    assertThat(resp.contentUtf8()).isEmpty();
+    assertThat(resp.headers().contentLength()).isLessThanOrEqualTo(0);
+
+    // A namespace that does not exist is a 404, which is what the client reads as "no such
+    // namespace" without a body to parse.
+    resp = client.head(TEST_BASE_PREFIX + "/namespaces/noSuchSchema").aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(404);
   }
 
   @Test
