@@ -217,8 +217,8 @@ class CrossSparkPublishTest:
             if not spec.source_build_artifact_base_version:
                 print(f"FAIL: {version} is missing sourceBuildArtifactBaseVersion")
                 all_passed = False
-            if version == "4.2.0-SNAPSHOT" and spec.source_build_artifact_base_version != "4.2.0":
-                print("FAIL: 4.2.0-SNAPSHOT should publish Spark artifacts under base 4.2.0")
+            if version == "4.3.0-SNAPSHOT" and spec.source_build_artifact_base_version != "4.3.0":
+                print("FAIL: 4.3.0-SNAPSHOT should publish Spark artifacts under base 4.3.0")
                 all_passed = False
 
         release_like_versions = [
@@ -257,7 +257,7 @@ class CrossSparkPublishTest:
                     str(script_path),
                     "--resolve-source-build",
                     "--spark-version",
-                    "4.2.0-SNAPSHOT",
+                    "4.3.0-SNAPSHOT",
                 ]
                 with contextlib.redirect_stdout(output):
                     module.main()
@@ -275,7 +275,7 @@ class CrossSparkPublishTest:
                 return False
 
             cache_key = values["cache_key"]
-            if not cache_key.startswith("spark-m2-ubuntu-latest-scala-2.13-4.2.0-SNAPSHOT-4.2.0-"):
+            if not cache_key.startswith("spark-m2-ubuntu-latest-scala-2.13-4.3.0-SNAPSHOT-4.3.0-"):
                 print("FAIL: Unexpected cache_key prefix: {}".format(cache_key))
                 return False
             if fake_sha not in cache_key:
@@ -285,8 +285,8 @@ class CrossSparkPublishTest:
             build_script = self.uc_root / "project" / "scripts" / "build_spark.sh"
             expected_key = module.compute_spark_m2_cache_key(
                 "ubuntu-latest",
-                "4.2.0-SNAPSHOT",
-                "4.2.0",
+                "4.3.0-SNAPSHOT",
+                "4.3.0",
                 fake_sha,
                 build_script,
             )
@@ -298,8 +298,8 @@ class CrossSparkPublishTest:
 
             other_sha_key = module.compute_spark_m2_cache_key(
                 "ubuntu-latest",
-                "4.2.0-SNAPSHOT",
-                "4.2.0",
+                "4.3.0-SNAPSHOT",
+                "4.3.0",
                 "deadbeef" * 5,
                 build_script,
             )

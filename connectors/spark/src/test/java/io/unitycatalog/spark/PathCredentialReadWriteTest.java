@@ -122,6 +122,9 @@ public class PathCredentialReadWriteTest extends BaseSparkIntegrationTest {
             .master("local[*]")
             .config("spark.sql.shuffle.partitions", "4")
             .config("spark.sql.extensions", DELTA_AND_UC_EXTENSIONS);
+    if (isSparkAtLeast(4, 3)) {
+      builder.config("spark.sql.analyzer.singlePassResolver.dualRunWithLegacy", "false");
+    }
     if (sparkCatalogImpl != null) {
       builder.config("spark.sql.catalog.spark_catalog", sparkCatalogImpl);
     }
