@@ -956,8 +956,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
-  public void testUnroutedIcebergRequestsAnswerWithAnIcebergError() throws Exception {
-    createUniformIcebergTable();
+  public void testUnroutedIcebergRequestsAnswerWithAnIcebergError() {
+    // These paths are answered before any service is reached, so nothing here needs a catalog, a
+    // schema or a table to exist.
 
     // A path the Iceberg API does not serve is answered before any service is reached, so the
     // service's own handler never sees it. The response still has to be an error document Iceberg's
