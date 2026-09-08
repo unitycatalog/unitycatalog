@@ -228,6 +228,30 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces").aggregate().join();
       assertThat(resp.status().code()).isEqualTo(404);
     }
+
+    // DropNamespace
+    {
+      String namespacePath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME;
+
+      // A namespace that still holds a table cannot be dropped, and the spec answers that with 409
+      // rather than the failed precondition the repository reports.
+      createTable(TestUtils.TABLE_NAME);
+      AggregatedHttpResponse resp = client.delete(namespacePath).aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(409);
+      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
+          .isEqualTo(NamespaceNotEmptyException.class.getSimpleName());
+
+      // Once it is empty the drop answers 204 with no content, and the namespace is gone.
+      tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
+      resp = client.delete(namespacePath).aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(204);
+      assertThat(resp.contentUtf8()).isEmpty();
+      assertThat(client.get(namespacePath).aggregate().join().status().code()).isEqualTo(404);
+
+      // Dropping a namespace that is not there is a 404.
+      resp = client.delete(namespacePath).aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(404);
+    }
   }
 
   @Test
@@ -953,30 +977,6 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         IcebergObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
     assertThat(listed.identifiers())
         .containsExactly(TableIdentifier.of(Namespace.of(TestUtils.SCHEMA_NAME), "uniform_table"));
-  }
-
-  @Test
-  public void testDropNamespace() throws Exception {
-    createUniformIcebergTable();
-    String namespacePath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME;
-
-    // A namespace that still holds a table cannot be dropped, and the spec answers that with 409
-    // rather than the failed precondition the repository reports.
-    AggregatedHttpResponse resp = client.delete(namespacePath).aggregate().join();
-    assertThat(resp.status().code()).isEqualTo(409);
-    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
-        .isEqualTo(NamespaceNotEmptyException.class.getSimpleName());
-
-    // Once it is empty the drop answers 204 with no content, and the namespace is gone.
-    tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
-    resp = client.delete(namespacePath).aggregate().join();
-    assertThat(resp.status().code()).isEqualTo(204);
-    assertThat(resp.contentUtf8()).isEmpty();
-    assertThat(client.get(namespacePath).aggregate().join().status().code()).isEqualTo(404);
-
-    // Dropping a namespace that is not there is a 404.
-    resp = client.delete(namespacePath).aggregate().join();
-    assertThat(resp.status().code()).isEqualTo(404);
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
