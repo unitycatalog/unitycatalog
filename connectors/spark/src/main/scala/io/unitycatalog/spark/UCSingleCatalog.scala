@@ -220,11 +220,12 @@ class UCSingleCatalog
       ident: Identifier,
       writePrivileges: util.Set[TableWritePrivilege]): Table = {
     requireAddressableTableNameOrPathTable(ident)
+    val previousIntent = UCSingleCatalog.WRITE_INTENT.get()
     UCSingleCatalog.WRITE_INTENT.set(true)
     try {
       delegate.loadTable(ident, writePrivileges)
     } finally {
-      UCSingleCatalog.WRITE_INTENT.remove()
+      UCSingleCatalog.WRITE_INTENT.set(previousIntent)
     }
   }
 
@@ -1049,12 +1050,12 @@ private[spark] class UCProxy(
       credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
     } catch {
       case e: ApiException =>
-        logWarning(
-          s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
         if (UCSingleCatalog.WRITE_INTENT.get()) {
           // Fail fast: READ credentials would only defer the denial to the storage layer mid-job.
           throw e
         }
+        logWarning(
+          s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
         readCredentialsOrServerSidePlanning(credBuilder, tableId, identifier)
     }
 

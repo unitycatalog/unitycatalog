@@ -90,7 +90,7 @@ public class WriteIntentCredentialSuite {
   }
 
   /** Table ids are unique per test: the hadoop credential cache is JVM-global. */
-  private String stubTable(String name) throws Exception {
+  private void stubTable(String name) throws Exception {
     String tableId = "table-id-" + name;
     TableInfo ucTable =
         new TableInfo()
@@ -115,7 +115,6 @@ public class WriteIntentCredentialSuite {
     when(fixture.mockTablesApi.getTable(
             eq(CATALOG_NAME + "." + SCHEMA_NAME + "." + name), eq(true), eq(true)))
         .thenReturn(ucTable);
-    return tableId;
   }
 
   private void denyReadWriteGrantRead() {
