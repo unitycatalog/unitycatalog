@@ -576,12 +576,6 @@ public class TableRepository {
     return DeltaTableType.fromValue(value);
   }
 
-  public String getTableUniformMetadataLocation(
-      Session session, String catalogName, String schemaName, String tableName) {
-    TableInfoDAO dao = findTableOrThrow(session, catalogName, schemaName, tableName);
-    return dao.getUniformIcebergMetadataLocation();
-  }
-
   public IcebergTableState getIcebergTableState(
       String catalogName, String schemaName, String tableName) {
     return getIcebergTableState(catalogName, schemaName, tableName, false);

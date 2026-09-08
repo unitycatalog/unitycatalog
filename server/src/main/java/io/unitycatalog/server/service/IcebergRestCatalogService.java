@@ -589,17 +589,17 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
     // This endpoint returns the whole listing, so follow the repository's page token to the end.
     // Each page already says which of its tables carry Iceberg metadata, so no listed table is
     // resolved a second time: doing that made a table dropped mid-listing fail the entire request.
-    List<TableIdentifier> tables = new ArrayList<>();
+    org.apache.iceberg.rest.responses.ListTablesResponse.Builder listed =
+        org.apache.iceberg.rest.responses.ListTablesResponse.builder();
     Optional<String> pageToken = Optional.empty();
     do {
       IcebergTablePage page = tableRepository.listIcebergTables(catalog, namespace, pageToken);
-      page.tableNames().stream()
-          .map(tableName -> TableIdentifier.of(Namespace.of(namespace), tableName))
-          .forEach(tables::add);
+      page.tableNames()
+          .forEach(table -> listed.add(TableIdentifier.of(Namespace.of(namespace), table)));
       pageToken = page.nextPageToken();
     } while (pageToken.isPresent());
 
-    return org.apache.iceberg.rest.responses.ListTablesResponse.builder().addAll(tables).build();
+    return listed.build();
   }
 
   /**
