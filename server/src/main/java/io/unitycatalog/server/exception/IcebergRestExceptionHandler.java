@@ -56,17 +56,18 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
    * catalog or schema surface at the client as a missing table. Those exceptions are named from
    * their error code instead, which is also what the response status is derived from.
    *
-   * <p>{@link #toBaseException} already re-raises four codes as the Iceberg exception that stands
-   * for them, which is what moves the two already-exists codes off their legacy 400; those arrive
-   * here carrying an Iceberg exception and keep naming themselves. This names what that switch does
-   * not reach, so no error code can reach a client as "BaseException".
+   * <p>This is also why {@link #toBaseException} no longer has to re-raise a code as the Iceberg
+   * exception that stands for it: the only thing it still changes is the status of the two legacy
+   * already-exists codes, whose native 400 an Iceberg client does not read as a conflict. Naming
+   * every other exception from its code here means none can reach a client as "BaseException", not
+   * even one raised by a library Unity Catalog happens to call.
    */
   private static String errorType(BaseException exception) {
     Throwable original = getOriginalException(exception);
-    if (original instanceof BaseException) {
-      return icebergExceptionFor(exception.getErrorCode()).getSimpleName();
+    if (original.getClass().getName().startsWith("org.apache.iceberg.exceptions.")) {
+      return original.getClass().getSimpleName();
     }
-    return original.getClass().getSimpleName();
+    return icebergExceptionFor(exception.getErrorCode()).getSimpleName();
   }
 
   /**
@@ -106,26 +107,12 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
   protected BaseException toBaseException(Throwable cause) {
     if (cause instanceof BaseException baseException) {
       return switch (baseException.getErrorCode()) {
-        case SCHEMA_NOT_FOUND ->
-            wrapException(
-                ErrorCode.NOT_FOUND,
-                baseException.getErrorMessage(),
-                new NoSuchNamespaceException("%s", baseException.getErrorMessage()));
-        case TABLE_NOT_FOUND ->
-            wrapException(
-                ErrorCode.NOT_FOUND,
-                baseException.getErrorMessage(),
-                new NoSuchTableException("%s", baseException.getErrorMessage()));
+        // These two answer 400 on the native REST surface for backward compatibility, which is not
+        // a status an Iceberg client reads as a conflict. Every other code already carries the
+        // status this surface wants, and its Iceberg name comes from the code, so nothing else
+        // needs re-raising here.
         case SCHEMA_ALREADY_EXISTS, TABLE_ALREADY_EXISTS ->
-            wrapException(
-                ErrorCode.ALREADY_EXISTS,
-                baseException.getErrorMessage(),
-                new AlreadyExistsException("%s", baseException.getErrorMessage()));
-        case UPDATE_REQUIREMENT_CONFLICT ->
-            wrapException(
-                ErrorCode.ALREADY_EXISTS,
-                baseException.getErrorMessage(),
-                new CommitFailedException("%s", baseException.getErrorMessage()));
+            new BaseException(ErrorCode.ALREADY_EXISTS, baseException.getErrorMessage());
         default -> baseException;
       };
     }
@@ -141,15 +128,6 @@ public class IcebergRestExceptionHandler extends BaseExceptionHandler {
     }
     if (cause instanceof BadRequestException) {
       return wrapException(ErrorCode.INVALID_ARGUMENT, cause);
-    }
-    if (cause instanceof IllegalArgumentException) {
-      // Iceberg's own request parsers reject a request they cannot read with
-      // IllegalArgumentException, and their message is already in Iceberg's terms; only the name is
-      // not. The status is the 400 the base handler would have chosen for it either way.
-      String message = cause.getMessage() != null ? cause.getMessage() : "Bad request";
-      BadRequestException badRequest = new BadRequestException("%s", message);
-      badRequest.initCause(cause);
-      return wrapException(ErrorCode.INVALID_ARGUMENT, message, badRequest);
     }
     return super.toBaseException(cause);
   }

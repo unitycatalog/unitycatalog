@@ -165,7 +165,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
     // not setting warehouse param should result in 400 BadRequestException
     resp = client.get("/v1/config").aggregate().join();
-    assertThat(resp.status().code()).isEqualTo(400);
+    assertErrorType(resp, 400, BadRequestException.class);
     ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
     assertThat(errorResponse.type()).isEqualTo(BadRequestException.class.getSimpleName());
 
@@ -236,6 +236,20 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   .build()
                   .toString());
 
+      // A schema Unity Catalog doesn't have is a namespace Iceberg doesn't have. The type matters:
+      // Iceberg's client reads it to tell a missing namespace from a missing table.
+      assertErrorType(
+          client.get(TEST_BASE_PREFIX + "/namespaces/noSuchSchema").aggregate().join(),
+          404,
+          NoSuchNamespaceException.class);
+
+      // A name Unity Catalog rejects outright, such as the multi-level name a nested namespace
+      // arrives as, is a bad request rather than a missing namespace.
+      assertErrorType(
+          client.get(TEST_BASE_PREFIX + "/namespaces/nested.namespace").aggregate().join(),
+          400,
+          BadRequestException.class);
+
       // non-prefixed URL should result in 404
       resp =
           client
@@ -258,6 +272,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   .add(Namespace.of(TestUtils.SCHEMA_NAME))
                   .build()
                   .toString());
+
+      // Listing under a catalog Unity Catalog doesn't have is a missing namespace too.
+      assertErrorType(
+          client.get("/v1/catalogs/noSuchCatalog/namespaces").aggregate().join(),
+          404,
+          NoSuchNamespaceException.class);
 
       // non-prefixed URL should result in 404
       resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces").aggregate().join();
@@ -357,9 +377,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                       + TestUtils.TABLE_NAME)
               .aggregate()
               .join();
-      assertThat(resp.status().code()).isEqualTo(404);
-      ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
-      assertThat(errorResponse.type()).isEqualTo(NoSuchTableException.class.getSimpleName());
+      assertErrorType(resp, 404, NoSuchTableException.class);
     }
 
     // Register UniForm-derived Iceberg metadata for the table. The fixture's baked table root is
@@ -471,10 +489,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               List.of(), List.of(new MetadataUpdate.SetProperties(Map.of("foo", "bar"))));
       AggregatedHttpResponse resp =
           postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(commitRequest));
-      assertThat(resp.status().code()).isEqualTo(400);
+      assertErrorType(resp, 400, BadRequestException.class);
 
       resp = client.delete(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(400);
+      assertErrorType(resp, 400, BadRequestException.class);
     }
 
     // Credentials must never be scoped by a conflicting location in the metadata payload. Repoint
@@ -498,7 +516,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                     + TestUtils.TABLE_NAME)
             .aggregate()
             .join();
-    assertThat(conflictResp.status().code()).isEqualTo(400);
+    assertErrorType(conflictResp, 400, BadRequestException.class);
     assertThat(ErrorResponseParser.fromJson(conflictResp.contentUtf8()).message())
         .contains("persisted table location");
   }
@@ -529,7 +547,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
       // creating it again is a conflict
       resp = postJson(namespacesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(409);
+      assertErrorType(resp, 409, AlreadyExistsException.class);
       assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
           .isEqualTo(AlreadyExistsException.class.getSimpleName());
     }
@@ -587,7 +605,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
       // creating it again is a conflict
       resp = postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(409);
+      assertErrorType(resp, 409, AlreadyExistsException.class);
       assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
           .isEqualTo(AlreadyExistsException.class.getSimpleName());
     }
@@ -675,9 +693,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               List.of(new MetadataUpdate.SetProperties(Map.of("should", "fail"))));
       AggregatedHttpResponse resp =
           postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(409);
-      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
-          .isEqualTo(CommitFailedException.class.getSimpleName());
+      assertErrorType(resp, 409, CommitFailedException.class);
     }
 
     // Drop the table
@@ -689,9 +705,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(resp.status().code()).isEqualTo(404);
 
       resp = client.get(tablePath).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(404);
-      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
-          .isEqualTo(NoSuchTableException.class.getSimpleName());
+      assertErrorType(resp, 404, NoSuchTableException.class);
     }
 
     // A create request without a location gets a server-assigned managed location
@@ -802,9 +816,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
       // replaying the create commit loses the race: 409 CommitFailedException
       resp = postJson(tablePath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(409);
-      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
-          .isEqualTo(CommitFailedException.class.getSimpleName());
+      assertErrorType(resp, 409, CommitFailedException.class);
     }
 
     // staging a create for an existing table is a conflict
@@ -817,9 +829,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               .build();
       AggregatedHttpResponse resp =
           postJson(tablesPath, IcebergObjectMapper.mapper().writeValueAsString(request));
-      assertThat(resp.status().code()).isEqualTo(409);
-      assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
-          .isEqualTo(AlreadyExistsException.class.getSimpleName());
+      assertErrorType(resp, 409, AlreadyExistsException.class);
     }
   }
 
@@ -926,8 +936,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(postJson(metricsPath, scanReportJson()).status().code()).isEqualTo(204);
     assertThat(postJson(metricsPath, commitReportJson()).status().code()).isEqualTo(204);
 
-    // A body that isn't a metrics report is rejected rather than silently accepted.
-    assertThat(postJson(metricsPath, "{\"foo\":\"bar\"}").status().code()).isEqualTo(400);
+    // A body that isn't a metrics report is rejected rather than silently accepted. Iceberg's own
+    // parser raises IllegalArgumentException for it, whose name means nothing to a client.
+    assertErrorType(postJson(metricsPath, "{\"foo\":\"bar\"}"), 400, BadRequestException.class);
 
     // A table UC knows about but doesn't serve as an Iceberg table is a 404, like loadTable.
     createTable("plainTable");
@@ -938,9 +949,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + TestUtils.SCHEMA_NAME
                 + "/tables/plainTable/metrics",
             scanReportJson());
-    assertThat(resp.status().code()).isEqualTo(404);
-    assertThat(ErrorResponseParser.fromJson(resp.contentUtf8()).type())
-        .isEqualTo(NoSuchTableException.class.getSimpleName());
+    assertErrorType(resp, 404, NoSuchTableException.class);
 
     // A table that doesn't exist at all is a 404 too.
     resp =
@@ -950,7 +959,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                 + TestUtils.SCHEMA_NAME
                 + "/tables/missingTable/metrics",
             scanReportJson());
-    assertThat(resp.status().code()).isEqualTo(404);
+    assertErrorType(resp, 404, NoSuchTableException.class);
 
     // The non-prefixed URL isn't routed, matching the other Iceberg endpoints.
     resp =
@@ -1071,62 +1080,6 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(error.code()).isEqualTo(expectedCode);
     assertThat(error.type()).isEqualTo(expectedType.getSimpleName());
     assertThat(error.message()).isEqualTo(expectedMessage);
-  }
-
-  @Test
-  public void testErrorsAreNamedInIcebergTerms()
-      throws ApiException, IOException, URISyntaxException {
-    createUniformIcebergTable();
-    String namespacePath = TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME;
-
-    // A catalog or a schema Unity Catalog doesn't have is a namespace Iceberg doesn't have,
-    // whichever endpoint asked for it.
-    assertErrorType(
-        client.get("/v1/catalogs/noSuchCatalog/namespaces").aggregate().join(),
-        404,
-        NoSuchNamespaceException.class);
-    assertErrorType(
-        client.get(TEST_BASE_PREFIX + "/namespaces/noSuchSchema").aggregate().join(),
-        404,
-        NoSuchNamespaceException.class);
-    assertErrorType(
-        client.get(TEST_BASE_PREFIX + "/namespaces/noSuchSchema/tables").aggregate().join(),
-        404,
-        NoSuchNamespaceException.class);
-    assertErrorType(
-        client
-            .get(TEST_BASE_PREFIX + "/namespaces/noSuchSchema/tables/" + TestUtils.TABLE_NAME)
-            .aggregate()
-            .join(),
-        404,
-        NoSuchNamespaceException.class);
-
-    // A table Unity Catalog doesn't have is a missing table on every endpoint that resolves one.
-    assertErrorType(
-        client.get(namespacePath + "/tables/noSuchTable").aggregate().join(),
-        404,
-        NoSuchTableException.class);
-    assertErrorType(
-        postJson(namespacePath + "/tables/noSuchTable/metrics", scanReportJson()),
-        404,
-        NoSuchTableException.class);
-
-    // A namespace name Unity Catalog rejects outright, such as the multi-level name a nested
-    // namespace arrives as, is a bad request.
-    assertErrorType(
-        client.get(TEST_BASE_PREFIX + "/namespaces/nested.namespace").aggregate().join(),
-        400,
-        BadRequestException.class);
-
-    // So is a request Iceberg's own parser rejects. That arrives as an IllegalArgumentException,
-    // whose class name means nothing to a client even though the message is already in Iceberg's
-    // terms.
-    assertErrorType(
-        postJson(
-            namespacePath + "/tables/" + TestUtils.TABLE_NAME + "/metrics",
-            "{\"report-type\": {\"not\": \"a string\"}}"),
-        400,
-        BadRequestException.class);
   }
 
   /**
