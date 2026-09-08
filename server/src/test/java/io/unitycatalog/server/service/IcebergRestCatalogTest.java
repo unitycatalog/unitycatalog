@@ -1101,17 +1101,19 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     assertThat(updated.missing()).containsExactly("absent");
 
     // The namespace itself reflects the patch: keys not mentioned are left alone.
-    assertThat(
-            IcebergObjectMapper.mapper()
-                .readValue(
-                    client
-                        .get(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME)
-                        .aggregate()
-                        .join()
-                        .contentUtf8(),
-                    GetNamespaceResponse.class)
-                .properties())
+    assertThat(namespaceProperties(TestUtils.SCHEMA_NAME))
         .containsOnly(Map.entry("keep", "me"), Map.entry("added", "value"));
+
+    // Removing every key leaves the namespace with none. Worth pinning separately: a patch that
+    // ends in an empty property set is what a later "nothing to write" shortcut would get wrong.
+    resp = postJson(propertiesPath, "{\"removals\": [\"keep\", \"added\"], \"updates\": {}}");
+    assertThat(resp.status().code()).isEqualTo(200);
+    updated =
+        IcebergObjectMapper.mapper()
+            .readValue(resp.contentUtf8(), UpdateNamespacePropertiesResponse.class);
+    assertThat(updated.removed()).containsExactlyInAnyOrder("keep", "added");
+    assertThat(updated.updated()).isEmpty();
+    assertThat(namespaceProperties(TestUtils.SCHEMA_NAME)).isEmpty();
 
     // A key both set and removed is the spec's 422, and a namespace that does not exist is a 404.
     resp =
@@ -1124,6 +1126,16 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             TEST_BASE_PREFIX + "/namespaces/noSuchSchema/properties",
             "{\"removals\": [], \"updates\": {\"a\": \"b\"}}");
     assertThat(resp.status().code()).isEqualTo(404);
+  }
+
+  /** The properties the namespace reports, as a client reading it back would see them. */
+  private Map<String, String> namespaceProperties(String namespace) throws IOException {
+    AggregatedHttpResponse resp =
+        client.get(TEST_BASE_PREFIX + "/namespaces/" + namespace).aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(200);
+    return IcebergObjectMapper.mapper()
+        .readValue(resp.contentUtf8(), GetNamespaceResponse.class)
+        .properties();
   }
 
   private AggregatedHttpResponse postJson(String path, String body) {
