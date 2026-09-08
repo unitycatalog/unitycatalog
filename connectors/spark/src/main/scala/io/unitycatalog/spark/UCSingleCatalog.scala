@@ -1045,25 +1045,17 @@ private[spark] class UCProxy(
 
     // Intent-less loads still request READ_WRITE first: write paths such as Delta's OPTIMIZE,
     // ALTER TABLE and streaming sinks resolve their target through the intent-less overload.
-    val extraSerdeProps = if (UCSingleCatalog.WRITE_INTENT.get()) {
-      // Fail fast: READ credentials would only defer the denial to the storage layer mid-job.
-      try {
-        credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
-      } catch {
-        case e: ApiException =>
-          logWarning(s"READ_WRITE credential generation failed for declared write on table " +
-            s"$identifier: ${e.getMessage}")
+    val extraSerdeProps = try {
+      credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
+    } catch {
+      case e: ApiException =>
+        logWarning(
+          s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
+        if (UCSingleCatalog.WRITE_INTENT.get()) {
+          // Fail fast: READ credentials would only defer the denial to the storage layer mid-job.
           throw e
-      }
-    } else {
-      try {
-        credBuilder.buildForTable(tableId, TableOperation.READ_WRITE)
-      } catch {
-        case e: ApiException =>
-          logWarning(
-            s"READ_WRITE credential generation failed for table $identifier: ${e.getMessage}")
-          readCredentialsOrServerSidePlanning(credBuilder, tableId, identifier)
-      }
+        }
+        readCredentialsOrServerSidePlanning(credBuilder, tableId, identifier)
     }
 
     // For unrecognized schemes (e.g. file://) the credential switch returns empty without props;
