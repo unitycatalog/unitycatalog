@@ -588,6 +588,8 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
   @AuthorizeResourceKey(METASTORE)
   public HttpResponse renameTable(@Param("catalog") String catalog, RenameTableRequest request) {
     serverProperties.checkIcebergTableEnabled();
+    // A request missing either identifier is a bad request, not the NPE reading it would raise.
+    request.validate();
     Namespace source = request.source().namespace();
     Namespace destination = request.destination().namespace();
     if (!source.equals(destination)) {
@@ -601,12 +603,17 @@ public class IcebergRestCatalogService extends AuthorizedService implements Regi
               + destination);
     }
     String namespace = source.toString();
-    // Only tables this API serves can be renamed through it; anything else is not a table it has.
+    String fullName = catalog + "." + namespace + "." + request.source().name();
+    // As with dropTable, only a table created through this API may be changed through it: a UniForm
+    // table is a Delta table that these endpoints read, and renaming it here would rename the Delta
+    // table under its own API.
     TableRepository.IcebergTableState state =
         tableRepository.getIcebergTableState(catalog, namespace, request.source().name());
-    if (state.metadataLocation() == null) {
-      throw new NoSuchTableException(
-          "Table does not exist: %s", namespace + "." + request.source().name());
+    if (state.dataSourceFormat() != DataSourceFormat.ICEBERG) {
+      throw new BadRequestException(
+          "Table %s was not created through the Iceberg REST catalog; rename it through the Unity"
+              + " Catalog API instead.",
+          fullName);
     }
     tableRepository.renameTable(
         catalog, namespace, request.source().name(), request.destination().name());
