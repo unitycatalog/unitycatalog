@@ -348,7 +348,7 @@ public class UnityCatalogServer implements AutoCloseable {
       LOGGER.info("Enabling security decorators...");
       armeriaServerBuilder.withSecurityDecorators(
           new UnityAccessDecorator(authorizer, repositories),
-          new AuthDecorator(securityContext, repositories));
+          new AuthDecorator(securityContext, repositories, serverProperties));
     }
   }
 

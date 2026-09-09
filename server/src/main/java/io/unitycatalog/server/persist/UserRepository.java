@@ -197,6 +197,10 @@ public class UserRepository {
   }
 
   public UUID findPrincipalId() {
+    UUID onBehalfOf = IdentityUtils.findOnBehalfOfUserId();
+    if (onBehalfOf != null) {
+      return onBehalfOf;
+    }
     String principalEmailAddress = IdentityUtils.findPrincipalEmailAddress();
     if (principalEmailAddress != null) {
       return UUID.fromString(getUserByEmail(principalEmailAddress).getId());

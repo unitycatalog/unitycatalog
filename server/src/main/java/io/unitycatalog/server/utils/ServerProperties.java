@@ -231,7 +231,14 @@ public class ServerProperties {
     OPENSHARING_PORT("server.opensharing.port", "8099", POSITIVE_INTEGER_VALIDATOR),
     OPENSHARING_PROTOCOL_PREFIX(
         "server.opensharing.protocol-prefix", "/api/2.1/opensharing", NOOP_VALIDATOR),
-    OPENSHARING_CREDENTIAL_ENCRYPTION_KEY("server.opensharing.credential-encryption-key");
+    OPENSHARING_CREDENTIAL_ENCRYPTION_KEY("server.opensharing.credential-encryption-key"),
+    // OpenSharing's own identity, not a user's: presenting this alongside an
+    // X-OpenSharing-On-Behalf-Of header (see AuthDecorator) lets it ask for a table or a
+    // credential as the share owner on a recipient's read, when no owner token is available to
+    // present because no owner is present -- the read is happening long after they asked to share
+    // anything. Required only when both server.opensharing.enabled and server.authorization are
+    // on; see checkOpenSharingConfigured.
+    OPENSHARING_SERVER_SECRET("server.opensharing.server-secret");
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
     // getS3Configurations.
@@ -714,6 +721,10 @@ public class ServerProperties {
     return get(Property.OPENSHARING_CREDENTIAL_ENCRYPTION_KEY);
   }
 
+  public String getOpenSharingServerSecret() {
+    return get(Property.OPENSHARING_SERVER_SECRET);
+  }
+
   public void checkOpenSharingConfigured() {
     if (!isOpenSharingEnabled()) {
       return;
@@ -725,6 +736,19 @@ public class ServerProperties {
           "OpenSharing is enabled but '"
               + Property.OPENSHARING_CREDENTIAL_ENCRYPTION_KEY.getKey()
               + "' is not set in server.properties");
+    }
+    // Only load-bearing when authorization is on: a recipient's read has to reach the catalog as
+    // the share owner with no owner token available to present, and on-behalf-of access is how —
+    // see AuthDecorator. With authorization off there is nothing this secret would gate.
+    if (isAuthorizationEnabled()) {
+      String secret = getOpenSharingServerSecret();
+      if (secret == null || secret.isBlank()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            "OpenSharing is enabled with authorization on but '"
+                + Property.OPENSHARING_SERVER_SECRET.getKey()
+                + "' is not set in server.properties");
+      }
     }
   }
 }
