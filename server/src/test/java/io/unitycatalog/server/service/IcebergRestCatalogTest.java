@@ -1028,10 +1028,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             .join();
     assertIcebergStatusDocument(resp, 404, NotFoundException.class, "Not Found");
 
-    // Same for a method a served path does not accept, such as the namespace drop Iceberg's client
-    // sends to a path this server only serves GET on. Iceberg has no exception of its own for 405.
-    resp =
-        client.delete(TEST_BASE_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME).aggregate().join();
+    // Same for a method a served path does not accept: the namespaces collection serves listing
+    // and creation but not DELETE. Iceberg has no exception of its own for 405.
+    resp = client.delete(TEST_BASE_PREFIX + "/namespaces").aggregate().join();
     assertIcebergStatusDocument(resp, 405, RESTException.class, "Method Not Allowed");
 
     // The mount point itself belongs to the Iceberg API too, even though nothing is served there,
