@@ -2713,6 +2713,8 @@ components:
         - CREATE EXTERNAL VOLUME
         - CREATE MANAGED STORAGE
         - CREATE STORAGE CREDENTIAL
+        - CREATE SHARE
+        - CREATE RECIPIENT
       # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
       #  corresponding description at the end of the description list. Both list must have the same
       #  order.
@@ -2736,6 +2738,8 @@ components:
         - 'CREATE EXTERNAL VOLUME: Enables creating external volumes through external locations.'
         - 'CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.'
         - 'CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.'
+        - 'CREATE SHARE: Required privilege on the metastore to create a Delta Sharing share.'
+        - 'CREATE RECIPIENT: Required privilege on the metastore to create a Delta Sharing recipient.'
     UpdatePermissions:
       type: object
       properties:

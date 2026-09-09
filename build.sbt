@@ -18,6 +18,7 @@ val artifactNamePrefix = "unitycatalog"
 // until Spark 4 comes out with newer Java compatibility
 lazy val javacRelease11 = Seq("--release", "11")
 lazy val javacRelease17 = Seq("--release", "17")
+lazy val javacRelease21 = Seq("--release", "21")
 
 lazy val scala213 = "2.13.17"
 
@@ -483,6 +484,50 @@ lazy val server = (project in file("server"))
       (controlModels / Compile / packageBin / mappings).value
   )
 
+lazy val serverSharing = (project in file("server-sharing"))
+  .dependsOn(server)
+  .dependsOn(serverModels % "provided", controlModels % "provided")
+  .enablePlugins(CheckstylePlugin)
+  .settings(
+    name := s"$artifactNamePrefix-server-sharing",
+    commonSettings,
+    javaOnlyReleaseSettings,
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
+    // 21, not 17 like the rest of this build: opensharing-server-core compiles at release 21 (it
+    // pattern-matches over a sealed CatalogCaller.Credential in a switch), and --release rejects a
+    // classpath jar newer than what it names outright — "class file has wrong version" — not merely
+    // one whose syntax it declines to use. Embedding OpenSharing is opt-in and its own module, so
+    // this raises the JDK this one jar needs to build (and, transitively, for serverEmbedded to run
+    // on) without moving the floor for anyone building plain `server`.
+    Compile / compile / javacOptions ++= javacRelease21,
+    libraryDependencies ++= Seq(
+      "io.opensharing" % "opensharing-server-core" % "0.1.0-SNAPSHOT"
+        exclude("org.apache.logging.log4j", "log4j-to-slf4j")
+        exclude("ch.qos.logback", "logback-classic")
+        exclude("ch.qos.logback", "logback-core")
+        exclude("org.slf4j", "jul-to-slf4j"),
+      "jakarta.servlet" % "jakarta.servlet-api" % "6.1.0" % Provided,
+      "org.projectlombok" % "lombok" % "1.18.32" % Provided,
+    ),
+  )
+
+// Aggregates server + embedded OpenSharing for run/demo classpaths without a circular sbt graph.
+lazy val exportEmbeddedClasspath = taskKey[Unit]("Write serverEmbedded runtime classpath to server-embedded/target/classpath")
+
+lazy val serverEmbedded = (project in file("server-embedded"))
+  .dependsOn(server, serverSharing, serverModels, controlModels)
+  .settings(
+    name := s"$artifactNamePrefix-server-embedded",
+    publish / skip := true,
+    Compile / run / mainClass := (server / Compile / run / mainClass).value,
+    exportEmbeddedClasspath := {
+      val cp = (Runtime / fullClasspath).value
+      val out = (Compile / target).value / "classpath"
+      IO.write(out, cp.files.mkString(File.pathSeparator))
+      println(s"Wrote embedded classpath to $out")
+    },
+  )
+
 lazy val serverModels = (project in file("server") / "target" / "models")
   .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
@@ -611,7 +656,7 @@ lazy val cli = (project in file("examples") / "cli")
   * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
  */
 lazy val serverShaded = (project in file("server-shaded"))
-  .dependsOn(server % "compile->compile, test->compile")
+  .dependsOn(serverEmbedded % "compile->compile, test->compile")
   .settings(
     name := s"$artifactNamePrefix-server-shaded",
     commonSettings,
@@ -627,7 +672,7 @@ lazy val serverShaded = (project in file("server-shaded"))
     ),
     assemblyPackageScala / assembleArtifact := false,
     assembly / fullClasspath := {
-      val compileClasspath = (server / Compile / fullClasspath).value
+      val compileClasspath = (serverEmbedded / Compile / fullClasspath).value
       val testClasses = (server / Test / products).value
       compileClasspath ++ testClasses.map(Attributed.blank)
     }
