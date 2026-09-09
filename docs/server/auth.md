@@ -329,7 +329,9 @@ SELECT * from unity.default.numbers;
 
 The Java and Spark clients always construct a token provider (`TokenProvider.create`).
 `type` is required (`static`, `oauth`, or a custom class name). Omitting both `type` and a
-legacy `token` key is not a valid configuration.
+legacy `token` key fails with
+`Required configuration key 'type' is missing or empty. Must be 'static',
+'oauth', or a fully qualified TokenProvider class name.`
 
 | Server | Client |
 | --- | --- |
