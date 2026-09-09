@@ -155,17 +155,24 @@ public class ServerProperties {
 
   /**
    * Validator for the string format of {@code java.time.Duration}. Check function {@Duration.parse}
-   * for all the accepted forms.
+   * for all the accepted forms. Negative durations are rejected; zero is allowed.
    */
   private static class DurationValidator implements PropertyValidator {
     @Override
     public void validate(String key, String value) {
+      Duration duration;
       try {
-        Duration.parse(value);
+        duration = Duration.parse(value);
       } catch (DateTimeParseException e) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
             String.format("Invalid value '%s' for property '%s': %s", value, key, e.getMessage()));
+      }
+      if (duration.isNegative()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Invalid value '%s' for property '%s': must be zero or positive", value, key));
       }
     }
   }
@@ -190,20 +197,6 @@ public class ServerProperties {
     }
   }
 
-  /** {@link Duration} that is zero or positive. */
-  private static class NonNegativeDurationValidator extends DurationValidator {
-    @Override
-    public void validate(String key, String value) {
-      super.validate(key, value);
-      if (Duration.parse(value).isNegative()) {
-        throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT,
-            String.format(
-                "Invalid value '%s' for property '%s': must be zero or positive", value, key));
-      }
-    }
-  }
-
   /** No-op validator that accepts any value */
   private static class NoOpValidator implements PropertyValidator {
     @Override
@@ -221,8 +214,6 @@ public class ServerProperties {
   private static final DurationValidator DURATION_VALIDATOR = new DurationValidator();
   private static final PositiveDurationValidator POSITIVE_DURATION_VALIDATOR =
       new PositiveDurationValidator();
-  private static final NonNegativeDurationValidator NON_NEGATIVE_DURATION_VALIDATOR =
-      new NonNegativeDurationValidator();
 
   @Getter
   public enum Property {
@@ -233,9 +224,7 @@ public class ServerProperties {
     POLICY_REFRESH_INTERVAL(
         "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
     POLICY_REFRESH_MIN_PROBE_INTERVAL(
-        "server.authorization.policy-refresh-min-probe-interval",
-        "PT0S",
-        NON_NEGATIVE_DURATION_VALIDATOR),
+        "server.authorization.policy-refresh-min-probe-interval", "PT0S", DURATION_VALIDATOR),
     STORAGE_CLEANUP_POLL_INTERVAL(
         "server.storage-cleanup.poll-interval", "PT1M", POSITIVE_DURATION_VALIDATOR),
     STORAGE_CLEANUP_ATTEMPT_TIMEOUT(
