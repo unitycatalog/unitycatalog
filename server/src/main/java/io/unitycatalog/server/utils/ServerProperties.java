@@ -231,7 +231,6 @@ public class ServerProperties {
     OPENSHARING_PORT("server.opensharing.port", "8099", POSITIVE_INTEGER_VALIDATOR),
     OPENSHARING_PROTOCOL_PREFIX(
         "server.opensharing.protocol-prefix", "/api/2.1/opensharing", NOOP_VALIDATOR),
-    OPENSHARING_CREDENTIAL_ENCRYPTION_KEY("server.opensharing.credential-encryption-key"),
     // OpenSharing's own identity, not a user's: presenting this alongside an
     // X-OpenSharing-On-Behalf-Of header (see AuthDecorator) lets it ask for a table or a
     // credential as the share owner on a recipient's read, when no owner token is available to
@@ -717,38 +716,27 @@ public class ServerProperties {
         getOpenSharingActivationBasePath());
   }
 
-  public String getOpenSharingCredentialEncryptionKey() {
-    return get(Property.OPENSHARING_CREDENTIAL_ENCRYPTION_KEY);
-  }
-
   public String getOpenSharingServerSecret() {
     return get(Property.OPENSHARING_SERVER_SECRET);
   }
 
+  /**
+   * Only load-bearing when authorization is on: a recipient's read has to reach the catalog as the
+   * share owner with no owner token available to present, and on-behalf-of access
+   * (OPENSHARING_SERVER_SECRET, see AuthDecorator) is how. With authorization off there is nothing
+   * this secret would gate.
+   */
   public void checkOpenSharingConfigured() {
-    if (!isOpenSharingEnabled()) {
+    if (!isOpenSharingEnabled() || !isAuthorizationEnabled()) {
       return;
     }
-    String key = getOpenSharingCredentialEncryptionKey();
-    if (key == null || key.isBlank()) {
+    String secret = getOpenSharingServerSecret();
+    if (secret == null || secret.isBlank()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "OpenSharing is enabled but '"
-              + Property.OPENSHARING_CREDENTIAL_ENCRYPTION_KEY.getKey()
+          "OpenSharing is enabled with authorization on but '"
+              + Property.OPENSHARING_SERVER_SECRET.getKey()
               + "' is not set in server.properties");
-    }
-    // Only load-bearing when authorization is on: a recipient's read has to reach the catalog as
-    // the share owner with no owner token available to present, and on-behalf-of access is how —
-    // see AuthDecorator. With authorization off there is nothing this secret would gate.
-    if (isAuthorizationEnabled()) {
-      String secret = getOpenSharingServerSecret();
-      if (secret == null || secret.isBlank()) {
-        throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT,
-            "OpenSharing is enabled with authorization on but '"
-                + Property.OPENSHARING_SERVER_SECRET.getKey()
-                + "' is not set in server.properties");
-      }
     }
   }
 }
