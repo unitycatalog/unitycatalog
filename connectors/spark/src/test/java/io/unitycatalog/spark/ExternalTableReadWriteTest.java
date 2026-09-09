@@ -147,10 +147,11 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
    * The connector injects vended filesystem credentials (fs.s3a.access.key, fs.s3a.session.token,
    * fs.unitycatalog.*, and their option.-prefixed duplicates) into the table property map so the
    * local Spark session can write to the table location. None of them -- nor the reserved Spark V2
-   * markers -- may be forwarded to the UC server as table properties: they are session-scoped
-   * credentials, and values like an STS session token (~1100 chars) also overflow the server
-   * property store. Create the table via Spark SQL, then fetch it back through the SDK and assert
-   * the server kept none of those keys.
+   * markers, nor Spark's Hive-metastore schema JSON keys -- may be forwarded to the UC server as
+   * table properties: they are session-scoped credentials or duplicated column metadata, and values
+   * like an STS session token (~1100 chars) or {@code spark.sql.sources.schema.part.N} also
+   * overflow the server property store. Create the table via Spark SQL, then fetch it back through
+   * the SDK and assert the server kept none of those keys.
    */
   @ParameterizedTest
   @MethodSource("cloudParameters")
@@ -170,7 +171,17 @@ public abstract class ExternalTableReadWriteTest extends BaseTableReadWriteTest 
     assertThat(serverProperties.keySet())
         .noneMatch(key -> key.startsWith("fs."))
         .noneMatch(key -> key.startsWith(TableCatalog.OPTION_PREFIX + "fs."))
-        .noneMatch(UCTableProperties.V2_TABLE_PROPERTIES::contains);
+        .noneMatch(UCTableProperties.V2_TABLE_PROPERTIES::contains)
+        .noneMatch(
+            key ->
+                key.equals("spark.sql.sources.schema")
+                    || key.startsWith("spark.sql.sources.schema.")
+                    || key.equals("spark.sql.partitionSchema")
+                    || key.startsWith("spark.sql.partitionSchema."))
+        .noneMatch(
+            key ->
+                key.startsWith(TableCatalog.OPTION_PREFIX + "spark.sql.sources.schema")
+                    || key.startsWith(TableCatalog.OPTION_PREFIX + "spark.sql.partitionSchema"));
   }
 
   @Test
