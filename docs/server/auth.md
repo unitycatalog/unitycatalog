@@ -128,10 +128,11 @@ Optional tuning:
 | Property | Default | Purpose |
 |---|---|---|
 | `server.authorization.policy-refresh-interval` | `PT1M` | How often each instance polls `casbin_rule` |
-| `server.authorization.policy-refresh-debounce-interval` | `PT1S` | Minimum gap between deny-triggered reloads |
+| `server.authorization.policy-refresh-min-probe-interval` | `PT0S` | Minimum gap between deny-path `max(id)` probes. Raise to cap DB load under 403s. |
 
-Revocations propagate on the poll interval. A stale deny (a grant not yet seen) can trigger one
-debounced reload before returning 403.
+Revocations propagate on the poll interval. A stale deny can trigger one `max(id)` probe
+before returning 403. Concurrent denials and list-filter items share a probe that started after the
+request.
 
 ### Restart the UC Server
 
