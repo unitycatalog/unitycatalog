@@ -1,6 +1,7 @@
 package io.unitycatalog.server.auth.decorator;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -27,33 +28,34 @@ class UnityAccessEvaluatorTest {
             evaluator.evaluate(
                 UUID.randomUUID(), "#permit", Collections.emptyMap(), Collections.emptyMap()))
         .isTrue();
-    verify(authorizer, never()).refreshAuthorizations();
+    verify(authorizer, never()).refreshAuthorizations(anyLong());
   }
 
   @Test
   void evaluateKeepsDenyWhenRefreshReturnsFalse() throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
-    when(authorizer.refreshAuthorizations()).thenReturn(false);
+    when(authorizer.refreshAuthorizations(anyLong())).thenReturn(false);
     UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer);
 
     assertThat(
             evaluator.evaluate(
                 UUID.randomUUID(), "#deny", Collections.emptyMap(), Collections.emptyMap()))
         .isFalse();
-    verify(authorizer, times(1)).refreshAuthorizations();
+    verify(authorizer, times(1)).refreshAuthorizations(anyLong());
   }
 
   @Test
   void evaluateKeepsDenyWhenRefreshThrows() throws Exception {
     UnityCatalogAuthorizer authorizer = mock(UnityCatalogAuthorizer.class);
-    when(authorizer.refreshAuthorizations()).thenThrow(new RuntimeException("reload failed"));
+    when(authorizer.refreshAuthorizations(anyLong()))
+        .thenThrow(new RuntimeException("reload failed"));
     UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer);
 
     assertThat(
             evaluator.evaluate(
                 UUID.randomUUID(), "#deny", Collections.emptyMap(), Collections.emptyMap()))
         .isFalse();
-    verify(authorizer, times(1)).refreshAuthorizations();
+    verify(authorizer, times(1)).refreshAuthorizations(anyLong());
   }
 
   @Test
@@ -64,7 +66,7 @@ class UnityAccessEvaluatorTest {
 
     when(authorizer.authorize(eq(principal), eq(catalog), eq(Privileges.OWNER)))
         .thenReturn(false, true);
-    when(authorizer.refreshAuthorizations()).thenReturn(true);
+    when(authorizer.refreshAuthorizations(anyLong())).thenReturn(true);
 
     UnityAccessEvaluator evaluator = new UnityAccessEvaluator(authorizer);
 
@@ -75,7 +77,7 @@ class UnityAccessEvaluatorTest {
                 Map.of(SecurableType.CATALOG, catalog),
                 Collections.emptyMap()))
         .isTrue();
-    verify(authorizer, times(1)).refreshAuthorizations();
+    verify(authorizer, times(1)).refreshAuthorizations(anyLong());
     verify(authorizer, times(2)).authorize(eq(principal), eq(catalog), eq(Privileges.OWNER));
   }
 }

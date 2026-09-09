@@ -43,13 +43,11 @@ public interface UnityCatalogAuthorizer {
   Map<UUID, List<Privileges>> listAuthorizations(UUID resource);
 
   /**
-   * Reload cached authorization state from the shared store, if supported. Called from
-   * authorization evaluation after a deny (request checks and list filters). Implementations should
-   * rate-limit; default is a no-op.
+   * Reload cached authorization state after a deny, if supported. Default is a no-op.
    *
-   * @return true if a refresh ran and re-evaluation may succeed
+   * @return true if authorization should be re-evaluated
    */
-  default boolean refreshAuthorizations() {
+  default boolean refreshAuthorizations(long observedBefore) {
     return false;
   }
 }

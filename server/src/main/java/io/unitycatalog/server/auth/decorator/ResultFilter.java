@@ -121,6 +121,8 @@ public class ResultFilter {
       throw new RuntimeException("Securable type " + securableType + " is already resolved");
     }
 
+    long observedBefore = System.nanoTime();
+
     items.removeIf(
         item -> {
           try {
@@ -129,7 +131,8 @@ public class ResultFilter {
             Map<SecurableType, UUID> resourceIdsForItem =
                 resolveResourceIdsForItem(securableType, item, resourceIds);
             boolean authorized =
-                evaluator.evaluate(principalId, expression, resourceIdsForItem, nonResourceValues);
+                evaluator.evaluate(
+                    principalId, expression, resourceIdsForItem, nonResourceValues, observedBefore);
             if (!authorized) {
               LOGGER.debug("Item filtered out: {}", item.getClass().getSimpleName());
             }

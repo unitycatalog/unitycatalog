@@ -170,6 +170,20 @@ public class ServerProperties {
     }
   }
 
+  /** {@link Duration} that is zero or positive. */
+  private static class NonNegativeDurationValidator extends DurationValidator {
+    @Override
+    public void validate(String key, String value) {
+      super.validate(key, value);
+      if (Duration.parse(value).isNegative()) {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT,
+            String.format(
+                "Invalid value '%s' for property '%s': must be zero or positive", value, key));
+      }
+    }
+  }
+
   /** No-op validator that accepts any value */
   private static class NoOpValidator implements PropertyValidator {
     @Override
@@ -185,6 +199,8 @@ public class ServerProperties {
       new PositiveIntegerValidator();
   private static final NoOpValidator NOOP_VALIDATOR = new NoOpValidator();
   private static final DurationValidator DURATION_VALIDATOR = new DurationValidator();
+  private static final NonNegativeDurationValidator NON_NEGATIVE_DURATION_VALIDATOR =
+      new NonNegativeDurationValidator();
 
   @Getter
   public enum Property {
@@ -194,8 +210,10 @@ public class ServerProperties {
     POLICY_REFRESH_ENABLED("server.authorization.policy-refresh", "false", BOOLEAN_VALIDATOR),
     POLICY_REFRESH_INTERVAL(
         "server.authorization.policy-refresh-interval", "PT1M", DURATION_VALIDATOR),
-    POLICY_REFRESH_DEBOUNCE_INTERVAL(
-        "server.authorization.policy-refresh-debounce-interval", "PT1S", DURATION_VALIDATOR),
+    POLICY_REFRESH_MIN_PROBE_INTERVAL(
+        "server.authorization.policy-refresh-min-probe-interval",
+        "PT0S",
+        NON_NEGATIVE_DURATION_VALIDATOR),
     AUTHORIZATION_URL("server.authorization-url", URL_VALIDATOR),
     TOKEN_URL("server.token-url", URL_VALIDATOR),
     CLIENT_ID("server.client-id"),
@@ -479,8 +497,8 @@ public class ServerProperties {
     return Duration.parse(get(Property.POLICY_REFRESH_INTERVAL));
   }
 
-  public Duration getPolicyRefreshDebounceInterval() {
-    return Duration.parse(get(Property.POLICY_REFRESH_DEBOUNCE_INTERVAL));
+  public Duration getPolicyRefreshMinProbeInterval() {
+    return Duration.parse(get(Property.POLICY_REFRESH_MIN_PROBE_INTERVAL));
   }
 
   public boolean isIncludeStackTraceInError() {
