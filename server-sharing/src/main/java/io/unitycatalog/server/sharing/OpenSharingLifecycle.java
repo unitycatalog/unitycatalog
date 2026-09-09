@@ -1,7 +1,7 @@
 package io.unitycatalog.server.sharing;
 
 import io.opensharing.catalog.unity.UnityCatalogConnector;
-import io.opensharing.catalog.unity.UnityCatalogProviderIdentityResolver;
+import io.opensharing.principal.CatalogAuthorizingIdentityResolver;
 import io.opensharing.runtime.OpenSharing;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
@@ -51,14 +51,18 @@ public final class OpenSharingLifecycle implements AutoCloseable {
    * credential replayed later. Two calls, both OpenSharing's own, unmodified for embedding:
    *
    * <ul>
-   *   <li>{@link UnityCatalogProviderIdentityResolver} resolves a provider-admin request's caller
-   *       by presenting its own bearer token to {@code POST /opensharing/authorize} — the same
-   *       call standalone mode makes against a remote catalog, just against a loopback address.
+   *   <li>{@link CatalogAuthorizingIdentityResolver} resolves a provider-admin request's caller by
+   *       presenting its own bearer token to {@link UnityCatalogConnector}'s implementation of
+   *       {@code CatalogConnector#authorize} ({@code POST /opensharing/authorize}) — the same call
+   *       standalone mode makes against a remote catalog, just against a loopback address.
    *   <li>{@link UnityCatalogConnector} resolves and reads assets, presenting either that same
    *       live token (adding a table to a share) or, on a recipient's read, this connector's own
    *       {@code serverSecret} plus the share owner's catalog user id — on-behalf-of access, since
    *       there is no owner token to present for a request the owner never made.
    * </ul>
+   *
+   * <p>Both go through the one {@link UnityCatalogConnector} instance built here: the resolver
+   * wraps it rather than opening a second connection to the same loopback address.
    *
    * <p>Both go through UC's own {@code AuthDecorator}/{@code UnityAccessDecorator} exactly as if
    * they had arrived on UC's public port, so the metastore/catalog/schema/table grants enforced are
@@ -87,14 +91,14 @@ public final class OpenSharingLifecycle implements AutoCloseable {
     try {
       URI ucLoopback = URI.create("http://127.0.0.1:" + armeriaPort + "/api/2.1/unity-catalog");
       String serverSecret = serverProperties.getOpenSharingServerSecret();
+      UnityCatalogConnector connector =
+          new UnityCatalogConnector(ucLoopback, CONNECT_TIMEOUT, REQUEST_TIMEOUT, serverSecret);
       OpenSharing.EmbeddedBuilder builder =
           OpenSharing.embedded()
-              .catalog(
-                  new UnityCatalogConnector(
-                      ucLoopback, CONNECT_TIMEOUT, REQUEST_TIMEOUT, serverSecret))
-              .identityResolver(
-                  new UnityCatalogProviderIdentityResolver(
-                      ucLoopback, CONNECT_TIMEOUT, REQUEST_TIMEOUT))
+              .catalog(connector)
+              // Shares connector's own connection to this loopback address rather than opening a
+              // second one to it.
+              .identityResolver(new CatalogAuthorizingIdentityResolver(connector))
               .property("server.port", serverProperties.getOpenSharingPort())
               .property("server.address", "127.0.0.1")
               .property(

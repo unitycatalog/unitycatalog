@@ -18,6 +18,7 @@ val artifactNamePrefix = "unitycatalog"
 // until Spark 4 comes out with newer Java compatibility
 lazy val javacRelease11 = Seq("--release", "11")
 lazy val javacRelease17 = Seq("--release", "17")
+lazy val javacRelease21 = Seq("--release", "21")
 
 lazy val scala213 = "2.13.17"
 
@@ -492,7 +493,13 @@ lazy val serverSharing = (project in file("server-sharing"))
     commonSettings,
     javaOnlyReleaseSettings,
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
-    Compile / compile / javacOptions ++= javacRelease17,
+    // 21, not 17 like the rest of this build: opensharing-server-core compiles at release 21 (it
+    // pattern-matches over a sealed CatalogCaller.Credential in a switch), and --release rejects a
+    // classpath jar newer than what it names outright — "class file has wrong version" — not merely
+    // one whose syntax it declines to use. Embedding OpenSharing is opt-in and its own module, so
+    // this raises the JDK this one jar needs to build (and, transitively, for serverEmbedded to run
+    // on) without moving the floor for anyone building plain `server`.
+    Compile / compile / javacOptions ++= javacRelease21,
     libraryDependencies ++= Seq(
       "io.opensharing" % "opensharing-server-core" % "0.1.0-SNAPSHOT"
         exclude("org.apache.logging.log4j", "log4j-to-slf4j")
